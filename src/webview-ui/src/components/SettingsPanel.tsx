@@ -1,5 +1,11 @@
 import { useState, useEffect } from 'react';
-import type { ContextToggles, ProviderSettingsPayload, SettingsView, WorkspaceNoticeView } from '../../../vscode/webview/messages';
+import type {
+  AgentSettingsPayload,
+  ContextToggles,
+  ProviderSettingsPayload,
+  SettingsView,
+  WorkspaceNoticeView,
+} from '../../../vscode/webview/messages';
 import { WorkspaceSettingsSection } from './WorkspaceSettingsSection';
 import { SettingNote } from './SettingNote';
 
@@ -49,6 +55,7 @@ interface SettingsPanelProps {
   contextToggles: ContextToggles;
   onSaveApiKey: (key: string) => void;
   onSaveProviderSettings: (settings: ProviderSettingsPayload) => void;
+  onSaveAgentSettings: (settings: AgentSettingsPayload) => void;
   onTestConnection: (settings: ProviderSettingsPayload) => void;
   onPickWorkspaceFolder: () => void;
   onSetWorkspaceOverride: (path: string) => void;
@@ -71,6 +78,7 @@ export function SettingsPanel({
   contextToggles,
   onSaveApiKey,
   onSaveProviderSettings,
+  onSaveAgentSettings,
   onTestConnection,
   onPickWorkspaceFolder,
   onSetWorkspaceOverride,
@@ -86,12 +94,23 @@ export function SettingsPanel({
   const [model, setModel] = useState(settings.model);
   const [contextWindow, setContextWindow] = useState(String(settings.contextWindow));
   const [saved, setSaved] = useState(false);
+  const [subagentsEnabled, setSubagentsEnabled] = useState(settings.subagentsEnabled);
+  const [agentMaxSteps, setAgentMaxSteps] = useState(String(settings.agentMaxSteps));
+  const [agentAutoContinue, setAgentAutoContinue] = useState(settings.agentAutoContinue);
+  const [agentMaxAutoContinues, setAgentMaxAutoContinues] = useState(String(settings.agentMaxAutoContinues));
+  const [researchAgentMaxSteps, setResearchAgentMaxSteps] = useState(String(settings.researchAgentMaxSteps));
+  const [agentSaved, setAgentSaved] = useState(false);
 
   useEffect(() => {
     setProviderType(settings.providerType as 'echo' | 'openai-compatible');
     setBaseUrl(settings.baseUrl);
     setModel(settings.model);
     setContextWindow(String(settings.contextWindow));
+    setSubagentsEnabled(settings.subagentsEnabled);
+    setAgentMaxSteps(String(settings.agentMaxSteps));
+    setAgentAutoContinue(settings.agentAutoContinue);
+    setAgentMaxAutoContinues(String(settings.agentMaxAutoContinues));
+    setResearchAgentMaxSteps(String(settings.researchAgentMaxSteps));
   }, [settings]);
 
   const handleSaveKey = () => {
@@ -124,6 +143,28 @@ export function SettingsPanel({
       model: model.trim(),
       contextWindow: Number.isFinite(parsedContext) ? parsedContext : settings.contextWindow,
     };
+  };
+
+  const handleSaveAgent = () => {
+    const maxSteps = parseInt(agentMaxSteps, 10);
+    const maxAutoContinues = parseInt(agentMaxAutoContinues, 10);
+    const researchSteps = parseInt(researchAgentMaxSteps, 10);
+    if (
+      !Number.isFinite(maxSteps) ||
+      !Number.isFinite(maxAutoContinues) ||
+      !Number.isFinite(researchSteps)
+    ) {
+      return;
+    }
+    onSaveAgentSettings({
+      subagentsEnabled,
+      maxSteps,
+      autoContinue: agentAutoContinue,
+      maxAutoContinues,
+      researchAgentMaxSteps: researchSteps,
+    });
+    setAgentSaved(true);
+    setTimeout(() => setAgentSaved(false), 2000);
   };
 
   const isLocalProvider = providerType === 'openai-compatible';
@@ -296,6 +337,91 @@ export function SettingsPanel({
         <span className="settings-hint">
           Optional for local Ollama. Required for cloud APIs. Stored in VS Code SecretStorage, not plain settings.
         </span>
+      </section>
+
+      <section className="settings-section">
+        <h3>Agent behavior</h3>
+        <SettingNote title="What keeps a chat running">
+          Thunder runs tool calls in rounds. Auto-continue starts another round after the step limit, and subagents
+          can run read-only research in parallel. Lower these limits when you want the agent to stop sooner.
+        </SettingNote>
+
+        <div className="settings-toggles">
+          <label className="settings-toggle settings-toggle--rich">
+            <span className="settings-toggle-head">
+              <input
+                type="checkbox"
+                checked={subagentsEnabled}
+                onChange={(e) => setSubagentsEnabled(e.target.checked)}
+              />
+              <span>Research subagents</span>
+            </span>
+            <span className="settings-hint">
+              Allows <code>spawn_research_agent</code> for parallel, read-only investigation.
+            </span>
+          </label>
+
+          <label className="settings-toggle settings-toggle--rich">
+            <span className="settings-toggle-head">
+              <input
+                type="checkbox"
+                checked={agentAutoContinue}
+                onChange={(e) => setAgentAutoContinue(e.target.checked)}
+              />
+              <span>Auto-continue rounds</span>
+            </span>
+            <span className="settings-hint">
+              Lets the agent keep working after it spends the main step budget.
+            </span>
+          </label>
+        </div>
+
+        <div className="settings-field-grid">
+          <label className="settings-field">
+            <span className="settings-label">Main agent max steps</span>
+            <input
+              type="number"
+              className="settings-input"
+              min={1}
+              max={100}
+              value={agentMaxSteps}
+              onChange={(e) => setAgentMaxSteps(e.target.value)}
+            />
+          </label>
+
+          <label className="settings-field">
+            <span className="settings-label">Max auto-continues</span>
+            <input
+              type="number"
+              className="settings-input"
+              min={0}
+              max={10}
+              value={agentMaxAutoContinues}
+              onChange={(e) => setAgentMaxAutoContinues(e.target.value)}
+              disabled={!agentAutoContinue}
+            />
+          </label>
+        </div>
+
+        <label className="settings-field">
+          <span className="settings-label">Research subagent max steps</span>
+          <input
+            type="number"
+            className="settings-input"
+            min={1}
+            max={50}
+            value={researchAgentMaxSteps}
+            onChange={(e) => setResearchAgentMaxSteps(e.target.value)}
+            disabled={!subagentsEnabled}
+          />
+          <span className="settings-hint">
+            Applies to each spawned subagent. Current effective maximum work is roughly main steps plus continuation rounds.
+          </span>
+        </label>
+
+        <button type="button" className="btn btn--primary" onClick={handleSaveAgent}>
+          {agentSaved ? 'Saved!' : 'Save agent settings'}
+        </button>
       </section>
 
       <section className="settings-section">

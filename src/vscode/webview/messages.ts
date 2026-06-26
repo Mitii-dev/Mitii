@@ -101,7 +101,7 @@ export interface AgentActivityEntry {
 export interface PlanStepView {
   id: string;
   title: string;
-  status: 'pending' | 'running' | 'done' | 'blocked';
+  status: 'pending' | 'running' | 'done' | 'blocked' | 'failed';
   risk: 'low' | 'medium' | 'high';
   files?: string[];
 }
@@ -142,6 +142,11 @@ export interface SettingsView {
   requireApprovalWrites: boolean;
   requireApprovalShell: boolean;
   memoryEnabled: boolean;
+  subagentsEnabled: boolean;
+  agentMaxSteps: number;
+  agentAutoContinue: boolean;
+  agentMaxAutoContinues: number;
+  researchAgentMaxSteps: number;
   hasApiKey: boolean;
   connectionStatus?: string;
   connectionOk?: boolean;
@@ -152,6 +157,14 @@ export interface ProviderSettingsPayload {
   baseUrl: string;
   model: string;
   contextWindow: number;
+}
+
+export interface AgentSettingsPayload {
+  subagentsEnabled: boolean;
+  maxSteps: number;
+  autoContinue: boolean;
+  maxAutoContinues: number;
+  researchAgentMaxSteps: number;
 }
 
 export interface ContextToggles {
@@ -234,6 +247,7 @@ export type WebviewToExtensionMessage =
   | { type: 'approveAllPending' }
   | { type: 'saveApiKey'; payload: { key: string } }
   | { type: 'saveProviderSettings'; payload: ProviderSettingsPayload }
+  | { type: 'saveAgentSettings'; payload: AgentSettingsPayload }
   | { type: 'testProviderConnection'; payload?: ProviderSettingsPayload }
   | { type: 'pickWorkspaceFolder' }
   | { type: 'setWorkspaceOverride'; payload: { path: string } }
@@ -265,6 +279,11 @@ export const defaultSettingsView = (): SettingsView => ({
   requireApprovalWrites: true,
   requireApprovalShell: true,
   memoryEnabled: true,
+  subagentsEnabled: true,
+  agentMaxSteps: 15,
+  agentAutoContinue: true,
+  agentMaxAutoContinues: 2,
+  researchAgentMaxSteps: 6,
   hasApiKey: false,
 });
 

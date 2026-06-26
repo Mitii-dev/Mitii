@@ -129,6 +129,37 @@
           "default": true,
           "description": "Enable local memory"
         },
+        "thunder.agent.subagentsEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the spawn_research_agent tool for parallel read-only research."
+        },
+        "thunder.agent.maxSteps": {
+          "type": "number",
+          "default": 15,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum tool-use steps before the main agent stops or auto-continues."
+        },
+        "thunder.agent.autoContinue": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow the agent to keep working after it reaches the per-round step limit."
+        },
+        "thunder.agent.maxAutoContinues": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Maximum number of automatic continuation rounds after the main step limit."
+        },
+        "thunder.agent.researchAgentMaxSteps": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 50,
+          "description": "Maximum tool-use steps for each read-only research subagent."
+        },
         "thunder.workspace.rootPathOverride": {
           "type": "string",
           "default": "",

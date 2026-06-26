@@ -8,7 +8,12 @@ const log = createLogger('ResearchAgent');
 
 const RESEARCH_SYSTEM = `You are a read-only research subagent. Investigate ONLY the assigned task.
 Use read_file, read_files, list_files, search, search_batch, repo_map, and read-only run_command.
-Return a concise report: findings, file paths, confidence (high/medium/low). Do NOT edit files.`;
+
+Rules:
+- Complete in ≤4 tool rounds. Be fast and focused.
+- Batch reads/searches in parallel when possible.
+- Return a concise report (max 400 words): findings, file paths, confidence (high/medium/low).
+- Do NOT edit files. Do NOT explore unrelated areas.`;
 
 const READ_ONLY_TOOL_NAMES = new Set([
   'read_file',
@@ -27,7 +32,8 @@ const READ_ONLY_TOOL_NAMES = new Set([
 export class ResearchAgent {
   constructor(
     private readonly toolExecutor: ToolExecutor,
-    private readonly maxSteps = 10
+    private readonly maxSteps = 6,
+    private readonly timeoutMs = 90_000
   ) {}
 
   async run(
@@ -41,16 +47,35 @@ export class ResearchAgent {
     const loop = new AgentLoop(this.toolExecutor, this.maxSteps);
 
     const userContent = focus
-      ? `## Focus\n${focus}\n\n## Task\n${task}`
-      : task;
+      ? `## Focus\n${focus}\n\n## Task\n${task}\n\nBe concise. Max 4 tool rounds.`
+      : `${task}\n\nBe concise. Max 4 tool rounds.`;
 
     const messages = [
       { role: 'system' as const, content: RESEARCH_SYSTEM },
       { role: 'user' as const, content: userContent },
     ];
 
-    const result = await loop.runToCompletion(provider, messages, tools, signal, undefined, false);
-    log.info('Research subagent finished', { task: task.slice(0, 80), toolCalls: result.toolCallsMade });
-    return result.fullContent || '(no findings)';
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    if (signal) {
+      signal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+
+    try {
+      const result = await loop.runToCompletion(provider, messages, tools, controller.signal, undefined, false, {
+        maxSteps: this.maxSteps,
+      });
+      log.info('Research subagent finished', { task: task.slice(0, 80), toolCalls: result.toolCallsMade });
+      return result.fullContent || '(no findings)';
+    } catch (e) {
+      if (controller.signal.aborted) {
+        log.warn('Research subagent timed out', { task: task.slice(0, 80), timeoutMs: this.timeoutMs });
+        return `(research timed out after ${Math.round(this.timeoutMs / 1000)}s — partial task: ${task.slice(0, 120)})`;
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }

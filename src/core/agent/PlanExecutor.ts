@@ -6,26 +6,70 @@ import type { PlanPersistence } from '../planning/PlanPersistence';
 import type { AgentLoop } from './AgentLoop';
 import type { AgentLoopCallbacks } from './AgentLoop';
 import type { ContextPack } from '../context/types';
-import { buildStepPrompt, buildPlanGenerationPrompt } from '../planning/promptBuilder';
+import type { PostEditValidator } from '../apply/PostEditValidator';
+import type { TaskAnalysis } from './TaskAnalyzer';
+import {
+  buildStepPrompt,
+  buildPlanGenerationPrompt,
+  buildRequirementAnalysisPrompt,
+  buildStepRetryPrompt,
+  buildFinalValidationPrompt,
+} from '../planning/promptBuilder';
 import { createLogger } from '../telemetry/Logger';
 
 const log = createLogger('PlanExecutor');
 
 export type PlanUpdateCallback = (plan: ThunderPlan) => void;
 
+export interface PlanExecutorOptions {
+  stepMaxRetries?: number;
+  finalValidationEnabled?: boolean;
+  agentMaxSteps?: number;
+}
+
+export interface StepExecutionResult {
+  stepIndex: number;
+  success: boolean;
+  summary: string;
+  touchedFiles: string[];
+  validationErrors: string[];
+}
+
 export class PlanExecutor {
+  private stepSummaries: string[] = [];
+  private touchedFiles = new Set<string>();
+
   constructor(
     private readonly agentLoop: AgentLoop,
-    private readonly planPersistence: PlanPersistence
+    private readonly planPersistence: PlanPersistence,
+    private readonly postEditValidator?: PostEditValidator
   ) {}
+
+  async analyzeRequirements(
+    provider: LlmProvider,
+    pack: ContextPack,
+    userMessage: string,
+    analysis: TaskAnalysis
+  ): Promise<string> {
+    const messages = buildRequirementAnalysisPrompt(pack, userMessage, analysis);
+    let response = '';
+
+    for await (const delta of provider.complete({ messages, stream: false })) {
+      if (delta.content) response += delta.content;
+      if (delta.error) throw new Error(delta.error);
+    }
+
+    return response.trim() || analysis.summary;
+  }
 
   async generatePlan(
     provider: LlmProvider,
     mode: ThunderSession['mode'],
     pack: ContextPack,
-    userMessage: string
+    userMessage: string,
+    requirementAnalysis?: string
   ): Promise<ThunderPlan | null> {
-    const messages = buildPlanGenerationPrompt(mode, pack, userMessage);
+    const messages = buildPlanGenerationPrompt(mode, pack, userMessage, requirementAnalysis);
     let response = '';
 
     for await (const delta of provider.complete({ messages, stream: false })) {
@@ -62,8 +106,13 @@ export class PlanExecutor {
     tools: ToolDefinition[],
     onPlanUpdate?: PlanUpdateCallback,
     signal?: AbortSignal,
-    loopCallbacks?: AgentLoopCallbacks
+    loopCallbacks?: AgentLoopCallbacks,
+    options?: PlanExecutorOptions
   ): AsyncIterable<string> {
+    this.stepSummaries = [];
+    this.touchedFiles.clear();
+    const maxRetries = options?.stepMaxRetries ?? 2;
+
     this.planPersistence.save(session.id, plan, 'running');
     onPlanUpdate?.(plan);
 
@@ -73,65 +122,176 @@ export class PlanExecutor {
       const step = plan.steps[i];
       if (step.status === 'done') continue;
 
-      plan.steps[i] = { ...step, status: 'running' };
-      this.planPersistence.updatePlan(session.id, plan, 'running');
-      onPlanUpdate?.(plan);
+      let attempt = 0;
+      let stepSucceeded = false;
+      let lastValidationErrors: string[] = [];
 
-      yield `\n\n### Step ${i + 1}/${plan.steps.length}: ${step.title}\n\n`;
+      while (attempt <= maxRetries && !stepSucceeded) {
+        if (signal?.aborted) break;
 
-      const messages = buildStepPrompt(session.mode, pack, plan, step);
+        if (attempt > 0) {
+          yield `\n\n🔄 Retrying step ${i + 1} (attempt ${attempt + 1}/${maxRetries + 1})…\n\n`;
+        } else {
+          yield `\n\n### Step ${i + 1}/${plan.steps.length}: ${step.title}\n\n`;
+        }
 
-      for await (const chunk of this.agentLoop.run(
+        plan.steps[i] = { ...step, status: 'running' };
+        this.planPersistence.updatePlan(session.id, plan, 'running');
+        onPlanUpdate?.(plan);
+
+        const messages =
+          attempt === 0
+            ? buildStepPrompt(session.mode, pack, plan, step, this.stepSummaries)
+            : buildStepRetryPrompt(session.mode, pack, plan, step, this.stepSummaries, lastValidationErrors);
+
+        let stepOutput = '';
+        for await (const chunk of this.agentLoop.run(
+          provider,
+          messages,
+          tools,
+          signal,
+          loopCallbacks,
+          { maxSteps: options?.agentMaxSteps }
+        )) {
+          yield chunk;
+          stepOutput += chunk;
+        }
+
+        const pendingApproval = this.agentLoop.hadPendingApproval();
+        if (pendingApproval) {
+          plan.steps[i] = { ...plan.steps[i], status: 'blocked' };
+          this.planPersistence.updatePlan(session.id, plan, 'blocked');
+          onPlanUpdate?.(plan);
+          yield '\n\n⏸ Waiting for approval before continuing…\n';
+          return;
+        }
+
+        if (step.files?.length) {
+          for (const f of step.files) this.touchedFiles.add(f);
+        }
+
+        lastValidationErrors = await this.validateStepFiles(step.files ?? []);
+        if (lastValidationErrors.length > 0) {
+          attempt += 1;
+          if (attempt <= maxRetries) {
+            yield `\n\n⚠️ Validation errors detected — will retry:\n${lastValidationErrors.join('\n')}\n`;
+            continue;
+          }
+          plan.steps[i] = { ...plan.steps[i], status: 'failed' };
+          this.planPersistence.updatePlan(session.id, plan, 'running');
+          onPlanUpdate?.(plan);
+          yield `\n\n❌ Step failed after ${maxRetries + 1} attempts. Errors:\n${lastValidationErrors.join('\n')}\n`;
+          break;
+        }
+
+        stepSucceeded = true;
+        const summary = stepOutput.slice(-500).trim() || `Completed: ${step.title}`;
+        this.stepSummaries.push(`Step ${i + 1} (${step.title}): ${summary}`);
+        plan.steps[i] = { ...plan.steps[i], status: 'done' };
+        this.planPersistence.updatePlan(session.id, plan, 'running');
+        onPlanUpdate?.(plan);
+      }
+    }
+
+    const failed = plan.steps.some((s) => s.status === 'failed');
+    const blocked = plan.steps.some((s) => s.status === 'blocked');
+    const allDone = plan.steps.every((s) => s.status === 'done');
+
+    if (allDone && !blocked && options?.finalValidationEnabled !== false) {
+      yield '\n\n### Final validation\n\n';
+      for await (const chunk of this.runFinalValidation(
+        session,
         provider,
-        messages,
+        plan,
+        pack,
         tools,
         signal,
-        loopCallbacks
+        loopCallbacks,
+        options
       )) {
         yield chunk;
       }
-
-      const pendingApproval = this.agentLoop.hadPendingApproval();
-      if (pendingApproval) {
-        plan.steps[i] = { ...plan.steps[i], status: 'blocked' };
-        this.planPersistence.updatePlan(session.id, plan, 'blocked');
-        onPlanUpdate?.(plan);
-        yield '\n\n⏸ Waiting for approval before continuing…\n';
-        break;
-      }
-
-      plan.steps[i] = { ...plan.steps[i], status: 'done' };
-      this.planPersistence.updatePlan(session.id, plan, 'running');
-      onPlanUpdate?.(plan);
     }
 
-    const allDone = plan.steps.every((s) => s.status === 'done');
     if (allDone) {
       this.planPersistence.complete(session.id);
       onPlanUpdate?.(plan);
+      yield '\n\n✅ All steps completed.\n';
+    } else if (failed) {
+      yield '\n\n⚠️ Plan finished with failed steps. Review errors above and retry failed steps.\n';
     }
 
-    log.info('Plan execution finished', { goal: plan.goal, steps: plan.steps.length });
+    log.info('Plan execution finished', {
+      goal: plan.goal,
+      steps: plan.steps.length,
+      done: plan.steps.filter((s) => s.status === 'done').length,
+      failed: plan.steps.filter((s) => s.status === 'failed').length,
+    });
+  }
+
+  private async validateStepFiles(files: string[]): Promise<string[]> {
+    if (!this.postEditValidator || files.length === 0) return [];
+
+    const errors: string[] = [];
+    for (const relPath of files) {
+      const result = await this.postEditValidator.validate(relPath);
+      if (result.errors.length > 0) {
+        errors.push(this.postEditValidator.formatForAgent(result));
+      }
+    }
+    return errors;
+  }
+
+  async *runFinalValidation(
+    session: ThunderSession,
+    provider: LlmProvider,
+    plan: ThunderPlan,
+    pack: ContextPack,
+    tools: ToolDefinition[],
+    signal?: AbortSignal,
+    loopCallbacks?: AgentLoopCallbacks,
+    options?: PlanExecutorOptions
+  ): AsyncIterable<string> {
+    const workspaceErrors = await this.collectWorkspaceErrors();
+    const messages = buildFinalValidationPrompt(
+      session.mode,
+      pack,
+      plan,
+      this.stepSummaries,
+      Array.from(this.touchedFiles),
+      workspaceErrors
+    );
+
+    for await (const chunk of this.agentLoop.run(
+      provider,
+      messages,
+      tools,
+      signal,
+      loopCallbacks,
+      { maxSteps: Math.min(options?.agentMaxSteps ?? 10, 10) }
+    )) {
+      yield chunk;
+    }
+  }
+
+  private async collectWorkspaceErrors(): Promise<string[]> {
+    if (!this.postEditValidator) return [];
+
+    const files = Array.from(this.touchedFiles);
+    const errors: string[] = [];
+    for (const relPath of files) {
+      const result = await this.postEditValidator.validate(relPath);
+      if (result.errors.length > 0) {
+        errors.push(this.postEditValidator.formatForAgent(result));
+      }
+    }
+    return errors;
+  }
+
+  getTouchedFiles(): string[] {
+    return Array.from(this.touchedFiles);
   }
 }
 
-export function shouldDecomposeTask(userMessage: string, mode: string): boolean {
-  // Cursor-style: run the agent loop directly. Only pre-plan when the user explicitly asks.
-  if (mode !== 'act') return false;
-
-  const explicitPlan =
-    /step[- ]by[- ]step/i.test(userMessage) ||
-    /break(?: it)? down/i.test(userMessage) ||
-    /multi[- ]step/i.test(userMessage) ||
-    /\b(create|make) a plan\b/i.test(userMessage) ||
-    /\bplan (?:this|out)\b/i.test(userMessage) ||
-    /execution plan/i.test(userMessage);
-
-  if (!explicitPlan) return false;
-
-  const implementationHeavy =
-    /\b(implement|build|migrate|refactor|rewrite)\b/i.test(userMessage) &&
-    (userMessage.match(/\b(and|then)\b/gi)?.length ?? 0) >= 1;
-
-  return explicitPlan && (implementationHeavy || userMessage.length > 180);
-}
+// Re-export for backward compatibility
+export { shouldDecomposeTask } from './TaskAnalyzer';

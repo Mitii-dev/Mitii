@@ -40,6 +40,18 @@ export const MemoryConfigSchema = z.object({
   summarizeAfterTask: z.boolean().default(true),
 });
 
+export const AgentConfigSchema = z.object({
+  subagentsEnabled: z.boolean().default(true),
+  maxSteps: z.number().int().min(1).max(100).default(15),
+  autoContinue: z.boolean().default(true),
+  maxAutoContinues: z.number().int().min(0).max(10).default(2),
+  researchAgentMaxSteps: z.number().int().min(1).max(50).default(6),
+  researchAgentTimeoutMs: z.number().int().min(10_000).max(300_000).default(90_000),
+  orchestrationEnabled: z.boolean().default(true),
+  stepMaxRetries: z.number().int().min(0).max(5).default(2),
+  finalValidationEnabled: z.boolean().default(true),
+});
+
 export const WorkspaceConfigSchema = z.object({
   rootPathOverride: z.string().default(''),
 });
@@ -50,6 +62,7 @@ export const ThunderConfigSchema = z.object({
   indexing: IndexingConfigSchema.default({}),
   safety: SafetyConfigSchema.default({}),
   memory: MemoryConfigSchema.default({}),
+  agent: AgentConfigSchema.default({}),
   workspace: WorkspaceConfigSchema.default({}),
 });
 
@@ -58,6 +71,7 @@ export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
 export type IndexingConfig = z.infer<typeof IndexingConfigSchema>;
 export type SafetyConfig = z.infer<typeof SafetyConfigSchema>;
 export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
+export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
 export type ThunderConfig = z.infer<typeof ThunderConfigSchema>;
 

@@ -208,17 +208,36 @@ describe('autonomyPresets', () => {
 });
 
 describe('shouldDecomposeTask', () => {
-  it('only decomposes when user explicitly asks for a plan', async () => {
-    const { shouldDecomposeTask } = await import('../src/core/agent/PlanExecutor');
+  it('decomposes implementation tasks and explicit plan requests in act mode', async () => {
+    const { shouldDecomposeTask } = await import('../src/core/agent/TaskAnalyzer');
     expect(
       shouldDecomposeTask('implement auth and then add tests step by step for all routes', 'act')
     ).toBe(true);
-    expect(shouldDecomposeTask('implement auth and then add tests for all routes', 'act')).toBe(false);
+    expect(shouldDecomposeTask('implement auth and then add tests for all routes', 'act')).toBe(true);
     expect(
       shouldDecomposeTask('identify and remove unused files and dependencies in the whole project', 'act')
-    ).toBe(false);
+    ).toBe(true);
     expect(shouldDecomposeTask('implement auth and then add tests', 'plan')).toBe(false);
     expect(shouldDecomposeTask('hi', 'act')).toBe(false);
+    expect(shouldDecomposeTask('what does this project do?', 'act')).toBe(false);
+  });
+});
+
+describe('TaskAnalyzer', () => {
+  it('classifies task kinds', async () => {
+    const { analyzeTask } = await import('../src/core/agent/TaskAnalyzer');
+    const audit = analyzeTask('find unused dependencies and clean up dead code', 'act');
+    expect(audit.kind).toBe('audit');
+    expect(audit.shouldPlan).toBe(true);
+
+    const question = analyzeTask('how does authentication work?', 'act');
+    expect(question.kind).toBe('question');
+    expect(question.shouldPlan).toBe(false);
+
+    const impl = analyzeTask('implement login and then add tests for the auth module', 'act');
+    expect(impl.kind).toBe('implementation');
+    expect(impl.shouldPlan).toBe(true);
+    expect(impl.shouldVerify).toBe(true);
   });
 });
 
@@ -246,8 +265,10 @@ describe('taskKind', () => {
 
 describe('PlanActEngine read-only shell', () => {
   it('allows inspection commands in plan mode', async () => {
-    const { isShellAllowed, isReadOnlyCommand } = await import('../src/core/planning/PlanActEngine');
+    const { isShellAllowed, isReadOnlyCommand, stripLeadingCd } = await import('../src/core/planning/PlanActEngine');
     expect(isReadOnlyCommand('npx depcheck')).toBe(true);
+    expect(isReadOnlyCommand('cd /home/user && rg "foo" src')).toBe(true);
+    expect(stripLeadingCd('cd /home/user && npm ls')).toBe('npm ls');
     expect(isShellAllowed('plan', 'npx depcheck')).toBe(true);
     expect(isShellAllowed('plan', 'npm install lodash')).toBe(false);
   });

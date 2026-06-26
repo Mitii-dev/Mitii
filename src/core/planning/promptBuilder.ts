@@ -32,10 +32,11 @@ export function buildSystemPrompt(mode: ThunderMode, toolsEnabled = false, audit
 - For complex tasks, output a JSON plan block (see format below).`,
     act: `You are in ACT mode. Implement changes using tools and/or CODE_EDIT_BLOCK format.
 
-Preferred workflow:
-1. read_file / search / retrieve_context to understand the code
-2. apply_patch or write_file to make changes
-3. diagnostics / run_command to verify
+Systematic workflow — follow this order:
+1. **Understand** — read_file / search / retrieve_context to understand the code
+2. **Implement** — apply_patch or write_file to make changes
+3. **Verify** — diagnostics / run_command (lint, test, build) after each change
+4. **Fix** — if validation reports errors, fix them before moving on
 
 You may also output files in this format when tools are unavailable:
 
@@ -126,14 +127,26 @@ Answer using the codebase context above. Be direct and specific.`;
 export function buildPlanGenerationPrompt(
   mode: ThunderMode,
   contextPack: ContextPack,
-  userMessage: string
+  userMessage: string,
+  requirementAnalysis?: string
 ): ChatMessage[] {
   const contextBlock = contextPack.formatted ?? '(no context)';
+  const analysisBlock = requirementAnalysis
+    ? `\n\n## Requirement analysis\n${requirementAnalysis}`
+    : '';
+
   return [
     {
       role: 'system',
-      content: `You are a task planner. Break the user's request into 2-8 concrete steps.
-Output ONLY a JSON code block with this structure:
+      content: `You are a task planner for a coding agent. Break the user's request into concrete steps.
+
+Process:
+1. Understand the goal and constraints from context and analysis.
+2. Order steps so each builds on the previous (read/explore → implement → test/verify).
+3. Include a final verification step if tests or lint are relevant.
+4. Be specific with file paths from context.
+
+Output ONLY a JSON code block:
 \`\`\`json
 {
   "goal": "...",
@@ -144,11 +157,47 @@ Output ONLY a JSON code block with this structure:
   "requiredApprovals": []
 }
 \`\`\`
-Mode: ${mode}. Be specific with file paths from context.`,
+Mode: ${mode}. Use 3-8 steps for complex tasks, 2-4 for simpler ones.`,
     },
     {
       role: 'user',
-      content: `## Context\n${contextBlock}\n\n## Task\n${userMessage}\n\nGenerate the plan JSON.`,
+      content: `## Context\n${contextBlock}${analysisBlock}\n\n## Task\n${userMessage}\n\nGenerate the plan JSON.`,
+    },
+  ];
+}
+
+export function buildRequirementAnalysisPrompt(
+  contextPack: ContextPack,
+  userMessage: string,
+  analysis: { kind: string; complexity: string; summary: string }
+): ChatMessage[] {
+  const contextBlock = contextPack.formatted ?? '(no context)';
+  return [
+    {
+      role: 'system',
+      content: `You are a requirements analyst for a coding agent. Before any code changes, analyze the user's request.
+
+Output a concise analysis (bullet points, max 12 lines):
+1. **Goal** — what the user wants accomplished
+2. **Scope** — files/areas likely involved (from context)
+3. **Constraints** — mode, risks, dependencies to watch
+4. **Success criteria** — how to verify the work is done (tests, lint, behavior)
+5. **Approach** — high-level strategy (2-4 bullets)
+
+Be specific. Use file paths from context. Do NOT write code.`,
+    },
+    {
+      role: 'user',
+      content: `Task kind: ${analysis.kind} (${analysis.complexity} complexity)
+${analysis.summary}
+
+## Codebase Context
+${contextBlock}
+
+## User request
+${userMessage}
+
+Analyze requirements:`,
     },
   ];
 }
@@ -157,11 +206,17 @@ export function buildStepPrompt(
   mode: ThunderMode,
   contextPack: ContextPack,
   plan: ThunderPlan,
-  step: ThunderPlan['steps'][number]
+  step: ThunderPlan['steps'][number],
+  priorSummaries: string[] = []
 ): ChatMessage[] {
   const contextBlock = contextPack.formatted ?? '(no context)';
   const completed = plan.steps.filter((s) => s.status === 'done').map((s) => s.title);
   const pending = plan.steps.filter((s) => s.status !== 'done').map((s) => s.title);
+
+  const priorBlock =
+    priorSummaries.length > 0
+      ? `\n## Work completed so far\n${priorSummaries.map((s) => `- ${s}`).join('\n')}\n`
+      : '';
 
   return [
     {
@@ -171,7 +226,7 @@ export function buildStepPrompt(
     {
       role: 'user',
       content: `## Goal\n${plan.goal}
-
+${priorBlock}
 ## Completed steps
 ${completed.length ? completed.map((s) => `- ${s}`).join('\n') : '(none)'}
 
@@ -185,7 +240,87 @@ Risk: ${step.risk}
 ## Codebase Context
 ${contextBlock}
 
-Execute this step completely using tools. When done, summarize what you changed.`,
+Execute this step completely using tools. Fix any errors you introduce. When done, summarize what you changed.`,
+    },
+  ];
+}
+
+export function buildStepRetryPrompt(
+  mode: ThunderMode,
+  contextPack: ContextPack,
+  plan: ThunderPlan,
+  step: ThunderPlan['steps'][number],
+  priorSummaries: string[],
+  validationErrors: string[]
+): ChatMessage[] {
+  const contextBlock = contextPack.formatted ?? '(no context)';
+
+  return [
+    {
+      role: 'system',
+      content: buildSystemPrompt(mode, true),
+    },
+    {
+      role: 'user',
+      content: `## Goal\n${plan.goal}
+
+## Work completed so far
+${priorSummaries.map((s) => `- ${s}`).join('\n')}
+
+## RETRY — fix validation errors from previous attempt
+**${step.title}**${step.files?.length ? `\nFiles: ${step.files.join(', ')}` : ''}
+
+### Errors to fix
+${validationErrors.join('\n\n')}
+
+## Codebase Context
+${contextBlock}
+
+Fix ALL validation errors. Use read_file to inspect current state, then apply_patch or write_file. Run diagnostics after fixing.`,
+    },
+  ];
+}
+
+export function buildFinalValidationPrompt(
+  mode: ThunderMode,
+  contextPack: ContextPack,
+  plan: ThunderPlan,
+  stepSummaries: string[],
+  touchedFiles: string[],
+  existingErrors: string[]
+): ChatMessage[] {
+  const contextBlock = contextPack.formatted ?? '(no context)';
+  const errorBlock =
+    existingErrors.length > 0
+      ? `\n\n## Known errors (fix these)\n${existingErrors.join('\n\n')}`
+      : '';
+
+  return [
+    {
+      role: 'system',
+      content: buildSystemPrompt(mode, true),
+    },
+    {
+      role: 'user',
+      content: `## Goal\n${plan.goal}
+
+## Completed work
+${stepSummaries.map((s) => `- ${s}`).join('\n')}
+
+## Files modified
+${touchedFiles.length ? touchedFiles.map((f) => `- ${f}`).join('\n') : '(none tracked)'}
+${errorBlock}
+
+## Codebase Context
+${contextBlock}
+
+## Final validation (execute NOW)
+1. Run diagnostics on all modified files (use diagnostics tool).
+2. Run relevant tests/lint/build (run_command) if applicable.
+3. Fix any remaining errors with apply_patch/write_file.
+4. Summarize: what was done, test results, any remaining issues.
+
+Do NOT skip verification — call tools now.`,
     },
   ];
 }

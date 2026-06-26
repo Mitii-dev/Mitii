@@ -42,6 +42,13 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       maxItems: config.get<number>('memory.maxItems'),
       summarizeAfterTask: config.get<boolean>('memory.summarizeAfterTask'),
     },
+    agent: {
+      subagentsEnabled: config.get<boolean>('agent.subagentsEnabled'),
+      maxSteps: config.get<number>('agent.maxSteps'),
+      autoContinue: config.get<boolean>('agent.autoContinue'),
+      maxAutoContinues: config.get<number>('agent.maxAutoContinues'),
+      researchAgentMaxSteps: config.get<number>('agent.researchAgentMaxSteps'),
+    },
     workspace: {
       rootPathOverride: config.get<string>('workspace.rootPathOverride'),
     },

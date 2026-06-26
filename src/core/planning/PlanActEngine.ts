@@ -4,7 +4,7 @@ export type ThunderPlan = {
   steps: Array<{
     id: string;
     title: string;
-    status: 'pending' | 'running' | 'done' | 'blocked';
+    status: 'pending' | 'running' | 'done' | 'blocked' | 'failed';
     files?: string[];
     risk: 'low' | 'medium' | 'high';
   }>;
@@ -34,15 +34,27 @@ export function isWriteAllowed(mode: string): boolean {
 
 /** Shell commands that only inspect the repo (allowed in plan/review for audits). */
 export function isReadOnlyCommand(command: string): boolean {
-  const cmd = command.trim();
+  const cmd = stripLeadingCd(command).trim();
   if (!cmd) return false;
+  const segments = cmd.split(/\s*(?:&&|\|\|?|\;)\s*/).map((part) => part.trim()).filter(Boolean);
+  if (segments.length === 0) return false;
+  return segments.every(isReadOnlyCommandSegment);
+}
+
+function isReadOnlyCommandSegment(cmd: string): boolean {
   if (/^(npx\s+)?depcheck\b/i.test(cmd)) return true;
-  if (/^npm\s+(ls|list|outdated|audit)\b/i.test(cmd)) return true;
-  if (/^yarn\s+(why|list|info)\b/i.test(cmd)) return true;
-  if (/^pnpm\s+(why|list)\b/i.test(cmd)) return true;
+  if (/^npx\s+eslint\b/i.test(cmd)) return true;
+  if (/^npm\s+(ls|list|outdated|audit|run\s+(lint|test|typecheck|check|build))\b/i.test(cmd)) return true;
+  if (/^yarn\s+(why|list|info|lint|test|build)\b/i.test(cmd)) return true;
+  if (/^pnpm\s+(why|list|lint|test|build)\b/i.test(cmd)) return true;
   if (/^(grep|rg|find|cat|head|tail|wc|sort|uniq|ls|tree)\b/i.test(cmd)) return true;
   if (/^git\s+(status|diff|log|ls-files)\b/i.test(cmd)) return true;
   return false;
+}
+
+export function stripLeadingCd(command: string): string {
+  const match = command.trim().match(/^cd\s+(?:"[^"]+"|'[^']+'|[^\s&;|]+)\s*&&\s*([\s\S]+)$/i);
+  return match ? match[1].trim() : command.trim();
 }
 
 export function isShellAllowed(mode: string, command?: string): boolean {

@@ -292,6 +292,7 @@ export class ThunderController {
       planPersistence: this.planPersistence,
       memoryExtractor: this.memoryExtractor,
       memoryConfig: this.configService.getConfig().memory,
+      agentConfig: this.configService.getConfig().agent,
       passiveMemoryInjector: this.passiveMemoryInjector,
       memoryHookService: this.memoryHookService,
       postEditValidator: this.postEditValidator,
@@ -485,6 +486,11 @@ export class ThunderController {
         requireApprovalWrites: config.safety.requireApprovalForWrites,
         requireApprovalShell: config.safety.requireApprovalForShell,
         memoryEnabled: config.memory.enabled,
+        subagentsEnabled: config.agent.subagentsEnabled,
+        agentMaxSteps: config.agent.maxSteps,
+        agentAutoContinue: config.agent.autoContinue,
+        agentMaxAutoContinues: config.agent.maxAutoContinues,
+        researchAgentMaxSteps: config.agent.researchAgentMaxSteps,
         hasApiKey: Boolean(apiKey),
       },
       contextToggles: this.contextToggles,
@@ -886,6 +892,24 @@ export class ThunderController {
     this.rebuildRetriever();
     this.notifyUi({ settings: (await this.buildUiState()).settings });
     void vscode.window.showInformationMessage('Thunder: Provider settings saved.');
+  }
+
+  async saveAgentSettings(settings: import('../vscode/webview/messages').AgentSettingsPayload): Promise<void> {
+    const clamp = (value: number, min: number, max: number) =>
+      Math.max(min, Math.min(Number.isFinite(value) ? Math.floor(value) : min, max));
+
+    await this.configService.updateAgentSettings({
+      subagentsEnabled: settings.subagentsEnabled,
+      maxSteps: clamp(settings.maxSteps, 1, 100),
+      autoContinue: settings.autoContinue,
+      maxAutoContinues: clamp(settings.maxAutoContinues, 0, 10),
+      researchAgentMaxSteps: clamp(settings.researchAgentMaxSteps, 1, 50),
+    });
+
+    const config = this.configService.getConfig();
+    this.chatOrchestrator?.configure({ agentConfig: config.agent });
+    this.notifyUi({ settings: (await this.buildUiState()).settings });
+    void vscode.window.showInformationMessage('Thunder: Agent settings saved.');
   }
 
   setContextToggle(source: keyof ContextToggles, enabled: boolean): void {

@@ -144,6 +144,9 @@ export function App() {
             onSaveProviderSettings={(payload) =>
               postMessage({ type: 'saveProviderSettings', payload })
             }
+            onSaveAgentSettings={(payload) =>
+              postMessage({ type: 'saveAgentSettings', payload })
+            }
             onTestConnection={(payload) => postMessage({ type: 'testProviderConnection', payload })}
             onPickWorkspaceFolder={() => postMessage({ type: 'pickWorkspaceFolder' })}
             onSetWorkspaceOverride={(path) =>

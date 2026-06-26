@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { ProviderSettingsPayload } from '../../vscode/webview/messages';
+import type { AgentSettingsPayload, ProviderSettingsPayload } from '../../vscode/webview/messages';
 
 const CONFIG_SECTION = 'thunder';
 
@@ -11,6 +11,17 @@ export async function updateProviderSettings(settings: ProviderSettingsPayload):
   await config.update('provider.baseUrl', settings.baseUrl.trim(), target);
   await config.update('provider.model', settings.model.trim(), target);
   await config.update('provider.contextWindow', settings.contextWindow, target);
+}
+
+export async function updateAgentSettings(settings: AgentSettingsPayload): Promise<void> {
+  const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
+  const target = vscode.ConfigurationTarget.Global;
+
+  await config.update('agent.subagentsEnabled', settings.subagentsEnabled, target);
+  await config.update('agent.maxSteps', settings.maxSteps, target);
+  await config.update('agent.autoContinue', settings.autoContinue, target);
+  await config.update('agent.maxAutoContinues', settings.maxAutoContinues, target);
+  await config.update('agent.researchAgentMaxSteps', settings.researchAgentMaxSteps, target);
 }
 
 export async function updateWorkspaceOverride(path: string): Promise<void> {

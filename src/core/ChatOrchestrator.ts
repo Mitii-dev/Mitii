@@ -16,14 +16,15 @@ import type { ToolExecutor } from './safety/ToolExecutor';
 import type { ToolRuntime } from './tools/ToolRuntime';
 import { toolsToDefinitions } from './tools/toolSchema';
 import { AgentLoop } from './agent/AgentLoop';
-import { PlanExecutor, shouldDecomposeTask } from './agent/PlanExecutor';
+import { PlanExecutor } from './agent/PlanExecutor';
+import { analyzeTask } from './agent/TaskAnalyzer';
 import { compactMessagesWithLlm } from './agent/ContextCompaction';
 import { isAuditCleanupTask, AUDIT_AGENT_MAX_STEPS } from './agent/taskKind';
 import { setResearchAgentRuntime } from './tools/builtinTools';
 import type { SessionService } from './session/SessionService';
 import type { PlanPersistence } from './planning/PlanPersistence';
 import type { MemoryExtractor } from './agent/MemoryExtractor';
-import type { MemoryConfig } from './config/schema';
+import type { AgentConfig, MemoryConfig } from './config/schema';
 import type { PassiveMemoryInjector } from './memory/PassiveMemoryInjector';
 import type { MemoryHookService } from './memory/MemoryHookService';
 import type { PostEditValidator } from './apply/PostEditValidator';
@@ -45,6 +46,7 @@ export interface ChatOrchestratorDeps {
   planPersistence?: PlanPersistence;
   memoryExtractor?: MemoryExtractor;
   memoryConfig?: MemoryConfig;
+  agentConfig?: AgentConfig;
   passiveMemoryInjector?: PassiveMemoryInjector;
   memoryHookService?: MemoryHookService;
   postEditValidator?: PostEditValidator;
@@ -78,7 +80,11 @@ export class ChatOrchestrator {
       this.agentLoop = new AgentLoop(deps.toolExecutor, 15);
     }
     if (deps.planPersistence && this.agentLoop) {
-      this.planExecutor = new PlanExecutor(this.agentLoop, deps.planPersistence);
+      this.planExecutor = new PlanExecutor(
+        this.agentLoop,
+        deps.planPersistence,
+        deps.postEditValidator
+      );
     }
   }
 
@@ -231,16 +237,26 @@ export class ChatOrchestrator {
 
     const toolsEnabled = provider.capabilities.supportsTools
       && Boolean(this.deps.toolRuntime && this.deps.toolExecutor && this.agentLoop);
-    const tools = toolsEnabled
-      ? toolsToDefinitions(this.deps.toolRuntime!.list())
-      : [];
+    const agentConfig = this.deps.agentConfig;
     const auditMode = isAuditCleanupTask(userMessage);
+    const taskAnalysis = analyzeTask(userMessage, session.mode);
+    const orchestrationEnabled = agentConfig?.orchestrationEnabled ?? true;
+    const subagentsEnabled =
+      (agentConfig?.subagentsEnabled ?? true) &&
+      (auditMode || taskAnalysis.shouldUseSubagents);
+    const tools = toolsEnabled
+      ? toolsToDefinitions(this.deps.toolRuntime!.list()).filter((tool) =>
+          subagentsEnabled || tool.function.name !== 'spawn_research_agent'
+        )
+      : [];
 
     if (toolsEnabled && this.deps.toolExecutor) {
       setResearchAgentRuntime({
         toolExecutor: this.deps.toolExecutor,
         getProvider: () => provider,
         getTools: () => tools,
+        maxSteps: agentConfig?.researchAgentMaxSteps,
+        timeoutMs: agentConfig?.researchAgentTimeoutMs,
       });
     } else {
       setResearchAgentRuntime(undefined);
@@ -248,19 +264,45 @@ export class ChatOrchestrator {
 
     if (auditMode) {
       this.emitActivity('info', 'Audit mode — using tools to scan project');
+    } else if (orchestrationEnabled && taskAnalysis.shouldPlan) {
+      this.emitActivity('info', `Orchestration: ${taskAnalysis.kind} (${taskAnalysis.complexity})`, taskAnalysis.summary);
     }
 
     this.saveTurn(session.id, 'user', userMessage);
 
     let fullResponse = '';
+    const sharedLoopCallbacks = this.buildLoopCallbacks();
 
     try {
-      if (toolsEnabled && this.planExecutor && shouldDecomposeTask(userMessage, session.mode)) {
+      if (
+        toolsEnabled &&
+        orchestrationEnabled &&
+        this.planExecutor &&
+        taskAnalysis.shouldPlan
+      ) {
+        this.setLiveStatus('Analyzing requirements');
+        this.emitActivity('info', 'Analyzing requirements…');
+
+        const requirementAnalysis = await this.planExecutor.analyzeRequirements(
+          provider,
+          pack,
+          userMessage,
+          taskAnalysis
+        );
+        fullResponse += `## Requirement analysis\n\n${requirementAnalysis}\n\n`;
+        yield `## Requirement analysis\n\n${requirementAnalysis}\n\n`;
+
         this.setLiveStatus('Creating plan');
         this.emitActivity('info', 'Planning multi-step task…');
 
-        const plan = await this.planExecutor.generatePlan(provider, session.mode, pack, userMessage);
-        if (plan && plan.steps.length > 1) {
+        const plan = await this.planExecutor.generatePlan(
+          provider,
+          session.mode,
+          pack,
+          userMessage,
+          requirementAnalysis
+        );
+        if (plan && plan.steps.length >= 1) {
           this.onPlan?.({ goal: plan.goal, assumptions: plan.assumptions, steps: plan.steps });
 
           if (session.mode === 'act') {
@@ -288,15 +330,11 @@ export class ChatOrchestrator {
                 }
               },
               signal,
+              sharedLoopCallbacks,
               {
-                onToolStart: (name, input) => {
-                  void this.previewDiffIfWrite(name, input);
-                  this.setLiveStatus(`Tool: ${name}`);
-                  this.emitActivity('tool', `Calling ${name}`, JSON.stringify(input).slice(0, 120));
-                },
-                onToolEnd: (name, success) => {
-                  this.emitActivity(success ? 'read' : 'error', `${name} ${success ? 'ok' : 'failed'}`);
-                },
+                stepMaxRetries: agentConfig?.stepMaxRetries,
+                finalValidationEnabled: agentConfig?.finalValidationEnabled,
+                agentMaxSteps: agentConfig?.maxSteps,
               }
             )) {
               if (signal.aborted) break;
@@ -328,44 +366,51 @@ export class ChatOrchestrator {
           messages,
           tools,
           signal,
-          {
-            onToolStart: (name, input) => {
-              void this.previewDiffIfWrite(name, input);
-              this.setLiveStatus(`Tool: ${name}`);
-              this.emitActivity('tool', `Calling ${name}`, JSON.stringify(input).slice(0, 120));
-            },
-            onToolEnd: (name, success, output) => {
-              this.emitActivity(success ? 'read' : 'error', `${name} ${success ? 'ok' : 'failed'}`, output.slice(0, 200));
-            },
-            onStep: (step, max) => {
-              this.setLiveStatus('Agent step', `${step}/${max}`, step, max);
-            },
-            onAutoContinue: (round) => {
-              this.emitActivity('info', `Auto-continuing agent loop (round ${round})`);
-              this.setLiveStatus('Auto-continuing', `Round ${round}`);
-            },
-            onPostWriteValidation: async (relPath) => {
-              if (!this.deps.postEditValidator) return undefined;
-              const result = await this.deps.postEditValidator.validate(relPath);
-              const formatted = this.deps.postEditValidator.formatForAgent(result);
-              if (result.errors.length > 0) {
-                this.emitActivity('error', `Lint errors in ${relPath}`, formatted);
-                await this.deps.onPostWrite?.(relPath);
-              } else {
-                this.emitActivity('info', `Validated ${relPath}`, 'No errors');
-              }
-              return formatted;
-            },
-          },
+          sharedLoopCallbacks,
           {
             auditMode,
-            maxSteps: auditMode ? AUDIT_AGENT_MAX_STEPS : undefined,
-            autoContinue: true,
+            maxSteps: auditMode ? AUDIT_AGENT_MAX_STEPS : agentConfig?.maxSteps,
+            autoContinue: agentConfig?.autoContinue ?? true,
+            maxAutoContinues: agentConfig?.maxAutoContinues,
           }
         )) {
           if (signal.aborted) break;
           fullResponse += chunk;
           yield chunk;
+        }
+
+        if (
+          orchestrationEnabled &&
+          taskAnalysis.shouldVerify &&
+          session.mode === 'act' &&
+          this.planExecutor &&
+          !signal.aborted
+        ) {
+          this.setLiveStatus('Final validation');
+          this.emitActivity('info', 'Running post-task validation…');
+          yield '\n\n### Post-task validation\n\n';
+
+          const validationPlan = {
+            goal: userMessage.slice(0, 200),
+            assumptions: [] as string[],
+            steps: [] as import('./planning/PlanActEngine').ThunderPlan['steps'],
+            requiredApprovals: [] as string[],
+          };
+
+          for await (const chunk of this.planExecutor.runFinalValidation(
+            session,
+            provider,
+            validationPlan,
+            pack,
+            tools,
+            signal,
+            sharedLoopCallbacks,
+            { agentMaxSteps: Math.min(agentConfig?.maxSteps ?? 10, 10) }
+          )) {
+            if (signal.aborted) break;
+            fullResponse += chunk;
+            yield chunk;
+          }
         }
       } else {
         this.setLiveStatus('Generating response');
@@ -430,6 +475,38 @@ export class ChatOrchestrator {
 
     const tokens = promptTokens || estimatePromptTokens(buildPrompt(session.mode, pack, userMessage, compacted));
     this.onTokenUsage?.(tokens, pack.totalTokens, fullResponse);
+  }
+
+  private buildLoopCallbacks(): import('./agent/AgentLoop').AgentLoopCallbacks {
+    return {
+      onToolStart: (name, input) => {
+        void this.previewDiffIfWrite(name, input);
+        this.setLiveStatus(`Tool: ${name}`);
+        this.emitActivity('tool', `Calling ${name}`, JSON.stringify(input).slice(0, 120));
+      },
+      onToolEnd: (name, success, output) => {
+        this.emitActivity(success ? 'read' : 'error', `${name} ${success ? 'ok' : 'failed'}`, output?.slice(0, 200));
+      },
+      onStep: (step, max) => {
+        this.setLiveStatus('Agent step', `${step}/${max}`, step, max);
+      },
+      onAutoContinue: (round) => {
+        this.emitActivity('info', `Auto-continuing agent loop (round ${round})`);
+        this.setLiveStatus('Auto-continuing', `Round ${round}`);
+      },
+      onPostWriteValidation: async (relPath) => {
+        if (!this.deps.postEditValidator) return undefined;
+        const result = await this.deps.postEditValidator.validate(relPath);
+        const formatted = this.deps.postEditValidator.formatForAgent(result);
+        if (result.errors.length > 0) {
+          this.emitActivity('error', `Lint errors in ${relPath}`, formatted);
+          await this.deps.onPostWrite?.(relPath);
+        } else {
+          this.emitActivity('info', `Validated ${relPath}`, 'No errors');
+        }
+        return formatted;
+      },
+    };
   }
 
   private async previewDiffIfWrite(name: string, input: Record<string, unknown>): Promise<void> {

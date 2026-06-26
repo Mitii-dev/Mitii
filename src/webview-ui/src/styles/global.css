@@ -598,6 +598,7 @@ body,
 .step-status--done { background: #2d4a2d; }
 .step-status--running { background: #2d3d4a; }
 .step-status--blocked { background: #4a2d2d; }
+.step-status--failed { background: #4a2d2d; color: #f48771; }
 
 /* ── Buttons (settings / approvals) ── */
 .btn {
@@ -804,6 +805,12 @@ body,
   flex-direction: column;
   gap: 4px;
   margin-bottom: 8px;
+}
+
+.settings-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
 }
 
 .settings-label {

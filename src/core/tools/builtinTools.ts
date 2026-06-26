@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { readFileSync, readdirSync, writeFileSync, statSync } from 'fs';
-import { join } from 'path';
+import { isAbsolute, join, relative, resolve } from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import type { Tool, ToolResult } from './types';
@@ -15,7 +15,7 @@ import type { MemoryService } from '../memory/MemoryService';
 import { PatchApplyService } from '../apply/PatchApplyService';
 import { isDangerousCommand } from '../safety/ToolPolicyEngine';
 import { isReadOnlyCommand } from '../planning/PlanActEngine';
-import { normalizeRelPath } from '../vscode/pathUtils';
+import { normalizeRelPath, normalizeWorkspaceRoot } from '../vscode/pathUtils';
 import { ResearchAgent } from '../agent/ResearchAgent';
 import type { SubagentTracker } from '../agent/SubagentTracker';
 import type { LlmProvider } from '../llm/types';
@@ -30,6 +30,8 @@ export interface ResearchAgentRuntime {
   toolExecutor: ToolExecutor;
   getProvider: () => LlmProvider | undefined;
   getTools: () => ToolDefinition[];
+  maxSteps?: number;
+  timeoutMs?: number;
 }
 
 let researchAgentRuntime: ResearchAgentRuntime | undefined;
@@ -42,7 +44,9 @@ export function setSubagentTracker(tracker: SubagentTracker | undefined): void {
 
 export function setResearchAgentRuntime(runtime: ResearchAgentRuntime | undefined): void {
   researchAgentRuntime = runtime;
-  researchAgent = runtime ? new ResearchAgent(runtime.toolExecutor, 10) : undefined;
+  researchAgent = runtime
+    ? new ResearchAgent(runtime.toolExecutor, runtime.maxSteps ?? 6, runtime.timeoutMs ?? 90_000)
+    : undefined;
 }
 
 function blockedPath(relPath: string, ignoreService: IgnoreService): boolean {
@@ -385,7 +389,7 @@ export function createApplyPatchTool(workspace: string, ignoreService: IgnoreSer
 export function createRunCommandTool(workspace: string, getMode: () => string): Tool<{ command: string }> {
   return {
     name: 'run_command',
-    description: 'Run a shell command in the workspace. Read-only commands (grep, depcheck, npm ls) work in Plan mode.',
+    description: `Run a shell command in the workspace (${workspace}). Do not prefix commands with cd; the tool already runs there. Read-only commands (grep, rg, depcheck, npm ls) work in Plan mode.`,
     risk: 'high',
     inputSchema: z.object({ command: z.string() }),
     async execute(input): Promise<ToolResult> {
@@ -401,14 +405,18 @@ export function createRunCommandTool(workspace: string, getMode: () => string): 
         };
       }
       try {
-        const { stdout, stderr } = await execAsync(input.command, {
-          cwd: workspace,
+        const normalized = normalizeWorkspaceCommand(input.command, workspace);
+        if (normalized.error) {
+          return { success: false, output: '', error: normalized.error };
+        }
+        const { stdout, stderr } = await execAsync(normalized.command, {
+          cwd: normalized.cwd,
           maxBuffer: 1024 * 1024,
           timeout: 120000,
           env: { ...process.env, FORCE_COLOR: '0' },
         });
-        const output = [stdout, stderr].filter(Boolean).join('\n').slice(0, 50000);
-        log.info('Command executed', { command: input.command.slice(0, 80) });
+        const output = [normalized.note, stdout, stderr].filter(Boolean).join('\n').slice(0, 50000);
+        log.info('Command executed', { command: normalized.command.slice(0, 80), cwd: normalized.cwd });
         return { success: true, output: output || '(no output)' };
       } catch (e) {
         const err = e as { stdout?: string; stderr?: string; message?: string };
@@ -417,6 +425,65 @@ export function createRunCommandTool(workspace: string, getMode: () => string): 
       }
     },
   };
+}
+
+function normalizeWorkspaceCommand(
+  command: string,
+  workspace: string
+): { command: string; cwd: string; note?: string; error?: string } {
+  const root = normalizeWorkspaceRoot(workspace);
+  if (!root) {
+    return { command, cwd: workspace, error: 'Thunder workspace path is not set.' };
+  }
+
+  const match = command.trim().match(/^cd\s+(?:"([^"]+)"|'([^']+)'|([^\s&;|]+))\s*&&\s*([\s\S]+)$/i);
+  if (!match) {
+    return { command: command.trim(), cwd: root };
+  }
+
+  const requested = (match[1] ?? match[2] ?? match[3] ?? '').trim();
+  const rest = match[4].trim();
+  if (!rest) {
+    return { command: rest, cwd: root, error: 'Command is empty after cd.' };
+  }
+
+  const target = isAbsolute(requested) ? resolve(requested) : resolve(root, requested);
+  const rel = relative(root, target).replace(/\\/g, '/');
+  const insideWorkspace = !rel.startsWith('..') && rel !== '..';
+
+  if (!insideWorkspace) {
+    if (isAbsolute(requested) && !pathExists(target)) {
+      return {
+        command: rest,
+        cwd: root,
+        note: `Ignored missing cd target ${requested}; ran in Thunder workspace ${root}.`,
+      };
+    }
+    return {
+      command: rest,
+      cwd: root,
+      error: `Refusing to run command outside the Thunder workspace: ${requested}`,
+    };
+  }
+
+  if (!pathExists(target)) {
+    return {
+      command: rest,
+      cwd: root,
+      note: `Ignored missing cd target ${requested}; ran in Thunder workspace ${root}.`,
+    };
+  }
+
+  return { command: rest, cwd: target };
+}
+
+function pathExists(path: string): boolean {
+  try {
+    statSync(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function createSpawnResearchAgentTool(): Tool<{ task: string; focus?: string }> {
