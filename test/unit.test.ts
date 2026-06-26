@@ -94,6 +94,28 @@ describe('ContextBudgeter', () => {
     expect(pack.items.length).toBeLessThanOrEqual(2);
     expect(pack.totalTokens).toBeLessThanOrEqual(150);
   });
+
+  it('truncates oversized repo maps instead of dropping them', () => {
+    const budgeter = new ContextBudgeter();
+    const items: ContextItem[] = [
+      { id: 'repo', source: 'repo-map', content: 'src/index.ts\n'.repeat(500), score: 7, reason: 'repo map', tokenEstimate: 1500 },
+    ];
+    const pack = budgeter.budget(items, 300);
+    expect(pack.items).toHaveLength(1);
+    expect(pack.items[0].source).toBe('repo-map');
+    expect(pack.items[0].content).toContain('[truncated]');
+    expect(pack.totalTokens).toBeLessThanOrEqual(300);
+  });
+
+  it('includes workspace overview context', () => {
+    const budgeter = new ContextBudgeter();
+    const items: ContextItem[] = [
+      { id: 'overview', source: 'workspace-overview', content: 'README\npackage.json', score: 9, reason: 'overview', tokenEstimate: 5 },
+    ];
+    const pack = budgeter.budget(items, 100);
+    expect(pack.items).toHaveLength(1);
+    expect(pack.formatted).toContain('README');
+  });
 });
 
 describe('Token estimate', () => {
@@ -107,5 +129,58 @@ describe('Config schema', () => {
     const config = defaultThunderConfig();
     expect(config.provider.type).toBe('echo');
     expect(config.indexing.enabled).toBe(true);
+  });
+});
+
+describe('extractFileMentions', () => {
+  it('extracts file names from user text', async () => {
+    const { extractFileMentions } = await import('../src/core/context/fuzzyFileMatch');
+    const mentions = extractFileMentions('Can you change DineInKanban.tsx and src/App.tsx?');
+    expect(mentions).toContain('DineInKanban.tsx');
+    expect(mentions).toContain('src/App.tsx');
+  });
+});
+
+describe('fuzzyFileMatch', () => {
+  it('expands DinInKanban to searchable kanban term', async () => {
+    const { expandCamelCaseTerms, globPatternsForMention } = await import('../src/core/context/fuzzyFileMatch');
+    const terms = expandCamelCaseTerms('DinInKanban.tsx');
+    expect(terms).toContain('kanban');
+    const patterns = globPatternsForMention('DinInKanban.tsx');
+    expect(patterns.some((p) => p.includes('kanban'))).toBe(true);
+  });
+});
+
+describe('ApprovalQueue', () => {
+  it('stores full input for large write_file payloads', async () => {
+    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
+    const queue = new ApprovalQueue();
+    const bigContent = 'x'.repeat(20_000);
+    const req = queue.createRequest('s1', 'write_file', { path: 'src/Foo.tsx', content: bigContent }, {
+      decision: 'require_approval',
+      reason: 'test',
+    });
+    expect(req.inputPreview).toContain('20,000');
+    expect(req.contentLength).toBe(20_000);
+    const full = queue.getFullInput(req.id);
+    expect(full?.content).toBe(bigContent);
+  });
+});
+
+describe('codeEditParser', () => {
+  it('parses CODE_EDIT_BLOCK format', async () => {
+    const { parseCodeEdits } = await import('../src/core/apply/codeEditParser');
+    const response = 'Here is the file:\n```tsx|CODE_EDIT_BLOCK|src/Foo.tsx\nexport const x = 1\n```';
+    const edits = parseCodeEdits(response);
+    expect(edits).toHaveLength(1);
+    expect(edits[0].path).toBe('src/Foo.tsx');
+    expect(edits[0].content).toContain('export const x');
+  });
+
+  it('infers path from user mention when one code block', async () => {
+    const { parseCodeEdits } = await import('../src/core/apply/codeEditParser');
+    const response = '```tsx\nexport const DineInKanban = () => null\n```';
+    const edits = parseCodeEdits(response, 'redesign DineInKanban.tsx');
+    expect(edits[0]?.path).toBe('DineInKanban.tsx');
   });
 });

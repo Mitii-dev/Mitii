@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "thunder: compile",
+      "type": "npm",
+      "script": "compile",
+      "problemMatcher": ["$tsc"],
+      "group": "build"
+    },
+    {
+      "label": "thunder: rebuild native",
+      "type": "shell",
+      "command": "npm run rebuild:native",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "thunder: prelaunch",
+      "dependsOrder": "sequence",
+      "dependsOn": ["thunder: rebuild native", "thunder: compile"],
+      "problemMatcher": []
+    }
+  ]
+}

@@ -26,6 +26,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   registerCommands(context, controller, webviewProvider);
 
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      void controller?.reloadWorkspace();
+    })
+  );
+
   log.info('Thunder AI Agent activated');
 }
 

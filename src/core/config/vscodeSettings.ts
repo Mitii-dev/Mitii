@@ -41,6 +41,9 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       maxItems: config.get<number>('memory.maxItems'),
       summarizeAfterTask: config.get<boolean>('memory.summarizeAfterTask'),
     },
+    workspace: {
+      rootPathOverride: config.get<string>('workspace.rootPathOverride'),
+    },
   };
 
   const result = ThunderConfigSchema.safeParse(raw);

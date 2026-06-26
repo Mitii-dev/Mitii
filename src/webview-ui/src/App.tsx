@@ -11,6 +11,9 @@ import { IndexingStatusBar } from './components/IndexingStatusBar';
 import { MemoryPanel } from './components/MemoryPanel';
 import { CheckpointPanel } from './components/CheckpointPanel';
 import { ContextTogglesPanel } from './components/ContextTogglesPanel';
+import { WorkspaceBanner } from './components/WorkspaceBanner';
+import { AgentActivityPanel } from './components/AgentActivityPanel';
+import { TokenMeter } from './components/TokenMeter';
 
 export function App() {
   const { state, postMessage } = useVsCodeMessaging();
@@ -46,13 +49,26 @@ export function App() {
           status={state.indexing}
           onIndex={() => postMessage({ type: 'indexWorkspace' })}
         />
+        <span className="provider-badge" title="Active LLM provider and model">
+          {state.providerLabel}
+        </span>
+        <TokenMeter usage={state.tokenUsage} />
       </header>
 
       <ErrorBanner error={state.error} onDismiss={() => postMessage({ type: 'clearError' })} />
 
+      <WorkspaceBanner
+        workspaceOpen={state.workspaceOpen}
+        workspacePath={state.workspacePath}
+        vscodeWorkspaceFolders={state.vscodeWorkspaceFolders}
+        usingWorkspaceOverride={state.usingWorkspaceOverride}
+        indexed={state.indexing.indexed}
+      />
+
       <ApprovalCards
         approvals={state.approvals}
         onResolve={(id, decision) => postMessage({ type: 'resolveApproval', payload: { id, decision } })}
+        onApproveAll={() => postMessage({ type: 'approveAllPending' })}
       />
 
       {state.tab === 'chat' ? (
@@ -70,9 +86,11 @@ export function App() {
           <ContextPreview
             items={state.contextPreview}
             totalTokens={state.contextTokenEstimate}
+            budget={state.contextBudget}
             visible={state.showContextPreview}
             onToggle={() => postMessage({ type: 'toggleContextPreview' })}
           />
+          <AgentActivityPanel entries={state.agentActivity} loading={state.loading} />
           <PlanPanel plan={state.plan} />
           <main className="thunder-main">
             <MessageList messages={state.messages} />
@@ -109,7 +127,23 @@ export function App() {
         <main className="thunder-main">
           <SettingsPanel
             settings={state.settings}
+            workspaceOpen={state.workspaceOpen}
+            workspacePath={state.workspacePath}
+            vscodeWorkspaceFolders={state.vscodeWorkspaceFolders}
+            workspaceOverride={state.workspaceOverride}
+            usingWorkspaceOverride={state.usingWorkspaceOverride}
+            indexDbPath={state.indexDbPath}
+            indexed={state.indexing.indexed}
             onSaveApiKey={(key) => postMessage({ type: 'saveApiKey', payload: { key } })}
+            onSaveProviderSettings={(payload) =>
+              postMessage({ type: 'saveProviderSettings', payload })
+            }
+            onTestConnection={() => postMessage({ type: 'testProviderConnection' })}
+            onPickWorkspaceFolder={() => postMessage({ type: 'pickWorkspaceFolder' })}
+            onSetWorkspaceOverride={(path) =>
+              postMessage({ type: 'setWorkspaceOverride', payload: { path } })
+            }
+            onClearWorkspaceOverride={() => postMessage({ type: 'clearWorkspaceOverride' })}
             onIndex={() => postMessage({ type: 'indexWorkspace' })}
           />
         </main>

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync, readdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { Tool, ToolResult } from './types';
 import type { IgnoreService } from '../indexing/IgnoreService';
@@ -9,6 +9,7 @@ import type { GitService } from '../context/GitService';
 import type { DiagnosticsService } from '../context/DiagnosticsService';
 import type { HybridRetriever } from '../context/HybridRetriever';
 import type { ContextBudgeter } from '../context/ContextBudgeter';
+import { PatchApplyService } from '../apply/PatchApplyService';
 
 function blockedPath(relPath: string, ignoreService: IgnoreService): boolean {
   if (relPath.includes('..')) return true;
@@ -123,26 +124,47 @@ export function createDiagnosticsTool(diagnostics: DiagnosticsService): Tool<Rec
   };
 }
 
-export function createWriteFileTool(): Tool<{ path: string; content: string }> {
+export function createWriteFileTool(workspace: string, ignoreService: IgnoreService): Tool<{ path: string; content: string }> {
   return {
     name: 'write_file',
     description: 'Write a file (requires approval)',
     risk: 'high',
     inputSchema: z.object({ path: z.string(), content: z.string() }),
     async execute(input): Promise<ToolResult> {
-      return { success: true, output: `Write to ${input.path} pending approval (${input.content.length} chars)` };
+      if (blockedPath(input.path, ignoreService)) {
+        return { success: false, output: '', error: 'Path is ignored or blocked' };
+      }
+      try {
+        const fullPath = join(workspace, input.path);
+        writeFileSync(fullPath, input.content, 'utf-8');
+        return { success: true, output: `Wrote ${input.content.length} chars to ${input.path}` };
+      } catch (e) {
+        return { success: false, output: '', error: String(e) };
+      }
     },
   };
 }
 
-export function createApplyPatchTool(): Tool<{ path: string; oldText: string; newText: string }> {
+export function createApplyPatchTool(workspace: string, ignoreService: IgnoreService): Tool<{ path: string; oldText: string; newText: string }> {
+  const patchService = new PatchApplyService(workspace);
   return {
     name: 'apply_patch',
     description: 'Apply a patch (requires approval)',
     risk: 'high',
     inputSchema: z.object({ path: z.string(), oldText: z.string(), newText: z.string() }),
     async execute(input): Promise<ToolResult> {
-      return { success: true, output: `Patch for ${input.path} pending approval` };
+      if (blockedPath(input.path, ignoreService)) {
+        return { success: false, output: '', error: 'Path is ignored or blocked' };
+      }
+      const result = patchService.apply({
+        path: input.path,
+        oldText: input.oldText,
+        newText: input.newText,
+      });
+      if (!result.success) {
+        return { success: false, output: '', error: result.error ?? 'Patch failed' };
+      }
+      return { success: true, output: `Patched ${input.path}` };
     },
   };
 }

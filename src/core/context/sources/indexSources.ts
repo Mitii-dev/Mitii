@@ -1,8 +1,64 @@
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
 import type { ContextItem, ContextQuery, ContextSource } from '../types';
 import { FtsIndex } from '../../indexing/FtsIndex';
 import type { ThunderDb } from '../../indexing/ThunderDb';
 import { RepoMapService } from '../RepoMapService';
 import type { MemoryService } from '../../memory/MemoryService';
+import { isProjectOverviewQuestion } from '../fuzzyFileMatch';
+
+const OVERVIEW_FILES = [
+  'README.md',
+  'package.json',
+  'thunder-ai-agent/README.md',
+  'thunder-ai-agent/package.json',
+  'Thunder-Execution-Plan/THUNDER_AI_AGENT_MASTER_PLAN.md',
+  'pyproject.toml',
+  'Cargo.toml',
+  'go.mod',
+  'pom.xml',
+  'build.gradle',
+  'vite.config.ts',
+  'vite.config.js',
+  'next.config.js',
+  'tsconfig.json',
+];
+
+export class WorkspaceOverviewContextSource implements ContextSource {
+  readonly id = 'workspace-overview';
+
+  constructor(private readonly workspace: string) {}
+
+  async retrieve(query: ContextQuery): Promise<ContextItem[]> {
+    const projectQuestion = isProjectOverviewQuestion(query.text);
+    const items: ContextItem[] = [];
+
+    for (const relPath of OVERVIEW_FILES) {
+      const absPath = join(this.workspace, relPath);
+      if (!existsSync(absPath)) continue;
+
+      try {
+        const limit = relPath === 'README.md' ? 8000 : 4000;
+        const content = readFileSync(absPath, 'utf-8').slice(0, limit);
+        items.push({
+          id: `overview-${relPath}`,
+          source: this.id,
+          relPath,
+          content,
+          score: relPath === 'README.md' && projectQuestion ? 15 : 9,
+          reason: relPath === 'README.md'
+            ? 'Project README'
+            : `Root project file: ${relPath}`,
+          tokenEstimate: Math.ceil(content.length / 4),
+        });
+      } catch {
+        // Ignore unreadable optional overview files.
+      }
+    }
+
+    return items;
+  }
+}
 
 export class FtsContextSource implements ContextSource {
   readonly id = 'fts';

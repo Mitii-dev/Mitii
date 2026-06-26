@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { existsSync } from 'fs';
+import { isAbsolute, resolve, join } from 'path';
 import { ThunderSession } from './ThunderSession';
 import { ConfigService } from './config/ConfigService';
 import { LlmProviderRegistry } from './llm/LlmProviderRegistry';
@@ -11,11 +13,13 @@ import { FtsIndex } from './indexing/FtsIndex';
 import { HybridRetriever } from './context/HybridRetriever';
 import { ContextBudgeter } from './context/ContextBudgeter';
 import { CurrentEditorContextSource, OpenFilesContextSource } from './context/sources/editorSources';
-import { FtsContextSource, RepoMapContextSource, MemoryContextSource } from './context/sources/indexSources';
+import { FtsContextSource, RepoMapContextSource, MemoryContextSource, WorkspaceOverviewContextSource } from './context/sources/indexSources';
+import { IndexedFileSearchContextSource } from './context/sources/indexedFileSource';
+import { MentionedFileContextSource } from './context/sources/mentionedFileSource';
 import { GitService } from './context/GitService';
 import { DiagnosticsService, GitDiffContextSource, DiagnosticsContextSource } from './context/DiagnosticsService';
 import { RepoMapService } from './context/RepoMapService';
-import { ChatOrchestrator, contextItemsToViews } from './ChatOrchestrator';
+import { ChatOrchestrator } from './ChatOrchestrator';
 import { ToolRuntime } from './tools/ToolRuntime';
 import {
   createReadFileTool, createListFilesTool, createSearchTool,
@@ -27,6 +31,7 @@ import { ApprovalQueue } from './safety/ApprovalQueue';
 import { ToolExecutor } from './safety/ToolExecutor';
 import { CheckpointService } from './apply/CheckpointService';
 import { MemoryService } from './memory/MemoryService';
+import { testOpenAiCompatibleConnection } from './llm/testConnection';
 import { createLogger } from './telemetry/Logger';
 import { normalizeError } from './telemetry/errors';
 import type { IndexingStatus } from './indexing/IndexQueue';
@@ -40,6 +45,7 @@ import {
   initialWebviewState,
   defaultContextToggles,
 } from '../vscode/webview/messages';
+import { resolveDbPath } from './indexing/paths';
 
 const log = createLogger('ThunderController');
 
@@ -65,6 +71,13 @@ export class ThunderController {
   private indexingStatus: IndexingStatus = { indexed: 0, queued: 0, running: false, failed: 0 };
   private contextToggles: ContextToggles = defaultContextToggles();
   private currentPlan: PlanView | null = null;
+  private agentActivity: import('../vscode/webview/messages').AgentActivityEntry[] = [];
+  private tokenUsage = {
+    sessionTotal: 0,
+    lastContextTokens: 0,
+    lastResponseTokens: 0,
+    turnCount: 0,
+  };
   private uiUpdate: UiUpdateCallback | undefined;
   private disposed = false;
 
@@ -84,11 +97,22 @@ export class ThunderController {
   async initialize(): Promise<void> {
     await this.configService.initialize();
 
-    const workspace = this.getWorkspacePath();
+    const workspace = this.resolveWorkspacePath();
     this.session = new ThunderSession(workspace);
 
     if (workspace) {
-      await this.initializeWorkspaceServices(workspace);
+      try {
+        await this.initializeWorkspaceServices(workspace);
+      } catch (error) {
+        log.error('Workspace services init failed, using minimal context', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        this.initMinimalChat(workspace);
+      }
+    }
+
+    if (workspace && !this.chatOrchestrator) {
+      this.initMinimalChat(workspace);
     }
 
     const config = this.configService.getConfig();
@@ -96,6 +120,17 @@ export class ThunderController {
     await this.providerRegistry.resolveFromConfig(config.provider, apiKey);
 
     log.info('ThunderController initialized', { workspace });
+  }
+
+  private initMinimalChat(workspace: string): void {
+    const retriever = new HybridRetriever([
+      new MentionedFileContextSource(workspace),
+      new WorkspaceOverviewContextSource(workspace),
+      new CurrentEditorContextSource(),
+      new OpenFilesContextSource(),
+    ]);
+    this.chatOrchestrator = this.createChatOrchestrator(retriever, new ContextBudgeter());
+    log.info('Minimal chat orchestrator initialized');
   }
 
   private async initializeWorkspaceServices(workspace: string): Promise<void> {
@@ -118,6 +153,7 @@ export class ThunderController {
       this.indexingStatus = status;
       this.notifyUi({ indexing: status });
     });
+    this.indexingStatus = this.indexQueue.getStatus();
 
     this.gitService = new GitService(workspace);
     await this.gitService.initialize();
@@ -153,8 +189,8 @@ export class ThunderController {
     this.toolRuntime.register(createRetrieveContextTool(retriever, budgeter));
     this.toolRuntime.register(createGitDiffTool(this.gitService));
     this.toolRuntime.register(createDiagnosticsTool(this.diagnosticsService));
-    this.toolRuntime.register(createWriteFileTool());
-    this.toolRuntime.register(createApplyPatchTool());
+    this.toolRuntime.register(createWriteFileTool(workspace, this.ignoreService));
+    this.toolRuntime.register(createApplyPatchTool(workspace, this.ignoreService));
     this.toolRuntime.register(createRunCommandTool());
 
     this.setupFileWatcher(workspace);
@@ -163,13 +199,38 @@ export class ThunderController {
   private createChatOrchestrator(
     retriever: HybridRetriever,
     budgeter: ContextBudgeter,
-    db: import('./indexing/ThunderDb').ThunderDb
+    db?: import('./indexing/ThunderDb').ThunderDb
   ): ChatOrchestrator {
     const orchestrator = new ChatOrchestrator(retriever, budgeter, db);
-    orchestrator.setContextPackCallback((items, totalTokens) => {
+    orchestrator.setToolExecutor(this.toolExecutor);
+    orchestrator.setContextPackCallback((pack, views, budget) => {
       this.notifyUi({
-        contextPreview: contextItemsToViews(items),
-        contextTokenEstimate: totalTokens,
+        contextPreview: views,
+        contextTokenEstimate: pack.totalTokens,
+        contextBudget: budget,
+        showContextPreview: true,
+      });
+    });
+    orchestrator.setActivityCallback((entry) => {
+      this.agentActivity = [...this.agentActivity.slice(-40), entry];
+      const partial: Partial<WebviewState> = { agentActivity: this.agentActivity };
+      if (entry.kind === 'approval') {
+        partial.approvals = (this.approvalQueue?.getPending() ?? []).map(toApprovalView);
+      }
+      this.notifyUi(partial);
+    });
+    orchestrator.setTokenUsageCallback((contextTokens, responseText) => {
+      const responseTokens = Math.ceil(responseText.length / 4);
+      this.tokenUsage.lastContextTokens = contextTokens;
+      this.tokenUsage.lastResponseTokens = responseTokens;
+      this.tokenUsage.sessionTotal += contextTokens + responseTokens;
+      this.tokenUsage.turnCount += 1;
+      const config = this.configService.getConfig();
+      this.notifyUi({
+        tokenUsage: {
+          ...this.tokenUsage,
+          contextWindow: config.provider.contextWindow,
+        },
       });
     });
     orchestrator.setPlanCallback((plan) => {
@@ -180,7 +241,7 @@ export class ThunderController {
   }
 
   private rebuildRetriever(): void {
-    const workspace = this.getWorkspacePath();
+    const workspace = this.resolveWorkspacePath();
     const db = this.indexService?.getDb();
     if (!workspace || !db) return;
     const retriever = this.buildRetriever(db, workspace);
@@ -189,8 +250,16 @@ export class ThunderController {
 
   private buildRetriever(db: import('./indexing/ThunderDb').ThunderDb, workspace: string): HybridRetriever {
     const sources = [];
-    sources.push(new CurrentEditorContextSource(), new OpenFilesContextSource());
-    if (this.contextToggles.fts) sources.push(new FtsContextSource(db));
+    sources.push(
+      new MentionedFileContextSource(workspace),
+      new WorkspaceOverviewContextSource(workspace),
+      new CurrentEditorContextSource(),
+      new OpenFilesContextSource()
+    );
+    if (this.contextToggles.fts) {
+      sources.push(new FtsContextSource(db));
+      sources.push(new IndexedFileSearchContextSource(db, workspace));
+    }
     if (this.contextToggles.repoMap) sources.push(new RepoMapContextSource(db, workspace));
     if (this.contextToggles.gitDiff && this.gitService) sources.push(new GitDiffContextSource(this.gitService));
     if (this.contextToggles.diagnostics) sources.push(new DiagnosticsContextSource(this.diagnosticsService));
@@ -226,6 +295,10 @@ export class ThunderController {
   async buildUiState(base: Partial<WebviewState> = {}): Promise<WebviewState> {
     const config = this.configService.getConfig();
     const apiKey = await this.configService.getApiKey();
+    const workspacePath = this.resolveWorkspacePath();
+    const override = config.workspace.rootPathOverride?.trim() ?? '';
+    const vscodeFolders = this.getVscodeWorkspaceFolders();
+    const indexDbPath = workspacePath ? resolveDbPath(workspacePath) : '';
 
     const approvals: ApprovalRequestView[] = (this.approvalQueue?.getPending() ?? []).map((r) => ({
       id: r.id,
@@ -238,6 +311,19 @@ export class ThunderController {
 
     return {
       ...initialWebviewState(),
+      tab: base.tab ?? 'chat',
+      messages: base.messages ?? [],
+      loading: base.loading ?? false,
+      error: base.error ?? null,
+      showContextPreview: base.showContextPreview ?? false,
+      contextPreview: base.contextPreview ?? [],
+      contextTokenEstimate: base.contextTokenEstimate ?? 0,
+      contextBudget: base.contextBudget ?? null,
+      agentActivity: base.agentActivity ?? [],
+      tokenUsage: base.tokenUsage ?? {
+        ...this.tokenUsage,
+        contextWindow: config.provider.contextWindow,
+      },
       mode: this.session?.mode ?? 'plan',
       indexing: this.indexingStatus,
       approvals,
@@ -258,6 +344,7 @@ export class ThunderController {
         providerType: config.provider.type,
         baseUrl: config.provider.baseUrl,
         model: config.provider.model,
+        contextWindow: config.provider.contextWindow,
         indexingEnabled: config.indexing.enabled,
         requireApprovalWrites: config.safety.requireApprovalForWrites,
         requireApprovalShell: config.safety.requireApprovalForShell,
@@ -265,8 +352,30 @@ export class ThunderController {
         hasApiKey: Boolean(apiKey),
       },
       contextToggles: this.contextToggles,
-      ...base,
+      providerLabel: `${config.provider.type} / ${config.provider.model}`,
+      workspaceOpen: Boolean(workspacePath),
+      workspacePath,
+      vscodeWorkspaceFolders: vscodeFolders,
+      workspaceOverride: override,
+      usingWorkspaceOverride: Boolean(override),
+      indexDbPath,
     };
+  }
+
+  private pushActivity(
+    kind: import('../vscode/webview/messages').AgentActivityEntry['kind'],
+    message: string,
+    detail?: string
+  ): void {
+    const entry = {
+      id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      kind,
+      message,
+      detail,
+      timestamp: Date.now(),
+    };
+    this.agentActivity = [...this.agentActivity.slice(-40), entry];
+    this.notifyUi({ agentActivity: this.agentActivity });
   }
 
   getSession(): ThunderSession | undefined { return this.session; }
@@ -279,18 +388,116 @@ export class ThunderController {
   getCheckpointService(): CheckpointService | undefined { return this.checkpointService; }
 
   getWorkspacePath(): string {
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    return folder?.uri.fsPath ?? '';
+    return this.resolveWorkspacePath();
+  }
+
+  resolveWorkspacePath(): string {
+    const override = this.configService.getConfig().workspace.rootPathOverride?.trim();
+    if (override) {
+      const resolved = isAbsolute(override) ? override : resolve(override);
+      if (!existsSync(resolved)) {
+        log.warn('Configured workspace override does not exist', { path: resolved });
+      }
+      return resolved;
+    }
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+  }
+
+  getVscodeWorkspaceFolders(): string[] {
+    return vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) ?? [];
+  }
+
+  async pickWorkspaceFolder(): Promise<void> {
+    const current = this.resolveWorkspacePath();
+    const picked = await vscode.window.showOpenDialog({
+      canSelectFolders: true,
+      canSelectFiles: false,
+      canSelectMany: false,
+      openLabel: 'Use as Thunder workspace',
+      defaultUri: current ? vscode.Uri.file(current) : undefined,
+    });
+    if (!picked?.[0]) return;
+
+    await this.setWorkspaceOverride(picked[0].fsPath);
+  }
+
+  async setWorkspaceOverride(path: string): Promise<void> {
+    const trimmed = path.trim();
+    if (!trimmed) {
+      await this.clearWorkspaceOverride();
+      return;
+    }
+
+    const resolved = isAbsolute(trimmed) ? trimmed : resolve(trimmed);
+    if (!existsSync(resolved)) {
+      void vscode.window.showErrorMessage(`Thunder: Path does not exist: ${resolved}`);
+      return;
+    }
+
+    await this.configService.setWorkspaceOverride(resolved);
+    await this.reloadWorkspace();
+    void vscode.window.showInformationMessage(`Thunder: Using workspace ${resolved}`);
+  }
+
+  async clearWorkspaceOverride(): Promise<void> {
+    await this.configService.clearWorkspaceOverride();
+    await this.reloadWorkspace();
+    void vscode.window.showInformationMessage('Thunder: Using VS Code open folder for workspace.');
   }
 
   async sendMessage(content: string): Promise<AsyncIterable<string>> {
     if (!this.session) throw normalizeError(new Error('Session not initialized'));
     const provider = this.providerRegistry.getActive();
     if (!provider) throw normalizeError(new Error('No LLM provider configured'));
-    if (this.chatOrchestrator) {
-      return this.chatOrchestrator.send(this.session, provider, content);
+
+    this.agentActivity = [];
+    this.notifyUi({ agentActivity: [], contextBudget: null });
+
+    this.ensureChatOrchestrator();
+    if (!this.chatOrchestrator) {
+      throw normalizeError(new Error(
+        'No workspace configured. Open a folder (File → Open Folder) or set a path in Thunder Settings → Workspace.'
+      ));
     }
-    return streamProviderResponse(provider, content);
+    return this.chatOrchestrator.send(this.session, provider, content);
+  }
+
+  private ensureChatOrchestrator(): void {
+    if (this.chatOrchestrator) return;
+    const workspace = this.resolveWorkspacePath();
+    if (workspace) {
+      this.initMinimalChat(workspace);
+    }
+  }
+
+  async reloadWorkspace(): Promise<void> {
+    const workspace = this.resolveWorkspacePath();
+    this.session = new ThunderSession(workspace);
+    this.chatOrchestrator = undefined;
+    this.indexService?.dispose();
+    this.indexService = undefined;
+    this.scanner = undefined;
+    this.indexQueue = undefined;
+    this.indexingStatus = { indexed: 0, queued: 0, running: false, failed: 0 };
+
+    if (workspace) {
+      try {
+        await this.initializeWorkspaceServices(workspace);
+      } catch (error) {
+        log.error('Workspace reload failed, using minimal context', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        this.initMinimalChat(workspace);
+      }
+      if (!this.chatOrchestrator) {
+        this.initMinimalChat(workspace);
+      } else {
+        this.chatOrchestrator.setToolExecutor(this.toolExecutor);
+      }
+    }
+
+    this.notifyUi(await this.buildUiState());
+    log.info('Workspace reloaded', { workspace });
   }
 
   stopGeneration(): void {
@@ -298,18 +505,82 @@ export class ThunderController {
   }
 
   async resolveApproval(id: string, decision: 'approved' | 'denied'): Promise<void> {
+    const fullInput = this.approvalQueue?.getFullInput(id);
     const request = this.approvalQueue?.resolve(id, decision);
     if (!request) return;
 
     this.notifyUi({ approvals: (this.approvalQueue?.getPending() ?? []).map(toApprovalView) });
 
-    if (decision === 'approved' && this.toolExecutor) {
-      try {
-        const input = JSON.parse(request.inputPreview) as Record<string, unknown>;
-        await this.toolExecutor.executeApproved(request.toolName, input);
-      } catch {
-        log.warn('Could not execute approved tool — invalid input preview');
+    if (decision === 'denied') {
+      this.pushActivity('info', `Denied ${request.toolName}`, request.files.join(', ') || undefined);
+      return;
+    }
+
+    if (!this.toolExecutor || !fullInput) {
+      log.warn('Approval missing full input', { id, tool: request.toolName });
+      void vscode.window.showErrorMessage(
+        'Thunder: Could not apply change — approval data was missing. Please ask again in Act mode.'
+      );
+      this.pushActivity('error', 'Approval failed — payload missing', request.files.join(', '));
+      return;
+    }
+
+    const result = await this.toolExecutor.executeApproved(request.toolName, fullInput);
+    const path = typeof fullInput.path === 'string' ? fullInput.path : request.files[0];
+
+    if (result.success) {
+      this.pushActivity('apply', `Applied ${path ?? request.toolName}`, result.output);
+      void vscode.window.showInformationMessage(`Thunder: Updated ${path ?? 'file'}`);
+      if (path) {
+        const workspace = this.resolveWorkspacePath();
+        if (workspace) {
+          void vscode.window.showTextDocument(vscode.Uri.file(join(workspace, path)));
+        }
       }
+    } else {
+      this.pushActivity('error', `Failed to apply ${path ?? request.toolName}`, result.error);
+      void vscode.window.showErrorMessage(`Thunder: ${result.error ?? 'Write failed'}`);
+    }
+  }
+
+  async approveAllPending(): Promise<void> {
+    const pending = this.approvalQueue?.getPending() ?? [];
+    for (const req of [...pending]) {
+      await this.resolveApproval(req.id, 'approved');
+    }
+  }
+
+  async testProviderConnection(): Promise<void> {
+    const config = this.configService.getConfig();
+    const apiKey = await this.configService.getApiKey();
+
+    if (config.provider.type === 'echo') {
+      this.notifyUi({
+        settings: {
+          ...(await this.buildUiState()).settings,
+          connectionOk: true,
+          connectionStatus: 'Echo mode — no LLM needed. Responses are mirrored for UI testing.',
+        },
+      });
+      return;
+    }
+
+    const result = await testOpenAiCompatibleConnection(
+      config.provider.baseUrl,
+      config.provider.model,
+      apiKey
+    );
+
+    this.notifyUi({
+      settings: {
+        ...(await this.buildUiState()).settings,
+        connectionOk: result.ok,
+        connectionStatus: result.message,
+      },
+    });
+
+    if (!result.ok) {
+      void vscode.window.showErrorMessage(`Thunder: ${result.message}`);
     }
   }
 
@@ -318,7 +589,23 @@ export class ThunderController {
     const config = this.configService.getConfig();
     const apiKey = await this.configService.getApiKey();
     await this.providerRegistry.resolveFromConfig(config.provider, apiKey);
-    this.notifyUi({ settings: { ...(await this.buildUiState()).settings, hasApiKey: true } });
+    this.notifyUi({ settings: (await this.buildUiState()).settings });
+  }
+
+  async saveProviderSettings(settings: import('../vscode/webview/messages').ProviderSettingsPayload): Promise<void> {
+    const contextWindow = Math.max(1024, Math.min(settings.contextWindow, 1_000_000));
+    await this.configService.updateProviderSettings({
+      providerType: settings.providerType,
+      baseUrl: settings.baseUrl.trim(),
+      model: settings.model.trim(),
+      contextWindow,
+    });
+    const config = this.configService.getConfig();
+    const apiKey = await this.configService.getApiKey();
+    await this.providerRegistry.resolveFromConfig(config.provider, apiKey);
+    this.rebuildRetriever();
+    this.notifyUi({ settings: (await this.buildUiState()).settings });
+    void vscode.window.showInformationMessage('Thunder: Provider settings saved.');
   }
 
   setContextToggle(source: keyof ContextToggles, enabled: boolean): void {
@@ -369,7 +656,7 @@ export class ThunderController {
   }
 
   async indexWorkspace(): Promise<void> {
-    const workspace = this.getWorkspacePath();
+    const workspace = this.resolveWorkspacePath();
     if (!workspace) {
       void vscode.window.showWarningMessage('Thunder: Open a workspace folder to index.');
       return;
@@ -427,19 +714,6 @@ function toApprovalView(r: import('./safety/ApprovalQueue').ApprovalRequest): Ap
     files: r.files,
     risk: r.risk,
     reason: r.reason,
+    contentLength: r.contentLength,
   };
-}
-
-async function* streamProviderResponse(
-  provider: import('./llm/types').LlmProvider,
-  content: string
-): AsyncIterable<string> {
-  const stream = provider.complete({
-    messages: [{ role: 'user', content }],
-    stream: true,
-  });
-  for await (const delta of stream) {
-    if (delta.content) yield delta.content;
-    if (delta.error) throw new Error(delta.error);
-  }
 }

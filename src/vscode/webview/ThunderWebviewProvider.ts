@@ -130,11 +130,17 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
             ),
           };
           this.postMessage({ type: 'state', payload: this.state });
+          await this.syncState();
         } catch (error) {
           const safe = normalizeError(error);
           this.state = { ...this.state, loading: false, error: formatUserError(safe) };
           this.postMessage({ type: 'state', payload: this.state });
           log.error('sendMessage failed', { message: safe.message });
+        } finally {
+          if (this.state.loading) {
+            this.state = { ...this.state, loading: false };
+            this.postMessage({ type: 'state', payload: this.state });
+          }
         }
         break;
       }
@@ -166,11 +172,40 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         await this.syncState();
         break;
 
+      case 'approveAllPending':
+        await this.controller.approveAllPending();
+        await this.syncState();
+        break;
+
       case 'saveApiKey':
         if (message.payload.key.trim()) {
           await this.controller.saveApiKey(message.payload.key.trim());
           await this.syncState();
         }
+        break;
+
+      case 'saveProviderSettings':
+        await this.controller.saveProviderSettings(message.payload);
+        await this.syncState();
+        break;
+
+      case 'testProviderConnection':
+        await this.controller.testProviderConnection();
+        break;
+
+      case 'pickWorkspaceFolder':
+        await this.controller.pickWorkspaceFolder();
+        await this.syncState();
+        break;
+
+      case 'setWorkspaceOverride':
+        await this.controller.setWorkspaceOverride(message.payload.path);
+        await this.syncState();
+        break;
+
+      case 'clearWorkspaceOverride':
+        await this.controller.clearWorkspaceOverride();
+        await this.syncState();
         break;
 
       case 'indexWorkspace':

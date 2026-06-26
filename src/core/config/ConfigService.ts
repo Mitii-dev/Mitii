@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 import { createLogger } from '../telemetry/Logger';
 import { readThunderConfigFromSettings } from './vscodeSettings';
+import { updateProviderSettings, updateWorkspaceOverride, clearWorkspaceOverride } from './updateSettings';
 import { type ThunderConfig, defaultThunderConfig } from './schema';
+import type { ProviderSettingsPayload } from '../../vscode/webview/messages';
 
 const log = createLogger('ConfigService');
 
@@ -35,6 +37,24 @@ export class ConfigService {
     const keyRef = ref ?? this.config.provider.apiKeyRef;
     await this.context.secrets.store(keyRef, key);
     log.info('API key stored securely', { ref: keyRef });
+  }
+
+  async updateProviderSettings(settings: ProviderSettingsPayload): Promise<void> {
+    await updateProviderSettings(settings);
+    this.config = readThunderConfigFromSettings();
+    log.info('Provider settings updated');
+  }
+
+  async setWorkspaceOverride(path: string): Promise<void> {
+    await updateWorkspaceOverride(path);
+    this.config = readThunderConfigFromSettings();
+    log.info('Workspace override updated', { path });
+  }
+
+  async clearWorkspaceOverride(): Promise<void> {
+    await clearWorkspaceOverride();
+    this.config = readThunderConfigFromSettings();
+    log.info('Workspace override cleared');
   }
 
   async deleteApiKey(ref?: string): Promise<void> {

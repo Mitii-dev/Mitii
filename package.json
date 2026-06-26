@@ -65,7 +65,10 @@
         },
         "thunder.provider.type": {
           "type": "string",
-          "enum": ["openai-compatible", "echo"],
+          "enum": [
+            "openai-compatible",
+            "echo"
+          ],
           "default": "echo",
           "description": "LLM provider type"
         },
@@ -76,7 +79,7 @@
         },
         "thunder.provider.model": {
           "type": "string",
-          "default": "llama3",
+          "default": "qwen3-coder:30b",
           "description": "Model name"
         },
         "thunder.provider.contextWindow": {
@@ -106,7 +109,13 @@
         },
         "thunder.safety.autonomyPreset": {
           "type": "string",
-          "enum": ["safe", "guided", "builder", "pilot", "enterprise"],
+          "enum": [
+            "safe",
+            "guided",
+            "builder",
+            "pilot",
+            "enterprise"
+          ],
           "default": "guided",
           "description": "Autonomy preset"
         },
@@ -114,12 +123,21 @@
           "type": "boolean",
           "default": true,
           "description": "Enable local memory"
+        },
+        "thunder.workspace.rootPathOverride": {
+          "type": "string",
+          "default": "",
+          "description": "Override workspace root for indexing and context. Leave empty to use the VS Code open folder."
         }
       }
     }
   },
   "scripts": {
     "compile": "npm run compile:extension && npm run compile:webview",
+    "rebuild:native": "node scripts/rebuild-native.mjs",
+    "rebuild:node": "npm rebuild better-sqlite3",
+    "rebuild:all": "npm run rebuild:native && npm run rebuild:node",
+    "postinstall": "node -e \"console.log('Run npm run rebuild:native before F5 if better-sqlite3 fails to load')\"",
     "compile:extension": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --packages=external --platform=node --format=cjs --sourcemap",
     "compile:webview": "vite build",
     "watch": "concurrently \"npm run watch:extension\" \"npm run watch:webview\"",
@@ -132,6 +150,7 @@
     "smoke": "vitest run test/smoke"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.7.2",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.3",
@@ -147,7 +166,7 @@
   },
   "dependencies": {
     "@vscode/ripgrep": "^1.15.9",
-    "better-sqlite3": "^11.0.0",
+    "better-sqlite3": "^12.11.1",
     "diff": "^5.2.0",
     "ignore": "^5.3.1",
     "nanoid": "^5.0.7",

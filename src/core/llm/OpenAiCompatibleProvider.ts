@@ -39,7 +39,7 @@ export class OpenAiCompatibleProvider implements LlmProvider {
         body: JSON.stringify({
           model: request.model ?? this.config.model,
           messages: request.messages,
-          temperature: request.temperature ?? 0.7,
+          temperature: request.temperature ?? 0.2,
           max_tokens: request.maxTokens,
           stream: true,
         }),

@@ -44,7 +44,7 @@ Press F5 in VS Code to launch the Extension Development Host.
 Set `thunder.provider.type` to `openai-compatible` and configure:
 
 - `thunder.provider.baseUrl` — e.g. `http://localhost:11434/v1`
-- `thunder.provider.model` — e.g. `llama3`
+- `thunder.provider.model` — e.g. `qwen3-coder:30b`
 
 Store API keys via the settings UI (uses VS Code SecretStorage).
 
@@ -66,6 +66,16 @@ VS Code Extension → ThunderController → SQLite Index
 ```
 
 ## Troubleshooting
+
+**SQLite / native module errors**: VS Code and Cursor use Electron, not system Node. After `npm install`, run:
+
+```bash
+npm run rebuild:native          # VS Code (auto-detects Electron version)
+# or for Cursor:
+THUNDER_EDITOR=cursor npm run rebuild:native
+```
+
+Before running tests, rebuild for local Node if needed: `npm run rebuild:node`
 
 **SQLite errors**: Ensure the workspace is writable. Thunder stores data in `.thunder/thunder.sqlite`.
 

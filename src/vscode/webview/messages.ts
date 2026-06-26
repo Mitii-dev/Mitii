@@ -17,6 +17,15 @@ export interface ApprovalRequestView {
   files: string[];
   risk: 'low' | 'medium' | 'high';
   reason: string;
+  contentLength?: number;
+}
+
+export interface TokenUsageView {
+  sessionTotal: number;
+  lastContextTokens: number;
+  lastResponseTokens: number;
+  turnCount: number;
+  contextWindow: number;
 }
 
 export interface ContextItemView {
@@ -26,6 +35,32 @@ export interface ContextItemView {
   reason: string;
   tokenEstimate: number;
   preview: string;
+  truncated?: boolean;
+}
+
+export interface ContextDropView {
+  source: string;
+  relPath?: string;
+  reason: string;
+  tokenEstimate: number;
+  cause: string;
+}
+
+export interface ContextBudgetView {
+  retrievedCount: number;
+  includedCount: number;
+  budgetLimit: number;
+  usedTokens: number;
+  truncatedCount: number;
+  dropped: ContextDropView[];
+}
+
+export interface AgentActivityEntry {
+  id: string;
+  kind: 'context' | 'read' | 'budget' | 'apply' | 'info' | 'approval' | 'error';
+  message: string;
+  detail?: string;
+  timestamp: number;
 }
 
 export interface PlanStepView {
@@ -67,11 +102,21 @@ export interface SettingsView {
   providerType: string;
   baseUrl: string;
   model: string;
+  contextWindow: number;
   indexingEnabled: boolean;
   requireApprovalWrites: boolean;
   requireApprovalShell: boolean;
   memoryEnabled: boolean;
   hasApiKey: boolean;
+  connectionStatus?: string;
+  connectionOk?: boolean;
+}
+
+export interface ProviderSettingsPayload {
+  providerType: 'echo' | 'openai-compatible';
+  baseUrl: string;
+  model: string;
+  contextWindow: number;
 }
 
 export interface ContextToggles {
@@ -91,6 +136,8 @@ export interface WebviewState {
   approvals: ApprovalRequestView[];
   contextPreview: ContextItemView[];
   contextTokenEstimate: number;
+  contextBudget: ContextBudgetView | null;
+  agentActivity: AgentActivityEntry[];
   plan: PlanView | null;
   indexing: IndexingStatusView;
   memories: MemoryItemView[];
@@ -98,6 +145,14 @@ export interface WebviewState {
   settings: SettingsView;
   contextToggles: ContextToggles;
   showContextPreview: boolean;
+  providerLabel: string;
+  workspaceOpen: boolean;
+  workspacePath: string;
+  vscodeWorkspaceFolders: string[];
+  workspaceOverride: string;
+  usingWorkspaceOverride: boolean;
+  indexDbPath: string;
+  tokenUsage: TokenUsageView;
 }
 
 // Extension -> Webview messages
@@ -123,7 +178,13 @@ export type WebviewToExtensionMessage =
   | { type: 'stopGeneration' }
   | { type: 'clearError' }
   | { type: 'resolveApproval'; payload: { id: string; decision: 'approved' | 'denied' } }
+  | { type: 'approveAllPending' }
   | { type: 'saveApiKey'; payload: { key: string } }
+  | { type: 'saveProviderSettings'; payload: ProviderSettingsPayload }
+  | { type: 'testProviderConnection' }
+  | { type: 'pickWorkspaceFolder' }
+  | { type: 'setWorkspaceOverride'; payload: { path: string } }
+  | { type: 'clearWorkspaceOverride' }
   | { type: 'indexWorkspace' }
   | { type: 'restoreCheckpoint'; payload: { id: string } }
   | { type: 'deleteMemory'; payload: { id: number } }
@@ -144,7 +205,8 @@ export const defaultContextToggles = (): ContextToggles => ({
 export const defaultSettingsView = (): SettingsView => ({
   providerType: 'echo',
   baseUrl: 'http://localhost:11434/v1',
-  model: 'llama3',
+  model: 'qwen3-coder:30b',
+  contextWindow: 8192,
   indexingEnabled: true,
   requireApprovalWrites: true,
   requireApprovalShell: true,
@@ -161,6 +223,8 @@ export const initialWebviewState = (): WebviewState => ({
   approvals: [],
   contextPreview: [],
   contextTokenEstimate: 0,
+  contextBudget: null,
+  agentActivity: [],
   plan: null,
   indexing: { indexed: 0, queued: 0, running: false, failed: 0 },
   memories: [],
@@ -168,4 +232,18 @@ export const initialWebviewState = (): WebviewState => ({
   settings: defaultSettingsView(),
   contextToggles: defaultContextToggles(),
   showContextPreview: false,
+  providerLabel: 'echo',
+  workspaceOpen: false,
+  workspacePath: '',
+  vscodeWorkspaceFolders: [],
+  workspaceOverride: '',
+  usingWorkspaceOverride: false,
+  indexDbPath: '',
+  tokenUsage: {
+    sessionTotal: 0,
+    lastContextTokens: 0,
+    lastResponseTokens: 0,
+    turnCount: 0,
+    contextWindow: 8192,
+  },
 });

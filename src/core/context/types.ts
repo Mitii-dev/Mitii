@@ -23,6 +23,18 @@ export interface ContextPack {
   items: ContextItem[];
   totalTokens: number;
   formatted: string;
+  retrievedCount: number;
+  budgetLimit: number;
+  dropped: ContextDropInfo[];
+  truncatedCount: number;
+}
+
+export interface ContextDropInfo {
+  source: string;
+  relPath?: string;
+  reason: string;
+  tokenEstimate: number;
+  cause: 'over_budget' | 'not_selected';
 }
 
 export interface ContextSource {
