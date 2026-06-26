@@ -26,6 +26,8 @@ Local-first VS Code AI coding agent with precise repo context, hybrid retrieval,
 - **PageRank repo map** — Aider-style symbol graph ranking
 - **Validate-and-fix on apply** — Plandex-style syntax guards before patch apply
 - **Optional vector search** — SQLite hash embeddings (LanceDB pluggable later)
+- **MCP tools** — stdio MCP servers from VS Code settings, `.thunder/mcp.json`, or `.mcp.json`
+- **Project rules loader** — imports `AGENTS.md`, `CLAUDE.md`, `.thunder/rules`, `.clinerules`, Continue rules, and Cursor rules into context
 - **Session persistence** — `agent_sessions` + `agent_turns` in SQLite
 - Memory & checkpoint panels in chat UI
 
@@ -60,6 +62,44 @@ Set `thunder.provider.type` to `openai-compatible` and configure:
 - `thunder.provider.model` — e.g. `qwen3-coder:30b`
 
 Store API keys via the settings UI (uses VS Code SecretStorage).
+
+### MCP servers
+
+Thunder loads stdio MCP servers from VS Code settings:
+
+```json
+"thunder.mcp.servers": {
+  "filesystem": {
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
+  }
+}
+```
+
+You can also commit workspace-local MCP config in `.thunder/mcp.json` or `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"]
+    }
+  }
+}
+```
+
+MCP tools are exposed to the model as `mcp__server__tool` and still flow through Thunder's approval policy.
+
+### Project rules
+
+Thunder automatically reads methodology/rule files and injects them as budgeted context:
+
+- `AGENTS.md`, `CLAUDE.md`, `WARP.md`, `.cursorrules`
+- `.thunder/rules`, `.thunder/agents`, `.thunder/checks`, `.thunder/prompts`
+- `.clinerules`
+- `.continue/rules`, `.continue/agents`, `.continue/checks`, `.continue/prompts`
+- `.cursor/rules`
 
 ## Development
 

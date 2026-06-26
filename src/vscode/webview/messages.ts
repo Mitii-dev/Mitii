@@ -150,6 +150,10 @@ export interface SettingsView {
   hasApiKey: boolean;
   connectionStatus?: string;
   connectionOk?: boolean;
+  mcpEnabled: boolean;
+  mcpServers: number;
+  mcpTools: number;
+  projectRules: number;
 }
 
 export interface ProviderSettingsPayload {
@@ -285,6 +289,10 @@ export const defaultSettingsView = (): SettingsView => ({
   agentMaxAutoContinues: 2,
   researchAgentMaxSteps: 6,
   hasApiKey: false,
+  mcpEnabled: true,
+  mcpServers: 0,
+  mcpTools: 0,
+  projectRules: 0,
 });
 
 export const initialWebviewState = (): WebviewState => ({

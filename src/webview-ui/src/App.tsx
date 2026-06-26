@@ -91,14 +91,17 @@ export function App() {
       {state.tab === 'chat' ? (
         <div className="chat-shell">
           <div className="chat-body">
-            <MessageList messages={state.messages} loading={state.loading} />
+            <MessageList
+              messages={state.messages}
+              loading={state.loading}
+              agentActivity={state.agentActivity}
+            />
           </div>
           <div className="chat-agent-zone">
             <AgentLiveStatus status={state.agentLiveStatus} loading={state.loading} />
             <AgentDrawer
               loading={state.loading}
               plan={state.plan}
-              agentActivity={state.agentActivity}
               subagents={state.subagents}
               contextPreview={state.contextPreview}
               contextTokenEstimate={state.contextTokenEstimate}

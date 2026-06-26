@@ -6,6 +6,7 @@ import type { ThunderPlan } from './PlanActEngine';
 const TOOL_GUIDANCE = `
 TOOLS: You have tools to read files, search code, run commands, write files, and manage memory.
 - Use read_file/read_files/search/search_batch/list_files to gather information before editing.
+- Tools named mcp__server__tool come from configured MCP servers. Treat them as external tools; inspect their names and arguments carefully.
 - Batch independent reads and searches in ONE turn (read_files, search_batch, parallel spawn_research_agent).
 - Use spawn_research_agent to delegate focused research (unused deps, orphan files, static assets) — spawn multiple for parallel analysis.
 - Prefer apply_patch for small targeted changes; use write_file for new files or full rewrites.
@@ -76,6 +77,7 @@ ${mode === 'plan' ? planFormat : ''}
 
 RULES:
 - The user's message includes a ## Codebase Context section with real project files. READ IT and answer from it.
+- Project rule files in context (AGENTS.md, CLAUDE.md, .thunder/rules, .clinerules, .continue/rules, etc.) are operating instructions for this workspace. Follow them unless they conflict with explicit user instructions or safety policy.
 - Focus on files and topics the user asked about. Do NOT pivot to unrelated open tabs or linter diagnostics unless the user asked to fix errors.
 - NEVER ask the user to paste README, package.json, or source files — they are already in context.
 - NEVER say context is "truncated" or "not fully visible" if file content appears in context — use what is provided.

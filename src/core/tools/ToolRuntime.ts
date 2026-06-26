@@ -11,6 +11,18 @@ export class ToolRuntime {
     this.tools.set(tool.name, tool);
   }
 
+  unregister(name: string): void {
+    this.tools.delete(name);
+  }
+
+  unregisterByPrefix(prefix: string): void {
+    for (const name of this.tools.keys()) {
+      if (name.startsWith(prefix)) {
+        this.tools.delete(name);
+      }
+    }
+  }
+
   get(name: string): Tool | undefined {
     return this.tools.get(name);
   }

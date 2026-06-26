@@ -448,6 +448,19 @@ export function SettingsPanel({
       </section>
 
       <section className="settings-section">
+        <h3>MCP and project rules</h3>
+        <SettingNote>
+          Thunder loads MCP servers from VS Code settings, <code>.thunder/mcp.json</code>, and <code>.mcp.json</code>.
+          Project rules are read from <code>.thunder/rules</code>, <code>AGENTS.md</code>, <code>CLAUDE.md</code>,
+          <code>.clinerules</code>, and Continue/Cursor rule folders.
+        </SettingNote>
+        <p className="settings-row">MCP enabled: <strong>{settings.mcpEnabled ? 'Yes' : 'No'}</strong></p>
+        <p className="settings-row">MCP servers: <strong>{settings.mcpServers}</strong></p>
+        <p className="settings-row">MCP tools: <strong>{settings.mcpTools}</strong></p>
+        <p className="settings-row">Project rule files: <strong>{settings.projectRules}</strong></p>
+      </section>
+
+      <section className="settings-section">
         <h3>Indexing</h3>
         <SettingNote>
           When enabled, Thunder respects .gitignore and skips huge files. Indexing is required for full-text search

@@ -52,8 +52,27 @@ export const AgentConfigSchema = z.object({
   finalValidationEnabled: z.boolean().default(true),
 });
 
+export const McpServerConfigSchema = z.object({
+  disabled: z.boolean().default(false),
+  type: z.enum(['stdio']).default('stdio'),
+  command: z.string().default(''),
+  args: z.array(z.string()).default([]),
+  env: z.record(z.string()).default({}),
+  cwd: z.string().optional(),
+  timeoutMs: z.number().int().positive().default(60_000),
+});
+
+export const McpConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  servers: z.record(McpServerConfigSchema).default({}),
+});
+
 export const WorkspaceConfigSchema = z.object({
   rootPathOverride: z.string().default(''),
+});
+
+export const TelemetryConfigSchema = z.object({
+  sessionLogging: z.boolean().default(true),
 });
 
 export const ThunderConfigSchema = z.object({
@@ -63,7 +82,9 @@ export const ThunderConfigSchema = z.object({
   safety: SafetyConfigSchema.default({}),
   memory: MemoryConfigSchema.default({}),
   agent: AgentConfigSchema.default({}),
+  mcp: McpConfigSchema.default({}),
   workspace: WorkspaceConfigSchema.default({}),
+  telemetry: TelemetryConfigSchema.default({}),
 });
 
 export type ProviderType = z.infer<typeof ProviderTypeSchema>;
@@ -72,7 +93,10 @@ export type IndexingConfig = z.infer<typeof IndexingConfigSchema>;
 export type SafetyConfig = z.infer<typeof SafetyConfigSchema>;
 export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
+export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
+export type McpConfig = z.infer<typeof McpConfigSchema>;
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
+export type TelemetryConfig = z.infer<typeof TelemetryConfigSchema>;
 export type ThunderConfig = z.infer<typeof ThunderConfigSchema>;
 
 export function defaultThunderConfig(): ThunderConfig {

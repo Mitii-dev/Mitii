@@ -62,11 +62,11 @@ export class ToolPolicyEngine {
       if (this.safetyConfig.blockDangerousCommands && isDangerousCommand(command)) {
         return { decision: 'block', reason: 'Dangerous command blocked' };
       }
-      if (isReadOnlyCommand(command)) {
-        return { decision: 'allow', reason: 'Read-only inspection command' };
-      }
       if (this.safetyConfig.requireApprovalForShell) {
         return { decision: 'require_approval', reason: 'Shell commands require approval' };
+      }
+      if (isReadOnlyCommand(command)) {
+        return { decision: 'allow', reason: 'Read-only inspection command' };
       }
       return { decision: 'allow', reason: 'Shell auto-approved by policy' };
     }

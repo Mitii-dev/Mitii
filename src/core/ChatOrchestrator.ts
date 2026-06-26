@@ -10,6 +10,7 @@ import { ContextBudgeter } from './context/ContextBudgeter';
 import { buildPrompt } from './planning/promptBuilder';
 import { parsePlanFromText, isWriteAllowed } from './planning/PlanActEngine';
 import { createLogger } from './telemetry/Logger';
+import type { SessionLogService } from './telemetry/SessionLogService';
 import { extractFileMentions } from './context/fuzzyFileMatch';
 import { AutoApplyService } from './apply/AutoApplyService';
 import type { ToolExecutor } from './safety/ToolExecutor';
@@ -53,6 +54,7 @@ export interface ChatOrchestratorDeps {
   onPostWrite?: (relPath: string) => Promise<void>;
   workspace?: string;
   onDiffPreview?: (path: string, content: string) => Promise<void>;
+  sessionLog?: SessionLogService;
 }
 
 export class ChatOrchestrator {
@@ -147,6 +149,12 @@ export class ChatOrchestrator {
     this.emitActivity('info', `Mode: ${session.mode} · Provider: ${provider.id}`);
 
     this.deps.sessionService?.ensureSession(session, userMessage.slice(0, 64));
+    this.deps.sessionLog?.append('user_message', userMessage.slice(0, 200), {
+      mode: session.mode,
+      provider: provider.id,
+      messageLength: userMessage.length,
+      auditMode: isAuditCleanupTask(userMessage),
+    });
 
     const ws = this.deps.workspace ?? '';
     const editor = vscode.window.activeTextEditor;
@@ -179,7 +187,7 @@ export class ChatOrchestrator {
         text: userMessage,
         currentFile,
         openFiles,
-        maxItems: 40,
+        maxItems: 28,
       });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -188,10 +196,11 @@ export class ChatOrchestrator {
       throw error;
     }
 
+    const retrievedPaths = uniqueContextNames(items);
     this.emitActivity(
       'read',
-      `Retrieved ${items.length} context items`,
-      items.slice(0, 6).map((i) => i.relPath ?? i.source).join(', ')
+      `Prepared ${items.length} context snippets from ${retrievedPaths.length} sources`,
+      retrievedPaths.slice(0, 8).join('\n')
     );
 
     const contextBudget = Math.floor(provider.capabilities.contextWindow * 0.75);
@@ -199,15 +208,22 @@ export class ChatOrchestrator {
     const views = contextItemsToViews(pack.items);
     const budgetView = contextPackToBudgetView(pack);
 
-    this.setLiveStatus('Context ready', `${pack.items.length} items · ${pack.totalTokens} tokens`);
+    this.setLiveStatus('Context ready', `${pack.items.length} snippets · ${pack.totalTokens} tokens`);
 
     this.onContextPack?.(pack, views, budgetView);
 
     this.emitActivity(
       'budget',
-      `Context: ${pack.totalTokens}/${pack.budgetLimit} tokens · ${pack.items.length} items`,
+      `Prompt context: ${pack.totalTokens}/${pack.budgetLimit} tokens · ${pack.items.length} snippets`,
       pack.dropped.length > 0 ? `${pack.dropped.length} dropped` : undefined
     );
+    this.deps.sessionLog?.append('context_pack', `Context ${pack.totalTokens}/${pack.budgetLimit} tokens`, {
+      snippetCount: pack.items.length,
+      droppedCount: pack.dropped.length,
+      sources: pack.items.map((i) => i.source).slice(0, 20),
+      currentFile,
+      openFiles: openFiles.slice(0, 10),
+    });
 
     const transcriptBudget = Math.floor(provider.capabilities.contextWindow * 0.15);
     const compacted = await compactMessagesWithLlm(recentMessages, transcriptBudget, provider);
@@ -267,6 +283,14 @@ export class ChatOrchestrator {
     } else if (orchestrationEnabled && taskAnalysis.shouldPlan) {
       this.emitActivity('info', `Orchestration: ${taskAnalysis.kind} (${taskAnalysis.complexity})`, taskAnalysis.summary);
     }
+    this.deps.sessionLog?.append('info', 'Task analysis', {
+      kind: taskAnalysis.kind,
+      complexity: taskAnalysis.complexity,
+      shouldPlan: taskAnalysis.shouldPlan,
+      shouldUseSubagents: taskAnalysis.shouldUseSubagents,
+      auditMode,
+      toolsEnabled,
+    });
 
     this.saveTurn(session.id, 'user', userMessage);
 
@@ -444,11 +468,18 @@ export class ChatOrchestrator {
     if (!fullResponse) return;
 
     this.saveTurn(session.id, 'assistant', fullResponse);
+    this.deps.sessionLog?.append('assistant_message', fullResponse.slice(0, 200), {
+      responseLength: fullResponse.length,
+    });
 
     const parsed = parsePlanFromText(fullResponse);
     if (parsed) {
       this.onPlan?.({ goal: parsed.goal, assumptions: parsed.assumptions, steps: parsed.steps });
       this.deps.planPersistence?.save(session.id, parsed);
+      this.deps.sessionLog?.append('plan_created', parsed.goal, {
+        stepCount: parsed.steps.length,
+        steps: parsed.steps.map((s) => ({ id: s.id, title: s.title, risk: s.risk })),
+      });
     }
 
     if (isWriteAllowed(session.mode)) {
@@ -475,17 +506,29 @@ export class ChatOrchestrator {
 
     const tokens = promptTokens || estimatePromptTokens(buildPrompt(session.mode, pack, userMessage, compacted));
     this.onTokenUsage?.(tokens, pack.totalTokens, fullResponse);
+    this.deps.sessionLog?.append('token_usage', 'Turn token usage', {
+      promptTokens: tokens,
+      contextTokens: pack.totalTokens,
+      responseTokens: Math.ceil(fullResponse.length / 4),
+    });
   }
 
   private buildLoopCallbacks(): import('./agent/AgentLoop').AgentLoopCallbacks {
     return {
       onToolStart: (name, input) => {
+        this.deps.sessionLog?.append('tool_start', name, { input });
         void this.previewDiffIfWrite(name, input);
-        this.setLiveStatus(`Tool: ${name}`);
-        this.emitActivity('tool', `Calling ${name}`, JSON.stringify(input).slice(0, 120));
+        const activity = describeToolActivity(name, input, 'start');
+        this.setLiveStatus(activity.liveLabel, activity.detail);
+        this.emitActivity(activity.kind, activity.message, activity.detail);
       },
       onToolEnd: (name, success, output) => {
-        this.emitActivity(success ? 'read' : 'error', `${name} ${success ? 'ok' : 'failed'}`, output?.slice(0, 200));
+        this.deps.sessionLog?.append('tool_end', name, {
+          success,
+          outputPreview: output?.slice(0, 500),
+        });
+        const activity = describeToolActivity(name, {}, success ? 'success' : 'error');
+        this.emitActivity(success ? activity.kind : 'error', activity.message, output?.slice(0, 240));
       },
       onStep: (step, max) => {
         this.setLiveStatus('Agent step', `${step}/${max}`, step, max);
@@ -548,6 +591,88 @@ export class ChatOrchestrator {
       // Session may not exist in DB yet
     }
   }
+}
+
+function describeToolActivity(
+  name: string,
+  input: Record<string, unknown>,
+  phase: 'start' | 'success' | 'error'
+): {
+  kind: import('../vscode/webview/messages').AgentActivityEntry['kind'];
+  liveLabel: string;
+  message: string;
+  detail?: string;
+} {
+  const path = typeof input.path === 'string' ? input.path : undefined;
+  const command = typeof input.command === 'string' ? input.command : undefined;
+  const query = typeof input.query === 'string' ? input.query : undefined;
+  const paths = Array.isArray(input.paths) ? input.paths.filter((p): p is string => typeof p === 'string') : [];
+  const queries = Array.isArray(input.queries) ? input.queries.filter((q): q is string => typeof q === 'string') : [];
+
+  if (phase !== 'start') {
+    return {
+      kind: name.includes('write') || name.includes('patch') ? 'apply' : 'read',
+      liveLabel: phase === 'success' ? 'Completed tool' : 'Tool failed',
+      message: `${toolDisplayName(name)} ${phase === 'success' ? 'completed' : 'failed'}`,
+    };
+  }
+
+  switch (name) {
+    case 'read_file':
+      return { kind: 'read', liveLabel: 'Reading file', message: `Reading ${path ?? 'a file'}`, detail: path };
+    case 'read_files':
+      return {
+        kind: 'read',
+        liveLabel: 'Reading files',
+        message: `Reading ${paths.length || 'multiple'} files`,
+        detail: paths.slice(0, 6).join('\n'),
+      };
+    case 'list_files':
+      return { kind: 'read', liveLabel: 'Listing files', message: `Listing ${path ?? 'workspace files'}`, detail: path };
+    case 'search':
+      return { kind: 'read', liveLabel: 'Searching code', message: `Searching for ${query ?? 'matches'}`, detail: query };
+    case 'search_batch':
+      return {
+        kind: 'read',
+        liveLabel: 'Searching code',
+        message: `Searching ${queries.length || 'multiple'} queries`,
+        detail: queries.slice(0, 6).join('\n'),
+      };
+    case 'run_command':
+      return { kind: 'tool', liveLabel: 'Running command', message: `Running ${command ?? 'command'}`, detail: command };
+    case 'write_file':
+      return { kind: 'apply', liveLabel: 'Writing file', message: `Writing ${path ?? 'file'}`, detail: path };
+    case 'apply_patch':
+      return { kind: 'apply', liveLabel: 'Applying patch', message: `Patching ${path ?? 'file'}`, detail: path };
+    case 'spawn_research_agent':
+      return {
+        kind: 'tool',
+        liveLabel: 'Starting subagent',
+        message: 'Starting research subagent',
+        detail: typeof input.task === 'string' ? input.task.slice(0, 180) : undefined,
+      };
+    case 'retrieve_context':
+      return { kind: 'context', liveLabel: 'Retrieving context', message: 'Retrieving relevant context' };
+    case 'diagnostics':
+      return { kind: 'read', liveLabel: 'Checking diagnostics', message: 'Checking editor diagnostics' };
+    case 'git_diff':
+      return { kind: 'read', liveLabel: 'Reading changes', message: 'Reading current git diff' };
+    default:
+      return {
+        kind: 'tool',
+        liveLabel: toolDisplayName(name),
+        message: `Using ${toolDisplayName(name)}`,
+        detail: JSON.stringify(input).slice(0, 180),
+      };
+  }
+}
+
+function toolDisplayName(name: string): string {
+  return name.replace(/_/g, ' ');
+}
+
+function uniqueContextNames(items: Array<{ relPath?: string; source: string }>): string[] {
+  return Array.from(new Set(items.map((item) => item.relPath ?? item.source)));
 }
 
 function estimatePromptTokens(messages: Array<{ role: string; content: string }>): number {

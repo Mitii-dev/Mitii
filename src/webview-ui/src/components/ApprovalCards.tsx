@@ -9,13 +9,18 @@ interface ApprovalCardsProps {
 export function ApprovalCards({ approvals, onResolve, onApproveAll }: ApprovalCardsProps) {
   if (approvals.length === 0) return null;
 
+  const hasOnlyFileChanges = approvals.every((req) => req.toolName === 'write_file' || req.toolName === 'apply_patch');
+  const pendingLabel = hasOnlyFileChanges
+    ? `file change${approvals.length > 1 ? 's' : ''}`
+    : `action${approvals.length > 1 ? 's' : ''}`;
+
   return (
     <div className="approval-panel">
       <div className="approval-panel__header">
         <div>
           <h3 className="approval-panel__title">Permission required</h3>
           <p className="approval-panel__subtitle">
-            {approvals.length} file change{approvals.length > 1 ? 's' : ''} waiting for your approval
+            {approvals.length} {pendingLabel} waiting for your approval
           </p>
         </div>
         {approvals.length > 1 && (

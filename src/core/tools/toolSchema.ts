@@ -40,7 +40,7 @@ export function toolToDefinition(tool: Tool): ToolDefinition {
     function: {
       name: tool.name,
       description: tool.description,
-      parameters: zodTypeToJsonSchema(tool.inputSchema),
+      parameters: tool.parametersJsonSchema ?? zodTypeToJsonSchema(tool.inputSchema),
     },
   };
 }

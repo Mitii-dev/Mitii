@@ -13,6 +13,7 @@ export interface Tool<TInput = unknown> {
   description: string;
   risk: ToolRisk;
   inputSchema: z.ZodType<TInput>;
+  parametersJsonSchema?: Record<string, unknown>;
   execute(input: TInput): Promise<ToolResult>;
 }
 

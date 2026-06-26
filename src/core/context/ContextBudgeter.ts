@@ -18,6 +18,7 @@ export class ContextBudgeter {
     let truncatedCount = 0;
 
     const allocations: Array<{ source: string; budget: number }> = [
+      { source: 'project-rules', budget: maxTokens * 0.10 },
       { source: 'mentioned-files', budget: maxTokens * 0.30 },
       { source: 'indexed-file-search', budget: maxTokens * 0.20 },
       { source: 'workspace-overview', budget: maxTokens * 0.22 },
@@ -28,6 +29,7 @@ export class ContextBudgeter {
       { source: 'git-diff', budget: maxTokens * BUDGET_SPLITS.openDiff * 0.2 },
       { source: 'diagnostics', budget: maxTokens * BUDGET_SPLITS.openDiff * 0.2 },
       { source: 'memory', budget: maxTokens * BUDGET_SPLITS.memory },
+      { source: 'vector', budget: maxTokens * 0.08 },
     ];
 
     const includedIds = new Set<string>();

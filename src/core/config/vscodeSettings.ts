@@ -48,9 +48,20 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       autoContinue: config.get<boolean>('agent.autoContinue'),
       maxAutoContinues: config.get<number>('agent.maxAutoContinues'),
       researchAgentMaxSteps: config.get<number>('agent.researchAgentMaxSteps'),
+      researchAgentTimeoutMs: config.get<number>('agent.researchAgentTimeoutMs'),
+      orchestrationEnabled: config.get<boolean>('agent.orchestrationEnabled'),
+      stepMaxRetries: config.get<number>('agent.stepMaxRetries'),
+      finalValidationEnabled: config.get<boolean>('agent.finalValidationEnabled'),
+    },
+    mcp: {
+      enabled: config.get<boolean>('mcp.enabled'),
+      servers: config.get<Record<string, unknown>>('mcp.servers'),
     },
     workspace: {
       rootPathOverride: config.get<string>('workspace.rootPathOverride'),
+    },
+    telemetry: {
+      sessionLogging: config.get<boolean>('telemetry.sessionLogging'),
     },
   };
 

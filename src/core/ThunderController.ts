@@ -45,9 +45,12 @@ import { PostEditValidator } from './apply/PostEditValidator';
 import { VectorContextSource } from './context/sources/VectorContextSource';
 import { SqliteVectorIndex, VectorIndexService } from './indexing/VectorIndex';
 import { HashEmbeddingProvider } from './indexing/EmbeddingProvider';
+import { McpManager } from './mcp/McpManager';
+import { ProjectRulesContextSource, ProjectRulesService } from './rules/ProjectRulesService';
 import { showWriteDiffPreview, showPatchDiffPreview } from '../vscode/diffPreview';
 import { testOpenAiCompatibleConnection } from './llm/testConnection';
 import { createLogger } from './telemetry/Logger';
+import { SessionLogService } from './telemetry/SessionLogService';
 import { normalizeError } from './telemetry/errors';
 import type { IndexingStatus } from './indexing/IndexQueue';
 import type {
@@ -92,6 +95,10 @@ export class ThunderController {
   private memoryHookService: MemoryHookService | undefined;
   private postEditValidator: PostEditValidator | undefined;
   private vectorIndexService: VectorIndexService | undefined;
+  private mcpManager = new McpManager();
+  private projectRulesService: ProjectRulesService | undefined;
+  private sessionLog = new SessionLogService();
+  private lastSubagentSnapshot = new Map<string, string>();
   private indexingStatus: IndexingStatus = { indexed: 0, queued: 0, running: false, failed: 0 };
   private contextToggles: ContextToggles = defaultContextToggles();
   private currentPlan: PlanView | null = null;
@@ -128,11 +135,24 @@ export class ThunderController {
     this.uiUpdate?.(partial);
   }
 
+  private configureSessionLogging(session: ThunderSession, workspace: string): void {
+    const enabled = this.configService.getConfig().telemetry.sessionLogging;
+    this.sessionLog.configure(workspace, session.id, enabled);
+    this.sessionLog.writeSessionHeader({
+      mode: session.mode,
+      model: this.configService.getConfig().provider.model,
+      provider: this.configService.getConfig().provider.type,
+    });
+  }
+
   async initialize(): Promise<void> {
     await this.configService.initialize();
 
     const workspace = this.resolveWorkspacePath();
     this.session = new ThunderSession(workspace);
+    if (workspace) {
+      this.configureSessionLogging(this.session, workspace);
+    }
 
     if (workspace) {
       try {
@@ -165,7 +185,9 @@ export class ThunderController {
 
   private initMinimalChat(workspace: string): void {
     this.diagnosticsService.setWorkspaceRoot(workspace);
+    this.projectRulesService = new ProjectRulesService(workspace);
     const retriever = new HybridRetriever([
+      new ProjectRulesContextSource(this.projectRulesService),
       new MentionedFileContextSource(workspace),
       new WorkspaceOverviewContextSource(workspace),
       new CurrentEditorContextSource(workspace),
@@ -208,11 +230,37 @@ export class ThunderController {
     await this.gitService.initialize();
 
     this.diagnosticsService.setWorkspaceRoot(workspace);
+    this.projectRulesService = new ProjectRulesService(workspace);
     this.memoryService = new MemoryService(db, workspace);
     this.passiveMemoryInjector = new PassiveMemoryInjector(this.memoryService);
     this.memoryHookService = new MemoryHookService(workspace);
     this.postEditValidator = new PostEditValidator(this.diagnosticsService);
     this.subagentTracker.setUpdateCallback((runs) => {
+      for (const run of runs) {
+        const prev = this.lastSubagentSnapshot.get(run.id);
+        const statusKey = `${run.status}:${run.summary ?? ''}:${run.error ?? ''}`;
+        if (prev === statusKey) continue;
+        this.lastSubagentSnapshot.set(run.id, statusKey);
+        if (run.status === 'running' && !prev) {
+          this.sessionLog.append('subagent_start', run.task.slice(0, 120), {
+            id: run.id,
+            focus: run.focus,
+          });
+        } else if (run.status === 'done') {
+          this.sessionLog.append('subagent_end', run.task.slice(0, 120), {
+            id: run.id,
+            success: true,
+            summary: run.summary,
+            durationMs: run.finishedAt && run.startedAt ? run.finishedAt - run.startedAt : undefined,
+          });
+        } else if (run.status === 'error') {
+          this.sessionLog.append('subagent_end', run.task.slice(0, 120), {
+            id: run.id,
+            success: false,
+            error: run.error,
+          });
+        }
+      }
       this.notifyUi({
         subagents: runs.map((r) => ({
           id: r.id,
@@ -268,6 +316,7 @@ export class ThunderController {
     this.toolRuntime.register(createRunCommandTool(workspace, () => this.session?.mode ?? 'plan'));
     this.toolRuntime.register(createMemorySearchTool(this.memoryService));
     this.toolRuntime.register(createMemoryWriteTool(this.memoryService, () => this.session?.id ?? ''));
+    await this.mcpManager.reload(config.mcp, workspace, this.toolRuntime);
 
     this.memoryExtractor = new MemoryExtractor(
       this.memoryService,
@@ -296,6 +345,7 @@ export class ThunderController {
       passiveMemoryInjector: this.passiveMemoryInjector,
       memoryHookService: this.memoryHookService,
       postEditValidator: this.postEditValidator,
+      sessionLog: this.sessionLog,
       onPostWrite: async (relPath) => {
         await this.validateAfterWrite(relPath);
       },
@@ -312,6 +362,9 @@ export class ThunderController {
     });
     orchestrator.setActivityCallback((entry) => {
       this.agentActivity = [...this.agentActivity.slice(-20), entry];
+      if (entry.kind === 'error') {
+        this.sessionLog.append('error', entry.message, { detail: entry.detail });
+      }
       const partial: Partial<WebviewState> = { agentActivity: this.agentActivity };
       if (entry.kind === 'approval') {
         partial.approvals = (this.approvalQueue?.getPending() ?? []).map(toApprovalView);
@@ -331,6 +384,13 @@ export class ThunderController {
       this.tokenUsage.sessionTotal += turnTokens;
       this.tokenUsage.turnCount += 1;
       const config = this.configService.getConfig();
+      this.sessionLog.append('token_usage', 'Session token rollup', {
+        turnPromptTokens: promptTokens,
+        turnContextTokens: contextTokens,
+        turnResponseTokens: responseTokens,
+        sessionTotal: this.tokenUsage.sessionTotal,
+        turnCount: this.tokenUsage.turnCount,
+      });
       this.notifyUi({
         tokenUsage: {
           ...this.tokenUsage,
@@ -355,6 +415,9 @@ export class ThunderController {
 
   private buildRetriever(db: import('./indexing/ThunderDb').ThunderDb, workspace: string): HybridRetriever {
     const sources = [];
+    if (this.projectRulesService) {
+      sources.push(new ProjectRulesContextSource(this.projectRulesService));
+    }
     sources.push(
       new MentionedFileContextSource(workspace),
       new WorkspaceOverviewContextSource(workspace),
@@ -492,6 +555,10 @@ export class ThunderController {
         agentMaxAutoContinues: config.agent.maxAutoContinues,
         researchAgentMaxSteps: config.agent.researchAgentMaxSteps,
         hasApiKey: Boolean(apiKey),
+        mcpEnabled: config.mcp.enabled,
+        mcpServers: this.mcpManager.getStatuses().length,
+        mcpTools: this.mcpManager.getConnectedToolCount(),
+        projectRules: this.projectRulesService?.count() ?? 0,
       },
       contextToggles: this.contextToggles,
       providerLabel: `${config.provider.type} / ${config.provider.model}`,
@@ -567,6 +634,10 @@ export class ThunderController {
     const mode = this.session?.mode ?? 'plan';
     this.session = new ThunderSession(workspace, mode);
     this.sessionService?.ensureSession(this.session);
+    if (workspace) {
+      this.configureSessionLogging(this.session, workspace);
+    }
+    this.lastSubagentSnapshot.clear();
     this.currentPlan = null;
     this.agentActivity = [];
     this.agentLiveStatus = null;
@@ -688,6 +759,10 @@ export class ThunderController {
     if (!provider) throw normalizeError(new Error('No LLM provider configured'));
 
     this.sessionService?.ensureSession(this.session, content.slice(0, 64));
+    const workspace = this.resolveWorkspacePath();
+    if (workspace) {
+      this.configureSessionLogging(this.session, workspace);
+    }
     this.toolRuntime.clearAuditLog();
     this.subagentTracker.clear();
     setSubagentTracker(this.subagentTracker);
@@ -721,7 +796,10 @@ export class ThunderController {
     this.indexService = undefined;
     this.scanner = undefined;
     this.indexQueue = undefined;
+    this.projectRulesService = undefined;
     this.indexingStatus = { indexed: 0, queued: 0, running: false, failed: 0 };
+    await this.mcpManager.closeAll();
+    this.toolRuntime.unregisterByPrefix('mcp__');
 
     if (workspace) {
       try {
@@ -741,6 +819,44 @@ export class ThunderController {
     log.info('Workspace reloaded', { workspace });
   }
 
+  getSessionLogService(): SessionLogService {
+    return this.sessionLog;
+  }
+
+  async exportSessionLog(): Promise<void> {
+    const logPath = this.sessionLog.getLogPath();
+    if (!logPath) {
+      void vscode.window.showWarningMessage('Thunder: No workspace configured for session logging.');
+      return;
+    }
+
+    const summary = this.sessionLog.exportSummary();
+    await vscode.env.clipboard.writeText(summary);
+
+    const choice = await vscode.window.showInformationMessage(
+      `Session log summary copied to clipboard.\nLog file: ${logPath}`,
+      'Open log file',
+      'Reveal in Finder'
+    );
+
+    if (choice === 'Open log file') {
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(logPath));
+      await vscode.window.showTextDocument(doc, { preview: false });
+    } else if (choice === 'Reveal in Finder') {
+      await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(logPath));
+    }
+  }
+
+  async openSessionLog(): Promise<void> {
+    const logPath = this.sessionLog.getLogPath();
+    if (!logPath) {
+      void vscode.window.showWarningMessage('Thunder: No session log yet. Send a message first.');
+      return;
+    }
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(logPath));
+    await vscode.window.showTextDocument(doc, { preview: false });
+  }
+
   stopGeneration(): void {
     this.chatOrchestrator?.stop();
   }
@@ -749,6 +865,13 @@ export class ThunderController {
     const fullInput = this.approvalQueue?.getFullInput(id);
     const request = this.approvalQueue?.resolve(id, decision);
     if (!request) return;
+
+    this.sessionLog.append('approval_decision', `${decision}: ${request.toolName}`, {
+      id,
+      toolName: request.toolName,
+      files: request.files,
+      risk: request.risk,
+    });
 
     this.notifyUi({ approvals: (this.approvalQueue?.getPending() ?? []).map(toApprovalView) });
 
@@ -800,8 +923,13 @@ export class ThunderController {
     const result = await this.toolExecutor.executeApproved(request.toolName, fullInput);
 
     if (result.success) {
-      this.pushActivity('apply', `Applied ${path ?? request.toolName}`, result.output);
-      void vscode.window.showInformationMessage(`Thunder: Updated ${path ?? 'file'}`);
+      const successMessage = request.toolName === 'run_command'
+        ? 'Ran approved command'
+        : `Applied ${path ?? request.toolName}`;
+      this.pushActivity(request.toolName === 'run_command' ? 'tool' : 'apply', successMessage, result.output);
+      void vscode.window.showInformationMessage(
+        request.toolName === 'run_command' ? 'Thunder: Command completed.' : `Thunder: Updated ${path ?? 'file'}`
+      );
       if (path) {
         const workspace = this.resolveWorkspacePath();
         if (workspace) {
@@ -1013,6 +1141,7 @@ export class ThunderController {
     if (this.disposed) return;
     this.disposed = true;
     this.configService.dispose();
+    void this.mcpManager.closeAll();
     this.indexService?.dispose();
     this.indexQueue?.cancel();
     this.session = undefined;

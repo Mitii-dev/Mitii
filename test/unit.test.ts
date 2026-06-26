@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { IgnoreService } from '../src/core/indexing/IgnoreService';
 import { ChunkingService } from '../src/core/indexing/ChunkingService';
 import { sanitizeFtsQuery } from '../src/core/indexing/FtsIndex';
@@ -9,6 +12,7 @@ import { ContextBudgeter } from '../src/core/context/ContextBudgeter';
 import type { ContextItem } from '../src/core/context/types';
 import { defaultThunderConfig } from '../src/core/config/schema';
 import { estimateTokens } from '../src/core/llm/tokenEstimate';
+import { ProjectRulesService } from '../src/core/rules/ProjectRulesService';
 
 describe('IgnoreService', () => {
   it('ignores node_modules by default', () => {
@@ -77,6 +81,11 @@ describe('ToolPolicyEngine', () => {
     expect(engine.evaluate('write_file', { path: 'src/index.ts' }).decision).toBe('require_approval');
   });
 
+  it('requires approval for shell commands when shell approval is enabled', () => {
+    expect(engine.evaluate('run_command', { command: 'rg "DineInKanban" src' }).decision).toBe('require_approval');
+    expect(engine.evaluate('run_command', { command: 'npm run build' }).decision).toBe('require_approval');
+  });
+
   it('blocks dangerous commands', () => {
     expect(isDangerousCommand('rm -rf /')).toBe(true);
     expect(isDangerousCommand('npm test')).toBe(false);
@@ -121,6 +130,48 @@ describe('ContextBudgeter', () => {
 describe('Token estimate', () => {
   it('estimates tokens', () => {
     expect(estimateTokens('hello world')).toBeGreaterThan(0);
+  });
+});
+
+describe('ProjectRulesService', () => {
+  it('loads common root-level agent rule files', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-rules-test-'));
+    try {
+      writeFileSync(join(tempDir, 'AGENTS.md'), 'agent instructions');
+      writeFileSync(join(tempDir, 'CLAUDE.md'), 'claude instructions');
+      writeFileSync(join(tempDir, '.cursorrules'), 'cursor instructions');
+      writeFileSync(join(tempDir, '.clinerules'), 'cline instructions');
+
+      const rules = new ProjectRulesService(tempDir).load();
+      expect(rules.map((rule) => rule.relPath)).toEqual([
+        'AGENTS.md',
+        'CLAUDE.md',
+        '.cursorrules',
+        '.clinerules',
+      ]);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('loads markdown files from Thunder rule, agent, check, and prompt folders', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-rules-test-'));
+    try {
+      for (const relDir of ['.thunder/rules', '.thunder/agents', '.thunder/checks', '.thunder/prompts']) {
+        mkdirSync(join(tempDir, relDir), { recursive: true });
+        writeFileSync(join(tempDir, relDir, 'methodology.md'), `${relDir} instructions`);
+      }
+
+      const rules = new ProjectRulesService(tempDir).load();
+      expect(rules.map((rule) => rule.relPath)).toEqual([
+        '.thunder/rules/methodology.md',
+        '.thunder/agents/methodology.md',
+        '.thunder/checks/methodology.md',
+        '.thunder/prompts/methodology.md',
+      ]);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -263,6 +314,15 @@ describe('taskKind', () => {
   });
 });
 
+describe('TaskAnalyzer', () => {
+  it('does not re-plan approval continuations', async () => {
+    const { analyzeTask } = await import('../src/core/agent/TaskAnalyzer');
+    const result = analyzeTask('Continue the current approved task from where it paused.\nOriginal user request: refactor app', 'act');
+    expect(result.shouldPlan).toBe(false);
+    expect(result.summary).toContain('resume');
+  });
+});
+
 describe('PlanActEngine read-only shell', () => {
   it('allows inspection commands in plan mode', async () => {
     const { isShellAllowed, isReadOnlyCommand, stripLeadingCd } = await import('../src/core/planning/PlanActEngine');
@@ -341,6 +401,34 @@ describe('SubagentTracker', () => {
     tracker.finish(id, 'found 3 unused packages');
     expect(tracker.getRuns()[0]?.status).toBe('done');
     expect(updates.length).toBeGreaterThan(0);
+  });
+});
+
+describe('SessionLogService', () => {
+  it('writes JSONL events and builds a summary', async () => {
+    const { mkdtempSync, readFileSync, rmSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const { SessionLogService } = await import('../src/core/telemetry/SessionLogService');
+
+    const dir = mkdtempSync(join(tmpdir(), 'thunder-log-'));
+    const workspace = join(dir, 'ws');
+    const { mkdirSync } = await import('fs');
+    mkdirSync(join(workspace, '.thunder', 'logs'), { recursive: true });
+
+    const log = new SessionLogService();
+    log.configure(workspace, 'sess-1', true);
+    log.writeSessionHeader({ mode: 'act' });
+    log.append('user_message', 'hello', { mode: 'act' });
+    log.append('tool_start', 'read_file', { input: { path: 'package.json' } });
+
+    const path = log.getLogPath();
+    expect(path).toContain('sess-1.jsonl');
+    const content = readFileSync(path!, 'utf-8');
+    expect(content).toContain('user_message');
+    expect(log.exportSummary()).toContain('sess-1');
+
+    rmSync(dir, { recursive: true, force: true });
   });
 });
 

@@ -1,18 +1,20 @@
 import { useEffect, useRef } from 'react';
-import type { ChatMessage } from '../../../vscode/webview/messages';
+import type { AgentActivityEntry, ChatMessage } from '../../../vscode/webview/messages';
 import { MarkdownMessage } from './MarkdownMessage';
+import { AgentActivityPanel } from './AgentActivityPanel';
 
 interface MessageListProps {
   messages: ChatMessage[];
   loading?: boolean;
+  agentActivity?: AgentActivityEntry[];
 }
 
-export function MessageList({ messages, loading }: MessageListProps) {
+export function MessageList({ messages, loading, agentActivity = [] }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages, loading]);
+  }, [messages, loading, agentActivity.length]);
 
   if (messages.length === 0) {
     return (
@@ -46,6 +48,13 @@ export function MessageList({ messages, loading }: MessageListProps) {
           </div>
         </article>
       ))}
+      {(loading || agentActivity.length > 0) && (
+        <article className="message message--assistant message--activity">
+          <div className="message-content">
+            <AgentActivityPanel entries={agentActivity} loading={Boolean(loading)} compact />
+          </div>
+        </article>
+      )}
       <div ref={bottomRef} className="message-list__anchor" />
     </div>
   );

@@ -200,11 +200,15 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       case 'resolveApproval':
         await this.controller.resolveApproval(message.payload.id, message.payload.decision);
         await this.syncState();
+        if (message.payload.decision === 'approved') {
+          await this.continueAfterApproval();
+        }
         break;
 
       case 'approveAllPending':
         await this.controller.approveAllPending();
         await this.syncState();
+        await this.continueAfterApproval();
         break;
 
       case 'saveApiKey':
@@ -374,6 +378,28 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         this.postMessage({ type: 'state', payload: this.state });
       }
     }
+  }
+
+  private async continueAfterApproval(): Promise<void> {
+    if (this.state.loading || this.state.approvals.length > 0) return;
+
+    const lastAssistant = [...this.state.messages].reverse().find((m) => m.role === 'assistant');
+    if (!lastAssistant?.content.includes('Waiting for approval')) return;
+
+    const lastUser = [...this.state.messages].reverse().find((m) => m.role === 'user');
+    if (!lastUser?.content) return;
+
+    const continuation = [
+      'Continue the current approved task from where it paused.',
+      'Do not recreate the requirement analysis or plan.',
+      'Use the existing plan status in the conversation: continue the blocked/running step, mark it done when complete, then move to the next pending step.',
+      'If the approved command already ran, inspect its result from the activity/context and proceed.',
+      '',
+      'Original user request:',
+      lastUser.content,
+    ].join('\n');
+
+    await this.runChatCompletion(continuation, false);
   }
 
   private archiveCurrentThread(): void {

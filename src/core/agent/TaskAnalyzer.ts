@@ -38,6 +38,17 @@ export function analyzeTask(userMessage: string, mode: string): TaskAnalysis {
     };
   }
 
+  if (/^continue the current approved task from where it paused\b/i.test(text)) {
+    return {
+      kind: 'simple_edit',
+      complexity: 'medium',
+      shouldPlan: false,
+      shouldVerify: true,
+      shouldUseSubagents: false,
+      summary: 'Approval continuation — resume execution without recreating the plan.',
+    };
+  }
+
   if (/\b(unused|dead code|orphan|cleanup|clean up|remove unused|depcheck|dependencies audit|dependency audit|find unused|list unused|reduce bundle|tree[- ]shake)\b/i.test(text)) {
     return {
       kind: 'audit',

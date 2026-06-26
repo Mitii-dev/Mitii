@@ -20,6 +20,14 @@ export function registerCommands(
     vscode.commands.registerCommand('thunder.showSettings', async () => {
       await vscode.commands.executeCommand('thunder.sidebar.focus');
       webviewProvider.showSettings();
+    }),
+
+    vscode.commands.registerCommand('thunder.exportSessionLog', async () => {
+      await controller.exportSessionLog();
+    }),
+
+    vscode.commands.registerCommand('thunder.openSessionLog', async () => {
+      await controller.openSessionLog();
     })
   );
 }

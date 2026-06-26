@@ -35,6 +35,16 @@
         "command": "thunder.showSettings",
         "title": "Thunder: Show Settings",
         "category": "Thunder"
+      },
+      {
+        "command": "thunder.exportSessionLog",
+        "title": "Thunder: Export Session Log",
+        "category": "Thunder"
+      },
+      {
+        "command": "thunder.openSessionLog",
+        "title": "Thunder: Open Session Log File",
+        "category": "Thunder"
       }
     ],
     "viewsContainers": {
@@ -62,6 +72,11 @@
           "type": "boolean",
           "default": false,
           "description": "Enable debug logging and show stack traces in UI"
+        },
+        "thunder.telemetry.sessionLogging": {
+          "type": "boolean",
+          "default": true,
+          "description": "Write structured JSONL session logs to .thunder/logs/ for debugging and analysis."
         },
         "thunder.provider.type": {
           "type": "string",
@@ -160,6 +175,16 @@
           "maximum": 50,
           "description": "Maximum tool-use steps for each read-only research subagent."
         },
+        "thunder.mcp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Model Context Protocol servers configured in thunder.mcp.servers, .thunder/mcp.json, or .mcp.json."
+        },
+        "thunder.mcp.servers": {
+          "type": "object",
+          "default": {},
+          "description": "MCP server definitions keyed by server name. Supports stdio servers: { \"my-server\": { \"command\": \"npx\", \"args\": [\"-y\", \"@modelcontextprotocol/server-filesystem\", \".\"] } }"
+        },
         "thunder.workspace.rootPathOverride": {
           "type": "string",
           "default": "",
@@ -201,6 +226,7 @@
     "vitest": "^1.6.0"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@vscode/ripgrep": "^1.15.9",
     "better-sqlite3": "^12.11.1",
     "diff": "^5.2.0",
