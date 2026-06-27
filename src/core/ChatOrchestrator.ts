@@ -16,9 +16,10 @@ import { AutoApplyService } from './apply/AutoApplyService';
 import type { ToolExecutor } from './safety/ToolExecutor';
 import type { ToolRuntime } from './tools/ToolRuntime';
 import { toolsToDefinitions } from './tools/toolSchema';
-import { AgentLoop } from './agent/AgentLoop';
+import { AgentLoop, type ApprovedToolResult, type AgentLoopSuspendState } from './agent/AgentLoop';
 import { PlanExecutor } from './agent/PlanExecutor';
 import { analyzeTask } from './agent/TaskAnalyzer';
+import { extractOriginalTaskMessage, isApprovalContinuationMessage } from './agent/taskMessage';
 import { compactMessagesWithLlm } from './agent/ContextCompaction';
 import { isAuditCleanupTask, AUDIT_AGENT_MAX_STEPS } from './agent/taskKind';
 import { setResearchAgentRuntime } from './tools/builtinTools';
@@ -28,6 +29,8 @@ import type { MemoryExtractor } from './agent/MemoryExtractor';
 import type { AgentConfig, MemoryConfig } from './config/schema';
 import type { PassiveMemoryInjector } from './memory/PassiveMemoryInjector';
 import type { MemoryHookService } from './memory/MemoryHookService';
+import type { MemoryService } from './memory/MemoryService';
+import type { AgentTaskState } from './agent/AgentTaskState';
 import type { PostEditValidator } from './apply/PostEditValidator';
 import { showWriteDiffPreview, showPatchDiffPreview } from '../vscode/diffPreview';
 import { toWorkspaceRelPath } from './vscode/pathUtils';
@@ -55,6 +58,8 @@ export interface ChatOrchestratorDeps {
   workspace?: string;
   onDiffPreview?: (path: string, content: string) => Promise<void>;
   sessionLog?: SessionLogService;
+  memoryService?: MemoryService;
+  taskState?: AgentTaskState;
 }
 
 export class ChatOrchestrator {
@@ -68,6 +73,15 @@ export class ChatOrchestrator {
   private deps: ChatOrchestratorDeps = {};
   private agentLoop: AgentLoop | undefined;
   private planExecutor: PlanExecutor | undefined;
+  private suspendContext: {
+    session: ThunderSession;
+    provider: LlmProvider;
+    userMessage: string;
+    auditMode: boolean;
+    agentMaxSteps?: number;
+    autoContinue?: boolean;
+    maxAutoContinues?: number;
+  } | undefined;
 
   constructor(
     private readonly retriever: HybridRetriever,
@@ -254,8 +268,14 @@ export class ChatOrchestrator {
     const toolsEnabled = provider.capabilities.supportsTools
       && Boolean(this.deps.toolRuntime && this.deps.toolExecutor && this.agentLoop);
     const agentConfig = this.deps.agentConfig;
-    const auditMode = isAuditCleanupTask(userMessage);
+    const taskForClassification = extractOriginalTaskMessage(userMessage) ?? userMessage;
+    const auditMode = isAuditCleanupTask(taskForClassification);
     const taskAnalysis = analyzeTask(userMessage, session.mode);
+    const isResume = isApprovalContinuationMessage(userMessage);
+    if (!isResume) {
+      this.suspendContext = undefined;
+      this.agentLoop?.clearSuspendState();
+    }
     const orchestrationEnabled = agentConfig?.orchestrationEnabled ?? true;
     const subagentsEnabled =
       (agentConfig?.subagentsEnabled ?? true) &&
@@ -280,6 +300,8 @@ export class ChatOrchestrator {
 
     if (auditMode) {
       this.emitActivity('info', 'Audit mode — using tools to scan project');
+    } else if (isResume) {
+      this.emitActivity('info', 'Resuming after approval — continuing execution');
     } else if (orchestrationEnabled && taskAnalysis.shouldPlan) {
       this.emitActivity('info', `Orchestration: ${taskAnalysis.kind} (${taskAnalysis.complexity})`, taskAnalysis.summary);
     }
@@ -307,17 +329,27 @@ export class ChatOrchestrator {
         this.setLiveStatus('Analyzing requirements');
         this.emitActivity('info', 'Analyzing requirements…');
 
-        const requirementAnalysis = await this.planExecutor.analyzeRequirements(
+        const requirementHeader = '## Requirement analysis\n\n';
+        yield requirementHeader;
+        fullResponse += requirementHeader;
+
+        for await (const chunk of this.planExecutor.analyzeRequirementsStream(
           provider,
           pack,
           userMessage,
           taskAnalysis
-        );
-        fullResponse += `## Requirement analysis\n\n${requirementAnalysis}\n\n`;
-        yield `## Requirement analysis\n\n${requirementAnalysis}\n\n`;
+        )) {
+          if (signal.aborted) break;
+          fullResponse += chunk;
+          yield chunk;
+        }
+        yield '\n\n';
+        fullResponse += '\n\n';
 
         this.setLiveStatus('Creating plan');
         this.emitActivity('info', 'Planning multi-step task…');
+
+        const requirementAnalysis = extractRequirementAnalysis(fullResponse);
 
         const plan = await this.planExecutor.generatePlan(
           provider,
@@ -365,6 +397,28 @@ export class ChatOrchestrator {
               fullResponse += chunk;
               yield chunk;
             }
+
+            if (this.agentLoop?.hadPendingApproval()) {
+              this.suspendContext = {
+                session,
+                provider,
+                userMessage: taskForClassification,
+                auditMode,
+                agentMaxSteps: agentConfig?.maxSteps,
+                autoContinue: agentConfig?.autoContinue,
+                maxAutoContinues: agentConfig?.maxAutoContinues,
+              };
+              const pauseBlock = this.savePauseState(session, taskForClassification, taskAnalysis.kind);
+              const approvalNote =
+                `\n\n${pauseBlock}\n\n⏸ **Waiting for your approval** — review the proposed changes above, then approve or deny in the panel below.\n`;
+              fullResponse += approvalNote;
+              yield approvalNote;
+              this.setLiveStatus('Waiting for approval', 'Review and approve below');
+              this.emitActivity('approval', 'Paused — waiting for your approval', this.deps.taskState?.getPauseSummary());
+              await this.finishTurn(session, provider, userMessage, fullResponse, pack, compacted);
+              this.setLiveStatus(null);
+              return;
+            }
           } else {
             const planText = formatPlanAsResponse(plan);
             fullResponse = planText;
@@ -378,7 +432,18 @@ export class ChatOrchestrator {
         }
       }
 
-      const messages = buildPrompt(session.mode, pack, userMessage, compacted, toolsEnabled, auditMode);
+      const isResume = isApprovalContinuationMessage(userMessage);
+      const taskStateBlock = this.deps.taskState?.buildPromptBlock();
+      const messages = buildPrompt(
+        session.mode,
+        pack,
+        userMessage,
+        compacted,
+        toolsEnabled,
+        auditMode,
+        taskStateBlock,
+        isResume
+      );
       const promptTokens = estimatePromptTokens(messages);
 
       if (toolsEnabled && this.agentLoop) {
@@ -403,7 +468,24 @@ export class ChatOrchestrator {
           yield chunk;
         }
 
-        if (
+        if (this.agentLoop.hadPendingApproval()) {
+          this.suspendContext = {
+            session,
+            provider,
+            userMessage: taskForClassification,
+            auditMode,
+            agentMaxSteps: agentConfig?.maxSteps,
+            autoContinue: agentConfig?.autoContinue,
+            maxAutoContinues: agentConfig?.maxAutoContinues,
+          };
+          const pauseBlock = this.savePauseState(session, taskForClassification, taskAnalysis.kind);
+          const approvalNote =
+            `\n\n${pauseBlock}\n\n⏸ **Waiting for your approval** — review the proposed changes above, then approve or deny in the panel below.\n`;
+          fullResponse += approvalNote;
+          yield approvalNote;
+          this.setLiveStatus('Waiting for approval', 'Review and approve below');
+          this.emitActivity('approval', 'Paused — waiting for your approval', this.deps.taskState?.getPauseSummary());
+        } else if (
           orchestrationEnabled &&
           taskAnalysis.shouldVerify &&
           session.mode === 'act' &&
@@ -513,9 +595,25 @@ export class ChatOrchestrator {
     });
   }
 
+  private savePauseState(
+    session: ThunderSession,
+    originalTask: string,
+    taskKind?: string
+  ): string {
+    const summary = this.deps.taskState?.buildPauseSummary(originalTask, taskKind) ?? '';
+    if (summary) {
+      this.deps.taskState?.setPauseSummary(summary);
+      this.deps.memoryService?.write(session.id, 'decision', summary, undefined, ['task_state', 'approval_pause']);
+      this.emitActivity('info', 'Task state saved before approval pause', summary.slice(0, 300));
+    }
+    return summary ? `### Task state saved\n\n${summary}` : '';
+  }
+
   private buildLoopCallbacks(): import('./agent/AgentLoop').AgentLoopCallbacks {
+    const lastToolInputs = new Map<string, Record<string, unknown>>();
     return {
       onToolStart: (name, input) => {
+        lastToolInputs.set(name, input);
         this.deps.sessionLog?.append('tool_start', name, { input });
         void this.previewDiffIfWrite(name, input);
         const activity = describeToolActivity(name, input, 'start');
@@ -527,6 +625,14 @@ export class ChatOrchestrator {
           success,
           outputPreview: output?.slice(0, 500),
         });
+        if (output === 'Awaiting approval') {
+          this.setLiveStatus('Waiting for approval', name);
+          this.emitActivity(
+            'approval',
+            `Waiting for approval: ${describeToolActivity(name, {}, 'start').message}`
+          );
+          return;
+        }
         const activity = describeToolActivity(name, {}, success ? 'success' : 'error');
         this.emitActivity(success ? activity.kind : 'error', activity.message, output?.slice(0, 240));
       },
@@ -572,6 +678,75 @@ export class ChatOrchestrator {
     }
   }
 
+  hasSuspendState(): boolean {
+    return Boolean(this.agentLoop?.getSuspendState() && this.suspendContext);
+  }
+
+  async *resumeAfterApproval(approved: ApprovedToolResult[]): AsyncIterable<string> {
+    if (!this.agentLoop || !this.suspendContext || approved.length === 0) return;
+
+    const baseState = this.agentLoop.getSuspendState();
+    if (!baseState) return;
+
+    const { session, provider, userMessage } = this.suspendContext;
+
+    this.abortController = new AbortController();
+    const signal = this.abortController.signal;
+    this.setLiveStatus('Resuming agent', 'Continuing after approval');
+    this.emitActivity('info', 'Resuming agent loop after approval');
+
+    const state: AgentLoopSuspendState = {
+      ...baseState,
+      messages: [
+        ...baseState.messages,
+        {
+          role: 'user',
+          content:
+            'User approved the pending tool(s). Continue the task — EXECUTE phase: edit files and update dependencies. Do not re-run depcheck, eslint discovery, list_files, or memory_search.',
+        },
+      ],
+    };
+
+    let fullResponse = '';
+    const sharedLoopCallbacks = this.buildLoopCallbacks();
+
+    try {
+      for await (const chunk of this.agentLoop.resume(
+        provider,
+        state,
+        approved,
+        signal,
+        sharedLoopCallbacks
+      )) {
+        if (signal.aborted) break;
+        fullResponse += chunk;
+        yield chunk;
+      }
+
+      if (this.agentLoop.hadPendingApproval()) {
+        const pauseBlock = this.savePauseState(session, userMessage);
+        const approvalNote =
+          `\n\n${pauseBlock}\n\n⏸ **Waiting for your approval** — review the proposed changes above, then approve or deny in the panel below.\n`;
+        fullResponse += approvalNote;
+        yield approvalNote;
+        this.setLiveStatus('Waiting for approval', 'Review and approve below');
+        this.emitActivity('approval', 'Paused — waiting for your approval', this.deps.taskState?.getPauseSummary());
+      } else {
+        this.suspendContext = undefined;
+        this.agentLoop.clearSuspendState();
+      }
+
+      if (fullResponse) {
+        this.saveTurn(session.id, 'assistant', fullResponse);
+        this.deps.sessionLog?.append('assistant_message', fullResponse.slice(0, 200), {
+          responseLength: fullResponse.length,
+        });
+      }
+    } finally {
+      this.onLiveStatus?.(null);
+    }
+  }
+
   stop(): void {
     this.abortController?.abort();
   }
@@ -582,8 +757,10 @@ export class ChatOrchestrator {
       return;
     }
     if (!this.db) return;
+    const raw = this.db.tryRaw();
+    if (!raw) return;
     try {
-      this.db.raw.prepare(`
+      raw.prepare(`
         INSERT INTO agent_turns (id, session_id, role, content, created_at)
         VALUES (?, ?, ?, ?, ?)
       `).run(randomUUID(), sessionId, role, content, Date.now());
@@ -678,6 +855,17 @@ function uniqueContextNames(items: Array<{ relPath?: string; source: string }>):
 function estimatePromptTokens(messages: Array<{ role: string; content: string }>): number {
   const serialized = messages.map((m) => `${m.role}\n${m.content}`).join('\n\n');
   return Math.ceil(serialized.length / 4);
+}
+
+function extractRequirementAnalysis(fullResponse: string): string {
+  const marker = '## Requirement analysis';
+  const start = fullResponse.indexOf(marker);
+  if (start === -1) return '';
+  const bodyStart = fullResponse.indexOf('\n', start);
+  if (bodyStart === -1) return '';
+  const rest = fullResponse.slice(bodyStart + 1);
+  const nextHeading = rest.search(/\n## /);
+  return (nextHeading === -1 ? rest : rest.slice(0, nextHeading)).trim();
 }
 
 function formatPlanHeader(plan: import('./planning/PlanActEngine').ThunderPlan): string {

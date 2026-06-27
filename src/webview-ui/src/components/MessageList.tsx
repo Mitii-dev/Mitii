@@ -1,20 +1,27 @@
 import { useEffect, useRef } from 'react';
-import type { AgentActivityEntry, ChatMessage } from '../../../vscode/webview/messages';
+import type { AgentActivityEntry, ApprovalRequestView, ChatMessage } from '../../../vscode/webview/messages';
 import { MarkdownMessage } from './MarkdownMessage';
 import { AgentActivityPanel } from './AgentActivityPanel';
+import { useStreamReveal } from '../hooks/useStreamReveal';
 
 interface MessageListProps {
   messages: ChatMessage[];
   loading?: boolean;
   agentActivity?: AgentActivityEntry[];
+  approvals?: ApprovalRequestView[];
 }
 
-export function MessageList({ messages, loading, agentActivity = [] }: MessageListProps) {
+function AssistantMessage({ content, streaming }: { content: string; streaming?: boolean }) {
+  const revealed = useStreamReveal(content, Boolean(streaming));
+  return <MarkdownMessage content={revealed} streaming={streaming} />;
+}
+
+export function MessageList({ messages, loading, agentActivity = [], approvals = [] }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages, loading, agentActivity.length]);
+  }, [messages, loading, agentActivity.length, approvals.length]);
 
   if (messages.length === 0) {
     return (
@@ -32,7 +39,7 @@ export function MessageList({ messages, loading, agentActivity = [] }: MessageLi
           <div className="message-content">
             {msg.role === 'assistant' ? (
               msg.content ? (
-                <MarkdownMessage content={msg.content} streaming={msg.streaming} />
+                <AssistantMessage content={msg.content} streaming={msg.streaming} />
               ) : msg.streaming ? (
                 <p className="message-working">
                   <span className="message-working__pulse" aria-hidden="true" />
@@ -43,15 +50,19 @@ export function MessageList({ messages, loading, agentActivity = [] }: MessageLi
               msg.content
             )}
             {msg.streaming && msg.content && !msg.content.includes('```') && (
-              <span className="streaming-cursor" aria-hidden="true">▋</span>
+              <span className="streaming-cursor streaming-cursor--pulse" aria-hidden="true">▋</span>
             )}
           </div>
         </article>
       ))}
-      {(loading || agentActivity.length > 0) && (
+      {(loading || agentActivity.length > 0 || approvals.length > 0) && (
         <article className="message message--assistant message--activity">
           <div className="message-content">
-            <AgentActivityPanel entries={agentActivity} loading={Boolean(loading)} compact />
+            <AgentActivityPanel
+              entries={agentActivity}
+              loading={Boolean(loading)}
+              waitingForApproval={!loading && approvals.length > 0}
+            />
           </div>
         </article>
       )}

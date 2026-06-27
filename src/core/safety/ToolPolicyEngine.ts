@@ -17,6 +17,7 @@ const DANGEROUS_COMMANDS = [
 const READ_ONLY_TOOLS = new Set([
   'read_file', 'read_files', 'list_files', 'search', 'search_batch', 'repo_map',
   'retrieve_context', 'git_diff', 'diagnostics', 'memory_search', 'spawn_research_agent',
+  'save_task_state',
 ]);
 
 const WRITE_TOOLS = new Set(['write_file', 'apply_patch', 'memory_write']);
@@ -62,11 +63,11 @@ export class ToolPolicyEngine {
       if (this.safetyConfig.blockDangerousCommands && isDangerousCommand(command)) {
         return { decision: 'block', reason: 'Dangerous command blocked' };
       }
-      if (this.safetyConfig.requireApprovalForShell) {
-        return { decision: 'require_approval', reason: 'Shell commands require approval' };
-      }
       if (isReadOnlyCommand(command)) {
         return { decision: 'allow', reason: 'Read-only inspection command' };
+      }
+      if (this.safetyConfig.requireApprovalForShell) {
+        return { decision: 'require_approval', reason: 'Shell commands require approval' };
       }
       return { decision: 'allow', reason: 'Shell auto-approved by policy' };
     }

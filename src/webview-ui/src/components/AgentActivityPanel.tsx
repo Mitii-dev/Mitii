@@ -1,11 +1,9 @@
-import { useState } from 'react';
 import type { AgentActivityEntry } from '../../../vscode/webview/messages';
-import { IconChevronDown } from './Icons';
 
 interface AgentActivityPanelProps {
   entries: AgentActivityEntry[];
   loading: boolean;
-  compact?: boolean;
+  waitingForApproval?: boolean;
 }
 
 const KIND_LABEL: Record<AgentActivityEntry['kind'], string> = {
@@ -19,75 +17,48 @@ const KIND_LABEL: Record<AgentActivityEntry['kind'], string> = {
   tool: 'Tool',
 };
 
-export function AgentActivityPanel({ entries, loading, compact }: AgentActivityPanelProps) {
-  const [open, setOpen] = useState(false);
-  const visible = compact ? entries.slice(-8) : entries;
+export function AgentActivityPanel({ entries, loading, waitingForApproval = false }: AgentActivityPanelProps) {
+  const visible = entries.slice(-8);
   const latest = entries[entries.length - 1];
+  const statusLabel = loading
+    ? 'Working through steps'
+    : waitingForApproval
+      ? 'Waiting for your approval'
+      : 'Activity complete';
 
-  if (entries.length === 0 && !loading) return null;
-
-  if (compact) {
-    return (
-      <section className="agent-timeline" aria-label="Agent activity">
-        <div className="agent-timeline__header">
-          <span className={`agent-timeline__status ${loading ? 'agent-timeline__status--running' : ''}`} />
-          <div className="agent-timeline__title">
-            <span>{loading ? 'Working through steps' : 'Activity complete'}</span>
-            {latest && <strong>{latest.message}</strong>}
-          </div>
-          <span className="agent-timeline__count">{entries.length}</span>
-        </div>
-        <ol className="agent-timeline__list">
-          {visible.map((entry, index) => {
-            const isLatest = index === visible.length - 1;
-            return (
-              <li
-                key={entry.id}
-                className={`agent-timeline__item agent-timeline__item--${entry.kind} ${
-                  isLatest && loading ? 'agent-timeline__item--active' : ''
-                }`}
-              >
-                <span className="agent-timeline__rail" aria-hidden="true" />
-                <div className="agent-timeline__body">
-                  <div className="agent-timeline__row">
-                    <span className="agent-timeline__kind">{KIND_LABEL[entry.kind]}</span>
-                    <span className="agent-timeline__message">{entry.message}</span>
-                  </div>
-                  {entry.detail && (
-                    <pre className="agent-timeline__detail">
-                      {isLatest ? entry.detail : summarizeDetail(entry.detail)}
-                    </pre>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ol>
-      </section>
-    );
-  }
+  if (entries.length === 0 && !loading && !waitingForApproval) return null;
 
   return (
-    <details className="activity-drawer" open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
-      <summary className="activity-drawer__summary">
-        <span>
-          {loading && latest
-            ? `${KIND_LABEL[latest.kind]}: ${latest.message}`
-            : `Activity${loading ? ' · running' : ''}`}
-        </span>
-        <span className="activity-drawer__count">{entries.length}</span>
-        <IconChevronDown className="activity-drawer__chevron" width={14} height={14} />
-      </summary>
-      <ol className="agent-activity__list">
-        {visible.map((entry) => (
-          <li key={entry.id} className={`agent-activity__item agent-activity__item--${entry.kind}`}>
-            <span className="agent-activity__kind">{KIND_LABEL[entry.kind]}</span>
-            <span className="agent-activity__message">{entry.message}</span>
-            {entry.detail && !compact && <pre className="agent-activity__detail">{entry.detail}</pre>}
-          </li>
-        ))}
+    <section className="assistant-thinking" aria-label="Agent activity">
+      <p className="message-working assistant-thinking__status">
+        <span
+          className={`message-working__pulse ${
+            waitingForApproval && !loading ? 'message-working__pulse--waiting' : ''
+          }`}
+          aria-hidden="true"
+        />
+        <span>{latest?.message ?? statusLabel}</span>
+      </p>
+      <ol className="assistant-thinking__list">
+        {visible.map((entry, index) => {
+          const isLatest = index === visible.length - 1;
+          return (
+            <li
+              key={entry.id}
+              className={`assistant-thinking__item assistant-thinking__item--${entry.kind} ${
+                isLatest && loading ? 'assistant-thinking__item--active' : ''
+              }`}
+            >
+              <span className="assistant-thinking__kind">{KIND_LABEL[entry.kind]}</span>
+              <span className="assistant-thinking__message">{entry.message}</span>
+              {entry.detail && (
+                <span className="assistant-thinking__detail">{summarizeDetail(entry.detail)}</span>
+              )}
+            </li>
+          );
+        })}
       </ol>
-    </details>
+    </section>
   );
 }
 

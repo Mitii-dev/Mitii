@@ -1,4 +1,5 @@
 import type { Tool, ToolResult, ToolCallAudit } from './types';
+import { normalizeToolInput } from './coerceInput';
 import { createLogger } from '../telemetry/Logger';
 
 const log = createLogger('ToolRuntime');
@@ -37,7 +38,8 @@ export class ToolRuntime {
       return { success: false, output: '', error: `Unknown tool: ${name}` };
     }
 
-    const parsed = tool.inputSchema.safeParse(input);
+    const normalized = normalizeToolInput(name, input);
+    const parsed = tool.inputSchema.safeParse(normalized);
     if (!parsed.success) {
       return { success: false, output: '', error: `Invalid input: ${parsed.error.message}` };
     }

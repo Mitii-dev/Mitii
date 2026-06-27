@@ -82,7 +82,8 @@ describe('ToolPolicyEngine', () => {
   });
 
   it('requires approval for shell commands when shell approval is enabled', () => {
-    expect(engine.evaluate('run_command', { command: 'rg "DineInKanban" src' }).decision).toBe('require_approval');
+    expect(engine.evaluate('run_command', { command: 'rg "DineInKanban" src' }).decision).toBe('allow');
+    expect(engine.evaluate('run_command', { command: 'npx depcheck' }).decision).toBe('allow');
     expect(engine.evaluate('run_command', { command: 'npm run build' }).decision).toBe('require_approval');
   });
 
@@ -320,6 +321,83 @@ describe('TaskAnalyzer', () => {
     const result = analyzeTask('Continue the current approved task from where it paused.\nOriginal user request: refactor app', 'act');
     expect(result.shouldPlan).toBe(false);
     expect(result.summary).toContain('resume');
+  });
+
+  it('classifies cleanup tasks with common typos as audit', async () => {
+    const { analyzeTask } = await import('../src/core/agent/TaskAnalyzer');
+    const result = analyzeTask(
+      'Can you remove all the unsed imports and files and dependencies from the entire porject',
+      'act'
+    );
+    expect(result.kind).toBe('audit');
+    expect(result.shouldPlan).toBe(true);
+  });
+});
+
+describe('AgentTaskState', () => {
+  it('blocks repeated depcheck after analyze completes', async () => {
+    const { AgentTaskState } = await import('../src/core/agent/AgentTaskState');
+    const state = new AgentTaskState();
+    state.recordToolSuccess('run_command', { command: 'npx depcheck' }, 'Unused: foo');
+    expect(state.getPhase()).toBe('execute');
+    const blocked = state.checkBlocked('run_command', { command: 'npx depcheck --ignores=x' });
+    expect(blocked).toContain('depcheck');
+    expect(blocked).toContain('write_file');
+  });
+
+  it('allows depcheck again after write_file', async () => {
+    const { AgentTaskState } = await import('../src/core/agent/AgentTaskState');
+    const state = new AgentTaskState();
+    state.recordToolSuccess('run_command', { command: 'npx depcheck' }, 'Unused: foo');
+    state.recordToolSuccess('write_file', { path: 'package.json' }, 'Wrote file');
+    const blocked = state.checkBlocked('run_command', { command: 'npx depcheck' });
+    expect(blocked).toBeNull();
+  });
+
+  it('builds pause summary with next step hint', async () => {
+    const { AgentTaskState } = await import('../src/core/agent/AgentTaskState');
+    const state = new AgentTaskState();
+    state.recordToolSuccess('run_command', { command: 'npx depcheck' }, 'Unused dependencies\n* @date-io/dayjs');
+    const summary = state.buildPauseSummary('remove unused deps', 'audit');
+    expect(summary).toContain('@date-io/dayjs');
+    expect(summary).toContain('Next step');
+  });
+
+  it('returns soft block with cached eslint output in execute phase', async () => {
+    const { AgentTaskState } = await import('../src/core/agent/AgentTaskState');
+    const state = new AgentTaskState();
+    state.recordToolSuccess('run_command', { command: 'npx eslint src/' }, 'no-unused-vars: 3 errors');
+    expect(state.getPhase()).toBe('execute');
+    const soft = state.buildSoftBlockResponse('run_command', { command: 'npx eslint src/' });
+    expect(soft).toContain('Skipped redundant');
+    expect(soft).toContain('no-unused-vars');
+    expect(soft).toContain('write_file');
+  });
+});
+
+describe('tool input coercion', () => {
+  it('coerces JSON string arrays for read_files paths', async () => {
+    const { normalizeToolInput } = await import('../src/core/tools/coerceInput');
+    const { stringArray } = await import('../src/core/tools/coerceInput');
+    const schema = stringArray(1, 12);
+    const normalized = normalizeToolInput('read_files', {
+      paths: '["package.json","src/App.tsx"]',
+    });
+    const parsed = schema.safeParse((normalized as { paths: unknown }).paths);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data).toEqual(['package.json', 'src/App.tsx']);
+    }
+  });
+
+  it('coerces search_batch queries sent as JSON string', async () => {
+    const { stringArray } = await import('../src/core/tools/coerceInput');
+    const schema = stringArray(1, 10);
+    const parsed = schema.safeParse('["@date-io/dayjs","escpos-usb"]');
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data).toHaveLength(2);
+    }
   });
 });
 

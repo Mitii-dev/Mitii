@@ -56,9 +56,6 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         if (partial.approvals) {
           this.postMessage({ type: 'setApprovals', payload: partial.approvals });
         }
-        if (partial.contextBudget !== undefined) {
-          // merged in final state sync
-        }
         return;
       }
 
@@ -348,12 +345,21 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       }
 
       this.isStreaming = false;
+      const pendingApprovals = this.controller.getApprovalQueue()?.getPending() ?? [];
       this.state = {
         ...this.state,
         loading: false,
         messages: this.state.messages.map((m) =>
           m.id === assistantId ? { ...m, content: fullContent, streaming: false } : m
         ),
+        approvals: pendingApprovals.map((r) => ({
+          id: r.id,
+          toolName: r.toolName,
+          inputPreview: r.inputPreview,
+          files: r.files,
+          risk: r.risk,
+          reason: r.reason,
+        })),
       };
       this.archiveCurrentThread();
       this.state = { ...this.state, chatHistory: this.historySummaries() };
@@ -365,7 +371,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       this.state = {
         ...this.state,
         loading: false,
-        error: `${formatUserError(safe)}\n\nUse Retry after fixing the provider/model, or switch models in Settings.`,
+        error: `${formatUserError(safe)}${formatErrorHint(safe.message)}`,
       };
       this.archiveCurrentThread();
       this.state = { ...this.state, chatHistory: this.historySummaries() };
@@ -381,25 +387,115 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   private async continueAfterApproval(): Promise<void> {
-    if (this.state.loading || this.state.approvals.length > 0) return;
+    const pendingCount = this.controller.getApprovalQueue()?.getPending().length ?? 0;
+    if (this.state.loading || pendingCount > 0) return;
+
+    if (this.controller.hasSuspendedAgentLoop()) {
+      await this.runResumeAfterApproval();
+      return;
+    }
 
     const lastAssistant = [...this.state.messages].reverse().find((m) => m.role === 'assistant');
-    if (!lastAssistant?.content.includes('Waiting for approval')) return;
+    const paused =
+      lastAssistant?.content.includes('Waiting for your approval') ||
+      lastAssistant?.content.includes('Waiting for approval') ||
+      (this.controller.getPendingApprovalContext().length > 0);
+    if (!paused) return;
 
-    const lastUser = [...this.state.messages].reverse().find((m) => m.role === 'user');
-    if (!lastUser?.content) return;
+    const originalUser = [...this.state.messages]
+      .filter((m) => m.role === 'user')
+      .reverse()
+      .find((m) => !m.content.trim().startsWith('Continue the current approved task'));
+    if (!originalUser?.content) return;
 
+    const approvalContext = this.controller.consumePendingApprovalContext();
     const continuation = [
+      approvalContext,
       'Continue the current approved task from where it paused.',
+      'Current phase: EXECUTE — apply file edits and dependency removals based on the approved command output above.',
       'Do not recreate the requirement analysis or plan.',
-      'Use the existing plan status in the conversation: continue the blocked/running step, mark it done when complete, then move to the next pending step.',
-      'If the approved command already ran, inspect its result from the activity/context and proceed.',
+      'Do not call memory_search first — read the sections above and recent chat messages.',
+      'Do not re-run depcheck, eslint, or list_files already marked complete in Task progress.',
       '',
       'Original user request:',
-      lastUser.content,
-    ].join('\n');
+      originalUser.content,
+    ].filter(Boolean).join('\n');
 
     await this.runChatCompletion(continuation, false);
+  }
+
+  private async runResumeAfterApproval(): Promise<void> {
+    const lastAssistant = [...this.state.messages].reverse().find((m) => m.role === 'assistant');
+    if (!lastAssistant) return;
+
+    this.state = { ...this.state, loading: true, error: null };
+    this.postMessage({ type: 'state', payload: this.state });
+    this.isStreaming = true;
+
+    const assistantId = lastAssistant.id;
+    let fullContent = lastAssistant.content;
+
+    try {
+      const stream = this.controller.resumeAfterApproval();
+      for await (const chunk of stream) {
+        fullContent += chunk;
+        this.state = {
+          ...this.state,
+          messages: this.state.messages.map((m) =>
+            m.id === assistantId ? { ...m, content: fullContent, streaming: true } : m
+          ),
+        };
+        this.postMessage({
+          type: 'updateLastAssistant',
+          payload: { content: fullContent, streaming: true },
+        });
+      }
+
+      this.isStreaming = false;
+      const pendingApprovals = this.controller.getApprovalQueue()?.getPending() ?? [];
+      this.state = {
+        ...this.state,
+        loading: false,
+        messages: this.state.messages.map((m) =>
+          m.id === assistantId ? { ...m, content: fullContent, streaming: false } : m
+        ),
+        approvals: pendingApprovals.map((r) => ({
+          id: r.id,
+          toolName: r.toolName,
+          inputPreview: r.inputPreview,
+          files: r.files,
+          risk: r.risk,
+          reason: r.reason,
+        })),
+      };
+      this.archiveCurrentThread();
+      this.state = { ...this.state, chatHistory: this.historySummaries() };
+      this.postMessage({ type: 'state', payload: this.state });
+      await this.syncState();
+
+      if (pendingApprovals.length === 0 && !this.controller.hasSuspendedAgentLoop()) {
+        return;
+      }
+      if (pendingApprovals.length === 0 && this.controller.hasSuspendedAgentLoop()) {
+        await this.continueAfterApproval();
+      }
+    } catch (error) {
+      this.isStreaming = false;
+      const safe = normalizeError(error);
+      this.state = {
+        ...this.state,
+        loading: false,
+        error: `${formatUserError(safe)}${formatErrorHint(safe.message)}`,
+      };
+      this.postMessage({ type: 'state', payload: this.state });
+      log.error('resumeAfterApproval failed', { message: safe.message });
+    } finally {
+      this.isStreaming = false;
+      if (this.state.loading) {
+        this.state = { ...this.state, loading: false };
+        this.postMessage({ type: 'state', payload: this.state });
+      }
+    }
   }
 
   private archiveCurrentThread(): void {
@@ -463,4 +559,18 @@ function getNonce(): string {
     text += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return text;
+}
+
+function formatErrorHint(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes('database not open') || lower.includes('no workspace')) {
+    return '\n\nOpen a workspace folder or set a path in Thunder Settings → Workspace, then retry.';
+  }
+  if (lower.includes('provider') || lower.includes('model') || lower.includes('connection') || lower.includes('api')) {
+    return '\n\nUse Retry after fixing the provider/model, or switch models in Settings.';
+  }
+  if (lower.includes('approval') || lower.includes('awaiting')) {
+    return '\n\nReview the approval panel below and approve or deny the pending action.';
+  }
+  return '\n\nUse Retry or check Settings if the issue persists.';
 }

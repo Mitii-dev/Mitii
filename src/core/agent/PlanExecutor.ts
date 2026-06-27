@@ -45,20 +45,38 @@ export class PlanExecutor {
     private readonly postEditValidator?: PostEditValidator
   ) {}
 
+  async *analyzeRequirementsStream(
+    provider: LlmProvider,
+    pack: ContextPack,
+    userMessage: string,
+    analysis: TaskAnalysis
+  ): AsyncIterable<string> {
+    const messages = buildRequirementAnalysisPrompt(pack, userMessage, analysis);
+    let response = '';
+
+    for await (const delta of provider.complete({ messages, stream: true })) {
+      if (delta.content) {
+        response += delta.content;
+        yield delta.content;
+      }
+      if (delta.error) throw new Error(delta.error);
+    }
+
+    if (!response.trim()) {
+      yield analysis.summary;
+    }
+  }
+
   async analyzeRequirements(
     provider: LlmProvider,
     pack: ContextPack,
     userMessage: string,
     analysis: TaskAnalysis
   ): Promise<string> {
-    const messages = buildRequirementAnalysisPrompt(pack, userMessage, analysis);
     let response = '';
-
-    for await (const delta of provider.complete({ messages, stream: false })) {
-      if (delta.content) response += delta.content;
-      if (delta.error) throw new Error(delta.error);
+    for await (const chunk of this.analyzeRequirementsStream(provider, pack, userMessage, analysis)) {
+      response += chunk;
     }
-
     return response.trim() || analysis.summary;
   }
 

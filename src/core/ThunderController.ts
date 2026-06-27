@@ -23,12 +23,14 @@ import { ChatOrchestrator } from './ChatOrchestrator';
 import { ToolRuntime } from './tools/ToolRuntime';
 import {
   createReadFileTool, createReadFilesTool, createListFilesTool, createSearchTool,
-  createSearchBatchTool, createSpawnResearchAgentTool,
+  createSearchBatchTool, createSearchScriptCatalogTool, createSpawnResearchAgentTool,
   createRepoMapTool, createRetrieveContextTool, createGitDiffTool,
   createDiagnosticsTool, createWriteFileTool, createApplyPatchTool, createRunCommandTool,
-  createMemorySearchTool, createMemoryWriteTool,
+  createMemorySearchTool, createMemoryWriteTool, createSaveTaskStateTool,
   setSubagentTracker,
 } from './tools/builtinTools';
+import { AgentTaskState } from './agent/AgentTaskState';
+import { isApprovalContinuationMessage } from './agent/taskMessage';
 import { ToolPolicyEngine } from './safety/ToolPolicyEngine';
 import { applyAutonomyPreset } from './safety/autonomyPresets';
 import { ApprovalQueue } from './safety/ApprovalQueue';
@@ -117,6 +119,9 @@ export class ThunderController {
   private disposed = false;
   private workspaceNotice: { kind: 'ok' | 'error' | 'warn'; message: string } | null = null;
   private configDisposable: vscode.Disposable | undefined;
+  private pendingApprovalOutputs: string[] = [];
+  private resumeApprovalResults: import('./agent/AgentLoop').ApprovedToolResult[] = [];
+  private agentTaskState = new AgentTaskState();
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.configService = new ConfigService(context);
@@ -291,7 +296,25 @@ export class ThunderController {
       this.policyEngine,
       this.approvalQueue,
       () => this.session?.id ?? '',
-      () => this.session?.mode ?? 'plan'
+      () => this.session?.mode ?? 'plan',
+      () => {
+        const pending = this.approvalQueue?.getPending() ?? [];
+        this.agentLiveStatus = {
+          label: 'Waiting for approval',
+          detail: `${pending.length} action${pending.length === 1 ? '' : 's'} need your review`,
+        };
+        this.pushActivity(
+          'approval',
+          'Waiting for your approval',
+          pending.map((p) => p.inputPreview).join('\n') || undefined
+        );
+        this.notifyUi({
+          approvals: pending.map(toApprovalView),
+          agentLiveStatus: this.agentLiveStatus,
+          agentActivity: this.agentActivity,
+        });
+      },
+      () => this.agentTaskState
     );
 
     const retriever = this.buildRetriever(db, workspace);
@@ -306,6 +329,7 @@ export class ThunderController {
     this.toolRuntime.register(createListFilesTool(workspace, this.ignoreService));
     this.toolRuntime.register(createSearchTool(fts, workspace));
     this.toolRuntime.register(createSearchBatchTool(fts, workspace));
+    this.toolRuntime.register(createSearchScriptCatalogTool(workspace, this.context.extensionPath));
     this.toolRuntime.register(createSpawnResearchAgentTool());
     this.toolRuntime.register(createRepoMapTool(repoMap));
     this.toolRuntime.register(createRetrieveContextTool(retriever, budgeter));
@@ -316,6 +340,9 @@ export class ThunderController {
     this.toolRuntime.register(createRunCommandTool(workspace, () => this.session?.mode ?? 'plan'));
     this.toolRuntime.register(createMemorySearchTool(this.memoryService));
     this.toolRuntime.register(createMemoryWriteTool(this.memoryService, () => this.session?.id ?? ''));
+    this.toolRuntime.register(
+      createSaveTaskStateTool(this.memoryService, () => this.session?.id ?? '', () => this.agentTaskState)
+    );
     await this.mcpManager.reload(config.mcp, workspace, this.toolRuntime);
 
     this.memoryExtractor = new MemoryExtractor(
@@ -350,6 +377,8 @@ export class ThunderController {
         await this.validateAfterWrite(relPath);
       },
       workspace: ws,
+      memoryService: this.memoryService,
+      taskState: this.agentTaskState,
     });
     orchestrator.setToolExecutor(this.toolExecutor);
     orchestrator.setContextPackCallback((pack, views, budget) => {
@@ -362,12 +391,13 @@ export class ThunderController {
     });
     orchestrator.setActivityCallback((entry) => {
       this.agentActivity = [...this.agentActivity.slice(-20), entry];
-      if (entry.kind === 'error') {
+      if (entry.kind === 'error' && entry.detail !== 'Awaiting approval') {
         this.sessionLog.append('error', entry.message, { detail: entry.detail });
       }
       const partial: Partial<WebviewState> = { agentActivity: this.agentActivity };
-      if (entry.kind === 'approval') {
-        partial.approvals = (this.approvalQueue?.getPending() ?? []).map(toApprovalView);
+      const pending = this.approvalQueue?.getPending() ?? [];
+      if (pending.length > 0) {
+        partial.approvals = pending.map(toApprovalView);
       }
       this.notifyUi(partial);
     });
@@ -408,7 +438,7 @@ export class ThunderController {
   private rebuildRetriever(): void {
     const workspace = this.resolveWorkspacePath();
     const db = this.indexService?.getDb();
-    if (!workspace || !db) return;
+    if (!workspace || !db?.isOpen()) return;
     const retriever = this.buildRetriever(db, workspace);
     this.chatOrchestrator = this.createChatOrchestrator(retriever, new ContextBudgeter(), db, workspace);
   }
@@ -503,7 +533,7 @@ export class ThunderController {
       contextPreview: base.contextPreview ?? [],
       contextTokenEstimate: base.contextTokenEstimate ?? 0,
       contextBudget: base.contextBudget ?? null,
-      agentActivity: base.agentActivity ?? [],
+      agentActivity: this.agentActivity,
       agentLiveStatus: base.agentLiveStatus ?? this.agentLiveStatus,
       subagents: base.subagents ?? this.subagentTracker.getRuns().map((r) => ({
         id: r.id,
@@ -752,12 +782,14 @@ export class ThunderController {
 
   async sendMessage(
     content: string,
-    recentMessages: Array<{ role: 'user' | 'assistant'; content: string }> = []
+    recentMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+    options?: { preserveActivity?: boolean }
   ): Promise<AsyncIterable<string>> {
     if (!this.session) throw normalizeError(new Error('Session not initialized'));
     const provider = this.providerRegistry.getActive();
     if (!provider) throw normalizeError(new Error('No LLM provider configured'));
 
+    const isContinuation = isApprovalContinuationMessage(content.trim());
     this.sessionService?.ensureSession(this.session, content.slice(0, 64));
     const workspace = this.resolveWorkspacePath();
     if (workspace) {
@@ -767,9 +799,13 @@ export class ThunderController {
     this.subagentTracker.clear();
     setSubagentTracker(this.subagentTracker);
 
-    this.agentActivity = [];
-    this.agentLiveStatus = null;
-    this.notifyUi({ agentActivity: [], agentLiveStatus: null, contextBudget: null, subagents: [] });
+    if (!isContinuation && !options?.preserveActivity) {
+      this.agentActivity = [];
+      this.agentLiveStatus = null;
+      this.pendingApprovalOutputs = [];
+      this.agentTaskState.reset();
+      this.notifyUi({ agentActivity: [], agentLiveStatus: null, contextBudget: null, subagents: [] });
+    }
 
     this.ensureChatOrchestrator();
     if (!this.chatOrchestrator) {
@@ -857,6 +893,49 @@ export class ThunderController {
     await vscode.window.showTextDocument(doc, { preview: false });
   }
 
+  getPendingApprovalContext(): string {
+    const parts: string[] = [];
+    const taskBlock = this.agentTaskState.buildPromptBlock();
+    if (taskBlock) {
+      parts.push('## Task progress (from state machine)', '', taskBlock);
+    }
+    if (this.pendingApprovalOutputs.length > 0) {
+      parts.push(
+        '## Approved command output',
+        '',
+        ...this.pendingApprovalOutputs,
+        '',
+        'Analysis phase is complete for the commands above. Proceed to Phase 2 (Execute): edit files and update package.json.',
+      );
+    }
+    return parts.join('\n');
+  }
+
+  consumePendingApprovalContext(): string {
+    const ctx = this.getPendingApprovalContext();
+    this.pendingApprovalOutputs = [];
+    return ctx;
+  }
+
+  getAgentTaskState(): AgentTaskState {
+    return this.agentTaskState;
+  }
+
+  hasSuspendedAgentLoop(): boolean {
+    this.ensureChatOrchestrator();
+    return this.chatOrchestrator?.hasSuspendState() ?? false;
+  }
+
+  resumeAfterApproval(): AsyncIterable<string> {
+    this.ensureChatOrchestrator();
+    if (!this.chatOrchestrator) {
+      return (async function* empty() {})();
+    }
+    const approved = [...this.resumeApprovalResults];
+    this.resumeApprovalResults = [];
+    return this.chatOrchestrator.resumeAfterApproval(approved);
+  }
+
   stopGeneration(): void {
     this.chatOrchestrator?.stop();
   }
@@ -877,6 +956,15 @@ export class ThunderController {
 
     if (decision === 'denied') {
       this.pushActivity('info', `Denied ${request.toolName}`, request.files.join(', ') || undefined);
+      if (request.toolCallId) {
+        this.resumeApprovalResults.push({
+          toolCallId: request.toolCallId,
+          toolName: request.toolName,
+          output: 'User denied this tool call.',
+          success: false,
+          input: fullInput,
+        });
+      }
       return;
     }
 
@@ -927,6 +1015,22 @@ export class ThunderController {
         ? 'Ran approved command'
         : `Applied ${path ?? request.toolName}`;
       this.pushActivity(request.toolName === 'run_command' ? 'tool' : 'apply', successMessage, result.output);
+      if (request.toolName === 'run_command' && typeof fullInput.command === 'string') {
+        this.pendingApprovalOutputs.push(
+          `### Command\n\`${fullInput.command}\`\n\n### Output\n${result.output.slice(0, 6000)}`
+        );
+      } else if (path) {
+        this.pendingApprovalOutputs.push(`Applied ${request.toolName} to \`${path}\``);
+      }
+      if (request.toolCallId) {
+        this.resumeApprovalResults.push({
+          toolCallId: request.toolCallId,
+          toolName: request.toolName,
+          output: result.output,
+          success: true,
+          input: fullInput,
+        });
+      }
       void vscode.window.showInformationMessage(
         request.toolName === 'run_command' ? 'Thunder: Command completed.' : `Thunder: Updated ${path ?? 'file'}`
       );
@@ -940,6 +1044,15 @@ export class ThunderController {
     } else {
       this.pushActivity('error', `Failed to apply ${path ?? request.toolName}`, result.error);
       void vscode.window.showErrorMessage(`Thunder: ${result.error ?? 'Write failed'}`);
+      if (request.toolCallId) {
+        this.resumeApprovalResults.push({
+          toolCallId: request.toolCallId,
+          toolName: request.toolName,
+          output: result.error ?? 'Tool failed',
+          success: false,
+          input: fullInput,
+        });
+      }
     }
   }
 

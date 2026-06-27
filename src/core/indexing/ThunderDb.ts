@@ -25,6 +25,11 @@ export class ThunderDb {
     return this.db;
   }
 
+  /** Returns the underlying database when open, otherwise undefined (safe for optional persistence). */
+  tryRaw(): Database.Database | undefined {
+    return this.db;
+  }
+
   transaction<T>(fn: () => T): T {
     return this.raw.transaction(fn)();
   }

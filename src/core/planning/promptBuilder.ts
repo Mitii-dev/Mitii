@@ -2,6 +2,7 @@ import type { ContextPack } from '../context/types';
 import type { ChatMessage } from '../llm/types';
 import type { ThunderMode } from '../ThunderSession';
 import type { ThunderPlan } from './PlanActEngine';
+import { CHAT_HISTORY_GUIDANCE, STATE_MACHINE_GUIDANCE } from '../agent/taskStatePrompt';
 
 const TOOL_GUIDANCE = `
 TOOLS: You have tools to read files, search code, run commands, write files, and manage memory.
@@ -11,7 +12,8 @@ TOOLS: You have tools to read files, search code, run commands, write files, and
 - Use spawn_research_agent to delegate focused research (unused deps, orphan files, static assets) — spawn multiple for parallel analysis.
 - Prefer apply_patch for small targeted changes; use write_file for new files or full rewrites.
 - Use run_command for depcheck, npm ls, ripgrep, tests, lint, or build after changes.
-- Use memory_search for past decisions; memory_write to save important facts.
+- Use memory_search only as a fallback when chat history lacks needed facts.
+- Use save_task_state or memory_write to persist progress BEFORE pausing for approval (required).
 - In Act mode, you may call write_file/apply_patch/run_command tools directly.
 - If a tool returns "awaiting approval", stop and inform the user.
 - NEVER say "I will search…" without calling tools in the same turn.`;
@@ -24,7 +26,12 @@ AUDIT / CLEANUP MODE:
 4. Report with confidence: high (safe to remove), medium (likely unused), low (needs review).
 5. In Plan/Review mode: report only — do NOT delete files or edit package.json until user confirms.`;
 
-export function buildSystemPrompt(mode: ThunderMode, toolsEnabled = false, auditMode = false): string {
+export function buildSystemPrompt(
+  mode: ThunderMode,
+  toolsEnabled = false,
+  auditMode = false,
+  isContinuation = false
+): string {
   const modeInstructions: Record<ThunderMode, string> = {
     plan: `You are in PLAN mode. Analyze the codebase and give a direct answer.
 - Start with a 1-2 sentence summary of your recommendation.
@@ -33,10 +40,13 @@ export function buildSystemPrompt(mode: ThunderMode, toolsEnabled = false, audit
 - For complex tasks, output a JSON plan block (see format below).`,
     act: `You are in ACT mode. Implement changes using tools and/or CODE_EDIT_BLOCK format.
 
+${STATE_MACHINE_GUIDANCE}
+${CHAT_HISTORY_GUIDANCE}
+
 Systematic workflow — follow this order:
-1. **Understand** — read_file / search / retrieve_context to understand the code
-2. **Implement** — apply_patch or write_file to make changes
-3. **Verify** — diagnostics / run_command (lint, test, build) after each change
+1. **Analyze** — read_file / list_files / depcheck / eslint (once each) to understand the codebase
+2. **Execute** — apply_patch or write_file to make changes; update package.json for deps
+3. **Verify** — diagnostics / run_command (lint, test, build) after changes
 4. **Fix** — if validation reports errors, fix them before moving on
 
 You may also output files in this format when tools are unavailable:
@@ -73,6 +83,7 @@ For multi-step tasks in Plan mode, include:
 ${modeInstructions[mode]}
 ${toolsEnabled ? TOOL_GUIDANCE : ''}
 ${toolsEnabled && auditMode ? AUDIT_GUIDANCE : ''}
+${toolsEnabled && isContinuation ? '\nCONTINUATION TURN: Read recent conversation messages first. Do NOT call memory_search before checking chat history and task progress.' : ''}
 ${mode === 'plan' ? planFormat : ''}
 
 RULES:
@@ -94,26 +105,36 @@ export function buildPrompt(
   userMessage: string,
   recentMessages: ChatMessage[] = [],
   toolsEnabled = false,
-  auditMode = false
+  auditMode = false,
+  taskStateBlock?: string,
+  isContinuation = false
 ): ChatMessage[] {
   const contextBlock = contextPack.formatted
     ? contextPack.formatted
     : '(no workspace context — user may need to index workspace)';
 
+  const taskProgress = taskStateBlock
+    ? `\n\n## Task progress\n\n${taskStateBlock}\n`
+    : '';
+
+  const continuationNote = isContinuation
+    ? `\n\n## Continuation\nThis turn resumes after user approval. Read **Recent conversation** above for tool outputs. Do NOT re-run depcheck/eslint/list_files already marked complete in Task progress. Proceed to Execute phase.\n`
+    : '';
+
   const userContent = `## Codebase Context
 
 ${contextBlock}
-
+${taskProgress}${continuationNote}
 ---
 
 ## User request
 
 ${userMessage}
 
-Answer using the codebase context above. Be direct and specific.`;
+Answer using the codebase context and recent conversation above. Be direct and specific.`;
 
   const messages: ChatMessage[] = [
-    { role: 'system', content: buildSystemPrompt(mode, toolsEnabled, auditMode) },
+    { role: 'system', content: buildSystemPrompt(mode, toolsEnabled, auditMode, isContinuation) },
   ];
 
   for (const msg of recentMessages) {

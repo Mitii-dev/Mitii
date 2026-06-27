@@ -76,7 +76,7 @@ export function createReadFileTool(workspace: string, ignoreService: IgnoreServi
 export function createReadFilesTool(workspace: string, ignoreService: IgnoreService): Tool<{ paths: string[] }> {
   return {
     name: 'read_files',
-    description: 'Read multiple workspace files in one call. Batch independent reads together.',
+    description: 'Read multiple workspace files in one call. paths must be a JSON array of strings, e.g. ["src/a.ts","package.json"].',
     risk: 'low',
     inputSchema: z.object({ paths: z.array(z.string()).min(1).max(12) }),
     async execute(input): Promise<ToolResult> {
@@ -210,7 +210,7 @@ export function createSearchTool(fts: FtsIndex, workspace?: string): Tool<{ quer
 export function createSearchBatchTool(fts: FtsIndex, workspace?: string): Tool<{ queries: string[]; limit?: number }> {
   return {
     name: 'search_batch',
-    description: 'Run multiple code searches in parallel. Batch all independent search patterns in one call.',
+    description: 'Run multiple code searches in parallel. queries must be a JSON array of strings, e.g. ["dayjs","@fontsource"].',
     risk: 'low',
     inputSchema: z.object({
       queries: z.array(z.string()).min(1).max(10),
@@ -227,6 +227,91 @@ export function createSearchBatchTool(fts: FtsIndex, workspace?: string): Tool<{
       return { success: true, output: results.join('\n\n') };
     },
   };
+}
+
+interface ScriptCatalogEntry {
+  id: number;
+  name: string;
+  category: string;
+  command: string;
+  description: string;
+  keywords?: string[];
+  readOnly: boolean;
+}
+
+export function createSearchScriptCatalogTool(
+  workspace: string,
+  extensionRoot: string
+): Tool<{ query: string; limit?: number }> {
+  return {
+    name: 'search_script_catalog',
+    description:
+      'Search Thunder helper scripts by intent. Use before running specialized audits so only the relevant script name and command enter context.',
+    risk: 'low',
+    inputSchema: z.object({ query: z.string(), limit: z.number().optional() }),
+    async execute(input): Promise<ToolResult> {
+      const catalog = readScriptCatalog(workspace, extensionRoot);
+      const matches = searchScriptCatalog(catalog, input.query, input.limit ?? 5);
+      return {
+        success: true,
+        output: matches.length ? JSON.stringify({ query: input.query, matches }, null, 2) : '(no matching scripts)',
+      };
+    },
+  };
+}
+
+function readScriptCatalog(workspace: string, extensionRoot: string): ScriptCatalogEntry[] {
+  const workspaceCatalog = join(workspace, 'scripts', 'script-catalog.json');
+  const bundledCatalog = join(extensionRoot, 'scripts', 'script-catalog.json');
+  const catalogPath = pathExists(workspaceCatalog) ? workspaceCatalog : bundledCatalog;
+  try {
+    return JSON.parse(readFileSync(catalogPath, 'utf8')) as ScriptCatalogEntry[];
+  } catch (e) {
+    log.warn('Script catalog unavailable', { catalogPath, error: String(e) });
+    return [];
+  }
+}
+
+function searchScriptCatalog(
+  catalog: ScriptCatalogEntry[],
+  query: string,
+  limit: number
+): Array<ScriptCatalogEntry & { score: number }> {
+  const terms = tokenizeCatalogText(query);
+  return catalog
+    .map((entry) => ({ ...entry, score: terms.length ? scoreCatalogEntry(entry, terms, query) : 1 }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.id - b.id)
+    .slice(0, Math.max(1, Math.min(limit, 10)));
+}
+
+function scoreCatalogEntry(entry: ScriptCatalogEntry, terms: string[], query: string): number {
+  const haystack = [
+    entry.name,
+    entry.category,
+    entry.command,
+    entry.description,
+    ...(entry.keywords ?? []),
+  ].join(' ').toLowerCase();
+  const words = new Set(tokenizeCatalogText(haystack));
+  let score = haystack.includes(query.toLowerCase()) ? 10 : 0;
+  for (const term of terms) {
+    if (words.has(term)) score += 6;
+    if (haystack.includes(term)) score += 3;
+    for (const keyword of entry.keywords ?? []) {
+      const keywordText = keyword.toLowerCase();
+      if (keywordText === term) score += 8;
+      else if (keywordText.includes(term)) score += 4;
+    }
+  }
+  return score;
+}
+
+function tokenizeCatalogText(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9@._-]+/)
+    .filter(Boolean);
 }
 
 async function runSearch(
@@ -319,7 +404,7 @@ export function createMemoryWriteTool(
 ): Tool<{ type: string; text: string; files?: string[] }> {
   return {
     name: 'memory_write',
-    description: 'Save an observation to long-term memory',
+    description: 'Save an observation to long-term memory. Alias: use save_task_state for approval pauses.',
     risk: 'medium',
     inputSchema: z.object({
       type: z.string(),
@@ -332,6 +417,35 @@ export function createMemoryWriteTool(
         return { success: false, output: '', error: 'Memory write blocked (secrets or invalid)' };
       }
       return { success: true, output: `Saved memory #${obs.id}` };
+    },
+  };
+}
+
+export function createSaveTaskStateTool(
+  memory: MemoryService,
+  getSessionId: () => string,
+  getTaskState?: () => import('../agent/AgentTaskState').AgentTaskState | undefined
+): Tool<{ summary: string; next_step?: string }> {
+  return {
+    name: 'save_task_state',
+    description:
+      'Save task progress before pausing for user approval. Required when about to wait for approval. ' +
+      'Include what was analyzed and the concrete next step (e.g. "depcheck found @date-io/dayjs unused; next: npm uninstall").',
+    risk: 'low',
+    inputSchema: z.object({
+      summary: z.string(),
+      next_step: z.string().optional(),
+    }),
+    async execute(input): Promise<ToolResult> {
+      const text = input.next_step
+        ? `${input.summary}\n\nNext step: ${input.next_step}`
+        : input.summary;
+      getTaskState?.()?.setPauseSummary(text);
+      const obs = memory.write(getSessionId(), 'decision', text, undefined, ['task_state']);
+      if (!obs) {
+        return { success: false, output: '', error: 'Task state save blocked (secrets or invalid)' };
+      }
+      return { success: true, output: `Task state saved (#${obs.id})` };
     },
   };
 }
@@ -419,8 +533,16 @@ export function createRunCommandTool(workspace: string, getMode: () => string): 
         log.info('Command executed', { command: normalized.command.slice(0, 80), cwd: normalized.cwd });
         return { success: true, output: output || '(no output)' };
       } catch (e) {
-        const err = e as { stdout?: string; stderr?: string; message?: string };
-        const output = [err.stdout, err.stderr, err.message].filter(Boolean).join('\n').slice(0, 50000);
+        const err = e as { code?: number; stdout?: string; stderr?: string; message?: string };
+        const output = [err.stdout, err.stderr].filter(Boolean).join('\n').slice(0, 50000);
+        // rg/grep/depcheck exit 1 when no matches or findings — still useful output, not a hard failure
+        if (isReadOnlyCommand(input.command) && (err.code === 1 || output.length > 0)) {
+          log.info('Read-only command non-zero exit treated as success', {
+            command: input.command.slice(0, 80),
+            code: err.code,
+          });
+          return { success: true, output: output || '(no matches)' };
+        }
         return { success: false, output, error: err.message ?? 'Command failed' };
       }
     },

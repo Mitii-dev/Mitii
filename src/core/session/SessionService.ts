@@ -10,18 +10,21 @@ export class SessionService {
   constructor(private readonly db: ThunderDb) {}
 
   ensureSession(session: ThunderSession, title?: string): void {
-    const existing = this.db.raw
+    const db = this.db.tryRaw();
+    if (!db) return;
+
+    const existing = db
       .prepare('SELECT id FROM agent_sessions WHERE id = ?')
       .get(session.id) as { id: string } | undefined;
 
     if (existing) {
-      this.db.raw
+      db
         .prepare('UPDATE agent_sessions SET mode = ?, updated_at = ? WHERE id = ?')
         .run(session.mode, Date.now(), session.id);
       return;
     }
 
-    this.db.raw.prepare(`
+    db.prepare(`
       INSERT INTO agent_sessions (id, workspace, title, mode, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(
@@ -36,24 +39,30 @@ export class SessionService {
   }
 
   updateTitle(sessionId: string, title: string): void {
-    this.db.raw
+    const db = this.db.tryRaw();
+    if (!db) return;
+    db
       .prepare('UPDATE agent_sessions SET title = ?, updated_at = ? WHERE id = ?')
       .run(title.slice(0, 200), Date.now(), sessionId);
   }
 
   saveTurn(sessionId: string, role: string, content: string): void {
-    this.db.raw.prepare(`
+    const db = this.db.tryRaw();
+    if (!db) return;
+    db.prepare(`
       INSERT INTO agent_turns (id, session_id, role, content, created_at)
       VALUES (?, ?, ?, ?, ?)
     `).run(randomUUID(), sessionId, role, content, Date.now());
 
-    this.db.raw
+    db
       .prepare('UPDATE agent_sessions SET updated_at = ? WHERE id = ?')
       .run(Date.now(), sessionId);
   }
 
   loadTurns(sessionId: string, limit = 20): ChatMessage[] {
-    const rows = this.db.raw
+    const db = this.db.tryRaw();
+    if (!db) return [];
+    const rows = db
       .prepare(`
         SELECT role, content FROM agent_turns
         WHERE session_id = ?
@@ -68,7 +77,9 @@ export class SessionService {
   }
 
   saveSessionSummary(sessionId: string, summary: string): void {
-    this.db.raw.prepare(`
+    const db = this.db.tryRaw();
+    if (!db) return;
+    db.prepare(`
       INSERT INTO session_summaries (id, session_id, summary, created_at)
       VALUES (?, ?, ?, ?)
     `).run(randomUUID(), sessionId, summary, Date.now());

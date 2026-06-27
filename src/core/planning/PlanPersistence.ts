@@ -9,17 +9,20 @@ export class PlanPersistence {
   constructor(private readonly db: ThunderDb) {}
 
   save(sessionId: string, plan: ThunderPlan, status = 'active'): string {
+    const db = this.db.tryRaw();
+    if (!db) return randomUUID();
+
     const existing = this.getActive(sessionId);
     const id = existing?.id ?? randomUUID();
     const now = Date.now();
 
     if (existing) {
-      this.db.raw.prepare(`
+      db.prepare(`
         UPDATE task_plans SET goal = ?, status = ?, plan_json = ?, updated_at = ?
         WHERE id = ?
       `).run(plan.goal, status, JSON.stringify(plan), now, id);
     } else {
-      this.db.raw.prepare(`
+      db.prepare(`
         INSERT INTO task_plans (id, session_id, goal, status, plan_json, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(id, sessionId, plan.goal, status, JSON.stringify(plan), now, now);
@@ -30,19 +33,25 @@ export class PlanPersistence {
   }
 
   updatePlan(sessionId: string, plan: ThunderPlan, status?: string): void {
+    const db = this.db.tryRaw();
+    if (!db) return;
+
     const active = this.getActive(sessionId);
     if (!active) {
       this.save(sessionId, plan, status ?? 'active');
       return;
     }
-    this.db.raw.prepare(`
+    db.prepare(`
       UPDATE task_plans SET plan_json = ?, status = COALESCE(?, status), updated_at = ?
       WHERE id = ?
     `).run(JSON.stringify(plan), status ?? null, Date.now(), active.id);
   }
 
   getActive(sessionId: string): { id: string; plan: ThunderPlan; status: string } | null {
-    const row = this.db.raw
+    const db = this.db.tryRaw();
+    if (!db) return null;
+
+    const row = db
       .prepare(`
         SELECT id, plan_json, status FROM task_plans
         WHERE session_id = ? AND status IN ('active', 'running')
@@ -55,7 +64,9 @@ export class PlanPersistence {
   }
 
   complete(sessionId: string): void {
-    this.db.raw
+    const db = this.db.tryRaw();
+    if (!db) return;
+    db
       .prepare(`UPDATE task_plans SET status = 'completed', updated_at = ? WHERE session_id = ? AND status IN ('active', 'running')`)
       .run(Date.now(), sessionId);
   }

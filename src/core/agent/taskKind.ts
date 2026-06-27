@@ -1,6 +1,6 @@
 /** Audit / cleanup / dependency analysis tasks (report-first, tools-heavy). */
 export function isAuditCleanupTask(text: string): boolean {
-  return /\b(unused|dead code|orphan|cleanup|clean up|remove unused|depcheck|dependencies audit|dependency audit|find unused|list unused|reduce bundle|tree[- ]shake)\b/i.test(
+  return /\b(unus[a-z]*|dead code|orphan|cleanup|clean up|remove\s+(?:all\s+)?(?:the\s+)?(?:(?:uns[a-z]*|unused)\s+)?(?:imports?|files?|dependenc(?:y|ies)?)|depcheck|dependencies audit|dependency audit|find unused|list unused|reduce bundle|tree[- ]shake)\b/i.test(
     text
   );
 }

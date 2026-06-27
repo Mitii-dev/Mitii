@@ -43,11 +43,11 @@ export function isReadOnlyCommand(command: string): boolean {
 
 function isReadOnlyCommandSegment(cmd: string): boolean {
   if (/^(npx\s+)?depcheck\b/i.test(cmd)) return true;
-  if (/^npx\s+eslint\b/i.test(cmd)) return true;
-  if (/^npm\s+(ls|list|outdated|audit|run\s+(lint|test|typecheck|check|build))\b/i.test(cmd)) return true;
+  if (/^npx\s+eslint\b/i.test(cmd) && !/\s--fix\b/.test(cmd)) return true;
+  if (/^npm\s+(ls|list|outdated|audit|run\s+(lint|test|typecheck|check))\b/i.test(cmd)) return true;
   if (/^yarn\s+(why|list|info|lint|test|build)\b/i.test(cmd)) return true;
   if (/^pnpm\s+(why|list|lint|test|build)\b/i.test(cmd)) return true;
-  if (/^(grep|rg|find|cat|head|tail|wc|sort|uniq|ls|tree)\b/i.test(cmd)) return true;
+  if (/^(grep|rg|find|cat|head|tail|wc|sort|uniq|ls|tree|which|echo)\b/i.test(cmd)) return true;
   if (/^git\s+(status|diff|log|ls-files)\b/i.test(cmd)) return true;
   return false;
 }

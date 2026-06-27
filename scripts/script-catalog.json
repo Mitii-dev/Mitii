@@ -1,0 +1,92 @@
+[
+  {
+    "id": 41,
+    "name": "audit-dead-code.sh",
+    "category": "advanced-project-auditing",
+    "command": "bash scripts/audit-dead-code.sh",
+    "description": "Run knip with the JSON reporter to find unused files, dependencies, devDependencies, and exports in one pass.",
+    "keywords": ["knip", "dead code", "unused files", "unused dependencies", "unused exports", "audit", "depcheck"],
+    "readOnly": true
+  },
+  {
+    "id": 42,
+    "name": "check-circular-deps.mjs",
+    "category": "advanced-project-auditing",
+    "command": "node scripts/check-circular-deps.mjs",
+    "description": "Use madge to detect circular dependency chains across TypeScript and JavaScript files.",
+    "keywords": ["madge", "circular dependencies", "import cycle", "dependency graph", "react render bugs"],
+    "readOnly": true
+  },
+  {
+    "id": 43,
+    "name": "audit-package-engines.mjs",
+    "category": "advanced-project-auditing",
+    "command": "node scripts/audit-package-engines.mjs",
+    "description": "Compare package.json engines.node against the current Node runtime before installing or deploying packages.",
+    "keywords": ["engines", "node version", "package.json", "deployment", "runtime compatibility"],
+    "readOnly": true
+  },
+  {
+    "id": 44,
+    "name": "find-console-logs.sh",
+    "category": "code-smells-tech-debt",
+    "command": "bash scripts/find-console-logs.sh",
+    "description": "Fast ripgrep sweep for console.log, console.warn, and debugger statements outside tests and build output.",
+    "keywords": ["console.log", "console.warn", "debugger", "leftover logs", "code smell"],
+    "readOnly": true
+  },
+  {
+    "id": 45,
+    "name": "find-inline-styles.sh",
+    "category": "code-smells-tech-debt",
+    "command": "bash scripts/find-inline-styles.sh",
+    "description": "Find React inline style object literals such as style={{ ... }} so styles can be extracted.",
+    "keywords": ["inline styles", "react", "style object", "mui", "css classes", "styled components"],
+    "readOnly": true
+  },
+  {
+    "id": 46,
+    "name": "check-missing-types.sh",
+    "category": "code-smells-tech-debt",
+    "command": "bash scripts/check-missing-types.sh",
+    "description": "Compare runtime dependencies with @types/* devDependencies and warn about likely missing TypeScript definitions.",
+    "keywords": ["typescript", "@types", "missing types", "dependencies", "type definitions"],
+    "readOnly": true
+  },
+  {
+    "id": 47,
+    "name": "list-untracked-files.sh",
+    "category": "git-state-safety",
+    "command": "bash scripts/list-untracked-files.sh",
+    "description": "List git-untracked files that may need to be reviewed or added before a commit.",
+    "keywords": ["git", "untracked files", "new files", "commit safety", "status"],
+    "readOnly": true
+  },
+  {
+    "id": 48,
+    "name": "write-checkpoint.sh",
+    "category": "git-state-safety",
+    "command": "bash scripts/write-checkpoint.sh",
+    "description": "Write the current plan, findings, and git status to .thunder-state.json before approval pauses.",
+    "keywords": ["checkpoint", "approval", "state", "plan", "findings", "memory", "amnesia"],
+    "readOnly": false
+  },
+  {
+    "id": 49,
+    "name": "read-checkpoint.sh",
+    "category": "git-state-safety",
+    "command": "bash scripts/read-checkpoint.sh",
+    "description": "Read .thunder-state.json after approval so the agent can resume with the saved plan and findings.",
+    "keywords": ["checkpoint", "resume", "approval", "state", "plan", "findings", "memory"],
+    "readOnly": true
+  },
+  {
+    "id": 50,
+    "name": "sync-env-files.mjs",
+    "category": "security-environment",
+    "command": "node scripts/sync-env-files.mjs",
+    "description": "Compare .env.example keys with .env and report missing environment variables without printing secret values.",
+    "keywords": ["env", ".env", ".env.example", "environment variables", "secrets", "missing keys"],
+    "readOnly": true
+  }
+]

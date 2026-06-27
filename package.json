@@ -207,12 +207,24 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
+    "scripts:search": "node scripts/search-script-catalog.mjs",
+    "audit:dead-code": "bash scripts/audit-dead-code.sh",
+    "check:circular-deps": "node scripts/check-circular-deps.mjs",
+    "audit:engines": "node scripts/audit-package-engines.mjs",
+    "find:console": "bash scripts/find-console-logs.sh",
+    "find:inline-styles": "bash scripts/find-inline-styles.sh",
+    "check:missing-types": "bash scripts/check-missing-types.sh",
+    "git:untracked": "bash scripts/list-untracked-files.sh",
+    "checkpoint:write": "bash scripts/write-checkpoint.sh",
+    "checkpoint:read": "bash scripts/read-checkpoint.sh",
+    "env:sync": "node scripts/sync-env-files.mjs",
     "package": "vsce package --no-dependencies",
     "smoke": "vitest run test/smoke"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.2",
     "@types/better-sqlite3": "^7.6.12",
+    "@types/diff": "^7.0.2",
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
@@ -221,6 +233,8 @@
     "@vscode/vsce": "^2.32.0",
     "concurrently": "^8.2.2",
     "esbuild": "^0.21.5",
+    "knip": "^6.21.0",
+    "madge": "^8.0.0",
     "typescript": "^5.5.2",
     "vite": "^5.3.1",
     "vitest": "^1.6.0"
@@ -236,5 +250,10 @@
     "react-dom": "^18.3.1",
     "simple-git": "^3.25.0",
     "zod": "^3.23.8"
+  },
+  "knip": {
+    "ignoreDependencies": [
+      "madge"
+    ]
   }
 }

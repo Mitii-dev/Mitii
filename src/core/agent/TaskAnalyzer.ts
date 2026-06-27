@@ -1,3 +1,5 @@
+import { extractOriginalTaskMessage, isApprovalContinuationMessage } from './taskMessage';
+
 export type TaskKind = 'question' | 'audit' | 'simple_edit' | 'implementation' | 'explicit_plan';
 
 export type TaskComplexity = 'low' | 'medium' | 'high';
@@ -23,9 +25,13 @@ const QUESTION =
 const SIMPLE_EDIT =
   /\b(fix typo|rename|change (?:the )?(?:name|text|label)|update import|add comment|format)\b/i;
 
+const AUDIT_CLEANUP =
+  /\b(unus[a-z]*|dead code|orphan|cleanup|clean up|remove\s+(?:all\s+)?(?:the\s+)?(?:(?:uns[a-z]*|unused)\s+)?(?:imports?|files?|dependenc(?:y|ies)?)|depcheck|dependencies audit|dependency audit|find unused|list unused|reduce bundle|tree[- ]shake)\b/i;
+
 export function analyzeTask(userMessage: string, mode: string): TaskAnalysis {
   const text = userMessage.trim();
-  const lower = text.toLowerCase();
+  const isContinuation = isApprovalContinuationMessage(text);
+  const taskText = extractOriginalTaskMessage(text) ?? text;
 
   if (mode !== 'act') {
     return {
@@ -38,18 +44,23 @@ export function analyzeTask(userMessage: string, mode: string): TaskAnalysis {
     };
   }
 
-  if (/^continue the current approved task from where it paused\b/i.test(text)) {
+  if (isContinuation) {
+    const original = classifyTask(taskText);
     return {
-      kind: 'simple_edit',
-      complexity: 'medium',
+      ...original,
       shouldPlan: false,
-      shouldVerify: true,
       shouldUseSubagents: false,
-      summary: 'Approval continuation — resume execution without recreating the plan.',
+      summary: `Approval continuation — resume: ${original.summary}`,
     };
   }
 
-  if (/\b(unused|dead code|orphan|cleanup|clean up|remove unused|depcheck|dependencies audit|dependency audit|find unused|list unused|reduce bundle|tree[- ]shake)\b/i.test(text)) {
+  return classifyTask(taskText);
+}
+
+function classifyTask(text: string): TaskAnalysis {
+  const lower = text.toLowerCase();
+
+  if (AUDIT_CLEANUP.test(text)) {
     return {
       kind: 'audit',
       complexity: 'high',

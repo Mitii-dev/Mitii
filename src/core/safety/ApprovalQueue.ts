@@ -13,6 +13,7 @@ export interface ApprovalRequest {
   policy: PolicyResult;
   createdAt: number;
   contentLength?: number;
+  toolCallId?: string;
 }
 
 export type ApprovalDecision = 'approved' | 'denied';
@@ -28,7 +29,8 @@ export class ApprovalQueue {
     sessionId: string,
     toolName: string,
     input: Record<string, unknown>,
-    policy: PolicyResult
+    policy: PolicyResult,
+    metadata?: { toolCallId?: string }
   ): ApprovalRequest {
     const path = typeof input.path === 'string' ? input.path : undefined;
     const contentLen = typeof input.content === 'string' ? input.content.length : undefined;
@@ -44,6 +46,7 @@ export class ApprovalQueue {
       policy,
       createdAt: Date.now(),
       contentLength: contentLen,
+      toolCallId: metadata?.toolCallId,
     };
 
     this.pending.set(request.id, request);
@@ -67,8 +70,8 @@ export class ApprovalQueue {
       this.allowOnce.add(`${request.sessionId}:${request.toolName}`);
     }
 
-    if (this.db && fullInput) {
-      this.db.raw.prepare(`
+    if (this.db?.tryRaw() && fullInput) {
+      this.db.tryRaw()!.prepare(`
         INSERT INTO approval_audit (id, session_id, tool_name, input_json, decision, reason, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(

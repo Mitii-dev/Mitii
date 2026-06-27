@@ -8,8 +8,6 @@ import { IndexingStatusBar } from './components/IndexingStatusBar';
 import { WorkspaceBanner } from './components/WorkspaceBanner';
 import { TokenMeter } from './components/TokenMeter';
 import { HistoryPanel } from './components/HistoryPanel';
-import { AgentLiveStatus } from './components/AgentLiveStatus';
-import { AgentDrawer } from './components/AgentDrawer';
 import { IconButton } from './components/IconButton';
 import { IconChat, IconHistory, IconPlus, IconSettings } from './components/Icons';
 
@@ -95,19 +93,7 @@ export function App() {
               messages={state.messages}
               loading={state.loading}
               agentActivity={state.agentActivity}
-            />
-          </div>
-          <div className="chat-agent-zone">
-            <AgentLiveStatus status={state.agentLiveStatus} loading={state.loading} />
-            <AgentDrawer
-              loading={state.loading}
-              plan={state.plan}
-              subagents={state.subagents}
-              contextPreview={state.contextPreview}
-              contextTokenEstimate={state.contextTokenEstimate}
-              contextBudget={state.contextBudget}
-              showContextPreview={state.showContextPreview}
-              onToggleContext={() => postMessage({ type: 'toggleContextPreview' })}
+              approvals={state.approvals}
             />
           </div>
           <footer className="chat-footer">
