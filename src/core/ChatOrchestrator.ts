@@ -4,9 +4,17 @@ import type { ThunderDb } from './indexing/ThunderDb';
 import type { LlmProvider, ChatMessage } from './llm/types';
 import type { ThunderSession } from './ThunderSession';
 import type { ContextItem, ContextPack } from './context/types';
-import type { ContextItemView, PlanView, AgentActivityEntry, ContextBudgetView, AgentLiveStatusView } from '../vscode/webview/messages';
+import type {
+  ContextItemView,
+  PlanView,
+  AgentActivityEntry,
+  ContextBudgetView,
+  AgentLiveStatusView,
+  TokenUsageBreakdownItem,
+} from '../vscode/webview/messages';
 import { HybridRetriever } from './context/HybridRetriever';
 import { ContextBudgeter } from './context/ContextBudgeter';
+import { UserExplicitContextBuilder, type PinnedContextEntry } from './context/UserExplicitContextBuilder';
 import { buildPrompt } from './planning/promptBuilder';
 import { parsePlanFromText, isWriteAllowed } from './planning/PlanActEngine';
 import { createLogger } from './telemetry/Logger';
@@ -41,7 +49,12 @@ export type ContextPackCallback = (pack: ContextPack, views: ContextItemView[], 
 export type PlanCallback = (plan: PlanView | null) => void;
 export type ActivityCallback = (entry: AgentActivityEntry) => void;
 export type LiveStatusCallback = (status: AgentLiveStatusView | null) => void;
-export type TokenUsageCallback = (promptTokens: number, contextTokens: number, responseText: string) => void;
+export type TokenUsageCallback = (
+  promptTokens: number,
+  contextTokens: number,
+  responseText: string,
+  breakdown: TokenUsageBreakdownItem[]
+) => void;
 
 export interface ChatOrchestratorDeps {
   toolRuntime?: ToolRuntime;
@@ -156,7 +169,8 @@ export class ChatOrchestrator {
     session: ThunderSession,
     provider: LlmProvider,
     userMessage: string,
-    recentMessages: ChatMessage[] = []
+    recentMessages: ChatMessage[] = [],
+    options?: { pinnedContext?: PinnedContextEntry[] }
   ): AsyncIterable<string> {
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
@@ -196,12 +210,24 @@ export class ChatOrchestrator {
     this.setLiveStatus('Gathering context');
     this.emitActivity('context', 'Retrieving workspace context…', extractFileMentions(userMessage).join(', ') || undefined);
 
+    const pinnedContext = options?.pinnedContext ?? [];
+    const explicitBuilder = new UserExplicitContextBuilder(this.db, ws);
+    const explicitResult = explicitBuilder.build(pinnedContext);
+    if (explicitResult.items.length > 0) {
+      this.emitActivity(
+        'context',
+        `User-pinned context: ${explicitResult.items.length} item(s) · ${explicitResult.totalTokens} tokens`,
+        pinnedContext.map((p) => p.path).join(', ')
+      );
+    }
+
     let items;
     try {
       items = await this.retriever.retrieve({
         text: userMessage,
         currentFile,
         openFiles,
+        pinnedContext: pinnedContext.map((p) => ({ path: p.path, kind: p.kind })),
         maxItems: 28,
       });
     } catch (error) {
@@ -220,24 +246,33 @@ export class ChatOrchestrator {
 
     const contextBudget = Math.floor(provider.capabilities.contextWindow * 0.75);
     const pack = this.budgeter.budget(items, contextBudget);
-    const views = contextItemsToViews(pack.items);
-    const budgetView = contextPackToBudgetView(pack);
+    const displayPack: ContextPack = {
+      ...pack,
+      items: [...explicitResult.items, ...pack.items],
+      totalTokens: pack.totalTokens + explicitResult.totalTokens,
+      formatted: explicitResult.formatted
+        ? `${explicitResult.formatted}\n\n---\n\n${pack.formatted}`
+        : pack.formatted,
+    };
+    const views = contextItemsToViews(displayPack.items);
+    const budgetView = contextPackToBudgetView(displayPack);
 
-    this.setLiveStatus('Context ready', `${pack.items.length} snippets · ${pack.totalTokens} tokens`);
+    this.setLiveStatus('Context ready', `${displayPack.items.length} snippets · ${displayPack.totalTokens} tokens`);
 
-    this.onContextPack?.(pack, views, budgetView);
+    this.onContextPack?.(displayPack, views, budgetView);
 
     this.emitActivity(
       'budget',
-      `Prompt context: ${pack.totalTokens}/${pack.budgetLimit} tokens · ${pack.items.length} snippets`,
+      `Prompt context: ${displayPack.totalTokens}/${pack.budgetLimit} tokens · ${displayPack.items.length} snippets`,
       pack.dropped.length > 0 ? `${pack.dropped.length} dropped` : undefined
     );
-    this.deps.sessionLog?.append('context_pack', `Context ${pack.totalTokens}/${pack.budgetLimit} tokens`, {
-      snippetCount: pack.items.length,
+    this.deps.sessionLog?.append('context_pack', `Context ${displayPack.totalTokens}/${pack.budgetLimit} tokens`, {
+      snippetCount: displayPack.items.length,
       droppedCount: pack.dropped.length,
-      sources: pack.items.map((i) => i.source).slice(0, 20),
+      sources: displayPack.items.map((i) => i.source).slice(0, 20),
       currentFile,
       openFiles: openFiles.slice(0, 10),
+      pinnedContext: pinnedContext.map((p) => p.path),
     });
 
     const transcriptBudget = Math.floor(provider.capabilities.contextWindow * 0.15);
@@ -342,7 +377,7 @@ export class ChatOrchestrator {
           session,
           provider,
           plan,
-          pack,
+          displayPack,
           tools,
           (updated) => this.onPlan?.({ goal: updated.goal, assumptions: updated.assumptions, steps: updated.steps }),
           signal,
@@ -360,7 +395,7 @@ export class ChatOrchestrator {
           yield chunk;
         }
 
-        await this.finishTurn(session, provider, userMessage, fullResponse, pack, compacted);
+        await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted);
         this.setLiveStatus(null);
         return;
       }
@@ -379,7 +414,7 @@ export class ChatOrchestrator {
             planningDiscovery = await this.planExecutor.runPlanningDiscovery(
               provider,
               session.mode,
-              pack,
+              displayPack,
               userMessage,
               taskAnalysis,
               tools,
@@ -408,7 +443,7 @@ export class ChatOrchestrator {
 
         for await (const chunk of this.planExecutor.analyzeRequirementsStream(
           provider,
-          pack,
+          displayPack,
           userMessage,
           taskAnalysis
         )) {
@@ -427,7 +462,7 @@ export class ChatOrchestrator {
         const plan = await this.planExecutor.generatePlan(
           provider,
           session.mode,
-          pack,
+          displayPack,
           userMessage,
           requirementAnalysis,
           planningDiscovery,
@@ -457,7 +492,7 @@ export class ChatOrchestrator {
               session,
               provider,
               plan,
-              pack,
+              displayPack,
               tools,
               (updated) => {
                 this.onPlan?.({
@@ -504,7 +539,7 @@ export class ChatOrchestrator {
               yield approvalNote;
               this.setLiveStatus('Waiting for approval', 'Review and approve below');
               this.emitActivity('approval', 'Paused — waiting for your approval', this.deps.taskState?.getPauseSummary());
-              await this.finishTurn(session, provider, userMessage, fullResponse, pack, compacted);
+              await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted);
               this.setLiveStatus(null);
               return;
             }
@@ -515,7 +550,7 @@ export class ChatOrchestrator {
             this.emitActivity('info', 'Plan ready — switch to Act mode to execute steps');
           }
 
-          await this.finishTurn(session, provider, userMessage, fullResponse, pack, compacted);
+          await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted);
           this.setLiveStatus(null);
           return;
         }
@@ -525,7 +560,7 @@ export class ChatOrchestrator {
         fullResponse += failureText;
         yield failureText;
         this.emitActivity('error', 'Planning failed quality gate');
-        await this.finishTurn(session, provider, userMessage, fullResponse, pack, compacted);
+        await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted);
         this.setLiveStatus(null);
         return;
       }
@@ -540,7 +575,8 @@ export class ChatOrchestrator {
         toolsEnabled,
         auditMode,
         taskStateBlock,
-        isResume
+        isResume,
+        explicitResult.formatted || undefined
       );
       const promptTokens = estimatePromptTokens(messages);
 
@@ -605,7 +641,7 @@ export class ChatOrchestrator {
             session,
             provider,
             validationPlan,
-            pack,
+            displayPack,
             tools,
             signal,
             sharedLoopCallbacks,
@@ -632,10 +668,20 @@ export class ChatOrchestrator {
         }
       }
 
-      await this.finishTurn(session, provider, userMessage, fullResponse, pack, compacted, promptTokens);
+      await this.finishTurn(
+        session,
+        provider,
+        userMessage,
+        fullResponse,
+        displayPack,
+        compacted,
+        promptTokens,
+        messages,
+        explicitResult.formatted || undefined
+      );
       this.onLiveStatus?.(null);
     } finally {
-      log.info('Chat completed', { sessionId: session.id, tokens: pack.totalTokens });
+      log.info('Chat completed', { sessionId: session.id, tokens: displayPack.totalTokens });
     }
   }
 
@@ -646,7 +692,9 @@ export class ChatOrchestrator {
     fullResponse: string,
     pack: ContextPack,
     compacted: ChatMessage[],
-    promptTokens = 0
+    promptTokens = 0,
+    promptMessages?: ChatMessage[],
+    explicitContextBlock?: string
   ): Promise<void> {
     if (!fullResponse) return;
 
@@ -687,13 +735,49 @@ export class ChatOrchestrator {
       );
     }
 
-    const tokens = promptTokens || estimatePromptTokens(buildPrompt(session.mode, pack, userMessage, compacted));
-    this.onTokenUsage?.(tokens, pack.totalTokens, fullResponse);
+    const usageMessages =
+      promptMessages ??
+      buildPrompt(session.mode, pack, userMessage, compacted, false, false, undefined, false, explicitContextBlock);
+    const tokens = promptTokens || estimatePromptTokens(usageMessages);
+    this.onTokenUsage?.(tokens, pack.totalTokens, fullResponse, this.buildTokenBreakdown(usageMessages, pack, compacted));
     this.deps.sessionLog?.append('token_usage', 'Turn token usage', {
       promptTokens: tokens,
       contextTokens: pack.totalTokens,
       responseTokens: Math.ceil(fullResponse.length / 4),
     });
+  }
+
+  private buildTokenBreakdown(
+    messages: ChatMessage[],
+    pack: ContextPack,
+    compacted: ChatMessage[]
+  ): TokenUsageBreakdownItem[] {
+    const systemPrompt = messages.find((m) => m.role === 'system')?.content ?? '';
+    const tools = this.deps.toolRuntime
+      ? JSON.stringify(toolsToDefinitions(this.deps.toolRuntime.list()))
+      : '';
+    const sourceTokens = (sources: string[]) =>
+      pack.items
+        .filter((item) => sources.includes(item.source))
+        .reduce((sum, item) => sum + item.tokenEstimate, 0);
+    const fileContext = pack.items
+      .filter((item) => !['project-rules', 'skills', 'memory', 'user-explicit'].includes(item.source))
+      .reduce((sum, item) => sum + item.tokenEstimate, 0);
+    const explicitContext = pack.items
+      .filter((item) => item.source === 'user-explicit')
+      .reduce((sum, item) => sum + item.tokenEstimate, 0);
+    const conversation = estimatePromptTokens(compacted);
+
+    return [
+      { label: 'System prompt', tokens: Math.ceil(systemPrompt.length / 4), color: '#8b949e' },
+      { label: 'Tool definitions', tokens: Math.ceil(tools.length / 4), color: '#a78bfa' },
+      { label: 'Rules', tokens: sourceTokens(['project-rules']), color: '#4ade80' },
+      { label: 'Skills', tokens: sourceTokens(['skills']), color: '#fbbf24' },
+      { label: 'Memory', tokens: sourceTokens(['memory']), color: '#60a5fa' },
+      { label: 'Pinned context', tokens: explicitContext, color: '#f472b6' },
+      { label: 'Workspace context', tokens: fileContext, color: '#94a3b8' },
+      { label: 'Conversation', tokens: conversation, color: '#64748b' },
+    ].filter((item) => item.tokens > 0);
   }
 
   private savePauseState(
@@ -790,6 +874,7 @@ export class ChatOrchestrator {
     if (!baseState) return;
 
     const { session, provider, userMessage } = this.suspendContext;
+    const taskStateBlock = this.deps.taskState?.buildPromptBlock();
 
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
@@ -803,7 +888,14 @@ export class ChatOrchestrator {
         {
           role: 'user',
           content:
-            'User approved the pending tool(s). Continue the task — EXECUTE phase: edit files and update dependencies. Do not re-run depcheck, eslint discovery, list_files, or memory_search.',
+            [
+              'User approved the pending tool(s). Resume the existing task state machine from the approved tool result(s).',
+              taskStateBlock ? `\n## Task progress\n${taskStateBlock}` : '',
+              baseState.checkpoint ? `\n## Approval checkpoint\n${baseState.checkpoint}` : '',
+              '\nContinue from the pending Execute/Verify step. Do not restart planning or diagnostics.',
+              'Do not re-run audit-dependencies, audit-dead-code, depcheck, knip, eslint discovery, list_files, or memory_search unless the approved result proves the prior output is stale.',
+              'If final verification reports unrelated TypeScript errors outside touched files, log them as remaining issues instead of derailing the cleanup task.',
+            ].filter(Boolean).join('\n'),
         },
       ],
     };

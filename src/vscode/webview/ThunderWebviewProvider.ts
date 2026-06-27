@@ -12,6 +12,8 @@ import {
 } from './messages';
 
 const log = createLogger('ThunderWebviewProvider');
+const HISTORY_STATE_KEY = 'thunder.chatHistory.v1';
+const MAX_ARCHIVED_THREADS = 25;
 
 function removeTrailingAssistant(messages: ChatMessage[]): ChatMessage[] {
   const next = [...messages];
@@ -29,11 +31,13 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
   private state: WebviewState = initialWebviewState();
   private archivedThreads = new Map<string, { summary: ChatThreadSummary; messages: ChatMessage[] }>();
   private isStreaming = false;
+  private resumeAfterCurrentStream = false;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly controller: ThunderController
   ) {
+    this.restoreArchivedThreads();
     this.controller.setUiUpdateCallback((partial) => {
       this.state = { ...this.state, ...partial };
 
@@ -120,12 +124,15 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
   private async handleMessage(message: WebviewToExtensionMessage): Promise<void> {
     switch (message.type) {
       case 'ready':
+        this.restoreArchivedThreads();
+        this.controller.syncActiveEditorPin();
         await this.syncState();
         break;
 
       case 'sendMessage': {
         const content = message.payload.content.trim();
-        await this.runChatCompletion(content, true);
+        const pinnedContext = message.payload.pinnedContext ?? this.state.pinnedContext;
+        await this.runChatCompletion(content, true, pinnedContext);
         break;
       }
 
@@ -148,6 +155,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
           messages: [],
           currentSessionId: this.controller.getSession()?.id ?? '',
           chatHistory: this.historySummaries(),
+          pinnedContext: this.controller.getPinnedContext(),
           contextPreview: [],
           contextTokenEstimate: 0,
           contextBudget: null,
@@ -175,11 +183,12 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         break;
       }
 
-      case 'setMode':
+      case 'setMode': {
         this.state = { ...this.state, mode: message.payload };
         this.controller.getSession()?.setMode(message.payload);
         this.postMessage({ type: 'setMode', payload: message.payload });
         break;
+      }
 
       case 'setTab':
         this.state = { ...this.state, tab: message.payload };
@@ -201,18 +210,27 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         await this.controller.resolveApproval(
           message.payload.id,
           message.payload.decision,
-          message.payload.selectedOption
+          message.payload.selectedOption,
+          message.payload.scope
         );
         await this.syncState();
         if (message.payload.decision === 'approved') {
-          await this.continueAfterApproval();
+          if (this.state.loading || this.isStreaming) {
+            this.resumeAfterCurrentStream = true;
+          } else {
+            await this.continueAfterApproval();
+          }
         }
         break;
 
       case 'approveAllPending':
         await this.controller.approveAllPending();
         await this.syncState();
-        await this.continueAfterApproval();
+        if (this.state.loading || this.isStreaming) {
+          this.resumeAfterCurrentStream = true;
+        } else {
+          await this.continueAfterApproval();
+        }
         break;
 
       case 'saveApiKey':
@@ -229,6 +247,11 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
 
       case 'saveAgentSettings':
         await this.controller.saveAgentSettings(message.payload);
+        await this.syncState();
+        break;
+
+      case 'saveSafetySettings':
+        await this.controller.saveSafetySettings(message.payload);
         await this.syncState();
         break;
 
@@ -294,10 +317,51 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         this.controller.refreshCheckpointPanel();
         await this.syncState();
         break;
+
+      case 'addPinnedContext':
+        this.controller.addPinnedContext(message.payload.path, message.payload.kind);
+        this.state = { ...this.state, pinnedContext: this.controller.getPinnedContext() };
+        this.postMessage({ type: 'state', payload: this.state });
+        break;
+
+      case 'removePinnedContext':
+        this.controller.removePinnedContext(message.payload.path);
+        this.state = { ...this.state, pinnedContext: this.controller.getPinnedContext() };
+        this.postMessage({ type: 'state', payload: this.state });
+        break;
+
+      case 'clearPinnedContext':
+        this.controller.clearPinnedContext();
+        this.state = { ...this.state, pinnedContext: this.controller.getPinnedContext() };
+        this.postMessage({ type: 'state', payload: this.state });
+        break;
+
+      case 'searchContextPaths': {
+        const paths = this.controller.searchContextPaths(message.payload.query);
+        this.postMessage({
+          type: 'setContextPaths',
+          payload: { requestId: message.payload.requestId, paths },
+        });
+        break;
+      }
+
+      case 'pickContextPath': {
+        const paths = await this.controller.pickContextPaths();
+        for (const picked of paths) {
+          this.controller.addPinnedContext(picked.path, picked.kind);
+        }
+        this.state = { ...this.state, pinnedContext: this.controller.getPinnedContext() };
+        this.postMessage({ type: 'state', payload: this.state });
+        break;
+      }
     }
   }
 
-  private async runChatCompletion(content: string, appendUser: boolean): Promise<void> {
+  private async runChatCompletion(
+    content: string,
+    appendUser: boolean,
+    pinnedContext = this.state.pinnedContext
+  ): Promise<void> {
     if (!content || this.state.loading) return;
 
     const userMessage: ChatMessage = {
@@ -325,7 +389,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         .slice(0, -1)
         .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
-      const stream = await this.controller.sendMessage(content, recentMessages);
+      const stream = await this.controller.sendMessage(content, recentMessages, { pinnedContext });
       let fullContent = '';
 
       this.state = {
@@ -375,6 +439,10 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       this.state = { ...this.state, chatHistory: this.historySummaries() };
       this.postMessage({ type: 'state', payload: this.state });
       await this.syncState();
+      if (this.resumeAfterCurrentStream && pendingApprovals.length === 0) {
+        this.resumeAfterCurrentStream = false;
+        await this.continueAfterApproval();
+      }
     } catch (error) {
       this.isStreaming = false;
       const safe = normalizeError(error);
@@ -487,6 +555,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       await this.syncState();
 
       if (pendingApprovals.length === 0 && !this.controller.hasSuspendedAgentLoop()) {
+        this.controller.clearTaskApprovalGrants();
         return;
       }
       if (pendingApprovals.length === 0 && this.controller.hasSuspendedAgentLoop()) {
@@ -531,12 +600,44 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         turnCount: this.state.tokenUsage.turnCount,
       },
     });
+    this.trimArchivedThreads();
+    this.persistArchivedThreads();
   }
 
   private historySummaries(): ChatThreadSummary[] {
     return [...this.archivedThreads.values()]
       .map((t) => t.summary)
       .sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
+  private restoreArchivedThreads(): void {
+    const saved = this.context.workspaceState.get<Array<{ summary: ChatThreadSummary; messages: ChatMessage[] }>>(
+      HISTORY_STATE_KEY,
+      []
+    );
+    if (!Array.isArray(saved) || saved.length === 0) return;
+    for (const thread of saved) {
+      if (thread?.summary?.id && Array.isArray(thread.messages)) {
+        this.archivedThreads.set(thread.summary.id, thread);
+      }
+    }
+  }
+
+  private persistArchivedThreads(): void {
+    const payload = [...this.archivedThreads.values()]
+      .sort((a, b) => b.summary.updatedAt - a.summary.updatedAt)
+      .slice(0, MAX_ARCHIVED_THREADS);
+    void this.context.workspaceState.update(HISTORY_STATE_KEY, payload);
+  }
+
+  private trimArchivedThreads(): void {
+    const keep = this.historySummaries().slice(0, MAX_ARCHIVED_THREADS).map((thread) => thread.id);
+    const keepSet = new Set(keep);
+    for (const id of [...this.archivedThreads.keys()]) {
+      if (!keepSet.has(id)) {
+        this.archivedThreads.delete(id);
+      }
+    }
   }
 
   private getHtml(webview: vscode.Webview): string {

@@ -2,6 +2,8 @@ export * from './types';
 export * from './RepoMapService';
 export * from './HybridRetriever';
 export * from './ContextBudgeter';
+export * from './UserExplicitContextBuilder';
+export * from './symbolFormat';
 export * from './GitService';
 export * from './DiagnosticsService';
 export * from './sources/editorSources';

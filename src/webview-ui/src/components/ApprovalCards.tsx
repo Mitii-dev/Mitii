@@ -2,7 +2,12 @@ import type { ApprovalRequestView } from '../../../vscode/webview/messages';
 
 interface ApprovalCardsProps {
   approvals: ApprovalRequestView[];
-  onResolve: (id: string, decision: 'approved' | 'denied', selectedOption?: string) => void;
+  onResolve: (
+    id: string,
+    decision: 'approved' | 'denied',
+    selectedOption?: string,
+    scope?: 'single' | 'task'
+  ) => void;
   onApproveAll: () => void;
 }
 
@@ -89,6 +94,13 @@ export function ApprovalCards({ approvals, onResolve, onApproveAll }: ApprovalCa
                     onClick={() => onResolve(req.id, 'approved')}
                   >
                     Approve
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--secondary btn--small"
+                    onClick={() => onResolve(req.id, 'approved', undefined, 'task')}
+                  >
+                    Approve for task
                   </button>
                   <button
                     type="button"

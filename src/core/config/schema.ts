@@ -31,6 +31,7 @@ export const SafetyConfigSchema = z.object({
   requireApprovalForShell: z.boolean().default(true),
   allowNetwork: z.boolean().default(false),
   blockDangerousCommands: z.boolean().default(true),
+  approvalMode: z.enum(['review_all', 'ask_edits', 'ask_deletes', 'ask_commands', 'auto']).default('review_all'),
   autonomyPreset: z.enum(['safe', 'guided', 'builder', 'pilot', 'enterprise']).default('guided'),
 });
 

@@ -83,7 +83,7 @@ export function isWriteAllowed(mode: string): boolean {
 export function isReadOnlyCommand(command: string): boolean {
   const cmd = stripLeadingCd(command).trim();
   if (!cmd) return false;
-  const segments = cmd.split(/\s*(?:&&|\|\|?|\;)\s*/).map((part) => part.trim()).filter(Boolean);
+  const segments = splitShellSegments(cmd).map((part) => part.trim()).filter(Boolean);
   if (segments.length === 0) return false;
   return segments.every(isReadOnlyCommandSegment);
 }
@@ -92,12 +92,60 @@ function isReadOnlyCommandSegment(cmd: string): boolean {
   if (/^(npx\s+(--yes\s+)?)?depcheck\b/i.test(cmd)) return true;
   if (/^(npx\s+(--yes\s+)?)?knip\b/i.test(cmd)) return true;
   if (/^npx\s+eslint\b/i.test(cmd) && !/\s--fix\b/.test(cmd)) return true;
-  if (/^npm\s+(ls|list|outdated|audit|run\s+(lint|test|typecheck|check))\b/i.test(cmd)) return true;
+  if (/^npm\s+(ls|list|outdated|audit|run\s+(lint|test|typecheck|check|build))\b/i.test(cmd)) return true;
   if (/^yarn\s+(why|list|info|lint|test|build)\b/i.test(cmd)) return true;
   if (/^pnpm\s+(why|list|lint|test|build)\b/i.test(cmd)) return true;
-  if (/^(grep|rg|find|cat|head|tail|wc|sort|uniq|ls|tree|which|echo)\b/i.test(cmd)) return true;
+  if (/^(grep|rg|find|cat|head|tail|sed|wc|sort|uniq|ls|tree|which|echo)\b/i.test(cmd)) return true;
   if (/^git\s+(status|diff|log|ls-files)\b/i.test(cmd)) return true;
   return false;
+}
+
+function splitShellSegments(command: string): string[] {
+  const segments: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | undefined;
+  let escaped = false;
+
+  for (let i = 0; i < command.length; i += 1) {
+    const ch = command[i];
+    const next = command[i + 1];
+
+    if (escaped) {
+      current += ch;
+      escaped = false;
+      continue;
+    }
+
+    if (ch === '\\') {
+      current += ch;
+      escaped = true;
+      continue;
+    }
+
+    if (quote) {
+      current += ch;
+      if (ch === quote) quote = undefined;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      current += ch;
+      quote = ch;
+      continue;
+    }
+
+    if (ch === ';' || (ch === '&' && next === '&') || ch === '|' || (ch === '|' && next === '|')) {
+      segments.push(current);
+      current = '';
+      if ((ch === '&' && next === '&') || (ch === '|' && next === '|')) i += 1;
+      continue;
+    }
+
+    current += ch;
+  }
+
+  segments.push(current);
+  return segments;
 }
 
 export function stripLeadingCd(command: string): string {

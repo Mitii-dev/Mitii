@@ -5,6 +5,7 @@ import { IconTokens } from './Icons';
 interface TokenMeterProps {
   usage: TokenUsageView;
   compact?: boolean;
+  placement?: 'above' | 'below';
 }
 
 function formatCompact(n: number): string {
@@ -14,7 +15,7 @@ function formatCompact(n: number): string {
   return n.toLocaleString();
 }
 
-export function TokenMeter({ usage, compact = false }: TokenMeterProps) {
+export function TokenMeter({ usage, compact = false, placement = 'below' }: TokenMeterProps) {
   const [open, setOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const pct = usage.contextWindow > 0
@@ -47,8 +48,9 @@ export function TokenMeter({ usage, compact = false }: TokenMeterProps) {
   }, [open]);
 
   if (compact) {
+    const totalBreakdown = usage.breakdown.reduce((sum, item) => sum + item.tokens, 0);
     return (
-      <div className="token-popover" ref={popoverRef}>
+      <div className={`token-popover token-popover--${placement}`} ref={popoverRef}>
         <button
           type="button"
           className={`token-chip${open ? ' token-chip--active' : ''}`}
@@ -63,12 +65,41 @@ export function TokenMeter({ usage, compact = false }: TokenMeterProps) {
         {open && (
           <div className="token-popover__panel" role="dialog" aria-label="Token usage details">
             <div className="token-popover__header">
-              <span>Token usage</span>
-              <strong>{formatCompact(usage.sessionTotal)}</strong>
+              <span>Context</span>
+              <strong>{pct}% Full</strong>
+            </div>
+            <div className="token-popover__summary">
+              <span>{formatCompact(usage.lastPromptTokens)} / {formatCompact(usage.contextWindow)} Tokens</span>
             </div>
             <div className="token-popover__bar" aria-hidden="true">
               <div className="token-popover__fill" style={{ width: `${pct}%` }} />
             </div>
+            {usage.breakdown.length > 0 && (
+              <div className="token-popover__segments" aria-hidden="true">
+                {usage.breakdown.map((item) => (
+                  <span
+                    key={item.label}
+                    style={{
+                      width: `${Math.max(2, (item.tokens / Math.max(totalBreakdown, 1)) * 100)}%`,
+                      background: item.color,
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            {usage.breakdown.length > 0 && (
+              <dl className="token-popover__breakdown">
+                {usage.breakdown.map((item) => (
+                  <div key={item.label}>
+                    <dt>
+                      <span style={{ background: item.color }} aria-hidden="true" />
+                      {item.label}
+                    </dt>
+                    <dd>{formatCompact(item.tokens)}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
             <dl className="token-popover__stats">
               <div>
                 <dt>Session</dt>

@@ -25,6 +25,7 @@ export class ApprovalQueue {
   private pending = new Map<string, ApprovalRequest>();
   private fullInputs = new Map<string, Record<string, unknown>>();
   private allowOnce = new Set<string>();
+  private taskGrants = new Set<string>();
 
   constructor(private readonly db?: ThunderDb) {}
 
@@ -74,10 +75,6 @@ export class ApprovalQueue {
     const fullInput = this.fullInputs.get(id);
     this.fullInputs.delete(id);
 
-    if (decision === 'approved') {
-      this.allowOnce.add(`${request.sessionId}:${request.toolName}`);
-    }
-
     if (this.db?.tryRaw() && fullInput) {
       this.db.tryRaw()!.prepare(`
         INSERT INTO approval_audit (id, session_id, tool_name, input_json, decision, reason, created_at)
@@ -103,6 +100,30 @@ export class ApprovalQueue {
       return true;
     }
     return false;
+  }
+
+  grantForTask(sessionId: string, toolName: string): void {
+    if (!sessionId || !toolName) return;
+    this.taskGrants.add(`${sessionId}:${toolName}`);
+  }
+
+  hasApprovalGrant(sessionId: string, toolName: string): boolean {
+    if (!sessionId || !toolName) return false;
+    if (this.taskGrants.has(`${sessionId}:${toolName}`)) return true;
+    return this.isAllowOnce(sessionId, toolName);
+  }
+
+  clearTaskGrants(sessionId?: string): void {
+    if (!sessionId) {
+      this.taskGrants.clear();
+      return;
+    }
+    const prefix = `${sessionId}:`;
+    for (const key of [...this.taskGrants]) {
+      if (key.startsWith(prefix)) {
+        this.taskGrants.delete(key);
+      }
+    }
   }
 
   getPending(): ApprovalRequest[] {

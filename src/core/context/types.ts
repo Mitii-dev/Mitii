@@ -10,12 +10,18 @@ export interface ContextItem {
   tokenEstimate: number;
 }
 
+export interface PinnedContextRef {
+  path: string;
+  kind: 'file' | 'folder';
+}
+
 export interface ContextQuery {
   text: string;
   currentFile?: string;
   openFiles?: string[];
   gitDiffFiles?: string[];
   diagnosticFiles?: string[];
+  pinnedContext?: PinnedContextRef[];
   maxItems?: number;
 }
 

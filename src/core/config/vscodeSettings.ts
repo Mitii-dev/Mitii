@@ -35,6 +35,7 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       requireApprovalForShell: config.get<boolean>('safety.requireApprovalForShell'),
       allowNetwork: config.get<boolean>('safety.allowNetwork'),
       blockDangerousCommands: config.get<boolean>('safety.blockDangerousCommands'),
+      approvalMode: config.get<string>('safety.approvalMode'),
       autonomyPreset: config.get<string>('safety.autonomyPreset'),
     },
     memory: {

@@ -30,6 +30,7 @@ export function applyAutonomyPreset(base: SafetyConfig, preset: AutonomyPreset):
         requireApprovalForWrites: false,
         requireApprovalForShell: true,
         blockDangerousCommands: true,
+        approvalMode: base.approvalMode === 'review_all' ? 'ask_commands' : base.approvalMode,
       };
     case 'enterprise':
       return {

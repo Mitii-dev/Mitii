@@ -603,7 +603,7 @@ export function createApplyPatchTool(workspace: string, ignoreService: IgnoreSer
   const patchService = new PatchApplyService(workspace);
   return {
     name: 'apply_patch',
-    description: 'Apply a targeted text replacement patch (requires approval)',
+    description: 'Apply a targeted text replacement patch (requires approval). For TSX/JSX, patch complete logical blocks only: full import block, object, hook block, or component/function block.',
     risk: 'high',
     inputSchema: z.object({ path: z.string(), oldText: z.string(), newText: z.string() }),
     async execute(input): Promise<ToolResult> {

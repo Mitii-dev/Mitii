@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { AgentSettingsPayload, ProviderSettingsPayload } from '../../vscode/webview/messages';
+import type { AgentSettingsPayload, ProviderSettingsPayload, SafetySettingsPayload } from '../../vscode/webview/messages';
 
 const CONFIG_SECTION = 'thunder';
 
@@ -22,6 +22,15 @@ export async function updateAgentSettings(settings: AgentSettingsPayload): Promi
   await config.update('agent.autoContinue', settings.autoContinue, target);
   await config.update('agent.maxAutoContinues', settings.maxAutoContinues, target);
   await config.update('agent.researchAgentMaxSteps', settings.researchAgentMaxSteps, target);
+}
+
+export async function updateSafetySettings(settings: SafetySettingsPayload): Promise<void> {
+  const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
+  const target = vscode.ConfigurationTarget.Global;
+
+  await config.update('safety.approvalMode', settings.approvalMode, target);
+  await config.update('safety.requireApprovalForWrites', settings.requireApprovalForWrites, target);
+  await config.update('safety.requireApprovalForShell', settings.requireApprovalForShell, target);
 }
 
 export async function updateWorkspaceOverride(path: string): Promise<void> {

@@ -30,6 +30,13 @@ export interface TokenUsageView {
   lastResponseTokens: number;
   turnCount: number;
   contextWindow: number;
+  breakdown: TokenUsageBreakdownItem[];
+}
+
+export interface TokenUsageBreakdownItem {
+  label: string;
+  tokens: number;
+  color: string;
 }
 
 export interface ChatThreadSummary {
@@ -40,6 +47,18 @@ export interface ChatThreadSummary {
   updatedAt: number;
   tokenTotal: number;
   turnCount: number;
+}
+
+export interface PinnedContextView {
+  path: string;
+  kind: 'file' | 'folder';
+  auto?: boolean;
+}
+
+export interface ContextPathSuggestion {
+  path: string;
+  kind: 'file' | 'folder';
+  label: string;
 }
 
 export interface ContextItemView {
@@ -142,6 +161,7 @@ export interface SettingsView {
   model: string;
   contextWindow: number;
   indexingEnabled: boolean;
+  approvalMode: ApprovalMode;
   requireApprovalWrites: boolean;
   requireApprovalShell: boolean;
   memoryEnabled: boolean;
@@ -159,6 +179,8 @@ export interface SettingsView {
   projectRules: number;
 }
 
+export type ApprovalMode = 'review_all' | 'ask_edits' | 'ask_deletes' | 'ask_commands' | 'auto';
+
 export interface ProviderSettingsPayload {
   providerType: 'echo' | 'openai-compatible';
   baseUrl: string;
@@ -172,6 +194,12 @@ export interface AgentSettingsPayload {
   autoContinue: boolean;
   maxAutoContinues: number;
   researchAgentMaxSteps: number;
+}
+
+export interface SafetySettingsPayload {
+  approvalMode: ApprovalMode;
+  requireApprovalForWrites: boolean;
+  requireApprovalForShell: boolean;
 }
 
 export interface ContextToggles {
@@ -192,6 +220,7 @@ export interface WebviewState {
   loading: boolean;
   error: string | null;
   approvals: ApprovalRequestView[];
+  pinnedContext: PinnedContextView[];
   contextPreview: ContextItemView[];
   contextTokenEstimate: number;
   contextBudget: ContextBudgetView | null;
@@ -238,12 +267,13 @@ export type ExtensionToWebviewMessage =
   | { type: 'setAgentActivity'; payload: AgentActivityEntry[] }
   | { type: 'setAgentLiveStatus'; payload: AgentLiveStatusView | null }
   | { type: 'setSubagents'; payload: SubagentStatusView[] }
-  | { type: 'setTokenUsage'; payload: TokenUsageView };
+  | { type: 'setTokenUsage'; payload: TokenUsageView }
+  | { type: 'setContextPaths'; payload: { requestId: string; paths: ContextPathSuggestion[] } };
 
 // Webview -> Extension messages
 export type WebviewToExtensionMessage =
   | { type: 'ready' }
-  | { type: 'sendMessage'; payload: { content: string } }
+  | { type: 'sendMessage'; payload: { content: string; pinnedContext?: PinnedContextView[] } }
   | { type: 'retryLastMessage' }
   | { type: 'newChat' }
   | { type: 'openChatThread'; payload: { id: string } }
@@ -251,11 +281,12 @@ export type WebviewToExtensionMessage =
   | { type: 'setTab'; payload: WebviewTab }
   | { type: 'stopGeneration' }
   | { type: 'clearError' }
-  | { type: 'resolveApproval'; payload: { id: string; decision: 'approved' | 'denied'; selectedOption?: string } }
+  | { type: 'resolveApproval'; payload: { id: string; decision: 'approved' | 'denied'; selectedOption?: string; scope?: 'single' | 'task' } }
   | { type: 'approveAllPending' }
   | { type: 'saveApiKey'; payload: { key: string } }
   | { type: 'saveProviderSettings'; payload: ProviderSettingsPayload }
   | { type: 'saveAgentSettings'; payload: AgentSettingsPayload }
+  | { type: 'saveSafetySettings'; payload: SafetySettingsPayload }
   | { type: 'testProviderConnection'; payload?: ProviderSettingsPayload }
   | { type: 'pickWorkspaceFolder' }
   | { type: 'setWorkspaceOverride'; payload: { path: string } }
@@ -267,7 +298,11 @@ export type WebviewToExtensionMessage =
   | { type: 'toggleContextSource'; payload: { source: keyof ContextToggles; enabled: boolean } }
   | { type: 'toggleContextPreview' }
   | { type: 'copyLastResponse' }
-  | { type: 'refreshPanels' };
+  | { type: 'addPinnedContext'; payload: { path: string; kind: 'file' | 'folder' } }
+  | { type: 'removePinnedContext'; payload: { path: string } }
+  | { type: 'clearPinnedContext' }
+  | { type: 'searchContextPaths'; payload: { query: string; requestId: string } }
+  | { type: 'pickContextPath' }
 
 export const defaultContextToggles = (): ContextToggles => ({
   repoMap: true,
@@ -284,6 +319,7 @@ export const defaultSettingsView = (): SettingsView => ({
   model: 'qwen3-coder:30b',
   contextWindow: 8192,
   indexingEnabled: true,
+  approvalMode: 'review_all',
   requireApprovalWrites: true,
   requireApprovalShell: true,
   memoryEnabled: true,
@@ -308,6 +344,7 @@ export const initialWebviewState = (): WebviewState => ({
   loading: false,
   error: null,
   approvals: [],
+  pinnedContext: [],
   contextPreview: [],
   contextTokenEstimate: 0,
   contextBudget: null,
@@ -337,5 +374,6 @@ export const initialWebviewState = (): WebviewState => ({
     lastResponseTokens: 0,
     turnCount: 0,
     contextWindow: 8192,
+    breakdown: [],
   },
 });

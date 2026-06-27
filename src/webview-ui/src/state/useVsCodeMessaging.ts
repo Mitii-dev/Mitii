@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useReducer } from 'react';
-import type { ExtensionToWebviewMessage, WebviewToExtensionMessage } from '../../../vscode/webview/messages';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import type {
+  ContextPathSuggestion,
+  ExtensionToWebviewMessage,
+  WebviewToExtensionMessage,
+} from '../../../vscode/webview/messages';
 import { initialState, webviewReducer } from './store';
 
 declare function acquireVsCodeApi(): {
@@ -12,6 +16,13 @@ const vscode = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : un
 
 export function useVsCodeMessaging() {
   const [state, dispatch] = useReducer(webviewReducer, initialState);
+  const [pathSuggestions, setPathSuggestions] = useState<ContextPathSuggestion[]>([]);
+  const [pathSearchRequestId, setPathSearchRequestId] = useState<string | null>(null);
+  const pathSearchRequestIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    pathSearchRequestIdRef.current = pathSearchRequestId;
+  }, [pathSearchRequestId]);
 
   useEffect(() => {
     const handler = (event: MessageEvent<ExtensionToWebviewMessage>) => {
@@ -62,6 +73,11 @@ export function useVsCodeMessaging() {
         case 'setTokenUsage':
           dispatch({ type: 'SET_TOKEN_USAGE', payload: message.payload });
           break;
+        case 'setContextPaths':
+          if (message.payload.requestId === pathSearchRequestIdRef.current) {
+            setPathSuggestions(message.payload.paths);
+          }
+          break;
       }
     };
 
@@ -71,8 +87,11 @@ export function useVsCodeMessaging() {
   }, []);
 
   const postMessage = useCallback((message: WebviewToExtensionMessage) => {
+    if (message.type === 'searchContextPaths') {
+      setPathSearchRequestId(message.payload.requestId);
+    }
     vscode?.postMessage(message);
   }, []);
 
-  return { state, dispatch, postMessage };
+  return { state, dispatch, postMessage, pathSuggestions, pathSearchRequestId };
 }

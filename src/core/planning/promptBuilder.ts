@@ -11,8 +11,10 @@ TOOLS: You have tools to read files, search code, run commands, write files, and
 - Tools named mcp__server__tool come from configured MCP servers. Treat them as external tools; inspect their names and arguments carefully.
 - Batch independent reads and searches in ONE turn (read_files, search_batch).
 - For audit/cleanup: use execute_workspace_script (audit-dependencies.mjs, audit-dead-code.sh) — NEVER spawn_research_agent for unused deps/imports/files.
+- For unused exports/dead code: trust automated AST tools only (knip via audit-dead-code.sh, or npx knip / npx ts-prune). Do NOT manually grep for unused exports as the source of truth.
 - Prefer execute_workspace_script for known repo scripts (knip, depcheck, safe lint, checkpoint read/write). Search with search_script_catalog first if needed.
-- Prefer apply_patch for small targeted changes; use write_file for new files or full rewrites.
+- Prefer apply_patch for targeted logical blocks; use write_file for new files or full rewrites.
+- Safe patching: in TSX/JSX, never replace isolated single lines inside a component. Patch the whole import block, whole object, whole hook block, or whole component/function block. Before patching, mentally verify brackets {}, parens (), tags <>, and required adjacent React props stay balanced.
 - Use run_command only for read-only inspection or project verification. During audit/cleanup tasks, use execute_workspace_script instead of hand-written shell.
 - Use use_skill to load a specific workspace skill playbook when the task matches one.
 - Use memory_search only as a fallback when chat history lacks needed facts.
@@ -25,20 +27,23 @@ TOOLS: You have tools to read files, search code, run commands, write files, and
 - NEVER say "I will search…" without calling tools in the same turn.`;
 
 const AUDIT_GUIDANCE = `
-AUDIT / CLEANUP MODE — SCRIPT-FIRST (avoid 60–120s subagent black holes):
+AUDIT / CLEANUP MODE — AST-FIRST (avoid tunnel vision and manual grep):
 1. **First turn**: execute_workspace_script("audit-dependencies.mjs") — depcheck scans ALL npm deps via AST in ~0.5s.
 2. **Second turn**: execute_workspace_script("audit-dead-code.sh") — knip finds unused files/exports/deps in one pass.
 3. read_file package.json only if scripts fail.
-4. NEVER spawn_research_agent to grep each dependency (64 deps × 3s inference = 108s+).
-5. NEVER run search per-package — regex misses comments; AST scripts do not.
-6. Report with confidence: high (safe to remove), medium (likely unused), low (needs review).
-7. In Plan/Review mode: report only — do NOT delete until user confirms.`;
+4. NEVER use manual grep/search as the source of truth for unused exports. Use knip or ts-prune output.
+5. NEVER spawn_research_agent to grep each dependency (64 deps × 3s inference = 108s+).
+6. NEVER run search per-package — regex misses comments; AST scripts do not.
+7. Report with confidence: high (safe to remove), medium (likely unused), low (needs review).
+8. In Plan/Review mode: report only — do NOT delete until user confirms.
+9. Run compile/lint/build only in the final Verify phase. If final TypeScript errors are unrelated to touched files, log them as remaining issues and do not restart cleanup or pivot to unrelated fixes.`;
 
 const PLANNING_DISCOVERY_GUIDANCE = `
 READ-ONLY PLANNING DISCOVERY TOOLS:
 - Use read_file/read_files/search/search_batch/list_files/repo_map/retrieve_context to inspect the codebase.
 - Use diagnostics, git_diff, memory_search, and search_script_catalog when relevant.
 - For audit/cleanup: execute_workspace_script (audit-dependencies.mjs, audit-dead-code.sh) — NOT spawn_research_agent.
+- For unused exports/dead code: use knip/ts-prune through audit-dead-code.sh or read-only npx commands; do NOT manually grep.
 - Use run_command only for read-only inspection commands such as rg, find, git status, npx depcheck, npx knip, lint/test/typecheck checks.
 - Do NOT call write_file, apply_patch, memory_write, or save_task_state during planning discovery.`;
 
@@ -63,7 +68,7 @@ Systematic workflow — follow this order:
 1. **Analyze** — read_file / list_files / depcheck / eslint (once each) to understand the codebase
 2. **Execute** — apply_patch or write_file to make changes; update package.json for deps
 3. **Verify** — diagnostics / run_command (lint, test, build) after changes
-4. **Fix** — if validation reports errors, fix them before moving on
+4. **Fix** — fix validation errors only when they are caused by your touched files or current task. Log unrelated pre-existing TypeScript errors without derailing the plan.
 
 You may also output files in this format when tools are unavailable:
 
@@ -74,7 +79,8 @@ You may also output files in this format when tools are unavailable:
 Rules:
 - Use correct relative paths from context.
 - Fix syntax, imports, and type errors proactively.
-- Prefer apply_patch for small edits; write_file for new files or full rewrites.`,
+- Prefer apply_patch for complete logical blocks; write_file for new files or full rewrites.
+- In TSX/JSX, never patch isolated single component lines. Patch the full import block, object, hook block, or component/function block.`,
     review: `You are in REVIEW mode. Inspect code in context.
 - Start with a brief verdict (1 sentence).
 - List issues as bullets with file:line references when possible.
@@ -99,10 +105,11 @@ For multi-step tasks in Plan mode, include:
 ${modeInstructions[mode]}
 ${toolsEnabled ? TOOL_GUIDANCE : ''}
 ${toolsEnabled && auditMode ? AUDIT_GUIDANCE : ''}
-${toolsEnabled && isContinuation ? '\nCONTINUATION TURN: Read recent conversation messages first. Do NOT call memory_search before checking chat history and task progress.' : ''}
+${toolsEnabled && isContinuation ? '\nCONTINUATION TURN: Resume the existing state machine. Read Task progress, approved tool outputs, and recent conversation first. Continue from the pending EXECUTE/VERIFY step. Do NOT re-run audit-dependencies, audit-dead-code, list_files, or memory_search before using the approval context.' : ''}
 ${mode === 'plan' ? planFormat : ''}
 
 RULES:
+- The user's message may include a <user_explicit_context> block with files/folders they pinned. Treat that as highest priority — focus there first before wider codebase context.
 - The user's message includes a ## Codebase Context section with real project files. READ IT and answer from it.
 - If ## Codebase Context includes a repo_map/workspace overview, use that provided map first. Do NOT repeatedly call list_files for the same structure unless the map is absent or demonstrably stale.
 - Project rule files in context (AGENTS.md, CLAUDE.md, .thunder/rules, .clinerules, .continue/rules, etc.) are operating instructions for this workspace. Follow them unless they conflict with explicit user instructions or safety policy.
@@ -124,7 +131,8 @@ export function buildPrompt(
   toolsEnabled = false,
   auditMode = false,
   taskStateBlock?: string,
-  isContinuation = false
+  isContinuation = false,
+  explicitContextBlock?: string
 ): ChatMessage[] {
   const contextBlock = contextPack.formatted
     ? contextPack.formatted
@@ -143,7 +151,11 @@ export function buildPrompt(
       ? `\n\n${buildAuditBootstrapBlock()}\n`
       : '';
 
-  const userContent = `## Codebase Context
+  const explicitBlock = explicitContextBlock?.trim()
+    ? `${explicitContextBlock.trim()}\n\n---\n\n`
+    : '';
+
+  const userContent = `${explicitBlock}## Codebase Context
 
 ${contextBlock}
 ${taskProgress}${continuationNote}${auditBootstrap}
@@ -187,7 +199,7 @@ export function buildPlanGenerationPrompt(
   const isAudit = task?.kind === 'audit';
   const highComplexity = task?.complexity === 'high';
   const stepGuidance = isAudit
-    ? 'Audit/cleanup: Phase 1 MUST use execute_workspace_script (audit-dependencies.mjs, audit-dead-code.sh) — read-only AST scans. Phase 3 Execute creates configs and edits package.json. Do NOT assign file writes to diagnostics phase.'
+    ? 'Audit/cleanup: Phase 1 MUST use execute_workspace_script (audit-dependencies.mjs, audit-dead-code.sh) — read-only AST scans. Unused exports MUST come from knip/ts-prune, not manual grep. Phase 3 Execute creates configs and edits package.json. Do NOT assign file writes to diagnostics phase.'
     : highComplexity
       ? 'High-complexity tasks need 8-12 granular steps when that improves execution quality. Simpler high-confidence changes may use fewer.'
       : 'Use 2-6 steps for simple tasks and 4-8 steps for medium tasks.';
@@ -296,7 +308,7 @@ Output a strict JSON DAG plan with dependsOn edges. Each step must declare:
 - dependsOn: array of step ids that must complete first (empty for root steps)
 - optional tool + args for script-driven steps
 
-${isAudit ? 'Audit tasks need 8+ granular steps across diagnostics/review/execute/verify phases.' : 'Use 2-8 steps based on complexity.'}
+${isAudit ? 'Audit tasks need 8+ granular steps across diagnostics/review/execute/verify phases. Diagnostics must run knip or ts-prune for unused exports.' : 'Use 2-8 steps based on complexity.'}
 
 Output ONLY a JSON code block:
 \`\`\`json
@@ -536,8 +548,9 @@ ${contextBlock}
 ## Final validation (execute NOW)
 1. Run diagnostics on all modified files (use diagnostics tool).
 2. Run relevant tests/lint/build (run_command) if applicable.
-3. Fix any remaining errors with apply_patch/write_file.
-4. Summarize: what was done, test results, any remaining issues.
+3. Fix errors only when they are caused by the files you modified or the current task.
+4. If TypeScript reports unrelated/pre-existing errors, log them under remaining issues and do not restart or pivot away from the cleanup plan.
+5. Summarize: what was done, test results, any remaining issues.
 
 Do NOT skip verification — call tools now.`,
     },

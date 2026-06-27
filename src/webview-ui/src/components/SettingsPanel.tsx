@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import type {
   AgentSettingsPayload,
+  ApprovalMode,
   ContextToggles,
   ProviderSettingsPayload,
+  SafetySettingsPayload,
   SettingsView,
   WorkspaceNoticeView,
 } from '../../../vscode/webview/messages';
@@ -56,6 +58,7 @@ interface SettingsPanelProps {
   onSaveApiKey: (key: string) => void;
   onSaveProviderSettings: (settings: ProviderSettingsPayload) => void;
   onSaveAgentSettings: (settings: AgentSettingsPayload) => void;
+  onSaveSafetySettings: (settings: SafetySettingsPayload) => void;
   onTestConnection: (settings: ProviderSettingsPayload) => void;
   onPickWorkspaceFolder: () => void;
   onSetWorkspaceOverride: (path: string) => void;
@@ -79,6 +82,7 @@ export function SettingsPanel({
   onSaveApiKey,
   onSaveProviderSettings,
   onSaveAgentSettings,
+  onSaveSafetySettings,
   onTestConnection,
   onPickWorkspaceFolder,
   onSetWorkspaceOverride,
@@ -100,6 +104,8 @@ export function SettingsPanel({
   const [agentMaxAutoContinues, setAgentMaxAutoContinues] = useState(String(settings.agentMaxAutoContinues));
   const [researchAgentMaxSteps, setResearchAgentMaxSteps] = useState(String(settings.researchAgentMaxSteps));
   const [agentSaved, setAgentSaved] = useState(false);
+  const [approvalMode, setApprovalMode] = useState<ApprovalMode>(settings.approvalMode);
+  const [safetySaved, setSafetySaved] = useState(false);
 
   useEffect(() => {
     setProviderType(settings.providerType as 'echo' | 'openai-compatible');
@@ -111,6 +117,7 @@ export function SettingsPanel({
     setAgentAutoContinue(settings.agentAutoContinue);
     setAgentMaxAutoContinues(String(settings.agentMaxAutoContinues));
     setResearchAgentMaxSteps(String(settings.researchAgentMaxSteps));
+    setApprovalMode(settings.approvalMode);
   }, [settings]);
 
   const handleSaveKey = () => {
@@ -165,6 +172,12 @@ export function SettingsPanel({
     });
     setAgentSaved(true);
     setTimeout(() => setAgentSaved(false), 2000);
+  };
+
+  const handleSaveSafety = () => {
+    onSaveSafetySettings(deriveSafetySettings(approvalMode));
+    setSafetySaved(true);
+    setTimeout(() => setSafetySaved(false), 2000);
   };
 
   const isLocalProvider = providerType === 'openai-compatible';
@@ -472,11 +485,32 @@ export function SettingsPanel({
       <section className="settings-section">
         <h3>Safety</h3>
         <SettingNote>
-          Writes and shell commands can change your project. Approvals let you review diffs before apply.
-          Autonomy presets are configured in VS Code user settings under <code>thunder.safety</code>.
+          Approval mode decides when Thunder pauses for review. Dangerous commands stay blocked even when auto-approve
+          is selected.
         </SettingNote>
-        <p className="settings-row">Approve writes: <strong>{settings.requireApprovalWrites ? 'Yes' : 'No'}</strong></p>
-        <p className="settings-row">Approve shell: <strong>{settings.requireApprovalShell ? 'Yes' : 'No'}</strong></p>
+        <label className="settings-field">
+          <span className="settings-label">Approval mode</span>
+          <select
+            className="settings-input"
+            value={approvalMode}
+            onChange={(e) => setApprovalMode(e.target.value as ApprovalMode)}
+          >
+            <option value="review_all">Ask before edits and commands</option>
+            <option value="ask_edits">Ask before edits</option>
+            <option value="ask_deletes">Ask before deletes</option>
+            <option value="ask_commands">Ask before commands</option>
+            <option value="auto">Auto approve allowed operations</option>
+          </select>
+          <span className="settings-hint">{approvalModeDescription(approvalMode)}</span>
+        </label>
+        <button type="button" className="btn btn--primary" onClick={handleSaveSafety}>
+          {safetySaved ? 'Saved!' : 'Save approval mode'}
+        </button>
+        <p className="settings-row">
+          Current policy: <strong>{settings.requireApprovalWrites ? 'edits ask' : 'edits auto'}</strong>
+          {' · '}
+          <strong>{settings.requireApprovalShell ? 'commands ask' : 'commands auto'}</strong>
+        </p>
       </section>
 
       <section className="settings-section">
@@ -488,4 +522,34 @@ export function SettingsPanel({
       </section>
     </div>
   );
+}
+
+function deriveSafetySettings(approvalMode: ApprovalMode): SafetySettingsPayload {
+  switch (approvalMode) {
+    case 'review_all':
+      return { approvalMode, requireApprovalForWrites: true, requireApprovalForShell: true };
+    case 'ask_edits':
+      return { approvalMode, requireApprovalForWrites: true, requireApprovalForShell: false };
+    case 'ask_deletes':
+      return { approvalMode, requireApprovalForWrites: false, requireApprovalForShell: false };
+    case 'ask_commands':
+      return { approvalMode, requireApprovalForWrites: false, requireApprovalForShell: true };
+    case 'auto':
+      return { approvalMode, requireApprovalForWrites: false, requireApprovalForShell: false };
+  }
+}
+
+function approvalModeDescription(mode: ApprovalMode): string {
+  switch (mode) {
+    case 'review_all':
+      return 'Pause before file edits and mutating shell commands.';
+    case 'ask_edits':
+      return 'Pause before write_file, apply_patch, and delete-like shell commands.';
+    case 'ask_deletes':
+      return 'Pause only for delete-like shell commands such as rm, git rm, or npm uninstall.';
+    case 'ask_commands':
+      return 'Pause before mutating shell commands, but allow file edits.';
+    case 'auto':
+      return 'Do not pause for allowed operations. Dangerous commands are still blocked.';
+  }
 }

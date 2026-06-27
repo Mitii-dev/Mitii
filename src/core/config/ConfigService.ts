@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 import { createLogger } from '../telemetry/Logger';
 import { readThunderConfigFromSettings } from './vscodeSettings';
-import { updateProviderSettings, updateAgentSettings, updateWorkspaceOverride, clearWorkspaceOverride } from './updateSettings';
+import { updateProviderSettings, updateAgentSettings, updateSafetySettings, updateWorkspaceOverride, clearWorkspaceOverride } from './updateSettings';
 import { type ThunderConfig, defaultThunderConfig } from './schema';
-import type { AgentSettingsPayload, ProviderSettingsPayload } from '../../vscode/webview/messages';
+import type { AgentSettingsPayload, ProviderSettingsPayload, SafetySettingsPayload } from '../../vscode/webview/messages';
 
 const log = createLogger('ConfigService');
 const WORKSPACE_OVERRIDE_STATE_KEY = 'thunder.workspace.rootPathOverride';
@@ -78,6 +78,12 @@ export class ConfigService {
     await updateAgentSettings(settings);
     this.config = readThunderConfigFromSettings();
     log.info('Agent settings updated');
+  }
+
+  async updateSafetySettings(settings: SafetySettingsPayload): Promise<void> {
+    await updateSafetySettings(settings);
+    this.config = readThunderConfigFromSettings();
+    log.info('Safety settings updated');
   }
 
   async setWorkspaceOverride(path: string): Promise<void> {

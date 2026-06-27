@@ -67,12 +67,15 @@ import type {
   ContextToggles,
   ApprovalRequestView,
   PlanView,
+  PinnedContextView,
+  ContextPathSuggestion,
 } from '../vscode/webview/messages';
 import {
   initialWebviewState,
   defaultContextToggles,
 } from '../vscode/webview/messages';
 import { resolveDbPath } from './indexing/paths';
+import { searchWorkspacePaths, resolvePickedPaths } from './context/contextPathSearch';
 import { createWorkspacePattern, isWorkspaceInVscodeFolders, normalizeWorkspaceRoot, toWorkspaceRelPath } from './vscode/pathUtils';
 
 const log = createLogger('ThunderController');
@@ -121,6 +124,7 @@ export class ThunderController {
     lastContextTokens: 0,
     lastResponseTokens: 0,
     turnCount: 0,
+    breakdown: [] as import('../vscode/webview/messages').TokenUsageBreakdownItem[],
   };
   private uiUpdate: UiUpdateCallback | undefined;
   private autoFixCallback: ((message: string) => Promise<void>) | undefined;
@@ -131,6 +135,7 @@ export class ThunderController {
   private pendingApprovalOutputs: string[] = [];
   private resumeApprovalResults: import('./agent/AgentLoop').ApprovedToolResult[] = [];
   private agentTaskState = new AgentTaskState();
+  private pinnedContext: PinnedContextView[] = [];
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.configService = new ConfigService(context);
@@ -394,7 +399,7 @@ export class ThunderController {
       planPersistence: this.planPersistence,
       getSessionId: sessionIdForPlans,
       setPlanPhaseLock: (phase: import('./planning/PlanActEngine').PlanPhase | undefined) => {
-        this.toolExecutor.setPlanPhaseLock(phase);
+        this.toolExecutor?.setPlanPhaseLock(phase);
       },
       get planFileStore() {
         const sid = sessionIdForPlans();
@@ -466,7 +471,7 @@ export class ThunderController {
       this.agentLiveStatus = status;
       this.notifyUi({ agentLiveStatus: status });
     });
-    orchestrator.setTokenUsageCallback((promptTokens, contextTokens, responseText) => {
+    orchestrator.setTokenUsageCallback((promptTokens, contextTokens, responseText, breakdown) => {
       const responseTokens = Math.ceil(responseText.length / 4);
       const turnTokens = promptTokens + responseTokens;
       this.tokenUsage.lastPromptTokens = promptTokens;
@@ -474,6 +479,7 @@ export class ThunderController {
       this.tokenUsage.lastResponseTokens = responseTokens;
       this.tokenUsage.sessionTotal += turnTokens;
       this.tokenUsage.turnCount += 1;
+      this.tokenUsage.breakdown = breakdown;
       const config = this.configService.getConfig();
       this.sessionLog.append('token_usage', 'Session token rollup', {
         turnPromptTokens: promptTokens,
@@ -606,6 +612,7 @@ export class ThunderController {
       loading: base.loading ?? false,
       error: base.error ?? null,
       showContextPreview: base.showContextPreview ?? false,
+      pinnedContext: base.pinnedContext ?? this.pinnedContext,
       contextPreview: base.contextPreview ?? [],
       contextTokenEstimate: base.contextTokenEstimate ?? 0,
       contextBudget: base.contextBudget ?? null,
@@ -652,6 +659,7 @@ export class ThunderController {
         model: config.provider.model,
         contextWindow: config.provider.contextWindow,
         indexingEnabled: config.indexing.enabled,
+        approvalMode: config.safety.approvalMode,
         requireApprovalWrites: config.safety.requireApprovalForWrites,
         requireApprovalShell: config.safety.requireApprovalForShell,
         memoryEnabled: config.memory.enabled,
@@ -707,6 +715,10 @@ export class ThunderController {
     if (this.session?.mode !== 'act' || !this.autoFixCallback || this.autoFixDepth >= 2) {
       return;
     }
+    if (this.shouldDeferAutoFixUntilApprovalResume()) {
+      this.pushActivity('info', 'Auto-fix deferred until approved task resumes', relPath);
+      return;
+    }
 
     this.autoFixDepth += 1;
     try {
@@ -724,6 +736,11 @@ export class ThunderController {
     } finally {
       this.autoFixDepth -= 1;
     }
+  }
+
+  private shouldDeferAutoFixUntilApprovalResume(): boolean {
+    const pendingApprovals = this.approvalQueue?.getPending().length ?? 0;
+    return pendingApprovals > 0 || this.resumeApprovalResults.length > 0 || Boolean(this.chatOrchestrator?.hasSuspendState());
   }
 
   getSession(): ThunderSession | undefined { return this.session; }
@@ -747,12 +764,15 @@ export class ThunderController {
     this.currentPlan = null;
     this.agentActivity = [];
     this.agentLiveStatus = null;
+    this.pinnedContext = [];
+    this.syncActiveEditorPin();
     this.tokenUsage = {
       sessionTotal: 0,
       lastPromptTokens: 0,
       lastContextTokens: 0,
       lastResponseTokens: 0,
       turnCount: 0,
+      breakdown: [],
     };
     this.notifyUi({
       currentSessionId: this.session.id,
@@ -760,6 +780,7 @@ export class ThunderController {
       agentActivity: [],
       agentLiveStatus: null,
       subagents: [],
+      pinnedContext: this.pinnedContext,
       contextPreview: [],
       contextTokenEstimate: 0,
       contextBudget: null,
@@ -859,7 +880,7 @@ export class ThunderController {
   async sendMessage(
     content: string,
     recentMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [],
-    options?: { preserveActivity?: boolean }
+    options?: { preserveActivity?: boolean; pinnedContext?: PinnedContextView[] }
   ): Promise<AsyncIterable<string>> {
     if (!this.session) throw normalizeError(new Error('Session not initialized'));
     const provider = this.providerRegistry.getActive();
@@ -876,6 +897,7 @@ export class ThunderController {
     setSubagentTracker(this.subagentTracker);
 
     if (!isContinuation && !options?.preserveActivity) {
+      this.approvalQueue?.clearTaskGrants(this.session?.id);
       this.agentActivity = [];
       this.agentLiveStatus = null;
       this.pendingApprovalOutputs = [];
@@ -889,7 +911,76 @@ export class ThunderController {
         'No workspace configured. Open a folder (File → Open Folder) or set a path in Thunder Settings → Workspace.'
       ));
     }
-    return this.chatOrchestrator.send(this.session, provider, content, recentMessages);
+    return this.chatOrchestrator.send(this.session, provider, content, recentMessages, {
+      pinnedContext: options?.pinnedContext ?? this.pinnedContext,
+    });
+  }
+
+  getPinnedContext(): PinnedContextView[] {
+    return [...this.pinnedContext];
+  }
+
+  addPinnedContext(path: string, kind: 'file' | 'folder', auto = false): void {
+    const normalized = path.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, '');
+    if (!normalized) return;
+    if (this.pinnedContext.some((p) => p.path === normalized && p.kind === kind)) return;
+    this.pinnedContext = [
+      ...this.pinnedContext.filter((p) => !(p.path === normalized && p.kind === kind)),
+      { path: normalized, kind, auto },
+    ];
+    this.notifyUi({ pinnedContext: this.pinnedContext });
+  }
+
+  removePinnedContext(path: string): void {
+    const normalized = path.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, '');
+    this.pinnedContext = this.pinnedContext.filter((p) => p.path !== normalized);
+    this.notifyUi({ pinnedContext: this.pinnedContext });
+  }
+
+  clearPinnedContext(): void {
+    this.pinnedContext = [];
+    this.syncActiveEditorPin();
+    this.notifyUi({ pinnedContext: this.pinnedContext });
+  }
+
+  searchContextPaths(query: string, limit = 20): ContextPathSuggestion[] {
+    const workspace = this.resolveWorkspacePath();
+    if (!workspace) return [];
+    return searchWorkspacePaths(workspace, query, this.indexService?.getDb(), limit);
+  }
+
+  async pickContextPaths(): Promise<ContextPathSuggestion[]> {
+    const workspace = this.resolveWorkspacePath();
+    if (!workspace) return [];
+
+    const picked = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: true,
+      canSelectMany: true,
+      defaultUri: vscode.Uri.file(workspace),
+      openLabel: 'Add to context',
+    });
+    if (!picked?.length) return [];
+    return resolvePickedPaths(workspace, picked);
+  }
+
+  syncActiveEditorPin(): void {
+    const workspace = this.resolveWorkspacePath();
+    if (!workspace) return;
+    const editor = vscode.window.activeTextEditor;
+    const rel = editor ? toWorkspaceRelPath(editor.document.uri, workspace) : undefined;
+    const manual = this.pinnedContext.filter((p) => !p.auto);
+    if (!rel) {
+      this.pinnedContext = manual;
+      this.notifyUi({ pinnedContext: this.pinnedContext });
+      return;
+    }
+    if (manual.some((p) => p.path === rel)) {
+      this.pinnedContext = manual;
+    } else {
+      this.pinnedContext = [...manual, { path: rel, kind: 'file', auto: true }];
+    }
+    this.notifyUi({ pinnedContext: this.pinnedContext });
   }
 
   private ensureChatOrchestrator(): void {
@@ -1016,7 +1107,16 @@ export class ThunderController {
     this.chatOrchestrator?.stop();
   }
 
-  async resolveApproval(id: string, decision: 'approved' | 'denied', selectedOption?: string): Promise<void> {
+  clearTaskApprovalGrants(): void {
+    this.approvalQueue?.clearTaskGrants(this.session?.id);
+  }
+
+  async resolveApproval(
+    id: string,
+    decision: 'approved' | 'denied',
+    selectedOption?: string,
+    scope: 'single' | 'task' = 'single'
+  ): Promise<void> {
     const fullInput = this.approvalQueue?.getFullInput(id);
     const request = this.approvalQueue?.resolve(id, decision);
     if (!request) return;
@@ -1027,6 +1127,7 @@ export class ThunderController {
       files: request.files,
       risk: request.risk,
       selectedOption,
+      scope,
     });
 
     this.notifyUi({ approvals: (this.approvalQueue?.getPending() ?? []).map(toApprovalView) });
@@ -1070,6 +1171,11 @@ export class ThunderController {
       );
       this.pushActivity('error', 'Approval failed — payload missing', request.files.join(', '));
       return;
+    }
+
+    if (scope === 'task') {
+      this.approvalQueue?.grantForTask(request.sessionId, request.toolName);
+      this.pushActivity('info', `Approved ${request.toolName} for this task`, request.files.join(', ') || undefined);
     }
 
     const path = typeof fullInput.path === 'string' ? fullInput.path : request.files[0];
@@ -1154,7 +1260,7 @@ export class ThunderController {
   async approveAllPending(): Promise<void> {
     const pending = this.approvalQueue?.getPending() ?? [];
     for (const req of [...pending]) {
-      await this.resolveApproval(req.id, 'approved');
+      await this.resolveApproval(req.id, 'approved', undefined, 'task');
     }
   }
 
@@ -1254,6 +1360,15 @@ export class ThunderController {
     });
     this.notifyUi({ settings: (await this.buildUiState()).settings });
     void vscode.window.showInformationMessage('Thunder: Agent settings saved.');
+  }
+
+  async saveSafetySettings(settings: import('../vscode/webview/messages').SafetySettingsPayload): Promise<void> {
+    await this.configService.updateSafetySettings(settings);
+    const config = this.configService.getConfig();
+    const effectiveSafety = applyAutonomyPreset(config.safety, config.safety.autonomyPreset);
+    this.policyEngine?.updateSafetyConfig(effectiveSafety);
+    this.notifyUi({ settings: (await this.buildUiState()).settings });
+    void vscode.window.showInformationMessage('Thunder: Approval mode saved.');
   }
 
   setContextToggle(source: keyof ContextToggles, enabled: boolean): void {

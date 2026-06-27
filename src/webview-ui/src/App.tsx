@@ -1,18 +1,19 @@
 import { useVsCodeMessaging } from './state/useVsCodeMessaging';
 import { MessageList } from './components/MessageList';
 import { ChatInput } from './components/ChatInput';
+import { ContextPanel } from './components/ContextPanel';
 import { ErrorBanner } from './components/ErrorBanner';
 import { SettingsPanel } from './components/SettingsPanel';
 import { ApprovalCards } from './components/ApprovalCards';
 import { IndexingStatusBar } from './components/IndexingStatusBar';
 import { WorkspaceBanner } from './components/WorkspaceBanner';
-import { TokenMeter } from './components/TokenMeter';
 import { HistoryPanel } from './components/HistoryPanel';
+import { PlanPanel } from './components/PlanPanel';
 import { IconButton } from './components/IconButton';
 import { IconChat, IconHistory, IconPlus, IconSettings } from './components/Icons';
 
 export function App() {
-  const { state, postMessage } = useVsCodeMessaging();
+  const { state, postMessage, pathSuggestions, pathSearchRequestId } = useVsCodeMessaging();
   const canRetry = state.messages.some((m) => m.role === 'user');
 
   return (
@@ -61,7 +62,6 @@ export function App() {
             status={state.indexing}
             onIndex={() => postMessage({ type: 'indexWorkspace' })}
           />
-          <TokenMeter usage={state.tokenUsage} compact />
         </div>
       </header>
 
@@ -82,14 +82,21 @@ export function App() {
 
       <ApprovalCards
         approvals={state.approvals}
-        onResolve={(id, decision, selectedOption) =>
-          postMessage({ type: 'resolveApproval', payload: { id, decision, selectedOption } })
+        onResolve={(id, decision, selectedOption, scope) =>
+          postMessage({ type: 'resolveApproval', payload: { id, decision, selectedOption, scope } })
         }
         onApproveAll={() => postMessage({ type: 'approveAllPending' })}
       />
 
       {state.tab === 'chat' ? (
         <div className="chat-shell">
+          <PlanPanel plan={state.plan} />
+          <ContextPanel
+            items={state.pinnedContext}
+            onRemove={(path) => postMessage({ type: 'removePinnedContext', payload: { path } })}
+            onClear={() => postMessage({ type: 'clearPinnedContext' })}
+            onPick={() => postMessage({ type: 'pickContextPath' })}
+          />
           <div className="chat-body">
             <MessageList
               messages={state.messages}
@@ -103,12 +110,23 @@ export function App() {
               loading={state.loading}
               mode={state.mode}
               tokenUsage={state.tokenUsage}
+              pinnedContext={state.pinnedContext}
               canRetry={canRetry}
-              onSend={(content) => postMessage({ type: 'sendMessage', payload: { content } })}
+              onSend={(content, pinnedContext) =>
+                postMessage({ type: 'sendMessage', payload: { content, pinnedContext } })
+              }
               onStop={() => postMessage({ type: 'stopGeneration' })}
               onModeChange={(mode) => postMessage({ type: 'setMode', payload: mode })}
               onRetry={() => postMessage({ type: 'retryLastMessage' })}
               onCopyResponse={() => postMessage({ type: 'copyLastResponse' })}
+              onAddPinned={(path, kind) =>
+                postMessage({ type: 'addPinnedContext', payload: { path, kind } })
+              }
+              onSearchPaths={(query, requestId) => {
+                postMessage({ type: 'searchContextPaths', payload: { query, requestId } });
+              }}
+              pathSuggestions={pathSuggestions}
+              pathSearchRequestId={pathSearchRequestId}
             />
           </footer>
         </div>
@@ -137,6 +155,9 @@ export function App() {
             }
             onSaveAgentSettings={(payload) =>
               postMessage({ type: 'saveAgentSettings', payload })
+            }
+            onSaveSafetySettings={(payload) =>
+              postMessage({ type: 'saveSafetySettings', payload })
             }
             onTestConnection={(payload) => postMessage({ type: 'testProviderConnection', payload })}
             onPickWorkspaceFolder={() => postMessage({ type: 'pickWorkspaceFolder' })}

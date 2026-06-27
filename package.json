@@ -127,6 +127,25 @@
           "default": true,
           "description": "Require approval for shell commands"
         },
+        "thunder.safety.approvalMode": {
+          "type": "string",
+          "enum": [
+            "review_all",
+            "ask_edits",
+            "ask_deletes",
+            "ask_commands",
+            "auto"
+          ],
+          "enumDescriptions": [
+            "Ask before file edits and mutating shell commands.",
+            "Ask before file edits and delete-like shell commands; allow other mutating shell commands.",
+            "Ask only before delete-like shell commands; allow file edits and other commands.",
+            "Ask before mutating shell commands; allow file edits.",
+            "Auto-approve allowed tools and commands. Dangerous commands are still blocked."
+          ],
+          "default": "review_all",
+          "description": "Approval mode for agent operations"
+        },
         "thunder.safety.autonomyPreset": {
           "type": "string",
           "enum": [

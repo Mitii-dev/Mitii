@@ -16,6 +16,8 @@ export interface RepoMapOptions {
   gitDiffFiles?: string[];
   diagnosticFiles?: string[];
   recentEditFiles?: string[];
+  /** Restrict map to files under this relative folder prefix (e.g. src/core/). */
+  folderPrefix?: string;
   maxChars?: number;
 }
 
@@ -41,13 +43,18 @@ export class RepoMapService {
     const maxChars = options.maxChars ?? 8000;
     const entries = this.rankEntries(options);
     const budgeted = this.applyBudget(entries, maxChars);
-    return this.render(budgeted);
+    return this.render(budgeted, Boolean(options.folderPrefix));
   }
 
   private rankEntries(options: RepoMapOptions): RepoMapEntry[] {
-    const files = this.db.raw
-      .prepare('SELECT id, rel_path FROM files WHERE workspace = ?')
-      .all(this.workspace) as Array<{ id: number; rel_path: string }>;
+    const prefix = options.folderPrefix?.replace(/\\/g, '/').replace(/^\.\//, '');
+    const files = prefix
+      ? (this.db.raw
+          .prepare('SELECT id, rel_path FROM files WHERE workspace = ? AND rel_path LIKE ?')
+          .all(this.workspace, `${prefix}%`) as Array<{ id: number; rel_path: string }>)
+      : (this.db.raw
+          .prepare('SELECT id, rel_path FROM files WHERE workspace = ?')
+          .all(this.workspace) as Array<{ id: number; rel_path: string }>);
 
     const queryTerms = (options.query ?? '').toLowerCase().split(/\W+/).filter(Boolean);
     const refCounts = this.getRefCounts();
@@ -212,9 +219,11 @@ export class RepoMapService {
     return result;
   }
 
-  private render(entries: RepoMapEntry[]): string {
+  private render(entries: RepoMapEntry[], scoped = false): string {
     if (entries.length === 0) return '(no indexed files)';
-    const header = `# Repo map (${entries.length} files, ranked by relevance)\n`;
+    const header = scoped
+      ? `# Scoped repo map (${entries.length} files in folder)\n`
+      : `# Repo map (${entries.length} files, ranked by relevance)\n`;
     return header + entries.map((e) => this.renderEntry(e)).join('\n');
   }
 

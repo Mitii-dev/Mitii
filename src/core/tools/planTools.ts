@@ -132,7 +132,10 @@ export function createProposePlanMutationTool(ctx: PlanToolsContext): Tool<{
     inputSchema: z.object({
       reason: z.string(),
       newSteps: z.array(newStepSchema).min(1).max(20),
-    }),
+    }) as z.ZodType<{
+      reason: string;
+      newSteps: z.infer<typeof newStepSchema>[];
+    }>,
     async execute(input): Promise<ToolResult> {
       const plan = ctx.getPlan();
       if (!plan) {

@@ -6,7 +6,7 @@ import { IgnoreService } from '../src/core/indexing/IgnoreService';
 import { ChunkingService } from '../src/core/indexing/ChunkingService';
 import { sanitizeFtsQuery } from '../src/core/indexing/FtsIndex';
 import { tsExtractor, pythonExtractor } from '../src/core/indexing/SymbolExtractor';
-import { isDangerousCommand } from '../src/core/safety/ToolPolicyEngine';
+import { isDangerousCommand, isDeleteLikeCommand } from '../src/core/safety/ToolPolicyEngine';
 import { ToolPolicyEngine } from '../src/core/safety/ToolPolicyEngine';
 import { ContextBudgeter } from '../src/core/context/ContextBudgeter';
 import type { ContextItem } from '../src/core/context/types';
@@ -122,12 +122,46 @@ describe('ToolPolicyEngine', () => {
   it('requires approval for shell commands when shell approval is enabled', () => {
     expect(engine.evaluate('run_command', { command: 'rg "DineInKanban" src' }).decision).toBe('allow');
     expect(engine.evaluate('run_command', { command: 'npx depcheck' }).decision).toBe('allow');
-    expect(engine.evaluate('run_command', { command: 'npm run build' }).decision).toBe('require_approval');
+    expect(engine.evaluate('run_command', { command: 'npm install lodash' }).decision).toBe('require_approval');
+  });
+
+  it('supports ask-before-delete approval mode', () => {
+    const deleteEngine = new ToolPolicyEngine(
+      { ...defaultThunderConfig().safety, approvalMode: 'ask_deletes' },
+      () => false
+    );
+
+    expect(deleteEngine.evaluate('write_file', { path: 'src/index.ts', content: 'x' }).decision).toBe('allow');
+    expect(deleteEngine.evaluate('run_command', { command: 'npm install lodash' }).decision).toBe('allow');
+    expect(deleteEngine.evaluate('run_command', { command: 'npm uninstall lodash' }).decision).toBe('require_approval');
+    expect(deleteEngine.evaluate('run_command', { command: 'rm src/old.ts' }).decision).toBe('require_approval');
+  });
+
+  it('supports ask-before-edit and auto approval modes', () => {
+    const editEngine = new ToolPolicyEngine(
+      { ...defaultThunderConfig().safety, approvalMode: 'ask_edits' },
+      () => false
+    );
+    const autoEngine = new ToolPolicyEngine(
+      { ...defaultThunderConfig().safety, approvalMode: 'auto' },
+      () => false
+    );
+
+    expect(editEngine.evaluate('write_file', { path: 'src/index.ts', content: 'x' }).decision).toBe('require_approval');
+    expect(editEngine.evaluate('run_command', { command: 'npm install lodash' }).decision).toBe('allow');
+    expect(autoEngine.evaluate('write_file', { path: 'src/index.ts', content: 'x' }).decision).toBe('allow');
+    expect(autoEngine.evaluate('run_command', { command: 'npm install lodash' }).decision).toBe('allow');
   });
 
   it('blocks dangerous commands', () => {
     expect(isDangerousCommand('rm -rf /')).toBe(true);
     expect(isDangerousCommand('npm test')).toBe(false);
+  });
+
+  it('detects delete-like commands', () => {
+    expect(isDeleteLikeCommand('git rm src/old.ts')).toBe(true);
+    expect(isDeleteLikeCommand('pnpm remove unused-package')).toBe(true);
+    expect(isDeleteLikeCommand('npm install lodash')).toBe(false);
   });
 });
 
@@ -312,6 +346,25 @@ describe('ApprovalQueue', () => {
     expect(req.contentLength).toBe(20_000);
     const full = queue.getFullInput(req.id);
     expect(full?.content).toBe(bigContent);
+  });
+
+  it('keeps task approval grants explicit and clearable', async () => {
+    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
+    const queue = new ApprovalQueue();
+    const req = queue.createRequest('s1', 'write_file', { path: 'src/Foo.tsx', content: 'x' }, {
+      decision: 'require_approval',
+      reason: 'test',
+    });
+
+    queue.resolve(req.id, 'approved');
+    expect(queue.hasApprovalGrant('s1', 'write_file')).toBe(false);
+
+    queue.grantForTask('s1', 'write_file');
+    expect(queue.hasApprovalGrant('s1', 'write_file')).toBe(true);
+    expect(queue.hasApprovalGrant('s1', 'apply_patch')).toBe(false);
+
+    queue.clearTaskGrants('s1');
+    expect(queue.hasApprovalGrant('s1', 'write_file')).toBe(false);
   });
 });
 
@@ -553,12 +606,16 @@ describe('tool input coercion', () => {
 
 describe('PlanActEngine read-only shell', () => {
   it('allows inspection commands in plan mode', async () => {
-    const { isShellAllowed, isReadOnlyCommand, stripLeadingCd } = await import('../src/core/planning/PlanActEngine');
+    const { isShellAllowed, isReadOnlyCommand, isToolAllowedInPlanPhase, stripLeadingCd } = await import('../src/core/planning/PlanActEngine');
     expect(isReadOnlyCommand('npx depcheck')).toBe(true);
     expect(isReadOnlyCommand('cd /home/user && rg "foo" src')).toBe(true);
+    expect(isReadOnlyCommand("sed -n '70,90p' src/screens/printer/printer.tsx")).toBe(true);
+    expect(isReadOnlyCommand("grep -n 'uuid\\|randomUUID' src/screens/printer/printer.tsx")).toBe(true);
     expect(stripLeadingCd('cd /home/user && npm ls')).toBe('npm ls');
     expect(isShellAllowed('plan', 'npx depcheck')).toBe(true);
     expect(isShellAllowed('plan', 'npm install lodash')).toBe(false);
+    expect(isToolAllowedInPlanPhase('execute', 'run_command', { command: 'npm run build' }).allowed).toBe(true);
+    expect(isToolAllowedInPlanPhase('verify', 'run_command', { command: 'npm run build' }).allowed).toBe(true);
   });
 });
 
@@ -606,6 +663,41 @@ describe('PatchApplyService validateSyntax', () => {
     const svc = new PatchApplyService('/tmp');
     const result = svc.validateSyntax('data.json', '{ invalid');
     expect(result.success).toBe(false);
+  });
+
+  it('allows targeted TSX patches when the final file has many self-closing components', async () => {
+    const { PatchApplyService } = await import('../src/core/apply/PatchApplyService');
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-patch-tsx-test-'));
+
+    try {
+      const path = 'Kanban.tsx';
+      const oldText = "border: (t) => `1px solid ${t.palette.divider}`";
+      const newText = "border: `1px solid ${theme.palette.divider}`";
+      const children = Array.from({ length: 16 }, (_, index) => `        <ItemCard key="${index}" />`).join('\n');
+      const content = `import React from 'react';
+
+export function Kanban() {
+  const theme = { palette: { divider: '#ddd' } };
+  return (
+    <Box
+      sx={{
+        ${oldText},
+      }}
+    >
+${children}
+    </Box>
+  );
+}
+`;
+
+      writeFileSync(join(tempDir, path), content, 'utf-8');
+      const result = new PatchApplyService(tempDir).apply({ path, oldText, newText });
+
+      expect(result.success).toBe(true);
+      expect(result.proposedContent).toContain(newText);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -673,5 +765,68 @@ describe('toolSchema', () => {
     });
     expect(def.function.name).toBe('read_file');
     expect(def.function.parameters).toHaveProperty('properties');
+  });
+});
+
+describe('UserExplicitContextBuilder', () => {
+  it('injects full file content under token limit', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'thunder-explicit-'));
+    try {
+      writeFileSync(join(dir, 'hello.ts'), 'export function hello() { return 1; }\n');
+      const { UserExplicitContextBuilder } = await import('../src/core/context/UserExplicitContextBuilder');
+      const builder = new UserExplicitContextBuilder(undefined, dir);
+      const result = builder.build([{ path: 'hello.ts', kind: 'file' }]);
+      expect(result.formatted).toContain('<user_explicit_context>');
+      expect(result.formatted).toContain('<file path="hello.ts">');
+      expect(result.formatted).toContain('export function hello');
+      expect(result.items[0]?.source).toBe('user-explicit');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to scoped AST for large files', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'thunder-explicit-large-'));
+    try {
+      const body = Array.from({ length: 12000 }, (_, i) => `// line ${i}`).join('\n');
+      writeFileSync(join(dir, 'big.ts'), `export class Big {}\n${body}`);
+      const { UserExplicitContextBuilder } = await import('../src/core/context/UserExplicitContextBuilder');
+      const builder = new UserExplicitContextBuilder(undefined, dir);
+      const result = builder.build([{ path: 'big.ts', kind: 'file' }]);
+      expect(result.formatted).toContain('representation="scoped-ast"');
+      expect(result.formatted).toContain('class Big');
+      expect(result.formatted).not.toContain('line 11000');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('buildPrompt explicit context', () => {
+  it('places user_explicit_context before codebase context', async () => {
+    const { buildPrompt } = await import('../src/core/planning/promptBuilder');
+    const pack = {
+      items: [],
+      totalTokens: 0,
+      formatted: 'auto context',
+      retrievedCount: 0,
+      budgetLimit: 1000,
+      dropped: [],
+      truncatedCount: 0,
+    };
+    const messages = buildPrompt(
+      'plan',
+      pack,
+      'fix the bug',
+      [],
+      false,
+      false,
+      undefined,
+      false,
+      '<user_explicit_context><file path="a.ts">code</file></user_explicit_context>'
+    );
+    const user = messages.find((m) => m.role === 'user');
+    expect(user?.content.startsWith('<user_explicit_context>')).toBe(true);
+    expect(user?.content).toContain('## Codebase Context');
   });
 });

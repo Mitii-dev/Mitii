@@ -97,7 +97,7 @@ export class ToolExecutor {
     }
 
     if (policy.decision === 'require_approval') {
-      if (!this.approvalQueue.isAllowOnce(sessionId, toolName)) {
+      if (!this.approvalQueue.hasApprovalGrant(sessionId, toolName)) {
         this.approvalQueue.createRequest(sessionId, toolName, input, policy, {
           toolCallId: context?.toolCallId,
         });
