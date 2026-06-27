@@ -47,6 +47,8 @@ export const AgentConfigSchema = z.object({
   maxAutoContinues: z.number().int().min(0).max(10).default(2),
   researchAgentMaxSteps: z.number().int().min(1).max(50).default(6),
   researchAgentTimeoutMs: z.number().int().min(10_000).max(300_000).default(90_000),
+  researchAgentModel: z.string().default(''),
+  researchAgentBaseUrl: z.string().default(''),
   orchestrationEnabled: z.boolean().default(true),
   stepMaxRetries: z.number().int().min(0).max(5).default(2),
   finalValidationEnabled: z.boolean().default(true),

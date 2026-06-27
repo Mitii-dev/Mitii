@@ -1,15 +1,30 @@
 export type ThunderPlan = {
   goal: string;
   assumptions: string[];
+  phases?: Array<{
+    id: string;
+    title: string;
+    phase: PlanPhase;
+    objective?: string;
+    steps: Array<{
+      id: string;
+      title: string;
+      files?: string[];
+      risk: 'low' | 'medium' | 'high';
+    }>;
+  }>;
   steps: Array<{
     id: string;
     title: string;
     status: 'pending' | 'running' | 'done' | 'blocked' | 'failed';
+    phase?: PlanPhase;
     files?: string[];
     risk: 'low' | 'medium' | 'high';
   }>;
   requiredApprovals: string[];
 };
+
+export type PlanPhase = 'diagnostics' | 'review' | 'execute' | 'verify';
 
 export type AutonomyPreset = 'safe' | 'guided' | 'builder' | 'pilot' | 'enterprise';
 
@@ -65,4 +80,51 @@ export function isShellAllowed(mode: string, command?: string): boolean {
 
 export function isPatchAllowed(mode: string): boolean {
   return mode === 'act';
+}
+
+export function isToolAllowedInPlanPhase(
+  phase: PlanPhase | undefined,
+  toolName: string,
+  input: Record<string, unknown>
+): { allowed: boolean; reason?: string } {
+  if (!phase) return { allowed: true };
+
+  if (phase === 'diagnostics' || phase === 'review') {
+    if (['write_file', 'apply_patch'].includes(toolName)) {
+      return {
+        allowed: false,
+        reason: `${phaseLabel(phase)} is read-only; file writes are locked until Phase 3 (Execute).`,
+      };
+    }
+    if (toolName === 'run_command' && !isReadOnlyCommand(typeof input.command === 'string' ? input.command : '')) {
+      return {
+        allowed: false,
+        reason: `${phaseLabel(phase)} allows only read-only shell commands.`,
+      };
+    }
+  }
+
+  if (phase === 'verify') {
+    if (toolName === 'run_command' && !isReadOnlyCommand(typeof input.command === 'string' ? input.command : '')) {
+      return {
+        allowed: false,
+        reason: 'Phase 4 (Verify) allows diagnostics, lint, tests, builds, and targeted file fixes, not arbitrary shell commands.',
+      };
+    }
+  }
+
+  return { allowed: true };
+}
+
+function phaseLabel(phase: PlanPhase): string {
+  switch (phase) {
+    case 'diagnostics':
+      return 'Phase 1 (Diagnostics)';
+    case 'review':
+      return 'Phase 2 (Review)';
+    case 'execute':
+      return 'Phase 3 (Execute)';
+    case 'verify':
+      return 'Phase 4 (Verify)';
+  }
 }

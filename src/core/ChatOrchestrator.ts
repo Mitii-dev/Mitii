@@ -60,6 +60,7 @@ export interface ChatOrchestratorDeps {
   sessionLog?: SessionLogService;
   memoryService?: MemoryService;
   taskState?: AgentTaskState;
+  researchAgentProvider?: LlmProvider;
 }
 
 export class ChatOrchestrator {
@@ -289,7 +290,7 @@ export class ChatOrchestrator {
     if (toolsEnabled && this.deps.toolExecutor) {
       setResearchAgentRuntime({
         toolExecutor: this.deps.toolExecutor,
-        getProvider: () => provider,
+        getProvider: () => this.deps.researchAgentProvider ?? provider,
         getTools: () => tools,
         maxSteps: agentConfig?.researchAgentMaxSteps,
         timeoutMs: agentConfig?.researchAgentTimeoutMs,
@@ -391,6 +392,7 @@ export class ChatOrchestrator {
                 stepMaxRetries: agentConfig?.stepMaxRetries,
                 finalValidationEnabled: agentConfig?.finalValidationEnabled,
                 agentMaxSteps: agentConfig?.maxSteps,
+                restrictRunCommandToReadOnly: auditMode,
               }
             )) {
               if (signal.aborted) break;
@@ -511,7 +513,10 @@ export class ChatOrchestrator {
             tools,
             signal,
             sharedLoopCallbacks,
-            { agentMaxSteps: Math.min(agentConfig?.maxSteps ?? 10, 10) }
+            {
+              agentMaxSteps: Math.min(agentConfig?.maxSteps ?? 10, 10),
+              restrictRunCommandToReadOnly: auditMode,
+            }
           )) {
             if (signal.aborted) break;
             fullResponse += chunk;

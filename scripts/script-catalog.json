@@ -10,6 +10,15 @@
   },
   {
     "id": 42,
+    "name": "audit-dependencies.mjs",
+    "category": "advanced-project-auditing",
+    "command": "node scripts/audit-dependencies.mjs",
+    "description": "Run depcheck with stack-specific ignores for React, Babel, Electron, Vite, TypeScript, and test tooling.",
+    "keywords": ["depcheck", "dependencies", "unused dependencies", "react", "babel", "electron", "vite"],
+    "readOnly": true
+  },
+  {
+    "id": 43,
     "name": "check-circular-deps.mjs",
     "category": "advanced-project-auditing",
     "command": "node scripts/check-circular-deps.mjs",
@@ -18,7 +27,7 @@
     "readOnly": true
   },
   {
-    "id": 43,
+    "id": 44,
     "name": "audit-package-engines.mjs",
     "category": "advanced-project-auditing",
     "command": "node scripts/audit-package-engines.mjs",
@@ -27,7 +36,7 @@
     "readOnly": true
   },
   {
-    "id": 44,
+    "id": 45,
     "name": "find-console-logs.sh",
     "category": "code-smells-tech-debt",
     "command": "bash scripts/find-console-logs.sh",
@@ -36,7 +45,7 @@
     "readOnly": true
   },
   {
-    "id": 45,
+    "id": 46,
     "name": "find-inline-styles.sh",
     "category": "code-smells-tech-debt",
     "command": "bash scripts/find-inline-styles.sh",
@@ -45,7 +54,7 @@
     "readOnly": true
   },
   {
-    "id": 46,
+    "id": 47,
     "name": "check-missing-types.sh",
     "category": "code-smells-tech-debt",
     "command": "bash scripts/check-missing-types.sh",
@@ -54,7 +63,7 @@
     "readOnly": true
   },
   {
-    "id": 47,
+    "id": 48,
     "name": "list-untracked-files.sh",
     "category": "git-state-safety",
     "command": "bash scripts/list-untracked-files.sh",
@@ -63,7 +72,7 @@
     "readOnly": true
   },
   {
-    "id": 48,
+    "id": 49,
     "name": "write-checkpoint.sh",
     "category": "git-state-safety",
     "command": "bash scripts/write-checkpoint.sh",
@@ -72,7 +81,7 @@
     "readOnly": false
   },
   {
-    "id": 49,
+    "id": 50,
     "name": "read-checkpoint.sh",
     "category": "git-state-safety",
     "command": "bash scripts/read-checkpoint.sh",
@@ -81,12 +90,21 @@
     "readOnly": true
   },
   {
-    "id": 50,
+    "id": 51,
     "name": "sync-env-files.mjs",
     "category": "security-environment",
     "command": "node scripts/sync-env-files.mjs",
     "description": "Compare .env.example keys with .env and report missing environment variables without printing secret values.",
     "keywords": ["env", ".env", ".env.example", "environment variables", "secrets", "missing keys"],
+    "readOnly": true
+  },
+  {
+    "id": 52,
+    "name": "safe-lint-target.sh",
+    "category": "code-smells-tech-debt",
+    "command": "bash scripts/safe-lint-target.sh <target>",
+    "description": "Run ESLint against a single target with --no-eslintrc to avoid broken root config failures.",
+    "keywords": ["eslint", "safe lint", "--no-eslintrc", "targeted lint", "validation"],
     "readOnly": true
   }
 ]

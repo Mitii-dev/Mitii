@@ -234,7 +234,8 @@ export type ExtensionToWebviewMessage =
   | { type: 'setPlan'; payload: PlanView | null }
   | { type: 'setAgentActivity'; payload: AgentActivityEntry[] }
   | { type: 'setAgentLiveStatus'; payload: AgentLiveStatusView | null }
-  | { type: 'setSubagents'; payload: SubagentStatusView[] };
+  | { type: 'setSubagents'; payload: SubagentStatusView[] }
+  | { type: 'setTokenUsage'; payload: TokenUsageView };
 
 // Webview -> Extension messages
 export type WebviewToExtensionMessage =

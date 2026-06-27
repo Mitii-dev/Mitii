@@ -1,6 +1,6 @@
 import ignore, { type Ignore } from 'ignore';
 import { readFileSync, existsSync } from 'fs';
-import { join } from 'path';
+import { isAbsolute, join, relative, resolve } from 'path';
 import { createLogger } from '../telemetry/Logger';
 
 const log = createLogger('IgnoreService');
@@ -25,8 +25,10 @@ const DEFAULT_IGNORES = [
 
 export class IgnoreService {
   private ig: Ignore = ignore().add(DEFAULT_IGNORES);
+  private workspacePath = '';
 
   load(workspacePath: string, options?: { respectGitignore?: boolean; respectThunderignore?: boolean }): void {
+    this.workspacePath = resolve(workspacePath);
     this.ig = ignore().add(DEFAULT_IGNORES);
 
     if (options?.respectGitignore !== false) {
@@ -55,11 +57,31 @@ export class IgnoreService {
   }
 
   isIgnored(relPath: string): boolean {
-    const normalized = relPath.replace(/\\/g, '/');
+    const normalized = normalizeIgnorePath(relPath, this.workspacePath);
+    if (!normalized || normalized === '.') return false;
+    if (normalized.startsWith('..')) return true;
     return this.ig.ignores(normalized);
   }
 
   filter(paths: string[]): string[] {
     return paths.filter((p) => !this.isIgnored(p));
   }
+}
+
+function normalizeIgnorePath(path: string, workspacePath: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) return '';
+
+  if (isAbsolute(trimmed)) {
+    const rel = workspacePath
+      ? relative(workspacePath, resolve(trimmed)).replace(/\\/g, '/')
+      : trimmed.replace(/\\/g, '/');
+    return rel || '.';
+  }
+
+  return trimmed
+    .replace(/\\/g, '/')
+    .replace(/^\.\/+/, '')
+    .replace(/\/+/g, '/')
+    .trim();
 }

@@ -6,7 +6,7 @@ import { createLogger } from '../telemetry/Logger';
 
 const log = createLogger('ResearchAgent');
 
-const RESEARCH_SYSTEM = `You are a read-only research subagent. Investigate ONLY the assigned task.
+const DEFAULT_RESEARCH_SYSTEM = `You are a read-only research subagent. Investigate ONLY the assigned task.
 Use read_file, read_files, list_files, search, search_batch, repo_map, and read-only run_command.
 
 Rules:
@@ -41,7 +41,8 @@ export class ResearchAgent {
     task: string,
     focus: string | undefined,
     allTools: ToolDefinition[],
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    personaInstructions?: string
   ): Promise<string> {
     const tools = allTools.filter((t) => READ_ONLY_TOOL_NAMES.has(t.function.name));
     const loop = new AgentLoop(this.toolExecutor, this.maxSteps);
@@ -51,7 +52,7 @@ export class ResearchAgent {
       : `${task}\n\nBe concise. Max 4 tool rounds.`;
 
     const messages = [
-      { role: 'system' as const, content: RESEARCH_SYSTEM },
+      { role: 'system' as const, content: buildResearchSystemPrompt(personaInstructions) },
       { role: 'user' as const, content: userContent },
     ];
 
@@ -78,4 +79,11 @@ export class ResearchAgent {
       clearTimeout(timer);
     }
   }
+}
+
+function buildResearchSystemPrompt(personaInstructions?: string): string {
+  const persona = personaInstructions?.trim()
+    ? `\n\nPersona / task-specific instructions from main agent:\n${personaInstructions.trim().slice(0, 1200)}`
+    : '';
+  return `${DEFAULT_RESEARCH_SYSTEM}${persona}`;
 }

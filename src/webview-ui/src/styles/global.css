@@ -144,19 +144,97 @@ body,
 }
 
 /* ── Token chip ── */
+.token-popover {
+  position: relative;
+  display: inline-flex;
+}
+
 .token-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 2px 6px;
+  border: none;
   border-radius: 4px;
+  background: transparent;
   font-size: 10px;
+  font-family: inherit;
   color: var(--thunder-muted);
-  cursor: default;
+  cursor: pointer;
 }
 
-.token-chip:hover {
+.token-chip:hover,
+.token-chip--active {
   background: rgba(255, 255, 255, 0.04);
+  color: var(--thunder-fg);
+}
+
+.token-popover__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  width: min(248px, calc(100vw - 20px));
+  padding: 10px;
+  border: 1px solid var(--thunder-border);
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, var(--thunder-surface));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+}
+
+.token-popover__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.token-popover__header strong {
+  color: #93c5fd;
+  font-size: 11px;
+}
+
+.token-popover__bar {
+  height: 4px;
+  margin: 9px 0 10px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.token-popover__fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--thunder-accent);
+}
+
+.token-popover__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.token-popover__stats div {
+  min-width: 0;
+}
+
+.token-popover__stats dt {
+  margin: 0 0 2px;
+  color: var(--thunder-muted);
+  font-size: 10px;
+}
+
+.token-popover__stats dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--thunder-fg);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── Indexing chip ── */

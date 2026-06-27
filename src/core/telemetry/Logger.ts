@@ -36,7 +36,7 @@ function sanitizeMeta(meta?: Record<string, unknown>): Record<string, unknown> |
       lowerKey.includes('password') ||
       lowerKey.includes('authorization')
     ) {
-      sanitized[key] = '[REDACTED]';
+      sanitized[key] = typeof value === 'string' ? '[REDACTED]' : value;
       continue;
     }
     if (typeof value === 'string') {

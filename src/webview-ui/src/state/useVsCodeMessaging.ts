@@ -59,6 +59,9 @@ export function useVsCodeMessaging() {
         case 'setSubagents':
           dispatch({ type: 'SET_SUBAGENTS', payload: message.payload });
           break;
+        case 'setTokenUsage':
+          dispatch({ type: 'SET_TOKEN_USAGE', payload: message.payload });
+          break;
       }
     };
 

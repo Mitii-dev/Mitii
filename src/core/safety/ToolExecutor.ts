@@ -2,7 +2,14 @@ import type { ToolRuntime } from '../tools/ToolRuntime';
 import type { ToolPolicyEngine } from './ToolPolicyEngine';
 import type { ApprovalQueue } from './ApprovalQueue';
 import type { AgentTaskState } from '../agent/AgentTaskState';
-import { isWriteAllowed, isShellAllowed, isPatchAllowed } from '../planning/PlanActEngine';
+import {
+  isWriteAllowed,
+  isShellAllowed,
+  isPatchAllowed,
+  isReadOnlyCommand,
+  isToolAllowedInPlanPhase,
+  type PlanPhase,
+} from '../planning/PlanActEngine';
 import { createLogger } from '../telemetry/Logger';
 
 const log = createLogger('ToolExecutor');
@@ -16,6 +23,8 @@ export interface ToolExecutionResult {
 
 export interface ToolExecuteContext {
   toolCallId?: string;
+  phaseLock?: PlanPhase;
+  restrictRunCommandToReadOnly?: boolean;
 }
 
 export class ToolExecutor {
@@ -35,6 +44,23 @@ export class ToolExecutor {
     context?: ToolExecuteContext
   ): Promise<ToolExecutionResult> {
     const mode = this.getMode();
+
+    const phaseCheck = isToolAllowedInPlanPhase(context?.phaseLock, toolName, input);
+    if (!phaseCheck.allowed) {
+      return { success: false, output: '', error: phaseCheck.reason ?? 'Tool blocked by current plan phase' };
+    }
+
+    if (
+      context?.restrictRunCommandToReadOnly &&
+      toolName === 'run_command' &&
+      !isReadOnlyCommand(typeof input.command === 'string' ? input.command : '')
+    ) {
+      return {
+        success: false,
+        output: '',
+        error: 'Generic run_command is restricted to read-only commands during high-complexity audit tasks. Use execute_workspace_script for approved helper scripts.',
+      };
+    }
 
     const blocked = this.getTaskState?.()?.checkBlocked(toolName, input);
     if (blocked) {

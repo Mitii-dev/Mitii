@@ -56,6 +56,9 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         if (partial.approvals) {
           this.postMessage({ type: 'setApprovals', payload: partial.approvals });
         }
+        if (partial.tokenUsage) {
+          this.postMessage({ type: 'setTokenUsage', payload: partial.tokenUsage });
+        }
         return;
       }
 

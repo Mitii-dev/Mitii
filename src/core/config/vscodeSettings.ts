@@ -49,6 +49,8 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       maxAutoContinues: config.get<number>('agent.maxAutoContinues'),
       researchAgentMaxSteps: config.get<number>('agent.researchAgentMaxSteps'),
       researchAgentTimeoutMs: config.get<number>('agent.researchAgentTimeoutMs'),
+      researchAgentModel: config.get<string>('agent.researchAgentModel'),
+      researchAgentBaseUrl: config.get<string>('agent.researchAgentBaseUrl'),
       orchestrationEnabled: config.get<boolean>('agent.orchestrationEnabled'),
       stepMaxRetries: config.get<number>('agent.stepMaxRetries'),
       finalValidationEnabled: config.get<boolean>('agent.finalValidationEnabled'),

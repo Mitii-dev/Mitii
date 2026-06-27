@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 describe('Logger', () => {
   it('should exist as a module', async () => {
@@ -7,6 +10,26 @@ describe('Logger', () => {
     expect(log.info).toBeDefined();
     expect(log.warn).toBeDefined();
     expect(log.error).toBeDefined();
+  });
+});
+
+describe('SessionLogService', () => {
+  it('keeps numeric token usage while redacting string secrets', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'thunder-log-test-'));
+    try {
+      const { SessionLogService } = await import('../src/core/telemetry/SessionLogService');
+      const log = new SessionLogService();
+      log.configure(workspace, 'session-1', true);
+      log.append('token_usage', 'usage', {
+        promptTokens: 123,
+        apiToken: 'secret-token-value',
+      });
+      const contents = readFileSync(log.getLogPath(), 'utf-8');
+      expect(contents).toContain('"promptTokens":123');
+      expect(contents).toContain('"apiToken":"[REDACTED]"');
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
   });
 });
 

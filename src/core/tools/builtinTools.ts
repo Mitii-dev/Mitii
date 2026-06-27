@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { readFileSync, readdirSync, writeFileSync, statSync } from 'fs';
 import { isAbsolute, join, relative, resolve } from 'path';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import type { Tool, ToolResult } from './types';
 import type { IgnoreService } from '../indexing/IgnoreService';
@@ -21,9 +21,11 @@ import type { SubagentTracker } from '../agent/SubagentTracker';
 import type { LlmProvider } from '../llm/types';
 import type { ToolDefinition } from '../llm/toolTypes';
 import type { ToolExecutor } from '../safety/ToolExecutor';
+import type { SkillCatalogService } from '../skills/SkillCatalogService';
 import { createLogger } from '../telemetry/Logger';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const log = createLogger('BuiltinTools');
 
 export interface ResearchAgentRuntime {
@@ -127,9 +129,15 @@ export function createListFilesTool(
       try {
         const base = dirPath ? join(workspace, dirPath) : workspace;
         if (!input.recursive) {
-          const entries = readdirSync(base).filter(
-            (e) => !ignoreService.isIgnored(join(listRel, e).replace(/\\/g, '/'))
-          );
+          const entries = readdirSync(base).filter((entry) => {
+            const entryRel = dirPath ? join(listRel, entry).replace(/\\/g, '/') : entry;
+            try {
+              const stat = statSync(join(base, entry));
+              return !ignoreService.isIgnored(stat.isDirectory() ? `${entryRel}/` : entryRel);
+            } catch {
+              return false;
+            }
+          });
           return { success: true, output: entries.join('\n') };
         }
         const files = walkDir(workspace, listRel, ignoreService, 8, 500);
@@ -260,6 +268,115 @@ export function createSearchScriptCatalogTool(
   };
 }
 
+export function createExecuteWorkspaceScriptTool(
+  workspace: string,
+  extensionRoot: string,
+  ignoreService: IgnoreService
+): Tool<{ script: string; target?: string; text?: string }> {
+  return {
+    name: 'execute_workspace_script',
+    description:
+      'Run one approved workspace helper script by enum name. Use this instead of raw run_command for audits, dependency checks, safe lint, and checkpoints.',
+    risk: 'medium',
+    inputSchema: z.object({
+      script: z.string(),
+      target: z.string().optional(),
+      text: z.string().optional(),
+    }),
+    parametersJsonSchema: {
+      type: 'object',
+      properties: {
+        script: {
+          type: 'string',
+          enum: readScriptCatalog(workspace, extensionRoot).map((s) => s.name),
+        },
+        target: {
+          type: 'string',
+          description: 'Optional workspace-relative target path for scripts that accept a file or directory.',
+        },
+        text: {
+          type: 'string',
+          description: 'Optional checkpoint text for write-checkpoint.sh.',
+        },
+      },
+      required: ['script'],
+    },
+    async execute(input): Promise<ToolResult> {
+      const catalog = readScriptCatalog(workspace, extensionRoot);
+      const entry = catalog.find((s) => s.name === input.script);
+      if (!entry) {
+        return {
+          success: false,
+          output: '',
+          error: `Unknown script "${input.script}". Use search_script_catalog first.`,
+        };
+      }
+
+      const scriptPath = resolveCatalogScript(workspace, extensionRoot, entry.name);
+      if (!scriptPath) {
+        return { success: false, output: '', error: `Script file not found: ${entry.name}` };
+      }
+
+      const args: string[] = [scriptPath];
+      if (input.target) {
+        const relTarget = resolveToolPath(workspace, input.target, ignoreService);
+        if (!relTarget) {
+          return { success: false, output: '', error: 'Invalid or ignored target path' };
+        }
+        args.push(relTarget);
+      }
+
+      const runner = entry.name.endsWith('.mjs') ? process.execPath : 'bash';
+      try {
+        const { stdout, stderr } = await execFileAsync(runner, args, {
+          cwd: workspace,
+          maxBuffer: 2 * 1024 * 1024,
+          timeout: 120000,
+          env: {
+            ...process.env,
+            FORCE_COLOR: '0',
+            THUNDER_CHECKPOINT_TEXT: input.text ?? process.env.THUNDER_CHECKPOINT_TEXT ?? '',
+          },
+        });
+        const output = [stdout, stderr].filter(Boolean).join('\n').slice(0, 50000);
+        return { success: true, output: output || '(no output)' };
+      } catch (e) {
+        const err = e as { code?: number; stdout?: string; stderr?: string; message?: string };
+        const output = [err.stdout, err.stderr].filter(Boolean).join('\n').slice(0, 50000);
+        if (entry.readOnly && (err.code === 1 || output.length > 0)) {
+          return { success: true, output: output || '(no findings)' };
+        }
+        return { success: false, output, error: err.message ?? 'Script failed' };
+      }
+    },
+  };
+}
+
+export function createUseSkillTool(skillCatalog: SkillCatalogService): Tool<{ name: string }> {
+  return {
+    name: 'use_skill',
+    description:
+      'Load a workspace skill playbook from .thunder/skills. Use when a named playbook or specialized workflow applies.',
+    risk: 'low',
+    inputSchema: z.object({ name: z.string() }),
+    async execute(input): Promise<ToolResult> {
+      const skill = skillCatalog.get(input.name);
+      if (!skill) {
+        const available = skillCatalog.list().map((s) => `${s.name}: ${s.description}`).join('\n');
+        return {
+          success: false,
+          output: available || '(no workspace skills found)',
+          error: `Skill not found: ${input.name}`,
+        };
+      }
+      return {
+        success: true,
+        output: `# Skill: ${skill.entry.name}\nPath: ${skill.entry.relPath}\nDescription: ${skill.entry.description}\n\n${skill.content}`,
+      };
+    },
+  };
+}
+
 function readScriptCatalog(workspace: string, extensionRoot: string): ScriptCatalogEntry[] {
   const workspaceCatalog = join(workspace, 'scripts', 'script-catalog.json');
   const bundledCatalog = join(extensionRoot, 'scripts', 'script-catalog.json');
@@ -270,6 +387,15 @@ function readScriptCatalog(workspace: string, extensionRoot: string): ScriptCata
     log.warn('Script catalog unavailable', { catalogPath, error: String(e) });
     return [];
   }
+}
+
+function resolveCatalogScript(workspace: string, extensionRoot: string, scriptName: string): string | null {
+  if (!/^[a-z0-9._-]+$/i.test(scriptName)) return null;
+  const workspacePath = join(workspace, 'scripts', scriptName);
+  if (pathExists(workspacePath)) return workspacePath;
+  const bundledPath = join(extensionRoot, 'scripts', scriptName);
+  if (pathExists(bundledPath)) return bundledPath;
+  return null;
 }
 
 function searchScriptCatalog(
@@ -608,15 +734,24 @@ function pathExists(path: string): boolean {
   }
 }
 
-export function createSpawnResearchAgentTool(): Tool<{ task: string; focus?: string }> {
+export function createSpawnResearchAgentTool(): Tool<{
+  task: string;
+  focus?: string;
+  targetFiles?: string[];
+  chunkSize?: number;
+  persona_instructions?: string;
+}> {
   return {
     name: 'spawn_research_agent',
     description:
-      'Delegate focused read-only research to a subagent. Spawn multiple in one turn for parallel analysis (deps, unused files, assets). Returns a concise report.',
+      'Delegate focused read-only research to a subagent. For many files, pass targetFiles and Thunder will split them into chunks of 5-10 and run chunks in parallel.',
     risk: 'low',
     inputSchema: z.object({
       task: z.string(),
       focus: z.string().optional(),
+      targetFiles: z.array(z.string()).optional(),
+      chunkSize: z.number().int().min(5).max(10).optional(),
+      persona_instructions: z.string().optional(),
     }),
     async execute(input): Promise<ToolResult> {
       if (!researchAgentRuntime || !researchAgent) {
@@ -628,12 +763,37 @@ export function createSpawnResearchAgentTool(): Tool<{ task: string; focus?: str
       }
       const runId = subagentTracker?.start(input.task, input.focus);
       try {
-        const report = await researchAgent.run(
-          provider,
-          input.task,
-          input.focus,
-          researchAgentRuntime.getTools()
-        );
+        const targetFiles = input.targetFiles ?? [];
+        let report: string;
+        if (targetFiles.length > 10) {
+          const chunkSize = input.chunkSize ?? 8;
+          const chunks = chunkArray(targetFiles, chunkSize);
+          const reports = await Promise.all(
+            chunks.map((chunk, index) =>
+              researchAgent!.run(
+                provider,
+                `${input.task}\n\nTarget file chunk ${index + 1}/${chunks.length}:\n${chunk.join('\n')}`,
+                input.focus,
+                researchAgentRuntime!.getTools(),
+                undefined,
+                input.persona_instructions
+              )
+            )
+          );
+          report = reports.map((r, i) => `## Chunk ${i + 1}\n${r}`).join('\n\n');
+        } else {
+          const task = targetFiles.length
+            ? `${input.task}\n\nTarget files:\n${targetFiles.join('\n')}`
+            : input.task;
+          report = await researchAgent.run(
+            provider,
+            task,
+            input.focus,
+            researchAgentRuntime.getTools(),
+            undefined,
+            input.persona_instructions
+          );
+        }
         if (runId) subagentTracker?.finish(runId, report);
         return { success: true, output: report };
       } catch (e) {
@@ -643,6 +803,14 @@ export function createSpawnResearchAgentTool(): Tool<{ task: string; focus?: str
       }
     },
   };
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
 }
 
 export function formatToolResult(toolName: string, result: ToolResult): string {

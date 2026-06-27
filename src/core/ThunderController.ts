@@ -24,11 +24,14 @@ import { ToolRuntime } from './tools/ToolRuntime';
 import {
   createReadFileTool, createReadFilesTool, createListFilesTool, createSearchTool,
   createSearchBatchTool, createSearchScriptCatalogTool, createSpawnResearchAgentTool,
+  createExecuteWorkspaceScriptTool, createUseSkillTool,
   createRepoMapTool, createRetrieveContextTool, createGitDiffTool,
   createDiagnosticsTool, createWriteFileTool, createApplyPatchTool, createRunCommandTool,
   createMemorySearchTool, createMemoryWriteTool, createSaveTaskStateTool,
   setSubagentTracker,
 } from './tools/builtinTools';
+import { OpenAiCompatibleProvider } from './llm/OpenAiCompatibleProvider';
+import type { LlmProvider } from './llm/types';
 import { AgentTaskState } from './agent/AgentTaskState';
 import { isApprovalContinuationMessage } from './agent/taskMessage';
 import { ToolPolicyEngine } from './safety/ToolPolicyEngine';
@@ -49,6 +52,7 @@ import { SqliteVectorIndex, VectorIndexService } from './indexing/VectorIndex';
 import { HashEmbeddingProvider } from './indexing/EmbeddingProvider';
 import { McpManager } from './mcp/McpManager';
 import { ProjectRulesContextSource, ProjectRulesService } from './rules/ProjectRulesService';
+import { SkillCatalogContextSource, SkillCatalogService } from './skills/SkillCatalogService';
 import { showWriteDiffPreview, showPatchDiffPreview } from '../vscode/diffPreview';
 import { testOpenAiCompatibleConnection } from './llm/testConnection';
 import { createLogger } from './telemetry/Logger';
@@ -99,6 +103,8 @@ export class ThunderController {
   private vectorIndexService: VectorIndexService | undefined;
   private mcpManager = new McpManager();
   private projectRulesService: ProjectRulesService | undefined;
+  private skillCatalogService: SkillCatalogService | undefined;
+  private researchAgentProvider: LlmProvider | undefined;
   private sessionLog = new SessionLogService();
   private lastSubagentSnapshot = new Map<string, string>();
   private indexingStatus: IndexingStatus = { indexed: 0, queued: 0, running: false, failed: 0 };
@@ -150,6 +156,28 @@ export class ThunderController {
     });
   }
 
+  private async refreshResearchAgentProvider(): Promise<void> {
+    const config = this.configService.getConfig();
+    const model = config.agent.researchAgentModel?.trim();
+    if (!model || config.provider.type !== 'openai-compatible') {
+      this.researchAgentProvider = undefined;
+      return;
+    }
+
+    const apiKey = await this.configService.getApiKey();
+    this.researchAgentProvider = new OpenAiCompatibleProvider({
+      baseUrl: config.agent.researchAgentBaseUrl?.trim() || config.provider.baseUrl,
+      model,
+      apiKey,
+      capabilities: {
+        contextWindow: config.provider.contextWindow,
+        supportsStreaming: config.provider.supportsStreaming,
+        supportsTools: config.provider.supportsTools,
+        supportsEmbeddings: config.provider.supportsEmbeddings,
+      },
+    });
+  }
+
   async initialize(): Promise<void> {
     await this.configService.initialize();
 
@@ -177,6 +205,8 @@ export class ThunderController {
     const config = this.configService.getConfig();
     const apiKey = await this.configService.getApiKey();
     await this.providerRegistry.resolveFromConfig(config.provider, apiKey);
+    await this.refreshResearchAgentProvider();
+    this.chatOrchestrator?.configure({ researchAgentProvider: this.researchAgentProvider });
 
     this.configDisposable = vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('thunder.workspace') || e.affectsConfiguration('thunder')) {
@@ -191,8 +221,11 @@ export class ThunderController {
   private initMinimalChat(workspace: string): void {
     this.diagnosticsService.setWorkspaceRoot(workspace);
     this.projectRulesService = new ProjectRulesService(workspace);
+    this.skillCatalogService = new SkillCatalogService(workspace);
+    this.skillCatalogService.refresh();
     const retriever = new HybridRetriever([
       new ProjectRulesContextSource(this.projectRulesService),
+      new SkillCatalogContextSource(this.skillCatalogService),
       new MentionedFileContextSource(workspace),
       new WorkspaceOverviewContextSource(workspace),
       new CurrentEditorContextSource(workspace),
@@ -236,6 +269,8 @@ export class ThunderController {
 
     this.diagnosticsService.setWorkspaceRoot(workspace);
     this.projectRulesService = new ProjectRulesService(workspace);
+    this.skillCatalogService = new SkillCatalogService(workspace);
+    this.skillCatalogService.refresh();
     this.memoryService = new MemoryService(db, workspace);
     this.passiveMemoryInjector = new PassiveMemoryInjector(this.memoryService);
     this.memoryHookService = new MemoryHookService(workspace);
@@ -330,6 +365,8 @@ export class ThunderController {
     this.toolRuntime.register(createSearchTool(fts, workspace));
     this.toolRuntime.register(createSearchBatchTool(fts, workspace));
     this.toolRuntime.register(createSearchScriptCatalogTool(workspace, this.context.extensionPath));
+    this.toolRuntime.register(createExecuteWorkspaceScriptTool(workspace, this.context.extensionPath, this.ignoreService));
+    this.toolRuntime.register(createUseSkillTool(this.skillCatalogService));
     this.toolRuntime.register(createSpawnResearchAgentTool());
     this.toolRuntime.register(createRepoMapTool(repoMap));
     this.toolRuntime.register(createRetrieveContextTool(retriever, budgeter));
@@ -369,6 +406,7 @@ export class ThunderController {
       memoryExtractor: this.memoryExtractor,
       memoryConfig: this.configService.getConfig().memory,
       agentConfig: this.configService.getConfig().agent,
+      researchAgentProvider: this.researchAgentProvider,
       passiveMemoryInjector: this.passiveMemoryInjector,
       memoryHookService: this.memoryHookService,
       postEditValidator: this.postEditValidator,
@@ -448,6 +486,9 @@ export class ThunderController {
     if (this.projectRulesService) {
       sources.push(new ProjectRulesContextSource(this.projectRulesService));
     }
+    if (this.skillCatalogService) {
+      sources.push(new SkillCatalogContextSource(this.skillCatalogService));
+    }
     sources.push(
       new MentionedFileContextSource(workspace),
       new WorkspaceOverviewContextSource(workspace),
@@ -497,6 +538,18 @@ export class ThunderController {
       watcher.onDidChange(enqueue);
       watcher.onDidCreate(enqueue);
       this.context.subscriptions.push(watcher);
+
+      const skillWatcher = vscode.workspace.createFileSystemWatcher(
+        createWorkspacePattern(workspace, '.thunder/skills/**/SKILL.md')
+      );
+      const refreshSkills = () => {
+        this.skillCatalogService?.refresh();
+        this.pushActivity('info', 'Workspace skills catalog refreshed');
+      };
+      skillWatcher.onDidChange(refreshSkills);
+      skillWatcher.onDidCreate(refreshSkills);
+      skillWatcher.onDidDelete(refreshSkills);
+      this.context.subscriptions.push(skillWatcher);
     } catch (error) {
       log.warn('File watcher setup failed', {
         error: error instanceof Error ? error.message : String(error),
@@ -1116,6 +1169,8 @@ export class ThunderController {
     const config = this.configService.getConfig();
     const apiKey = await this.configService.getApiKey();
     await this.providerRegistry.resolveFromConfig(config.provider, apiKey);
+    await this.refreshResearchAgentProvider();
+    this.chatOrchestrator?.configure({ researchAgentProvider: this.researchAgentProvider });
     this.notifyUi({ settings: (await this.buildUiState()).settings });
   }
 
@@ -1130,6 +1185,8 @@ export class ThunderController {
     const config = this.configService.getConfig();
     const apiKey = await this.configService.getApiKey();
     await this.providerRegistry.resolveFromConfig(config.provider, apiKey);
+    await this.refreshResearchAgentProvider();
+    this.chatOrchestrator?.configure({ researchAgentProvider: this.researchAgentProvider });
     this.rebuildRetriever();
     this.notifyUi({ settings: (await this.buildUiState()).settings });
     void vscode.window.showInformationMessage('Thunder: Provider settings saved.');
@@ -1148,7 +1205,11 @@ export class ThunderController {
     });
 
     const config = this.configService.getConfig();
-    this.chatOrchestrator?.configure({ agentConfig: config.agent });
+    await this.refreshResearchAgentProvider();
+    this.chatOrchestrator?.configure({
+      agentConfig: config.agent,
+      researchAgentProvider: this.researchAgentProvider,
+    });
     this.notifyUi({ settings: (await this.buildUiState()).settings });
     void vscode.window.showInformationMessage('Thunder: Agent settings saved.');
   }

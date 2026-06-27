@@ -3,6 +3,7 @@ import type { ToolDefinition, ToolCall } from '../llm/toolTypes';
 import type { ToolExecutor } from '../safety/ToolExecutor';
 import { formatToolResult } from '../tools/builtinTools';
 import { NO_TOOLS_AUDIT_NUDGE } from './taskKind';
+import type { PlanPhase } from '../planning/PlanActEngine';
 import { createLogger } from '../telemetry/Logger';
 
 const log = createLogger('AgentLoop');
@@ -20,12 +21,15 @@ export interface AgentLoopOptions {
   maxSteps?: number;
   autoContinue?: boolean;
   maxAutoContinues?: number;
+  phaseLock?: PlanPhase;
+  restrictRunCommandToReadOnly?: boolean;
 }
 
 export interface AgentLoopSuspendState {
   messages: ChatMessage[];
   tools: ToolDefinition[];
   options: AgentLoopOptions;
+  checkpoint?: string;
 }
 
 export interface ApprovedToolResult {
@@ -162,6 +166,8 @@ export class AgentLoop {
           callbacks?.onToolStart?.(tc.function.name, input);
           const execResult = await this.toolExecutor.execute(tc.function.name, input, {
             toolCallId: tc.id,
+            phaseLock: options?.phaseLock,
+            restrictRunCommandToReadOnly: auditMode || options?.restrictRunCommandToReadOnly,
           });
           return { tc, input, execResult };
         })
@@ -217,6 +223,7 @@ export class AgentLoop {
       }
 
       if (pendingApproval) {
+        const checkpoint = await createApprovalCheckpoint(provider, messages, options?.phaseLock, signal);
         this.lastSuspendState = {
           messages: [...messages],
           tools,
@@ -225,7 +232,10 @@ export class AgentLoop {
             maxSteps,
             autoContinue,
             maxAutoContinues,
+            phaseLock: options?.phaseLock,
+            restrictRunCommandToReadOnly: auditMode || options?.restrictRunCommandToReadOnly,
           },
+          checkpoint,
         };
         break;
       }
@@ -264,6 +274,10 @@ export class AgentLoop {
     let pendingApproval = false;
     this.lastPendingApproval = false;
     this.lastSuspendState = undefined;
+
+    if (state.checkpoint) {
+      injectWakeUpCheckpoint(messages, state.checkpoint);
+    }
 
     for (const result of approved) {
       const idx = messages.findIndex(
@@ -389,6 +403,8 @@ export class AgentLoop {
           callbacks?.onToolStart?.(tc.function.name, input);
           const execResult = await this.toolExecutor.execute(tc.function.name, input, {
             toolCallId: tc.id,
+            phaseLock: options.phaseLock,
+            restrictRunCommandToReadOnly: options.restrictRunCommandToReadOnly,
           });
           return { tc, input, execResult };
         })
@@ -444,10 +460,12 @@ export class AgentLoop {
       }
 
       if (pendingApproval) {
+        const checkpoint = await createApprovalCheckpoint(provider, messages, options.phaseLock, signal);
         this.lastSuspendState = {
           messages: [...messages],
           tools,
           options,
+          checkpoint,
         };
         break;
       }
@@ -520,7 +538,10 @@ export class AgentLoop {
             input = {};
           }
           callbacks?.onToolStart?.(tc.function.name, input);
-          const execResult = await this.toolExecutor.execute(tc.function.name, input);
+          const execResult = await this.toolExecutor.execute(tc.function.name, input, {
+            phaseLock: options?.phaseLock,
+            restrictRunCommandToReadOnly: options?.restrictRunCommandToReadOnly,
+          });
           toolCallsMade += 1;
           return { tc, execResult };
         })
@@ -558,11 +579,85 @@ export class AgentLoop {
         });
       }
 
-      if (pendingApproval) break;
+      if (pendingApproval) {
+        const checkpoint = await createApprovalCheckpoint(provider, messages, options?.phaseLock, signal);
+        this.lastSuspendState = {
+          messages: [...messages],
+          tools,
+          options: options ?? {},
+          checkpoint,
+        };
+        break;
+      }
     }
 
     log.info('Agent loop finished', { toolCallsMade, pendingApproval });
     return { fullContent, messages, toolCallsMade, pendingApproval };
+  }
+}
+
+async function createApprovalCheckpoint(
+  provider: LlmProvider,
+  messages: ChatMessage[],
+  phaseLock?: PlanPhase,
+  signal?: AbortSignal
+): Promise<string | undefined> {
+  if (signal?.aborted) return undefined;
+
+  const compactMessages = messages
+    .slice(-12)
+    .map((m) => {
+      const tool = m.role === 'tool' ? ` (${m.name ?? 'tool'})` : '';
+      return `${m.role}${tool}: ${m.content.slice(0, 2000)}`;
+    })
+    .join('\n\n');
+
+  const checkpointMessages: ChatMessage[] = [
+    {
+      role: 'system',
+      content:
+        'Summarize coding-agent progress for resuming after a user approval pause. Output only a compact checkpoint with: current phase, completed facts/tool results, pending approval action, and exact next step. Max 180 words.',
+    },
+    {
+      role: 'user',
+      content: `Current phase lock: ${phaseLock ?? 'none'}\n\nRecent state:\n${compactMessages}`,
+    },
+  ];
+
+  let response = '';
+  try {
+    for await (const delta of provider.complete({
+      messages: checkpointMessages,
+      stream: false,
+      toolChoice: 'none',
+    })) {
+      if (signal?.aborted) return undefined;
+      if (delta.error) throw new Error(delta.error);
+      if (delta.content) response += delta.content;
+      if (delta.done) break;
+    }
+  } catch (error) {
+    log.warn('Approval checkpoint generation failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+
+  return response.trim().slice(0, 1200) || undefined;
+}
+
+function injectWakeUpCheckpoint(messages: ChatMessage[], checkpoint: string): void {
+  const wakeUp: ChatMessage = {
+    role: 'system',
+    content:
+      `APPROVAL WAKE-UP CHECKPOINT:\n${checkpoint}\n\nResume from this checkpoint. Trust it over stale instinct, do not repeat completed discovery, and continue with the approved action/result.`,
+  };
+
+  const systemIndex = messages.findIndex((m) => m.role === 'system');
+  if (systemIndex >= 0) {
+    messages.splice(systemIndex + 1, 0, wakeUp);
+  } else {
+    messages.unshift(wakeUp);
   }
 }
 

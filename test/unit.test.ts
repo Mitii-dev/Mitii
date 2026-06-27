@@ -21,6 +21,44 @@ describe('IgnoreService', () => {
     expect(ig.isIgnored('node_modules/foo/bar.js')).toBe(true);
     expect(ig.isIgnored('src/index.ts')).toBe(false);
   });
+
+  it('accepts root and dot-prefixed relative paths', () => {
+    const ig = new IgnoreService();
+    ig.load('/tmp');
+    expect(ig.isIgnored('.')).toBe(false);
+    expect(ig.isIgnored('./src/index.ts')).toBe(false);
+    expect(ig.isIgnored('./node_modules/pkg/index.js')).toBe(true);
+  });
+
+  it('normalizes absolute workspace paths before ignore checks', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-ignore-absolute-test-'));
+    try {
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      expect(ig.isIgnored(join(tempDir, 'package.json'))).toBe(false);
+      expect(ig.isIgnored(join(tempDir, 'node_modules/pkg/index.js'))).toBe(true);
+      expect(ig.isIgnored(join(tmpdir(), 'outside.ts'))).toBe(true);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('lists workspace root when path is "."', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-list-root-test-'));
+    try {
+      writeFileSync(join(tempDir, 'package.json'), '{}');
+      mkdirSync(join(tempDir, 'node_modules'));
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      const { createListFilesTool } = await import('../src/core/tools/builtinTools');
+      const result = await createListFilesTool(tempDir, ig).execute({ path: '.', recursive: false });
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('package.json');
+      expect(result.output).not.toContain('node_modules');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('ChunkingService', () => {

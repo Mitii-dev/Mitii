@@ -9,9 +9,12 @@ TOOLS: You have tools to read files, search code, run commands, write files, and
 - Use read_file/read_files/search/search_batch/list_files to gather information before editing.
 - Tools named mcp__server__tool come from configured MCP servers. Treat them as external tools; inspect their names and arguments carefully.
 - Batch independent reads and searches in ONE turn (read_files, search_batch, parallel spawn_research_agent).
-- Use spawn_research_agent to delegate focused research (unused deps, orphan files, static assets) — spawn multiple for parallel analysis.
+- For large target file arrays, split into chunks of 5-10 files and spawn multiple research agents in one turn.
+- Use spawn_research_agent to delegate focused research (unused deps, orphan files, static assets) — spawn multiple for parallel analysis and pass persona_instructions when a specialized reviewer helps.
+- Prefer execute_workspace_script for known repo scripts (knip, depcheck, safe lint, checkpoint read/write). Search with search_script_catalog first if needed.
 - Prefer apply_patch for small targeted changes; use write_file for new files or full rewrites.
-- Use run_command for depcheck, npm ls, ripgrep, tests, lint, or build after changes.
+- Use run_command only for read-only inspection or project verification. During audit/cleanup tasks, use execute_workspace_script instead of hand-written shell.
+- Use use_skill to load a specific workspace skill playbook when the task matches one.
 - Use memory_search only as a fallback when chat history lacks needed facts.
 - Use save_task_state or memory_write to persist progress BEFORE pausing for approval (required).
 - In Act mode, you may call write_file/apply_patch/run_command tools directly.
@@ -88,6 +91,7 @@ ${mode === 'plan' ? planFormat : ''}
 
 RULES:
 - The user's message includes a ## Codebase Context section with real project files. READ IT and answer from it.
+- If ## Codebase Context includes a repo_map/workspace overview, use that provided map first. Do NOT repeatedly call list_files for the same structure unless the map is absent or demonstrably stale.
 - Project rule files in context (AGENTS.md, CLAUDE.md, .thunder/rules, .clinerules, .continue/rules, etc.) are operating instructions for this workspace. Follow them unless they conflict with explicit user instructions or safety policy.
 - Focus on files and topics the user asked about. Do NOT pivot to unrelated open tabs or linter diagnostics unless the user asked to fix errors.
 - NEVER ask the user to paste README, package.json, or source files — they are already in context.
@@ -161,21 +165,57 @@ export function buildPlanGenerationPrompt(
   return [
     {
       role: 'system',
-      content: `You are a task planner for a coding agent. Break the user's request into concrete steps.
+      content: `You are a task planner for a coding agent. Break the user's request into rigid execution phases.
 
 Process:
 1. Understand the goal and constraints from context and analysis.
-2. Order steps so each builds on the previous (read/explore → implement → test/verify).
-3. Include a final verification step if tests or lint are relevant.
+2. Output phases in this exact order when relevant: Phase 1 Diagnostics, Phase 2 Review, Phase 3 Execute, Phase 4 Verify.
+3. Phase 1 and Phase 2 are read-only. Phase 3 is the first phase where write_file/apply_patch/package edits are allowed.
+4. Include a final verification phase if tests or lint are relevant.
 4. Be specific with file paths from context.
 
-Output ONLY a JSON code block:
+Output ONLY a JSON code block with a phases JSON array. Do not output prose:
 \`\`\`json
 {
   "goal": "...",
   "assumptions": ["..."],
-  "steps": [
-    { "id": "step-1", "title": "...", "status": "pending", "files": ["path"], "risk": "low|medium|high" }
+  "phases": [
+    {
+      "id": "phase-1",
+      "title": "Phase 1: Diagnostics",
+      "phase": "diagnostics",
+      "objective": "read-only discovery",
+      "steps": [
+        { "id": "step-1", "title": "...", "files": ["path"], "risk": "low|medium|high" }
+      ]
+    },
+    {
+      "id": "phase-2",
+      "title": "Phase 2: Review",
+      "phase": "review",
+      "objective": "cross-check findings and decide edits",
+      "steps": [
+        { "id": "step-2", "title": "...", "files": ["path"], "risk": "low|medium|high" }
+      ]
+    },
+    {
+      "id": "phase-3",
+      "title": "Phase 3: Execute",
+      "phase": "execute",
+      "objective": "make approved code changes",
+      "steps": [
+        { "id": "step-3", "title": "...", "files": ["path"], "risk": "low|medium|high" }
+      ]
+    },
+    {
+      "id": "phase-4",
+      "title": "Phase 4: Verify",
+      "phase": "verify",
+      "objective": "validate and fix remaining errors",
+      "steps": [
+        { "id": "step-4", "title": "...", "files": ["path"], "risk": "low|medium|high" }
+      ]
+    }
   ],
   "requiredApprovals": []
 }
@@ -235,6 +275,7 @@ export function buildStepPrompt(
   const contextBlock = contextPack.formatted ?? '(no context)';
   const completed = plan.steps.filter((s) => s.status === 'done').map((s) => s.title);
   const pending = plan.steps.filter((s) => s.status !== 'done').map((s) => s.title);
+  const phase = step.phase ? `\nPhase lock: ${step.phase}` : '';
 
   const priorBlock =
     priorSummaries.length > 0
@@ -257,7 +298,7 @@ ${completed.length ? completed.map((s) => `- ${s}`).join('\n') : '(none)'}
 ${pending.map((s) => `- ${s}`).join('\n')}
 
 ## Current step (execute NOW)
-**${step.title}**${step.files?.length ? `\nFiles: ${step.files.join(', ')}` : ''}
+**${step.title}**${step.files?.length ? `\nFiles: ${step.files.join(', ')}` : ''}${phase}
 Risk: ${step.risk}
 
 ## Codebase Context
@@ -292,6 +333,7 @@ ${priorSummaries.map((s) => `- ${s}`).join('\n')}
 
 ## RETRY — fix validation errors from previous attempt
 **${step.title}**${step.files?.length ? `\nFiles: ${step.files.join(', ')}` : ''}
+${step.phase ? `Phase lock: ${step.phase}\n` : ''}
 
 ### Errors to fix
 ${validationErrors.join('\n\n')}

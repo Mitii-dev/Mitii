@@ -178,7 +178,7 @@ function sanitizeLogData(data?: Record<string, unknown>): Record<string, unknown
       lower.includes('authorization') ||
       lower.includes('apikey')
     ) {
-      out[key] = '[REDACTED]';
+      out[key] = typeof value === 'string' ? '[REDACTED]' : value;
       continue;
     }
     if (typeof value === 'string' && value.length > 8000) {

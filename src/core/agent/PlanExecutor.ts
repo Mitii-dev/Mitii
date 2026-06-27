@@ -1,7 +1,7 @@
 import type { LlmProvider } from '../llm/types';
 import type { ToolDefinition } from '../llm/toolTypes';
 import type { ThunderSession } from '../ThunderSession';
-import type { ThunderPlan } from '../planning/PlanActEngine';
+import type { PlanPhase, ThunderPlan } from '../planning/PlanActEngine';
 import type { PlanPersistence } from '../planning/PlanPersistence';
 import type { AgentLoop } from './AgentLoop';
 import type { AgentLoopCallbacks } from './AgentLoop';
@@ -25,6 +25,7 @@ export interface PlanExecutorOptions {
   stepMaxRetries?: number;
   finalValidationEnabled?: boolean;
   agentMaxSteps?: number;
+  restrictRunCommandToReadOnly?: boolean;
 }
 
 export interface StepExecutionResult {
@@ -95,17 +96,23 @@ export class PlanExecutor {
       if (delta.error) throw new Error(delta.error);
     }
 
-    const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/) ?? response.match(/\{[\s\S]*"steps"[\s\S]*\}/);
+    const jsonMatch =
+      response.match(/```json\s*([\s\S]*?)\s*```/) ??
+      response.match(/\{[\s\S]*"(?:phases|steps)"[\s\S]*\}/);
     if (!jsonMatch) return null;
 
     try {
       const raw = jsonMatch[1] ?? jsonMatch[0];
       const parsed = JSON.parse(raw) as ThunderPlan;
+      if (parsed.goal && Array.isArray(parsed.phases)) {
+        parsed.steps = flattenPlanPhases(parsed.phases);
+      }
       if (parsed.goal && Array.isArray(parsed.steps)) {
         parsed.steps = parsed.steps.map((s, i) => ({
           ...s,
           id: s.id ?? `step-${i + 1}`,
           status: s.status ?? 'pending',
+          phase: normalizePlanPhase(s.phase) ?? inferStepPhase(s.title, i),
           risk: s.risk ?? 'medium',
         }));
         return parsed;
@@ -169,7 +176,11 @@ export class PlanExecutor {
           tools,
           signal,
           loopCallbacks,
-          { maxSteps: options?.agentMaxSteps }
+          {
+            maxSteps: options?.agentMaxSteps,
+            phaseLock: step.phase,
+            restrictRunCommandToReadOnly: options?.restrictRunCommandToReadOnly,
+          }
         )) {
           yield chunk;
           stepOutput += chunk;
@@ -286,7 +297,11 @@ export class PlanExecutor {
       tools,
       signal,
       loopCallbacks,
-      { maxSteps: Math.min(options?.agentMaxSteps ?? 10, 10) }
+      {
+        maxSteps: Math.min(options?.agentMaxSteps ?? 10, 10),
+        phaseLock: 'verify',
+        restrictRunCommandToReadOnly: options?.restrictRunCommandToReadOnly,
+      }
     )) {
       yield chunk;
     }
@@ -309,6 +324,47 @@ export class PlanExecutor {
   getTouchedFiles(): string[] {
     return Array.from(this.touchedFiles);
   }
+}
+
+function flattenPlanPhases(phases: NonNullable<ThunderPlan['phases']>): ThunderPlan['steps'] {
+  const steps: ThunderPlan['steps'] = [];
+  for (const phase of phases) {
+    const normalizedPhase = normalizePlanPhase(phase.phase) ?? inferPhaseFromTitle(phase.title);
+    for (const step of phase.steps ?? []) {
+      steps.push({
+        id: step.id ?? `step-${steps.length + 1}`,
+        title: step.title,
+        status: 'pending',
+        phase: normalizedPhase,
+        files: step.files,
+        risk: step.risk ?? 'medium',
+      });
+    }
+  }
+  return steps;
+}
+
+function normalizePlanPhase(phase: unknown): PlanPhase | undefined {
+  if (phase === 'diagnostics' || phase === 'review' || phase === 'execute' || phase === 'verify') {
+    return phase;
+  }
+  return undefined;
+}
+
+function inferStepPhase(title: string, index: number): PlanPhase {
+  const text = title.toLowerCase();
+  if (/\b(verify|test|lint|build|validate)\b/.test(text)) return 'verify';
+  if (/\b(execute|implement|edit|patch|write|remove|update|fix)\b/.test(text)) return 'execute';
+  if (/\b(review|cross-check|confirm|decide)\b/.test(text)) return 'review';
+  return index === 0 ? 'diagnostics' : 'execute';
+}
+
+function inferPhaseFromTitle(title: string): PlanPhase {
+  const text = title.toLowerCase();
+  if (text.includes('phase 1') || text.includes('diagnostic')) return 'diagnostics';
+  if (text.includes('phase 2') || text.includes('review')) return 'review';
+  if (text.includes('phase 4') || text.includes('verify')) return 'verify';
+  return 'execute';
 }
 
 // Re-export for backward compatibility

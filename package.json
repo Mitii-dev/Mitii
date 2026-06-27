@@ -175,6 +175,16 @@
           "maximum": 50,
           "description": "Maximum tool-use steps for each read-only research subagent."
         },
+        "thunder.agent.researchAgentModel": {
+          "type": "string",
+          "default": "",
+          "description": "Optional faster model for read-only research subagents. Empty uses the main provider model."
+        },
+        "thunder.agent.researchAgentBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional OpenAI-compatible base URL for the research subagent model. Empty uses thunder.provider.baseUrl."
+        },
         "thunder.mcp.enabled": {
           "type": "boolean",
           "default": true,
@@ -209,6 +219,7 @@
     "lint": "tsc --noEmit",
     "scripts:search": "node scripts/search-script-catalog.mjs",
     "audit:dead-code": "bash scripts/audit-dead-code.sh",
+    "audit:dependencies": "node scripts/audit-dependencies.mjs",
     "check:circular-deps": "node scripts/check-circular-deps.mjs",
     "audit:engines": "node scripts/audit-package-engines.mjs",
     "find:console": "bash scripts/find-console-logs.sh",
@@ -217,6 +228,7 @@
     "git:untracked": "bash scripts/list-untracked-files.sh",
     "checkpoint:write": "bash scripts/write-checkpoint.sh",
     "checkpoint:read": "bash scripts/read-checkpoint.sh",
+    "lint:safe-target": "bash scripts/safe-lint-target.sh",
     "env:sync": "node scripts/sync-env-files.mjs",
     "package": "vsce package --no-dependencies",
     "smoke": "vitest run test/smoke"

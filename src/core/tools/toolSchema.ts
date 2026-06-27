@@ -15,6 +15,18 @@ function zodTypeToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
   if (schema instanceof z.ZodBoolean) {
     return { type: 'boolean' };
   }
+  if (schema instanceof z.ZodArray) {
+    return {
+      type: 'array',
+      items: zodTypeToJsonSchema(schema.element),
+    };
+  }
+  if (schema instanceof z.ZodEnum) {
+    return {
+      type: 'string',
+      enum: schema.options,
+    };
+  }
   if (schema instanceof z.ZodObject) {
     const shape = schema.shape as Record<string, z.ZodTypeAny>;
     const properties: Record<string, unknown> = {};

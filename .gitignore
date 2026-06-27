@@ -4,3 +4,4 @@ dist/
 .thunder/
 .DS_Store
 *.log
+.thunder/
