@@ -4,7 +4,7 @@ import type { ToolExecutor } from '../safety/ToolExecutor';
 import { formatToolResult } from '../tools/builtinTools';
 import { NO_TOOLS_AUDIT_NUDGE } from './taskKind';
 import type { PlanPhase, ThunderPlan } from '../planning/PlanActEngine';
-import { isPhaseLockWriteError } from '../planning/PlanActEngine';
+import { isPhaseLockRunCommandError, isPhaseLockWriteError } from '../planning/PlanActEngine';
 import { buildPlanTrackerPacket } from '../planning/PlanFileStore';
 import { createLogger } from '../telemetry/Logger';
 
@@ -14,6 +14,11 @@ const PHASE_LOCK_ESCALATION = `SYSTEM: File writes are blocked in the current re
 Do NOT retry apply_patch or write_file in this step.
 If you finished analysis, summarize findings in plain text and stop — the orchestrator advances to the next step automatically.
 If edits are required now, state exactly what must change and which files are affected.`;
+
+const PHASE_LOCK_RUN_COMMAND_ESCALATION = `SYSTEM: The previous run_command calls were blocked by the current plan phase.
+Do NOT retry the same arbitrary shell command.
+In Verify, use the diagnostics tool or a recognized verification command such as npm run lint, npm run test, npm run build, npm run compile, or npx tsc --noEmit.
+For targeted inspection, use read_file/search instead of shell. If verification cannot proceed, summarize the blocked command and the remaining risk.`;
 
 export interface AgentLoopCallbacks {
   onToolStart?: (name: string, input: Record<string, unknown>) => void;
@@ -98,6 +103,7 @@ export class AgentLoop {
     let autoContinuesUsed = 0;
     let totalSteps = 0;
     let phaseLockWriteFailures = 0;
+    let phaseLockRunCommandFailures = 0;
     const hardLimit = maxSteps + maxAutoContinues * maxSteps;
 
     this.toolExecutor.clearPlanPhaseLock?.();
@@ -193,6 +199,7 @@ export class AgentLoop {
       );
 
       let phaseLockFailuresThisTurn = 0;
+      let phaseLockRunCommandFailuresThisTurn = 0;
 
       for (const { tc, input, execResult, durationMs } of executions) {
         if (signal?.aborted) break;
@@ -219,6 +226,13 @@ export class AgentLoop {
           isPhaseLockWriteError(execResult.error)
         ) {
           phaseLockFailuresThisTurn += 1;
+        }
+        if (
+          !execResult.success &&
+          tc.function.name === 'run_command' &&
+          isPhaseLockRunCommandError(execResult.error)
+        ) {
+          phaseLockRunCommandFailuresThisTurn += 1;
         }
 
         callbacks?.onToolEnd?.(tc.function.name, execResult.success, output.slice(0, 500), durationMs);
@@ -256,6 +270,13 @@ export class AgentLoop {
         if (phaseLockWriteFailures >= 2) {
           messages.push({ role: 'user', content: PHASE_LOCK_ESCALATION });
           phaseLockWriteFailures = 0;
+        }
+      }
+      if (phaseLockRunCommandFailuresThisTurn > 0) {
+        phaseLockRunCommandFailures += phaseLockRunCommandFailuresThisTurn;
+        if (phaseLockRunCommandFailures >= 2) {
+          messages.push({ role: 'user', content: PHASE_LOCK_RUN_COMMAND_ESCALATION });
+          phaseLockRunCommandFailures = 0;
         }
       }
 
@@ -362,6 +383,7 @@ export class AgentLoop {
     const maxAutoContinues = options.maxAutoContinues ?? 2;
     let auditNudgeUsed = false;
     let autoContinuesUsed = 0;
+    let phaseLockRunCommandFailures = 0;
     const hardLimit = maxSteps + maxAutoContinues * maxSteps;
 
     for (let step = 0; step < hardLimit; step++) {
@@ -453,6 +475,8 @@ export class AgentLoop {
         })
       );
 
+      let phaseLockRunCommandFailuresThisTurn = 0;
+
       for (const { tc, input, execResult, durationMs } of executions) {
         if (signal?.aborted) break;
 
@@ -471,6 +495,14 @@ export class AgentLoop {
         const output = execResult.success
           ? execResult.output
           : (execResult.error ?? 'Tool failed');
+
+        if (
+          !execResult.success &&
+          tc.function.name === 'run_command' &&
+          isPhaseLockRunCommandError(execResult.error)
+        ) {
+          phaseLockRunCommandFailuresThisTurn += 1;
+        }
 
         callbacks?.onToolEnd?.(tc.function.name, execResult.success, output.slice(0, 500), durationMs);
 
@@ -500,6 +532,14 @@ export class AgentLoop {
           name: tc.function.name,
           content: toolContent,
         });
+      }
+
+      if (phaseLockRunCommandFailuresThisTurn > 0) {
+        phaseLockRunCommandFailures += phaseLockRunCommandFailuresThisTurn;
+        if (phaseLockRunCommandFailures >= 2) {
+          messages.push({ role: 'user', content: PHASE_LOCK_RUN_COMMAND_ESCALATION });
+          phaseLockRunCommandFailures = 0;
+        }
       }
 
       if (pendingApproval) {
@@ -548,6 +588,7 @@ export class AgentLoop {
     let toolCallsMade = 0;
     let pendingApproval = false;
     const maxSteps = options?.maxSteps ?? this.defaultMaxSteps;
+    let phaseLockRunCommandFailures = 0;
 
     for (let step = 0; step < maxSteps; step++) {
       if (signal?.aborted) break;
@@ -591,6 +632,8 @@ export class AgentLoop {
         })
       );
 
+      let phaseLockRunCommandFailuresThisTurn = 0;
+
       for (const { tc, execResult, durationMs } of executions) {
         if (signal?.aborted) break;
 
@@ -610,6 +653,14 @@ export class AgentLoop {
           ? execResult.output
           : (execResult.error ?? 'Tool failed');
 
+        if (
+          !execResult.success &&
+          tc.function.name === 'run_command' &&
+          isPhaseLockRunCommandError(execResult.error)
+        ) {
+          phaseLockRunCommandFailuresThisTurn += 1;
+        }
+
         callbacks?.onToolEnd?.(tc.function.name, execResult.success, output.slice(0, 500), durationMs);
         messages.push({
           role: 'tool',
@@ -621,6 +672,14 @@ export class AgentLoop {
             error: execResult.error,
           }),
         });
+      }
+
+      if (phaseLockRunCommandFailuresThisTurn > 0) {
+        phaseLockRunCommandFailures += phaseLockRunCommandFailuresThisTurn;
+        if (phaseLockRunCommandFailures >= 2) {
+          messages.push({ role: 'user', content: PHASE_LOCK_RUN_COMMAND_ESCALATION });
+          phaseLockRunCommandFailures = 0;
+        }
       }
 
       if (pendingApproval) {

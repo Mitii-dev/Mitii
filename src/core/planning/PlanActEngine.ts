@@ -92,9 +92,12 @@ function isReadOnlyCommandSegment(cmd: string): boolean {
   if (/^(npx\s+(--yes\s+)?)?depcheck\b/i.test(cmd)) return true;
   if (/^(npx\s+(--yes\s+)?)?knip\b/i.test(cmd)) return true;
   if (/^npx\s+eslint\b/i.test(cmd) && !/\s--fix\b/.test(cmd)) return true;
-  if (/^npm\s+(ls|list|outdated|audit|run\s+(lint|test|typecheck|check|build))\b/i.test(cmd)) return true;
-  if (/^yarn\s+(why|list|info|lint|test|build)\b/i.test(cmd)) return true;
-  if (/^pnpm\s+(why|list|lint|test|build)\b/i.test(cmd)) return true;
+  if (/^(npx\s+(--yes\s+)?)?tsc\s+[\s\S]*--noEmit\b/i.test(cmd)) return true;
+  if (/^(npx\s+(--yes\s+)?)?vitest\s+(run\b|--run\b)/i.test(cmd)) return true;
+  if (/^(npx\s+(--yes\s+)?)?jest\b/i.test(cmd)) return true;
+  if (/^npm\s+(ls|list|outdated|audit|run\s+(lint|test|typecheck|check|build|compile))\b/i.test(cmd)) return true;
+  if (/^yarn\s+(why|list|info|lint|test|build|compile|typecheck|check)\b/i.test(cmd)) return true;
+  if (/^pnpm\s+(why|list|lint|test|build|compile|typecheck|check)\b/i.test(cmd)) return true;
   if (/^(grep|rg|find|cat|head|tail|sed|wc|sort|uniq|ls|tree|which|echo)\b/i.test(cmd)) return true;
   if (/^git\s+(status|diff|log|ls-files)\b/i.test(cmd)) return true;
   return false;
@@ -220,6 +223,15 @@ export function resolveStepPhaseLock(
 
 export function isPhaseLockWriteError(error?: string): boolean {
   return Boolean(error?.includes('file writes are locked until Phase 3'));
+}
+
+export function isPhaseLockRunCommandError(error?: string): boolean {
+  if (!error) return false;
+  return (
+    error.includes('allows only read-only shell commands') ||
+    error.includes('Phase 4 (Verify) allows diagnostics, lint, tests, builds') ||
+    error.includes('run_command is restricted to read-only commands')
+  );
 }
 
 export function isToolAllowedInPlanPhase(

@@ -690,11 +690,16 @@ describe('PlanActEngine read-only shell', () => {
     expect(isReadOnlyCommand('cd /home/user && rg "foo" src')).toBe(true);
     expect(isReadOnlyCommand("sed -n '70,90p' src/screens/printer/printer.tsx")).toBe(true);
     expect(isReadOnlyCommand("grep -n 'uuid\\|randomUUID' src/screens/printer/printer.tsx")).toBe(true);
+    expect(isReadOnlyCommand('npx tsc --noEmit')).toBe(true);
+    expect(isReadOnlyCommand('npm run compile')).toBe(true);
+    expect(isReadOnlyCommand('npx vitest run')).toBe(true);
+    expect(isReadOnlyCommand('npx vitest')).toBe(false);
     expect(stripLeadingCd('cd /home/user && npm ls')).toBe('npm ls');
     expect(isShellAllowed('plan', 'npx depcheck')).toBe(true);
     expect(isShellAllowed('plan', 'npm install lodash')).toBe(false);
     expect(isToolAllowedInPlanPhase('execute', 'run_command', { command: 'npm run build' }).allowed).toBe(true);
     expect(isToolAllowedInPlanPhase('verify', 'run_command', { command: 'npm run build' }).allowed).toBe(true);
+    expect(isToolAllowedInPlanPhase('verify', 'run_command', { command: 'node scripts/custom-mutator.js' }).allowed).toBe(false);
   });
 
   it('upgrades write-intent steps from diagnostics to execute in act mode', async () => {
@@ -723,6 +728,13 @@ describe('PlanActEngine read-only shell', () => {
     const { isPhaseLockWriteError } = await import('../src/core/planning/PlanActEngine');
     expect(isPhaseLockWriteError('Phase 1 (Diagnostics) is read-only; file writes are locked until Phase 3 (Execute).')).toBe(true);
     expect(isPhaseLockWriteError('Patch failed')).toBe(false);
+  });
+
+  it('detects phase-lock run_command errors', async () => {
+    const { isPhaseLockRunCommandError } = await import('../src/core/planning/PlanActEngine');
+    expect(isPhaseLockRunCommandError('Phase 4 (Verify) allows diagnostics, lint, tests, builds, and targeted file fixes, not arbitrary shell commands.')).toBe(true);
+    expect(isPhaseLockRunCommandError('Phase 1 (Diagnostics) allows only read-only shell commands.')).toBe(true);
+    expect(isPhaseLockRunCommandError('Command exited with code 1')).toBe(false);
   });
 });
 

@@ -104,6 +104,56 @@ describe('AgentLoop E2E', () => {
     )).toBe(true);
   });
 
+  it('nudges away from repeated phase-blocked run_command calls', async () => {
+    const executor = createMockExecutor();
+    (executor.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: false,
+      output: '',
+      error: 'Phase 4 (Verify) allows diagnostics, lint, tests, builds, and targeted file fixes, not arbitrary shell commands.',
+    });
+
+    const seenMessages: Array<Array<{ role: string; content: string }>> = [];
+    let call = 0;
+    const provider = {
+      id: 'mock',
+      capabilities: { supportsTools: true, supportsStreaming: true, contextWindow: 8192, supportsEmbeddings: false },
+      async *complete(request: { messages: Array<{ role: string; content: string }> }) {
+        seenMessages.push(request.messages);
+        call += 1;
+        if (call <= 2) {
+          yield {
+            tool_calls: [{
+              index: 0,
+              id: `call_${call}`,
+              function: { name: 'run_command', arguments: '{"command":"node scripts/custom-mutator.js"}' },
+            }],
+          };
+        } else {
+          yield { content: 'Recovered.' };
+        }
+        yield { done: true };
+      },
+    } as LlmProvider;
+
+    const loop = new AgentLoop(executor, 5);
+    const chunks: string[] = [];
+    for await (const chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Verify changes' }],
+      [{ type: 'function', function: { name: 'run_command', description: 'run', parameters: {} } }],
+      undefined,
+      undefined,
+      { maxSteps: 3, phaseLock: 'verify' }
+    )) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks.join('')).toContain('Recovered');
+    expect(seenMessages[2].some(
+      (m) => m.role === 'user' && m.content.includes('previous run_command calls were blocked')
+    )).toBe(true);
+  });
+
   it('resumes after approval with checkpoint injection', async () => {
     const executor = createMockExecutor();
     const provider = mockProvider([{ content: 'Resumed successfully.' }]);
