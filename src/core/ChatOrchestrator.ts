@@ -115,7 +115,8 @@ export class ChatOrchestrator {
       this.planExecutor = new PlanExecutor(
         this.agentLoop,
         deps.planPersistence,
-        deps.postEditValidator
+        deps.postEditValidator,
+        deps.toolExecutor
       );
     }
   }

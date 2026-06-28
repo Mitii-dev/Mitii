@@ -2,7 +2,7 @@
   "name": "thunder-ai-agent",
   "displayName": "Thunder AI Agent",
   "description": "Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "publisher": "thunder",
   "license": "MIT",
   "engines": {
@@ -120,12 +120,24 @@
         "thunder.indexing.maxFileSizeBytes": {
           "type": "number",
           "default": 512000,
-          "description": "Max file size to index in bytes"
+          "description": "Max file size for full indexing in bytes. Larger files get signature-only indexing."
+        },
+        "thunder.indexing.hardSkipSizeBytes": {
+          "type": "number",
+          "default": 2000000,
+          "description": "Skip files larger than this size entirely (e.g. lockfiles)."
+        },
+        "thunder.indexing.maxConcurrency": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 8,
+          "description": "Number of files to index in parallel."
         },
         "thunder.indexing.vectorsEnabled": {
           "type": "boolean",
-          "default": false,
-          "description": "Enable semantic vector search (off by default). Use hash or MiniLM embeddings with SQLite or LanceDB backend."
+          "default": true,
+          "description": "Enable semantic vector search. Uses MiniLM when @xenova/transformers is available, hash fallback otherwise."
         },
         "thunder.indexing.treeSitterEnabled": {
           "type": "boolean",
@@ -134,13 +146,19 @@
         },
         "thunder.indexing.embeddingProvider": {
           "type": "string",
-          "enum": ["hash", "minilm"],
-          "default": "hash",
-          "description": "Embedding provider when vectors are enabled. minilm uses local @xenova/transformers (all-MiniLM-L6-v2)."
+          "enum": [
+            "hash",
+            "minilm"
+          ],
+          "default": "minilm",
+          "description": "Embedding provider when vectors are enabled. minilm uses local @xenova/transformers (all-MiniLM-L6-v2); falls back to hash if unavailable."
         },
         "thunder.indexing.vectorBackend": {
           "type": "string",
-          "enum": ["sqlite", "lancedb"],
+          "enum": [
+            "sqlite",
+            "lancedb"
+          ],
           "default": "sqlite",
           "description": "Vector index storage backend when vectors are enabled"
         },
@@ -265,6 +283,27 @@
           "default": false,
           "description": "Open VS Code diff preview tabs before write_file/apply_patch tool calls. Disabled by default to avoid editor focus changes."
         },
+        "thunder.agent.verifyCommands": {
+          "type": "array",
+          "default": [
+            "npm run lint",
+            "npm test"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Read-only shell commands to run at the end of Act-mode agent runs (e.g. lint, test)."
+        },
+        "thunder.agent.verifyOnActComplete": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run thunder.agent.verifyCommands after Act-mode agent runs complete."
+        },
+        "thunder.safety.allowUntrustedWorkspace": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow writes and shell in untrusted workspaces (not recommended)."
+        },
         "thunder.mcp.enabled": {
           "type": "boolean",
           "default": true,
@@ -301,6 +340,8 @@
     "rebuild:node": "npm rebuild better-sqlite3",
     "rebuild:all": "npm run rebuild:native && npm run rebuild:node",
     "postinstall": "node -e \"console.log('Run npm run rebuild:native before F5 if better-sqlite3 fails to load')\"",
+    "prepare": "node scripts/install-git-hooks.mjs",
+    "version:bump": "node scripts/bump-version.mjs",
     "compile:extension": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --packages=external --platform=node --format=cjs --sourcemap",
     "compile:webview": "vite build",
     "watch": "concurrently \"npm run watch:extension\" \"npm run watch:webview\"",

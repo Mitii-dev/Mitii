@@ -28,22 +28,11 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
   if (!hasPlan && isPlanning) {
     return (
       <section className="plan-panel plan-panel--planning" aria-label="Planner" aria-busy="true">
-        <div className="plan-panel__header">
-          <div>
-            <p className="plan-panel__eyebrow">Planner</p>
-            <h2>{planningLabel}</h2>
-          </div>
+        <div className="plan-panel__loading-bar" role="status">
           <span className="plan-panel__spinner" aria-hidden="true" />
+          <span className="plan-panel__loading-label">{planningLabel}</span>
+          {liveStatus?.detail && <span className="plan-panel__loading-detail">{liveStatus.detail}</span>}
         </div>
-        <ol className="plan-panel__steps plan-panel__steps--skeleton">
-          {[1, 2, 3].map((step) => (
-            <li key={step} className="plan-step plan-step--skeleton">
-              <span className="plan-step__index">{step}</span>
-              <span className="plan-step__title plan-step__title--skeleton" />
-              <span className="plan-step__status">…</span>
-            </li>
-          ))}
-        </ol>
       </section>
     );
   }

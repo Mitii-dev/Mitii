@@ -13,6 +13,7 @@ import type { AgentLoop } from './AgentLoop';
 import type { AgentLoopCallbacks } from './AgentLoop';
 import type { ContextPack } from '../context/types';
 import type { PostEditValidator } from '../apply/PostEditValidator';
+import type { ToolExecutor, ToolExecutionResult } from '../safety/ToolExecutor';
 import type { TaskAnalysis } from './TaskAnalyzer';
 import {
   buildStepPrompt,
@@ -56,7 +57,8 @@ export class PlanExecutor {
   constructor(
     private readonly agentLoop: AgentLoop,
     private readonly planPersistence: PlanPersistence,
-    private readonly postEditValidator?: PostEditValidator
+    private readonly postEditValidator?: PostEditValidator,
+    private readonly toolExecutor?: ToolExecutor
   ) {}
 
   async *analyzeRequirementsStream(
@@ -246,35 +248,77 @@ export class PlanExecutor {
 
         let stepOutput = '';
         let successfulWrites = 0;
+        let pendingApproval = false;
         const phaseLock = resolveStepPhaseLock(step, session.mode);
-        const writeExpected = stepImpliesWrite(step) && session.mode === 'act';
+        const explicitToolCall = getExplicitStepToolCall(step);
+        const writeExpected = stepImpliesWrite(step) && session.mode === 'act' && !explicitToolCall;
 
-        for await (const chunk of this.agentLoop.run(
-          provider,
-          messages,
-          tools,
-          signal,
-          {
-            ...loopCallbacks,
-            onToolEnd: (name, success, output) => {
-              loopCallbacks?.onToolEnd?.(name, success, output);
-              if (success && ['write_file', 'apply_patch'].includes(name)) {
-                successfulWrites += 1;
-              }
-            },
-          },
-          {
-            maxSteps: options?.agentMaxSteps,
+        if (explicitToolCall && this.toolExecutor) {
+          const toolStartedAt = Date.now();
+          loopCallbacks?.onToolStart?.(explicitToolCall.name, explicitToolCall.input);
+          const execResult = await this.toolExecutor.execute(explicitToolCall.name, explicitToolCall.input, {
             phaseLock,
             restrictRunCommandToReadOnly: options?.restrictRunCommandToReadOnly,
-            planTracker: plan,
+          });
+          const output = summarizeToolExecution(explicitToolCall.name, execResult);
+          loopCallbacks?.onToolEnd?.(explicitToolCall.name, execResult.success, output, Date.now() - toolStartedAt);
+          stepOutput += output;
+          yield output;
+
+          if (execResult.pendingApproval) {
+            plan.steps[i] = { ...plan.steps[i], status: 'blocked' };
+            this.planPersistence.updatePlan(session.id, plan, 'blocked');
+            onPlanUpdate?.(plan);
+            yield '\n\n⏸ Waiting for approval before continuing…\n';
+            return;
           }
-        )) {
-          yield chunk;
-          stepOutput += chunk;
+
+          if (!execResult.success) {
+            lastValidationErrors = [`${explicitToolCall.name} failed: ${execResult.error ?? execResult.output}`];
+            attempt += 1;
+            if (attempt <= maxRetries) {
+              yield `\n\n⚠️ Step tool failed — retrying step (${attempt}/${maxRetries + 1})…\n`;
+              plan.steps[i] = { ...plan.steps[i], status: 'pending' };
+              continue;
+            }
+            plan.steps[i] = { ...plan.steps[i], status: 'failed' };
+            this.planPersistence.updatePlan(session.id, plan, 'running');
+            onPlanUpdate?.(plan);
+            yield `\n\n❌ Step failed after ${maxRetries + 1} attempts. Errors:\n${lastValidationErrors.join('\n')}\n`;
+            break;
+          }
+
+          if (['write_file', 'apply_patch'].includes(explicitToolCall.name)) {
+            successfulWrites += 1;
+          }
+        } else {
+          for await (const chunk of this.agentLoop.run(
+            provider,
+            messages,
+            tools,
+            signal,
+            {
+              ...loopCallbacks,
+              onToolEnd: (name, success, output) => {
+                loopCallbacks?.onToolEnd?.(name, success, output);
+                if (success && ['write_file', 'apply_patch'].includes(name)) {
+                  successfulWrites += 1;
+                }
+              },
+            },
+            {
+              maxSteps: options?.agentMaxSteps,
+              phaseLock,
+              restrictRunCommandToReadOnly: options?.restrictRunCommandToReadOnly,
+              planTracker: plan,
+            }
+          )) {
+            yield chunk;
+            stepOutput += chunk;
+          }
+          pendingApproval = this.agentLoop.hadPendingApproval();
         }
 
-        const pendingApproval = this.agentLoop.hadPendingApproval();
         if (pendingApproval) {
           plan.steps[i] = { ...plan.steps[i], status: 'blocked' };
           this.planPersistence.updatePlan(session.id, plan, 'blocked');
@@ -469,6 +513,7 @@ function flattenPlanPhases(
         objective: step.objective ?? phase.objective,
         tool: step.tool,
         args: step.args,
+        script: step.script,
         dependsOn: step.dependsOn,
         tools: normalizeStringArray(step.tools),
         successCriteria: normalizeStringArray(step.successCriteria),
@@ -512,6 +557,7 @@ function parseGeneratedPlan(response: string, mode: ThunderSession['mode'] = 'pl
         objective: typeof s.objective === 'string' ? s.objective : undefined,
         tool: typeof s.tool === 'string' ? s.tool : undefined,
         args: typeof s.args === 'object' && s.args !== null ? s.args as Record<string, unknown> : undefined,
+        script: normalizeStepScript((s as ThunderPlan['steps'][number]).script),
         dependsOn: normalizeStringArray(s.dependsOn),
         tools: normalizeStringArray(s.tools),
         successCriteria: normalizeStringArray(s.successCriteria),
@@ -569,6 +615,39 @@ function normalizeStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const normalized = value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
   return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeStepScript(value: unknown): { command?: string; args?: unknown[] } | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const script = value as { command?: unknown; args?: unknown };
+  const command = typeof script.command === 'string' && script.command.trim() ? script.command.trim() : undefined;
+  const args = Array.isArray(script.args) ? script.args : undefined;
+  return command || args ? { command, args } : undefined;
+}
+
+function getExplicitStepToolCall(
+  step: ThunderPlan['steps'][number]
+): { name: string; input: Record<string, unknown> } | null {
+  if (step.tool && step.args && typeof step.args === 'object') {
+    return { name: step.tool, input: step.args };
+  }
+
+  if (step.script?.command) {
+    return { name: 'run_command', input: { command: step.script.command } };
+  }
+
+  return null;
+}
+
+function summarizeToolExecution(toolName: string, result: ToolExecutionResult): string {
+  if (result.pendingApproval) {
+    return `\n\n${toolName} is awaiting approval.\n`;
+  }
+
+  const body = result.success ? result.output : (result.error ?? result.output);
+  const trimmed = body.trim();
+  const capped = trimmed.length > 4000 ? trimmed.slice(-4000) : trimmed;
+  return `\n\n${toolName} ${result.success ? 'succeeded' : 'failed'}${capped ? `:\n${capped}\n` : '.\n'}`;
 }
 
 function summarizeStepOutput(output: string, title: string): string {

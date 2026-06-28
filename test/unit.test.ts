@@ -494,6 +494,128 @@ describe('Plan parser', () => {
     expect(planMode?.steps[0].phase).toBe('diagnostics');
     expect(actMode?.steps[0].phase).toBe('execute');
   });
+
+  it('fails an explicit scripted plan step when its command fails', async () => {
+    const { PlanExecutor } = await import('../src/core/agent/PlanExecutor');
+    const plan = {
+      goal: 'Verify package',
+      assumptions: [],
+      requiredApprovals: [],
+      steps: [
+        {
+          id: 'verify',
+          title: 'Verify Compilation',
+          status: 'pending' as const,
+          risk: 'low' as const,
+          phase: 'verify' as const,
+          script: { command: 'npm run lint' },
+        },
+      ],
+    };
+    const persistence = {
+      save: () => 'plan-id',
+      updatePlan: () => undefined,
+      complete: () => undefined,
+    };
+    const agentLoop = {
+      hadPendingApproval: () => false,
+      async *run() {
+        throw new Error('agent loop should not run for explicit scripted steps');
+      },
+    };
+    const toolExecutor = {
+      execute: async () => ({ success: false, output: '', error: 'lint failed' }),
+    };
+    const executor = new PlanExecutor(agentLoop as never, persistence as never, undefined, toolExecutor as never);
+    const pack = {
+      items: [],
+      totalTokens: 0,
+      formatted: '',
+      budgetLimit: 100,
+      retrievedCount: 0,
+      truncatedCount: 0,
+      dropped: [],
+    };
+    let output = '';
+
+    for await (const chunk of executor.executePlan(
+      { id: 's1', mode: 'act' } as never,
+      {} as never,
+      plan,
+      pack,
+      [],
+      undefined,
+      undefined,
+      undefined,
+      { stepMaxRetries: 0 }
+    )) {
+      output += chunk;
+    }
+
+    expect(plan.steps[0].status).toBe('failed');
+    expect(output).toContain('lint failed');
+  });
+
+  it('does not reuse stale agent-loop approval state after an explicit step succeeds', async () => {
+    const { PlanExecutor } = await import('../src/core/agent/PlanExecutor');
+    const plan = {
+      goal: 'Verify package',
+      assumptions: [],
+      requiredApprovals: [],
+      steps: [
+        {
+          id: 'verify',
+          title: 'Verify Compilation',
+          status: 'pending' as const,
+          risk: 'low' as const,
+          phase: 'verify' as const,
+          script: { command: 'npm run lint' },
+        },
+      ],
+    };
+    let completed = false;
+    const persistence = {
+      save: () => 'plan-id',
+      updatePlan: () => undefined,
+      complete: () => { completed = true; },
+    };
+    const agentLoop = {
+      hadPendingApproval: () => true,
+      async *run() {
+        throw new Error('agent loop should not run for explicit scripted steps');
+      },
+    };
+    const toolExecutor = {
+      execute: async () => ({ success: true, output: 'lint ok' }),
+    };
+    const executor = new PlanExecutor(agentLoop as never, persistence as never, undefined, toolExecutor as never);
+    const pack = {
+      items: [],
+      totalTokens: 0,
+      formatted: '',
+      budgetLimit: 100,
+      retrievedCount: 0,
+      truncatedCount: 0,
+      dropped: [],
+    };
+
+    for await (const _chunk of executor.executePlan(
+      { id: 's1', mode: 'act' } as never,
+      {} as never,
+      plan,
+      pack,
+      [],
+      undefined,
+      undefined,
+      undefined,
+      { stepMaxRetries: 0, finalValidationEnabled: false }
+    )) {
+      // consume stream
+    }
+
+    expect(plan.steps[0].status).toBe('done');
+    expect(completed).toBe(true);
+  });
 });
 
 describe('extractFileMentions', () => {

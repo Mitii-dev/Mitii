@@ -13,6 +13,7 @@ export type ThunderPlan = {
       tools?: string[];
       tool?: string;
       args?: Record<string, unknown>;
+      script?: { command?: string; args?: unknown[] };
       dependsOn?: string[];
       successCriteria?: string[];
       files?: string[];
@@ -28,6 +29,7 @@ export type ThunderPlan = {
     tools?: string[];
     tool?: string;
     args?: Record<string, unknown>;
+    script?: { command?: string; args?: unknown[] };
     dependsOn?: string[];
     successCriteria?: string[];
     files?: string[];
@@ -56,6 +58,7 @@ export function parsePlanFromText(text: string): ThunderPlan | null {
           objective: step.objective ?? phase.objective,
           tool: step.tool,
           args: step.args,
+          script: step.script,
           dependsOn: step.dependsOn,
           tools: step.tools,
           successCriteria: step.successCriteria,
