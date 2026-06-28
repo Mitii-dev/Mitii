@@ -1,177 +1,228 @@
 # Thunder AI Agent
 
-Local-first VS Code AI coding agent with precise repo context, hybrid retrieval, and safe Plan/Act workflow.
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![VS Code](https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode)](https://code.visualstudio.com/)
+[![Node](https://img.shields.io/badge/Node-20%2B-339933?logo=node.js)](https://nodejs.org/)
+
+Local-first AI coding agent for VS Code. Bring your own model (Ollama, vLLM, any OpenAI-compatible endpoint), keep your code on your machine, and get an agent that actually knows your repo before it starts editing files.
+
+Built by [codewithshinde](https://github.com/codewithshinde).
+
+---
+
+## The problem
+
+Most coding agents fall into one of two camps:
+
+1. **Cloud-only** — fast models, but your source code leaves the machine and you have limited control over what the agent can touch.
+2. **Local but blind** — the model runs nearby, but context is shallow: a few `@`-mentioned files, maybe a grep, then a patch that misses half the codebase.
+
+Both approaches break down on real work. Refactors span dozens of files. Audits need dependency graphs, not just string search. Long sessions blow past context windows. And when an agent writes to disk or runs shell commands, you want guardrails — not a binary "trust everything" switch.
+
+Thunder sits in the middle: local execution, deep repo indexing, explicit Plan/Act separation, and approval policies you can tune from "ask me about everything" to "just run it, but block `rm -rf`".
+
+---
+
+## How Thunder solves it
+
+| Pain point | What Thunder does |
+|------------|-------------------|
+| Agent doesn't know the codebase | Background workspace index: SQLite + FTS5, symbol extraction (tree-sitter with regex fallback), PageRank repo map, optional MiniLM vectors |
+| Wrong files in context | Hybrid retrieval (FTS + vectors + repo map + git diff + diagnostics), reranker trims noise (top-20 → top-8), token budgeter drops low-value chunks |
+| Edits without oversight | Approval queue for writes and shell; autonomy presets from `safe` through `enterprise`; dangerous commands blocked at the policy layer |
+| Plans that never get executed | Plan mode produces structured steps persisted to SQLite; Act mode runs the tool loop against that plan |
+| Context runs out mid-task | Conversation compaction, auto-continue rounds, task state saved between approval pauses |
+| No audit trail | JSONL session logs in `.thunder/logs/` — every tool call, approval, token usage, timing |
+| Locked into one vendor's rules | Loads `AGENTS.md`, `.cursor/rules`, `.clinerules`, Continue rules, and `.thunder/rules` into context automatically |
+| Need external tools | Built-in MCP preload (filesystem, memory, sequential-thinking) plus workspace `mcp.json` and VS Code settings |
+
+---
 
 ## Features
 
-- React + Vite sidebar webview with chat UI
-- OpenAI-compatible provider support (plus Echo provider for testing)
-- **Agentic tool loop** — LLM calls `read_file`, `search`, `write_file`, `apply_patch`, `run_command`, etc.
-- **Task decomposition** — complex tasks split into steps with lifecycle tracking
-- **Multi-turn context** — conversation history + compaction in prompts
-- SQLite + FTS5 indexing with workspace scanner + **ripgrep fallback**
-- Symbol extraction (TS/JS/Python/Java/Go)
-- Repo map with ranking
-- Hybrid context retrieval and budgeter
-- Plan / Act / Review modes with **plan persistence** (`task_plans` table)
-- Tool runtime with policy engine, **autonomy presets**, and approval queue
-- **VS Code diff preview** before writes/patches
-- **Auto-checkpoints** before approved writes
-- Patch apply with validation
-- **Long-term memory** — `memory_search` / `memory_write` tools + post-task extraction
-- **Passive memory injection** — claude-mem style hook-based + automatic context injection
-- **Subagent status UI** — parallel research worker cards (Cline `SubagentStatusRow` pattern)
-- **LLM compaction + auto-continue** — long audit sessions stay within context budget
-- **Post-edit lint loop** — Aider-style validation reflection after writes
-- **PageRank repo map** — Aider-style symbol graph ranking
-- **Validate-and-fix on apply** — Plandex-style syntax guards before patch apply
-- **Optional vector search** — SQLite hash embeddings (LanceDB pluggable later)
-- **MCP tools** — stdio MCP servers from VS Code settings, `.thunder/mcp.json`, or `.mcp.json`
-- **Project rules loader** — imports `AGENTS.md`, `CLAUDE.md`, `.thunder/rules`, `.clinerules`, Continue rules, and Cursor rules into context
-- **Session persistence** — `agent_sessions` + `agent_turns` in SQLite
-- Memory & checkpoint panels in chat UI
+### Context and indexing
 
-## Requirements
+- **Workspace scanner** respects `.gitignore` and `.thunderignore`; auto-indexes on folder open
+- **FTS5 full-text search** with ripgrep fallback for unindexed paths
+- **Symbol extraction** for TypeScript, JavaScript, Python, Java, Go
+- **PageRank repo map** — surfaces the files that matter structurally, not just lexically
+- **Vector search** — local MiniLM embeddings via `@xenova/transformers`, hash fallback if unavailable; SQLite or LanceDB backend
+- **Hybrid retriever + reranker** — merges search, vectors, mentioned files, git state, and LSP diagnostics into one context pack
 
-- VS Code 1.85+
-- Node.js 20+
+### Agent workflow
 
-## Setup
+- **Plan / Act / Review modes** — plan before you touch code; act with tools; review without rewriting
+- **Tool loop** — `read_file`, `search`, `write_file`, `apply_patch`, `run_command`, `git_diff`, `diagnostics`, and more
+- **Research subagents** — parallel read-only workers for exploration (`spawn_research_agent`)
+- **Task decomposition** — multi-step plans with lifecycle tracking and step completion markers
+- **Post-edit verification** — configurable lint/test commands after Act-mode runs
+- **Skills catalog** — drop `SKILL.md` files in `.thunder/skills/` and invoke them via `use_skill`
+
+### Safety and control
+
+- **Approval modes** — `review_all`, `ask_edits`, `ask_deletes`, `ask_commands`, `auto`
+- **Autonomy presets** — `safe`, `guided`, `builder`, `pilot`, `enterprise` (network disabled)
+- **Untrusted workspace blocking** — writes and shell disabled unless you explicitly opt in
+- **Auto-checkpoints** before approved file writes
+- **Optional diff preview** in VS Code before patches land
+- **Patch validation** — syntax guards before apply; refuses shell commands masquerading as source code
+
+### Memory and persistence
+
+- **Long-term memory** — `memory_search` / `memory_write` with FTS5 + optional vector hybrid search
+- **Post-task memory extraction** — observations captured after completed work
+- **Session history** — `agent_sessions` and `agent_turns` stored in SQLite; resume from the History tab
+- **Plan persistence** — plans saved to `task_plans` and `.thunder/tasks/`
+
+### MCP and integrations
+
+Preloaded keyless MCP servers (disable with `thunder.mcp.preloadBuiltin: false`):
+
+| Server | Purpose |
+|--------|---------|
+| `filesystem` | Scoped file access for the open workspace |
+| `memory` | Cross-session knowledge graph |
+| `sequential-thinking` | Structured reasoning helper |
+
+Add your own via `thunder.mcp.servers`, `.thunder/mcp.json`, or `.mcp.json`. MCP tools appear as `mcp__server__tool` and still pass through Thunder's approval policy.
+
+### UI
+
+React sidebar webview with chat, history, settings, approval cards, subagent activity panel, plan panel, checkpoint browser, indexing status, context budget warnings, and token meter.
+
+---
+
+## Quick start
+
+**Requirements:** VS Code 1.85+, Node.js 20+
 
 ```bash
+git clone https://github.com/codewithshinde/thunder-ai-agent.git
 cd thunder-ai-agent
 npm install
 npm run compile
 ```
 
-Press F5 in VS Code to launch the Extension Development Host.
+Press **F5** in VS Code to launch the Extension Development Host. Open a folder, wait for indexing to finish (status bar in the Thunder sidebar), then chat.
+
+### Connect a model
+
+1. Open **Settings** in the Thunder sidebar (or VS Code settings under `Thunder AI Agent`)
+2. Set `thunder.provider.type` to `openai-compatible`
+3. Point `thunder.provider.baseUrl` at your endpoint (default: `http://localhost:11434/v1` for Ollama)
+4. Set `thunder.provider.model` (default: `qwen3-coder:30b`)
+
+Use the Echo provider for UI testing without an LLM. API keys go through VS Code SecretStorage via the settings UI.
+
+---
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
 | `Thunder: Open Chat` | Focus the Thunder sidebar |
-| `Thunder: Index Workspace` | Scan and index the workspace |
-| `Thunder: Show Settings` | Open settings tab |
+| `Thunder: Index Workspace` | Re-scan and index the workspace |
+| `Thunder: Show Settings` | Open the settings tab |
+| `Thunder: Export Session Log` | Export the current session's JSONL log |
+| `Thunder: Open Session Log File` | Open the log file in the editor |
 
-## Configuration
+---
 
-Set `thunder.provider.type` to `openai-compatible` and configure:
-
-- `thunder.provider.baseUrl` — e.g. `http://localhost:11434/v1`
-- `thunder.provider.model` — e.g. `qwen3-coder:30b`
-
-Store API keys via the settings UI (uses VS Code SecretStorage).
-
-### MCP servers
-
-Thunder preloads **free, keyless** official MCP servers on startup (like a built-in marketplace):
-
-| Server | Package | Notes |
-|--------|---------|-------|
-| `filesystem` | `@modelcontextprotocol/server-filesystem` | Scoped to the open workspace root |
-| `memory` | `@modelcontextprotocol/server-memory` | Persistent knowledge graph across sessions |
-| `sequential-thinking` | `@modelcontextprotocol/server-sequential-thinking` | Structured reasoning helper |
-
-Disable all built-ins with `"thunder.mcp.preloadBuiltin": false`, or override a single server by reusing its name in settings or workspace config.
-
-Thunder also loads stdio MCP servers from VS Code settings:
-
-```json
-"thunder.mcp.servers": {
-  "filesystem": {
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
-  }
-}
-```
-
-You can also commit workspace-local MCP config in `.thunder/mcp.json` or `.mcp.json`:
+## Configuration highlights
 
 ```json
 {
-  "mcpServers": {
-    "github": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"]
-    }
-  }
+  "thunder.provider.type": "openai-compatible",
+  "thunder.provider.baseUrl": "http://localhost:11434/v1",
+  "thunder.provider.model": "qwen3-coder:30b",
+  "thunder.safety.autonomyPreset": "guided",
+  "thunder.safety.approvalMode": "review_all",
+  "thunder.indexing.autoIndexOnOpen": true,
+  "thunder.indexing.vectorsEnabled": true,
+  "thunder.agent.verifyCommands": ["npm run lint", "npm test"],
+  "thunder.telemetry.sessionLogging": true
 }
 ```
 
-For bulk startup, add every server under `mcpServers`; Thunder auto-loads all
-enabled entries when the extension initializes or settings reload. Startup is
-parallelized and capped by `thunder.mcp.maxConcurrentStartup`:
-
-```json
-{
-  "thunder.mcp.maxConcurrentStartup": 4,
-  "thunder.mcp.servers": {
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
-    },
-    "context7": {
-      "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"]
-    },
-    "playwright": {
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest"]
-    }
-  }
-}
-```
-
-MCP tools are exposed to the model as `mcp__server__tool` and still flow through Thunder's approval policy.
+See `package.json` → `contributes.configuration` for the full schema, or the [Settings tab](src/webview-ui/src/components/SettingsPanel.tsx) in the sidebar.
 
 ### Project rules
 
-Thunder automatically reads methodology/rule files and injects them as budgeted context:
+Thunder picks up methodology files automatically:
 
 - `AGENTS.md`, `CLAUDE.md`, `WARP.md`, `.cursorrules`
 - `.thunder/rules`, `.thunder/agents`, `.thunder/checks`, `.thunder/prompts`
-- `.clinerules`
-- `.continue/rules`, `.continue/agents`, `.continue/checks`, `.continue/prompts`
-- `.cursor/rules`
+- `.clinerules`, `.continue/rules`, `.cursor/rules`
 
-## Development
+Commit these to your repo so every session starts with the same conventions.
 
-```bash
-npm run watch     # Watch extension + webview
-npm run test      # Run unit tests
-npm run lint      # Typecheck
-npm run package   # Build VSIX
-```
+---
 
 ## Architecture
 
 ```
-VS Code Extension → ThunderController → SQLite Index
-  → HybridRetriever → ContextBudgeter → ChatOrchestrator
-  → AgentLoop (tool round-trip) → PlanExecutor (step engine)
-  → ToolRuntime → ToolPolicyEngine → ApprovalQueue → DiffPreview / Checkpoints
-  → MemoryExtractor → MemoryService
+VS Code Extension
+  └─ ThunderController
+       ├─ SQLite Index (FTS5, symbols, vectors, sessions, memory)
+       ├─ HybridRetriever → ContextBudgeter
+       ├─ ChatOrchestrator
+       │    ├─ AgentLoop (tool round-trip)
+       │    └─ PlanExecutor (step engine)
+       ├─ ToolRuntime → ToolPolicyEngine → ApprovalQueue
+       ├─ PatchApplyService / CheckpointService
+       ├─ MemoryService + PostTaskMemoryWorker
+       └─ McpManager
 ```
+
+Data lives in `.thunder/` inside your workspace (`thunder.sqlite`, logs, checkpoints, tasks). Nothing is sent to a Thunder server — there isn't one.
+
+---
 
 ## Troubleshooting
 
-**SQLite / native module errors**: VS Code and Cursor use Electron, not system Node. After `npm install`, run:
+**`better-sqlite3` fails to load**
+
+VS Code and Cursor ship their own Electron runtime, not your system Node:
 
 ```bash
-npm run rebuild:native          # VS Code (auto-detects Electron version)
-# or for Cursor:
-THUNDER_EDITOR=cursor npm run rebuild:native
+npm run rebuild:native          # VS Code (auto-detects Electron)
+THUNDER_EDITOR=cursor npm run rebuild:native   # Cursor
+npm run rebuild:node            # for local vitest runs
 ```
 
-Before running tests, rebuild for local Node if needed: `npm run rebuild:node`
+**Provider errors** — check base URL and model name. Echo provider works without a running LLM.
 
-**SQLite errors**: Ensure the workspace is writable. Thunder stores data in `.thunder/thunder.sqlite`.
+**Indexing stuck or empty** — verify the workspace is writable, check `.gitignore` / `.thunderignore`, run `Thunder: Index Workspace`.
 
-**Provider errors**: Verify base URL and model name. Use Echo provider for UI testing without an LLM.
+**Context feels thin** — confirm indexing finished, enable vectors (`thunder.indexing.vectorsEnabled`), and check the context budget warning banner in chat.
 
-**Indexing issues**: Check `.gitignore` / `.thunderignore`. Run `Thunder: Index Workspace` manually.
+---
+
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, project layout, testing, and pull request guidelines.
+
+```bash
+npm run watch     # extension + webview hot rebuild
+npm run test      # unit tests
+npm run lint      # typecheck
+npm run package   # build .vsix
+```
+
+---
+
+## Author
+
+**codewithshinde**  
+GitHub: [@codewithshinde](https://github.com/codewithshinde)  
+Email: [codewithshinde@gmail.com](mailto:codewithshinde@gmail.com)
+
+Questions, bug reports, and PRs welcome on [GitHub Issues](https://github.com/codewithshinde/thunder-ai-agent/issues).
+
+---
 
 ## License
 
-MIT
+Thunder AI Agent is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-or-later).
+
+If you run a modified version as a network service, AGPL requires you to make the corresponding source available to users of that service. For commercial licensing outside AGPL terms, contact codewithshinde@gmail.com.
