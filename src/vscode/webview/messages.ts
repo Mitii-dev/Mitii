@@ -110,6 +110,7 @@ export interface VectorIndexStatusView {
   enabled: boolean;
   embeddedChunks: number;
   provider: string;
+  backend?: string;
 }
 
 export interface AgentActivityEntry {
@@ -379,7 +380,7 @@ export const initialWebviewState = (): WebviewState => ({
   agentActivity: [],
   agentLiveStatus: null,
   subagents: [],
-  vectorIndex: { enabled: false, embeddedChunks: 0, provider: 'none' },
+  vectorIndex: { enabled: false, embeddedChunks: 0, provider: 'none', backend: 'none' },
   plan: null,
   indexing: { indexed: 0, queued: 0, running: false, failed: 0 },
   memories: [],

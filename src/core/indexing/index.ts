@@ -13,4 +13,7 @@ export * from './languageRegistry';
 export * from './TreeSitterService';
 export * from './IndexQueue';
 export * from './hash';
-export * from './fileUtils';
+export * from './embeddingFactory';
+export * from './vectorIndexFactory';
+export * from './TransformersEmbeddingProvider';
+export * from './LanceDbVectorIndex';

@@ -1,5 +1,11 @@
-import { parseWithTreeSitter } from './TreeSitterService';
-import { getRegexPatterns } from './languageRegistry';
+import { parseWithTreeSitter, isTreeSitterInitialized } from './TreeSitterService';
+import { getRegexPatterns, hasWasmGrammar } from './languageRegistry';
+
+let treeSitterEnabled = true;
+
+export function setTreeSitterEnabled(enabled: boolean): void {
+  treeSitterEnabled = enabled;
+}
 
 export interface ExtractedSymbol {
   name: string;
@@ -52,9 +58,13 @@ function dedupeSymbols(symbols: ExtractedSymbol[]): ExtractedSymbol[] {
   });
 }
 
-/** Universal symbol extractor: tree-sitter first, regex fallback for 100+ languages. */
+/** Universal symbol extractor: tree-sitter primary (default ON), regex fallback only. */
 export function extractSymbols(content: string, language: string | null): ExtractedSymbol[] {
   if (!language) return [];
+
+  if (treeSitterEnabled && hasWasmGrammar(language) && isTreeSitterInitialized()) {
+    return dedupeSymbols(parseWithTreeSitter(content, language));
+  }
 
   const treeSitterSymbols = parseWithTreeSitter(content, language);
   if (treeSitterSymbols.length > 0) return dedupeSymbols(treeSitterSymbols);

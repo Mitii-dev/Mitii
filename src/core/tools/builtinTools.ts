@@ -536,7 +536,7 @@ export function createMemorySearchTool(memory: MemoryService): Tool<{ query: str
     risk: 'low',
     inputSchema: z.object({ query: z.string(), limit: z.number().optional() }),
     async execute(input): Promise<ToolResult> {
-      const results = memory.search(input.query, input.limit ?? 10);
+      const results = await memory.searchAsync(input.query, input.limit ?? 10);
       const output = results.map((r) => `[${r.type}] ${r.text}`).join('\n');
       return { success: true, output: output || '(no memories)' };
     },

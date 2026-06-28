@@ -1,11 +1,22 @@
 import type { ContextItem, ContextQuery } from './types';
 import type { ContextSource } from './types';
+import type { ContextReranker } from './ContextReranker';
 import { createLogger } from '../telemetry/Logger';
 
 const log = createLogger('HybridRetriever');
 
+export interface RerankerConfig {
+  enabled: boolean;
+  candidatePool: number;
+  topK: number;
+}
+
 export class HybridRetriever {
-  constructor(private readonly sources: ContextSource[]) {}
+  constructor(
+    private readonly sources: ContextSource[],
+    private readonly reranker?: ContextReranker,
+    private readonly rerankerConfig?: RerankerConfig
+  ) {}
 
   async retrieve(query: ContextQuery): Promise<ContextItem[]> {
     const allItems: ContextItem[] = [];
@@ -22,9 +33,19 @@ export class HybridRetriever {
       }
     }
 
-    return deduplicateItems(allItems)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, query.maxItems ?? 30);
+    const deduped = deduplicateItems(allItems).sort((a, b) => b.score - a.score);
+
+    if (this.reranker && this.rerankerConfig?.enabled) {
+      const pool = deduped.slice(0, this.rerankerConfig.candidatePool);
+      const reranked = await this.reranker.rerank(
+        query.text,
+        pool,
+        this.rerankerConfig.topK
+      );
+      return reranked.slice(0, query.maxItems ?? this.rerankerConfig.topK);
+    }
+
+    return deduped.slice(0, query.maxItems ?? 30);
   }
 }
 

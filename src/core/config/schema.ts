@@ -16,6 +16,9 @@ export const ProviderConfigSchema = z.object({
   supportsEmbeddings: z.boolean().default(false),
 });
 
+export const EmbeddingProviderSchema = z.enum(['hash', 'minilm']).default('hash');
+export const VectorBackendSchema = z.enum(['sqlite', 'lancedb']).default('sqlite');
+
 export const IndexingConfigSchema = z.object({
   enabled: z.boolean().default(true),
   maxFileSizeBytes: z.number().int().positive().default(512_000),
@@ -23,7 +26,16 @@ export const IndexingConfigSchema = z.object({
   respectGitignore: z.boolean().default(true),
   respectThunderignore: z.boolean().default(true),
   maxConcurrency: z.number().int().positive().default(2),
+  treeSitterEnabled: z.boolean().default(true),
   vectorsEnabled: z.boolean().default(false),
+  embeddingProvider: EmbeddingProviderSchema,
+  vectorBackend: VectorBackendSchema,
+});
+
+export const ContextConfigSchema = z.object({
+  rerankerEnabled: z.boolean().default(true),
+  rerankerCandidatePool: z.number().int().min(5).max(50).default(20),
+  rerankerTopK: z.number().int().min(3).max(30).default(8),
 });
 
 export const SafetyConfigSchema = z.object({
@@ -39,6 +51,7 @@ export const MemoryConfigSchema = z.object({
   enabled: z.boolean().default(true),
   maxItems: z.number().int().positive().default(500),
   summarizeAfterTask: z.boolean().default(true),
+  hybridSearchEnabled: z.boolean().default(true),
 });
 
 export const AgentConfigSchema = z.object({
@@ -87,6 +100,7 @@ export const ThunderConfigSchema = z.object({
   debug: z.boolean().default(false),
   provider: ProviderConfigSchema.default({}),
   indexing: IndexingConfigSchema.default({}),
+  context: ContextConfigSchema.default({}),
   safety: SafetyConfigSchema.default({}),
   memory: MemoryConfigSchema.default({}),
   agent: AgentConfigSchema.default({}),
@@ -97,7 +111,10 @@ export const ThunderConfigSchema = z.object({
 
 export type ProviderType = z.infer<typeof ProviderTypeSchema>;
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
+export type EmbeddingProviderKind = z.infer<typeof EmbeddingProviderSchema>;
+export type VectorBackendKind = z.infer<typeof VectorBackendSchema>;
 export type IndexingConfig = z.infer<typeof IndexingConfigSchema>;
+export type ContextConfig = z.infer<typeof ContextConfigSchema>;
 export type SafetyConfig = z.infer<typeof SafetyConfigSchema>;
 export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;

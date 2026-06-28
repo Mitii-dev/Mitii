@@ -119,7 +119,7 @@ export class MemoryContextSource implements ContextSource {
   async retrieve(query: ContextQuery): Promise<ContextItem[]> {
     if (!this.memoryService) return [];
 
-    const observations = this.memoryService.search(query.text, 5);
+    const observations = await this.memoryService.searchAsync(query.text, 5);
     return observations.map((obs) => ({
       id: `memory-${obs.id}`,
       source: this.id,

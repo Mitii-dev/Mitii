@@ -1,28 +1,40 @@
 /**
- * Tree-sitter tag queries for symbol extraction (Aider-style tags.scm).
+ * Tree-sitter tag queries for symbol extraction (Aider-style *-tags.scm patterns).
  * Each query captures @name (symbol name) and @def (definition node).
  */
 export const TAG_QUERIES: Record<string, string> = {
   typescript: `
     (class_declaration name: (type_identifier) @name) @def
+    (abstract_class_declaration name: (type_identifier) @name) @def
     (interface_declaration name: (type_identifier) @name) @def
     (function_declaration name: (identifier) @name) @def
+    (function_signature name: (identifier) @name) @def
     (method_definition name: (property_identifier) @name) @def
+    (method_signature name: (property_identifier) @name) @def
+    (abstract_method_signature name: (property_identifier) @name) @def
     (type_alias_declaration name: (type_identifier) @name) @def
     (enum_declaration name: (identifier) @name) @def
+    (module name: (identifier) @name) @def
     (lexical_declaration (variable_declarator name: (identifier) @name)) @def
   `,
   tsx: `
     (class_declaration name: (type_identifier) @name) @def
+    (interface_declaration name: (type_identifier) @name) @def
     (function_declaration name: (identifier) @name) @def
     (method_definition name: (property_identifier) @name) @def
     (lexical_declaration (variable_declarator name: (identifier) @name)) @def
   `,
   javascript: `
     (class_declaration name: (identifier) @name) @def
+    (class name: (identifier) @name) @def
     (function_declaration name: (identifier) @name) @def
+    (function name: (identifier) @name) @def
+    (generator_function_declaration name: (identifier) @name) @def
+    (generator_function name: (identifier) @name) @def
     (method_definition name: (property_identifier) @name) @def
-    (lexical_declaration (variable_declarator name: (identifier) @name)) @def
+    (lexical_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function)])) @def
+    (variable_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function)])) @def
+    (assignment_expression left: (identifier) @name right: [(arrow_function) (function)]) @def
   `,
   python: `
     (class_definition name: (identifier) @name) @def
@@ -43,8 +55,12 @@ export const TAG_QUERIES: Record<string, string> = {
     (function_item name: (identifier) @name) @def
     (struct_item name: (type_identifier) @name) @def
     (enum_item name: (type_identifier) @name) @def
+    (union_item name: (type_identifier) @name) @def
+    (type_item name: (type_identifier) @name) @def
     (trait_item name: (type_identifier) @name) @def
-    (impl_item type: (type_identifier) @name) @def
+    (mod_item name: (identifier) @name) @def
+    (macro_definition name: (identifier) @name) @def
+    (declaration_list (function_item name: (identifier) @name)) @def
   `,
   ruby: `
     (class name: (constant) @name) @def
@@ -157,6 +173,20 @@ export const TAG_QUERIES: Record<string, string> = {
   ql: `
     (class (className) @name) @def
     (predicate (predicateName) @name) @def
+  `,
+  haskell: `
+    (function name: (variable) @name) @def
+    (data_type name: (type) @name) @def
+    (newtype name: (type) @name) @def
+    (type_synomym name: (type) @name) @def
+    (class name: (type) @name) @def
+  `,
+  julia: `
+    (function_definition name: (identifier) @name) @def
+    (struct_definition name: (identifier) @name) @def
+  `,
+  clojure: `
+    (list_lit . (sym_lit) @name) @def
   `,
 };
 

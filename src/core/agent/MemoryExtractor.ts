@@ -1,17 +1,33 @@
 import type { LlmProvider } from '../llm/types';
 import type { MemoryService, ObservationType } from '../memory/MemoryService';
 import type { ToolCallAudit } from '../tools/types';
+import { PostTaskMemoryWorker } from '../memory/PostTaskMemoryWorker';
 import { createLogger } from '../telemetry/Logger';
 
 const log = createLogger('MemoryExtractor');
 
 export class MemoryExtractor {
+  private readonly worker = new PostTaskMemoryWorker();
+
   constructor(
     private readonly memoryService: MemoryService,
     private readonly summarizeAfterTask: boolean
   ) {}
 
-  async extractAfterTask(
+  /** Queue post-task extraction asynchronously — does not block the UI. */
+  extractAfterTask(
+    sessionId: string,
+    userMessage: string,
+    assistantResponse: string,
+    toolAudit: ToolCallAudit[],
+    provider?: LlmProvider
+  ): void {
+    this.worker.enqueue(() =>
+      this.runExtraction(sessionId, userMessage, assistantResponse, toolAudit, provider)
+    );
+  }
+
+  private async runExtraction(
     sessionId: string,
     userMessage: string,
     assistantResponse: string,

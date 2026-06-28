@@ -28,7 +28,15 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       respectGitignore: config.get<boolean>('indexing.respectGitignore'),
       respectThunderignore: config.get<boolean>('indexing.respectThunderignore'),
       maxConcurrency: config.get<number>('indexing.maxConcurrency'),
+      treeSitterEnabled: config.get<boolean>('indexing.treeSitterEnabled'),
       vectorsEnabled: config.get<boolean>('indexing.vectorsEnabled'),
+      embeddingProvider: config.get<string>('indexing.embeddingProvider'),
+      vectorBackend: config.get<string>('indexing.vectorBackend'),
+    },
+    context: {
+      rerankerEnabled: config.get<boolean>('context.rerankerEnabled'),
+      rerankerCandidatePool: config.get<number>('context.rerankerCandidatePool'),
+      rerankerTopK: config.get<number>('context.rerankerTopK'),
     },
     safety: {
       requireApprovalForWrites: config.get<boolean>('safety.requireApprovalForWrites'),
@@ -42,6 +50,7 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       enabled: config.get<boolean>('memory.enabled'),
       maxItems: config.get<number>('memory.maxItems'),
       summarizeAfterTask: config.get<boolean>('memory.summarizeAfterTask'),
+      hybridSearchEnabled: config.get<boolean>('memory.hybridSearchEnabled'),
     },
     agent: {
       subagentsEnabled: config.get<boolean>('agent.subagentsEnabled'),

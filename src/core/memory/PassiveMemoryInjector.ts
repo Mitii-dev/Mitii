@@ -8,10 +8,10 @@ import type { ContextItem } from '../context/types';
 export class PassiveMemoryInjector {
   constructor(private readonly memoryService?: MemoryService) {}
 
-  inject(query: string, sessionId?: string): ContextItem[] {
+  async inject(query: string, sessionId?: string): Promise<ContextItem[]> {
     if (!this.memoryService) return [];
 
-    const observations = this.memoryService.search(query, 5);
+    const observations = await this.memoryService.searchAsync(query, 5);
     const sessionRecent = sessionId
       ? this.memoryService.recent(3).filter((o) => o.sessionId === sessionId)
       : [];

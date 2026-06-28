@@ -2,7 +2,7 @@
   "name": "thunder-ai-agent",
   "displayName": "Thunder AI Agent",
   "description": "Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow",
-  "version": "0.1.0",
+  "version": "2.6.0",
   "publisher": "thunder",
   "license": "MIT",
   "engines": {
@@ -120,7 +120,43 @@
         "thunder.indexing.vectorsEnabled": {
           "type": "boolean",
           "default": false,
-          "description": "Enable semantic vector search (SQLite hash embeddings; LanceDB optional later)"
+          "description": "Enable semantic vector search (off by default). Use hash or MiniLM embeddings with SQLite or LanceDB backend."
+        },
+        "thunder.indexing.treeSitterEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use tree-sitter WASM for symbol extraction (regex fallback when unavailable)"
+        },
+        "thunder.indexing.embeddingProvider": {
+          "type": "string",
+          "enum": ["hash", "minilm"],
+          "default": "hash",
+          "description": "Embedding provider when vectors are enabled. minilm uses local @xenova/transformers (all-MiniLM-L6-v2)."
+        },
+        "thunder.indexing.vectorBackend": {
+          "type": "string",
+          "enum": ["sqlite", "lancedb"],
+          "default": "sqlite",
+          "description": "Vector index storage backend when vectors are enabled"
+        },
+        "thunder.context.rerankerEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Rerank top retrieval candidates for better context quality (top-20 → top-8)"
+        },
+        "thunder.context.rerankerCandidatePool": {
+          "type": "number",
+          "default": 20,
+          "minimum": 5,
+          "maximum": 50,
+          "description": "Number of candidates to pass to the reranker"
+        },
+        "thunder.context.rerankerTopK": {
+          "type": "number",
+          "default": 8,
+          "minimum": 3,
+          "maximum": 30,
+          "description": "Number of items to keep after reranking"
         },
         "thunder.safety.requireApprovalForWrites": {
           "type": "boolean",
@@ -167,6 +203,11 @@
           "type": "boolean",
           "default": true,
           "description": "Enable local memory"
+        },
+        "thunder.memory.hybridSearchEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use FTS5 + optional vector hybrid search for observations"
         },
         "thunder.agent.subagentsEnabled": {
           "type": "boolean",
@@ -310,12 +351,8 @@
     "zod": "^3.23.8"
   },
   "optionalDependencies": {
-    "tree-sitter": "^0.21.1",
-    "tree-sitter-typescript": "^0.23.2",
-    "tree-sitter-javascript": "^0.23.1",
-    "tree-sitter-python": "^0.23.4",
-    "tree-sitter-go": "^0.23.4",
-    "tree-sitter-java": "^0.23.2",
+    "@xenova/transformers": "^2.17.2",
+    "lancedb": "^0.15.0",
     "web-tree-sitter": "^0.24.7",
     "tree-sitter-wasms": "^0.1.13"
   },

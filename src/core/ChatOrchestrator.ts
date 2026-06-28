@@ -304,7 +304,7 @@ export class ChatOrchestrator {
     const hookInjection = this.deps.memoryHookService
       ? await this.deps.memoryHookService.onUserPromptSubmit(session.id, userMessage)
       : undefined;
-    const passiveMemories = this.deps.passiveMemoryInjector?.inject(userMessage, session.id) ?? [];
+    const passiveMemories = await (this.deps.passiveMemoryInjector?.inject(userMessage, session.id) ?? Promise.resolve([]));
     if (passiveMemories.length > 0) {
       pack.items.push(...passiveMemories);
       this.emitActivity('info', `Injected ${passiveMemories.length} passive memories`);
@@ -793,7 +793,7 @@ export class ChatOrchestrator {
 
     if (this.deps.memoryExtractor && this.deps.memoryConfig?.enabled) {
       const audit = this.deps.toolRuntime?.getAuditLog() ?? [];
-      await this.deps.memoryExtractor.extractAfterTask(
+      this.deps.memoryExtractor.extractAfterTask(
         session.id,
         userMessage,
         fullResponse,

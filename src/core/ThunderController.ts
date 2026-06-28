@@ -10,8 +10,10 @@ import { FileDiscoveryService } from './indexing/FileDiscoveryService';
 import { WorkspaceScanner } from './indexing/WorkspaceScanner';
 import { IndexQueue } from './indexing/IndexQueue';
 import { initTreeSitter, preloadCommonLanguages } from './indexing/TreeSitterService';
+import { setTreeSitterEnabled } from './indexing/SymbolExtractor';
 import { FtsIndex } from './indexing/FtsIndex';
 import { HybridRetriever } from './context/HybridRetriever';
+import { createContextReranker } from './context/ContextReranker';
 import { ContextBudgeter } from './context/ContextBudgeter';
 import { CurrentEditorContextSource, OpenFilesContextSource } from './context/sources/editorSources';
 import { FtsContextSource, RepoMapContextSource, MemoryContextSource, WorkspaceOverviewContextSource } from './context/sources/indexSources';
@@ -52,8 +54,10 @@ import { PassiveMemoryInjector } from './memory/PassiveMemoryInjector';
 import { MemoryHookService } from './memory/MemoryHookService';
 import { PostEditValidator } from './apply/PostEditValidator';
 import { VectorContextSource } from './context/sources/VectorContextSource';
-import { SqliteVectorIndex, VectorIndexService } from './indexing/VectorIndex';
-import { HashEmbeddingProvider } from './indexing/EmbeddingProvider';
+import { VectorIndexService } from './indexing/VectorIndex';
+import { createEmbeddingProvider, describeEmbeddingProvider } from './indexing/embeddingFactory';
+import { createVectorIndex, describeVectorBackend } from './indexing/vectorIndexFactory';
+import type { EmbeddingProvider } from './indexing/EmbeddingProvider';
 import { McpManager } from './mcp/McpManager';
 import { ProjectRulesContextSource, ProjectRulesService } from './rules/ProjectRulesService';
 import { SkillCatalogContextSource, SkillCatalogService } from './skills/SkillCatalogService';
@@ -108,6 +112,7 @@ export class ThunderController {
   private memoryHookService: MemoryHookService | undefined;
   private postEditValidator: PostEditValidator | undefined;
   private vectorIndexService: VectorIndexService | undefined;
+  private embeddingProvider: EmbeddingProvider | undefined;
   private mcpManager = new McpManager();
   private projectRulesService: ProjectRulesService | undefined;
   private skillCatalogService: SkillCatalogService | undefined;
@@ -233,14 +238,18 @@ export class ThunderController {
     this.projectRulesService = new ProjectRulesService(workspace);
     this.skillCatalogService = new SkillCatalogService(workspace);
     this.skillCatalogService.refresh();
-    const retriever = new HybridRetriever([
-      new ProjectRulesContextSource(this.projectRulesService),
-      new SkillCatalogContextSource(this.skillCatalogService),
-      new MentionedFileContextSource(workspace),
-      new WorkspaceOverviewContextSource(workspace),
-      new CurrentEditorContextSource(workspace),
-      new OpenFilesContextSource(workspace),
-    ]);
+    const retriever = new HybridRetriever(
+      [
+        new ProjectRulesContextSource(this.projectRulesService),
+        new SkillCatalogContextSource(this.skillCatalogService),
+        new MentionedFileContextSource(workspace),
+        new WorkspaceOverviewContextSource(workspace),
+        new CurrentEditorContextSource(workspace),
+        new OpenFilesContextSource(workspace),
+      ],
+      createContextReranker(),
+      this.rerankerConfigFromSettings()
+    );
     this.chatOrchestrator = this.createChatOrchestrator(retriever, new ContextBudgeter(), undefined, workspace);
     log.info('Minimal chat orchestrator initialized');
   }
@@ -260,14 +269,18 @@ export class ThunderController {
     });
 
     this.scanner = new WorkspaceScanner(db, workspace);
+    setTreeSitterEnabled(config.indexing.treeSitterEnabled);
+    this.embeddingProvider = createEmbeddingProvider(config.indexing);
     this.vectorIndexService = new VectorIndexService(
-      new SqliteVectorIndex(db),
-      new HashEmbeddingProvider()
+      createVectorIndex(db, workspace, config.indexing),
+      this.embeddingProvider
     );
     this.indexQueue = new IndexQueue(db);
-    void initTreeSitter().then((ready) => {
-      if (ready) void preloadCommonLanguages();
-    });
+    if (config.indexing.treeSitterEnabled) {
+      void initTreeSitter().then((ready) => {
+        if (ready) void preloadCommonLanguages();
+      });
+    }
     this.indexQueue.onStatusChange((status) => {
       this.indexingStatus = status;
       this.notifyUi({ indexing: status });
@@ -284,7 +297,13 @@ export class ThunderController {
     this.projectRulesService = new ProjectRulesService(workspace);
     this.skillCatalogService = new SkillCatalogService(workspace);
     this.skillCatalogService.refresh();
-    this.memoryService = new MemoryService(db, workspace);
+    this.memoryService = new MemoryService(db, workspace, {
+      maxItems: config.memory.maxItems,
+      hybridSearchEnabled: config.memory.hybridSearchEnabled,
+    });
+    if (config.indexing.vectorsEnabled) {
+      this.memoryService.setEmbedder(this.embeddingProvider);
+    }
     this.passiveMemoryInjector = new PassiveMemoryInjector(this.memoryService);
     this.memoryHookService = new MemoryHookService(workspace);
     this.postEditValidator = new PostEditValidator(this.diagnosticsService);
@@ -528,6 +547,15 @@ export class ThunderController {
     this.chatOrchestrator = this.createChatOrchestrator(retriever, new ContextBudgeter(), db, workspace);
   }
 
+  private rerankerConfigFromSettings(): import('./context/HybridRetriever').RerankerConfig {
+    const context = this.configService.getConfig().context;
+    return {
+      enabled: context.rerankerEnabled,
+      candidatePool: context.rerankerCandidatePool,
+      topK: context.rerankerTopK,
+    };
+  }
+
   private buildRetriever(db: import('./indexing/ThunderDb').ThunderDb, workspace: string): HybridRetriever {
     const sources = [];
     if (this.projectRulesService) {
@@ -553,7 +581,14 @@ export class ThunderController {
     if (this.contextToggles.vectors && this.vectorIndexService) {
       sources.push(new VectorContextSource(this.vectorIndexService, workspace));
     }
-    return new HybridRetriever(sources);
+
+    const config = this.configService.getConfig();
+    const reranker = createContextReranker(
+      this.embeddingProvider,
+      config.indexing.vectorsEnabled && config.indexing.embeddingProvider === 'minilm'
+    );
+
+    return new HybridRetriever(sources, reranker, this.rerankerConfigFromSettings());
   }
 
   private setupFileWatcher(workspace: string): void {
@@ -649,7 +684,8 @@ export class ThunderController {
       vectorIndex: {
         enabled: config.indexing.vectorsEnabled,
         embeddedChunks: this.vectorIndexService?.count(workspacePath) ?? 0,
-        provider: config.indexing.vectorsEnabled ? 'hash-fallback' : 'none',
+        provider: describeEmbeddingProvider(config.indexing),
+        backend: describeVectorBackend(config.indexing),
       },
       tokenUsage: base.tokenUsage ?? {
         ...this.tokenUsage,

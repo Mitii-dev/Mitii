@@ -30,15 +30,6 @@ type WasmLanguage = {
   };
 };
 
-type NativeParser = {
-  setLanguage(lang: unknown): void;
-  parse(content: string): { rootNode: WasmNode };
-};
-
-type TreeSitterModule = {
-  Parser: new () => NativeParser;
-};
-
 const DEFINITION_TYPES = [
   'class_declaration', 'interface_declaration', 'function_declaration',
   'method_definition', 'method_declaration', 'type_alias_declaration',
@@ -58,18 +49,6 @@ let wasmInitPromise: Promise<boolean> | null = null;
 let wasmReady = false;
 let wasmParser: InstanceType<WasmParser['Parser']> | null = null;
 const wasmLanguageCache = new Map<string, WasmLanguage | null>();
-
-let nativeParser: NativeParser | null = null;
-let nativeInitFailed = false;
-const nativeLanguageCache = new Map<string, unknown>();
-
-const NATIVE_PACKAGES: Record<string, string> = {
-  typescript: 'tree-sitter-typescript',
-  javascript: 'tree-sitter-javascript',
-  python: 'tree-sitter-python',
-  go: 'tree-sitter-go',
-  java: 'tree-sitter-java',
-};
 
 function loadWasmModule(): WasmParser | null {
   try {
@@ -112,37 +91,6 @@ export async function initTreeSitter(): Promise<boolean> {
 
 export function isTreeSitterInitialized(): boolean {
   return wasmReady;
-}
-
-function loadNativeParser(): NativeParser | null {
-  if (nativeInitFailed) return null;
-  if (nativeParser) return nativeParser;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const TreeSitter = require('tree-sitter') as TreeSitterModule;
-    nativeParser = new TreeSitter.Parser();
-    return nativeParser;
-  } catch {
-    nativeInitFailed = true;
-    return null;
-  }
-}
-
-function loadNativeLanguage(language: string): unknown | null {
-  if (nativeLanguageCache.has(language)) return nativeLanguageCache.get(language) ?? null;
-  const pkg = NATIVE_PACKAGES[language];
-  if (!pkg) return null;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require(pkg) as Record<string, unknown>;
-    const lang =
-      mod.typescript ?? mod.javascript ?? mod.python ?? mod.go ?? mod.java ?? mod.default ?? mod;
-    nativeLanguageCache.set(language, lang);
-    return lang;
-  } catch {
-    nativeLanguageCache.set(language, null);
-    return null;
-  }
 }
 
 async function loadWasmLanguage(language: string): Promise<WasmLanguage | null> {
@@ -233,30 +181,18 @@ function extractWithQuery(
   try {
     const query = lang.query(querySource);
     const captures = query.captures(rootNode);
-    const defNodes = new Map<string, WasmNode>();
-
-    for (const cap of captures) {
-      if (cap.name === 'def') {
-        const nameCap = captures.find(
-          (c) => c.name === 'name' && c.node.startPosition.row === cap.node.startPosition.row
-        );
-        const name = nameCap?.node.text?.trim() ?? nodeName(cap.node);
-        if (name) defNodes.set(`${name}:${cap.node.startPosition.row}`, cap.node);
-      }
-    }
-
-    // Pair @name captures with their @def nodes
     const symbols: ExtractedSymbol[] = [];
     const seen = new Set<string>();
 
     for (const cap of captures) {
-      if (cap.name !== 'name') continue;
+      if (!cap.name.startsWith('name')) continue;
       const name = cap.node.text?.trim();
       if (!name || name.length < 2 || seen.has(`${name}:${cap.node.startPosition.row}`)) continue;
 
       const defCap = captures.find(
-        (c) => c.name === 'def' && c.node.startPosition.row <= cap.node.startPosition.row
-          && c.node.endPosition.row >= cap.node.startPosition.row
+        (c) => (c.name === 'def' || c.name.startsWith('definition')) &&
+          c.node.startPosition.row <= cap.node.startPosition.row &&
+          c.node.endPosition.row >= cap.node.startPosition.row
       );
       const defNode = defCap?.node ?? cap.node;
       const startLine = defNode.startPosition.row + 1;
@@ -298,22 +234,6 @@ function parseWithWasm(content: string, language: string): ExtractedSymbol[] {
   }
 }
 
-function parseWithNative(content: string, language: string): ExtractedSymbol[] {
-  const parser = loadNativeParser();
-  const lang = loadNativeLanguage(language);
-  if (!parser || !lang) return [];
-
-  try {
-    parser.setLanguage(lang);
-    const tree = parser.parse(content);
-    const symbols: ExtractedSymbol[] = [];
-    walkDefinitions(tree.rootNode, symbols, content);
-    return symbols.slice(0, 200);
-  } catch {
-    return [];
-  }
-}
-
 /** Pre-load WASM grammar for a language (async). */
 export async function preloadWasmLanguage(language: string): Promise<void> {
   if (!hasWasmGrammar(language)) return;
@@ -321,30 +241,15 @@ export async function preloadWasmLanguage(language: string): Promise<void> {
   await loadWasmLanguage(language);
 }
 
-/** Parse source with tree-sitter when available; returns empty array on failure. */
+/** Parse source with tree-sitter WASM when available; returns empty array on failure. */
 export function parseWithTreeSitter(content: string, language: string | null): ExtractedSymbol[] {
-  if (!language) return [];
-
-  // WASM path (preferred — 35+ languages)
-  if (wasmReady && hasWasmGrammar(language)) {
-    const wasmSymbols = parseWithWasm(content, language);
-    if (wasmSymbols.length > 0) return wasmSymbols;
-  }
-
-  // Native path (fast fallback for bundled grammars)
-  const nativeSymbols = parseWithNative(content, language);
-  if (nativeSymbols.length > 0) return nativeSymbols;
-
-  return [];
+  if (!language || !wasmReady || !hasWasmGrammar(language)) return [];
+  return parseWithWasm(content, language);
 }
 
 export function isTreeSitterAvailable(language: string | null): boolean {
-  if (!language) return false;
-  if (hasWasmGrammar(language) && wasmReady) return wasmLanguageCache.get(language) !== null;
-  if (NATIVE_PACKAGES[language]) {
-    return loadNativeParser() !== null && loadNativeLanguage(language) !== null;
-  }
-  return false;
+  if (!language || !wasmReady) return false;
+  return hasWasmGrammar(language) && wasmLanguageCache.get(language) !== null;
 }
 
 export function getTreeSitterQuery(language: string): string | undefined {

@@ -1,5 +1,6 @@
 import type { ThunderDb } from './ThunderDb';
 import { cosineSimilarity, type EmbeddingProvider } from './EmbeddingProvider';
+import type { LanceDbVectorIndex } from './LanceDbVectorIndex';
 import { createLogger } from '../telemetry/Logger';
 
 const log = createLogger('VectorIndex');
@@ -88,6 +89,11 @@ export class VectorIndexService {
   async search(workspace: string, query: string, limit = 8): Promise<VectorSearchResult[]> {
     const [embedding] = await this.embedder.embed([query]);
     if (!embedding.length) return [];
+
+    if ('searchAsync' in this.index && typeof this.index.searchAsync === 'function') {
+      return (this.index as LanceDbVectorIndex).searchAsync(workspace, embedding, limit);
+    }
+
     return this.index.search(workspace, embedding, limit);
   }
 

@@ -244,6 +244,62 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 14,
+    name: 'create_observations_fts_and_embeddings',
+    up: (db) => {
+      db.raw.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts_observations USING fts5(
+          text,
+          type,
+          concepts,
+          content='observations',
+          content_rowid='id',
+          tokenize='trigram'
+        );
+
+        CREATE TRIGGER IF NOT EXISTS observations_fts_insert AFTER INSERT ON observations BEGIN
+          INSERT INTO fts_observations(rowid, text, type, concepts)
+          VALUES (
+            new.id,
+            new.text,
+            new.type,
+            COALESCE(new.concepts_json, '')
+          );
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS observations_fts_delete AFTER DELETE ON observations BEGIN
+          INSERT INTO fts_observations(fts_observations, rowid, text, type, concepts)
+          VALUES ('delete', old.id, old.text, old.type, COALESCE(old.concepts_json, ''));
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS observations_fts_update AFTER UPDATE ON observations BEGIN
+          INSERT INTO fts_observations(fts_observations, rowid, text, type, concepts)
+          VALUES ('delete', old.id, old.text, old.type, COALESCE(old.concepts_json, ''));
+          INSERT INTO fts_observations(rowid, text, type, concepts)
+          VALUES (
+            new.id,
+            new.text,
+            new.type,
+            COALESCE(new.concepts_json, '')
+          );
+        END;
+
+        INSERT INTO fts_observations(rowid, text, type, concepts)
+        SELECT id, text, type, COALESCE(concepts_json, '') FROM observations;
+
+        CREATE TABLE IF NOT EXISTS observation_embeddings (
+          observation_id INTEGER PRIMARY KEY,
+          workspace TEXT NOT NULL,
+          embedding_json TEXT NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY(observation_id) REFERENCES observations(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_observation_embeddings_workspace
+          ON observation_embeddings(workspace);
+      `);
+    },
+  },
 ];
 
 export class MigrationRunner {

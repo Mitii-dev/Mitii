@@ -887,7 +887,7 @@ describe('PassiveMemoryInjector', () => {
   it('returns empty without memory service', async () => {
     const { PassiveMemoryInjector } = await import('../src/core/memory/PassiveMemoryInjector');
     const injector = new PassiveMemoryInjector(undefined);
-    expect(injector.inject('auth module')).toEqual([]);
+    expect(await injector.inject('auth module')).toEqual([]);
   });
 });
 
@@ -942,6 +942,72 @@ describe('HashEmbeddingProvider', () => {
     const [a, b] = await provider.embed(['hello world', 'hello there']);
     expect(a.length).toBeGreaterThan(0);
     expect(cosineSimilarity(a, b)).toBeGreaterThan(0);
+  });
+});
+
+describe('ContextReranker', () => {
+  it('reranks candidates by lexical overlap', async () => {
+    const { LexicalContextReranker } = await import('../src/core/context/ContextReranker');
+    const reranker = new LexicalContextReranker();
+    const items = [
+      { id: 'a', source: 'fts', content: 'unrelated blob', score: 9, reason: 'fts', tokenEstimate: 10 },
+      { id: 'b', source: 'fts', content: 'authentication middleware login', score: 5, reason: 'fts', tokenEstimate: 10 },
+    ];
+    const ranked = await reranker.rerank('authentication login', items, 1);
+    expect(ranked[0]?.id).toBe('b');
+  });
+});
+
+describe('HybridRetriever reranker', () => {
+  it('applies reranker top-k when enabled', async () => {
+    const { HybridRetriever } = await import('../src/core/context/HybridRetriever');
+    const { LexicalContextReranker } = await import('../src/core/context/ContextReranker');
+    const retriever = new HybridRetriever(
+      [{
+        id: 'mock',
+        async retrieve() {
+          return Array.from({ length: 12 }, (_, i) => ({
+            id: `item-${i}`,
+            source: 'fts',
+            content: i === 3 ? 'target auth token flow' : `noise ${i}`,
+            score: 12 - i,
+            reason: 'mock',
+            tokenEstimate: 5,
+          }));
+        },
+      }],
+      new LexicalContextReranker(),
+      { enabled: true, candidatePool: 10, topK: 3 }
+    );
+    const results = await retriever.retrieve({ text: 'auth token', maxItems: 20 });
+    expect(results.length).toBe(3);
+    expect(results.some((r) => r.content.includes('auth'))).toBe(true);
+  });
+});
+
+describe('MemoryService FTS', () => {
+  it('searches observations via FTS5', async () => {
+    const { mkdtempSync, rmSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const { ThunderDb } = await import('../src/core/indexing/ThunderDb');
+    const { MigrationRunner } = await import('../src/core/indexing/migrations');
+    const { MemoryService } = await import('../src/core/memory/MemoryService');
+
+    const dir = mkdtempSync(join(tmpdir(), 'thunder-memory-fts-'));
+    const db = new ThunderDb(join(dir, 'thunder.sqlite'));
+    db.open();
+    new MigrationRunner(db).run();
+
+    const memory = new MemoryService(db, 'ws', { maxItems: 10 });
+    memory.write('s1', 'decision', 'Use JWT for authentication middleware');
+    memory.write('s1', 'bugfix', 'Fixed unrelated pagination bug');
+
+    const hits = memory.search('authentication JWT', 5);
+    expect(hits.some((h) => h.text.includes('JWT'))).toBe(true);
+
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
   });
 });
 
