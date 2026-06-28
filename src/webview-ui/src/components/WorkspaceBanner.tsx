@@ -4,6 +4,7 @@ interface WorkspaceBannerProps {
   vscodeWorkspaceFolders: string[];
   usingWorkspaceOverride: boolean;
   indexed: number;
+  workspaceTrusted: boolean;
 }
 
 export function WorkspaceBanner({
@@ -12,7 +13,16 @@ export function WorkspaceBanner({
   vscodeWorkspaceFolders,
   usingWorkspaceOverride,
   indexed,
+  workspaceTrusted,
 }: WorkspaceBannerProps) {
+  if (!workspaceTrusted) {
+    return (
+      <div className="workspace-banner workspace-banner--warn" role="alert">
+        <strong>Restricted mode.</strong> This workspace is not trusted — Thunder runs read-only tools only (no writes or shell).
+      </div>
+    );
+  }
+
   if (workspaceOpen && indexed > 0 && !usingWorkspaceOverride) {
     return null;
   }

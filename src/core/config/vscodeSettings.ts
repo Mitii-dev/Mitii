@@ -46,6 +46,7 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       blockDangerousCommands: config.get<boolean>('safety.blockDangerousCommands'),
       approvalMode: config.get<string>('safety.approvalMode'),
       autonomyPreset: config.get<string>('safety.autonomyPreset'),
+      allowUntrustedWorkspace: config.get<boolean>('safety.allowUntrustedWorkspace'),
     },
     memory: {
       enabled: config.get<boolean>('memory.enabled'),
@@ -66,6 +67,8 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       stepMaxRetries: config.get<number>('agent.stepMaxRetries'),
       finalValidationEnabled: config.get<boolean>('agent.finalValidationEnabled'),
       showDiffPreview: config.get<boolean>('agent.showDiffPreview'),
+      verifyCommands: config.get<string[]>('agent.verifyCommands'),
+      verifyOnActComplete: config.get<boolean>('agent.verifyOnActComplete'),
     },
     mcp: {
       enabled: config.get<boolean>('mcp.enabled'),

@@ -16,7 +16,7 @@ export const ProviderConfigSchema = z.object({
   supportsEmbeddings: z.boolean().default(false),
 });
 
-export const EmbeddingProviderSchema = z.enum(['hash', 'minilm']).default('hash');
+export const EmbeddingProviderSchema = z.enum(['hash', 'minilm']).default('minilm');
 export const VectorBackendSchema = z.enum(['sqlite', 'lancedb']).default('sqlite');
 
 export const IndexingConfigSchema = z.object({
@@ -28,7 +28,7 @@ export const IndexingConfigSchema = z.object({
   respectThunderignore: z.boolean().default(true),
   maxConcurrency: z.number().int().positive().default(2),
   treeSitterEnabled: z.boolean().default(true),
-  vectorsEnabled: z.boolean().default(false),
+  vectorsEnabled: z.boolean().default(true),
   embeddingProvider: EmbeddingProviderSchema,
   vectorBackend: VectorBackendSchema,
 });
@@ -46,6 +46,7 @@ export const SafetyConfigSchema = z.object({
   blockDangerousCommands: z.boolean().default(true),
   approvalMode: z.enum(['review_all', 'ask_edits', 'ask_deletes', 'ask_commands', 'auto']).default('review_all'),
   autonomyPreset: z.enum(['safe', 'guided', 'builder', 'pilot', 'enterprise']).default('guided'),
+  allowUntrustedWorkspace: z.boolean().default(false),
 });
 
 export const MemoryConfigSchema = z.object({
@@ -68,6 +69,8 @@ export const AgentConfigSchema = z.object({
   stepMaxRetries: z.number().int().min(0).max(5).default(2),
   finalValidationEnabled: z.boolean().default(true),
   showDiffPreview: z.boolean().default(false),
+  verifyCommands: z.array(z.string()).default(['npm run lint', 'npm test']),
+  verifyOnActComplete: z.boolean().default(true),
 });
 
 export const McpServerConfigSchema = z.object({

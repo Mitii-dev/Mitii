@@ -34,16 +34,47 @@ const KIND_PRIORITY: Record<string, number> = {
 };
 
 export class RepoMapService {
+  private static cache = new Map<string, { key: string; value: string }>();
+
   constructor(
     private readonly db: ThunderDb,
     private readonly workspace: string
   ) {}
 
+  static invalidateWorkspace(workspace: string): void {
+    RepoMapService.cache.delete(workspace);
+  }
+
   build(options: RepoMapOptions = {}): string {
     const maxChars = options.maxChars ?? 8000;
+    const watermark = this.getIndexWatermark();
+    const cacheKey = JSON.stringify({
+      watermark,
+      query: options.query,
+      currentFile: options.currentFile,
+      openFiles: options.openFiles,
+      gitDiffFiles: options.gitDiffFiles,
+      diagnosticFiles: options.diagnosticFiles,
+      folderPrefix: options.folderPrefix,
+      maxChars,
+    });
+    const cached = RepoMapService.cache.get(this.workspace);
+    if (cached?.key === cacheKey) {
+      return cached.value;
+    }
+
     const entries = this.rankEntries(options);
     const budgeted = this.applyBudget(entries, maxChars);
-    return this.render(budgeted, Boolean(options.folderPrefix));
+    const rendered = this.render(budgeted, Boolean(options.folderPrefix));
+    RepoMapService.cache.set(this.workspace, { key: cacheKey, value: rendered });
+    return rendered;
+  }
+
+  private getIndexWatermark(): number {
+    const row = this.db.raw
+      .prepare('SELECT MAX(indexed_at) as wm FROM files WHERE workspace = ?')
+      .get(this.workspace) as { wm: number | null };
+    return row?.wm ?? 0;
   }
 
   private rankEntries(options: RepoMapOptions): RepoMapEntry[] {

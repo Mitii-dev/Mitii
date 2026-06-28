@@ -1,4 +1,4 @@
-import { parseWithTreeSitter, isTreeSitterInitialized } from './TreeSitterService';
+import { parseWithTreeSitter, isTreeSitterInitialized, extractRefsWithTreeSitter } from './TreeSitterService';
 import { getRegexPatterns, hasWasmGrammar } from './languageRegistry';
 
 let treeSitterEnabled = true;
@@ -117,6 +117,16 @@ export function getExtractor(language: string | null): SymbolExtractor | undefin
     language,
     extract: (content) => extractSymbols(content, language),
   };
+}
+
+export function extractSymbolRefsWithTreeSitter(
+  content: string,
+  language: string | null,
+  knownSymbols: Set<string>,
+  definitionLines: Set<number> = new Set()
+): Array<{ name: string; line: number }> {
+  if (!language || !treeSitterEnabled || !isTreeSitterInitialized()) return [];
+  return extractRefsWithTreeSitter(content, language, knownSymbols, definitionLines);
 }
 
 export function extractSymbolRefs(content: string, knownSymbols: Set<string>): Array<{ name: string; line: number }> {

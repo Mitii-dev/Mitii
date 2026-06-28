@@ -5,6 +5,15 @@ import { createLogger } from '../telemetry/Logger';
 
 const log = createLogger('HybridRetriever');
 
+const SOURCE_TIMEOUT_MS = 800;
+
+/** Fast explicit sources first; heavy search sources in parallel tier 2. */
+const SOURCE_TIERS: string[][] = [
+  ['project-rules', 'mentioned-files', 'skill-catalog'],
+  ['workspace-overview', 'current-editor', 'open-files', 'git-diff', 'diagnostics'],
+  ['fts', 'indexed-file-search', 'vector', 'repo-map', 'memory'],
+];
+
 export interface RerankerConfig {
   enabled: boolean;
   candidatePool: number;
@@ -19,17 +28,42 @@ export class HybridRetriever {
   ) {}
 
   async retrieve(query: ContextQuery): Promise<ContextItem[]> {
-    const allItems: ContextItem[] = [];
+    const sourceById = new Map(this.sources.map((s) => [s.id, s]));
+    const orderedSources: ContextSource[] = [];
+    const seen = new Set<string>();
 
+    for (const tier of SOURCE_TIERS) {
+      for (const id of tier) {
+        const source = sourceById.get(id);
+        if (source && !seen.has(id)) {
+          orderedSources.push(source);
+          seen.add(id);
+        }
+      }
+    }
     for (const source of this.sources) {
-      try {
-        const items = await source.retrieve(query);
-        allItems.push(...items);
-      } catch (error) {
-        log.warn('Context source failed', {
-          source: source.id,
-          error: error instanceof Error ? error.message : String(error),
-        });
+      if (!seen.has(source.id)) {
+        orderedSources.push(source);
+      }
+    }
+
+    const allItems: ContextItem[] = [];
+    for (const tierSources of chunkByTier(orderedSources)) {
+      const tierResults = await Promise.allSettled(
+        tierSources.map((source) => retrieveWithTimeout(source, query, SOURCE_TIMEOUT_MS))
+      );
+
+      for (let i = 0; i < tierResults.length; i++) {
+        const result = tierResults[i];
+        const source = tierSources[i];
+        if (result.status === 'fulfilled') {
+          allItems.push(...result.value);
+        } else {
+          log.warn('Context source failed', {
+            source: source.id,
+            error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+          });
+        }
       }
     }
 
@@ -47,6 +81,48 @@ export class HybridRetriever {
 
     return deduped.slice(0, query.maxItems ?? 30);
   }
+}
+
+function chunkByTier(sources: ContextSource[]): ContextSource[][] {
+  const tiers: ContextSource[][] = [];
+  let currentTier = -1;
+  let bucket: ContextSource[] = [];
+
+  for (const source of sources) {
+    const tierIdx = SOURCE_TIERS.findIndex((tier) => tier.includes(source.id));
+    const tier = tierIdx >= 0 ? tierIdx : SOURCE_TIERS.length;
+    if (tier !== currentTier) {
+      if (bucket.length > 0) tiers.push(bucket);
+      bucket = [source];
+      currentTier = tier;
+    } else {
+      bucket.push(source);
+    }
+  }
+  if (bucket.length > 0) tiers.push(bucket);
+  return tiers;
+}
+
+async function retrieveWithTimeout(
+  source: ContextSource,
+  query: ContextQuery,
+  timeoutMs: number
+): Promise<ContextItem[]> {
+  return new Promise<ContextItem[]>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    source.retrieve(query)
+      .then((items) => {
+        clearTimeout(timer);
+        resolve(items);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
 }
 
 function deduplicateItems(items: ContextItem[]): ContextItem[] {

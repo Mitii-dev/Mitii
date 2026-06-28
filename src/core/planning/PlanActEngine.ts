@@ -42,6 +42,16 @@ export type PlanPhase = 'diagnostics' | 'review' | 'execute' | 'verify';
 
 export type AutonomyPreset = 'safe' | 'guided' | 'builder' | 'pilot' | 'enterprise';
 
+let configuredVerifyPatterns: string[] = [];
+
+export function setVerifyCommandPatterns(patterns: string[]): void {
+  configuredVerifyPatterns = patterns.filter((p) => p.trim().length > 0);
+}
+
+export function getVerifyCommandPatterns(): string[] {
+  return [...configuredVerifyPatterns];
+}
+
 export function parsePlanFromText(text: string): ThunderPlan | null {
   const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
   if (!jsonMatch) return null;
@@ -83,15 +93,19 @@ export function isWriteAllowed(mode: string): boolean {
 }
 
 /** Shell commands that only inspect the repo (allowed in plan/review for audits). */
-export function isReadOnlyCommand(command: string): boolean {
+export function isReadOnlyCommand(command: string, extraPatterns: string[] = []): boolean {
   const cmd = stripLeadingCd(command).trim();
   if (!cmd) return false;
+  const patterns = [...extraPatterns, ...configuredVerifyPatterns];
   const segments = splitShellSegments(cmd).map((part) => part.trim()).filter(Boolean);
   if (segments.length === 0) return false;
-  return segments.every(isReadOnlyCommandSegment);
+  return segments.every((segment) => isReadOnlyCommandSegment(segment, patterns));
 }
 
-function isReadOnlyCommandSegment(cmd: string): boolean {
+function isReadOnlyCommandSegment(cmd: string, extraPatterns: string[] = []): boolean {
+  for (const pattern of extraPatterns) {
+    if (matchesVerifyPattern(cmd, pattern)) return true;
+  }
   if (/^(npx\s+(--yes\s+)?)?depcheck\b/i.test(cmd)) return true;
   if (/^(npx\s+(--yes\s+)?)?knip\b/i.test(cmd)) return true;
   if (/^npx\s+eslint\b/i.test(cmd) && !/\s--fix\b/.test(cmd)) return true;
@@ -103,6 +117,17 @@ function isReadOnlyCommandSegment(cmd: string): boolean {
   if (/^pnpm\s+(why|list|lint|test|build|compile|typecheck|check)\b/i.test(cmd)) return true;
   if (/^(grep|rg|find|cat|head|tail|sed|wc|sort|uniq|ls|tree|which|echo)\b/i.test(cmd)) return true;
   if (/^git\s+(status|diff|log|ls-files)\b/i.test(cmd)) return true;
+  return false;
+}
+
+function matchesVerifyPattern(cmd: string, pattern: string): boolean {
+  const p = pattern.trim().toLowerCase();
+  const c = cmd.trim().toLowerCase();
+  if (!p) return false;
+  if (c === p) return true;
+  if (c.startsWith(`${p} `)) return true;
+  // Allow npm run <script> when pattern is npm run <script>
+  if (p.startsWith('npm run ') && c.startsWith(p)) return true;
   return false;
 }
 

@@ -19,6 +19,7 @@ import { ContextBudgeter } from '../src/core/context/ContextBudgeter';
 import type { ContextItem } from '../src/core/context/types';
 import { defaultThunderConfig } from '../src/core/config/schema';
 import { estimateTokens } from '../src/core/llm/tokenEstimate';
+import { UsageTrackingProvider } from '../src/core/llm/UsageTrackingProvider';
 import { ProjectRulesService } from '../src/core/rules/ProjectRulesService';
 
 describe('IgnoreService', () => {
@@ -275,6 +276,45 @@ describe('ContextBudgeter', () => {
 describe('Token estimate', () => {
   it('estimates tokens', () => {
     expect(estimateTokens('hello world')).toBeGreaterThan(0);
+  });
+
+  it('tracks each provider completion as estimated AI usage', async () => {
+    const records: Array<{ inputTokens: number; outputTokens: number; totalTokens: number }> = [];
+    const provider = new UsageTrackingProvider({
+      id: 'fake',
+      capabilities: {
+        contextWindow: 8192,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsEmbeddings: false,
+      },
+      async *complete() {
+        yield { content: 'hello ' };
+        yield { tool_calls: [{ index: 0, id: 'call_1', function: { name: 'read_file', arguments: '{"path":"a.ts"}' } }] };
+        yield { content: 'world' };
+        yield { done: true };
+      },
+    }, (usage) => records.push(usage));
+
+    for await (const _ of provider.complete({
+      messages: [{ role: 'user', content: 'inspect the file' }],
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'read_file',
+          description: 'Read a file',
+          parameters: { type: 'object', properties: {} },
+        },
+      }],
+      stream: true,
+    })) {
+      // Drain the stream.
+    }
+
+    expect(records).toHaveLength(1);
+    expect(records[0].inputTokens).toBeGreaterThan(0);
+    expect(records[0].outputTokens).toBeGreaterThan(0);
+    expect(records[0].totalTokens).toBe(records[0].inputTokens + records[0].outputTokens);
   });
 });
 

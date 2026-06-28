@@ -31,12 +31,14 @@ export interface SafetyConfig {
   blockDangerousCommands: boolean;
   approvalMode?: 'review_all' | 'ask_edits' | 'ask_deletes' | 'ask_commands' | 'auto';
   autonomyPreset?: string;
+  allowUntrustedWorkspace?: boolean;
 }
 
 export class ToolPolicyEngine {
   constructor(
     private safetyConfig: SafetyConfig,
-    private readonly isIgnoredPath: (path: string) => boolean
+    private readonly isIgnoredPath: (path: string) => boolean,
+    private readonly isWorkspaceTrusted: () => boolean = () => true
   ) {}
 
   updateSafetyConfig(safetyConfig: SafetyConfig): void {
@@ -47,6 +49,17 @@ export class ToolPolicyEngine {
     const path = typeof input.path === 'string' ? input.path : undefined;
     if (path && this.isIgnoredPath(path)) {
       return { decision: 'block', reason: 'Path is ignored' };
+    }
+
+    if (
+      !this.isWorkspaceTrusted() &&
+      !this.safetyConfig.allowUntrustedWorkspace &&
+      (WRITE_TOOLS.has(toolName) || SHELL_TOOLS.has(toolName))
+    ) {
+      return {
+        decision: 'block',
+        reason: 'Workspace is not trusted — file writes and shell commands are disabled',
+      };
     }
 
     if (READ_ONLY_TOOLS.has(toolName)) {

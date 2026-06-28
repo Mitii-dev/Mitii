@@ -1,0 +1,100 @@
+import type { ContextBudgetView, ContextItemView } from '../../../vscode/webview/messages';
+
+interface ContextDebuggerPanelProps {
+  budget: ContextBudgetView | null;
+  items: ContextItemView[];
+  totalTokens: number;
+  expanded: boolean;
+  onToggle: () => void;
+}
+
+export function ContextDebuggerPanel({
+  budget,
+  items,
+  totalTokens,
+  expanded,
+  onToggle,
+}: ContextDebuggerPanelProps) {
+  if (!budget && items.length === 0) return null;
+
+  const used = budget?.usedTokens ?? totalTokens;
+  const limit = budget?.budgetLimit ?? Math.max(used, 1);
+  const pct = Math.min(100, Math.round((used / limit) * 100));
+
+  return (
+    <section className="context-debugger" aria-label="Context debugger">
+      <button type="button" className="context-debugger__toggle" onClick={onToggle}>
+        <span>Context budget</span>
+        <span className="context-debugger__meta">
+          {used.toLocaleString()} / {limit.toLocaleString()} tokens ({pct}%)
+        </span>
+        <span className="context-debugger__chevron" aria-hidden="true">
+          {expanded ? '▾' : '▸'}
+        </span>
+      </button>
+
+      <div className="context-debugger__meter" role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+        <div className="context-debugger__meter-fill" style={{ width: `${pct}%` }} />
+      </div>
+
+      {expanded && (
+        <div className="context-debugger__body">
+          {budget && (
+            <div className="context-debugger__stats">
+              <span>Retrieved {budget.retrievedCount}</span>
+              <span>Included {budget.includedCount}</span>
+              {budget.truncatedCount > 0 && <span>Truncated {budget.truncatedCount}</span>}
+              {budget.dropped.length > 0 && <span className="context-debugger__warn">Dropped {budget.dropped.length}</span>}
+            </div>
+          )}
+
+          {budget && budget.sourceBreakdown.length > 0 && (
+            <div className="context-debugger__section">
+              <h4>Per-source tokens</h4>
+              <ul className="context-debugger__list">
+                {budget.sourceBreakdown.map((row) => (
+                  <li key={row.source}>
+                    <code>{row.source}</code>
+                    <span>{row.count} item{row.count === 1 ? '' : 's'} · {row.tokens} tok</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {items.length > 0 && (
+            <div className="context-debugger__section">
+              <h4>Included</h4>
+              <ul className="context-debugger__list">
+                {items.slice(0, 12).map((item) => (
+                  <li key={item.id}>
+                    <code>{item.source}</code>
+                    {item.relPath && <span className="context-debugger__path">{item.relPath}</span>}
+                    <span className="context-debugger__reason" title={item.reason}>{item.reason}</span>
+                    <span>{item.tokenEstimate} tok{item.truncated ? ' · truncated' : ''}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {budget && budget.dropped.length > 0 && (
+            <div className="context-debugger__section">
+              <h4>Dropped</h4>
+              <ul className="context-debugger__list context-debugger__list--dropped">
+                {budget.dropped.slice(0, 10).map((drop, i) => (
+                  <li key={`${drop.source}-${drop.relPath ?? i}`}>
+                    <code>{drop.source}</code>
+                    {drop.relPath && <span className="context-debugger__path">{drop.relPath}</span>}
+                    <span className="context-debugger__reason">{drop.cause}: {drop.reason}</span>
+                    <span>{drop.tokenEstimate} tok</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}

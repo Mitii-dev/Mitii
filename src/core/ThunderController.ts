@@ -22,6 +22,8 @@ import { MentionedFileContextSource } from './context/sources/mentionedFileSourc
 import { GitService } from './context/GitService';
 import { DiagnosticsService, GitDiffContextSource, DiagnosticsContextSource } from './context/DiagnosticsService';
 import { RepoMapService } from './context/RepoMapService';
+import { setVerifyCommandPatterns, isReadOnlyCommand } from './planning/PlanActEngine';
+import { debounce } from './util/debounce';
 import { ChatOrchestrator } from './ChatOrchestrator';
 import { ToolRuntime } from './tools/ToolRuntime';
 import {
@@ -37,6 +39,7 @@ import {
 import { createMarkStepCompleteTool, createProposePlanMutationTool } from './tools/planTools';
 import { OpenAiCompatibleProvider } from './llm/OpenAiCompatibleProvider';
 import type { LlmProvider } from './llm/types';
+import { UsageTrackingProvider, type ModelCallUsage } from './llm/UsageTrackingProvider';
 import { AgentTaskState } from './agent/AgentTaskState';
 import { isApprovalContinuationMessage } from './agent/taskMessage';
 import { ToolPolicyEngine } from './safety/ToolPolicyEngine';
@@ -74,6 +77,7 @@ import type {
   PlanView,
   PinnedContextView,
   ContextPathSuggestion,
+  TokenUsageView,
 } from '../vscode/webview/messages';
 import {
   initialWebviewState,
@@ -119,17 +123,31 @@ export class ThunderController {
   private researchAgentProvider: LlmProvider | undefined;
   private sessionLog = new SessionLogService();
   private lastSubagentSnapshot = new Map<string, string>();
-  private indexingStatus: IndexingStatus = { indexed: 0, queued: 0, running: false, failed: 0 };
+  private indexingStatus: IndexingStatus = { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0 };
   private contextToggles: ContextToggles = defaultContextToggles();
+  private pendingWatchJobs = new Map<string, import('./indexing/IndexQueue').IndexJob>();
+  private watchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+  private debouncedRebuildRetriever: (() => void) | undefined;
   private currentPlan: PlanView | null = null;
   private agentActivity: import('../vscode/webview/messages').AgentActivityEntry[] = [];
   private agentLiveStatus: import('../vscode/webview/messages').AgentLiveStatusView | null = null;
-  private tokenUsage = {
+  private tokenUsage: Omit<TokenUsageView, 'contextWindow'> = {
     sessionTotal: 0,
+    inputTokensTotal: 0,
+    outputTokensTotal: 0,
+    currentTurnTotal: 0,
+    currentTurnInputTokens: 0,
+    currentTurnOutputTokens: 0,
+    aiCallCount: 0,
+    currentTurnAiCallCount: 0,
+    lastCallInputTokens: 0,
+    lastCallOutputTokens: 0,
+    lastCallTotalTokens: 0,
     lastPromptTokens: 0,
     lastContextTokens: 0,
     lastResponseTokens: 0,
     turnCount: 0,
+    estimated: true,
     breakdown: [] as import('../vscode/webview/messages').TokenUsageBreakdownItem[],
   };
   private uiUpdate: UiUpdateCallback | undefined;
@@ -146,6 +164,17 @@ export class ThunderController {
   constructor(private readonly context: vscode.ExtensionContext) {
     this.configService = new ConfigService(context);
     this.providerRegistry = new LlmProviderRegistry();
+    this.debouncedRebuildRetriever = debounce(() => this.rebuildRetriever(), 400);
+  }
+
+  async notifyTrustChanged(): Promise<void> {
+    this.notifyUi({ workspaceTrusted: this.isWorkspaceTrusted() });
+  }
+
+  private isWorkspaceTrusted(): boolean {
+    const config = this.configService.getConfig();
+    if (config.safety.allowUntrustedWorkspace) return true;
+    return vscode.workspace.isTrusted;
   }
 
   setUiUpdateCallback(cb: UiUpdateCallback): void {
@@ -325,7 +354,14 @@ export class ThunderController {
       createVectorIndex(db, workspace, config.indexing),
       this.embeddingProvider
     );
-    this.indexQueue = new IndexQueue(db);
+    this.indexQueue = new IndexQueue(db, {
+      maxConcurrency: config.indexing.maxConcurrency,
+      maxFileSizeBytes: config.indexing.maxFileSizeBytes,
+    });
+    this.indexQueue.setVectorService(workspace, this.vectorIndexService);
+    this.indexQueue.onIndexingComplete(() => {
+      RepoMapService.invalidateWorkspace(workspace);
+    });
     if (config.indexing.treeSitterEnabled) {
       void initTreeSitter().then((ready) => {
         if (ready) void preloadCommonLanguages();
@@ -335,9 +371,6 @@ export class ThunderController {
       this.indexingStatus = status;
       this.notifyUi({ indexing: status });
     });
-    if (config.indexing.vectorsEnabled) {
-      this.indexQueue.setVectorService(workspace, this.vectorIndexService);
-    }
     this.indexingStatus = this.indexQueue.getStatus();
 
     this.gitService = new GitService(workspace);
@@ -403,9 +436,12 @@ export class ThunderController {
 
     const effectiveSafety = applyAutonomyPreset(config.safety, config.safety.autonomyPreset);
 
+    setVerifyCommandPatterns(config.agent.verifyCommands);
+
     this.policyEngine = new ToolPolicyEngine(
       effectiveSafety,
-      (path) => this.ignoreService.isIgnored(path)
+      (path) => this.ignoreService.isIgnored(path),
+      () => this.isWorkspaceTrusted()
     );
 
     this.toolExecutor = new ToolExecutor(
@@ -516,6 +552,7 @@ export class ThunderController {
       onPostWrite: async (relPath) => {
         await this.validateAfterWrite(relPath);
       },
+      runVerifyHooks: async (commands) => this.runVerifyHooks(commands),
       workspace: ws,
       memoryService: this.memoryService,
       taskState: this.agentTaskState,
@@ -547,12 +584,10 @@ export class ThunderController {
     });
     orchestrator.setTokenUsageCallback((promptTokens, contextTokens, responseText, breakdown, options) => {
       const responseTokens = Math.ceil(responseText.length / 4);
-      const turnTokens = promptTokens + responseTokens;
       this.tokenUsage.lastPromptTokens = promptTokens;
       this.tokenUsage.lastContextTokens = contextTokens;
       this.tokenUsage.lastResponseTokens = responseTokens;
       if (options?.final !== false) {
-        this.tokenUsage.sessionTotal += turnTokens;
         this.tokenUsage.turnCount += 1;
       }
       this.tokenUsage.breakdown = breakdown;
@@ -562,22 +597,21 @@ export class ThunderController {
           turnPromptTokens: promptTokens,
           turnContextTokens: contextTokens,
           turnResponseTokens: responseTokens,
+          turnAiCallCount: this.tokenUsage.currentTurnAiCallCount,
+          turnInputTokens: this.tokenUsage.currentTurnInputTokens,
+          turnOutputTokens: this.tokenUsage.currentTurnOutputTokens,
+          turnTotalTokens: this.tokenUsage.currentTurnTotal,
+          sessionInputTokens: this.tokenUsage.inputTokensTotal,
+          sessionOutputTokens: this.tokenUsage.outputTokensTotal,
           sessionTotal: this.tokenUsage.sessionTotal,
           turnCount: this.tokenUsage.turnCount,
+          estimated: this.tokenUsage.estimated,
         });
       }
-      const visibleSessionTotal = options?.final === false
-        ? this.tokenUsage.sessionTotal + turnTokens
-        : this.tokenUsage.sessionTotal;
-      const visibleTurnCount = options?.final === false
-        ? this.tokenUsage.turnCount + 1
-        : this.tokenUsage.turnCount;
 
       this.notifyUi({
         tokenUsage: {
           ...this.tokenUsage,
-          sessionTotal: visibleSessionTotal,
-          turnCount: visibleTurnCount,
           contextWindow: config.provider.contextWindow,
         },
       });
@@ -617,8 +651,8 @@ export class ThunderController {
     sources.push(
       new MentionedFileContextSource(workspace),
       new WorkspaceOverviewContextSource(workspace),
-      new CurrentEditorContextSource(workspace),
-      new OpenFilesContextSource(workspace)
+      new CurrentEditorContextSource(workspace, db),
+      new OpenFilesContextSource(workspace, db)
     );
     if (this.contextToggles.fts) {
       sources.push(new FtsContextSource(db));
@@ -654,16 +688,23 @@ export class ThunderController {
 
       const enqueue = (uri: vscode.Uri) => {
         if (!this.indexQueue || !this.scanner) return;
+        if (!this.isWorkspaceTrusted()) return;
         const relPath = toWorkspaceRelPath(uri, workspace);
         if (!relPath || this.ignoreService.isIgnored(relPath)) return;
         const fileId = this.scanner.getFileId(relPath);
         if (fileId) {
-          this.indexQueue.enqueue([{
+          this.pendingWatchJobs.set(relPath, {
             fileId,
             relPath,
             absPath: uri.fsPath,
             language: null,
-          }]);
+          });
+          if (this.watchDebounceTimer) clearTimeout(this.watchDebounceTimer);
+          this.watchDebounceTimer = setTimeout(() => {
+            const jobs = [...this.pendingWatchJobs.values()];
+            this.pendingWatchJobs.clear();
+            this.indexQueue?.enqueue(jobs);
+          }, 5000);
         }
       };
 
@@ -795,6 +836,7 @@ export class ThunderController {
       usingWorkspaceOverride: this.isUsingWorkspaceOverride(),
       indexDbPath,
       workspaceNotice: this.workspaceNotice,
+      workspaceTrusted: this.isWorkspaceTrusted(),
     };
   }
 
@@ -812,6 +854,29 @@ export class ThunderController {
     };
     this.agentActivity = [...this.agentActivity.slice(-40), entry];
     this.notifyUi({ agentActivity: this.agentActivity });
+  }
+
+  private async runVerifyHooks(commands: string[]): Promise<string> {
+    const workspace = this.resolveWorkspacePath();
+    if (!workspace || !this.isWorkspaceTrusted()) return '';
+
+    const lines: string[] = [];
+    for (const command of commands) {
+      const trimmed = command.trim();
+      if (!trimmed || !isReadOnlyCommand(trimmed)) continue;
+      try {
+        const result = await this.toolRuntime.execute('run_command', { command: trimmed });
+        const body = result.success
+          ? (result.output || '(no output)')
+          : (result.error ?? 'command failed');
+        lines.push(`$ ${trimmed}\n${body.slice(0, 4000)}`);
+        this.pushActivity('info', `Verify: ${trimmed}`, body.slice(0, 200));
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        lines.push(`$ ${trimmed}\n${msg}`);
+      }
+    }
+    return lines.join('\n\n');
   }
 
   private async validateAfterWrite(relPath: string): Promise<void> {
@@ -880,10 +945,21 @@ export class ThunderController {
     this.syncActiveEditorPin();
     this.tokenUsage = {
       sessionTotal: 0,
+      inputTokensTotal: 0,
+      outputTokensTotal: 0,
+      currentTurnTotal: 0,
+      currentTurnInputTokens: 0,
+      currentTurnOutputTokens: 0,
+      aiCallCount: 0,
+      currentTurnAiCallCount: 0,
+      lastCallInputTokens: 0,
+      lastCallOutputTokens: 0,
+      lastCallTotalTokens: 0,
       lastPromptTokens: 0,
       lastContextTokens: 0,
       lastResponseTokens: 0,
       turnCount: 0,
+      estimated: true,
       breakdown: [],
     };
     this.notifyUi({
@@ -937,6 +1013,56 @@ export class ThunderController {
   private setWorkspaceNotice(kind: 'ok' | 'error' | 'warn', message: string): void {
     this.workspaceNotice = { kind, message };
     this.notifyUi({ workspaceNotice: this.workspaceNotice });
+  }
+
+  private resetCurrentTurnUsage(): void {
+    this.tokenUsage.currentTurnTotal = 0;
+    this.tokenUsage.currentTurnInputTokens = 0;
+    this.tokenUsage.currentTurnOutputTokens = 0;
+    this.tokenUsage.currentTurnAiCallCount = 0;
+    this.tokenUsage.lastCallInputTokens = 0;
+    this.tokenUsage.lastCallOutputTokens = 0;
+    this.tokenUsage.lastCallTotalTokens = 0;
+    this.tokenUsage.lastPromptTokens = 0;
+    this.tokenUsage.lastContextTokens = 0;
+    this.tokenUsage.lastResponseTokens = 0;
+  }
+
+  private trackProvider(provider: LlmProvider): LlmProvider {
+    return new UsageTrackingProvider(provider, (usage) => this.recordModelCallUsage(usage));
+  }
+
+  private recordModelCallUsage(usage: ModelCallUsage): void {
+    this.tokenUsage.inputTokensTotal += usage.inputTokens;
+    this.tokenUsage.outputTokensTotal += usage.outputTokens;
+    this.tokenUsage.sessionTotal += usage.totalTokens;
+    this.tokenUsage.currentTurnInputTokens += usage.inputTokens;
+    this.tokenUsage.currentTurnOutputTokens += usage.outputTokens;
+    this.tokenUsage.currentTurnTotal += usage.totalTokens;
+    this.tokenUsage.aiCallCount += 1;
+    this.tokenUsage.currentTurnAiCallCount += 1;
+    this.tokenUsage.lastCallInputTokens = usage.inputTokens;
+    this.tokenUsage.lastCallOutputTokens = usage.outputTokens;
+    this.tokenUsage.lastCallTotalTokens = usage.totalTokens;
+    this.tokenUsage.estimated = usage.estimated;
+
+    this.sessionLog.append('token_usage', 'AI call token usage', {
+      provider: usage.providerId,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      totalTokens: usage.totalTokens,
+      currentTurnTotal: this.tokenUsage.currentTurnTotal,
+      sessionTotal: this.tokenUsage.sessionTotal,
+      aiCallCount: this.tokenUsage.aiCallCount,
+      estimated: usage.estimated,
+    });
+
+    this.notifyUi({
+      tokenUsage: {
+        ...this.tokenUsage,
+        contextWindow: this.configService.getConfig().provider.contextWindow,
+      },
+    });
   }
 
   getVscodeWorkspaceFolders(): string[] {
@@ -1007,6 +1133,8 @@ export class ThunderController {
     if (!this.session) throw normalizeError(new Error('Session not initialized'));
     const provider = this.providerRegistry.getActive();
     if (!provider) throw normalizeError(new Error('No LLM provider configured'));
+    this.resetCurrentTurnUsage();
+    const meteredProvider = this.trackProvider(provider);
 
     const isContinuation = isApprovalContinuationMessage(content.trim());
     this.sessionService?.ensureSession(this.session, content.slice(0, 64));
@@ -1033,7 +1161,12 @@ export class ThunderController {
         'No workspace configured. Open a folder (File → Open Folder) or set a path in Thunder Settings → Workspace.'
       ));
     }
-    return this.chatOrchestrator.send(this.session, provider, content, recentMessages, {
+    this.chatOrchestrator.configure({
+      researchAgentProvider: this.researchAgentProvider
+        ? this.trackProvider(this.researchAgentProvider)
+        : undefined,
+    });
+    return this.chatOrchestrator.send(this.session, meteredProvider, content, recentMessages, {
       pinnedContext: options?.pinnedContext ?? this.pinnedContext,
     });
   }
@@ -1145,7 +1278,7 @@ export class ThunderController {
     this.scanner = undefined;
     this.indexQueue = undefined;
     this.projectRulesService = undefined;
-    this.indexingStatus = { indexed: 0, queued: 0, running: false, failed: 0 };
+    this.indexingStatus = { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0 };
     await this.mcpManager.closeAll();
     this.toolRuntime.unregisterByPrefix('mcp__');
 
@@ -1562,7 +1695,7 @@ export class ThunderController {
     await this.providerRegistry.resolveFromConfig(config.provider, apiKey);
     await this.refreshResearchAgentProvider();
     this.chatOrchestrator?.configure({ researchAgentProvider: this.researchAgentProvider });
-    this.rebuildRetriever();
+    this.debouncedRebuildRetriever?.();
     this.notifyUi({ settings: (await this.buildUiState()).settings });
     void vscode.window.showInformationMessage('Thunder: Provider settings saved.');
   }
@@ -1644,8 +1777,10 @@ export class ThunderController {
     const effectiveSafety = applyAutonomyPreset(config.safety, config.safety.autonomyPreset);
     this.policyEngine?.updateSafetyConfig(effectiveSafety);
 
+    setVerifyCommandPatterns(config.agent.verifyCommands);
+
     await this.reloadMcpServers();
-    this.rebuildRetriever();
+    this.debouncedRebuildRetriever?.();
 
     this.notifyUi({ settings: (await this.buildUiState()).settings });
     void vscode.window.showInformationMessage('Thunder: Settings saved.');
@@ -1661,7 +1796,7 @@ export class ThunderController {
   setContextToggle(source: keyof ContextToggles, enabled: boolean): void {
     this.contextToggles = { ...this.contextToggles, [source]: enabled };
     this.notifyUi({ contextToggles: this.contextToggles });
-    this.rebuildRetriever();
+    this.debouncedRebuildRetriever?.();
   }
 
   async restoreCheckpoint(id: string): Promise<boolean> {
@@ -1727,6 +1862,11 @@ export class ThunderController {
     const config = this.configService.getConfig();
     if (!config.indexing.enabled) {
       void vscode.window.showInformationMessage('Thunder: Indexing is disabled in settings.');
+      return;
+    }
+    if (!this.isWorkspaceTrusted()) {
+      this.setWorkspaceNotice('warn', 'Indexing is disabled in untrusted workspace mode.');
+      void vscode.window.showWarningMessage('Thunder: Trust this workspace to enable indexing.');
       return;
     }
 

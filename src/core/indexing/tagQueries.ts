@@ -193,3 +193,67 @@ export const TAG_QUERIES: Record<string, string> = {
 export function getTagQuery(language: string): string | undefined {
   return TAG_QUERIES[language];
 }
+
+/** Reference queries — identifier usages for PageRank / import boost. */
+export const REF_QUERIES: Record<string, string> = {
+  typescript: `
+    (call_expression function: (identifier) @name)
+    (call_expression function: (member_expression property: (property_identifier) @name))
+    (new_expression constructor: (identifier) @name)
+    (type_identifier) @name
+    (property_identifier) @name
+  `,
+  tsx: `
+    (call_expression function: (identifier) @name)
+    (jsx_element (identifier) @name)
+    (type_identifier) @name
+    (property_identifier) @name
+  `,
+  javascript: `
+    (call_expression function: (identifier) @name)
+    (call_expression function: (member_expression property: (property_identifier) @name))
+    (new_expression constructor: (identifier) @name)
+    (identifier) @name
+    (property_identifier) @name
+  `,
+  python: `
+    (call function: (identifier) @name)
+    (attribute attribute: (identifier) @name)
+    (identifier) @name
+  `,
+  go: `
+    (call_expression function: (identifier) @name)
+    (selector_expression field: (field_identifier) @name)
+    (type_identifier) @name
+    (field_identifier) @name
+  `,
+  java: `
+    (method_invocation name: (identifier) @name)
+    (type_identifier) @name
+    (identifier) @name
+  `,
+  rust: `
+    (call_expression function: (identifier) @name)
+    (field_expression field: (field_identifier) @name)
+    (type_identifier) @name
+    (identifier) @name
+  `,
+  ruby: `
+    (call name: (identifier) @name)
+    (constant) @name
+    (identifier) @name
+  `,
+  php: `
+    (function_call_expression name: (name) @name)
+    (name) @name
+  `,
+  c: `(identifier) @name`,
+  cpp: `(identifier) @name`,
+  csharp: `(identifier) @name`,
+  kotlin: `(simple_identifier) @name`,
+  swift: `(simple_identifier) @name`,
+};
+
+export function getRefQuery(language: string): string | undefined {
+  return REF_QUERIES[language] ?? REF_QUERIES.javascript;
+}

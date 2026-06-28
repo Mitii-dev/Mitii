@@ -1,7 +1,7 @@
 import { join } from 'path';
 import type { ExtractedSymbol } from './SymbolExtractor';
 import { getWasmGrammarName, hasWasmGrammar } from './languageRegistry';
-import { getTagQuery } from './tagQueries';
+import { getRefQuery, getTagQuery } from './tagQueries';
 
 type WasmParser = {
   init(): Promise<void>;
@@ -254,6 +254,48 @@ export function isTreeSitterAvailable(language: string | null): boolean {
 
 export function getTreeSitterQuery(language: string): string | undefined {
   return getTagQuery(language);
+}
+
+export function extractRefsWithTreeSitter(
+  content: string,
+  language: string | null,
+  knownSymbols: Set<string>,
+  definitionLines: Set<number> = new Set()
+): Array<{ name: string; line: number }> {
+  if (!language || !wasmReady || !hasWasmGrammar(language)) return [];
+
+  const lang = wasmLanguageCache.get(language);
+  if (!lang || !wasmParser) return [];
+
+  const querySource = getRefQuery(language);
+  if (!querySource) return [];
+
+  try {
+    wasmParser.setLanguage(lang);
+    const tree = wasmParser.parse(content);
+    const query = lang.query(querySource);
+    const captures = query.captures(tree.rootNode);
+    const refs: Array<{ name: string; line: number }> = [];
+    const seen = new Set<string>();
+
+    for (const cap of captures) {
+      if (!cap.name.startsWith('name')) continue;
+      const name = cap.node.text?.trim();
+      if (!name || name.length < 2 || !knownSymbols.has(name)) continue;
+
+      const line = cap.node.startPosition.row + 1;
+      if (definitionLines.has(line)) continue;
+
+      const key = `${name}:${line}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      refs.push({ name, line });
+    }
+
+    return refs.slice(0, 500);
+  } catch {
+    return [];
+  }
 }
 
 /** Warm up common WASM grammars after init. */

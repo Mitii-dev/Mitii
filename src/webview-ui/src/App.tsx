@@ -1,7 +1,10 @@
+import { useState, useEffect } from 'react';
 import { useVsCodeMessaging } from './state/useVsCodeMessaging';
 import { MessageList } from './components/MessageList';
 import { ChatInput } from './components/ChatInput';
 import { ContextPanel } from './components/ContextPanel';
+import { ContextDebuggerPanel } from './components/ContextDebuggerPanel';
+import { ContextWarningBanner } from './components/ContextWarningBanner';
 import { ErrorBanner } from './components/ErrorBanner';
 import { SettingsPanel } from './components/SettingsPanel';
 import { ApprovalCards } from './components/ApprovalCards';
@@ -15,6 +18,11 @@ import { IconChat, IconHistory, IconPlus, IconSettings } from './components/Icon
 export function App() {
   const { state, postMessage, pathSuggestions, pathSearchRequestId } = useVsCodeMessaging();
   const canRetry = state.messages.some((m) => m.role === 'user');
+  const [contextWarningsDismissed, setContextWarningsDismissed] = useState(false);
+
+  useEffect(() => {
+    setContextWarningsDismissed(false);
+  }, [state.contextBudget?.dropped.length, state.indexing.indexed, state.indexing.total]);
 
   return (
     <div className="thunder-app">
@@ -78,7 +86,16 @@ export function App() {
         vscodeWorkspaceFolders={state.vscodeWorkspaceFolders}
         usingWorkspaceOverride={state.usingWorkspaceOverride}
         indexed={state.indexing.indexed}
+        workspaceTrusted={state.workspaceTrusted}
       />
+
+      {!contextWarningsDismissed && (
+        <ContextWarningBanner
+          budget={state.contextBudget}
+          indexing={state.indexing}
+          onDismiss={() => setContextWarningsDismissed(true)}
+        />
+      )}
 
       <ApprovalCards
         approvals={state.approvals}
@@ -101,6 +118,13 @@ export function App() {
             onRemove={(path) => postMessage({ type: 'removePinnedContext', payload: { path } })}
             onClear={() => postMessage({ type: 'clearPinnedContext' })}
             onPick={() => postMessage({ type: 'pickContextPath' })}
+          />
+          <ContextDebuggerPanel
+            budget={state.contextBudget}
+            items={state.contextPreview}
+            totalTokens={state.contextTokenEstimate}
+            expanded={state.showContextPreview}
+            onToggle={() => postMessage({ type: 'toggleContextPreview' })}
           />
           <div className="chat-body">
             <MessageList

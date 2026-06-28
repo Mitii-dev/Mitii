@@ -20,13 +20,21 @@ Do NOT retry the same arbitrary shell command.
 In Verify, use the diagnostics tool or a recognized verification command such as npm run lint, npm run test, npm run build, npm run compile, or npx tsc --noEmit.
 For targeted inspection, use read_file/search instead of shell. If verification cannot proceed, summarize the blocked command and the remaining risk.`;
 
+const VALIDATION_BLOCK_MESSAGE =
+  'Post-edit validation found errors. Fix all reported issues before marking this step complete or moving on.';
+
+export interface PostWriteValidationResult {
+  message?: string;
+  hasErrors: boolean;
+}
+
 export interface AgentLoopCallbacks {
   onToolStart?: (name: string, input: Record<string, unknown>) => void;
   onToolEnd?: (name: string, success: boolean, output: string, durationMs?: number) => void;
   onStep?: (step: number, maxSteps: number) => void;
   onLlmStepComplete?: (step: number, durationMs: number, toolCallCount: number) => void;
   onAutoContinue?: (step: number) => void;
-  onPostWriteValidation?: (relPath: string, output: string) => string | undefined | Promise<string | undefined>;
+  onPostWriteValidation?: (relPath: string, output: string) => PostWriteValidationResult | undefined | Promise<PostWriteValidationResult | undefined>;
 }
 
 export interface AgentLoopOptions {
@@ -200,6 +208,7 @@ export class AgentLoop {
 
       let phaseLockFailuresThisTurn = 0;
       let phaseLockRunCommandFailuresThisTurn = 0;
+      let postWriteValidationFailed = false;
 
       for (const { tc, input, execResult, durationMs } of executions) {
         if (signal?.aborted) break;
@@ -250,9 +259,12 @@ export class AgentLoop {
         ) {
           const relPath = typeof input.path === 'string' ? input.path : '';
           if (relPath) {
-            const validationNote = await callbacks.onPostWriteValidation(relPath, execResult.output);
-            if (validationNote) {
-              toolContent += `\n\n${validationNote}`;
+            const validation = await callbacks.onPostWriteValidation(relPath, execResult.output);
+            if (validation?.message) {
+              toolContent += `\n\n${validation.message}`;
+            }
+            if (validation?.hasErrors) {
+              postWriteValidationFailed = true;
             }
           }
         }
@@ -263,6 +275,10 @@ export class AgentLoop {
           name: tc.function.name,
           content: toolContent,
         });
+      }
+
+      if (postWriteValidationFailed) {
+        messages.push({ role: 'user', content: VALIDATION_BLOCK_MESSAGE });
       }
 
       if (phaseLockFailuresThisTurn > 0) {
@@ -337,6 +353,7 @@ export class AgentLoop {
       injectWakeUpCheckpoint(messages, state.checkpoint);
     }
 
+    let resumeValidationFailed = false;
     for (const result of approved) {
       const idx = messages.findIndex(
         (m) => m.role === 'tool' && m.tool_call_id === result.toolCallId
@@ -364,9 +381,12 @@ export class AgentLoop {
       ) {
         const relPath = typeof result.input.path === 'string' ? result.input.path : '';
         if (relPath) {
-          const validationNote = await callbacks.onPostWriteValidation(relPath, result.output);
-          if (validationNote) {
-            toolContent += `\n\n${validationNote}`;
+          const validation = await callbacks.onPostWriteValidation(relPath, result.output);
+          if (validation?.message) {
+            toolContent += `\n\n${validation.message}`;
+          }
+          if (validation?.hasErrors) {
+            resumeValidationFailed = true;
           }
         }
       }
@@ -375,6 +395,10 @@ export class AgentLoop {
         ...messages[idx],
         content: toolContent,
       };
+    }
+
+    if (resumeValidationFailed) {
+      messages.push({ role: 'user', content: VALIDATION_BLOCK_MESSAGE });
     }
 
     const maxSteps = options.maxSteps ?? this.defaultMaxSteps;
@@ -476,6 +500,7 @@ export class AgentLoop {
       );
 
       let phaseLockRunCommandFailuresThisTurn = 0;
+      let resumeStepValidationFailed = false;
 
       for (const { tc, input, execResult, durationMs } of executions) {
         if (signal?.aborted) break;
@@ -519,9 +544,12 @@ export class AgentLoop {
         ) {
           const relPath = typeof input.path === 'string' ? input.path : '';
           if (relPath) {
-            const validationNote = await callbacks.onPostWriteValidation(relPath, execResult.output);
-            if (validationNote) {
-              toolContent += `\n\n${validationNote}`;
+            const validation = await callbacks.onPostWriteValidation(relPath, execResult.output);
+            if (validation?.message) {
+              toolContent += `\n\n${validation.message}`;
+            }
+            if (validation?.hasErrors) {
+              resumeStepValidationFailed = true;
             }
           }
         }
@@ -532,6 +560,10 @@ export class AgentLoop {
           name: tc.function.name,
           content: toolContent,
         });
+      }
+
+      if (resumeStepValidationFailed) {
+        messages.push({ role: 'user', content: VALIDATION_BLOCK_MESSAGE });
       }
 
       if (phaseLockRunCommandFailuresThisTurn > 0) {

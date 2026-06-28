@@ -1,8 +1,8 @@
-import { readFileSync } from 'fs';
+import { readFileSync, statSync } from 'fs';
 import type { ThunderDb } from './ThunderDb';
 import { ChunkingService } from './ChunkingService';
 import { FtsIndex } from './FtsIndex';
-import { getExtractor, extractSymbolRefs } from './SymbolExtractor';
+import { getExtractor, extractSymbolRefs, extractSymbolRefsWithTreeSitter } from './SymbolExtractor';
 import { hasWasmGrammar } from './languageRegistry';
 import { preloadWasmLanguage } from './TreeSitterService';
 import { extractImports, resolveImportTarget } from './ImportExtractor';
@@ -24,6 +24,13 @@ export interface IndexingStatus {
   queued: number;
   running: boolean;
   failed: number;
+  total: number;
+  activeWorkers: number;
+}
+
+export interface IndexQueueOptions {
+  maxConcurrency?: number;
+  maxFileSizeBytes?: number;
 }
 
 type ProgressCallback = (status: IndexingStatus) => void;
@@ -33,20 +40,37 @@ export class IndexQueue {
   private running = false;
   private cancelled = false;
   private failed = 0;
+  private activeWorkers = 0;
+  private maxConcurrency = 2;
+  private maxFileSizeBytes = 512_000;
   private readonly chunker = new ChunkingService();
   private readonly fts: FtsIndex;
   private knownSymbols = new Set<string>();
   private onProgress?: ProgressCallback;
+  private onComplete?: () => void;
   private vectorService: VectorIndexService | undefined;
   private workspace = '';
 
-  constructor(private readonly db: ThunderDb) {
+  constructor(
+    private readonly db: ThunderDb,
+    options?: IndexQueueOptions
+  ) {
     this.fts = new FtsIndex(db);
     this.loadKnownSymbols();
+    if (options?.maxConcurrency) {
+      this.maxConcurrency = Math.max(1, options.maxConcurrency);
+    }
+    if (options?.maxFileSizeBytes) {
+      this.maxFileSizeBytes = options.maxFileSizeBytes;
+    }
   }
 
   onStatusChange(cb: ProgressCallback): void {
     this.onProgress = cb;
+  }
+
+  onIndexingComplete(cb: () => void): void {
+    this.onComplete = cb;
   }
 
   setVectorService(workspace: string, service: VectorIndexService | undefined): void {
@@ -74,11 +98,16 @@ export class IndexQueue {
     const indexed = (this.db.raw
       .prepare('SELECT COUNT(*) as c FROM files WHERE indexed_at IS NOT NULL')
       .get() as { c: number }).c;
+    const total = (this.db.raw
+      .prepare('SELECT COUNT(*) as c FROM files WHERE workspace = ?')
+      .get(this.workspace || '') as { c: number }).c;
     return {
       indexed,
       queued: this.queue.length,
       running: this.running,
       failed: this.failed,
+      total: this.workspace ? total : indexed,
+      activeWorkers: this.activeWorkers,
     };
   }
 
@@ -87,8 +116,21 @@ export class IndexQueue {
     this.running = true;
     this.cancelled = false;
 
-    while (this.queue.length > 0 && !this.cancelled) {
-      const job = this.queue.shift()!;
+    const workerCount = Math.max(1, this.maxConcurrency);
+    const workers = Array.from({ length: workerCount }, () => this.runWorker());
+    await Promise.all(workers);
+
+    this.running = false;
+    this.onProgress?.(this.getStatus());
+    this.onComplete?.();
+  }
+
+  private async runWorker(): Promise<void> {
+    while (!this.cancelled) {
+      const job = this.queue.shift();
+      if (!job) break;
+
+      this.activeWorkers += 1;
       try {
         if (job.language && hasWasmGrammar(job.language)) {
           await preloadWasmLanguage(job.language);
@@ -97,17 +139,29 @@ export class IndexQueue {
       } catch (e) {
         this.failed++;
         log.error('Index failed', { path: job.relPath, error: String(e) });
+      } finally {
+        this.activeWorkers -= 1;
+        this.onProgress?.(this.getStatus());
       }
-      this.onProgress?.(this.getStatus());
     }
-
-    this.running = false;
-    this.onProgress?.(this.getStatus());
   }
 
   private indexFile(job: IndexJob): void {
+    let fileSize = 0;
+    try {
+      fileSize = statSync(job.absPath).size;
+    } catch {
+      return;
+    }
+
     const content = readFileSync(job.absPath, 'utf-8');
-    const chunks = this.chunker.chunkFile(content, job.language);
+    const signatureOnly = fileSize > this.maxFileSizeBytes;
+    const indexContent = signatureOnly
+      ? content.split('\n').slice(0, 80).join('\n')
+      : content;
+    const chunks = signatureOnly
+      ? this.chunker.chunkFile(indexContent, job.language).slice(0, 3)
+      : this.chunker.chunkFile(indexContent, job.language);
 
     this.db.transaction(() => {
       this.db.raw.prepare('DELETE FROM chunks WHERE file_id = ?').run(job.fileId);
@@ -149,7 +203,11 @@ export class IndexQueue {
           this.knownSymbols.add(sym.name);
         }
 
-        const refs = extractSymbolRefs(content, this.knownSymbols);
+        const defLines = new Set(symbols.map((s) => s.startLine));
+        const treeSitterRefs = extractSymbolRefsWithTreeSitter(content, job.language, this.knownSymbols, defLines);
+        const refs = treeSitterRefs.length > 0
+          ? treeSitterRefs
+          : extractSymbolRefs(content, this.knownSymbols);
         const insertRef = this.db.raw.prepare(
           'INSERT INTO symbol_refs (file_id, symbol_name, line) VALUES (?, ?, ?)'
         );
@@ -158,14 +216,16 @@ export class IndexQueue {
         }
       }
 
-      const imports = extractImports(content);
-      const insertImport = this.db.raw.prepare(
-        'INSERT INTO file_imports (from_file_id, to_rel_path, specifier, line) VALUES (?, ?, ?, ?)'
-      );
-      for (const imp of imports) {
-        const target = resolveImportTarget(job.relPath, imp.specifier);
-        if (target) {
-          insertImport.run(job.fileId, target, imp.specifier, imp.line);
+      if (!signatureOnly) {
+        const imports = extractImports(content);
+        const insertImport = this.db.raw.prepare(
+          'INSERT INTO file_imports (from_file_id, to_rel_path, specifier, line) VALUES (?, ?, ?, ?)'
+        );
+        for (const imp of imports) {
+          const target = resolveImportTarget(job.relPath, imp.specifier);
+          if (target) {
+            insertImport.run(job.fileId, target, imp.specifier, imp.line);
+          }
         }
       }
 

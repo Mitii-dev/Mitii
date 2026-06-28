@@ -3,6 +3,7 @@ import { join } from 'path';
 import type { ContextItem, ContextQuery, ContextSource } from '../types';
 import type { ThunderDb } from '../../indexing/ThunderDb';
 import { extractIndexedSearchTerms } from '../fuzzyFileMatch';
+import { applyContentTier, getSourceContentTier, loadFileSignatures } from '../contextTier';
 
 const MAX_FILE_CHARS = 16_000;
 
@@ -35,20 +36,26 @@ export class IndexedFileSearchContextSource implements ContextSource {
       if (paths.size >= 5) break;
     }
 
+    const pinnedPaths = new Set((query.pinnedContext ?? []).map((p) => p.path));
     const items: ContextItem[] = [];
     for (const relPath of paths) {
       const absPath = join(this.workspace, relPath);
       if (!existsSync(absPath)) continue;
 
       try {
-        const content = readFileSync(absPath, 'utf-8').slice(0, MAX_FILE_CHARS);
+        const rawContent = readFileSync(absPath, 'utf-8').slice(0, MAX_FILE_CHARS);
+        const isPinned = pinnedPaths.has(relPath);
+        const tier = getSourceContentTier(this.id, { isPinned });
+        const symbols = loadFileSignatures(this.db, this.workspace, relPath);
+        const { content, reasonSuffix } = applyContentTier(rawContent, tier, symbols);
+
         items.push({
           id: `indexed-search-${relPath}`,
           source: this.id,
           relPath,
           content,
           score: 11,
-          reason: `Indexed path match for query terms: ${terms.slice(0, 4).join(', ')}`,
+          reason: `Indexed path match for query terms: ${terms.slice(0, 4).join(', ')}${reasonSuffix}`,
           tokenEstimate: Math.ceil(content.length / 4),
         });
       } catch {

@@ -76,6 +76,7 @@ export interface ChatOrchestratorDeps {
   memoryService?: MemoryService;
   taskState?: AgentTaskState;
   researchAgentProvider?: LlmProvider;
+  runVerifyHooks?: (commands: string[]) => Promise<string>;
 }
 
 export class ChatOrchestrator {
@@ -98,6 +99,7 @@ export class ChatOrchestrator {
     autoContinue?: boolean;
     maxAutoContinues?: number;
   } | undefined;
+  private retrievalCache: { key: string; items: ContextItem[]; at: number } | null = null;
 
   constructor(
     private readonly retriever: HybridRetriever,
@@ -228,15 +230,36 @@ export class ChatOrchestrator {
     }
 
     let items;
+    const retrievalKey = JSON.stringify({
+      text: userMessage,
+      currentFile,
+      openFiles,
+      pinned: pinnedContext.map((p) => p.path),
+    });
+    const cacheFresh =
+      this.retrievalCache &&
+      this.retrievalCache.key === retrievalKey &&
+      Date.now() - this.retrievalCache.at < 60_000;
+
     sessionTiming.start('context_retrieval');
     try {
-      items = await this.retriever.retrieve({
-        text: userMessage,
-        currentFile,
-        openFiles,
-        pinnedContext: pinnedContext.map((p) => ({ path: p.path, kind: p.kind })),
-        maxItems: 28,
-      });
+      if (cacheFresh && this.retrievalCache) {
+        items = this.retrievalCache.items;
+        sessionTiming.end('context_retrieval', sessionLog, { success: true, itemCount: items.length, cached: true });
+      } else {
+        items = await this.retriever.retrieve({
+          text: userMessage,
+          currentFile,
+          openFiles,
+          pinnedContext: pinnedContext.map((p) => ({ path: p.path, kind: p.kind })),
+          maxItems: 28,
+        });
+        this.retrievalCache = { key: retrievalKey, items, at: Date.now() };
+        sessionTiming.end('context_retrieval', sessionLog, {
+          success: true,
+          itemCount: items.length,
+        });
+      }
     } catch (error) {
       sessionTiming.end('context_retrieval', sessionLog, { success: false });
       const msg = error instanceof Error ? error.message : String(error);
@@ -244,10 +267,6 @@ export class ChatOrchestrator {
       this.emitActivity('error', 'Context retrieval failed', msg);
       throw error;
     }
-    sessionTiming.end('context_retrieval', sessionLog, {
-      success: true,
-      itemCount: items.length,
-    });
 
     const retrievedPaths = uniqueContextNames(items);
     this.emitActivity(
@@ -681,41 +700,56 @@ export class ChatOrchestrator {
           yield approvalNote;
           this.setLiveStatus('Waiting for approval', 'Review and approve below');
           this.emitActivity('approval', 'Paused — waiting for your approval', this.deps.taskState?.getPauseSummary());
-        } else if (
-          orchestrationEnabled &&
-          taskAnalysis.shouldVerify &&
-          session.mode === 'act' &&
-          this.planExecutor &&
-          !signal.aborted
-        ) {
-          this.setLiveStatus('Final validation');
-          this.emitActivity('info', 'Running post-task validation…');
-          yield '\n\n### Post-task validation\n\n';
-
-          const validationPlan = {
-            goal: userMessage.slice(0, 200),
-            assumptions: [] as string[],
-            steps: [] as import('./planning/PlanActEngine').ThunderPlan['steps'],
-            requiredApprovals: [] as string[],
-          };
-
-          for await (const chunk of this.planExecutor.runFinalValidation(
-            session,
-            provider,
-            validationPlan,
-            displayPack,
-            tools,
-            signal,
-            sharedLoopCallbacks,
-            {
-              agentMaxSteps: Math.min(agentConfig?.maxSteps ?? 10, 10),
-              restrictRunCommandToReadOnly: auditMode,
+        } else if (!this.agentLoop.hadPendingApproval() && !signal.aborted) {
+          if (
+            session.mode === 'act' &&
+            agentConfig?.verifyOnActComplete &&
+            (agentConfig.verifyCommands?.length ?? 0) > 0
+          ) {
+            this.setLiveStatus('Running verify hooks');
+            this.emitActivity('info', 'Running configured verify commands…');
+            const verifyOutput = await this.deps.runVerifyHooks?.(agentConfig.verifyCommands ?? []);
+            if (verifyOutput?.trim()) {
+              const block = `\n\n### Verify\n\n${verifyOutput}\n`;
+              fullResponse += block;
+              yield block;
             }
-          )) {
-            if (signal.aborted) break;
-            fullResponse += chunk;
-            emitLiveTokenUsage();
-            yield chunk;
+          }
+          if (
+            orchestrationEnabled &&
+            taskAnalysis.shouldVerify &&
+            session.mode === 'act' &&
+            this.planExecutor
+          ) {
+            this.setLiveStatus('Final validation');
+            this.emitActivity('info', 'Running post-task validation…');
+            yield '\n\n### Post-task validation\n\n';
+
+            const validationPlan = {
+              goal: userMessage.slice(0, 200),
+              assumptions: [] as string[],
+              steps: [] as import('./planning/PlanActEngine').ThunderPlan['steps'],
+              requiredApprovals: [] as string[],
+            };
+
+            for await (const chunk of this.planExecutor.runFinalValidation(
+              session,
+              provider,
+              validationPlan,
+              displayPack,
+              tools,
+              signal,
+              sharedLoopCallbacks,
+              {
+                agentMaxSteps: Math.min(agentConfig?.maxSteps ?? 10, 10),
+                restrictRunCommandToReadOnly: auditMode,
+              }
+            )) {
+              if (signal.aborted) break;
+              fullResponse += chunk;
+              emitLiveTokenUsage();
+              yield chunk;
+            }
           }
         }
       } else {
@@ -941,7 +975,7 @@ export class ChatOrchestrator {
         } else {
           this.emitActivity('info', `Validated ${relPath}`, 'No errors');
         }
-        return formatted;
+        return { message: formatted, hasErrors: result.errors.length > 0 };
       },
     };
   }
@@ -1222,6 +1256,14 @@ function shouldExecuteSavedPlan(
 }
 
 export function contextPackToBudgetView(pack: ContextPack): ContextBudgetView {
+  const sourceMap = new Map<string, { tokens: number; count: number }>();
+  for (const item of pack.items) {
+    const entry = sourceMap.get(item.source) ?? { tokens: 0, count: 0 };
+    entry.tokens += item.tokenEstimate;
+    entry.count += 1;
+    sourceMap.set(item.source, entry);
+  }
+
   return {
     retrievedCount: pack.retrievedCount,
     includedCount: pack.items.length,
@@ -1235,6 +1277,9 @@ export function contextPackToBudgetView(pack: ContextPack): ContextBudgetView {
       tokenEstimate: d.tokenEstimate,
       cause: d.cause,
     })),
+    sourceBreakdown: [...sourceMap.entries()]
+      .map(([source, stats]) => ({ source, tokens: stats.tokens, count: stats.count }))
+      .sort((a, b) => b.tokens - a.tokens),
   };
 }
 

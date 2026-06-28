@@ -25,11 +25,22 @@ export interface ApprovalRequestView {
 
 export interface TokenUsageView {
   sessionTotal: number;
+  inputTokensTotal: number;
+  outputTokensTotal: number;
+  currentTurnTotal: number;
+  currentTurnInputTokens: number;
+  currentTurnOutputTokens: number;
+  aiCallCount: number;
+  currentTurnAiCallCount: number;
+  lastCallInputTokens: number;
+  lastCallOutputTokens: number;
+  lastCallTotalTokens: number;
   lastPromptTokens: number;
   lastContextTokens: number;
   lastResponseTokens: number;
   turnCount: number;
   contextWindow: number;
+  estimated: boolean;
   breakdown: TokenUsageBreakdownItem[];
 }
 
@@ -79,6 +90,12 @@ export interface ContextDropView {
   cause: string;
 }
 
+export interface SourceTokenSplit {
+  source: string;
+  tokens: number;
+  count: number;
+}
+
 export interface ContextBudgetView {
   retrievedCount: number;
   includedCount: number;
@@ -86,6 +103,7 @@ export interface ContextBudgetView {
   usedTokens: number;
   truncatedCount: number;
   dropped: ContextDropView[];
+  sourceBreakdown: SourceTokenSplit[];
 }
 
 export interface AgentLiveStatusView {
@@ -140,6 +158,7 @@ export interface IndexingStatusView {
   queued: number;
   running: boolean;
   failed: number;
+  total: number;
 }
 
 export interface MemoryItemView {
@@ -267,6 +286,7 @@ export interface WebviewState {
   indexDbPath: string;
   workspaceNotice: WorkspaceNoticeView | null;
   tokenUsage: TokenUsageView;
+  workspaceTrusted: boolean;
 }
 
 export type WorkspaceNoticeView = {
@@ -382,7 +402,7 @@ export const initialWebviewState = (): WebviewState => ({
   subagents: [],
   vectorIndex: { enabled: false, embeddedChunks: 0, provider: 'none', backend: 'none' },
   plan: null,
-  indexing: { indexed: 0, queued: 0, running: false, failed: 0 },
+  indexing: { indexed: 0, queued: 0, running: false, failed: 0, total: 0 },
   memories: [],
   checkpoints: [],
   settings: defaultSettingsView(),
@@ -398,11 +418,23 @@ export const initialWebviewState = (): WebviewState => ({
   workspaceNotice: null,
   tokenUsage: {
     sessionTotal: 0,
+    inputTokensTotal: 0,
+    outputTokensTotal: 0,
+    currentTurnTotal: 0,
+    currentTurnInputTokens: 0,
+    currentTurnOutputTokens: 0,
+    aiCallCount: 0,
+    currentTurnAiCallCount: 0,
+    lastCallInputTokens: 0,
+    lastCallOutputTokens: 0,
+    lastCallTotalTokens: 0,
     lastPromptTokens: 0,
     lastContextTokens: 0,
     lastResponseTokens: 0,
     turnCount: 0,
     contextWindow: 8192,
+    estimated: true,
     breakdown: [],
   },
+  workspaceTrusted: true,
 });

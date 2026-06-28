@@ -29,6 +29,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       void controller?.reloadWorkspace();
+    }),
+    vscode.workspace.onDidGrantWorkspaceTrust(() => {
+      void controller?.notifyTrustChanged();
     })
   );
 
