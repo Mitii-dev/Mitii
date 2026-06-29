@@ -1,11 +1,28 @@
+.git/**
+.github/**
+.githooks/**
+.thunder/**
+.thunder v2/**
+.thunder V2/**
 .vscode/**
 .vscode-test/**
+
 src/**
-node_modules/**
+test/**
+templates/**
+scripts/**
+
+*.vsix
+*.log
+.DS_Store
 .gitignore
+.vscodeignore
+package-lock.json
 tsconfig.json
 vite.config.ts
 vitest.config.ts
 **/*.ts
 **/*.map
+
 !dist/**
+!media/**

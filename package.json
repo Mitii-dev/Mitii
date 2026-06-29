@@ -1,9 +1,10 @@
 {
-  "name": "thunder-ai-agent",
+  "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow",
-  "version": "2.6.4",
+  "version": "2.6.5",
   "publisher": "mitii",
+  "icon": "media/mitii-icon.png",
   "license": "AGPL-3.0-or-later",
   "author": {
     "name": "codewithshinde",
@@ -17,12 +18,27 @@
     "url": "https://github.com/codewithshinde/thunder-ai-agent/issues"
   },
   "homepage": "https://mitii.dev",
+  "qna": "https://github.com/codewithshinde/thunder-ai-agent/issues",
+  "galleryBanner": {
+    "color": "#111111",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
     "Machine Learning",
     "Other"
+  ],
+  "keywords": [
+    "ai",
+    "agent",
+    "coding agent",
+    "local-first",
+    "ollama",
+    "openai-compatible",
+    "mcp",
+    "workspace indexing"
   ],
   "activationEvents": [
     "onView:thunder.sidebar",
@@ -64,7 +80,7 @@
         {
           "id": "thunder",
           "title": "Mitii",
-          "icon": "media/thunder-icon.svg"
+          "icon": "media/mitii-activitybar.svg"
         }
       ]
     },
@@ -347,6 +363,7 @@
     }
   },
   "scripts": {
+    "vscode:prepublish": "npm run compile",
     "compile": "npm run compile:extension && npm run compile:webview",
     "rebuild:native": "node scripts/rebuild-native.mjs",
     "rebuild:node": "npm rebuild better-sqlite3",
@@ -375,7 +392,14 @@
     "checkpoint:read": "bash scripts/read-checkpoint.sh",
     "lint:safe-target": "bash scripts/safe-lint-target.sh",
     "env:sync": "node scripts/sync-env-files.mjs",
-    "package": "vsce package --no-dependencies",
+    "preflight": "npm run lint && npm run rebuild:node && npm test && npm run rebuild:native",
+    "clean:vsce-deps": "node -e \"const fs=require('fs'); for (const p of ['node_modules/@emnapi','node_modules/@napi-rs','node_modules/@tybys']) fs.rmSync(p,{recursive:true,force:true});\"",
+    "package": "npm run clean:vsce-deps && vsce package",
+    "package:preflight": "npm run preflight && npm run package",
+    "publish:vsce": "npm run preflight && npm run clean:vsce-deps && vsce publish",
+    "publish:patch": "npm run preflight && npm run clean:vsce-deps && vsce publish patch",
+    "publish:minor": "npm run preflight && npm run clean:vsce-deps && vsce publish minor",
+    "publish:major": "npm run preflight && npm run clean:vsce-deps && vsce publish major",
     "smoke": "vitest run test/smoke"
   },
   "devDependencies": {
