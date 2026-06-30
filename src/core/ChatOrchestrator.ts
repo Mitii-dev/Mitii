@@ -27,6 +27,7 @@ import { AutoApplyService } from './apply/AutoApplyService';
 import type { ToolExecutor } from './safety/ToolExecutor';
 import type { ToolRuntime } from './tools/ToolRuntime';
 import { toolsToDefinitions } from './tools/toolSchema';
+import type { ToolDefinition } from './llm/toolTypes';
 import { AgentLoop, type ApprovedToolResult, type AgentLoopSuspendState } from './agent/AgentLoop';
 import { PlanExecutor } from './agent/PlanExecutor';
 import { analyzeTask } from './agent/TaskAnalyzer';
@@ -34,6 +35,11 @@ import { extractOriginalTaskMessage, isApprovalContinuationMessage } from './age
 import { compactMessagesWithLlm } from './agent/ContextCompaction';
 import { getMaxInputTokens } from './agent/PromptBudget';
 import { isAuditCleanupTask, AUDIT_AGENT_MAX_STEPS } from './agent/taskKind';
+import {
+  extractMdxErrorFile,
+  isMdxRepairTask,
+  suggestDocsVerifyCommands,
+} from './agent/mdxRepairRouting';
 import { setResearchAgentRuntime } from './tools/builtinTools';
 import type { SessionService } from './session/SessionService';
 import type { PlanPersistence } from './planning/PlanPersistence';
@@ -358,8 +364,11 @@ export class ChatOrchestrator {
     const agentConfig = this.deps.agentConfig;
     const taskForClassification = extractOriginalTaskMessage(userMessage) ?? userMessage;
     const auditMode = isAuditCleanupTask(taskForClassification);
+    const mdxRepairMode = isMdxRepairTask(taskForClassification);
+    const mdxErrorFile = mdxRepairMode ? extractMdxErrorFile(taskForClassification) : undefined;
     const taskAnalysis = analyzeTask(userMessage, session.mode);
     const isResume = isApprovalContinuationMessage(userMessage);
+    this.deps.taskState?.setTaskContext(taskAnalysis.kind, taskAnalysis.summary, taskForClassification);
     if (!isResume) {
       this.suspendContext = undefined;
       this.agentLoop?.clearSuspendState();
@@ -391,6 +400,8 @@ export class ChatOrchestrator {
 
     if (auditMode) {
       this.emitActivity('info', 'Audit mode — using tools to scan project');
+    } else if (mdxRepairMode) {
+      this.emitActivity('info', 'MDX repair mode — fix exact build failure', mdxErrorFile ?? taskAnalysis.summary);
     } else if (isResume) {
       this.emitActivity('info', 'Resuming after approval — continuing execution');
     } else if (plannerEnabled) {
@@ -405,6 +416,7 @@ export class ChatOrchestrator {
       plannerEnabled,
       shouldUseSubagents: subagentsEnabled,
       auditMode,
+      mdxRepairMode,
       toolsEnabled,
     });
 
@@ -655,6 +667,8 @@ export class ChatOrchestrator {
         compacted,
         toolsEnabled,
         auditMode,
+        mdxRepairMode,
+        mdxErrorFile,
         taskStateBlock,
         isResume,
         explicitResult.formatted || undefined
@@ -669,6 +683,7 @@ export class ChatOrchestrator {
       emitLiveTokenUsage();
 
       if (toolsEnabled && this.agentLoop) {
+        const directAgentTools = filterDirectAgentTools(tools);
         this.setLiveStatus('Agent running');
         this.emitActivity('info', auditMode ? 'Scanning project with tools…' : 'Agent loop started');
         sessionTiming.start('direct_agent');
@@ -676,7 +691,7 @@ export class ChatOrchestrator {
         for await (const chunk of this.agentLoop.run(
           provider,
           messages,
-          tools,
+          directAgentTools,
           signal,
           sharedLoopCallbacks,
           {
@@ -721,7 +736,10 @@ export class ChatOrchestrator {
           ) {
             this.setLiveStatus('Running verify hooks');
             this.emitActivity('info', 'Running configured verify commands…');
-            const verifyOutput = await this.deps.runVerifyHooks?.(agentConfig.verifyCommands ?? []);
+            const verifyCommands = mdxRepairMode
+              ? suggestDocsVerifyCommands()
+              : (agentConfig.verifyCommands ?? []);
+            const verifyOutput = await this.deps.runVerifyHooks?.(verifyCommands);
             if (verifyOutput?.trim()) {
               const block = `\n\n### Verify\n\n${verifyOutput}\n`;
               fullResponse += block;
@@ -732,8 +750,10 @@ export class ChatOrchestrator {
             orchestrationEnabled &&
             taskAnalysis.shouldVerify &&
             session.mode === 'agent' &&
-            this.planExecutor
+            this.planExecutor &&
+            shouldRunDirectFinalValidation(taskAnalysis.kind, getTouchedFilesFromAudit(this.deps.toolRuntime))
           ) {
+            const directTouchedFiles = getTouchedFilesFromAudit(this.deps.toolRuntime);
             this.setLiveStatus('Final validation');
             this.emitActivity('info', 'Running post-task validation…');
             yield '\n\n### Post-task validation\n\n';
@@ -750,12 +770,13 @@ export class ChatOrchestrator {
               provider,
               validationPlan,
               displayPack,
-              tools,
+              directAgentTools,
               signal,
               sharedLoopCallbacks,
               {
                 agentMaxSteps: Math.min(agentConfig?.maxSteps ?? 10, 10),
                 restrictRunCommandToReadOnly: auditMode,
+                touchedFiles: directTouchedFiles,
               }
             )) {
               if (signal.aborted) break;
@@ -813,7 +834,7 @@ export class ChatOrchestrator {
   ): Promise<void> {
     const usageMessages =
       promptMessages ??
-      buildPrompt(session.mode, pack, userMessage, compacted, false, false, undefined, false, explicitContextBlock);
+      buildPrompt(session.mode, pack, userMessage, compacted, false, false, false, undefined, undefined, false, explicitContextBlock);
     const tokens = promptTokens || estimateChatRequestTokens({ messages: usageMessages });
     this.emitTurnTokenUsage(tokens, pack, fullResponse, usageMessages, compacted);
 
@@ -1242,6 +1263,24 @@ function formatPlanAsResponse(plan: import('./planning/PlanActEngine').ThunderPl
   return lines.join('\n');
 }
 
+const DIRECT_AGENT_EXCLUDED_TOOLS = new Set([
+  'mark_step_complete',
+  'propose_plan_mutation',
+]);
+
+export function filterDirectAgentTools(tools: ToolDefinition[]): ToolDefinition[] {
+  return tools.filter((tool) => !DIRECT_AGENT_EXCLUDED_TOOLS.has(tool.function.name));
+}
+
+export function shouldRunDirectFinalValidation(
+  taskKind: ReturnType<typeof analyzeTask>['kind'],
+  touchedFiles: string[] = []
+): boolean {
+  if (taskKind === 'question') return false;
+  if (taskKind === 'simple_edit') return touchesDocs(touchedFiles);
+  return true;
+}
+
 function shouldUsePlanner(
   mode: ThunderSession['mode'],
   taskAnalysis: ReturnType<typeof analyzeTask>,
@@ -1267,6 +1306,24 @@ function shouldExecuteSavedPlan(
     || /\bplan\b.*\b(execute|run|start|continue|resume)\b/.test(lower)
     || lower.includes('execute this plan')
     || lower.includes('run the plan');
+}
+
+function getTouchedFilesFromAudit(toolRuntime?: ToolRuntime): string[] {
+  const audit = toolRuntime?.getAuditLog() ?? [];
+  const files = new Set<string>();
+  for (const { toolName, input, result } of audit) {
+    if (!result.success || !['write_file', 'apply_patch'].includes(toolName)) continue;
+    const path = (input as Record<string, unknown>).path;
+    if (typeof path === 'string') files.add(path);
+  }
+  return [...files];
+}
+
+function touchesDocs(files: string[]): boolean {
+  return files.some((file) =>
+    /(?:^|\/)(?:apps\/docs|docs)\/.+\.(?:mdx?|tsx?|jsx?)$/i.test(file) ||
+    /\.(?:mdx?)$/i.test(file)
+  );
 }
 
 export function contextPackToBudgetView(pack: ContextPack): ContextBudgetView {

@@ -40,6 +40,7 @@ export interface PlanExecutorOptions {
   workspace?: string;
   useIsolatedPlanning?: boolean;
   sessionLog?: SessionLogService;
+  touchedFiles?: string[];
 }
 
 export interface StepExecutionResult {
@@ -443,13 +444,14 @@ export class PlanExecutor {
     loopCallbacks?: AgentLoopCallbacks,
     options?: PlanExecutorOptions
   ): AsyncIterable<string> {
-    const workspaceErrors = await this.collectWorkspaceErrors();
+    const touchedFiles = options?.touchedFiles ?? Array.from(this.touchedFiles);
+    const workspaceErrors = await this.collectWorkspaceErrors(touchedFiles);
     const messages = buildFinalValidationPrompt(
       session.mode,
       pack,
       plan,
       this.stepSummaries,
-      Array.from(this.touchedFiles),
+      touchedFiles,
       workspaceErrors
     );
 
@@ -469,10 +471,9 @@ export class PlanExecutor {
     }
   }
 
-  private async collectWorkspaceErrors(): Promise<string[]> {
+  private async collectWorkspaceErrors(files = Array.from(this.touchedFiles)): Promise<string[]> {
     if (!this.postEditValidator) return [];
 
-    const files = Array.from(this.touchedFiles);
     const errors: string[] = [];
     for (const relPath of files) {
       const result = await this.postEditValidator.validate(relPath);

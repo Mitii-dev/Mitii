@@ -83,9 +83,16 @@ export const McpServerConfigSchema = z.object({
   timeoutMs: z.number().int().positive().default(60_000),
 });
 
+export const BuiltinMcpTogglesSchema = z.object({
+  filesystem: z.boolean().default(true),
+  memory: z.boolean().default(true),
+  sequentialThinking: z.boolean().default(true),
+});
+
 export const McpConfigSchema = z.object({
   enabled: z.boolean().default(true),
   preloadBuiltin: z.boolean().default(true),
+  builtinServers: BuiltinMcpTogglesSchema.default({}),
   maxConcurrentStartup: z.number().int().min(1).max(20).default(4),
   servers: z.record(McpServerConfigSchema).default({}),
 });

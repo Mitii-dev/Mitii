@@ -26,6 +26,8 @@ export interface IndexingStatus {
   failed: number;
   total: number;
   activeWorkers: number;
+  processed: number;
+  runTotal: number;
 }
 
 export interface IndexQueueOptions {
@@ -41,6 +43,8 @@ export class IndexQueue {
   private cancelled = false;
   private failed = 0;
   private activeWorkers = 0;
+  private processed = 0;
+  private runTotal = 0;
   private maxConcurrency = 2;
   private maxFileSizeBytes = 512_000;
   private readonly chunker = new ChunkingService();
@@ -80,12 +84,23 @@ export class IndexQueue {
 
   enqueue(jobs: IndexJob[]): void {
     const existing = new Set(this.queue.map((j) => j.relPath));
+    const wasIdle = !this.running && this.queue.length === 0;
+    let enqueued = 0;
     for (const job of jobs) {
       if (!existing.has(job.relPath)) {
         this.queue.push(job);
         existing.add(job.relPath);
+        enqueued += 1;
       }
     }
+    if (wasIdle) {
+      this.failed = 0;
+      this.processed = 0;
+      this.runTotal = enqueued;
+    } else {
+      this.runTotal += enqueued;
+    }
+    this.onProgress?.(this.getStatus());
     void this.process();
   }
 
@@ -108,6 +123,8 @@ export class IndexQueue {
       failed: this.failed,
       total: this.workspace ? total : indexed,
       activeWorkers: this.activeWorkers,
+      processed: this.processed,
+      runTotal: this.runTotal,
     };
   }
 
@@ -140,6 +157,7 @@ export class IndexQueue {
         this.failed++;
         log.error('Index failed', { path: job.relPath, error: String(e) });
       } finally {
+        this.processed += 1;
         this.activeWorkers -= 1;
         this.onProgress?.(this.getStatus());
       }
@@ -164,6 +182,7 @@ export class IndexQueue {
       : this.chunker.chunkFile(indexContent, job.language);
 
     this.db.transaction(() => {
+      this.vectorService?.deleteFileChunks(job.fileId);
       this.db.raw.prepare('DELETE FROM chunks WHERE file_id = ?').run(job.fileId);
       this.db.raw.prepare('DELETE FROM symbols WHERE file_id = ?').run(job.fileId);
       this.db.raw.prepare('DELETE FROM symbol_refs WHERE file_id = ?').run(job.fileId);

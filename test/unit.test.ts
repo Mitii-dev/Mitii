@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
 import { IgnoreService } from '../src/core/indexing/IgnoreService';
 import { ChunkingService } from '../src/core/indexing/ChunkingService';
 import { sanitizeFtsQuery } from '../src/core/indexing/FtsIndex';
@@ -89,6 +89,64 @@ describe('IgnoreService', () => {
     }
   });
 
+  it('read_file accepts absolute paths inside the workspace', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-read-absolute-test-'));
+    try {
+      const { createReadFileTool } = await import('../src/core/tools/builtinTools');
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      const absPath = join(tempDir, 'apps/docs/docs/ffb-mui/api/formik-renderer.md');
+      mkdirSync(dirname(absPath), { recursive: true });
+      writeFileSync(absPath, '# FormikRenderer\n');
+
+      const result = await createReadFileTool(tempDir, ig).execute({ path: absPath });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('FormikRenderer');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('list_files accepts absolute directories inside the workspace', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-list-absolute-test-'));
+    try {
+      const { createListFilesTool } = await import('../src/core/tools/builtinTools');
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      const absDir = join(tempDir, 'apps/docs/docs/ffb-mui/api');
+      mkdirSync(absDir, { recursive: true });
+      writeFileSync(join(absDir, 'formik-renderer.md'), '# FormikRenderer\n');
+
+      const result = await createListFilesTool(tempDir, ig).execute({ path: absDir, recursive: false });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('formik-renderer.md');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects absolute paths outside the workspace', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-outside-workspace-test-'));
+    const outsideDir = mkdtempSync(join(tmpdir(), 'thunder-outside-file-test-'));
+    try {
+      const { createReadFileTool } = await import('../src/core/tools/builtinTools');
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      const outsideFile = join(outsideDir, 'secret.ts');
+      writeFileSync(outsideFile, 'export const secret = true;');
+
+      const result = await createReadFileTool(tempDir, ig).execute({ path: outsideFile });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Invalid or ignored path');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+      rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
   it('read_files recovers gracefully from batches over 12 paths', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-read-files-limit-test-'));
     try {
@@ -127,6 +185,83 @@ describe('IgnoreService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('content starts with a shell command');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses raw TypeScript generics in MDX table cells', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-mdx-generic-guard-test-'));
+    try {
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      const { createWriteFileTool } = await import('../src/core/tools/builtinTools');
+      const result = await createWriteFileTool(tempDir, ig).execute({
+        path: 'docs/ffb-mui/api/formik-renderer.md',
+        content: [
+          '### Props',
+          '',
+          '| Name | Type | Required | Description |',
+          '|------|------|----------|-------------|',
+          '| initialValues | Record<string, any> | Yes | Initial form values |',
+          '| onSubmit | (values: Record<string, any>) => void | Yes | Form submission handler |',
+        ].join('\n'),
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('raw TypeScript generic');
+      expect(result.error).toContain('Unexpected character');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('allows code-spanned TypeScript generics in MDX table cells', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-mdx-generic-ok-test-'));
+    try {
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      const { createWriteFileTool } = await import('../src/core/tools/builtinTools');
+      const result = await createWriteFileTool(tempDir, ig).execute({
+        path: 'docs/ffb-mui/api/formik-renderer.md',
+        content: [
+          '### Props',
+          '',
+          '| Name | Type | Required | Description |',
+          '|------|------|----------|-------------|',
+          '| initialValues | `Record<string, any>` | Yes | Initial form values |',
+          '| onSubmit | `(values: Record<string, any>) => void` | Yes | Form submission handler |',
+        ].join('\n'),
+      });
+
+      expect(result.success).toBe(true);
+      expect(readFileSync(join(tempDir, 'docs/ffb-mui/api/formik-renderer.md'), 'utf8')).toContain('`Record<string, any>`');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses broken LiveCodeBlock JSX attribute expressions in MDX files', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-mdx-livecodeblock-test-'));
+    try {
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      const { createWriteFileTool } = await import('../src/core/tools/builtinTools');
+      const result = await createWriteFileTool(tempDir, ig).execute({
+        path: 'docs/ffb-mui/api/formik-renderer.md',
+        content: [
+          '<LiveCodeBlock',
+          '  code={',
+          '`import React from "react";',
+          'export default function SimpleForm() { return null; }',
+          'render(<SimpleForm />);`',
+          '  componentName="SimpleForm"',
+          '/>',
+        ].join('\n'),
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Could not parse expression with acorn');
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -422,6 +557,26 @@ describe('Builtin MCP servers', () => {
     const config = defaultThunderConfig();
     const servers = resolveMcpServers({ ...config.mcp, preloadBuiltin: false }, '/tmp/project');
     expect(servers).toEqual({});
+  });
+
+  it('disables built-ins when session toggles are off', async () => {
+    const { resolveMcpServers } = await import('../src/core/mcp/McpManager');
+    const config = defaultThunderConfig();
+    const servers = resolveMcpServers(config.mcp, '/tmp/project', {
+      filesystem: true,
+      memory: false,
+      sequentialThinking: true,
+    });
+    expect(servers.memory.disabled).toBe(true);
+    expect(servers.filesystem.disabled).toBe(false);
+  });
+
+  it('defaults built-in MCP toggles on', () => {
+    expect(defaultThunderConfig().mcp.builtinServers).toEqual({
+      filesystem: true,
+      memory: true,
+      sequentialThinking: true,
+    });
   });
 });
 
@@ -998,31 +1153,80 @@ describe('shouldUsePlanner', () => {
     expect(shouldUsePlanner('agent', analysis, true, false)).toBe(true);
     expect(shouldUsePlanner('plan', analysis, true, true)).toBe(true);
   });
+
+  it('removes plan-only tools from direct agent runs', async () => {
+    const { filterDirectAgentTools, shouldRunDirectFinalValidation } = await import('../src/core/ChatOrchestrator');
+    const tools = [
+      { type: 'function', function: { name: 'read_file', description: '', parameters: {} } },
+      { type: 'function', function: { name: 'mark_step_complete', description: '', parameters: {} } },
+      { type: 'function', function: { name: 'propose_plan_mutation', description: '', parameters: {} } },
+      { type: 'function', function: { name: 'apply_patch', description: '', parameters: {} } },
+    ] as const;
+
+    expect(filterDirectAgentTools([...tools]).map((tool) => tool.function.name)).toEqual([
+      'read_file',
+      'apply_patch',
+    ]);
+    expect(shouldRunDirectFinalValidation('simple_edit')).toBe(false);
+    expect(shouldRunDirectFinalValidation('simple_edit', ['apps/docs/docs/ffb-mui/example.mdx'])).toBe(true);
+    expect(shouldRunDirectFinalValidation('implementation')).toBe(true);
+  });
 });
 
 describe('AgentTaskState', () => {
   it('blocks repeated depcheck after analyze completes', async () => {
     const { AgentTaskState } = await import('../src/core/agent/AgentTaskState');
     const state = new AgentTaskState();
+    state.setTaskContext('audit', 'Audit/cleanup task', 'remove unused dependencies');
     state.recordToolSuccess('run_command', { command: 'npx depcheck' }, 'Unused: foo');
     expect(state.getPhase()).toBe('execute');
     const blocked = state.checkBlocked('run_command', { command: 'npx depcheck --ignores=x' });
     expect(blocked).toContain('depcheck');
-    expect(blocked).toContain('write_file');
+    const soft = state.buildSoftBlockResponse('run_command', { command: 'npx depcheck --ignores=x' });
+    expect(soft).toContain('confirmed cleanup changes');
+    expect(soft).toContain('package.json');
   });
 
   it('allows depcheck again after write_file', async () => {
     const { AgentTaskState } = await import('../src/core/agent/AgentTaskState');
     const state = new AgentTaskState();
+    state.setTaskContext('audit', 'Audit/cleanup task', 'remove unused dependencies');
     state.recordToolSuccess('run_command', { command: 'npx depcheck' }, 'Unused: foo');
     state.recordToolSuccess('write_file', { path: 'package.json' }, 'Wrote file');
     const blocked = state.checkBlocked('run_command', { command: 'npx depcheck' });
     expect(blocked).toBeNull();
   });
 
+  it('blocks repeated verification after edits already verified', async () => {
+    const { AgentTaskState, normalizeDiagnosticKey } = await import('../src/core/agent/AgentTaskState');
+    const state = new AgentTaskState();
+    state.setTaskContext(
+      'simple_edit',
+      'Compiler/runtime error in apps/docs/src/components/live-demo-mui.tsx',
+      "Module not found: Error: Can't resolve 'ffb-mui'"
+    );
+    state.recordToolSuccess('apply_patch', { path: 'apps/docs/src/components/live-demo-mui.tsx' }, 'Patch applied');
+    state.recordToolSuccess(
+      'run_command',
+      { command: 'cd apps/docs && npm run build 2>&1 | grep -i "cannot find module" || echo "No errors"' },
+      'No errors'
+    );
+
+    const soft = state.buildSoftBlockResponse('run_command', {
+      command: 'cd apps/docs && npm run build 2>&1 | grep -i "cannot find module" || echo "No errors"',
+    });
+
+    expect(soft).toContain('already succeeded after edits');
+    expect(soft).toContain('Stop using tools now');
+    expect(soft).toContain('No errors');
+    expect(normalizeDiagnosticKey('cd packages/ffb-mui && npm run build:types')).toBeNull();
+    expect(normalizeDiagnosticKey('cd apps/docs && npm run build')).toBe('docs-build');
+  });
+
   it('builds pause summary with next step hint', async () => {
     const { AgentTaskState } = await import('../src/core/agent/AgentTaskState');
     const state = new AgentTaskState();
+    state.setTaskContext('audit', 'Audit/cleanup task', 'remove unused dependencies');
     state.recordToolSuccess('run_command', { command: 'npx depcheck' }, 'Unused dependencies\n* @date-io/dayjs');
     const summary = state.buildPauseSummary('remove unused deps', 'audit');
     expect(summary).toContain('@date-io/dayjs');
@@ -1037,7 +1241,28 @@ describe('AgentTaskState', () => {
     const soft = state.buildSoftBlockResponse('run_command', { command: 'npx eslint src/' });
     expect(soft).toContain('Skipped redundant');
     expect(soft).toContain('no-unused-vars');
-    expect(soft).toContain('write_file');
+    expect(soft).toContain('smallest exact next action');
+    expect(soft).not.toContain('package.json');
+  });
+
+  it('uses MDX repair guidance instead of audit cleanup guidance', async () => {
+    const { AgentTaskState } = await import('../src/core/agent/AgentTaskState');
+    const state = new AgentTaskState();
+    state.setTaskContext(
+      'simple_edit',
+      'MDX/Docusaurus compilation error in apps/docs/docs/ffb-mui/api/formik-renderer.md',
+      'Error: MDX compilation failed for file "apps/docs/docs/ffb-mui/api/formik-renderer.md"'
+    );
+    state.recordToolSuccess('run_command', { command: 'rg -n "Record<string, any>" apps/docs/docs/ffb-mui' }, 'formik-renderer.md:17');
+    const soft = state.buildSoftBlockResponse('run_command', { command: 'rg -n "Record<string, any>" apps/docs/docs/ffb-mui' });
+    expect(soft).toContain('MDX repair loop');
+    expect(soft).toContain('Read the exact MDX file');
+    expect(soft).toContain('Unexpected character `,` in name');
+    expect(soft).toContain('Could not parse expression with acorn');
+    expect(soft).toContain('form-builder.md');
+    expect(soft).toContain('Run the docs build');
+    expect(soft).not.toContain('Remove unused dependencies');
+    expect(state.buildApprovalResumeInstruction()).toContain('fix only the next exact MDX/Docusaurus failure');
   });
 });
 
@@ -1124,6 +1349,102 @@ describe('PlanActEngine read-only shell', () => {
   });
 });
 
+describe('verifyCommandDiscovery', () => {
+  it('skips missing npm scripts and placeholder npm tests', async () => {
+    const { resolveProjectVerifyCommands } = await import('../src/core/agent/verifyCommandDiscovery');
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-verify-npm-test-'));
+    try {
+      writeFileSync(join(tempDir, 'package.json'), JSON.stringify({
+        scripts: {
+          test: 'echo "Error: no test specified" && exit 1',
+          typecheck: 'tsc --noEmit',
+        },
+      }));
+
+      const plan = resolveProjectVerifyCommands(tempDir, ['npm run lint', 'npm test']);
+
+      expect(plan.commands).toEqual(['npm run typecheck']);
+      expect(plan.skipped.join('\n')).toContain('script "lint" not found');
+      expect(plan.skipped.join('\n')).toContain('test script is a placeholder');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('uses the first matching docs build command from workspace suggestions', async () => {
+    const { resolveProjectVerifyCommands } = await import('../src/core/agent/verifyCommandDiscovery');
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-verify-docs-test-'));
+    try {
+      const docsDir = join(tempDir, 'apps/docs');
+      mkdirSync(docsDir, { recursive: true });
+      writeFileSync(join(tempDir, 'package.json'), JSON.stringify({
+        scripts: { build: 'echo root build' },
+      }));
+      writeFileSync(join(docsDir, 'package.json'), JSON.stringify({
+        name: 'docs',
+        scripts: { build: 'docusaurus build' },
+      }));
+
+      const plan = resolveProjectVerifyCommands(tempDir, [
+        'cd apps/docs && npm run build',
+        'npm run build --workspace docs',
+        'pnpm --filter docs build',
+        'npm run build',
+      ]);
+
+      expect(plan.commands).toEqual(['cd apps/docs && npm run build']);
+      expect(plan.skipped.join('\n')).not.toContain('npm run build:');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('adds docs build verification when docs files changed and default verify scripts are missing', async () => {
+    const { resolveProjectVerifyCommands } = await import('../src/core/agent/verifyCommandDiscovery');
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-verify-docs-touched-test-'));
+    try {
+      const docsDir = join(tempDir, 'apps/docs');
+      mkdirSync(docsDir, { recursive: true });
+      writeFileSync(join(tempDir, 'package.json'), JSON.stringify({
+        scripts: {
+          test: 'echo "Error: no test specified" && exit 1',
+        },
+      }));
+      writeFileSync(join(docsDir, 'package.json'), JSON.stringify({
+        name: 'docs',
+        scripts: { build: 'docusaurus build' },
+      }));
+
+      const plan = resolveProjectVerifyCommands(tempDir, ['npm run lint', 'npm test'], {
+        touchedFiles: ['apps/docs/docs/ffb-mui/components/multi-text/basic-multi-text-example.mdx'],
+      });
+
+      expect(plan.commands).toEqual(['cd apps/docs && npm run build']);
+      expect(plan.skipped.join('\n')).toContain('script "lint" not found');
+      expect(plan.skipped.join('\n')).toContain('test script is a placeholder');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('discovers non-JS test commands from manifests only when appropriate', async () => {
+    const { resolveProjectVerifyCommands } = await import('../src/core/agent/verifyCommandDiscovery');
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-verify-polyglot-test-'));
+    try {
+      writeFileSync(join(tempDir, 'pom.xml'), '<project />');
+      expect(resolveProjectVerifyCommands(tempDir, ['npm run lint', 'npm test']).commands).toEqual(['mvn test']);
+
+      rmSync(join(tempDir, 'pom.xml'));
+      writeFileSync(join(tempDir, 'go.mod'), 'module example.com/app\n');
+      expect(resolveProjectVerifyCommands(tempDir, ['npm run lint', 'npm test']).commands).toEqual([]);
+      writeFileSync(join(tempDir, 'main_test.go'), 'package main\n');
+      expect(resolveProjectVerifyCommands(tempDir, ['npm run lint', 'npm test']).commands).toEqual(['go test ./...']);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('pathUtils', () => {
   it('normalizes "." to empty root', async () => {
     const { normalizeRelPath } = await import('../src/core/vscode/pathUtils');
@@ -1136,6 +1457,19 @@ describe('pathUtils', () => {
     expect(normalizeWorkspaceRoot('')).toBeNull();
     expect(normalizeWorkspaceRoot('   ')).toBeNull();
     expect(normalizeWorkspaceRoot('/tmp')).toMatch(/tmp/);
+  });
+});
+
+describe('promptBuilder', () => {
+  it('includes cause-specific MDX generic repair guidance', async () => {
+    const { buildSystemPrompt } = await import('../src/core/planning/promptBuilder');
+    const prompt = buildSystemPrompt('agent', true);
+
+    expect(prompt).toContain('Unexpected character `,` in name');
+    expect(prompt).toContain('Record<string, any>');
+    expect(prompt).toContain('Could not parse expression with acorn');
+    expect(prompt).toContain("Can't resolve");
+    expect(prompt).toContain('form-builder.md');
   });
 });
 
@@ -1168,6 +1502,22 @@ describe('PatchApplyService validateSyntax', () => {
     const svc = new PatchApplyService('/tmp');
     const result = svc.validateSyntax('data.json', '{ invalid');
     expect(result.success).toBe(false);
+  });
+
+  it('rejects MDX patches that leave raw TypeScript generics in table cells', async () => {
+    const { PatchApplyService } = await import('../src/core/apply/PatchApplyService');
+    const svc = new PatchApplyService('/tmp');
+    const result = svc.validateSyntax(
+      'docs/ffb-mui/api/formik-renderer.md',
+      [
+        '| Name | Type | Required | Description |',
+        '|------|------|----------|-------------|',
+        '| initialValues | Record<string, any> | Yes | Initial form values |',
+      ].join('\n')
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('raw TypeScript generic');
   });
 
   it('allows targeted TSX patches when the final file has many self-closing components', async () => {
@@ -1433,6 +1783,8 @@ describe('buildPrompt explicit context', () => {
       [],
       false,
       false,
+      false,
+      undefined,
       undefined,
       false,
       '<user_explicit_context><file path="a.ts">code</file></user_explicit_context>'
@@ -1456,6 +1808,49 @@ src/screens/kitchen-screen/components/DineInKanban.tsx
     expect(analysis.kind).toBe('simple_edit');
     expect(analysis.shouldPlan).toBe(false);
     expect(analysis.summary).toContain('DineInKanban.tsx');
+  });
+
+  it('routes MDX compilation failures to direct exact-file repair', async () => {
+    const { analyzeTask } = await import('../src/core/agent/TaskAnalyzer');
+    const analysis = analyzeTask(
+      'Error: MDX compilation failed for file "/repo/apps/docs/docs/ffb-mui/api/formik-renderer.md" Cause: Unexpected character `,`',
+      'agent'
+    );
+
+    expect(analysis.kind).toBe('simple_edit');
+    expect(analysis.shouldPlan).toBe(false);
+    expect(analysis.shouldVerify).toBe(true);
+    expect(analysis.summary).toContain('MDX/Docusaurus compilation error');
+    expect(analysis.summary).toContain('formik-renderer.md');
+  });
+
+  it('routes module resolution failures in docs builds to direct repair', async () => {
+    const { analyzeTask } = await import('../src/core/agent/TaskAnalyzer');
+    const analysis = analyzeTask(
+      "Module not found: Error: Can't resolve 'ffb-mui' in '/repo/apps/docs/src/components'",
+      'agent'
+    );
+
+    expect(analysis.kind).toBe('simple_edit');
+    expect(analysis.shouldPlan).toBe(false);
+    expect(analysis.shouldVerify).toBe(true);
+  });
+});
+
+describe('mdxRepairRouting', () => {
+  it('detects pasted Docusaurus build failures', async () => {
+    const { isMdxRepairTask, extractMdxErrorFile, buildMdxRepairBootstrapBlock } = await import(
+      '../src/core/agent/mdxRepairRouting'
+    );
+    const text = `Compiled with problems:
+ERROR in ./docs/ffb-mui/api/formik-renderer.md
+MDX compilation failed for file "/repo/apps/docs/docs/ffb-mui/api/formik-renderer.md"
+Cause: Could not parse expression with acorn`;
+
+    expect(isMdxRepairTask(text)).toBe(true);
+    expect(extractMdxErrorFile(text)).toContain('formik-renderer.md');
+    expect(buildMdxRepairBootstrapBlock(extractMdxErrorFile(text))).toContain('form-builder.md');
+    expect(buildMdxRepairBootstrapBlock(extractMdxErrorFile(text))).toContain("Can't resolve");
   });
 });
 

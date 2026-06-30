@@ -52,8 +52,8 @@ export class LanceDbVectorIndex implements VectorIndex {
 
   private async openTable(): Promise<LanceTable | null> {
     try {
-      const lancedb = await import('lancedb');
-      const connect = (lancedb as { connect: (uri: string) => Promise<LanceDb> }).connect;
+      const lancedb = await import('@lancedb/lancedb');
+      const connect = (lancedb as unknown as { connect: (uri: string) => Promise<LanceDb> }).connect;
       const db = await connect(this.lanceDir());
       try {
         return await db.openTable(TABLE_NAME);
@@ -201,7 +201,7 @@ export class LanceDbVectorIndex implements VectorIndex {
 
 export function isLanceDbAvailable(): boolean {
   try {
-    require.resolve('lancedb');
+    require.resolve('@lancedb/lancedb');
     return true;
   } catch {
     return false;

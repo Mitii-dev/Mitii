@@ -1,3 +1,6 @@
+import type { TaskKind } from './TaskAnalyzer';
+import { isMdxRepairTask as isMdxRepairTaskText } from './mdxRepairRouting';
+
 /** Tracks analyze → execute → verify phases and blocks redundant discovery. */
 
 export type TaskPhase = 'analyze' | 'execute' | 'verify';
@@ -11,6 +14,9 @@ export interface ToolResultRecord {
 
 export class AgentTaskState {
   private phase: TaskPhase = 'analyze';
+  private taskKind: TaskKind | undefined;
+  private taskSummary = '';
+  private originalTask = '';
   private completedKeys = new Set<string>();
   private toolResults: ToolResultRecord[] = [];
   private pauseSummary = '';
@@ -18,10 +24,19 @@ export class AgentTaskState {
 
   reset(): void {
     this.phase = 'analyze';
+    this.taskKind = undefined;
+    this.taskSummary = '';
+    this.originalTask = '';
     this.completedKeys.clear();
     this.toolResults = [];
     this.pauseSummary = '';
     this.executionToolsUsed = false;
+  }
+
+  setTaskContext(kind: TaskKind, summary: string, originalTask: string): void {
+    this.taskKind = kind;
+    this.taskSummary = summary;
+    this.originalTask = originalTask;
   }
 
   getPhase(): TaskPhase {
@@ -46,14 +61,17 @@ export class AgentTaskState {
 
     if (toolName === 'run_command') {
       const key = toolKey(toolName, input);
-      if ((key === 'depcheck' || key === 'eslint' || key === 'audit-dependencies' || key === 'audit-dead-code') && this.phase === 'analyze') {
+      if (
+        this.shouldDiagnosticAdvanceToExecute(key) &&
+        this.phase === 'analyze'
+      ) {
         this.phase = 'execute';
       }
     }
 
     if (toolName === 'execute_workspace_script') {
       const script = typeof input.script === 'string' ? input.script : '';
-      if (/audit-dependencies|audit-dead-code/.test(script) && this.phase === 'analyze') {
+      if (this.isAuditTask() && /audit-dependencies|audit-dead-code/.test(script) && this.phase === 'analyze') {
         this.phase = 'execute';
       }
     }
@@ -84,36 +102,41 @@ export class AgentTaskState {
     const key = toolKey(toolName, input);
     if (!key || !this.completedKeys.has(key)) return null;
 
-    if (this.executionToolsUsed) return null;
-
     if (toolName === 'run_command') {
+      if (this.executionToolsUsed && isPostEditVerificationKey(key)) {
+        return (
+          `${key} already succeeded after edits. Verification for this task is complete. ` +
+          'Stop calling tools and provide the final concise summary with any remaining issues.'
+        );
+      }
+      if (this.executionToolsUsed) return null;
       if (this.phase === 'execute') {
-        return `${key} already completed. Use write_file or apply_patch to apply changes (see cached output below).`;
+        return `${key} already completed. Use the cached output below instead of re-running the same command.`;
       }
       return (
         `Phase 1 (Analyze) already completed: ${key} was run successfully. ` +
-        'Do NOT re-run diagnostics. Read chat history and proceed to Phase 2 (Execute): edit files and update package.json.'
+        this.phaseRepeatInstruction()
       );
     }
 
     if (toolName === 'execute_workspace_script') {
       const script = typeof input.script === 'string' ? input.script : key;
       if (this.phase === 'execute') {
-        return `Script ${script} already completed. Use write_file or apply_patch to apply findings.`;
+        return `Script ${script} already completed. Use the cached output below instead of re-running it.`;
       }
       return (
         `Script ${script} already ran this session. ` +
-        'Read cached output from chat history. Proceed to Phase 2 (Execute).'
+        'Read cached output from chat history before deciding the next exact action.'
       );
     }
 
     if (toolName === 'list_files') {
       if (this.phase === 'execute') {
-        return `Already listed \`${input.path ?? '.'}\`. Proceed with write_file/apply_patch.`;
+        return `Already listed \`${input.path ?? '.'}\`. Use that listing unless a file change made it stale.`;
       }
       return (
         `Already listed \`${input.path ?? '.'}\` this session. ` +
-        'Use results from chat history. Proceed to Phase 2 (Execute).'
+        'Use results from chat history before deciding the next exact action.'
       );
     }
 
@@ -142,14 +165,7 @@ export class AgentTaskState {
       }
     }
 
-    lines.push(
-      '',
-      '## Required next action',
-      'Call **write_file** or **apply_patch** now — do not run more discovery commands.',
-      '- Remove unused dependencies from package.json (from depcheck output above)',
-      '- Remove unused imports from source files',
-      '- Delete orphan files only after confirming they are unreferenced',
-    );
+    lines.push('', '## Required next action', ...this.requiredNextActionLines());
 
     return lines.join('\n');
   }
@@ -179,7 +195,7 @@ export class AgentTaskState {
 
     const last = this.toolResults[this.toolResults.length - 1];
     if (last && !this.executionToolsUsed) {
-      lines.push('', `Next step: apply changes based on ${last.key} results (remove unused deps/imports, delete orphan files).`);
+      lines.push('', `Next step: ${this.nextStepSummary(last.key)}.`);
     } else if (this.executionToolsUsed) {
       lines.push('', 'Next step: continue execution or run Phase 3 verification (lint/test/build).');
     }
@@ -191,6 +207,9 @@ export class AgentTaskState {
     const lines = [
       `Current phase: **${this.phase.toUpperCase()}** (${phaseInstructions(this.phase)})`,
     ];
+    if (this.taskKind || this.taskSummary) {
+      lines.push(`Task context: ${this.taskKind ?? 'task'}${this.taskSummary ? ` — ${this.taskSummary}` : ''}`);
+    }
 
     if (this.completedKeys.size > 0) {
       lines.push('', 'Completed this session (do NOT repeat until Execute phase progresses):');
@@ -207,7 +226,7 @@ export class AgentTaskState {
     }
 
     if (this.phase === 'execute') {
-      lines.push('', '**ACTION REQUIRED**: You are in EXECUTE phase. Call write_file or apply_patch next — do not run run_command for discovery.');
+      lines.push('', `**ACTION REQUIRED**: ${this.executePhaseInstruction()}`);
     }
 
     if (this.pauseSummary) {
@@ -215,6 +234,100 @@ export class AgentTaskState {
     }
 
     return lines.join('\n');
+  }
+
+  buildApprovalResumeInstruction(): string {
+    if (this.isAuditTask()) {
+      return 'Analysis phase is complete for the approved audit command output above. Proceed to Phase 2 (Execute): edit only the confirmed unused dependencies/imports/files, then verify.';
+    }
+    if (this.isMdxRepairTask()) {
+      return 'Use the approved output above to fix only the next exact MDX/Docusaurus failure. Read the named file, patch that file, then run the docs build again. Do not guess sibling files unless the build names them.';
+    }
+    return 'Use the approved tool output above as current context. Continue with the smallest exact file edit or verification step required by the user request; do not restart diagnostics.';
+  }
+
+  private shouldDiagnosticAdvanceToExecute(key: string | null): boolean {
+    if (!key) return false;
+    if (this.isAuditTask()) {
+      return key === 'depcheck' || key === 'eslint' || key === 'audit-dependencies' || key === 'audit-dead-code';
+    }
+    return key === 'eslint';
+  }
+
+  private phaseRepeatInstruction(): string {
+    if (this.isAuditTask()) {
+      return 'Do NOT re-run diagnostics. Read chat history and proceed to Phase 2 (Execute): edit only confirmed cleanup targets.';
+    }
+    if (this.isMdxRepairTask()) {
+      return 'Do NOT re-run the same discovery command. Read the exact MDX file from the error, patch that file, then verify with the docs build.';
+    }
+    return 'Do NOT re-run the same command just to recover context. Use cached output, then inspect or patch the exact file named by the error.';
+  }
+
+  private requiredNextActionLines(): string[] {
+    if (this.executionToolsUsed) {
+      return [
+        'A post-edit verification command already succeeded.',
+        'Stop using tools now and answer with the final summary: what changed, verification run, and remaining issues.',
+      ];
+    }
+
+    if (this.isAuditTask()) {
+      return [
+        'Call **write_file** or **apply_patch** for confirmed cleanup changes; do not run more broad discovery commands.',
+        '- Remove unused dependencies from package.json only when audit output confirms they are unused.',
+        '- Remove unused imports from source files.',
+        '- Delete orphan files only after confirming they are unreferenced.',
+      ];
+    }
+
+    if (this.isMdxRepairTask()) {
+      return [
+        'Follow the MDX repair loop:',
+        '1. Read the exact MDX file named by the error.',
+        '2. Read a working sibling doc in the same folder that already uses LiveCodeBlock (for example form-builder.md).',
+        '3. For "Unexpected character `,` in name", code-span raw TypeScript generics in Markdown table cells.',
+        '4. For "Could not parse expression with acorn", fix LiveCodeBlock syntax: use `code={` + backtick on the same line, close with `` `} ``, and do not include render() in the code string.',
+        '5. For "Can\'t resolve", check workspace deps in apps/docs/package.json and run pnpm install from the monorepo root.',
+        '6. Run the docs build (read package.json scripts first — do not assume npm run lint exists).',
+        '7. If the build fails, fix only the next exact file from the build output.',
+      ];
+    }
+
+    return [
+      'Use the cached output and continue with the smallest exact next action.',
+      '- If the failure names a file, read or patch that exact file.',
+      '- If enough context is already present, apply the edit before running more diagnostics.',
+      '- Verify with the narrowest relevant command after edits.',
+    ];
+  }
+
+  private nextStepSummary(lastKey: string): string {
+    if (this.isAuditTask()) {
+      return `apply confirmed cleanup changes based on ${lastKey} results`;
+    }
+    if (this.isMdxRepairTask()) {
+      return `fix the exact MDX file indicated by ${lastKey} output, then rerun the docs build`;
+    }
+    return `continue from ${lastKey} results with the smallest exact edit or verification step`;
+  }
+
+  private executePhaseInstruction(): string {
+    if (this.isAuditTask()) {
+      return 'You are in EXECUTE phase. Apply confirmed cleanup edits; do not run broad discovery again until at least one edit succeeds.';
+    }
+    if (this.isMdxRepairTask()) {
+      return 'Patch the exact MDX file named by the error, then verify with the docs build. Do not broaden to unrelated docs.';
+    }
+    return 'Use cached tool output to make the smallest exact edit, or verify if edits already succeeded.';
+  }
+
+  private isAuditTask(): boolean {
+    return this.taskKind === 'audit';
+  }
+
+  private isMdxRepairTask(): boolean {
+    return isMdxRepairTaskText(`${this.originalTask}\n${this.taskSummary}`);
   }
 }
 
@@ -248,10 +361,20 @@ export function normalizeDiagnosticKey(command: string): string | null {
   if (/audit-dependencies/.test(cmd)) return 'audit-dependencies';
   if (/\beslint\b/.test(cmd)) return cmd.includes('--fix') ? 'eslint:fix' : 'eslint';
   if (/\bnpm\s+(ls|list)\b/.test(cmd)) return 'npm-ls';
+  if (/\bdocusaurus\s+build\b/.test(cmd) || /\bnpm\s+run\s+build(?:\s|$)/.test(cmd)) return 'docs-build';
+  if (/\bpnpm\s+--filter\s+docs\s+build\b/.test(cmd)) return 'docs-build';
   if (/\bgrep\b|\brg\b/.test(cmd)) return 'grep/rg';
   if (/\bgit\s+diff\b/.test(cmd)) return 'git-diff';
   if (/^cat\s+.*package\.json/.test(cmd)) return 'read-package-json';
   return null;
+}
+
+function isPostEditVerificationKey(key: string): boolean {
+  return key === 'docs-build' ||
+    key === 'eslint' ||
+    key === 'eslint:fix' ||
+    key === 'npm-ls' ||
+    key === 'git-diff';
 }
 
 function phaseInstructions(phase: TaskPhase): string {

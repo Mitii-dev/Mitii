@@ -1,5 +1,4 @@
-import { existsSync, readFileSync } from 'fs';
-import { join, resolve } from 'path';
+import { resolve } from 'path';
 import { z } from 'zod';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { getDefaultEnvironment, StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -8,6 +7,8 @@ import type { ToolRuntime } from '../tools/ToolRuntime';
 import type { Tool, ToolResult } from '../tools/types';
 import type { McpConfig, McpServerConfig } from '../config/schema';
 import { buildBuiltinMcpServers, isBuiltinMcpServerName } from './builtinServers';
+import { applyMcpToggles, type McpToggles } from './mcpToggles';
+import { loadWorkspaceMcpServers } from './mcpWorkspaceConfig';
 import { createLogger } from '../telemetry/Logger';
 
 const log = createLogger('McpManager');
@@ -28,10 +29,6 @@ type ConnectedServer = {
   tools: McpSdkTool[];
 };
 
-type FileMcpConfig = {
-  mcpServers?: Record<string, Partial<McpServerConfig>>;
-};
-
 export class McpManager {
   private servers = new Map<string, ConnectedServer>();
   private statuses = new Map<string, McpServerStatus>();
@@ -44,14 +41,19 @@ export class McpManager {
     return Array.from(this.servers.values()).reduce((sum, server) => sum + server.tools.length, 0);
   }
 
-  async reload(config: McpConfig, workspace: string, toolRuntime: ToolRuntime): Promise<void> {
+  async reload(
+    config: McpConfig,
+    workspace: string,
+    toolRuntime: ToolRuntime,
+    builtinToggles?: McpToggles
+  ): Promise<void> {
     toolRuntime.unregisterByPrefix(MCP_TOOL_PREFIX);
     await this.closeAll();
     this.statuses.clear();
 
     if (!config.enabled) return;
 
-    const servers = resolveMcpServers(config, workspace);
+    const servers = resolveMcpServers(config, workspace, builtinToggles);
 
     await runWithConcurrency(Object.entries(servers), config.maxConcurrentStartup, async ([name, serverConfig]) => {
       const builtin = config.preloadBuiltin && isBuiltinMcpServerName(name);
@@ -175,48 +177,18 @@ function sanitizeEnv(env: Record<string, string | undefined>): Record<string, st
   return out;
 }
 
-export function resolveMcpServers(config: McpConfig, workspace: string): Record<string, McpServerConfig> {
+export function resolveMcpServers(
+  config: McpConfig,
+  workspace: string,
+  builtinToggles?: McpToggles
+): Record<string, McpServerConfig> {
   const builtin = config.preloadBuiltin ? buildBuiltinMcpServers(workspace) : {};
-  return {
+  const merged = {
     ...builtin,
     ...config.servers,
     ...loadWorkspaceMcpServers(workspace),
   };
-}
-
-function loadWorkspaceMcpServers(workspace: string): Record<string, McpServerConfig> {
-  if (!workspace) return {};
-  const files = [join(workspace, '.mitii', 'mcp.json'), join(workspace, '.mcp.json')];
-  const merged: Record<string, McpServerConfig> = {};
-
-  for (const file of files) {
-    if (!existsSync(file)) continue;
-    try {
-      const raw = JSON.parse(readFileSync(file, 'utf-8')) as FileMcpConfig;
-      for (const [name, value] of Object.entries(raw.mcpServers ?? {})) {
-        merged[name] = normalizeMcpServerConfig(value);
-      }
-    } catch (error) {
-      log.warn('Could not read MCP config file', {
-        file,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  return merged;
-}
-
-function normalizeMcpServerConfig(value: Partial<McpServerConfig>): McpServerConfig {
-  return {
-    disabled: value.disabled ?? false,
-    type: value.type ?? 'stdio',
-    command: value.command ?? '',
-    args: value.args ?? [],
-    env: value.env ?? {},
-    cwd: value.cwd,
-    timeoutMs: value.timeoutMs ?? 60_000,
-  };
+  return builtinToggles ? applyMcpToggles(merged, builtinToggles) : merged;
 }
 
 async function runWithConcurrency<T>(

@@ -14,6 +14,7 @@ import type { HybridRetriever } from '../context/HybridRetriever';
 import type { ContextBudgeter } from '../context/ContextBudgeter';
 import type { MemoryService } from '../memory/MemoryService';
 import { PatchApplyService } from '../apply/PatchApplyService';
+import { validateMdxContent } from '../apply/mdxValidation';
 import { isDangerousCommand } from '../safety/ToolPolicyEngine';
 import { isReadOnlyCommand, stripLeadingCd } from '../planning/PlanActEngine';
 import { normalizeRelPath, normalizeWorkspaceRoot } from '../vscode/pathUtils';
@@ -58,10 +59,36 @@ function blockedPath(relPath: string, ignoreService: IgnoreService): boolean {
   return ignoreService.isIgnored(relPath);
 }
 
-function resolveToolPath(_workspace: string, rawPath: string, ignoreService: IgnoreService): string | null {
-  const relPath = normalizeRelPath(rawPath);
+function resolveToolPath(workspace: string, rawPath: string, ignoreService: IgnoreService): string | null {
+  const relPath = resolveWorkspaceRelPath(workspace, rawPath);
   if (!relPath) return null;
   if (blockedPath(relPath, ignoreService)) return null;
+  return relPath;
+}
+
+function resolveToolDirPath(workspace: string, rawPath: string | undefined, ignoreService: IgnoreService): string | null {
+  const relPath = resolveWorkspaceRelPath(workspace, rawPath);
+  if (relPath === null) return null;
+  if (relPath && blockedPath(relPath, ignoreService)) return null;
+  return relPath;
+}
+
+function resolveWorkspaceRelPath(workspace: string, rawPath: string | undefined): string | null {
+  const normalizedWorkspace = normalizeWorkspaceRoot(workspace);
+  if (!normalizedWorkspace) return null;
+
+  const trimmed = rawPath?.trim() ?? '';
+  if (!trimmed || trimmed === '.' || trimmed === './') return '';
+
+  if (isAbsolute(trimmed)) {
+    const relPath = relative(normalizedWorkspace, resolve(trimmed)).replace(/\\/g, '/');
+    if (!relPath || relPath === '.') return '';
+    if (relPath.startsWith('..') || isAbsolute(relPath)) return null;
+    return normalizeRelPath(relPath);
+  }
+
+  const relPath = normalizeRelPath(trimmed);
+  if (relPath.includes('..')) return null;
   return relPath;
 }
 
@@ -71,6 +98,9 @@ const SHELL_COMMAND_CONTENT_PREFIX =
   /^(?:git\s+(?:checkout|restore|reset|clean|pull|push|commit|merge|rebase|switch)\b|(?:npm|yarn|pnpm|npx)\s+|rm\s+-|mv\s+|cp\s+|sed\s+-i\b|cat\s+>|echo\s+.+>|python(?:3)?\s+|node\s+|bash\s+|sh\s+)/i;
 
 function validateWriteFileContent(relPath: string, content: string): string | undefined {
+  const mdxValidationError = validateMdxContent(relPath, content);
+  if (mdxValidationError) return mdxValidationError;
+
   if (!SOURCE_FILE_PATTERN.test(relPath)) return undefined;
 
   const firstLine = content.trimStart().split(/\r?\n/, 1)[0]?.trim() ?? '';
@@ -163,8 +193,8 @@ export function createListFilesTool(
     risk: 'low',
     inputSchema: z.object({ path: z.string().optional(), recursive: z.boolean().optional() }),
     async execute(input): Promise<ToolResult> {
-      const dirPath = normalizeRelPath(input.path);
-      if (dirPath && blockedPath(dirPath, ignoreService)) {
+      const dirPath = resolveToolDirPath(workspace, input.path, ignoreService);
+      if (dirPath === null) {
         return { success: false, output: '', error: 'Path is ignored or blocked' };
       }
       const listRel = dirPath || '.';

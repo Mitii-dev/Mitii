@@ -117,6 +117,11 @@ function isReadOnlyCommandSegment(cmd: string, extraPatterns: string[] = []): bo
   if (/^npm\s+(ls|list|outdated|audit|run\s+(lint|test|typecheck|check|build|compile))\b/i.test(cmd)) return true;
   if (/^yarn\s+(why|list|info|lint|test|build|compile|typecheck|check)\b/i.test(cmd)) return true;
   if (/^pnpm\s+(why|list|lint|test|build|compile|typecheck|check)\b/i.test(cmd)) return true;
+  if (/^(?:\.\/mvnw|mvn)\s+test\b/i.test(cmd)) return true;
+  if (/^(?:\.\/gradlew|gradle)\s+test\b/i.test(cmd)) return true;
+  if (/^cargo\s+test\b/i.test(cmd)) return true;
+  if (/^go\s+test\b/i.test(cmd)) return true;
+  if (/^(?:python(?:3)?\s+-m\s+pytest|pytest)\b/i.test(cmd)) return true;
   if (/^(grep|rg|find|cat|head|tail|sed|wc|sort|uniq|ls|tree|which|echo)\b/i.test(cmd)) return true;
   if (/^git\s+(status|diff|log|ls-files)\b/i.test(cmd)) return true;
   return false;

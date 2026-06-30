@@ -29,10 +29,10 @@ const QUESTION =
   /^(what|how|why|where|when|who|which|explain|describe|tell me|show me|list|summarize|overview)\b/i;
 
 const DIRECT_ERROR_FIX =
-  /\b(syntax error|type error|referenceerror|cannot find module|missing semicolon|unexpected token|parse error|compilation error|is not defined|enoent)\b/i;
+  /\b(syntax error|type error|referenceerror|cannot find module|missing semicolon|unexpected token|unexpected character|parse error|compilation (?:error|failed)|mdx compilation failed|could not parse expression|is not defined|enoent|can'?t resolve|module not found|compiled with problems)\b/i;
 
 const FILE_PATH_IN_TEXT =
-  /(?:^|\s|['"`])([\w./-]+\.(?:tsx?|jsx?|py|go|rs|json|css|scss|md))\b/i;
+  /(?:^|\s|['"`])([\w./-]+\.(?:tsx?|jsx?|py|go|rs|json|css|scss|mdx?))\b/i;
 
 const SIMPLE_EDIT =
   /\b(fix typo|rename|change (?:the )?(?:name|text|label)|update import|add comment|format)\b/i;
@@ -133,15 +133,20 @@ function classifyTask(text: string): TaskAnalysis {
 
   if (DIRECT_ERROR_FIX.test(text)) {
     const fileMatch = text.match(FILE_PATH_IN_TEXT);
+    const isMdx = /\bmdx\b|docusaurus|\.mdx?\b/i.test(text);
     return {
       kind: 'simple_edit',
       complexity: 'low',
       shouldPlan: false,
       shouldVerify: true,
       shouldUseSubagents: false,
-      summary: fileMatch
-        ? `Compiler/runtime error in ${fileMatch[1]} — fix directly without replanning.`
-        : 'Error report — fix directly without replanning.',
+      summary: isMdx
+        ? fileMatch
+          ? `MDX/Docusaurus compilation error in ${fileMatch[1]} — read the named file, patch only that file first, then rerun the docs build.`
+          : 'MDX/Docusaurus compilation error — fix the named build-output file directly, then rerun the docs build.'
+        : fileMatch
+          ? `Compiler/runtime error in ${fileMatch[1]} — fix directly without replanning.`
+          : 'Error report — fix directly without replanning.',
     };
   }
 

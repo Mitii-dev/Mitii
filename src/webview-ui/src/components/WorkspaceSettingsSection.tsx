@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AGENT_NAME } from '../../../shared/brand';
-import type { WorkspaceNoticeView } from '../../../vscode/webview/messages';
+import type { IndexingStatusView, WorkspaceNoticeView } from '../../../vscode/webview/messages';
 import { SettingNote } from './SettingNote';
 
 interface WorkspaceSettingsSectionProps {
@@ -10,8 +10,7 @@ interface WorkspaceSettingsSectionProps {
   workspaceOverride: string;
   usingWorkspaceOverride: boolean;
   indexDbPath: string;
-  indexed: number;
-  indexingRunning: boolean;
+  indexing: IndexingStatusView;
   workspaceNotice: WorkspaceNoticeView | null;
   onPickFolder: () => void;
   onSetOverride: (path: string) => void;
@@ -26,8 +25,7 @@ export function WorkspaceSettingsSection({
   workspaceOverride,
   usingWorkspaceOverride,
   indexDbPath,
-  indexed,
-  indexingRunning,
+  indexing,
   workspaceNotice,
   onPickFolder,
   onSetOverride,
@@ -35,6 +33,15 @@ export function WorkspaceSettingsSection({
   onIndex,
 }: WorkspaceSettingsSectionProps) {
   const [overrideInput, setOverrideInput] = useState(workspaceOverride);
+  const runTotal = indexing.runTotal ?? 0;
+  const processed = Math.min(indexing.processed ?? 0, runTotal);
+  const activeWorkers = indexing.activeWorkers ?? 0;
+  const progressPct = runTotal > 0 ? Math.round((processed / runTotal) * 100) : 0;
+  const progressLabel = indexing.running
+    ? `${processed}/${runTotal} files · ${indexing.queued} queued${activeWorkers > 0 ? ` · ${activeWorkers} active` : ''}`
+    : indexing.failed > 0
+      ? `${indexing.indexed}${indexing.total > 0 ? `/${indexing.total}` : ''} indexed · ${indexing.failed} failed`
+      : `${indexing.indexed}${indexing.total > 0 ? `/${indexing.total}` : ''} indexed`;
 
   useEffect(() => {
     setOverrideInput(workspaceOverride);
@@ -73,7 +80,7 @@ export function WorkspaceSettingsSection({
         </div>
         <div className="settings-status-item">
           <span className="settings-label">Indexed files</span>
-          <strong>{indexed}{indexingRunning ? ' (running…)' : ''}</strong>
+          <strong>{progressLabel}</strong>
         </div>
       </div>
 
@@ -148,10 +155,30 @@ export function WorkspaceSettingsSection({
         type="button"
         className="btn btn--secondary"
         onClick={onIndex}
-        disabled={!workspaceOpen || indexingRunning}
+        disabled={!workspaceOpen || indexing.running}
       >
-        {indexingRunning ? 'Indexing…' : 'Index workspace'}
+        {indexing.running ? 'Indexing…' : 'Reindex workspace'}
       </button>
+
+      <div
+        className={`settings-index-progress${indexing.running ? ' settings-index-progress--active' : ''}`}
+        role={indexing.running ? 'progressbar' : 'status'}
+        aria-valuemin={0}
+        aria-valuemax={runTotal || 100}
+        aria-valuenow={indexing.running ? processed : undefined}
+        aria-label="Workspace indexing progress"
+      >
+        <div className="settings-index-progress__track">
+          <div
+            className="settings-index-progress__bar"
+            style={{ width: `${indexing.running && runTotal > 0 ? progressPct : 100}%` }}
+          />
+        </div>
+        <div className="settings-index-progress__meta">
+          <span>{indexing.running ? `Indexing ${progressPct}%` : 'Ready'}</span>
+          <span>{progressLabel}</span>
+        </div>
+      </div>
     </section>
   );
 }

@@ -111,6 +111,10 @@ export class VectorIndexService {
     }
   }
 
+  deleteFileChunks(fileId: number): void {
+    this.index.deleteFileChunks(fileId);
+  }
+
   count(workspace: string): number {
     return this.index.count(workspace);
   }

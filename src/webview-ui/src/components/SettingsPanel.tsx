@@ -3,12 +3,16 @@ import { AGENT_NAME } from '../../../shared/brand';
 import type {
   ApprovalMode,
   ContextToggles,
+  McpToggles,
   ProviderSettingsPayload,
   SafetySettingsPayload,
   SettingsView,
+  IndexingStatusView,
   ThunderSettingsPayload,
+  VectorIndexStatusView,
   WorkspaceNoticeView,
 } from '../../../vscode/webview/messages';
+import { McpServersEditor } from './McpServersEditor';
 import { WorkspaceSettingsSection } from './WorkspaceSettingsSection';
 import { SettingsCard } from './SettingsCard';
 import { SettingSwitch } from './SettingSwitch';
@@ -61,6 +65,33 @@ const CONTEXT_TOGGLES: Array<{
     label: 'Session memory',
     description: 'Notes from past tasks injected into new chats.',
   },
+  {
+    key: 'vectors',
+    label: 'Semantic vectors',
+    description: 'Conceptual code search — finds related files even when wording differs.',
+  },
+];
+
+const MCP_BUILTIN_TOGGLES: Array<{
+  key: keyof McpToggles;
+  label: string;
+  description: string;
+}> = [
+  {
+    key: 'filesystem',
+    label: 'Filesystem',
+    description: 'Scoped file access via @modelcontextprotocol/server-filesystem.',
+  },
+  {
+    key: 'memory',
+    label: 'MCP memory',
+    description: 'Knowledge-graph memory server. Thunder also has built-in session memory.',
+  },
+  {
+    key: 'sequentialThinking',
+    label: 'Sequential thinking',
+    description: 'Structured reasoning helper for multi-step problems.',
+  },
 ];
 
 interface SettingsPanelProps {
@@ -71,10 +102,11 @@ interface SettingsPanelProps {
   workspaceOverride: string;
   usingWorkspaceOverride: boolean;
   indexDbPath: string;
-  indexed: number;
-  indexingRunning: boolean;
+  indexing: IndexingStatusView;
   workspaceNotice: WorkspaceNoticeView | null;
   contextToggles: ContextToggles;
+  mcpToggles: McpToggles;
+  vectorIndex: VectorIndexStatusView;
   onSaveApiKey: (key: string) => void;
   onSaveAllSettings: (settings: ThunderSettingsPayload) => void;
   onTestConnection: (settings: ProviderSettingsPayload) => void;
@@ -83,6 +115,8 @@ interface SettingsPanelProps {
   onClearWorkspaceOverride: () => void;
   onIndex: () => void;
   onToggleContext: (source: keyof ContextToggles, enabled: boolean) => void;
+  onToggleMcp: (server: keyof McpToggles, enabled: boolean) => void;
+  onSaveCustomMcpServers: (servers: import('../../../vscode/webview/messages').McpCustomServerView[]) => void;
   onSaveProviderSettings: (settings: ProviderSettingsPayload) => void;
 }
 
@@ -94,10 +128,11 @@ export function SettingsPanel({
   workspaceOverride,
   usingWorkspaceOverride,
   indexDbPath,
-  indexed,
-  indexingRunning,
+  indexing,
   workspaceNotice,
   contextToggles,
+  mcpToggles,
+  vectorIndex,
   onSaveApiKey,
   onSaveAllSettings,
   onTestConnection,
@@ -106,6 +141,8 @@ export function SettingsPanel({
   onClearWorkspaceOverride,
   onIndex,
   onToggleContext,
+  onToggleMcp,
+  onSaveCustomMcpServers,
   onSaveProviderSettings,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('workspace');
@@ -131,6 +168,10 @@ export function SettingsPanel({
   const [mcpEnabled, setMcpEnabled] = useState(settings.mcpEnabled);
   const [sessionLogging, setSessionLogging] = useState(settings.sessionLogging);
   const [debugMetrics, setDebugMetrics] = useState(settings.debugMetrics);
+  const [vectorsEnabled, setVectorsEnabled] = useState(settings.vectorsEnabled);
+  const [embeddingProvider, setEmbeddingProvider] = useState<'minilm' | 'hash'>(settings.embeddingProvider);
+  const [vectorBackend, setVectorBackend] = useState<'sqlite' | 'lancedb'>(settings.vectorBackend);
+  const [hybridMemorySearch, setHybridMemorySearch] = useState(settings.hybridMemorySearch);
 
   useEffect(() => {
     setProviderType(settings.providerType as 'echo' | 'openai-compatible');
@@ -147,6 +188,10 @@ export function SettingsPanel({
     setMcpEnabled(settings.mcpEnabled);
     setSessionLogging(settings.sessionLogging);
     setDebugMetrics(settings.debugMetrics);
+    setVectorsEnabled(settings.vectorsEnabled);
+    setEmbeddingProvider(settings.embeddingProvider);
+    setVectorBackend(settings.vectorBackend);
+    setHybridMemorySearch(settings.hybridMemorySearch);
     setDirty(false);
   }, [settings]);
 
@@ -175,7 +220,13 @@ export function SettingsPanel({
         showDiffPreview,
       },
       safety: deriveSafetySettings(approvalMode),
-      mcp: { enabled: mcpEnabled },
+      mcp: { enabled: mcpEnabled, builtinServers: mcpToggles },
+      indexing: {
+        vectorsEnabled,
+        embeddingProvider,
+        vectorBackend,
+        hybridMemorySearch,
+      },
       telemetry: {
         sessionLogging,
         debugMetrics: settings.localDebugAvailable && sessionLogging ? debugMetrics : false,
@@ -276,8 +327,7 @@ export function SettingsPanel({
             workspaceOverride={workspaceOverride}
             usingWorkspaceOverride={usingWorkspaceOverride}
             indexDbPath={indexDbPath}
-            indexed={indexed}
-            indexingRunning={indexingRunning}
+            indexing={indexing}
             workspaceNotice={workspaceNotice}
             onPickFolder={onPickWorkspaceFolder}
             onSetOverride={onSetWorkspaceOverride}
@@ -466,6 +516,95 @@ export function SettingsPanel({
             </SettingsCard>
 
             <SettingsCard
+              title="Semantic vector search"
+              description="Local embeddings for conceptual code search, smarter reranking, and hybrid memory recall."
+            >
+              <SettingSwitch
+                label="Enable vector indexing"
+                description="Embed code chunks during indexing. Uses MiniLM locally when available, hash fallback otherwise."
+                checked={vectorsEnabled}
+                onChange={(v) => {
+                  setVectorsEnabled(v);
+                  markDirty();
+                }}
+              />
+
+              <label className="settings-field">
+                <span className="settings-label">Embedding provider</span>
+                <select
+                  className="settings-input settings-select"
+                  value={embeddingProvider}
+                  disabled={!vectorsEnabled}
+                  onChange={(e) => {
+                    setEmbeddingProvider(e.target.value as 'minilm' | 'hash');
+                    markDirty();
+                  }}
+                >
+                  <option value="minilm">
+                    MiniLM (Xenova/all-MiniLM-L6-v2){settings.minilmAvailable ? '' : ' — not installed'}
+                  </option>
+                  <option value="hash">Hash fallback (lightweight, lower quality)</option>
+                </select>
+                <span className="settings-hint">
+                  {settings.minilmAvailable
+                    ? 'MiniLM runs fully on your machine via @xenova/transformers.'
+                    : 'Install @xenova/transformers for better semantic search, or use hash fallback.'}
+                </span>
+              </label>
+
+              <label className="settings-field">
+                <span className="settings-label">Vector storage backend</span>
+                <select
+                  className="settings-input settings-select"
+                  value={vectorBackend}
+                  disabled={!vectorsEnabled}
+                  onChange={(e) => {
+                    setVectorBackend(e.target.value as 'sqlite' | 'lancedb');
+                    markDirty();
+                  }}
+                >
+                  <option value="sqlite">SQLite (.mitii/mitii.sqlite)</option>
+                  <option value="lancedb">
+                    LanceDB (.mitii/lance/){settings.lancedbAvailable ? '' : ' — not installed'}
+                  </option>
+                </select>
+                <span className="settings-hint">
+                  LanceDB scales better on large repos; SQLite is simpler and always available.
+                </span>
+              </label>
+
+              <SettingSwitch
+                label="Hybrid memory search"
+                description="Combine keyword + vector search when recalling saved observations."
+                checked={hybridMemorySearch}
+                disabled={!vectorsEnabled}
+                onChange={(v) => {
+                  setHybridMemorySearch(v);
+                  markDirty();
+                }}
+              />
+
+              <div className="settings-stats-row">
+                <div className="settings-stat">
+                  <span className="settings-stat__value">{vectorIndex.embeddedChunks.toLocaleString()}</span>
+                  <span className="settings-stat__label">Embedded chunks</span>
+                </div>
+                <div className="settings-stat">
+                  <span className="settings-stat__value">{vectorIndex.provider}</span>
+                  <span className="settings-stat__label">Provider active</span>
+                </div>
+                <div className="settings-stat">
+                  <span className="settings-stat__value">{vectorIndex.backend}</span>
+                  <span className="settings-stat__label">Backend</span>
+                </div>
+              </div>
+
+              <p className="settings-inline-note">
+                Save settings after changing vector options, then run <strong>Reindex workspace</strong> to rebuild embeddings.
+              </p>
+            </SettingsCard>
+
+            <SettingsCard
               title="Context sources"
               description="Mixed into the prompt before the model runs. Toggles apply immediately."
             >
@@ -475,6 +614,7 @@ export function SettingsPanel({
                 label={label}
                 description={description}
                 checked={contextToggles[key]}
+                disabled={key === 'vectors' && !vectorsEnabled}
                 onChange={(enabled) => onToggleContext(key, enabled)}
               />
             ))}
@@ -486,17 +626,32 @@ export function SettingsPanel({
           <>
             <SettingsCard
               title="Model Context Protocol (MCP)"
-              description="Built-in free servers (filesystem, memory, sequential-thinking) start automatically. Add more via VS Code settings or workspace mcp.json."
+              description="Enable built-in servers per task and add custom MCP servers without editing JSON."
             >
               <SettingSwitch
                 label="Enable MCP"
-                description="Load built-in servers plus thunder.mcp.servers, .mitii/mcp.json, and .mcp.json."
+                description="Load MCP tools for this session. Built-in servers can be toggled below."
                 checked={mcpEnabled}
                 onChange={(v) => {
                   setMcpEnabled(v);
                   markDirty();
                 }}
               />
+
+              <div className="settings-subsection">
+                <h4 className="settings-subsection__title">Built-in servers</h4>
+                <p className="settings-inline-note">Toggles apply immediately for this session. Save settings to remember defaults.</p>
+                {MCP_BUILTIN_TOGGLES.map(({ key, label, description }) => (
+                  <SettingSwitch
+                    key={key}
+                    label={label}
+                    description={description}
+                    checked={mcpToggles[key]}
+                    disabled={!mcpEnabled}
+                    onChange={(enabled) => onToggleMcp(key, enabled)}
+                  />
+                ))}
+              </div>
 
               <div className="settings-stats-row">
                 <div className="settings-stat">
@@ -532,11 +687,20 @@ export function SettingsPanel({
                 </ul>
               ) : (
                 <p className="settings-inline-note">
-                  No MCP servers connected yet. Built-in servers start when a workspace folder is open.
-                  Add more in VS Code settings under <code>thunder.mcp.servers</code> or{' '}
-                  <code>.mitii/mcp.json</code>.
+                  No MCP servers connected yet. Built-in servers start when a workspace folder is open and MCP is enabled.
                 </p>
               )}
+            </SettingsCard>
+
+            <SettingsCard
+              title="Custom MCP servers"
+              description="Add stdio MCP servers from the UI instead of hand-editing mcp.json."
+            >
+              <McpServersEditor
+                servers={settings.customMcpServers}
+                workspaceOpen={workspaceOpen}
+                onSave={onSaveCustomMcpServers}
+              />
             </SettingsCard>
 
             <SettingsCard title="Project rules" description="Automatically loaded from your workspace.">

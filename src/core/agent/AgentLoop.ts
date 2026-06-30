@@ -17,7 +17,7 @@ If edits are required now, state exactly what must change and which files are af
 
 const PHASE_LOCK_RUN_COMMAND_ESCALATION = `SYSTEM: The previous run_command calls were blocked by the current plan phase.
 Do NOT retry the same arbitrary shell command.
-In Verify, use the diagnostics tool or a recognized verification command such as npm run lint, npm run test, npm run build, npm run compile, or npx tsc --noEmit.
+In Verify, use the diagnostics tool or a recognized verification command. Read package.json scripts first — do not assume npm run lint exists. For docs/MDX tasks prefer the docs build (for example cd apps/docs && npm run build).
 For targeted inspection, use read_file/search instead of shell. If verification cannot proceed, summarize the blocked command and the remaining risk.`;
 
 const VALIDATION_BLOCK_MESSAGE =

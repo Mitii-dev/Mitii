@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { LOGO_EMOJI } from '../../shared/brand';
+import { AGENT_NAME } from '../../shared/brand';
 import { useVsCodeMessaging } from './state/useVsCodeMessaging';
 import { MessageList } from './components/MessageList';
 import { ChatInput } from './components/ChatInput';
@@ -29,7 +29,17 @@ export function App() {
     <div className="thunder-app">
       <header className="thunder-toolbar">
         <div className="toolbar-brand">
-          <span className="thunder-logo" aria-hidden="true">{LOGO_EMOJI}</span>
+          {state.logoUri ? (
+            <img
+              className="thunder-logo"
+              src={state.logoUri}
+              alt={`${AGENT_NAME} logo`}
+              width={20}
+              height={20}
+            />
+          ) : (
+            <span className="thunder-logo thunder-logo--fallback" aria-hidden="true">◆</span>
+          )}
           <span className="toolbar-provider" title={state.providerLabel}>
             {state.providerLabel}
           </span>
@@ -178,10 +188,11 @@ export function App() {
             workspaceOverride={state.workspaceOverride}
             usingWorkspaceOverride={state.usingWorkspaceOverride}
             indexDbPath={state.indexDbPath}
-            indexed={state.indexing.indexed}
-            indexingRunning={state.indexing.running}
+            indexing={state.indexing}
             workspaceNotice={state.workspaceNotice}
             contextToggles={state.contextToggles}
+            mcpToggles={state.mcpToggles}
+            vectorIndex={state.vectorIndex}
             onSaveApiKey={(key) => postMessage({ type: 'saveApiKey', payload: { key } })}
             onSaveAllSettings={(payload) => postMessage({ type: 'saveAllSettings', payload })}
             onTestConnection={(payload) => postMessage({ type: 'testProviderConnection', payload })}
@@ -193,6 +204,12 @@ export function App() {
             onIndex={() => postMessage({ type: 'indexWorkspace' })}
             onToggleContext={(source, enabled) =>
               postMessage({ type: 'toggleContextSource', payload: { source, enabled } })
+            }
+            onToggleMcp={(server, enabled) =>
+              postMessage({ type: 'toggleMcpServer', payload: { server, enabled } })
+            }
+            onSaveCustomMcpServers={(servers) =>
+              postMessage({ type: 'saveCustomMcpServers', payload: { servers } })
             }
             onSaveProviderSettings={(payload) =>
               postMessage({ type: 'saveProviderSettings', payload })

@@ -11,9 +11,11 @@ import {
   updateWorkspaceOverride,
   clearWorkspaceOverride,
 } from './updateSettings';
+import { updateCustomMcpServers } from './updateMcpSettings';
 import { type ThunderConfig, defaultThunderConfig } from './schema';
 import type {
   AgentSettingsPayload,
+  McpCustomServerView,
   McpSettingsPayload,
   ProviderSettingsPayload,
   SafetySettingsPayload,
@@ -105,6 +107,12 @@ export class ConfigService {
     await updateMcpSettings(settings);
     this.config = readThunderConfigFromSettings();
     log.info('MCP settings updated', { enabled: settings.enabled });
+  }
+
+  async updateCustomMcpServers(servers: McpCustomServerView[], workspace: string): Promise<void> {
+    await updateCustomMcpServers(servers, workspace);
+    this.config = readThunderConfigFromSettings();
+    log.info('Custom MCP servers updated', { count: servers.length });
   }
 
   async updateAllSettings(settings: ThunderSettingsPayload): Promise<void> {

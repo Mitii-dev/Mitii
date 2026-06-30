@@ -159,6 +159,9 @@ export interface IndexingStatusView {
   running: boolean;
   failed: number;
   total: number;
+  activeWorkers?: number;
+  processed?: number;
+  runTotal?: number;
 }
 
 export interface MemoryItemView {
@@ -198,10 +201,17 @@ export interface SettingsView {
   mcpServers: number;
   mcpTools: number;
   mcpServerStatuses: McpServerStatusView[];
+  customMcpServers: McpCustomServerView[];
   projectRules: number;
   sessionLogging: boolean;
   debugMetrics: boolean;
   localDebugAvailable: boolean;
+  vectorsEnabled: boolean;
+  embeddingProvider: 'minilm' | 'hash';
+  vectorBackend: 'sqlite' | 'lancedb';
+  hybridMemorySearch: boolean;
+  minilmAvailable: boolean;
+  lancedbAvailable: boolean;
 }
 
 export type ApprovalMode = 'review_all' | 'ask_edits' | 'ask_deletes' | 'ask_commands' | 'auto';
@@ -230,6 +240,24 @@ export interface SafetySettingsPayload {
 
 export interface McpSettingsPayload {
   enabled: boolean;
+  builtinServers?: McpToggles;
+  customServers?: McpCustomServerView[];
+}
+
+export interface McpToggles {
+  filesystem: boolean;
+  memory: boolean;
+  sequentialThinking: boolean;
+}
+
+export interface McpCustomServerView {
+  name: string;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  cwd?: string;
+  disabled: boolean;
+  source: 'workspace' | 'settings';
 }
 
 export interface TelemetrySettingsPayload {
@@ -245,11 +273,19 @@ export interface McpServerStatusView {
   error?: string;
 }
 
+export interface IndexingSettingsPayload {
+  vectorsEnabled: boolean;
+  embeddingProvider: 'minilm' | 'hash';
+  vectorBackend: 'sqlite' | 'lancedb';
+  hybridMemorySearch: boolean;
+}
+
 export interface ThunderSettingsPayload {
   provider: ProviderSettingsPayload;
   agent: AgentSettingsPayload;
   safety: SafetySettingsPayload;
   mcp: McpSettingsPayload;
+  indexing: IndexingSettingsPayload;
   telemetry: TelemetrySettingsPayload;
 }
 
@@ -285,6 +321,8 @@ export interface WebviewState {
   checkpoints: CheckpointView[];
   settings: SettingsView;
   contextToggles: ContextToggles;
+  mcpToggles: McpToggles;
+  logoUri: string;
   showContextPreview: boolean;
   providerLabel: string;
   workspaceOpen: boolean;
@@ -350,6 +388,8 @@ export type WebviewToExtensionMessage =
   | { type: 'deleteMemory'; payload: { id: number } }
   | { type: 'clearMemory' }
   | { type: 'toggleContextSource'; payload: { source: keyof ContextToggles; enabled: boolean } }
+  | { type: 'toggleMcpServer'; payload: { server: keyof McpToggles; enabled: boolean } }
+  | { type: 'saveCustomMcpServers'; payload: { servers: McpCustomServerView[] } }
   | { type: 'toggleContextPreview' }
   | { type: 'copyLastResponse' }
   | { type: 'copyChatHistoryMarkdown' }
@@ -360,13 +400,19 @@ export type WebviewToExtensionMessage =
   | { type: 'pickContextPath' }
   | { type: 'refreshPanels' };
 
+export const defaultMcpToggles = (): McpToggles => ({
+  filesystem: true,
+  memory: true,
+  sequentialThinking: true,
+});
+
 export const defaultContextToggles = (): ContextToggles => ({
   repoMap: true,
   fts: true,
   gitDiff: true,
   diagnostics: false,
   memory: true,
-  vectors: false,
+  vectors: true,
 });
 
 export const defaultSettingsView = (): SettingsView => ({
@@ -390,10 +436,17 @@ export const defaultSettingsView = (): SettingsView => ({
   mcpServers: 0,
   mcpTools: 0,
   mcpServerStatuses: [],
+  customMcpServers: [],
   projectRules: 0,
   sessionLogging: true,
   debugMetrics: false,
   localDebugAvailable: false,
+  vectorsEnabled: true,
+  embeddingProvider: 'minilm',
+  vectorBackend: 'sqlite',
+  hybridMemorySearch: true,
+  minilmAvailable: false,
+  lancedbAvailable: false,
 });
 
 export const initialWebviewState = (): WebviewState => ({
@@ -414,11 +467,13 @@ export const initialWebviewState = (): WebviewState => ({
   subagents: [],
   vectorIndex: { enabled: false, embeddedChunks: 0, provider: 'none', backend: 'none' },
   plan: null,
-  indexing: { indexed: 0, queued: 0, running: false, failed: 0, total: 0 },
+  indexing: { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0, processed: 0, runTotal: 0 },
   memories: [],
   checkpoints: [],
   settings: defaultSettingsView(),
   contextToggles: defaultContextToggles(),
+  mcpToggles: defaultMcpToggles(),
+  logoUri: '',
   showContextPreview: false,
   providerLabel: 'echo',
   workspaceOpen: false,

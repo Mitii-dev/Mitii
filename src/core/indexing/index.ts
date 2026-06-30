@@ -15,5 +15,6 @@ export * from './IndexQueue';
 export * from './hash';
 export * from './embeddingFactory';
 export * from './vectorIndexFactory';
+export * from './vectorAvailability';
 export * from './TransformersEmbeddingProvider';
 export * from './LanceDbVectorIndex';

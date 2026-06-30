@@ -3,6 +3,7 @@ import { join } from 'path';
 import { createPatch, applyPatch as applyDiffPatch } from 'diff';
 import { hashContent } from '../indexing/hash';
 import { createLogger } from '../telemetry/Logger';
+import { validateMdxContent } from './mdxValidation';
 
 const log = createLogger('PatchApplyService');
 
@@ -76,6 +77,11 @@ export class PatchApplyService {
 
   /** Plandex-style validate-and-fix: basic syntax guards before apply. */
   validateSyntax(path: string, content: string): PatchResult {
+    const mdxValidationError = validateMdxContent(path, content);
+    if (mdxValidationError) {
+      return { success: false, error: mdxValidationError };
+    }
+
     if (path.endsWith('.json')) {
       try {
         JSON.parse(content);

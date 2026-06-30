@@ -20,18 +20,18 @@ export function ApprovalCards({ approvals, onResolve, onApproveAll }: ApprovalCa
   return (
     <div className="approval-panel">
       {questions.map((req) => (
-        <article key={req.id} className="approval-card approval-card--low">
+        <article key={req.id} className="approval-card approval-card--question approval-card--low">
           <div className="approval-card__body">
             <div className="approval-card__header">
               <span className="approval-card__tool">Clarifying question</span>
             </div>
-            <p className="approval-card__summary">{req.question ?? req.inputPreview}</p>
-            <div className="approval-card__actions approval-card__actions--stack">
+            <p className="approval-card__summary approval-card__summary--question">{req.question ?? req.inputPreview}</p>
+            <div className="approval-card__actions approval-card__actions--question">
               {(req.options ?? []).map((option) => (
                 <button
                   key={option}
                   type="button"
-                  className="btn btn--primary btn--small"
+                  className="btn btn--primary btn--small approval-card__option"
                   onClick={() => onResolve(req.id, 'approved', option)}
                 >
                   {option}
@@ -39,7 +39,7 @@ export function ApprovalCards({ approvals, onResolve, onApproveAll }: ApprovalCa
               ))}
               <button
                 type="button"
-                className="btn btn--ghost btn--small"
+                className="btn btn--ghost btn--small approval-card__option approval-card__option--skip"
                 onClick={() => onResolve(req.id, 'denied')}
               >
                 Skip

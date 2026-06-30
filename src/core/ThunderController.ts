@@ -43,6 +43,7 @@ import type { LlmProvider } from './llm/types';
 import { UsageTrackingProvider, type ModelCallUsage } from './llm/UsageTrackingProvider';
 import { scaffoldMitiiWorkspace } from './mcp/scaffoldMitiiWorkspace';
 import { AgentTaskState } from './agent/AgentTaskState';
+import { resolveProjectVerifyCommands } from './agent/verifyCommandDiscovery';
 import { isApprovalContinuationMessage } from './agent/taskMessage';
 import { ToolPolicyEngine } from './safety/ToolPolicyEngine';
 import { applyAutonomyPreset } from './safety/autonomyPresets';
@@ -62,6 +63,7 @@ import { VectorContextSource } from './context/sources/VectorContextSource';
 import { VectorIndexService } from './indexing/VectorIndex';
 import { createEmbeddingProvider, describeEmbeddingProvider } from './indexing/embeddingFactory';
 import { createVectorIndex, describeVectorBackend } from './indexing/vectorIndexFactory';
+import { isLanceDbAvailable, isMinilmAvailable } from './indexing/vectorAvailability';
 import type { EmbeddingProvider } from './indexing/EmbeddingProvider';
 import { McpManager } from './mcp/McpManager';
 import { ProjectRulesContextSource, ProjectRulesService } from './rules/ProjectRulesService';
@@ -75,17 +77,21 @@ import type { IndexingStatus } from './indexing/IndexQueue';
 import type {
   WebviewState,
   ContextToggles,
+  McpToggles,
   ApprovalRequestView,
   PlanView,
   PinnedContextView,
   ContextPathSuggestion,
   TokenUsageView,
   TokenUsageBreakdownItem,
+  McpCustomServerView,
 } from '../vscode/webview/messages';
 import {
   initialWebviewState,
   defaultContextToggles,
+  defaultMcpToggles,
 } from '../vscode/webview/messages';
+import { listCustomMcpServers } from './mcp/mcpWorkspaceConfig';
 import { resolveDbPath } from './indexing/paths';
 import { searchWorkspacePaths, resolvePickedPaths } from './context/contextPathSearch';
 import { createWorkspacePattern, isWorkspaceInVscodeFolders, normalizeWorkspaceRoot, toWorkspaceRelPath } from './vscode/pathUtils';
@@ -126,8 +132,9 @@ export class ThunderController {
   private researchAgentProvider: LlmProvider | undefined;
   private sessionLog = new SessionLogService();
   private lastSubagentSnapshot = new Map<string, string>();
-  private indexingStatus: IndexingStatus = { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0 };
+  private indexingStatus: IndexingStatus = { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0, processed: 0, runTotal: 0 };
   private contextToggles: ContextToggles = defaultContextToggles();
+  private mcpToggles: McpToggles = defaultMcpToggles();
   private pendingWatchJobs = new Map<string, import('./indexing/IndexQueue').IndexJob>();
   private watchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
   private debouncedRebuildRetriever: (() => void) | undefined;
@@ -222,9 +229,15 @@ export class ThunderController {
     this.uiUpdate?.(partial);
   }
 
-  private scheduleIndexingUiUpdate(status: IndexingStatus): void {
-    this.indexingStatus = status;
-    this.pendingIndexStatus = status;
+  private scheduleIndexingUiUpdate(status: IndexingStatus | WebviewState['indexing']): void {
+    const normalized: IndexingStatus = {
+      ...status,
+      activeWorkers: status.activeWorkers ?? 0,
+      processed: status.processed ?? 0,
+      runTotal: status.runTotal ?? 0,
+    };
+    this.indexingStatus = normalized;
+    this.pendingIndexStatus = normalized;
     if (this.indexStatusNotifyTimer) return;
     this.indexStatusNotifyTimer = setTimeout(() => {
       this.indexStatusNotifyTimer = undefined;
@@ -280,6 +293,11 @@ export class ThunderController {
 
   async initialize(): Promise<void> {
     await this.configService.initialize();
+    this.mcpToggles = this.loadMcpTogglesFromConfig();
+    this.contextToggles = {
+      ...defaultContextToggles(),
+      vectors: this.configService.getConfig().indexing.vectorsEnabled,
+    };
 
     const workspace = this.resolveWorkspacePath();
     const vscodeFolder = this.getPrimaryVscodeFolder();
@@ -351,7 +369,7 @@ export class ThunderController {
     const config = this.configService.getConfig();
     if (!config.indexing.enabled || !config.indexing.autoIndexOnOpen) return;
     try {
-      await this.indexWorkspace();
+      await this.indexWorkspace({ force: false });
     } catch (error) {
       log.warn('Auto-index on open failed', {
         error: error instanceof Error ? error.message : String(error),
@@ -566,7 +584,7 @@ export class ThunderController {
     };
     this.toolRuntime.register(createMarkStepCompleteTool(planToolsCtx));
     this.toolRuntime.register(createProposePlanMutationTool(planToolsCtx));
-    await this.mcpManager.reload(config.mcp, workspace, this.toolRuntime);
+    await this.mcpManager.reload(config.mcp, workspace, this.toolRuntime, this.mcpToggles);
 
     this.memoryExtractor = new MemoryExtractor(
       this.memoryService,
@@ -878,12 +896,28 @@ export class ThunderController {
           builtin: s.builtin,
           error: s.error,
         })),
+        customMcpServers: listCustomMcpServers(config.mcp.servers, workspacePath ?? '').map((server) => ({
+          name: server.name,
+          command: server.command,
+          args: server.args,
+          env: server.env,
+          cwd: server.cwd,
+          disabled: server.disabled,
+          source: server.source,
+        })),
         projectRules: this.projectRulesService?.count() ?? 0,
         sessionLogging: config.telemetry.sessionLogging,
         debugMetrics: config.telemetry.debugMetrics,
         localDebugAvailable: this.context.extensionMode === vscode.ExtensionMode.Development,
+        vectorsEnabled: config.indexing.vectorsEnabled,
+        embeddingProvider: config.indexing.embeddingProvider,
+        vectorBackend: config.indexing.vectorBackend,
+        hybridMemorySearch: config.memory.hybridSearchEnabled,
+        minilmAvailable: isMinilmAvailable(),
+        lancedbAvailable: isLanceDbAvailable(),
       },
       contextToggles: this.contextToggles,
+      mcpToggles: this.mcpToggles,
       providerLabel: `${config.provider.type} / ${config.provider.model}`,
       workspaceOpen: Boolean(workspacePath),
       workspacePath,
@@ -917,7 +951,20 @@ export class ThunderController {
     if (!workspace || !this.isWorkspaceTrusted()) return '';
 
     const lines: string[] = [];
-    for (const command of commands) {
+    const touchedFiles = this.getTouchedFilesFromAudit();
+    const plan = resolveProjectVerifyCommands(workspace, commands, { touchedFiles });
+    for (const skipped of plan.skipped) {
+      this.pushActivity('info', 'Verify skipped', skipped);
+    }
+
+    if (plan.commands.length === 0) {
+      if (plan.skipped.length > 0) {
+        return `Skipped verify commands:\n${plan.skipped.map((line) => `- ${line}`).join('\n')}`;
+      }
+      return '';
+    }
+
+    for (const command of plan.commands) {
       const trimmed = command.trim();
       if (!trimmed || !isReadOnlyCommand(trimmed)) continue;
       try {
@@ -932,7 +979,21 @@ export class ThunderController {
         lines.push(`$ ${trimmed}\n${msg}`);
       }
     }
+    if (plan.skipped.length > 0) {
+      lines.push(`Skipped verify commands:\n${plan.skipped.map((line) => `- ${line}`).join('\n')}`);
+    }
     return lines.join('\n\n');
+  }
+
+  private getTouchedFilesFromAudit(): string[] {
+    const audit = this.toolRuntime.getAuditLog();
+    const files = new Set<string>();
+    for (const { toolName, input, result } of audit) {
+      if (!result.success || !['write_file', 'apply_patch'].includes(toolName)) continue;
+      const path = (input as Record<string, unknown>).path;
+      if (typeof path === 'string') files.add(path);
+    }
+    return [...files];
   }
 
   private async validateAfterWrite(relPath: string): Promise<void> {
@@ -1302,7 +1363,7 @@ export class ThunderController {
     }
   }
 
-  async reloadWorkspace(): Promise<void> {
+  async reloadWorkspace(options: { autoIndex?: boolean } = { autoIndex: true }): Promise<void> {
     const vscodeFolder = this.getPrimaryVscodeFolder();
     const override = this.configService.getWorkspaceOverride();
     if (vscodeFolder && override) {
@@ -1334,7 +1395,7 @@ export class ThunderController {
     this.scanner = undefined;
     this.indexQueue = undefined;
     this.projectRulesService = undefined;
-    this.indexingStatus = { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0 };
+    this.indexingStatus = { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0, processed: 0, runTotal: 0 };
     await this.mcpManager.closeAll();
     this.toolRuntime.unregisterByPrefix('mcp__');
 
@@ -1354,7 +1415,7 @@ export class ThunderController {
 
     this.notifyUi(await this.buildUiState());
     log.info('Workspace reloaded', { workspace });
-    if (workspace) {
+    if (workspace && options.autoIndex !== false) {
       void this.maybeAutoIndex();
     }
   }
@@ -1489,7 +1550,7 @@ export class ThunderController {
         '',
         ...this.pendingApprovalOutputs,
         '',
-        'Analysis phase is complete for the commands above. Proceed to Phase 2 (Execute): edit files and update package.json.',
+        this.agentTaskState.buildApprovalResumeInstruction(),
       );
     }
     return parts.join('\n');
@@ -1802,6 +1863,7 @@ export class ThunderController {
     const clamp = (value: number, min: number, max: number) =>
       Math.max(min, Math.min(Number.isFinite(value) ? Math.floor(value) : min, max));
 
+    const beforeConfig = this.configService.getConfig();
     const contextWindow = Math.max(1024, Math.min(settings.provider.contextWindow, 1_000_000));
     const normalized: import('../vscode/webview/messages').ThunderSettingsPayload = {
       provider: {
@@ -1817,14 +1879,30 @@ export class ThunderController {
         researchAgentMaxSteps: clamp(settings.agent.researchAgentMaxSteps, 1, 50),
       },
       safety: settings.safety,
-      mcp: settings.mcp,
+      mcp: {
+        enabled: settings.mcp.enabled,
+        builtinServers: this.mcpToggles,
+      },
+      indexing: settings.indexing,
       telemetry: {
         sessionLogging: settings.telemetry.sessionLogging,
         debugMetrics: settings.telemetry.debugMetrics,
       },
     };
 
+    const vectorConfigChanged =
+      beforeConfig.indexing.vectorsEnabled !== normalized.indexing.vectorsEnabled ||
+      beforeConfig.indexing.embeddingProvider !== normalized.indexing.embeddingProvider ||
+      beforeConfig.indexing.vectorBackend !== normalized.indexing.vectorBackend ||
+      beforeConfig.memory.hybridSearchEnabled !== normalized.indexing.hybridMemorySearch;
+
     await this.configService.updateAllSettings(normalized);
+
+    if (!normalized.indexing.vectorsEnabled) {
+      this.contextToggles = { ...this.contextToggles, vectors: false };
+    } else if (!beforeConfig.indexing.vectorsEnabled && normalized.indexing.vectorsEnabled) {
+      this.contextToggles = { ...this.contextToggles, vectors: true };
+    }
 
     const config = this.configService.getConfig();
     if (this.session) {
@@ -1846,18 +1924,65 @@ export class ThunderController {
     await this.reloadMcpServers();
     this.debouncedRebuildRetriever?.();
 
-    this.notifyUi({ settings: (await this.buildUiState()).settings });
-    void vscode.window.showInformationMessage(brandMessage('Settings saved.'));
+    if (vectorConfigChanged) {
+      await this.reloadWorkspace({ autoIndex: false });
+      if (normalized.indexing.vectorsEnabled) {
+        await this.indexWorkspace({ force: true });
+      }
+      void vscode.window.showInformationMessage(
+        brandMessage(
+          normalized.indexing.vectorsEnabled
+            ? 'Vector settings saved. Re-indexing workspace to build embeddings.'
+            : 'Vector search disabled. Settings saved.'
+        )
+      );
+    } else {
+      this.notifyUi({
+        settings: (await this.buildUiState()).settings,
+        contextToggles: this.contextToggles,
+      });
+      void vscode.window.showInformationMessage(brandMessage('Settings saved.'));
+    }
   }
 
   private async reloadMcpServers(): Promise<void> {
     if (!this.toolRuntime) return;
     const config = this.configService.getConfig();
     const workspace = this.resolveWorkspacePath() ?? '';
-    await this.mcpManager.reload(config.mcp, workspace, this.toolRuntime);
+    await this.mcpManager.reload(config.mcp, workspace, this.toolRuntime, this.mcpToggles);
+  }
+
+  private loadMcpTogglesFromConfig(): McpToggles {
+    const builtin = this.configService.getConfig().mcp.builtinServers;
+    return {
+      filesystem: builtin.filesystem,
+      memory: builtin.memory,
+      sequentialThinking: builtin.sequentialThinking,
+    };
+  }
+
+  setMcpToggle(server: keyof McpToggles, enabled: boolean): void {
+    this.mcpToggles = { ...this.mcpToggles, [server]: enabled };
+    this.notifyUi({ mcpToggles: this.mcpToggles });
+    void this.reloadMcpServers().then(() => {
+      void this.buildUiState().then((state) => {
+        this.notifyUi({ settings: state.settings });
+      });
+    });
+  }
+
+  async saveCustomMcpServers(servers: McpCustomServerView[]): Promise<void> {
+    const workspace = this.resolveWorkspacePath() ?? '';
+    await this.configService.updateCustomMcpServers(servers, workspace);
+    await this.reloadMcpServers();
+    this.notifyUi({ settings: (await this.buildUiState()).settings });
+    void vscode.window.showInformationMessage(brandMessage('MCP servers saved.'));
   }
 
   setContextToggle(source: keyof ContextToggles, enabled: boolean): void {
+    if (source === 'vectors' && enabled && !this.configService.getConfig().indexing.vectorsEnabled) {
+      return;
+    }
     this.contextToggles = { ...this.contextToggles, [source]: enabled };
     this.notifyUi({ contextToggles: this.contextToggles });
     this.debouncedRebuildRetriever?.();
@@ -1904,7 +2029,7 @@ export class ThunderController {
     });
   }
 
-  async indexWorkspace(): Promise<void> {
+  async indexWorkspace(options: { force?: boolean } = { force: true }): Promise<void> {
     const workspace = this.resolveWorkspacePath();
     if (!workspace) {
       this.setWorkspaceNotice('warn', 'Set a workspace path first (Browse or paste an absolute path).');
@@ -1945,21 +2070,31 @@ export class ThunderController {
     const diff = this.scanner.computeDiff(files);
     this.scanner.persistScan(diff);
 
-    const jobs = [...diff.added, ...diff.changed].map((f) => ({
+    const filesToIndex = options.force ? files : [...diff.added, ...diff.changed];
+    const jobs = filesToIndex.map((f) => ({
       fileId: this.scanner!.getFileId(f.relPath)!,
       relPath: f.relPath,
       absPath: f.absPath,
       language: f.language,
     })).filter((j) => j.fileId !== undefined);
 
+    if (jobs.length === 0) {
+      this.indexingStatus = this.indexQueue.getStatus();
+      this.setWorkspaceNotice('ok', 'Index is up to date');
+      this.sessionLog.append('index_complete', 'Index up to date', { workspace, jobCount: 0 });
+      this.notifyUi({ indexing: this.indexingStatus, workspaceNotice: this.workspaceNotice });
+      return;
+    }
+
     this.indexQueue.enqueue(jobs);
     this.indexingStatus = this.indexQueue.getStatus();
-    this.setWorkspaceNotice('ok', `Indexing ${jobs.length} files…`);
-    this.sessionLog.append('index_start', `Indexing ${jobs.length} files`, {
+    this.setWorkspaceNotice('ok', `${options.force ? 'Reindexing' : 'Indexing'} ${jobs.length} files…`);
+    this.sessionLog.append('index_start', `${options.force ? 'Reindexing' : 'Indexing'} ${jobs.length} files`, {
       workspace,
       added: diff.added.length,
       changed: diff.changed.length,
       removed: diff.deleted.length,
+      forced: options.force,
     });
     this.notifyUi({ indexing: this.indexingStatus, workspaceNotice: this.workspaceNotice });
     log.info('indexWorkspace', { total: jobs.length });

@@ -5,6 +5,7 @@ import type { ThunderPlan } from './PlanActEngine';
 import { AGENT_NAME } from '../../shared/brand';
 import { CHAT_HISTORY_GUIDANCE, STATE_MACHINE_GUIDANCE } from '../agent/taskStatePrompt';
 import { buildAuditBootstrapBlock } from '../agent/auditRouting';
+import { buildMdxRepairBootstrapBlock } from '../agent/mdxRepairRouting';
 
 const TOOL_GUIDANCE = `
 TOOLS: You have tools to read files, search code, run commands, write files, and manage memory.
@@ -58,6 +59,22 @@ DOCUMENTATION TASKS:
 - Decide one URL/directory naming convention before writing pages; do not mix component names such as text/text-input or radio/radio-button.
 - Verify with the docs build or the closest available docs validation command.`;
 
+const MDX_REPAIR_GUIDANCE = `
+MDX / DOCUSAURUS BUILD REPAIRS:
+- If the build output names an MDX/Markdown file, fix that exact file first.
+- Before editing, read_file a working sibling doc in the same folder that already uses LiveCodeBlock (for example form-builder.md).
+- If the error says "Unexpected character \`,\` in name" or "expected a name character", inspect Markdown table cells for raw TypeScript generics.
+- Escape or code-span TypeScript generics in Markdown tables. Raw Record<string, any> is invalid MDX table text; use \`Record<string, any>\`. For function types, code-span the whole cell, e.g. \`(values: Record<string, any>) => void\`.
+- If the error says "Could not parse expression with acorn" on a LiveCodeBlock line, fix the JSX attribute expression:
+  - Correct: \`<LiveCodeBlock code={\` ... \`} componentName="Foo" />\`
+  - Wrong: \`code={\` on one line and the opening backtick on the next line.
+  - Wrong: closing the template with \`\` then jumping straight to componentName without \`}\`.
+  - Wrong: putting \`render(<Foo />)\` inside the code string — live-demo adds render automatically.
+- If the build says "Can't resolve 'package-name'", check apps/docs/package.json for workspace:* deps, confirm the package exists under packages/, run pnpm install from the monorepo root, and build that package if dist/ is missing. This is part of the same failure — do NOT dismiss it as unrelated.
+- MDX imports must be top-level: move component imports near the frontmatter/top of the file and remove duplicate imports inside the body.
+- Before verify, read package.json scripts — do NOT assume npm run lint exists. Use the docs build command (often cd apps/docs && npm run build).
+- After each edit, rerun the docs build. If it fails, fix only the next exact file from the build output.`;
+
 export function buildSystemPrompt(
   mode: ThunderMode,
   toolsEnabled = false,
@@ -81,7 +98,7 @@ ${CHAT_HISTORY_GUIDANCE}
 
 Systematic workflow — follow this order:
 1. **Analyze** — read_file / list_files / depcheck / eslint (once each) to understand the codebase
-2. **Execute** — apply_patch or write_file to make changes; update package.json for deps
+2. **Execute** — apply_patch or write_file to make changes; update package.json only for dependency tasks
 3. **Verify** — diagnostics / run_command (lint, test, build) after changes
 4. **Fix** — fix validation errors only when they are caused by your touched files or current task. Log unrelated pre-existing TypeScript errors without derailing the plan.
 
@@ -122,6 +139,7 @@ For multi-step tasks in Plan mode, include:
 ${modeInstructions[mode]}
 ${toolsEnabled ? TOOL_GUIDANCE : ''}
 ${toolsEnabled ? DOCS_TASK_GUIDANCE : ''}
+${toolsEnabled ? MDX_REPAIR_GUIDANCE : ''}
 ${toolsEnabled && auditMode ? AUDIT_GUIDANCE : ''}
 ${toolsEnabled && isContinuation ? '\nCONTINUATION TURN: Resume the existing state machine. Read Task progress, approved tool outputs, and recent conversation first. Continue from the pending EXECUTE/VERIFY step. Do NOT re-run audit-dependencies, audit-dead-code, list_files, or memory_search before using the approval context.' : ''}
 ${mode === 'plan' ? planFormat : ''}
@@ -148,6 +166,8 @@ export function buildPrompt(
   recentMessages: ChatMessage[] = [],
   toolsEnabled = false,
   auditMode = false,
+  mdxRepairMode = false,
+  mdxErrorFile?: string,
   taskStateBlock?: string,
   isContinuation = false,
   explicitContextBlock?: string
@@ -169,6 +189,11 @@ export function buildPrompt(
       ? `\n\n${buildAuditBootstrapBlock()}\n`
       : '';
 
+  const mdxBootstrap =
+    mdxRepairMode && mode === 'agent' && !isContinuation
+      ? `\n\n${buildMdxRepairBootstrapBlock(mdxErrorFile)}\n`
+      : '';
+
   const explicitBlock = explicitContextBlock?.trim()
     ? `${explicitContextBlock.trim()}\n\n---\n\n`
     : '';
@@ -176,7 +201,7 @@ export function buildPrompt(
   const userContent = `${explicitBlock}## Codebase Context
 
 ${contextBlock}
-${taskProgress}${continuationNote}${auditBootstrap}
+${taskProgress}${continuationNote}${auditBootstrap}${mdxBootstrap}
 ---
 
 ## User request

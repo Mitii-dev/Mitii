@@ -8,10 +8,15 @@ interface IndexingStatusBarProps {
 }
 
 export function IndexingStatusBar({ status, onIndex }: IndexingStatusBarProps) {
-  const pct =
-    status.total > 0 ? Math.round((status.indexed / status.total) * 100) : undefined;
+  const runTotal = status.runTotal ?? 0;
+  const processed = Math.min(status.processed ?? 0, runTotal);
+  const pct = runTotal > 0
+    ? Math.round((processed / runTotal) * 100)
+    : status.total > 0
+      ? Math.round((status.indexed / status.total) * 100)
+      : undefined;
   const label = status.running
-    ? `Indexing… ${status.queued} queued${pct !== undefined ? ` · ${pct}%` : ''}`
+    ? `Indexing… ${processed}/${runTotal || status.total} files${pct !== undefined ? ` · ${pct}%` : ''}`
     : status.indexed > 0
       ? `${status.indexed}${status.total > 0 ? `/${status.total}` : ''} indexed${status.failed > 0 ? ` · ${status.failed} failed` : ''}`
       : 'Index workspace';

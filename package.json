@@ -2,9 +2,9 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow",
-  "version": "2.6.11",
+  "version": "2.6.12",
   "publisher": "mitii",
-  "icon": "media/mitii-icon.png",
+  "icon": "media/mitii-short-logo.png",
   "license": "AGPL-3.0-or-later",
   "author": {
     "name": "codewithshinde",
@@ -188,7 +188,7 @@
             "lancedb"
           ],
           "default": "sqlite",
-          "description": "Vector index storage backend when vectors are enabled"
+          "description": "Vector index storage: sqlite (.mitii/mitii.sqlite) or lancedb (.mitii/lance/) via @lancedb/lancedb"
         },
         "thunder.context.rerankerEnabled": {
           "type": "boolean",
@@ -340,7 +340,16 @@
         "thunder.mcp.preloadBuiltin": {
           "type": "boolean",
           "default": true,
-          "description": "Preload official free MCP servers (filesystem, memory, sequential-thinking) on extension startup. Override or disable individual servers via thunder.mcp.servers or workspace mcp.json."
+          "description": "Preload official free MCP servers (filesystem, memory, sequential-thinking) on extension startup. Toggle individual servers in the Mitii settings UI."
+        },
+        "thunder.mcp.builtinServers": {
+          "type": "object",
+          "default": {
+            "filesystem": true,
+            "memory": true,
+            "sequentialThinking": true
+          },
+          "description": "Default on/off state for built-in MCP servers. Per-session toggles are available in the Mitii Integrations settings tab."
         },
         "thunder.mcp.maxConcurrentStartup": {
           "type": "number",
@@ -424,22 +433,29 @@
     "vitest": "^1.6.0"
   },
   "dependencies": {
+    "@lancedb/lancedb": "^0.30.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@vscode/ripgrep": "^1.15.9",
+    "@xenova/transformers": "^2.17.2",
+    "@xstate/react": "^6.1.0",
     "better-sqlite3": "^12.11.1",
     "diff": "^5.2.0",
+    "framer-motion": "^12.42.0",
     "ignore": "^5.3.1",
     "nanoid": "^5.0.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "shiki": "^4.3.0",
     "simple-git": "^3.25.0",
-    "zod": "^3.23.8"
+    "tiktoken": "^1.0.22",
+    "ts-morph": "^28.0.0",
+    "xstate": "^5.32.2",
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.25.2"
   },
   "optionalDependencies": {
-    "@xenova/transformers": "^2.17.2",
-    "lancedb": "^0.15.0",
-    "web-tree-sitter": "^0.24.7",
-    "tree-sitter-wasms": "^0.1.13"
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.24.7"
   },
   "knip": {
     "ignoreDependencies": [

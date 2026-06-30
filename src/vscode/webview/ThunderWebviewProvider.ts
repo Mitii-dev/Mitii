@@ -121,7 +121,22 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   private postMessage(message: ExtensionToWebviewMessage): void {
+    if (message.type === 'state' && this.view?.webview) {
+      message = {
+        type: 'state',
+        payload: this.withBranding(message.payload, this.view.webview),
+      };
+    }
     void this.view?.webview.postMessage(message);
+  }
+
+  private withBranding(state: WebviewState, webview: vscode.Webview): WebviewState {
+    return {
+      ...state,
+      logoUri: webview
+        .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'mitii-short-logo.png'))
+        .toString(),
+    };
   }
 
   private async syncState(): Promise<void> {
@@ -333,6 +348,16 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
 
       case 'toggleContextSource':
         this.controller.setContextToggle(message.payload.source, message.payload.enabled);
+        await this.syncState();
+        break;
+
+      case 'toggleMcpServer':
+        this.controller.setMcpToggle(message.payload.server, message.payload.enabled);
+        await this.syncState();
+        break;
+
+      case 'saveCustomMcpServers':
+        await this.controller.saveCustomMcpServers(message.payload.servers);
         await this.syncState();
         break;
 
@@ -704,7 +729,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src ${webview.cspSource};">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource}; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src ${webview.cspSource};">
   <link rel="stylesheet" href="${styleUri}">
   <title>${AGENT_FULL_NAME}</title>
 </head>

@@ -1,12 +1,13 @@
 import * as vscode from 'vscode';
 import type {
   AgentSettingsPayload,
-  McpSettingsPayload,
+  IndexingSettingsPayload,
   ProviderSettingsPayload,
   SafetySettingsPayload,
   TelemetrySettingsPayload,
   ThunderSettingsPayload,
 } from '../../vscode/webview/messages';
+import { updateMcpSettings } from './updateMcpSettings';
 
 const CONFIG_SECTION = 'thunder';
 
@@ -51,10 +52,16 @@ export async function clearWorkspaceOverride(): Promise<void> {
   await config.update('workspace.rootPathOverride', '', vscode.ConfigurationTarget.Global);
 }
 
-export async function updateMcpSettings(settings: McpSettingsPayload): Promise<void> {
+export { updateMcpSettings } from './updateMcpSettings';
+
+export async function updateIndexingSettings(settings: IndexingSettingsPayload): Promise<void> {
   const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
   const target = vscode.ConfigurationTarget.Global;
-  await config.update('mcp.enabled', settings.enabled, target);
+
+  await config.update('indexing.vectorsEnabled', settings.vectorsEnabled, target);
+  await config.update('indexing.embeddingProvider', settings.embeddingProvider, target);
+  await config.update('indexing.vectorBackend', settings.vectorBackend, target);
+  await config.update('memory.hybridSearchEnabled', settings.hybridMemorySearch, target);
 }
 
 export async function updateTelemetrySettings(settings: TelemetrySettingsPayload): Promise<void> {
@@ -69,5 +76,6 @@ export async function updateAllSettings(settings: ThunderSettingsPayload): Promi
   await updateAgentSettings(settings.agent);
   await updateSafetySettings(settings.safety);
   await updateMcpSettings(settings.mcp);
+  await updateIndexingSettings(settings.indexing);
   await updateTelemetrySettings(settings.telemetry);
 }

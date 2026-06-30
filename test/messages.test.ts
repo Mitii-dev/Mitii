@@ -18,6 +18,7 @@ describe('Webview message protocol', () => {
     expect(toggles.gitDiff).toBe(true);
     expect(toggles.diagnostics).toBe(false);
     expect(toggles.memory).toBe(true);
+    expect(toggles.vectors).toBe(true);
   });
 });
 
