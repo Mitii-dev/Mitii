@@ -28,6 +28,7 @@ export function CheckpointPanel({ checkpoints, onRestore }: CheckpointPanelProps
               </span>
             </div>
             <p className="checkpoint-item__files">{cp.files.join(', ') || '(no files)'}</p>
+            {cp.strategy && <span className="checkpoint-item__strategy">{cp.strategy}</span>}
             <button type="button" className="btn btn--secondary btn--small" onClick={() => onRestore(cp.id)}>
               Restore
             </button>

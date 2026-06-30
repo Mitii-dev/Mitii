@@ -69,6 +69,13 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       showDiffPreview: config.get<boolean>('agent.showDiffPreview'),
       verifyCommands: config.get<string[]>('agent.verifyCommands'),
       verifyOnActComplete: config.get<boolean>('agent.verifyOnActComplete'),
+      planModel: config.get<string>('agent.planModel'),
+      planBaseUrl: config.get<string>('agent.planBaseUrl'),
+      planProviderType: config.get<string>('agent.planProviderType'),
+      actModel: config.get<string>('agent.actModel'),
+      actBaseUrl: config.get<string>('agent.actBaseUrl'),
+      actProviderType: config.get<string>('agent.actProviderType'),
+      checkpointStrategy: config.get<string>('agent.checkpointStrategy'),
     },
     mcp: {
       enabled: config.get<boolean>('mcp.enabled'),

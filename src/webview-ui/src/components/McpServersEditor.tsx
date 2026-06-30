@@ -9,10 +9,13 @@ interface McpServersEditorProps {
 
 const EMPTY_FORM = {
   name: '',
+  type: 'stdio' as 'stdio' | 'sse' | 'streamable-http',
   command: 'npx',
   args: '',
   env: '',
   cwd: '',
+  url: '',
+  headers: '',
   disabled: false,
 };
 
@@ -53,8 +56,8 @@ export function McpServersEditor({ servers, workspaceOpen, onSave }: McpServersE
     try {
       const name = form.name.trim();
       const command = form.command.trim();
-      if (!name || !command) {
-        setError('Server name and command are required.');
+      if (!name || (form.type === 'stdio' ? !command : !form.url.trim())) {
+        setError(form.type === 'stdio' ? 'Server name and command are required.' : 'Server name and URL are required.');
         return;
       }
       if (editing.some((server) => server.name === name)) {
@@ -63,10 +66,13 @@ export function McpServersEditor({ servers, workspaceOpen, onSave }: McpServersE
       }
       const next: McpCustomServerView = {
         name,
+        type: form.type,
         command,
         args: parseArgs(form.args),
         env: parseEnv(form.env),
         cwd: form.cwd.trim() || undefined,
+        url: form.url.trim() || undefined,
+        headers: form.headers.trim() ? parseEnv(form.headers) : undefined,
         disabled: form.disabled,
         source: workspaceOpen ? 'workspace' : 'settings',
       };
@@ -104,7 +110,7 @@ export function McpServersEditor({ servers, workspaceOpen, onSave }: McpServersE
                 <span className="settings-mcp-badge">{server.source}</span>
               </span>
               <span className="settings-mcp-meta">
-                {server.command} {server.args.join(' ')}
+                {server.type && server.type !== 'stdio' ? `${server.type} ${server.url ?? ''}` : `${server.command} ${server.args.join(' ')}`}
               </span>
               <button
                 type="button"
@@ -131,6 +137,23 @@ export function McpServersEditor({ servers, workspaceOpen, onSave }: McpServersE
             placeholder="my-server"
           />
         </label>
+        <label className="settings-field">
+          <span className="settings-label">Transport</span>
+          <select
+            className="settings-input settings-select"
+            value={form.type}
+            onChange={(e) => setForm((current) => ({
+              ...current,
+              type: e.target.value as 'stdio' | 'sse' | 'streamable-http',
+            }))}
+          >
+            <option value="stdio">Stdio (local process)</option>
+            <option value="sse">HTTP SSE (remote)</option>
+            <option value="streamable-http">Streamable HTTP (remote)</option>
+          </select>
+        </label>
+        {form.type === 'stdio' ? (
+          <>
         <label className="settings-field">
           <span className="settings-label">Command</span>
           <input
@@ -168,6 +191,29 @@ export function McpServersEditor({ servers, workspaceOpen, onSave }: McpServersE
             placeholder="."
           />
         </label>
+          </>
+        ) : (
+          <>
+            <label className="settings-field">
+              <span className="settings-label">Server URL</span>
+              <input
+                className="settings-input"
+                value={form.url}
+                onChange={(e) => setForm((current) => ({ ...current, url: e.target.value }))}
+                placeholder="https://mcp.example.com/sse"
+              />
+            </label>
+            <label className="settings-field">
+              <span className="settings-label">Headers JSON (optional, OAuth bearer)</span>
+              <input
+                className="settings-input"
+                value={form.headers}
+                onChange={(e) => setForm((current) => ({ ...current, headers: e.target.value }))}
+                placeholder='{"Authorization":"Bearer ..."}'
+              />
+            </label>
+          </>
+        )}
         <label className="toggle-label mcp-servers-form__disabled">
           <input
             type="checkbox"

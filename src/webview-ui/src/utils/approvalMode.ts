@@ -31,15 +31,15 @@ export const APPROVAL_MODE_OPTIONS: Array<{ id: ApprovalMode; label: string; tit
 export function deriveSafetySettings(approvalMode: ApprovalMode): SafetySettingsPayload {
   switch (approvalMode) {
     case 'review_all':
-      return { approvalMode, requireApprovalForWrites: true, requireApprovalForShell: true };
+      return { approvalMode, requireApprovalForWrites: true, requireApprovalForShell: true, autonomyPreset: 'safe' };
     case 'ask_edits':
-      return { approvalMode, requireApprovalForWrites: true, requireApprovalForShell: false };
+      return { approvalMode, requireApprovalForWrites: true, requireApprovalForShell: false, autonomyPreset: 'guided' };
     case 'ask_deletes':
-      return { approvalMode, requireApprovalForWrites: false, requireApprovalForShell: false };
+      return { approvalMode, requireApprovalForWrites: false, requireApprovalForShell: false, autonomyPreset: 'builder' };
     case 'ask_commands':
-      return { approvalMode, requireApprovalForWrites: false, requireApprovalForShell: true };
+      return { approvalMode, requireApprovalForWrites: false, requireApprovalForShell: true, autonomyPreset: 'builder' };
     case 'auto':
-      return { approvalMode, requireApprovalForWrites: false, requireApprovalForShell: false };
+      return { approvalMode, requireApprovalForWrites: false, requireApprovalForShell: false, autonomyPreset: 'pilot' };
   }
 }
 

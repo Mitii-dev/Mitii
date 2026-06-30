@@ -35,6 +35,29 @@ const TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'debug', label: 'Debug' },
 ];
 
+const PROVIDER_OPTIONS: Array<{ id: ProviderSettingsPayload['providerType']; label: string }> = [
+  { id: 'echo', label: 'Echo (test / no LLM)' },
+  { id: 'openai-compatible', label: 'OpenAI-compatible (Ollama, LM Studio)' },
+  { id: 'openai', label: 'OpenAI' },
+  { id: 'anthropic', label: 'Anthropic (Claude)' },
+  { id: 'gemini', label: 'Google Gemini' },
+  { id: 'deepseek', label: 'DeepSeek' },
+  { id: 'cursor', label: 'Cursor' },
+  { id: 'codex', label: 'OpenAI Codex' },
+];
+
+const AUTONOMY_PRESETS: Array<{
+  id: SafetySettingsPayload['autonomyPreset'];
+  label: string;
+  description: string;
+}> = [
+  { id: 'safe', label: 'Safe', description: 'Strictest — all edits/commands need approval, no network.' },
+  { id: 'guided', label: 'Guided', description: 'Balanced — asks before edits; read-only shell and web fetch allowed.' },
+  { id: 'builder', label: 'Builder', description: 'Fast — auto-approves writes; mutating shell still reviewed.' },
+  { id: 'pilot', label: 'Pilot', description: 'High autonomy — auto-approves writes, reviews shell.' },
+  { id: 'enterprise', label: 'Enterprise', description: 'Locked down — no network, all operations reviewed.' },
+];
+
 const CONTEXT_TOGGLES: Array<{
   key: keyof ContextToggles;
   label: string;
@@ -140,7 +163,6 @@ interface SettingsPanelProps {
   onToggleContext: (source: keyof ContextToggles, enabled: boolean) => void;
   onToggleMcp: (server: keyof McpToggles, enabled: boolean) => void;
   onSaveCustomMcpServers: (servers: import('../../../vscode/webview/messages').McpCustomServerView[]) => void;
-  onSaveProviderSettings: (settings: ProviderSettingsPayload) => void;
 }
 
 export function SettingsPanel({
@@ -166,15 +188,14 @@ export function SettingsPanel({
   onToggleContext,
   onToggleMcp,
   onSaveCustomMcpServers,
-  onSaveProviderSettings,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('workspace');
   const [apiKey, setApiKey] = useState('');
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
 
-  const [providerType, setProviderType] = useState<'echo' | 'openai-compatible'>(
-    settings.providerType as 'echo' | 'openai-compatible'
+  const [providerType, setProviderType] = useState<ProviderSettingsPayload['providerType']>(
+    settings.providerType as ProviderSettingsPayload['providerType']
   );
   const [baseUrl, setBaseUrl] = useState(settings.baseUrl);
   const [model, setModel] = useState(settings.model);
@@ -186,8 +207,16 @@ export function SettingsPanel({
   const [agentMaxAutoContinues, setAgentMaxAutoContinues] = useState(settings.agentMaxAutoContinues);
   const [researchAgentMaxSteps, setResearchAgentMaxSteps] = useState(settings.researchAgentMaxSteps);
   const [showDiffPreview, setShowDiffPreview] = useState(settings.showDiffPreview);
+  const [planModel, setPlanModel] = useState(settings.planModel);
+  const [planBaseUrl, setPlanBaseUrl] = useState(settings.planBaseUrl);
+  const [actModel, setActModel] = useState(settings.actModel);
+  const [actBaseUrl, setActBaseUrl] = useState(settings.actBaseUrl);
+  const [checkpointStrategy, setCheckpointStrategy] = useState(settings.checkpointStrategy);
 
   const [approvalMode, setApprovalMode] = useState<ApprovalMode>(settings.approvalMode);
+  const [autonomyPreset, setAutonomyPreset] = useState<SafetySettingsPayload['autonomyPreset']>(
+    settings.autonomyPreset
+  );
   const [mcpEnabled, setMcpEnabled] = useState(settings.mcpEnabled);
   const [sessionLogging, setSessionLogging] = useState(settings.sessionLogging);
   const [debugMetrics, setDebugMetrics] = useState(settings.debugMetrics);
@@ -197,7 +226,7 @@ export function SettingsPanel({
   const [hybridMemorySearch, setHybridMemorySearch] = useState(settings.hybridMemorySearch);
 
   useEffect(() => {
-    setProviderType(settings.providerType as 'echo' | 'openai-compatible');
+    setProviderType(settings.providerType as ProviderSettingsPayload['providerType']);
     setBaseUrl(settings.baseUrl);
     setModel(settings.model);
     setContextWindow(settings.contextWindow);
@@ -207,7 +236,13 @@ export function SettingsPanel({
     setAgentMaxAutoContinues(settings.agentMaxAutoContinues);
     setResearchAgentMaxSteps(settings.researchAgentMaxSteps);
     setShowDiffPreview(settings.showDiffPreview);
+    setPlanModel(settings.planModel);
+    setPlanBaseUrl(settings.planBaseUrl);
+    setActModel(settings.actModel);
+    setActBaseUrl(settings.actBaseUrl);
+    setCheckpointStrategy(settings.checkpointStrategy);
     setApprovalMode(settings.approvalMode);
+    setAutonomyPreset(settings.autonomyPreset);
     setMcpEnabled(settings.mcpEnabled);
     setSessionLogging(settings.sessionLogging);
     setDebugMetrics(settings.debugMetrics);
@@ -231,15 +266,16 @@ export function SettingsPanel({
   };
 
   const buildPayload = (): ThunderSettingsPayload | null => {
-    if (!baseUrl.trim() || !model.trim() || contextWindow < 1024) {
+    if (!baseUrl.trim() || !model.trim() || !Number.isFinite(contextWindow)) {
       return null;
     }
+    const normalizedContextWindow = clampContextWindow(contextWindow);
     return {
       provider: {
         providerType,
         baseUrl: baseUrl.trim(),
         model: model.trim(),
-        contextWindow,
+        contextWindow: normalizedContextWindow,
       },
       agent: {
         subagentsEnabled,
@@ -248,8 +284,13 @@ export function SettingsPanel({
         maxAutoContinues: agentMaxAutoContinues,
         researchAgentMaxSteps,
         showDiffPreview,
+        planModel: planModel.trim(),
+        planBaseUrl: planBaseUrl.trim(),
+        actModel: actModel.trim(),
+        actBaseUrl: actBaseUrl.trim(),
+        checkpointStrategy,
       },
-      safety: deriveSafetySettings(approvalMode),
+      safety: { ...deriveSafetySettings(approvalMode), autonomyPreset },
       mcp: { enabled: mcpEnabled, builtinServers: mcpToggles },
       indexing: {
         vectorsEnabled,
@@ -281,17 +322,8 @@ export function SettingsPanel({
     providerType,
     baseUrl: baseUrl.trim(),
     model: model.trim(),
-    contextWindow,
+    contextWindow: clampContextWindow(contextWindow),
   });
-
-  const persistContextWindow = (value: number) => {
-    const next = clampContextWindow(value);
-    setContextWindow(next);
-    onSaveProviderSettings({
-      ...currentProviderSettings(),
-      contextWindow: next,
-    });
-  };
 
   const contextWindowField = (
     <label className="settings-field">
@@ -310,7 +342,6 @@ export function SettingsPanel({
             markDirty();
           }
         }}
-        onBlur={(e) => persistContextWindow(Number(e.target.value))}
       />
       <span className="settings-hint">
         Hard cap per model request. Prompts trim automatically when over budget (min 1024).
@@ -318,8 +349,8 @@ export function SettingsPanel({
     </label>
   );
 
-  const isLocalProvider = providerType === 'openai-compatible';
-  const showSaveBar = activeTab !== 'workspace' && activeTab !== 'context';
+  const isLocalProvider = providerType !== 'echo';
+  const showSaveBar = activeTab !== 'workspace';
   const visibleTabs = settings.localDebugAvailable
     ? TABS
     : TABS.filter((tab) => tab.id !== 'debug');
@@ -333,6 +364,11 @@ export function SettingsPanel({
             Configure {AGENT_NAME} for your workspace and model. Changes apply on save.
           </p>
         </div>
+        {settings.appVersion && (
+          <span className="settings-shell__version" title={`${AGENT_NAME} version`}>
+            v{settings.appVersion}
+          </span>
+        )}
       </header>
 
       <nav className="settings-nav" aria-label="Settings sections">
@@ -378,12 +414,16 @@ export function SettingsPanel({
                   className="settings-input settings-select"
                   value={providerType}
                   onChange={(e) => {
-                    setProviderType(e.target.value as 'echo' | 'openai-compatible');
+                    const next = e.target.value as ProviderSettingsPayload['providerType'];
+                    setProviderType(next);
                     markDirty();
                   }}
                 >
-                  <option value="echo">Echo (test / no LLM)</option>
-                  <option value="openai-compatible">OpenAI-compatible (Ollama, LM Studio, cloud)</option>
+                  {PROVIDER_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </label>
 
@@ -544,18 +584,89 @@ export function SettingsPanel({
                 markDirty();
               }}
             />
+
+            <div className="settings-divider" />
+
+            <h4 className="settings-subheading">Plan vs Act models</h4>
+            <p className="settings-inline-note">
+              Optional overrides. Leave blank to use the main provider model for both modes.
+            </p>
+            <label className="settings-field">
+              <span className="settings-label">Plan mode model</span>
+              <input
+                type="text"
+                className="settings-input"
+                value={planModel}
+                onChange={(e) => {
+                  setPlanModel(e.target.value);
+                  markDirty();
+                }}
+                placeholder={model || 'Same as main model'}
+              />
+            </label>
+            <label className="settings-field">
+              <span className="settings-label">Plan mode base URL (optional)</span>
+              <input
+                type="url"
+                className="settings-input"
+                value={planBaseUrl}
+                onChange={(e) => {
+                  setPlanBaseUrl(e.target.value);
+                  markDirty();
+                }}
+                placeholder={baseUrl || 'Same as main provider'}
+              />
+            </label>
+            <label className="settings-field">
+              <span className="settings-label">Act mode model</span>
+              <input
+                type="text"
+                className="settings-input"
+                value={actModel}
+                onChange={(e) => {
+                  setActModel(e.target.value);
+                  markDirty();
+                }}
+                placeholder={model || 'Same as main model'}
+              />
+            </label>
+            <label className="settings-field">
+              <span className="settings-label">Act mode base URL (optional)</span>
+              <input
+                type="url"
+                className="settings-input"
+                value={actBaseUrl}
+                onChange={(e) => {
+                  setActBaseUrl(e.target.value);
+                  markDirty();
+                }}
+                placeholder={baseUrl || 'Same as main provider'}
+              />
+            </label>
+
+            <label className="settings-field">
+              <span className="settings-label">Checkpoint strategy</span>
+              <select
+                className="settings-input settings-select"
+                value={checkpointStrategy}
+                onChange={(e) => {
+                  setCheckpointStrategy(e.target.value as SettingsView['checkpointStrategy']);
+                  markDirty();
+                }}
+              >
+                <option value="git-stash">Git stash (recommended)</option>
+                <option value="shadow-git">Shadow git stash</option>
+                <option value="file-copy">File copy fallback</option>
+              </select>
+              <span className="settings-hint">
+                Uses git stash when the workspace is a repo; falls back to file copies otherwise.
+              </span>
+            </label>
           </SettingsCard>
         )}
 
         {activeTab === 'context' && (
           <>
-            <SettingsCard
-              title="Context window"
-              description="Set your model's context limit. Thunder trims prompts to stay within this budget."
-            >
-              {contextWindowField}
-            </SettingsCard>
-
             <SettingsCard
               title="Semantic vector search"
               description="Local embeddings for conceptual code search, smarter reranking, and hybrid memory recall."
@@ -641,7 +752,7 @@ export function SettingsPanel({
               </div>
 
               <p className="settings-inline-note">
-                Save settings after changing vector options, then run <strong>Reindex workspace</strong> to rebuild embeddings.
+                Save settings after changing vector options. Vector changes reload the index and rebuild embeddings.
               </p>
             </SettingsCard>
 
@@ -689,7 +800,10 @@ export function SettingsPanel({
                     description={description}
                     checked={mcpToggles[key]}
                     disabled={!mcpEnabled}
-                    onChange={(enabled) => onToggleMcp(key, enabled)}
+                    onChange={(enabled) => {
+                      onToggleMcp(key, enabled);
+                      markDirty();
+                    }}
                   />
                 ))}
               </div>
@@ -761,6 +875,37 @@ export function SettingsPanel({
             title="Approval policy"
             description={`When ${AGENT_NAME} pauses for review before edits or shell commands.`}
           >
+            <label className="settings-field">
+              <span className="settings-label">Autonomy preset</span>
+              <select
+                className="settings-input settings-select"
+                value={autonomyPreset}
+                onChange={(e) => {
+                  const preset = e.target.value as SafetySettingsPayload['autonomyPreset'];
+                  setAutonomyPreset(preset);
+                  if (preset === 'safe' || preset === 'enterprise') {
+                    setApprovalMode('review_all');
+                  } else if (preset === 'guided') {
+                    setApprovalMode('ask_edits');
+                  } else if (preset === 'builder') {
+                    setApprovalMode('ask_commands');
+                  } else if (preset === 'pilot') {
+                    setApprovalMode('ask_commands');
+                  }
+                  markDirty();
+                }}
+              >
+                {AUTONOMY_PRESETS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <span className="settings-hint">
+                {AUTONOMY_PRESETS.find((p) => p.id === autonomyPreset)?.description}
+              </span>
+            </label>
+
             <label className="settings-field">
               <span className="settings-label">Approval mode</span>
               <select

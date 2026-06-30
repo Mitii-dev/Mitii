@@ -2,6 +2,9 @@ import { resolve } from 'path';
 import { z } from 'zod';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { getDefaultEnvironment, StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { Tool as McpSdkTool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolRuntime } from '../tools/ToolRuntime';
 import type { Tool, ToolResult } from '../tools/types';
@@ -9,6 +12,7 @@ import type { McpConfig, McpServerConfig } from '../config/schema';
 import { buildBuiltinMcpServers, isBuiltinMcpServerName } from './builtinServers';
 import { applyMcpToggles, type McpToggles } from './mcpToggles';
 import { loadWorkspaceMcpServers } from './mcpWorkspaceConfig';
+import { resolveMcpAuthProvider } from './McpOAuthProvider';
 import { createLogger } from '../telemetry/Logger';
 
 const log = createLogger('McpManager');
@@ -19,13 +23,14 @@ export interface McpServerStatus {
   connected: boolean;
   toolCount: number;
   builtin?: boolean;
+  transport?: string;
   error?: string;
 }
 
 type ConnectedServer = {
   name: string;
   client: Client;
-  transport: StdioClientTransport;
+  transport: Transport;
   tools: McpSdkTool[];
 };
 
@@ -62,21 +67,33 @@ export class McpManager {
         this.statuses.set(name, { name, connected: false, toolCount: 0, builtin, error: 'Disabled' });
         return;
       }
-      if (!serverConfig.command.trim()) {
+
+      const transportType = serverConfig.type ?? 'stdio';
+      if (transportType === 'stdio' && !serverConfig.command.trim()) {
         this.statuses.set(name, { name, connected: false, toolCount: 0, builtin, error: 'Missing command' });
+        return;
+      }
+      if ((transportType === 'sse' || transportType === 'streamable-http') && !serverConfig.url.trim()) {
+        this.statuses.set(name, { name, connected: false, toolCount: 0, builtin, error: 'Missing URL' });
         return;
       }
 
       try {
         const connected = await this.connectServer(name, serverConfig, workspace);
         this.servers.set(name, connected);
-        this.statuses.set(name, { name, connected: true, toolCount: connected.tools.length, builtin });
+        this.statuses.set(name, {
+          name,
+          connected: true,
+          toolCount: connected.tools.length,
+          builtin,
+          transport: transportType,
+        });
         for (const tool of connected.tools) {
           toolRuntime.register(this.createThunderTool(name, tool));
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        this.statuses.set(name, { name, connected: false, toolCount: 0, builtin, error: message });
+        this.statuses.set(name, { name, connected: false, toolCount: 0, builtin, transport: transportType, error: message });
         log.warn('MCP server failed', { server: name, error: message });
       }
     });
@@ -103,17 +120,7 @@ export class McpManager {
     config: McpServerConfig,
     workspace: string
   ): Promise<ConnectedServer> {
-    const cwd = config.cwd
-      ? resolve(workspace || process.cwd(), config.cwd)
-      : (workspace || process.cwd());
-    const env = sanitizeEnv({ ...getDefaultEnvironment(), ...config.env });
-    const transport = new StdioClientTransport({
-      command: config.command,
-      args: config.args,
-      cwd,
-      env,
-      stderr: 'pipe',
-    });
+    const transport = this.createTransport(config, workspace);
     const client = new Client(
       { name: 'mitii-ai-agent', version: '0.1.0' },
       { capabilities: {} }
@@ -122,6 +129,40 @@ export class McpManager {
     await client.connect(transport, { timeout: config.timeoutMs });
     const listed = await client.listTools(undefined, { timeout: config.timeoutMs });
     return { name, client, transport, tools: listed.tools };
+  }
+
+  private createTransport(config: McpServerConfig, workspace: string): Transport {
+    const type = config.type ?? 'stdio';
+    const headers = { ...config.headers };
+    const authProvider = resolveMcpAuthProvider(headers, config.oauth);
+
+    if (type === 'sse') {
+      const url = new URL(config.url);
+      return new SSEClientTransport(url, {
+        requestInit: { headers },
+        authProvider,
+      });
+    }
+
+    if (type === 'streamable-http') {
+      const url = new URL(config.url);
+      return new StreamableHTTPClientTransport(url, {
+        requestInit: { headers },
+        authProvider,
+      });
+    }
+
+    const cwd = config.cwd
+      ? resolve(workspace || process.cwd(), config.cwd)
+      : (workspace || process.cwd());
+    const env = sanitizeEnv({ ...getDefaultEnvironment(), ...config.env });
+    return new StdioClientTransport({
+      command: config.command,
+      args: config.args,
+      cwd,
+      env,
+      stderr: 'pipe',
+    });
   }
 
   private createThunderTool(serverName: string, mcpTool: McpSdkTool): Tool<Record<string, unknown>> {

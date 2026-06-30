@@ -13,10 +13,13 @@ type FileMcpConfig = {
 
 export type McpCustomServerEntry = {
   name: string;
+  type?: 'stdio' | 'sse' | 'streamable-http';
   command: string;
   args: string[];
   env: Record<string, string>;
   cwd?: string;
+  url?: string;
+  headers?: Record<string, string>;
   disabled: boolean;
   source: 'workspace' | 'settings';
 };
@@ -49,11 +52,13 @@ export function saveCustomMcpServers(
     if (isBuiltinMcpServer(server.name)) return acc;
     acc[server.name] = {
       disabled: server.disabled,
-      type: 'stdio',
+      type: server.type ?? 'stdio',
       command: server.command.trim(),
       args: server.args,
       env: server.env,
       cwd: server.cwd?.trim() || undefined,
+      url: server.url?.trim() || '',
+      headers: server.headers ?? {},
       timeoutMs: 60_000,
     };
     return acc;
@@ -97,10 +102,13 @@ function writeWorkspaceMcpServers(workspace: string, servers: Record<string, Mcp
         name,
         {
           disabled: config.disabled,
+          type: config.type,
           command: config.command,
           args: config.args,
           env: config.env,
           ...(config.cwd ? { cwd: config.cwd } : {}),
+          ...(config.url ? { url: config.url } : {}),
+          ...(Object.keys(config.headers ?? {}).length > 0 ? { headers: config.headers } : {}),
           ...(config.timeoutMs !== 60_000 ? { timeoutMs: config.timeoutMs } : {}),
         },
       ])
@@ -116,10 +124,13 @@ function toCustomEntry(
 ): McpCustomServerEntry {
   return {
     name,
+    type: config.type,
     command: config.command,
     args: config.args,
     env: config.env,
     cwd: config.cwd,
+    url: config.url || undefined,
+    headers: config.headers,
     disabled: config.disabled,
     source,
   };
@@ -150,6 +161,8 @@ function normalizeMcpServerConfig(value: Partial<McpServerConfig>): McpServerCon
     args: value.args ?? [],
     env: value.env ?? {},
     cwd: value.cwd,
+    url: value.url ?? '',
+    headers: value.headers ?? {},
     timeoutMs: value.timeoutMs ?? 60_000,
   };
 }

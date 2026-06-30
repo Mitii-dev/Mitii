@@ -541,6 +541,8 @@ describe('Builtin MCP servers', () => {
             command: 'custom',
             args: ['memory'],
             env: {},
+            url: '',
+            headers: {},
             timeoutMs: 60_000,
           },
         },
@@ -969,6 +971,19 @@ describe('autonomyPresets', () => {
     const pilot = applyAutonomyPreset(base, 'pilot');
     expect(pilot.requireApprovalForWrites).toBe(false);
     expect(pilot.requireApprovalForShell).toBe(true);
+  });
+
+  it('differentiates safe, guided, and builder', async () => {
+    const { applyAutonomyPreset } = await import('../src/core/safety/autonomyPresets');
+    const base = defaultThunderConfig().safety;
+    const safe = applyAutonomyPreset(base, 'safe');
+    const guided = applyAutonomyPreset(base, 'guided');
+    const builder = applyAutonomyPreset(base, 'builder');
+    expect(safe.allowNetwork).toBe(false);
+    expect(guided.allowNetwork).toBe(true);
+    expect(builder.requireApprovalForWrites).toBe(false);
+    expect(guided.approvalMode).toBe('ask_edits');
+    expect(builder.approvalMode).toBe('ask_commands');
   });
 });
 

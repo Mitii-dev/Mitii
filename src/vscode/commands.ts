@@ -28,6 +28,12 @@ export function registerCommands(
 
     vscode.commands.registerCommand('thunder.openSessionLog', async () => {
       await controller.openSessionLog();
+    }),
+
+    vscode.commands.registerCommand('thunder.showInlineDiff', async (approvalId?: string) => {
+      if (typeof approvalId === 'string') {
+        await controller.showInlineDiffForApproval(approvalId);
+      }
     })
   );
 }

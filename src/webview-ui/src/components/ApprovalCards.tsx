@@ -10,6 +10,7 @@ interface ApprovalCardsProps {
     scope?: 'single' | 'task'
   ) => void;
   onApproveAll: () => void;
+  onShowInlineDiff?: (approvalId: string) => void;
 }
 
 const cardMotion = {
@@ -19,7 +20,7 @@ const cardMotion = {
   transition: { duration: 0.2 },
 };
 
-export function ApprovalCards({ approvals, onResolve, onApproveAll }: ApprovalCardsProps) {
+export function ApprovalCards({ approvals, onResolve, onApproveAll, onShowInlineDiff }: ApprovalCardsProps) {
   if (approvals.length === 0) return null;
 
   const questions = approvals.filter((req) => req.kind === 'question' || req.toolName === 'ask_question');
@@ -135,6 +136,15 @@ export function ApprovalCards({ approvals, onResolve, onApproveAll }: ApprovalCa
                     >
                       Deny
                     </button>
+                    {['write_file', 'apply_patch'].includes(req.toolName) && onShowInlineDiff && (
+                      <button
+                        type="button"
+                        className="btn btn--secondary btn--small"
+                        onClick={() => onShowInlineDiff(req.id)}
+                      >
+                        View in editor
+                      </button>
+                    )}
                   </div>
                 </motion.article>
               ))}

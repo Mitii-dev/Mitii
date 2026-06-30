@@ -346,6 +346,10 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         await this.syncState();
         break;
 
+      case 'showInlineDiff':
+        await this.controller.showInlineDiffForApproval(message.payload.approvalId);
+        break;
+
       case 'toggleContextSource':
         this.controller.setContextToggle(message.payload.source, message.payload.enabled);
         await this.syncState();

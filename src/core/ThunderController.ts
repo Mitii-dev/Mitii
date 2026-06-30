@@ -38,7 +38,6 @@ import {
   setSubagentTracker,
 } from './tools/builtinTools';
 import { createMarkStepCompleteTool, createProposePlanMutationTool } from './tools/planTools';
-import { OpenAiCompatibleProvider } from './llm/OpenAiCompatibleProvider';
 import type { LlmProvider } from './llm/types';
 import { UsageTrackingProvider, type ModelCallUsage } from './llm/UsageTrackingProvider';
 import { scaffoldMitiiWorkspace } from './mcp/scaffoldMitiiWorkspace';
@@ -69,7 +68,8 @@ import { McpManager } from './mcp/McpManager';
 import { ProjectRulesContextSource, ProjectRulesService } from './rules/ProjectRulesService';
 import { SkillCatalogContextSource, SkillCatalogService } from './skills/SkillCatalogService';
 import { showWriteDiffPreview, showPatchDiffPreview } from '../vscode/diffPreview';
-import { testOpenAiCompatibleConnection } from './llm/testConnection';
+import { InlineDiffManager } from '../vscode/inlineDiffManager';
+import { testProviderConnection } from './llm/testConnection';
 import { createLogger } from './telemetry/Logger';
 import { SessionLogService } from './telemetry/SessionLogService';
 import { normalizeError } from './telemetry/errors';
@@ -129,6 +129,7 @@ export class ThunderController {
   private mcpManager = new McpManager();
   private projectRulesService: ProjectRulesService | undefined;
   private skillCatalogService: SkillCatalogService | undefined;
+  private inlineDiffManager: InlineDiffManager | undefined;
   private researchAgentProvider: LlmProvider | undefined;
   private sessionLog = new SessionLogService();
   private lastSubagentSnapshot = new Map<string, string>();
@@ -178,6 +179,11 @@ export class ThunderController {
   constructor(private readonly context: vscode.ExtensionContext) {
     this.configService = new ConfigService(context);
     this.providerRegistry = new LlmProviderRegistry();
+    this.inlineDiffManager = new InlineDiffManager(
+      async (approvalId) => { await this.resolveApproval(approvalId, 'approved'); },
+      async (approvalId) => { await this.resolveApproval(approvalId, 'denied'); }
+    );
+    context.subscriptions.push(this.inlineDiffManager);
     this.toolRuntime.setSessionLog(this.sessionLog);
     this.debouncedRebuildRetriever = debounce(() => this.rebuildRetriever(), 400);
   }
@@ -272,23 +278,21 @@ export class ThunderController {
   private async refreshResearchAgentProvider(): Promise<void> {
     const config = this.configService.getConfig();
     const model = config.agent.researchAgentModel?.trim();
-    if (!model || config.provider.type !== 'openai-compatible') {
+    if (!model || config.provider.type === 'echo') {
       this.researchAgentProvider = undefined;
       return;
     }
 
     const apiKey = await this.configService.getApiKey();
-    this.researchAgentProvider = new OpenAiCompatibleProvider({
+    this.researchAgentProvider = this.providerRegistry.resolveFromOptions({
+      type: config.provider.type,
       baseUrl: config.agent.researchAgentBaseUrl?.trim() || config.provider.baseUrl,
       model,
-      apiKey,
-      capabilities: {
-        contextWindow: config.provider.contextWindow,
-        supportsStreaming: config.provider.supportsStreaming,
-        supportsTools: config.provider.supportsTools,
-        supportsEmbeddings: config.provider.supportsEmbeddings,
-      },
-    });
+      contextWindow: config.provider.contextWindow,
+      supportsStreaming: config.provider.supportsStreaming,
+      supportsTools: config.provider.supportsTools,
+      supportsEmbeddings: config.provider.supportsEmbeddings,
+    }, apiKey);
   }
 
   async initialize(): Promise<void> {
@@ -495,6 +499,7 @@ export class ThunderController {
       });
     });
     this.checkpointService = new CheckpointService(db, workspace, this.gitService);
+    this.checkpointService.setStrategy(config.agent.checkpointStrategy);
     this.sessionService = new SessionService(db);
     this.planPersistence = new PlanPersistence(db);
     this.approvalQueue = new ApprovalQueue(db);
@@ -531,6 +536,7 @@ export class ThunderController {
           agentLiveStatus: this.agentLiveStatus,
           agentActivity: this.agentActivity,
         });
+        void this.showInlineDiffForPendingApprovals();
       },
       () => this.agentTaskState,
       this.sessionLog
@@ -808,6 +814,7 @@ export class ThunderController {
     const override = this.configService.getWorkspaceOverride();
     const vscodeFolders = this.getVscodeWorkspaceFolders();
     const indexDbPath = workspacePath ? resolveDbPath(workspacePath) : '';
+    const appVersion = String(this.context.extension.packageJSON.version ?? '');
 
     const approvals: ApprovalRequestView[] = (this.approvalQueue?.getPending() ?? []).map((r) => ({
       id: r.id,
@@ -868,8 +875,10 @@ export class ThunderController {
         kind: c.kind,
         files: c.files,
         createdAt: c.createdAt,
+        strategy: c.strategy,
       })),
       settings: {
+        appVersion,
         providerType: config.provider.type,
         baseUrl: config.provider.baseUrl,
         model: config.provider.model,
@@ -898,10 +907,13 @@ export class ThunderController {
         })),
         customMcpServers: listCustomMcpServers(config.mcp.servers, workspacePath ?? '').map((server) => ({
           name: server.name,
+          type: server.type,
           command: server.command,
           args: server.args,
           env: server.env,
           cwd: server.cwd,
+          url: server.url,
+          headers: server.headers,
           disabled: server.disabled,
           source: server.source,
         })),
@@ -915,6 +927,12 @@ export class ThunderController {
         hybridMemorySearch: config.memory.hybridSearchEnabled,
         minilmAvailable: isMinilmAvailable(),
         lancedbAvailable: isLanceDbAvailable(),
+        autonomyPreset: config.safety.autonomyPreset,
+        planModel: config.agent.planModel,
+        planBaseUrl: config.agent.planBaseUrl,
+        actModel: config.agent.actModel,
+        actBaseUrl: config.agent.actBaseUrl,
+        checkpointStrategy: config.agent.checkpointStrategy,
       },
       contextToggles: this.contextToggles,
       mcpToggles: this.mcpToggles,
@@ -1045,6 +1063,95 @@ export class ThunderController {
   getToolExecutor(): ToolExecutor | undefined { return this.toolExecutor; }
   getMemoryService(): MemoryService | undefined { return this.memoryService; }
   getCheckpointService(): CheckpointService | undefined { return this.checkpointService; }
+
+  private async resolveProviderForMode(mode: string): Promise<LlmProvider> {
+    const config = this.configService.getConfig();
+    const apiKey = await this.configService.getApiKey();
+
+    if (mode === 'plan') {
+      const planModel = config.agent.planModel?.trim();
+      if (planModel) {
+        return this.providerRegistry.resolveFromOptions({
+          type: config.agent.planProviderType ?? config.provider.type,
+          baseUrl: config.agent.planBaseUrl?.trim() || config.provider.baseUrl,
+          model: planModel,
+          contextWindow: config.provider.contextWindow,
+          supportsStreaming: config.provider.supportsStreaming,
+          supportsTools: config.provider.supportsTools,
+          supportsEmbeddings: config.provider.supportsEmbeddings,
+        }, apiKey);
+      }
+    }
+
+    if (mode === 'agent') {
+      const actModel = config.agent.actModel?.trim();
+      if (actModel) {
+        return this.providerRegistry.resolveFromOptions({
+          type: config.agent.actProviderType ?? config.provider.type,
+          baseUrl: config.agent.actBaseUrl?.trim() || config.provider.baseUrl,
+          model: actModel,
+          contextWindow: config.provider.contextWindow,
+          supportsStreaming: config.provider.supportsStreaming,
+          supportsTools: config.provider.supportsTools,
+          supportsEmbeddings: config.provider.supportsEmbeddings,
+        }, apiKey);
+      }
+    }
+
+    const active = this.providerRegistry.getActive();
+    if (!active) {
+      throw normalizeError(new Error('No LLM provider configured'));
+    }
+    return active;
+  }
+
+  private async showInlineDiffForPendingApprovals(approvalId?: string): Promise<void> {
+    if (!this.inlineDiffManager) return;
+    const workspace = this.resolveWorkspacePath();
+    if (!workspace) return;
+
+    const pending = this.approvalQueue?.getPending() ?? [];
+    const writeApproval = pending.find((req) =>
+      ['write_file', 'apply_patch'].includes(req.toolName) &&
+      (!approvalId || req.id === approvalId)
+    );
+    if (!writeApproval) {
+      this.inlineDiffManager.setPending(undefined);
+      return;
+    }
+
+    const fullInput = this.approvalQueue?.getFullInput(writeApproval.id);
+    const path = typeof fullInput?.path === 'string'
+      ? fullInput.path
+      : writeApproval.files[0];
+    if (!path) return;
+
+    if (writeApproval.toolName === 'write_file' && typeof fullInput?.content === 'string') {
+      await this.inlineDiffManager.showForApproval(
+        workspace,
+        writeApproval.id,
+        path,
+        'write_file',
+        fullInput.content
+      );
+      return;
+    }
+
+    if (
+      writeApproval.toolName === 'apply_patch' &&
+      typeof fullInput?.oldText === 'string' &&
+      typeof fullInput?.newText === 'string'
+    ) {
+      await this.inlineDiffManager.showForApproval(
+        workspace,
+        writeApproval.id,
+        path,
+        'apply_patch',
+        fullInput.newText,
+        fullInput.oldText
+      );
+    }
+  }
 
   startNewChat(): string {
     const workspace = this.resolveWorkspacePath();
@@ -1248,7 +1355,7 @@ export class ThunderController {
     options?: { preserveActivity?: boolean; pinnedContext?: PinnedContextView[] }
   ): Promise<AsyncIterable<string>> {
     if (!this.session) throw normalizeError(new Error('Session not initialized'));
-    const provider = this.providerRegistry.getActive();
+    const provider = await this.resolveProviderForMode(this.session.mode);
     if (!provider) throw normalizeError(new Error('No LLM provider configured'));
     this.resetCurrentTurnUsage();
     const meteredProvider = this.trackProvider(provider);
@@ -1609,6 +1716,7 @@ export class ThunderController {
     });
 
     this.notifyUi({ approvals: (this.approvalQueue?.getPending() ?? []).map(toApprovalView) });
+    this.inlineDiffManager?.setPending(undefined);
 
     if (request.toolName === 'ask_question') {
       const options = request.options ?? (Array.isArray(fullInput?.options) ? fullInput.options as string[] : []);
@@ -1767,7 +1875,8 @@ export class ThunderController {
       return;
     }
 
-    const result = await testOpenAiCompatibleConnection(
+    const result = await testProviderConnection(
+      providerType as import('./config/schema').ProviderType,
       baseUrl,
       model,
       apiKey
@@ -1829,6 +1938,11 @@ export class ThunderController {
       maxAutoContinues: clamp(settings.maxAutoContinues, 0, 10),
       researchAgentMaxSteps: clamp(settings.researchAgentMaxSteps, 1, 50),
       showDiffPreview: settings.showDiffPreview,
+      planModel: settings.planModel,
+      planBaseUrl: settings.planBaseUrl,
+      actModel: settings.actModel,
+      actBaseUrl: settings.actBaseUrl,
+      checkpointStrategy: settings.checkpointStrategy,
     });
 
     const config = this.configService.getConfig();
@@ -1844,7 +1958,10 @@ export class ThunderController {
   async saveSafetySettings(settings: import('../vscode/webview/messages').SafetySettingsPayload): Promise<void> {
     await this.configService.updateSafetySettings(settings);
     const config = this.configService.getConfig();
-    const effectiveSafety = applyAutonomyPreset(config.safety, config.safety.autonomyPreset);
+    const effectiveSafety = applyAutonomyPreset(
+      { ...config.safety, ...settings },
+      settings.autonomyPreset ?? config.safety.autonomyPreset
+    );
     this.policyEngine?.updateSafetyConfig(effectiveSafety);
     this.notifyUi({ settings: (await this.buildUiState()).settings });
     void vscode.window.showInformationMessage(brandMessage('Approval mode saved.'));
@@ -1918,6 +2035,7 @@ export class ThunderController {
 
     const effectiveSafety = applyAutonomyPreset(config.safety, config.safety.autonomyPreset);
     this.policyEngine?.updateSafetyConfig(effectiveSafety);
+    this.checkpointService?.setStrategy(config.agent.checkpointStrategy);
 
     setVerifyCommandPatterns(config.agent.verifyCommands);
 
@@ -1989,7 +2107,7 @@ export class ThunderController {
   }
 
   async restoreCheckpoint(id: string): Promise<boolean> {
-    const ok = this.checkpointService?.restore(id) ?? false;
+    const ok = await (this.checkpointService?.restore(id) ?? Promise.resolve(false));
     if (ok) {
       void vscode.window.showInformationMessage(brandMessage('Checkpoint restored.'));
       this.notifyUi({
@@ -2024,9 +2142,15 @@ export class ThunderController {
   refreshCheckpointPanel(): void {
     this.notifyUi({
       checkpoints: (this.checkpointService?.list(this.session?.id) ?? []).map((c) => ({
-        id: c.id, kind: c.kind, files: c.files, createdAt: c.createdAt,
+        id: c.id, kind: c.kind, files: c.files, createdAt: c.createdAt, strategy: c.strategy,
       })),
     });
+  }
+
+  async showInlineDiffForApproval(approvalId: string): Promise<void> {
+    const pending = this.approvalQueue?.getPending() ?? [];
+    if (!pending.some((req) => req.id === approvalId)) return;
+    await this.showInlineDiffForPendingApprovals(approvalId);
   }
 
   async indexWorkspace(options: { force?: boolean } = { force: true }): Promise<void> {

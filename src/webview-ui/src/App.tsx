@@ -12,6 +12,7 @@ import { IndexingStatusBar } from './components/IndexingStatusBar';
 import { WorkspaceBanner } from './components/WorkspaceBanner';
 import { HistoryPanel } from './components/HistoryPanel';
 import { PlanPanel } from './components/PlanPanel';
+import { DevPanels } from './components/DevPanels';
 import { IconButton } from './components/IconButton';
 import { IconChat, IconHistory, IconPlus, IconSettings } from './components/Icons';
 import { deriveSafetySettings } from './utils/approvalMode';
@@ -114,6 +115,9 @@ export function App() {
           postMessage({ type: 'resolveApproval', payload: { id, decision, selectedOption, scope } })
         }
         onApproveAll={() => postMessage({ type: 'approveAllPending' })}
+        onShowInlineDiff={(approvalId) =>
+          postMessage({ type: 'showInlineDiff', payload: { approvalId } })
+        }
       />
 
       {state.tab === 'chat' ? (
@@ -129,6 +133,17 @@ export function App() {
             onRemove={(path) => postMessage({ type: 'removePinnedContext', payload: { path } })}
             onClear={() => postMessage({ type: 'clearPinnedContext' })}
             onPick={() => postMessage({ type: 'pickContextPath' })}
+          />
+          <DevPanels
+            contextBudget={state.contextBudget}
+            contextPreview={state.contextPreview}
+            contextTokenEstimate={state.contextTokenEstimate}
+            tokenUsage={state.tokenUsage}
+            memories={state.memories}
+            checkpoints={state.checkpoints}
+            onDeleteMemory={(id) => postMessage({ type: 'deleteMemory', payload: { id } })}
+            onClearMemory={() => postMessage({ type: 'clearMemory' })}
+            onRestoreCheckpoint={(id) => postMessage({ type: 'restoreCheckpoint', payload: { id } })}
           />
           <div className="chat-body">
             <MessageList
@@ -210,9 +225,6 @@ export function App() {
             }
             onSaveCustomMcpServers={(servers) =>
               postMessage({ type: 'saveCustomMcpServers', payload: { servers } })
-            }
-            onSaveProviderSettings={(payload) =>
-              postMessage({ type: 'saveProviderSettings', payload })
             }
           />
         </main>

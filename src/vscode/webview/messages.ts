@@ -176,9 +176,11 @@ export interface CheckpointView {
   kind: string;
   files: string[];
   createdAt: number;
+  strategy?: string;
 }
 
 export interface SettingsView {
+  appVersion: string;
   providerType: string;
   baseUrl: string;
   model: string;
@@ -212,12 +214,18 @@ export interface SettingsView {
   hybridMemorySearch: boolean;
   minilmAvailable: boolean;
   lancedbAvailable: boolean;
+  autonomyPreset: 'safe' | 'guided' | 'builder' | 'pilot' | 'enterprise';
+  planModel: string;
+  planBaseUrl: string;
+  actModel: string;
+  actBaseUrl: string;
+  checkpointStrategy: 'file-copy' | 'git-stash' | 'shadow-git';
 }
 
 export type ApprovalMode = 'review_all' | 'ask_edits' | 'ask_deletes' | 'ask_commands' | 'auto';
 
 export interface ProviderSettingsPayload {
-  providerType: 'echo' | 'openai-compatible';
+  providerType: ProviderTypeView;
   baseUrl: string;
   model: string;
   contextWindow: number;
@@ -230,12 +238,18 @@ export interface AgentSettingsPayload {
   maxAutoContinues: number;
   researchAgentMaxSteps: number;
   showDiffPreview: boolean;
+  planModel: string;
+  planBaseUrl: string;
+  actModel: string;
+  actBaseUrl: string;
+  checkpointStrategy: 'file-copy' | 'git-stash' | 'shadow-git';
 }
 
 export interface SafetySettingsPayload {
   approvalMode: ApprovalMode;
   requireApprovalForWrites: boolean;
   requireApprovalForShell: boolean;
+  autonomyPreset: 'safe' | 'guided' | 'builder' | 'pilot' | 'enterprise';
 }
 
 export interface McpSettingsPayload {
@@ -252,10 +266,13 @@ export interface McpToggles {
 
 export interface McpCustomServerView {
   name: string;
+  type?: 'stdio' | 'sse' | 'streamable-http';
   command: string;
   args: string[];
   env: Record<string, string>;
   cwd?: string;
+  url?: string;
+  headers?: Record<string, string>;
   disabled: boolean;
   source: 'workspace' | 'settings';
 }
@@ -278,7 +295,23 @@ export interface IndexingSettingsPayload {
   embeddingProvider: 'minilm' | 'hash';
   vectorBackend: 'sqlite' | 'lancedb';
   hybridMemorySearch: boolean;
+  autonomyPreset: 'safe' | 'guided' | 'builder' | 'pilot' | 'enterprise';
+  planModel: string;
+  planBaseUrl: string;
+  actModel: string;
+  actBaseUrl: string;
+  checkpointStrategy: 'file-copy' | 'git-stash' | 'shadow-git';
 }
+
+export type ProviderTypeView =
+  | 'echo'
+  | 'openai-compatible'
+  | 'openai'
+  | 'anthropic'
+  | 'gemini'
+  | 'deepseek'
+  | 'cursor'
+  | 'codex';
 
 export interface ThunderSettingsPayload {
   provider: ProviderSettingsPayload;
@@ -387,6 +420,7 @@ export type WebviewToExtensionMessage =
   | { type: 'restoreCheckpoint'; payload: { id: string } }
   | { type: 'deleteMemory'; payload: { id: number } }
   | { type: 'clearMemory' }
+  | { type: 'showInlineDiff'; payload: { approvalId: string } }
   | { type: 'toggleContextSource'; payload: { source: keyof ContextToggles; enabled: boolean } }
   | { type: 'toggleMcpServer'; payload: { server: keyof McpToggles; enabled: boolean } }
   | { type: 'saveCustomMcpServers'; payload: { servers: McpCustomServerView[] } }
@@ -416,6 +450,7 @@ export const defaultContextToggles = (): ContextToggles => ({
 });
 
 export const defaultSettingsView = (): SettingsView => ({
+  appVersion: '',
   providerType: 'echo',
   baseUrl: 'http://localhost:11434/v1',
   model: 'qwen3-coder:30b',
@@ -447,6 +482,12 @@ export const defaultSettingsView = (): SettingsView => ({
   hybridMemorySearch: true,
   minilmAvailable: false,
   lancedbAvailable: false,
+  autonomyPreset: 'guided',
+  planModel: '',
+  planBaseUrl: '',
+  actModel: '',
+  actBaseUrl: '',
+  checkpointStrategy: 'git-stash',
 });
 
 export const initialWebviewState = (): WebviewState => ({

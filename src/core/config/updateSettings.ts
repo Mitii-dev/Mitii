@@ -31,6 +31,11 @@ export async function updateAgentSettings(settings: AgentSettingsPayload): Promi
   await config.update('agent.maxAutoContinues', settings.maxAutoContinues, target);
   await config.update('agent.researchAgentMaxSteps', settings.researchAgentMaxSteps, target);
   await config.update('agent.showDiffPreview', settings.showDiffPreview, target);
+  await config.update('agent.planModel', settings.planModel.trim(), target);
+  await config.update('agent.planBaseUrl', settings.planBaseUrl.trim(), target);
+  await config.update('agent.actModel', settings.actModel.trim(), target);
+  await config.update('agent.actBaseUrl', settings.actBaseUrl.trim(), target);
+  await config.update('agent.checkpointStrategy', settings.checkpointStrategy, target);
 }
 
 export async function updateSafetySettings(settings: SafetySettingsPayload): Promise<void> {
@@ -40,6 +45,7 @@ export async function updateSafetySettings(settings: SafetySettingsPayload): Pro
   await config.update('safety.approvalMode', settings.approvalMode, target);
   await config.update('safety.requireApprovalForWrites', settings.requireApprovalForWrites, target);
   await config.update('safety.requireApprovalForShell', settings.requireApprovalForShell, target);
+  await config.update('safety.autonomyPreset', settings.autonomyPreset, target);
 }
 
 export async function updateWorkspaceOverride(path: string): Promise<void> {

@@ -1,7 +1,7 @@
 import type { LlmProvider } from './types';
 import type { ProviderConfig } from '../config/schema';
 import { EchoProvider } from './EchoProvider';
-import { OpenAiCompatibleProvider } from './OpenAiCompatibleProvider';
+import { createProvider } from './createProvider';
 
 export class LlmProviderRegistry {
   private providers = new Map<string, LlmProvider>();
@@ -27,29 +27,24 @@ export class LlmProviderRegistry {
     config: ProviderConfig,
     apiKey?: string
   ): Promise<LlmProvider> {
-    let provider: LlmProvider;
-
-    switch (config.type) {
-      case 'openai-compatible':
-        provider = new OpenAiCompatibleProvider({
-          baseUrl: config.baseUrl,
-          model: config.model,
-          apiKey,
-          capabilities: {
-            contextWindow: config.contextWindow,
-            supportsStreaming: config.supportsStreaming,
-            supportsTools: config.supportsTools,
-            supportsEmbeddings: config.supportsEmbeddings,
-          },
-        });
-        break;
-      case 'echo':
-      default:
-        provider = this.providers.get('echo') ?? new EchoProvider();
-        break;
-    }
-
+    const provider = createProvider(config, apiKey);
     this.activeProvider = provider;
     return provider;
+  }
+
+  resolveFromOptions(
+    options: Partial<ProviderConfig> & { type: ProviderConfig['type'] },
+    apiKey?: string
+  ): LlmProvider {
+    return createProvider({
+      type: options.type,
+      baseUrl: options.baseUrl ?? '',
+      model: options.model ?? '',
+      apiKeyRef: 'thunder.apiKey',
+      contextWindow: options.contextWindow ?? 8192,
+      supportsStreaming: options.supportsStreaming ?? true,
+      supportsTools: options.supportsTools ?? true,
+      supportsEmbeddings: options.supportsEmbeddings ?? false,
+    }, apiKey);
   }
 }

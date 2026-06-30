@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow",
-  "version": "2.6.13",
+  "version": "2.6.14",
   "publisher": "mitii",
   "icon": "media/mitii-short-logo.png",
   "license": "AGPL-3.0-or-later",
@@ -73,6 +73,21 @@
         "command": "thunder.openSessionLog",
         "title": "Mitii: Open Session Log File",
         "category": "Mitii"
+      },
+      {
+        "command": "thunder.acceptInlineDiff",
+        "title": "Mitii: Accept Inline Diff",
+        "category": "Mitii"
+      },
+      {
+        "command": "thunder.rejectInlineDiff",
+        "title": "Mitii: Reject Inline Diff",
+        "category": "Mitii"
+      },
+      {
+        "command": "thunder.showInlineDiff",
+        "title": "Mitii: Show Inline Diff",
+        "category": "Mitii"
       }
     ],
     "viewsContainers": {
@@ -115,6 +130,12 @@
           "type": "string",
           "enum": [
             "openai-compatible",
+            "openai",
+            "anthropic",
+            "gemini",
+            "deepseek",
+            "cursor",
+            "codex",
             "echo"
           ],
           "default": "echo",
@@ -326,6 +347,36 @@
           "type": "boolean",
           "default": true,
           "description": "Run thunder.agent.verifyCommands after Act-mode agent runs complete."
+        },
+        "thunder.agent.planModel": {
+          "type": "string",
+          "default": "",
+          "description": "Optional model override for Plan mode. Empty uses thunder.provider.model."
+        },
+        "thunder.agent.planBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional base URL override for Plan mode."
+        },
+        "thunder.agent.actModel": {
+          "type": "string",
+          "default": "",
+          "description": "Optional model override for Agent (Act) mode. Empty uses thunder.provider.model."
+        },
+        "thunder.agent.actBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional base URL override for Agent (Act) mode."
+        },
+        "thunder.agent.checkpointStrategy": {
+          "type": "string",
+          "enum": [
+            "file-copy",
+            "git-stash",
+            "shadow-git"
+          ],
+          "default": "git-stash",
+          "description": "Checkpoint strategy before file writes. Git stash when repo available, else file copy."
         },
         "thunder.safety.allowUntrustedWorkspace": {
           "type": "boolean",

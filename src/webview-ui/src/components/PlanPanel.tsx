@@ -21,6 +21,7 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
   const [collapsed, setCollapsed] = useState(false);
   const hasPlan = Boolean(plan && plan.steps.length > 0);
   const isPlanning = loading && (mode === 'plan' || mode === 'agent') && !hasPlan;
+  const collapseLabel = collapsed ? 'Expand' : 'Collapse';
   const planningLabel = liveStatus?.label?.toLowerCase().includes('plan')
     ? liveStatus.label
     : 'Building plan…';
@@ -35,6 +36,8 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
           className="plan-panel__toggle"
           onClick={() => setCollapsed((value) => !value)}
           aria-expanded={!collapsed}
+          aria-label={`${collapseLabel} planner`}
+          title={`${collapseLabel} planner`}
         >
           <span className="plan-panel__chevron" aria-hidden="true">
             {collapsed ? '▸' : '▾'}
@@ -46,6 +49,7 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
               <span className="plan-panel__loading-detail">{liveStatus.detail}</span>
             )}
           </span>
+          <span className="plan-panel__collapse-label">{collapseLabel}</span>
         </button>
       </section>
     );
@@ -63,6 +67,8 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
         className="plan-panel__toggle plan-panel__toggle--header"
         onClick={() => setCollapsed((value) => !value)}
         aria-expanded={!collapsed}
+        aria-label={`${collapseLabel} planner`}
+        title={`${collapseLabel} planner`}
       >
         <span className="plan-panel__chevron" aria-hidden="true">
           {collapsed ? '▸' : '▾'}
@@ -75,7 +81,10 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
               <p className="plan-panel__running">Running: {running.title}</p>
             )}
           </div>
-          <span className="plan-panel__progress">{done}/{plan.steps.length}</span>
+          <span className="plan-panel__meta">
+            <span className="plan-panel__progress">{done}/{plan.steps.length}</span>
+            <span className="plan-panel__collapse-label">{collapseLabel}</span>
+          </span>
         </div>
       </button>
 

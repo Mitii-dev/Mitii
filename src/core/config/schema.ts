@@ -2,6 +2,12 @@ import { z } from 'zod';
 
 export const ProviderTypeSchema = z.enum([
   'openai-compatible',
+  'openai',
+  'anthropic',
+  'gemini',
+  'deepseek',
+  'cursor',
+  'codex',
   'echo',
 ]);
 
@@ -71,15 +77,33 @@ export const AgentConfigSchema = z.object({
   showDiffPreview: z.boolean().default(false),
   verifyCommands: z.array(z.string()).default(['npm run lint', 'npm test']),
   verifyOnActComplete: z.boolean().default(true),
+  planModel: z.string().default(''),
+  planBaseUrl: z.string().default(''),
+  planProviderType: ProviderTypeSchema.optional(),
+  actModel: z.string().default(''),
+  actBaseUrl: z.string().default(''),
+  actProviderType: ProviderTypeSchema.optional(),
+  checkpointStrategy: z.enum(['file-copy', 'git-stash', 'shadow-git']).default('git-stash'),
+});
+
+export const McpOAuthConfigSchema = z.object({
+  clientId: z.string().default(''),
+  clientSecret: z.string().default(''),
+  scope: z.string().default(''),
+  redirectUri: z.string().default('http://127.0.0.1:33445/callback'),
+  accessToken: z.string().default(''),
 });
 
 export const McpServerConfigSchema = z.object({
   disabled: z.boolean().default(false),
-  type: z.enum(['stdio']).default('stdio'),
+  type: z.enum(['stdio', 'sse', 'streamable-http']).default('stdio'),
   command: z.string().default(''),
   args: z.array(z.string()).default([]),
   env: z.record(z.string()).default({}),
   cwd: z.string().optional(),
+  url: z.string().default(''),
+  headers: z.record(z.string()).default({}),
+  oauth: McpOAuthConfigSchema.optional(),
   timeoutMs: z.number().int().positive().default(60_000),
 });
 

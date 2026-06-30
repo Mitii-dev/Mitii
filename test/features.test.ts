@@ -1,0 +1,262 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { defaultThunderConfig } from '../src/core/config/schema';
+import { applyAutonomyPreset, describeAutonomyPreset } from '../src/core/safety/autonomyPresets';
+import { createProvider } from '../src/core/llm/createProvider';
+import { PROVIDER_PRESETS, getProviderPreset, isCloudProvider } from '../src/core/llm/providerPresets';
+import { LlmProviderRegistry } from '../src/core/llm/LlmProviderRegistry';
+import { makeToolName } from '../src/core/mcp/McpManager';
+import { resolveMcpAuthProvider } from '../src/core/mcp/McpOAuthProvider';
+import { testProviderConnection } from '../src/core/llm/testConnection';
+import { deriveSafetySettings } from '../src/webview-ui/src/utils/approvalMode';
+
+describe('providerPresets', () => {
+  it('includes all first-class providers', () => {
+    const types = PROVIDER_PRESETS.map((p) => p.type);
+    expect(types).toEqual(expect.arrayContaining([
+      'openai',
+      'anthropic',
+      'gemini',
+      'deepseek',
+      'cursor',
+      'codex',
+    ]));
+  });
+
+  it('resolves preset by type', () => {
+    expect(getProviderPreset('anthropic')?.model).toContain('claude');
+    expect(getProviderPreset('gemini')?.baseUrl).toContain('generativelanguage');
+  });
+
+  it('marks cloud providers correctly', () => {
+    expect(isCloudProvider('anthropic')).toBe(true);
+    expect(isCloudProvider('openai-compatible')).toBe(false);
+    expect(isCloudProvider('echo')).toBe(false);
+  });
+});
+
+describe('createProvider', () => {
+  it('creates echo provider by default', () => {
+    const provider = createProvider(defaultThunderConfig().provider);
+    expect(provider.id).toBe('echo');
+  });
+
+  it('creates anthropic provider with correct id', () => {
+    const provider = createProvider({
+      type: 'anthropic',
+      baseUrl: 'https://api.anthropic.com',
+      model: 'claude-sonnet-4-20250514',
+      apiKeyRef: 'thunder.apiKey',
+      contextWindow: 200_000,
+      supportsStreaming: true,
+      supportsTools: true,
+      supportsEmbeddings: false,
+    }, 'test-key');
+    expect(provider.id).toBe('anthropic');
+    expect(provider.capabilities.contextWindow).toBe(200_000);
+  });
+
+  it('creates gemini provider', () => {
+    const provider = createProvider({
+      ...defaultThunderConfig().provider,
+      type: 'gemini',
+      model: 'gemini-2.0-flash',
+    });
+    expect(provider.id).toBe('gemini');
+  });
+
+  it('routes deepseek through openai-compatible transport', () => {
+    const provider = createProvider({
+      ...defaultThunderConfig().provider,
+      type: 'deepseek',
+      baseUrl: 'https://api.deepseek.com/v1',
+      model: 'deepseek-chat',
+    });
+    expect(provider.id).toBe('openai-compatible');
+  });
+});
+
+describe('LlmProviderRegistry', () => {
+  it('resolves plan/act style overrides via resolveFromOptions', () => {
+    const registry = new LlmProviderRegistry();
+    const provider = registry.resolveFromOptions({
+      type: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-4.1-mini',
+      contextWindow: 128_000,
+    }, 'sk-test');
+    expect(provider.id).toBe('openai-compatible');
+    expect(provider.capabilities.contextWindow).toBe(128_000);
+  });
+});
+
+describe('autonomyPresets differentiation', () => {
+  const base = defaultThunderConfig().safety;
+
+  it('safe blocks network and requires all approvals', () => {
+    const safe = applyAutonomyPreset(base, 'safe');
+    expect(safe.allowNetwork).toBe(false);
+    expect(safe.approvalMode).toBe('review_all');
+    expect(safe.requireApprovalForWrites).toBe(true);
+    expect(safe.requireApprovalForShell).toBe(true);
+  });
+
+  it('guided allows network and asks before edits', () => {
+    const guided = applyAutonomyPreset(base, 'guided');
+    expect(guided.allowNetwork).toBe(true);
+    expect(guided.approvalMode).toBe('ask_edits');
+    expect(guided.requireApprovalForWrites).toBe(true);
+  });
+
+  it('builder auto-approves writes but reviews shell', () => {
+    const builder = applyAutonomyPreset(base, 'builder');
+    expect(builder.requireApprovalForWrites).toBe(false);
+    expect(builder.requireApprovalForShell).toBe(true);
+    expect(builder.approvalMode).toBe('ask_commands');
+  });
+
+  it('enterprise blocks network like safe', () => {
+    const enterprise = applyAutonomyPreset(base, 'enterprise');
+    expect(enterprise.allowNetwork).toBe(false);
+    expect(enterprise.approvalMode).toBe('review_all');
+  });
+
+  it('pilot auto-approves writes', () => {
+    const pilot = applyAutonomyPreset(base, 'pilot');
+    expect(pilot.requireApprovalForWrites).toBe(false);
+    expect(pilot.requireApprovalForShell).toBe(true);
+  });
+
+  it('describes each preset', () => {
+    expect(describeAutonomyPreset('guided')).toContain('Balanced');
+    expect(describeAutonomyPreset('builder')).toContain('auto-approves writes');
+  });
+});
+
+describe('deriveSafetySettings', () => {
+  it('includes autonomy preset in payload', () => {
+    expect(deriveSafetySettings('ask_edits').autonomyPreset).toBe('guided');
+    expect(deriveSafetySettings('ask_commands').autonomyPreset).toBe('builder');
+  });
+});
+
+describe('MCP remote transport helpers', () => {
+  it('creates auth provider from bearer header', async () => {
+    const provider = resolveMcpAuthProvider({ Authorization: 'Bearer test-token' });
+    expect(provider).toBeDefined();
+    const tokens = await provider!.tokens();
+    expect(tokens?.access_token).toBe('test-token');
+  });
+
+  it('creates stable MCP tool names', () => {
+    expect(makeToolName('My Server', 'read_file')).toMatch(/^mcp__/);
+    expect(makeToolName('My Server', 'read_file').length).toBeLessThanOrEqual(128);
+  });
+});
+
+describe('testProviderConnection', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('echo mode always succeeds', async () => {
+    const result = await testProviderConnection('echo', '', 'echo', undefined);
+    expect(result.ok).toBe(true);
+  });
+
+  it('anthropic requires api key', async () => {
+    const result = await testProviderConnection('anthropic', 'https://api.anthropic.com', 'claude', '');
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('API key');
+  });
+
+  it('gemini requires api key', async () => {
+    const result = await testProviderConnection('gemini', 'https://generativelanguage.googleapis.com', 'gemini-2.0-flash', '');
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('API key');
+  });
+
+  it('cloud openai-compatible providers require api key', async () => {
+    const result = await testProviderConnection('deepseek', 'https://api.deepseek.com/v1', 'deepseek-chat', '');
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('plan vs act config schema', () => {
+  it('parses optional plan and act model overrides', () => {
+    const config = defaultThunderConfig();
+    expect(config.agent.planModel).toBe('');
+    expect(config.agent.actModel).toBe('');
+    expect(config.agent.checkpointStrategy).toBe('git-stash');
+  });
+});
+
+describe('fetch_web tool policy', () => {
+  it('is registered as read-only in tool policy', async () => {
+    const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
+    const engine = new ToolPolicyEngine(
+      { ...defaultThunderConfig().safety, allowNetwork: true },
+      () => false
+    );
+    const result = engine.evaluate('fetch_web', { url: 'https://example.com' });
+    expect(result.decision).toBe('allow');
+  });
+
+  it('blocks fetch_web when network disabled', async () => {
+    const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
+    const engine = new ToolPolicyEngine(
+      applyAutonomyPreset(defaultThunderConfig().safety, 'safe'),
+      () => false
+    );
+    const result = engine.evaluate('fetch_web', { url: 'https://example.com' });
+    expect(result.decision).toBe('block');
+  });
+});
+
+describe('CheckpointService strategy metadata', () => {
+  it('defaults to git-stash strategy in agent config', () => {
+    expect(defaultThunderConfig().agent.checkpointStrategy).toBe('git-stash');
+  });
+});
+
+describe('Anthropic message splitting', () => {
+  it('maps tool results to anthropic format without throwing', async () => {
+    const { AnthropicProvider } = await import('../src/core/llm/AnthropicProvider');
+    const provider = new AnthropicProvider({
+      baseUrl: 'https://api.anthropic.com',
+      model: 'claude-sonnet-4-20250514',
+      apiKey: 'test',
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: async () => ({ done: true, value: undefined }),
+          releaseLock: () => undefined,
+        }),
+      },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      for await (const _delta of provider.complete({
+        messages: [
+          { role: 'user', content: 'hi' },
+          { role: 'assistant', content: '', tool_calls: [{
+            id: 'tc1',
+            type: 'function',
+            function: { name: 'read_file', arguments: '{"path":"a.ts"}' },
+          }] },
+          { role: 'tool', content: 'file contents', tool_call_id: 'tc1', name: 'read_file' },
+        ],
+        stream: true,
+      })) {
+        // consume stream
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(fetchMock).toHaveBeenCalled();
+  });
+});

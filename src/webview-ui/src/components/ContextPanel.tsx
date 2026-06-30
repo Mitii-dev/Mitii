@@ -10,19 +10,7 @@ interface ContextPanelProps {
 
 export function ContextPanel({ items, onRemove, onClear, onPick }: ContextPanelProps) {
   if (items.length === 0) {
-    return (
-      <div className="context-panel context-panel--empty">
-        <div className="context-panel__header">
-          <span className="context-panel__title">Active context</span>
-          <button type="button" className="context-panel__add" onClick={onPick}>
-            + Add
-          </button>
-        </div>
-        <p className="context-panel__hint">
-          Pin files or folders with <kbd>@</kbd> in the input, or use Add to browse. The active editor file is pinned automatically.
-        </p>
-      </div>
-    );
+    return null;
   }
 
   return (

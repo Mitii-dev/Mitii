@@ -15,6 +15,8 @@ const DEFAULT_SERVER_FIELDS: Omit<McpServerConfig, 'command' | 'args'> = {
   disabled: false,
   type: 'stdio',
   env: {},
+  url: '',
+  headers: {},
   timeoutMs: 60_000,
 };
 

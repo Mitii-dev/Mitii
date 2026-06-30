@@ -18,11 +18,13 @@ export async function updateMcpSettings(settings: McpSettingsPayload): Promise<v
     const servers = settings.customServers.reduce<Record<string, McpServerConfig>>((acc, server) => {
       acc[server.name] = {
         disabled: server.disabled,
-        type: 'stdio',
+        type: server.type ?? 'stdio',
         command: server.command.trim(),
         args: server.args,
         env: server.env,
         cwd: server.cwd?.trim() || undefined,
+        url: server.url?.trim() ?? '',
+        headers: server.headers ?? {},
         timeoutMs: 60_000,
       };
       return acc;

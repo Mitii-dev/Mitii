@@ -49,4 +49,46 @@ export class GitService {
       return '';
     }
   }
+
+  get isGitRepo(): boolean {
+    return this.isRepo;
+  }
+
+  async stashFiles(message: string, files: string[]): Promise<string | null> {
+    if (!this.isRepo || !this.git || files.length === 0) return null;
+    try {
+      await this.git.stash(['push', '-m', message, '--', ...files]);
+      const list = String(await this.git.stashList());
+      const lines = list.split('\n').filter(Boolean);
+      const match = lines.find((line) => line.includes(message));
+      if (match) {
+        const ref = match.split(':')[0]?.trim();
+        return ref ?? `stash@{0}`;
+      }
+      return lines[0]?.split(':')[0]?.trim() ?? 'stash@{0}';
+    } catch (error) {
+      log.warn('Git stash checkpoint failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  async restoreFromStash(stashRef: string, files: string[]): Promise<boolean> {
+    if (!this.isRepo || !this.git) return false;
+    try {
+      if (files.length > 0) {
+        await this.git.checkout([stashRef, '--', ...files]);
+      } else {
+        await this.git.stash(['apply', stashRef]);
+      }
+      return true;
+    } catch (error) {
+      log.warn('Git stash restore failed', {
+        error: error instanceof Error ? error.message : String(error),
+        stashRef,
+      });
+      return false;
+    }
+  }
 }
