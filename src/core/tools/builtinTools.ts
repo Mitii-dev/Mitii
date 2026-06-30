@@ -17,7 +17,7 @@ import { PatchApplyService } from '../apply/PatchApplyService';
 import { validateMdxContent } from '../apply/mdxValidation';
 import { isDangerousCommand } from '../safety/ToolPolicyEngine';
 import { isReadOnlyCommand, stripLeadingCd } from '../planning/PlanActEngine';
-import { normalizeRelPath, normalizeWorkspaceRoot, resolveWorkspaceRelPath, formatPathNotFoundHint } from '../vscode/pathUtils';
+import { normalizeWorkspaceRoot, resolveWorkspaceRelPath, formatPathNotFoundHint } from '../vscode/pathUtils';
 import { ResearchAgent } from '../agent/ResearchAgent';
 import { isAuditSubagentBlocked, buildScriptFirstAuditMessage } from '../agent/auditRouting';
 import type { SubagentTracker } from '../agent/SubagentTracker';
@@ -66,12 +66,6 @@ function resolveToolPath(workspace: string, rawPath: string, ignoreService: Igno
   return relPath;
 }
 
-function resolveToolDirPath(workspace: string, rawPath: string | undefined, ignoreService: IgnoreService, forRead = false): string | null {
-  const relPath = resolveWorkspaceRelPath(workspace, rawPath);
-  if (relPath === null) return null;
-  if (relPath && blockedPath(relPath, ignoreService, forRead)) return null;
-  return relPath;
-}
 
 const SOURCE_FILE_PATTERN = /\.(?:tsx?|jsx?|mjs|cjs|css|scss|sass|less|json|ya?ml)$/i;
 const READ_FILES_MAX_PATHS = 12;
