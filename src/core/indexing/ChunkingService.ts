@@ -1,3 +1,5 @@
+import { estimateTokens } from '../llm/tokenEstimate';
+
 export interface FileChunk {
   chunkIndex: number;
   startLine: number;
@@ -29,7 +31,7 @@ export class ChunkingService {
         startLine: start,
         endLine: end,
         content: chunkContent,
-        tokenEstimate: Math.ceil(chunkContent.length / 4),
+        tokenEstimate: estimateTokens(chunkContent),
         hash: simpleHash(chunkContent),
       });
     }
@@ -84,7 +86,7 @@ export class ChunkingService {
         startLine: i + 1,
         endLine: Math.min(i + FALLBACK_CHUNK_LINES, lines.length),
         content,
-        tokenEstimate: Math.ceil(content.length / 4),
+        tokenEstimate: estimateTokens(content),
         hash: simpleHash(content),
       });
     }

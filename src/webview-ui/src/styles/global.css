@@ -1795,6 +1795,23 @@ body,
   line-height: 1.55;
 }
 
+.code-block__shiki {
+  overflow: auto;
+  padding: 10px 12px;
+}
+
+.code-block__shiki pre {
+  margin: 0;
+  padding: 0;
+  background: transparent !important;
+}
+
+.code-block__shiki code {
+  font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .thinking-block {
   border: 1px solid rgba(96, 165, 250, 0.3);
   border-radius: var(--thunder-radius);

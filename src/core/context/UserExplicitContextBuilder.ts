@@ -7,6 +7,7 @@ import type { ContextItem } from './types';
 import { RepoMapService } from './RepoMapService';
 import { extractedToFormatted, formatSymbolsAsAst } from './symbolFormat';
 import { estimateTokens } from '../llm/tokenEstimate';
+import { extractTsMorphSymbols } from '../indexing/tsMorphScopedAst';
 
 export const EXPLICIT_CONTEXT_TOKEN_LIMIT = 8000;
 const MAX_FILE_CHARS = 50_000;
@@ -183,6 +184,13 @@ export class UserExplicitContextBuilder {
     }
 
     const lang = detectLanguage(relPath);
+    if (lang === 'typescript' || lang === 'javascript') {
+      const morphSymbols = extractTsMorphSymbols(relPath, content);
+      if (morphSymbols.length > 0) {
+        return formatSymbolsAsAst(relPath, morphSymbols);
+      }
+    }
+
     const extractor = lang ? getExtractor(lang) : undefined;
     const symbols = extractor?.extract(content) ?? [];
     return formatSymbolsAsAst(relPath, extractedToFormatted(symbols));

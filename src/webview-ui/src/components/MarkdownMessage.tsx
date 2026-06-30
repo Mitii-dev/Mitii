@@ -1,3 +1,5 @@
+import { ShikiCodeBlock } from './ShikiCodeBlock';
+
 interface MarkdownMessageProps {
   content: string;
   streaming?: boolean;
@@ -302,29 +304,6 @@ function extractThinking(content: string): { thinking: string | null; visible: s
   };
 }
 
-function CodeBlock({
-  language,
-  path,
-  value,
-  streaming,
-}: {
-  language: string;
-  path?: string;
-  value: string;
-  streaming?: boolean;
-}) {
-  const label = path ? path : language;
-  return (
-    <div className={`code-block${streaming ? ' code-block--streaming' : ''}`}>
-      <div className="code-block__header">
-        <span className="code-block__label">{label}</span>
-        {streaming && <span className="code-block__status">Generating…</span>}
-      </div>
-      <pre><code>{value || ' '}</code></pre>
-    </div>
-  );
-}
-
 export function MarkdownMessage({ content, streaming = false }: MarkdownMessageProps) {
   const { thinking, visible } = extractThinking(content);
   const segments = splitSegments(visible, streaming);
@@ -339,7 +318,7 @@ export function MarkdownMessage({ content, streaming = false }: MarkdownMessageP
       )}
       {segments.map((segment, index) =>
         segment.type === 'code' ? (
-          <CodeBlock
+          <ShikiCodeBlock
             key={index}
             language={segment.language}
             path={segment.path}

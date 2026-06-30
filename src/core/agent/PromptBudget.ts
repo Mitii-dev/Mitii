@@ -1,6 +1,7 @@
 import type { ChatMessage, ChatRequest } from '../llm/types';
 import { estimateChatRequestTokens } from '../llm/UsageTrackingProvider';
 import { compactMessages } from './ContextCompaction';
+import { estimateTokens } from '../llm/tokenEstimate';
 
 /** Reserve headroom so the model can still produce a reply. */
 export const OUTPUT_RESERVE_RATIO = 0.15;
@@ -156,12 +157,12 @@ function hardTruncateTail(
 
 function truncateToTokenBudget(text: string, tokenBudget: number): string {
   const maxChars = Math.max(1, tokenBudget * 4);
-  if (text.length <= maxChars) return text;
+  if (estimateTokens(text) <= tokenBudget) return text;
   return `${text.slice(0, maxChars)}\n…[truncated for context budget]`;
 }
 
 function estimateTokensForText(text: string): number {
-  return Math.ceil(text.length / 4);
+  return estimateTokens(text);
 }
 
 function findLastIndex<T>(items: T[], predicate: (item: T) => boolean): number {

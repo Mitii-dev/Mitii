@@ -1,49 +1,14 @@
-import { z } from 'zod';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { Tool } from './types';
 import type { ToolDefinition } from '../llm/toolTypes';
 
-function zodTypeToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
-  if (schema instanceof z.ZodOptional) {
-    return zodTypeToJsonSchema(schema.unwrap());
-  }
-  if (schema instanceof z.ZodString) {
-    return { type: 'string' };
-  }
-  if (schema instanceof z.ZodNumber) {
-    return { type: 'number' };
-  }
-  if (schema instanceof z.ZodBoolean) {
-    return { type: 'boolean' };
-  }
-  if (schema instanceof z.ZodArray) {
-    return {
-      type: 'array',
-      items: zodTypeToJsonSchema(schema.element),
-    };
-  }
-  if (schema instanceof z.ZodEnum) {
-    return {
-      type: 'string',
-      enum: schema.options,
-    };
-  }
-  if (schema instanceof z.ZodObject) {
-    const shape = schema.shape as Record<string, z.ZodTypeAny>;
-    const properties: Record<string, unknown> = {};
-    const required: string[] = [];
-    for (const [key, value] of Object.entries(shape)) {
-      properties[key] = zodTypeToJsonSchema(value);
-      if (!(value instanceof z.ZodOptional)) {
-        required.push(key);
-      }
-    }
-    return {
-      type: 'object',
-      properties,
-      ...(required.length > 0 ? { required } : {}),
-    };
-  }
-  return { type: 'string' };
+export function zodSchemaToParameters(schema: Tool['inputSchema']): Record<string, unknown> {
+  const jsonSchema = zodToJsonSchema(schema, {
+    target: 'openApi3',
+    $refStrategy: 'none',
+  });
+  const { $schema: _schema, ...parameters } = jsonSchema as Record<string, unknown>;
+  return parameters;
 }
 
 export function toolToDefinition(tool: Tool): ToolDefinition {
@@ -52,7 +17,7 @@ export function toolToDefinition(tool: Tool): ToolDefinition {
     function: {
       name: tool.name,
       description: tool.description,
-      parameters: tool.parametersJsonSchema ?? zodTypeToJsonSchema(tool.inputSchema),
+      parameters: tool.parametersJsonSchema ?? zodSchemaToParameters(tool.inputSchema),
     },
   };
 }

@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from 'framer-motion';
 import type { ApprovalRequestView } from '../../../vscode/webview/messages';
 
 interface ApprovalCardsProps {
@@ -11,6 +12,13 @@ interface ApprovalCardsProps {
   onApproveAll: () => void;
 }
 
+const cardMotion = {
+  initial: { opacity: 0, y: 12, scale: 0.98 },
+  animate: { opacity: 1, y: 0, scale: 1 },
+  exit: { opacity: 0, y: -8, scale: 0.98 },
+  transition: { duration: 0.2 },
+};
+
 export function ApprovalCards({ approvals, onResolve, onApproveAll }: ApprovalCardsProps) {
   if (approvals.length === 0) return null;
 
@@ -18,36 +26,48 @@ export function ApprovalCards({ approvals, onResolve, onApproveAll }: ApprovalCa
   const standard = approvals.filter((req) => req.kind !== 'question' && req.toolName !== 'ask_question');
 
   return (
-    <div className="approval-panel">
-      {questions.map((req) => (
-        <article key={req.id} className="approval-card approval-card--question approval-card--low">
-          <div className="approval-card__body">
-            <div className="approval-card__header">
-              <span className="approval-card__tool">Clarifying question</span>
-            </div>
-            <p className="approval-card__summary approval-card__summary--question">{req.question ?? req.inputPreview}</p>
-            <div className="approval-card__actions approval-card__actions--question">
-              {(req.options ?? []).map((option) => (
+    <motion.div
+      className="approval-panel"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2 }}
+    >
+      <AnimatePresence mode="popLayout">
+        {questions.map((req) => (
+          <motion.article
+            key={req.id}
+            className="approval-card approval-card--question approval-card--low"
+            layout
+            {...cardMotion}
+          >
+            <div className="approval-card__body">
+              <div className="approval-card__header">
+                <span className="approval-card__tool">Clarifying question</span>
+              </div>
+              <p className="approval-card__summary approval-card__summary--question">{req.question ?? req.inputPreview}</p>
+              <div className="approval-card__actions approval-card__actions--question">
+                {(req.options ?? []).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    className="btn btn--primary btn--small approval-card__option"
+                    onClick={() => onResolve(req.id, 'approved', option)}
+                  >
+                    {option}
+                  </button>
+                ))}
                 <button
-                  key={option}
                   type="button"
-                  className="btn btn--primary btn--small approval-card__option"
-                  onClick={() => onResolve(req.id, 'approved', option)}
+                  className="btn btn--ghost btn--small approval-card__option approval-card__option--skip"
+                  onClick={() => onResolve(req.id, 'denied')}
                 >
-                  {option}
+                  Skip
                 </button>
-              ))}
-              <button
-                type="button"
-                className="btn btn--ghost btn--small approval-card__option approval-card__option--skip"
-                onClick={() => onResolve(req.id, 'denied')}
-              >
-                Skip
-              </button>
+              </div>
             </div>
-          </div>
-        </article>
-      ))}
+          </motion.article>
+        ))}
+      </AnimatePresence>
 
       {standard.length > 0 && (
         <>
@@ -66,56 +86,63 @@ export function ApprovalCards({ approvals, onResolve, onApproveAll }: ApprovalCa
           </div>
 
           <div className="approval-panel__list">
-            {standard.map((req) => (
-              <article key={req.id} className={`approval-card approval-card--${req.risk}`}>
-                <div className="approval-card__icon" aria-hidden="true">
-                  {req.toolName === 'write_file' ? '✎' : req.toolName === 'fetch_web' ? '🌐' : '⚙'}
-                </div>
-                <div className="approval-card__body">
-                  <div className="approval-card__header">
-                    <span className="approval-card__tool">{formatToolLabel(req.toolName)}</span>
-                    <span className={`risk-badge risk-badge--${req.risk}`}>{req.risk}</span>
+            <AnimatePresence mode="popLayout">
+              {standard.map((req) => (
+                <motion.article
+                  key={req.id}
+                  className={`approval-card approval-card--${req.risk}`}
+                  layout
+                  {...cardMotion}
+                >
+                  <div className="approval-card__icon" aria-hidden="true">
+                    {req.toolName === 'write_file' ? '✎' : req.toolName === 'fetch_web' ? '🌐' : '⚙'}
                   </div>
-                  {req.files.length > 0 && (
-                    <code className="approval-card__path">{req.files[0]}</code>
-                  )}
-                  <p className="approval-card__summary">{req.inputPreview}</p>
-                  {req.contentLength != null && req.contentLength > 0 && (
-                    <p className="approval-card__meta">
-                      {req.contentLength.toLocaleString()} characters will be written
-                    </p>
-                  )}
-                  <p className="approval-card__reason">{req.reason}</p>
-                </div>
-                <div className="approval-card__actions">
-                  <button
-                    type="button"
-                    className="btn btn--primary btn--small"
-                    onClick={() => onResolve(req.id, 'approved')}
-                  >
-                    Approve
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--secondary btn--small"
-                    onClick={() => onResolve(req.id, 'approved', undefined, 'task')}
-                  >
-                    Approve for task
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--small"
-                    onClick={() => onResolve(req.id, 'denied')}
-                  >
-                    Deny
-                  </button>
-                </div>
-              </article>
-            ))}
+                  <div className="approval-card__body">
+                    <div className="approval-card__header">
+                      <span className="approval-card__tool">{formatToolLabel(req.toolName)}</span>
+                      <span className={`risk-badge risk-badge--${req.risk}`}>{req.risk}</span>
+                    </div>
+                    {req.files.length > 0 && (
+                      <code className="approval-card__path">{req.files[0]}</code>
+                    )}
+                    <p className="approval-card__summary">{req.inputPreview}</p>
+                    {req.contentLength != null && req.contentLength > 0 && (
+                      <p className="approval-card__meta">
+                        {req.contentLength.toLocaleString()} characters will be written
+                      </p>
+                    )}
+                    <p className="approval-card__reason">{req.reason}</p>
+                  </div>
+                  <div className="approval-card__actions">
+                    <button
+                      type="button"
+                      className="btn btn--primary btn--small"
+                      onClick={() => onResolve(req.id, 'approved')}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--secondary btn--small"
+                      onClick={() => onResolve(req.id, 'approved', undefined, 'task')}
+                    >
+                      Approve for task
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--small"
+                      onClick={() => onResolve(req.id, 'denied')}
+                    >
+                      Deny
+                    </button>
+                  </div>
+                </motion.article>
+              ))}
+            </AnimatePresence>
           </div>
         </>
       )}
-    </div>
+    </motion.div>
   );
 }
 

@@ -1,11 +1,11 @@
 import type { ChatMessage, LlmProvider } from '../llm/types';
 import { createLogger } from '../telemetry/Logger';
+import { estimateTokens } from '../llm/tokenEstimate';
 
 const log = createLogger('ContextCompaction');
-const CHARS_PER_TOKEN = 4;
 
 export function estimateMessageTokens(messages: ChatMessage[]): number {
-  return messages.reduce((sum, m) => sum + Math.ceil((m.content?.length ?? 0) / CHARS_PER_TOKEN), 0);
+  return messages.reduce((sum, m) => sum + estimateTokens(m.content ?? ''), 0);
 }
 
 /**
@@ -78,7 +78,7 @@ export function compactMessages(messages: ChatMessage[], maxTokens: number): Cha
 
   return recent.map((m, i) => {
     if (i >= recent.length - 4) return m;
-    const maxChars = Math.floor((maxTokens / recent.length) * CHARS_PER_TOKEN);
+    const maxChars = Math.floor((maxTokens / recent.length) * 4);
     if ((m.content?.length ?? 0) <= maxChars) return m;
     return { ...m, content: `${m.content.slice(0, maxChars)}\n…[truncated]` };
   });
@@ -87,7 +87,7 @@ export function compactMessages(messages: ChatMessage[], maxTokens: number): Cha
 function summarizeOlderMessages(older: ChatMessage[], budgetTokens: number): ChatMessage | null {
   if (older.length === 0 || budgetTokens < 50) return null;
 
-  const maxChars = budgetTokens * CHARS_PER_TOKEN;
+  const maxChars = budgetTokens * 4;
   const lines = older.map((m) => `${m.role}: ${m.content.slice(0, 300)}`);
   const summary = lines.join('\n').slice(0, maxChars);
   return {

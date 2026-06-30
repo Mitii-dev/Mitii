@@ -1,9 +1,16 @@
 import type { TaskKind } from './TaskAnalyzer';
 import { isMdxRepairTask as isMdxRepairTaskText } from './mdxRepairRouting';
+import {
+  createPhaseActor,
+  getPhaseFromActor,
+  sendPhaseEvent,
+  type PhaseActor,
+  type TaskPhase,
+} from './agentPhaseMachine';
+
+export type { TaskPhase };
 
 /** Tracks analyze → execute → verify phases and blocks redundant discovery. */
-
-export type TaskPhase = 'analyze' | 'execute' | 'verify';
 
 export interface ToolResultRecord {
   tool: string;
@@ -13,7 +20,7 @@ export interface ToolResultRecord {
 }
 
 export class AgentTaskState {
-  private phase: TaskPhase = 'analyze';
+  private phaseActor: PhaseActor = createPhaseActor();
   private taskKind: TaskKind | undefined;
   private taskSummary = '';
   private originalTask = '';
@@ -23,7 +30,7 @@ export class AgentTaskState {
   private executionToolsUsed = false;
 
   reset(): void {
-    this.phase = 'analyze';
+    sendPhaseEvent(this.phaseActor, { type: 'RESET' });
     this.taskKind = undefined;
     this.taskSummary = '';
     this.originalTask = '';
@@ -40,7 +47,7 @@ export class AgentTaskState {
   }
 
   getPhase(): TaskPhase {
-    return this.phase;
+    return getPhaseFromActor(this.phaseActor);
   }
 
   setPauseSummary(summary: string): void {
@@ -54,8 +61,8 @@ export class AgentTaskState {
   recordToolSuccess(toolName: string, input: Record<string, unknown>, output: string): void {
     if (['write_file', 'apply_patch'].includes(toolName)) {
       this.executionToolsUsed = true;
-      if (this.phase === 'analyze') {
-        this.phase = 'execute';
+      if (this.getPhase() === 'analyze') {
+        sendPhaseEvent(this.phaseActor, { type: 'ADVANCE_EXECUTE' });
       }
     }
 
@@ -63,16 +70,16 @@ export class AgentTaskState {
       const key = toolKey(toolName, input);
       if (
         this.shouldDiagnosticAdvanceToExecute(key) &&
-        this.phase === 'analyze'
+        this.getPhase() === 'analyze'
       ) {
-        this.phase = 'execute';
+        sendPhaseEvent(this.phaseActor, { type: 'ADVANCE_EXECUTE' });
       }
     }
 
     if (toolName === 'execute_workspace_script') {
       const script = typeof input.script === 'string' ? input.script : '';
-      if (this.isAuditTask() && /audit-dependencies|audit-dead-code/.test(script) && this.phase === 'analyze') {
-        this.phase = 'execute';
+      if (this.isAuditTask() && /audit-dependencies|audit-dead-code/.test(script) && this.getPhase() === 'analyze') {
+        sendPhaseEvent(this.phaseActor, { type: 'ADVANCE_EXECUTE' });
       }
     }
 
@@ -93,9 +100,9 @@ export class AgentTaskState {
 
   /** Returns block reason if this tool call should be rejected. */
   checkBlocked(toolName: string, input: Record<string, unknown>): string | null {
-    if (this.phase === 'verify') return null;
+    if (this.getPhase() === 'verify') return null;
 
-    if (toolName === 'memory_search' && this.phase === 'execute') {
+    if (toolName === 'memory_search' && this.getPhase() === 'execute') {
       return 'Execute phase — do not call memory_search. Use chat history and tool results above.';
     }
 
@@ -110,7 +117,7 @@ export class AgentTaskState {
         );
       }
       if (this.executionToolsUsed) return null;
-      if (this.phase === 'execute') {
+      if (this.getPhase() === 'execute') {
         return `${key} already completed. Use the cached output below instead of re-running the same command.`;
       }
       return (
@@ -121,7 +128,7 @@ export class AgentTaskState {
 
     if (toolName === 'execute_workspace_script') {
       const script = typeof input.script === 'string' ? input.script : key;
-      if (this.phase === 'execute') {
+      if (this.getPhase() === 'execute') {
         return `Script ${script} already completed. Use the cached output below instead of re-running it.`;
       }
       return (
@@ -131,7 +138,7 @@ export class AgentTaskState {
     }
 
     if (toolName === 'list_files') {
-      if (this.phase === 'execute') {
+      if (this.getPhase() === 'execute') {
         return `Already listed \`${input.path ?? '.'}\`. Use that listing unless a file change made it stale.`;
       }
       return (
@@ -152,7 +159,7 @@ export class AgentTaskState {
     const cached = key ? this.toolResults.find((r) => r.key === key) : undefined;
 
     const lines = [
-      `(Skipped redundant ${toolName} — phase: ${this.phase})`,
+      `(Skipped redundant ${toolName} — phase: ${this.getPhase()})`,
       reason,
     ];
 
@@ -171,17 +178,17 @@ export class AgentTaskState {
   }
 
   advanceToExecute(): void {
-    this.phase = 'execute';
+    sendPhaseEvent(this.phaseActor, { type: 'ADVANCE_EXECUTE' });
   }
 
   advanceToVerify(): void {
-    this.phase = 'verify';
+    sendPhaseEvent(this.phaseActor, { type: 'ADVANCE_VERIFY' });
   }
 
   buildPauseSummary(originalTask: string, taskKind?: string): string {
     const lines = [
       `Task: ${originalTask.slice(0, 200)}`,
-      `Phase: ${this.phase}${taskKind ? ` (${taskKind})` : ''}`,
+      `Phase: ${this.getPhase()}${taskKind ? ` (${taskKind})` : ''}`,
       `Execution started: ${this.executionToolsUsed ? 'yes' : 'no'}`,
     ];
 
@@ -205,7 +212,7 @@ export class AgentTaskState {
 
   buildPromptBlock(): string {
     const lines = [
-      `Current phase: **${this.phase.toUpperCase()}** (${phaseInstructions(this.phase)})`,
+      `Current phase: **${this.getPhase().toUpperCase()}** (${phaseInstructions(this.getPhase())})`,
     ];
     if (this.taskKind || this.taskSummary) {
       lines.push(`Task context: ${this.taskKind ?? 'task'}${this.taskSummary ? ` — ${this.taskSummary}` : ''}`);
@@ -225,7 +232,7 @@ export class AgentTaskState {
       }
     }
 
-    if (this.phase === 'execute') {
+    if (this.getPhase() === 'execute') {
       lines.push('', `**ACTION REQUIRED**: ${this.executePhaseInstruction()}`);
     }
 

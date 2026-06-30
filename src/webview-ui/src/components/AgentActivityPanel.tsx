@@ -1,4 +1,8 @@
+import { useEffect } from 'react';
+import { useMachine } from '@xstate/react';
+import { motion } from 'framer-motion';
 import type { AgentActivityEntry, AgentLiveStatusView } from '../../../vscode/webview/messages';
+import { agentActivityMachine, type ActivityPhase } from '../state/agentActivityMachine';
 
 interface AgentActivityPanelProps {
   entries: AgentActivityEntry[];
@@ -19,8 +23,6 @@ const KIND_LABEL: Record<AgentActivityEntry['kind'], string> = {
   success: 'Done',
 };
 
-type ActivityPhase = 'working' | 'waiting' | 'complete' | 'error';
-
 function resolvePhase(loading: boolean, waitingForApproval: boolean, entries: AgentActivityEntry[]): ActivityPhase {
   if (loading) return 'working';
   if (waitingForApproval) return 'waiting';
@@ -30,9 +32,10 @@ function resolvePhase(loading: boolean, waitingForApproval: boolean, entries: Ag
 }
 
 export function AgentActivityPanel({ entries, loading, liveStatus, waitingForApproval = false }: AgentActivityPanelProps) {
+  const [snapshot, send] = useMachine(agentActivityMachine);
+  const phase = snapshot.value as ActivityPhase;
   const visible = entries.slice(-12);
   const latest = entries[entries.length - 1];
-  const phase = resolvePhase(loading, waitingForApproval, entries);
   const completionEntry = [...entries].reverse().find((entry) => entry.kind === 'success' || entry.kind === 'error');
   const statusLabel = loading
     ? liveStatus?.label ?? 'Working through steps'
@@ -50,18 +53,33 @@ export function AgentActivityPanel({ entries, loading, liveStatus, waitingForApp
       ? summarizeDetail(latest.detail)
       : liveStatus?.detail;
 
+  useEffect(() => {
+    const next = resolvePhase(loading, waitingForApproval, entries);
+    if (next === phase) return;
+    if (next === 'working') send({ type: 'START' });
+    else if (next === 'waiting') send({ type: 'WAIT' });
+    else if (next === 'error') send({ type: 'FAIL' });
+    else if (next === 'complete') send({ type: 'DONE' });
+    else send({ type: 'RESET' });
+  }, [loading, waitingForApproval, entries, phase, send]);
+
   if (entries.length === 0 && !loading && !waitingForApproval) return null;
 
   return (
-    <details
+    <motion.details
       className={`assistant-thinking assistant-thinking--${phase}`}
       open={phase === 'complete' || phase === 'error'}
       aria-label="Agent activity"
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
     >
       <summary className="assistant-thinking__summary">
-        <span
+        <motion.span
           className={`message-working__pulse message-working__pulse--${phase}`}
           aria-hidden="true"
+          animate={phase === 'working' ? { scale: [1, 1.15, 1] } : { scale: 1 }}
+          transition={phase === 'working' ? { repeat: Infinity, duration: 1.2 } : { duration: 0.2 }}
         />
         <span className="assistant-thinking__summary-main">
           <span className="assistant-thinking__status-line">
@@ -92,22 +110,25 @@ export function AgentActivityPanel({ entries, loading, liveStatus, waitingForApp
         {visible.map((entry, index) => {
           const isLatest = index === visible.length - 1;
           return (
-            <li
+            <motion.li
               key={entry.id}
               className={`assistant-thinking__item assistant-thinking__item--${entry.kind} ${
                 isLatest && loading ? 'assistant-thinking__item--active' : ''
               }`}
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.18, delay: index * 0.03 }}
             >
               <span className="assistant-thinking__kind">{KIND_LABEL[entry.kind]}</span>
               <span className="assistant-thinking__message">{entry.message}</span>
               {entry.detail && entry.kind !== 'success' && (
                 <span className="assistant-thinking__detail">{summarizeDetail(entry.detail)}</span>
               )}
-            </li>
+            </motion.li>
           );
         })}
       </ol>
-    </details>
+    </motion.details>
   );
 }
 
