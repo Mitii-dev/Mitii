@@ -59,6 +59,8 @@ function validateLiveCodeBlock(content: string): string | undefined {
     return [
       'Invalid LiveCodeBlock: remove render(<Component />) from the code string.',
       'live-demo-mui adds render() automatically via processCode().',
+      'Keep only the component function in the code block; do not call render() yourself.',
+      'Example: end the code with `}` + componentName="MyForm" (no render line).',
     ].join(' ');
   }
 

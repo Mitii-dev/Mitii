@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { defaultThunderConfig } from '../src/core/config/schema';
 import { applyAutonomyPreset, describeAutonomyPreset } from '../src/core/safety/autonomyPresets';
 import { createProvider } from '../src/core/llm/createProvider';
+import { OpenAiCompatibleProvider, sanitizeOpenAiCompatibleMessages } from '../src/core/llm/OpenAiCompatibleProvider';
 import { PROVIDER_PRESETS, getProviderPreset, isCloudProvider } from '../src/core/llm/providerPresets';
 import { LlmProviderRegistry } from '../src/core/llm/LlmProviderRegistry';
 import { makeToolName } from '../src/core/mcp/McpManager';
@@ -72,6 +73,94 @@ describe('createProvider', () => {
       model: 'deepseek-chat',
     });
     expect(provider.id).toBe('openai-compatible');
+  });
+});
+
+describe('sanitizeOpenAiCompatibleMessages', () => {
+  it('preserves valid assistant tool-call groups', () => {
+    const messages = sanitizeOpenAiCompatibleMessages([
+      { role: 'user', content: 'hi' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{
+          id: 'tc1',
+          type: 'function',
+          function: { name: 'read_file', arguments: '{"path":"a.ts"}' },
+        }],
+      },
+      { role: 'tool', content: 'file contents', tool_call_id: 'tc1', name: 'read_file' },
+    ]);
+
+    expect(messages.map((message) => message.role)).toEqual(['user', 'assistant', 'tool']);
+    expect(messages[1].tool_calls).toHaveLength(1);
+  });
+
+  it('converts orphan tool messages into user context', () => {
+    const messages = sanitizeOpenAiCompatibleMessages([
+      { role: 'system', content: 'system' },
+      { role: 'tool', content: 'file contents', tool_call_id: 'tc1', name: 'read_file' },
+      { role: 'user', content: 'continue' },
+    ]);
+
+    expect(messages.map((message) => message.role)).toEqual(['system', 'user', 'user']);
+    expect(messages[1].content).toContain('Tool result from read_file');
+  });
+
+  it('does not send partial tool-call groups to OpenAI-compatible providers', () => {
+    const messages = sanitizeOpenAiCompatibleMessages([
+      { role: 'user', content: 'inspect' },
+      {
+        role: 'assistant',
+        content: 'I will read files.',
+        tool_calls: [
+          { id: 'tc1', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.ts"}' } },
+          { id: 'tc2', type: 'function', function: { name: 'read_file', arguments: '{"path":"b.ts"}' } },
+        ],
+      },
+      { role: 'tool', content: 'a', tool_call_id: 'tc1', name: 'read_file' },
+    ]);
+
+    expect(messages.map((message) => message.role)).toEqual(['user', 'assistant', 'user']);
+    expect(messages[1].tool_calls).toBeUndefined();
+  });
+});
+
+describe('OpenAiCompatibleProvider', () => {
+  it('omits tool definitions when the configured model does not support tools', async () => {
+    const provider = new OpenAiCompatibleProvider({
+      baseUrl: 'https://example.com/v1',
+      model: 'codestral:22b',
+      capabilities: { supportsTools: false },
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      for await (const _delta of provider.complete({
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: false,
+        tools: [{
+          type: 'function',
+          function: {
+            name: 'read_file',
+            description: 'Read a file',
+            parameters: { type: 'object', properties: {} },
+          },
+        }],
+      })) {
+        // consume stream
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.tools).toBeUndefined();
+    expect(body.tool_choice).toBeUndefined();
   });
 });
 

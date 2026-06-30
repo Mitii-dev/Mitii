@@ -45,7 +45,7 @@ import { AgentTaskState } from './agent/AgentTaskState';
 import { resolveProjectVerifyCommands } from './agent/verifyCommandDiscovery';
 import { isApprovalContinuationMessage } from './agent/taskMessage';
 import { ToolPolicyEngine } from './safety/ToolPolicyEngine';
-import { applyAutonomyPreset } from './safety/autonomyPresets';
+import { resolveEffectiveSafety } from './safety/autonomyPresets';
 import { ApprovalQueue } from './safety/ApprovalQueue';
 import { ToolExecutor } from './safety/ToolExecutor';
 import { CheckpointService } from './apply/CheckpointService';
@@ -67,7 +67,6 @@ import type { EmbeddingProvider } from './indexing/EmbeddingProvider';
 import { McpManager } from './mcp/McpManager';
 import { ProjectRulesContextSource, ProjectRulesService } from './rules/ProjectRulesService';
 import { SkillCatalogContextSource, SkillCatalogService } from './skills/SkillCatalogService';
-import { showWriteDiffPreview, showPatchDiffPreview } from '../vscode/diffPreview';
 import { InlineDiffManager } from '../vscode/inlineDiffManager';
 import { testProviderConnection } from './llm/testConnection';
 import { createLogger } from './telemetry/Logger';
@@ -504,7 +503,7 @@ export class ThunderController {
     this.planPersistence = new PlanPersistence(db);
     this.approvalQueue = new ApprovalQueue(db);
 
-    const effectiveSafety = applyAutonomyPreset(config.safety, config.safety.autonomyPreset);
+    const effectiveSafety = resolveEffectiveSafety(config.safety);
 
     setVerifyCommandPatterns(config.agent.verifyCommands);
 
@@ -536,10 +535,10 @@ export class ThunderController {
           agentLiveStatus: this.agentLiveStatus,
           agentActivity: this.agentActivity,
         });
-        void this.showInlineDiffForPendingApprovals();
       },
       () => this.agentTaskState,
-      this.sessionLog
+      this.sessionLog,
+      () => this.toolExecutor?.setPlanPhaseLock('execute')
     );
 
     const retriever = this.buildRetriever(db, workspace);
@@ -1768,20 +1767,6 @@ export class ThunderController {
     const workspace = this.resolveWorkspacePath();
 
     if (path && workspace && ['write_file', 'apply_patch'].includes(request.toolName)) {
-      try {
-        if (request.toolName === 'write_file' && typeof fullInput.content === 'string') {
-          await showWriteDiffPreview(workspace, path, fullInput.content);
-        } else if (
-          request.toolName === 'apply_patch' &&
-          typeof fullInput.oldText === 'string' &&
-          typeof fullInput.newText === 'string'
-        ) {
-          await showPatchDiffPreview(workspace, path, fullInput.oldText, fullInput.newText);
-        }
-      } catch {
-        // Non-fatal
-      }
-
       if (this.checkpointService && this.session) {
         await this.checkpointService.create(this.session.id, [path], 'pre-write');
         this.refreshCheckpointPanel();
@@ -1958,10 +1943,7 @@ export class ThunderController {
   async saveSafetySettings(settings: import('../vscode/webview/messages').SafetySettingsPayload): Promise<void> {
     await this.configService.updateSafetySettings(settings);
     const config = this.configService.getConfig();
-    const effectiveSafety = applyAutonomyPreset(
-      { ...config.safety, ...settings },
-      settings.autonomyPreset ?? config.safety.autonomyPreset
-    );
+    const effectiveSafety = resolveEffectiveSafety({ ...config.safety, ...settings });
     this.policyEngine?.updateSafetyConfig(effectiveSafety);
     this.notifyUi({ settings: (await this.buildUiState()).settings });
     void vscode.window.showInformationMessage(brandMessage('Approval mode saved.'));
@@ -2033,7 +2015,7 @@ export class ThunderController {
       researchAgentProvider: this.researchAgentProvider,
     });
 
-    const effectiveSafety = applyAutonomyPreset(config.safety, config.safety.autonomyPreset);
+    const effectiveSafety = resolveEffectiveSafety(config.safety);
     this.policyEngine?.updateSafetyConfig(effectiveSafety);
     this.checkpointService?.setStrategy(config.agent.checkpointStrategy);
 

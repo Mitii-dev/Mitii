@@ -1,6 +1,37 @@
 import type { SafetyConfig } from '../config/schema';
 import type { AutonomyPreset } from '../planning/PlanActEngine';
 
+export type ApprovalMode = NonNullable<SafetyConfig['approvalMode']>;
+
+function deriveApprovalFlags(mode: ApprovalMode): Pick<
+  SafetyConfig,
+  'approvalMode' | 'requireApprovalForWrites' | 'requireApprovalForShell'
+> {
+  switch (mode) {
+    case 'review_all':
+      return { approvalMode: mode, requireApprovalForWrites: true, requireApprovalForShell: true };
+    case 'ask_edits':
+      return { approvalMode: mode, requireApprovalForWrites: true, requireApprovalForShell: false };
+    case 'ask_deletes':
+      return { approvalMode: mode, requireApprovalForWrites: false, requireApprovalForShell: false };
+    case 'ask_commands':
+      return { approvalMode: mode, requireApprovalForWrites: false, requireApprovalForShell: true };
+    case 'auto':
+      return { approvalMode: mode, requireApprovalForWrites: false, requireApprovalForShell: false };
+  }
+}
+
+/** Apply network / danger limits from preset; approval gates come from approvalMode. */
+export function resolveEffectiveSafety(config: SafetyConfig): SafetyConfig {
+  const preset = (config.autonomyPreset ?? 'guided') as AutonomyPreset;
+  const presetApplied = applyAutonomyPreset(config, preset);
+  const approvalMode = (config.approvalMode ?? presetApplied.approvalMode ?? 'review_all') as ApprovalMode;
+  return {
+    ...presetApplied,
+    ...deriveApprovalFlags(approvalMode),
+  };
+}
+
 export function applyAutonomyPreset(base: SafetyConfig, preset: AutonomyPreset): SafetyConfig {
   switch (preset) {
     case 'safe':

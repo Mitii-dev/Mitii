@@ -34,13 +34,13 @@ export class OpenAiCompatibleProvider implements LlmProvider {
 
     const body: Record<string, unknown> = {
       model: request.model ?? this.config.model,
-      messages: request.messages.map(formatMessage),
+      messages: sanitizeOpenAiCompatibleMessages(request.messages).map(formatMessage),
       temperature: request.temperature ?? 0.2,
       max_tokens: request.maxTokens,
       stream: request.stream !== false,
     };
 
-    if (request.tools && request.tools.length > 0) {
+    if (this.capabilities.supportsTools && request.tools && request.tools.length > 0) {
       body.tools = request.tools;
       body.tool_choice = request.toolChoice ?? 'auto';
     }
@@ -114,6 +114,63 @@ export class OpenAiCompatibleProvider implements LlmProvider {
   async countTokens(text: string): Promise<number> {
     return estimateTokensAsync(text);
   }
+}
+
+export function sanitizeOpenAiCompatibleMessages(messages: ChatRequest['messages']): ChatRequest['messages'] {
+  const sanitized: ChatRequest['messages'] = [];
+
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+
+    if (message.role === 'tool') {
+      sanitized.push(toolResultAsUserMessage(message));
+      continue;
+    }
+
+    if (message.role === 'assistant' && message.tool_calls?.length) {
+      const toolCallIds = new Set(message.tool_calls.map((tc) => tc.id));
+      const toolResults: ChatRequest['messages'] = [];
+      let lookahead = index + 1;
+
+      while (lookahead < messages.length) {
+        const candidate = messages[lookahead];
+        if (candidate.role !== 'tool') break;
+        if (!candidate.tool_call_id || !toolCallIds.has(candidate.tool_call_id)) break;
+        toolResults.push(candidate);
+        lookahead += 1;
+      }
+
+      const resultIds = new Set(toolResults.map((result) => result.tool_call_id).filter(Boolean));
+      const hasAllToolResults = [...toolCallIds].every((id) => resultIds.has(id));
+
+      if (hasAllToolResults) {
+        sanitized.push(message, ...toolResults);
+      } else {
+        if (message.content.trim()) {
+          sanitized.push({
+            role: 'assistant',
+            content: message.content,
+          });
+        }
+        sanitized.push(...toolResults.map(toolResultAsUserMessage));
+      }
+
+      index = lookahead - 1;
+      continue;
+    }
+
+    sanitized.push(message);
+  }
+
+  return sanitized;
+}
+
+function toolResultAsUserMessage(message: ChatRequest['messages'][number]): ChatRequest['messages'][number] {
+  const label = message.name ? ` from ${message.name}` : '';
+  return {
+    role: 'user',
+    content: `Tool result${label}:\n${message.content}`,
+  };
 }
 
 function formatMessage(msg: ChatRequest['messages'][number]): Record<string, unknown> {

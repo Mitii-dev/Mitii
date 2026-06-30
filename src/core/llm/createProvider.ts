@@ -5,6 +5,10 @@ import { OpenAiCompatibleProvider } from './OpenAiCompatibleProvider';
 import { AnthropicProvider } from './AnthropicProvider';
 import { GeminiProvider } from './GeminiProvider';
 import { getProviderPreset } from './providerPresets';
+import { normalizeProviderModel } from './modelNormalize';
+import { createLogger } from '../telemetry/Logger';
+
+const log = createLogger('createProvider');
 
 export interface ProviderResolveOptions {
   type?: ProviderType;
@@ -24,7 +28,11 @@ export function createProvider(
   const type = config.type ?? 'echo';
   const preset = getProviderPreset(type);
   const baseUrl = ('baseUrl' in config && config.baseUrl) || preset?.baseUrl || 'http://localhost:11434/v1';
-  const model = ('model' in config && config.model) || preset?.model || 'qwen3-coder:30b';
+  const resolved = normalizeProviderModel(type, 'model' in config ? config.model : undefined);
+  if (resolved.warning) {
+    log.warn(resolved.warning);
+  }
+  const model = resolved.model;
   const key = apiKey;
   const capabilities = {
     contextWindow: config.contextWindow ?? preset?.contextWindow ?? 8192,

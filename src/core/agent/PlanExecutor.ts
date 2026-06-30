@@ -26,6 +26,7 @@ import {
 } from '../planning/promptBuilder';
 import { PlanFileStore } from '../planning/PlanFileStore';
 import { applyDependencyLocks, getNextExecutableStep, PLANNING_DISCOVERY_TOOLS } from '../tools/planTools';
+import { filterDirectAgentTools } from '../tools/toolAliases';
 import { createLogger } from '../telemetry/Logger';
 
 const log = createLogger('PlanExecutor');
@@ -296,7 +297,7 @@ export class PlanExecutor {
           for await (const chunk of this.agentLoop.run(
             provider,
             messages,
-            tools,
+            filterDirectAgentTools(tools),
             signal,
             {
               ...loopCallbacks,

@@ -110,6 +110,7 @@ function isReadOnlyCommandSegment(cmd: string, extraPatterns: string[] = []): bo
   }
   if (/^(npx\s+(--yes\s+)?)?depcheck\b/i.test(cmd)) return true;
   if (/^(npx\s+(--yes\s+)?)?knip\b/i.test(cmd)) return true;
+  if (/^npx\s+(--yes\s+)?docusaurus\b/i.test(cmd)) return true;
   if (/^npx\s+eslint\b/i.test(cmd) && !/\s--fix\b/.test(cmd)) return true;
   if (/^(npx\s+(--yes\s+)?)?tsc\s+[\s\S]*--noEmit\b/i.test(cmd)) return true;
   if (/^(npx\s+(--yes\s+)?)?vitest\s+(run\b|--run\b)/i.test(cmd)) return true;
@@ -124,6 +125,8 @@ function isReadOnlyCommandSegment(cmd: string, extraPatterns: string[] = []): bo
   if (/^(?:python(?:3)?\s+-m\s+pytest|pytest)\b/i.test(cmd)) return true;
   if (/^(grep|rg|find|cat|head|tail|sed|wc|sort|uniq|ls|tree|which|echo)\b/i.test(cmd)) return true;
   if (/^git\s+(status|diff|log|ls-files)\b/i.test(cmd)) return true;
+  if (/^\d+>&\d+$/.test(cmd.trim())) return true;
+  if (/^true$|^false$/.test(cmd.trim())) return true;
   return false;
 }
 

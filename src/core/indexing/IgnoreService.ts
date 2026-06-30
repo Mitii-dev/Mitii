@@ -57,15 +57,18 @@ export class IgnoreService {
     }
   }
 
-  isIgnored(relPath: string): boolean {
+  isIgnored(relPath: string, options?: { forRead?: boolean }): boolean {
     const normalized = normalizeIgnorePath(relPath, this.workspacePath);
     if (!normalized || normalized === '.') return false;
     if (normalized.startsWith('..')) return true;
+    if (options?.forRead && /^packages\/[^/]+\/dist\//.test(normalized)) {
+      return false;
+    }
     return this.ig.ignores(normalized);
   }
 
-  filter(paths: string[]): string[] {
-    return paths.filter((p) => !this.isIgnored(p));
+  filter(paths: string[], options?: { forRead?: boolean }): string[] {
+    return paths.filter((p) => !this.isIgnored(p, options));
   }
 }
 

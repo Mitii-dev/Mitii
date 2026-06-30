@@ -1,5 +1,6 @@
 import type { Tool, ToolResult, ToolCallAudit } from './types';
 import { normalizeToolInput } from './coerceInput';
+import { resolveToolName } from './toolAliases';
 import { createLogger } from '../telemetry/Logger';
 import type { SessionLogService } from '../telemetry/SessionLogService';
 
@@ -40,29 +41,34 @@ export class ToolRuntime {
 
   async execute(name: string, input: unknown): Promise<ToolResult> {
     const startedAt = Date.now();
-    const toolCallId = createToolCallId(name);
-    const normalized = normalizeToolInput(name, input);
-    this.logToolStart(name, normalized, toolCallId);
+    const resolvedName = resolveToolName(name);
+    const toolCallId = createToolCallId(resolvedName);
+    const normalized = normalizeToolInput(resolvedName, input);
+    this.logToolStart(resolvedName, normalized, toolCallId);
 
-    const tool = this.tools.get(name);
+    const tool = this.tools.get(resolvedName);
     if (!tool) {
-      const result = { success: false, output: '', error: `Unknown tool: ${name}` };
-      this.logToolEnd(name, normalized, result, startedAt, toolCallId);
+      const result = {
+        success: false,
+        output: '',
+        error: `Unknown tool: ${name}${resolvedName !== name ? ` (alias for ${resolvedName} not registered)` : ''}`,
+      };
+      this.logToolEnd(resolvedName, normalized, result, startedAt, toolCallId);
       return result;
     }
 
     const parsed = tool.inputSchema.safeParse(normalized);
     if (!parsed.success) {
       const result = { success: false, output: '', error: `Invalid input: ${parsed.error.message}` };
-      this.logToolEnd(name, normalized, result, startedAt, toolCallId);
+      this.logToolEnd(resolvedName, normalized, result, startedAt, toolCallId);
       return result;
     }
 
     try {
       const result = await tool.execute(parsed.data);
-      this.auditLog.push({ toolName: name, input: parsed.data, result, timestamp: Date.now() });
-      this.logToolEnd(name, parsed.data, result, startedAt, toolCallId);
-      log.info('Tool executed', { tool: name, success: result.success });
+      this.auditLog.push({ toolName: resolvedName, input: parsed.data, result, timestamp: Date.now() });
+      this.logToolEnd(resolvedName, parsed.data, result, startedAt, toolCallId);
+      log.info('Tool executed', { tool: resolvedName, success: result.success });
       return result;
     } catch (error) {
       const result = {
@@ -70,8 +76,8 @@ export class ToolRuntime {
         output: '',
         error: error instanceof Error ? error.message : String(error),
       };
-      this.auditLog.push({ toolName: name, input: parsed.data, result, timestamp: Date.now() });
-      this.logToolEnd(name, parsed.data, result, startedAt, toolCallId);
+      this.auditLog.push({ toolName: resolvedName, input: parsed.data, result, timestamp: Date.now() });
+      this.logToolEnd(resolvedName, parsed.data, result, startedAt, toolCallId);
       throw error;
     }
   }

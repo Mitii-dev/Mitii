@@ -8,8 +8,10 @@ import {
   isPatchAllowed,
   isReadOnlyCommand,
   isToolAllowedInPlanPhase,
+  isPhaseLockWriteError,
   type PlanPhase,
 } from '../planning/PlanActEngine';
+import { resolveToolName } from '../tools/toolAliases';
 import { createLogger } from '../telemetry/Logger';
 import type { SessionLogService } from '../telemetry/SessionLogService';
 
@@ -30,6 +32,7 @@ export interface ToolExecuteContext {
 
 export class ToolExecutor {
   private planPhaseLockOverride?: PlanPhase;
+  private phaseLockWriteBlocks = 0;
 
   constructor(
     private readonly toolRuntime: ToolRuntime,
@@ -39,7 +42,8 @@ export class ToolExecutor {
     private readonly getMode: () => string,
     private readonly onPendingApproval?: () => void,
     private readonly getTaskState?: () => AgentTaskState | undefined,
-    private readonly sessionLog?: SessionLogService
+    private readonly sessionLog?: SessionLogService,
+    private readonly onPhaseLockEscalate?: () => void
   ) {}
 
   setPlanPhaseLock(phase?: PlanPhase): void {
@@ -55,66 +59,87 @@ export class ToolExecutor {
     input: Record<string, unknown>,
     context?: ToolExecuteContext
   ): Promise<ToolExecutionResult> {
+    const resolvedName = resolveToolName(toolName);
     const mode = this.getMode();
 
     const effectivePhaseLock = context?.phaseLock ?? this.planPhaseLockOverride;
-    const phaseCheck = isToolAllowedInPlanPhase(effectivePhaseLock, toolName, input);
+    let phaseCheck = isToolAllowedInPlanPhase(effectivePhaseLock, resolvedName, input);
     if (!phaseCheck.allowed) {
-      return this.finishBlocked(toolName, input, phaseCheck.reason ?? 'Tool blocked by current plan phase');
+      if (
+        ['write_file', 'apply_patch'].includes(resolvedName) &&
+        isPhaseLockWriteError(phaseCheck.reason)
+      ) {
+        this.phaseLockWriteBlocks += 1;
+        if (this.phaseLockWriteBlocks >= 3 && this.onPhaseLockEscalate) {
+          this.onPhaseLockEscalate();
+          this.phaseLockWriteBlocks = 0;
+          phaseCheck = isToolAllowedInPlanPhase(
+            context?.phaseLock ?? this.planPhaseLockOverride,
+            resolvedName,
+            input
+          );
+        }
+      }
+      if (!phaseCheck.allowed) {
+        return this.finishBlocked(resolvedName, input, phaseCheck.reason ?? 'Tool blocked by current plan phase');
+      }
     }
 
     if (
       context?.restrictRunCommandToReadOnly &&
-      toolName === 'run_command' &&
+      resolvedName === 'run_command' &&
       !isReadOnlyCommand(typeof input.command === 'string' ? input.command : '')
     ) {
       return this.finishBlocked(
-        toolName,
+        resolvedName,
         input,
         'Generic run_command is restricted to read-only commands during high-complexity audit tasks. Use execute_workspace_script for approved helper scripts.'
       );
     }
 
-    const blocked = this.getTaskState?.()?.checkBlocked(toolName, input);
+    const blocked = this.getTaskState?.()?.checkBlocked(resolvedName, input);
     if (blocked) {
-      const soft = this.getTaskState?.()?.buildSoftBlockResponse(toolName, input);
+      const soft = this.getTaskState?.()?.buildSoftBlockResponse(resolvedName, input);
       const output = soft ?? blocked;
-      this.logRejectedToolCall(toolName, input, true, output);
-      return { success: true, output };
+      this.logRejectedToolCall(resolvedName, input, false, output, 'Skipped redundant tool call');
+      return { success: false, output, error: 'Skipped redundant tool call' };
     }
 
-    if (['write_file', 'apply_patch', 'memory_write', 'save_task_state'].includes(toolName) && !isWriteAllowed(mode)) {
-      return this.finishBlocked(toolName, input, 'Writes blocked in Ask/Plan/Review mode');
+    if (['write_file', 'apply_patch', 'memory_write', 'save_task_state'].includes(resolvedName) && !isWriteAllowed(mode)) {
+      return this.finishBlocked(resolvedName, input, 'Writes blocked in Ask/Plan/Review mode');
     }
-    if (toolName === 'apply_patch' && !isPatchAllowed(mode)) {
-      return this.finishBlocked(toolName, input, 'Patch apply blocked in Ask/Plan/Review mode');
+    if (resolvedName === 'apply_patch' && !isPatchAllowed(mode)) {
+      return this.finishBlocked(resolvedName, input, 'Patch apply blocked in Ask/Plan/Review mode');
     }
-    if (toolName === 'run_command' && !isShellAllowed(mode, typeof input.command === 'string' ? input.command : undefined)) {
-      return this.finishBlocked(toolName, input, 'Shell blocked in Ask/Plan/Review mode (read-only commands like depcheck/grep are allowed)');
+    if (resolvedName === 'run_command' && !isShellAllowed(mode, typeof input.command === 'string' ? input.command : undefined)) {
+      return this.finishBlocked(resolvedName, input, 'Shell blocked in Ask/Plan/Review mode (read-only commands like depcheck/grep are allowed)');
     }
 
     const sessionId = this.getSessionId();
-    const policy = this.policyEngine.evaluate(toolName, input);
+    const policy = this.policyEngine.evaluate(resolvedName, input);
 
     if (policy.decision === 'block') {
-      return this.finishBlocked(toolName, input, policy.reason);
+      return this.finishBlocked(resolvedName, input, policy.reason);
     }
 
     if (policy.decision === 'require_approval') {
-      if (!this.approvalQueue.hasApprovalGrant(sessionId, toolName)) {
-        this.approvalQueue.createRequest(sessionId, toolName, input, policy, {
+      if (!this.approvalQueue.hasApprovalGrant(sessionId, resolvedName)) {
+        this.approvalQueue.createRequest(sessionId, resolvedName, input, policy, {
           toolCallId: context?.toolCallId,
         });
         this.onPendingApproval?.();
-        this.logRejectedToolCall(toolName, input, false, 'Awaiting approval', 'Awaiting approval');
+        this.logRejectedToolCall(resolvedName, input, false, 'Awaiting approval', 'Awaiting approval');
         return { success: false, output: '', pendingApproval: true, error: 'Awaiting approval' };
       }
     }
 
-    const result = await this.toolRuntime.execute(toolName, input);
-    log.info('Tool executed via executor', { tool: toolName, success: result.success });
+    const result = await this.toolRuntime.execute(resolvedName, input);
+    log.info('Tool executed via executor', { tool: resolvedName, success: result.success });
     if (result.success) {
-      this.getTaskState?.()?.recordToolSuccess(toolName, input, result.output);
+      if (['write_file', 'apply_patch'].includes(resolvedName)) {
+        this.phaseLockWriteBlocks = 0;
+      }
+      this.getTaskState?.()?.recordToolSuccess(resolvedName, input, result.output);
     }
     return result;
   }

@@ -17,7 +17,7 @@ import { PatchApplyService } from '../apply/PatchApplyService';
 import { validateMdxContent } from '../apply/mdxValidation';
 import { isDangerousCommand } from '../safety/ToolPolicyEngine';
 import { isReadOnlyCommand, stripLeadingCd } from '../planning/PlanActEngine';
-import { normalizeRelPath, normalizeWorkspaceRoot } from '../vscode/pathUtils';
+import { normalizeRelPath, normalizeWorkspaceRoot, resolveWorkspaceRelPath, formatPathNotFoundHint } from '../vscode/pathUtils';
 import { ResearchAgent } from '../agent/ResearchAgent';
 import { isAuditSubagentBlocked, buildScriptFirstAuditMessage } from '../agent/auditRouting';
 import type { SubagentTracker } from '../agent/SubagentTracker';
@@ -54,41 +54,22 @@ export function setResearchAgentRuntime(runtime: ResearchAgentRuntime | undefine
     : undefined;
 }
 
-function blockedPath(relPath: string, ignoreService: IgnoreService): boolean {
+function blockedPath(relPath: string, ignoreService: IgnoreService, forRead = false): boolean {
   if (relPath.includes('..')) return true;
-  return ignoreService.isIgnored(relPath);
+  return ignoreService.isIgnored(relPath, { forRead });
 }
 
-function resolveToolPath(workspace: string, rawPath: string, ignoreService: IgnoreService): string | null {
-  const relPath = resolveWorkspaceRelPath(workspace, rawPath);
-  if (!relPath) return null;
-  if (blockedPath(relPath, ignoreService)) return null;
-  return relPath;
-}
-
-function resolveToolDirPath(workspace: string, rawPath: string | undefined, ignoreService: IgnoreService): string | null {
+function resolveToolPath(workspace: string, rawPath: string, ignoreService: IgnoreService, forRead = false): string | null {
   const relPath = resolveWorkspaceRelPath(workspace, rawPath);
   if (relPath === null) return null;
-  if (relPath && blockedPath(relPath, ignoreService)) return null;
+  if (blockedPath(relPath, ignoreService, forRead)) return null;
   return relPath;
 }
 
-function resolveWorkspaceRelPath(workspace: string, rawPath: string | undefined): string | null {
-  const normalizedWorkspace = normalizeWorkspaceRoot(workspace);
-  if (!normalizedWorkspace) return null;
-
-  const trimmed = rawPath?.trim() ?? '';
-  if (!trimmed || trimmed === '.' || trimmed === './') return '';
-
-  if (isAbsolute(trimmed)) {
-    const relPath = relative(normalizedWorkspace, resolve(trimmed)).replace(/\\/g, '/');
-    if (!relPath || relPath === '.') return '';
-    if (relPath.startsWith('..') || isAbsolute(relPath)) return null;
-    return normalizeRelPath(relPath);
-  }
-
-  const relPath = normalizeRelPath(trimmed);
-  if (relPath.includes('..')) return null;
+function resolveToolDirPath(workspace: string, rawPath: string | undefined, ignoreService: IgnoreService, forRead = false): string | null {
+  const relPath = resolveWorkspaceRelPath(workspace, rawPath);
+  if (relPath === null) return null;
+  if (relPath && blockedPath(relPath, ignoreService, forRead)) return null;
   return relPath;
 }
 
@@ -171,15 +152,30 @@ async function readSingleFile(
   rawPath: string,
   ignoreService: IgnoreService
 ): Promise<ToolResult> {
-  const relPath = resolveToolPath(workspace, rawPath, ignoreService);
-  if (!relPath) {
-    return { success: false, output: '', error: 'Invalid or ignored path — use a file path like src/index.ts' };
+  const relPath = resolveWorkspaceRelPath(workspace, rawPath);
+  if (relPath === null) {
+    return { success: false, output: '', error: 'Invalid path — use workspace-relative paths like apps/docs/docusaurus.config.ts' };
+  }
+  if (ignoreService.isIgnored(relPath, { forRead: true })) {
+    return {
+      success: false,
+      output: '',
+      error: `Path is ignored: ${rawPath}. For built package exports read packages/*/src/index.ts instead of dist/.`,
+    };
   }
   try {
     const content = readFileSync(join(workspace, relPath), 'utf-8');
     return { success: true, output: content.slice(0, 50000) };
   } catch (e) {
-    return { success: false, output: '', error: String(e) };
+    const err = String(e);
+    if (err.includes('ENOENT')) {
+      return {
+        success: false,
+        output: '',
+        error: formatPathNotFoundHint(workspace, rawPath, relPath),
+      };
+    }
+    return { success: false, output: '', error: err };
   }
 }
 
@@ -193,16 +189,19 @@ export function createListFilesTool(
     risk: 'low',
     inputSchema: z.object({ path: z.string().optional(), recursive: z.boolean().optional() }),
     async execute(input): Promise<ToolResult> {
-      const dirPath = resolveToolDirPath(workspace, input.path, ignoreService);
-      if (dirPath === null) {
+      const relPath = resolveWorkspaceRelPath(workspace, input.path);
+      if (relPath === null) {
         return { success: false, output: '', error: 'Path is ignored or blocked' };
       }
-      const listRel = dirPath || '.';
+      if (relPath && ignoreService.isIgnored(relPath, { forRead: true })) {
+        return { success: false, output: '', error: 'Path is ignored' };
+      }
+      const listRel = relPath || '.';
       try {
-        const base = dirPath ? join(workspace, dirPath) : workspace;
+        const base = relPath ? join(workspace, relPath) : workspace;
         if (!input.recursive) {
           const entries = readdirSync(base).filter((entry) => {
-            const entryRel = dirPath ? join(listRel, entry).replace(/\\/g, '/') : entry;
+            const entryRel = relPath ? join(listRel, entry).replace(/\\/g, '/') : entry;
             try {
               const stat = statSync(join(base, entry));
               return !ignoreService.isIgnored(stat.isDirectory() ? `${entryRel}/` : entryRel);
@@ -215,7 +214,15 @@ export function createListFilesTool(
         const files = walkDir(workspace, listRel, ignoreService, 8, 500);
         return { success: true, output: files.join('\n') || '(empty)' };
       } catch (e) {
-        return { success: false, output: '', error: String(e) };
+        const err = String(e);
+        if (err.includes('ENOENT') && input.path) {
+          return {
+            success: false,
+            output: '',
+            error: formatPathNotFoundHint(workspace, input.path, relPath || input.path),
+          };
+        }
+        return { success: false, output: '', error: err };
       }
     },
   };
@@ -728,7 +735,7 @@ export function createRunCommandTool(workspace: string, getMode: () => string): 
         }
         const { stdout, stderr } = await execAsync(normalized.command, {
           cwd: normalized.cwd,
-          maxBuffer: 1024 * 1024,
+          maxBuffer: 4 * 1024 * 1024,
           timeout: 120000,
           env: { ...process.env, FORCE_COLOR: '0' },
         });

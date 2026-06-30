@@ -27,6 +27,7 @@ import { AutoApplyService } from './apply/AutoApplyService';
 import type { ToolExecutor } from './safety/ToolExecutor';
 import type { ToolRuntime } from './tools/ToolRuntime';
 import { toolsToDefinitions } from './tools/toolSchema';
+import { filterDirectAgentTools } from './tools/toolAliases';
 import type { ToolDefinition } from './llm/toolTypes';
 import { AgentLoop, type ApprovedToolResult, type AgentLoopSuspendState } from './agent/AgentLoop';
 import { PlanExecutor } from './agent/PlanExecutor';
@@ -520,6 +521,12 @@ export class ChatOrchestrator {
               hasOutput: Boolean(planningDiscovery),
             });
           }
+        } else {
+          this.emitActivity(
+            'error',
+            'Planning discovery skipped — current model/provider does not support tools',
+            'Use a tool-capable model: qwen3-coder via OpenAI-compatible (Ollama), or deepseek-chat via DeepSeek API. Do not pair DeepSeek provider with local Ollama model names.'
+          );
         }
 
         this.setLiveStatus('Analyzing requirements');
@@ -971,7 +978,6 @@ export class ChatOrchestrator {
     return {
       onToolStart: (name, input) => {
         lastToolInputs.set(name, input);
-        void this.previewDiffIfWrite(name, input);
         const activity = describeToolActivity(name, input, 'start');
         this.setLiveStatus(activity.liveLabel, activity.detail);
         this.emitActivity(activity.kind, activity.message, activity.detail);
@@ -984,6 +990,10 @@ export class ChatOrchestrator {
             `Waiting for approval: ${describeToolActivity(name, {}, 'start').message}`
           );
           return;
+        }
+        if (success) {
+          const input = lastToolInputs.get(name);
+          if (input) void this.previewDiffIfWrite(name, input);
         }
         const activity = describeToolActivity(name, {}, success ? 'success' : 'error');
         this.emitActivity(success ? activity.kind : 'error', activity.message, output?.slice(0, 240));
@@ -1263,14 +1273,7 @@ function formatPlanAsResponse(plan: import('./planning/PlanActEngine').ThunderPl
   return lines.join('\n');
 }
 
-const DIRECT_AGENT_EXCLUDED_TOOLS = new Set([
-  'mark_step_complete',
-  'propose_plan_mutation',
-]);
-
-export function filterDirectAgentTools(tools: ToolDefinition[]): ToolDefinition[] {
-  return tools.filter((tool) => !DIRECT_AGENT_EXCLUDED_TOOLS.has(tool.function.name));
-}
+export { filterDirectAgentTools } from './tools/toolAliases';
 
 export function shouldRunDirectFinalValidation(
   taskKind: ReturnType<typeof analyzeTask>['kind'],

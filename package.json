@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow",
-  "version": "2.6.14",
+  "version": "2.6.15",
   "publisher": "mitii",
   "icon": "media/mitii-short-logo.png",
   "license": "AGPL-3.0-or-later",
@@ -292,6 +292,13 @@
           "minimum": 1,
           "maximum": 100,
           "description": "Maximum tool-use steps before the main agent stops or auto-continues."
+        },
+        "thunder.agent.askMaxSteps": {
+          "type": "number",
+          "default": 8,
+          "minimum": 1,
+          "maximum": 50,
+          "description": "Maximum tool-use steps per Ask-mode turn (read-only exploration)."
         },
         "thunder.agent.autoContinue": {
           "type": "boolean",

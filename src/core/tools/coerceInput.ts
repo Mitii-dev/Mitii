@@ -55,5 +55,21 @@ export function normalizeToolInput(toolName: string, input: unknown): unknown {
     delete obj.path;
   }
 
+  if (toolName === 'mark_step_complete') {
+    if (!obj.stepId && typeof obj.step_id === 'string') {
+      obj.stepId = obj.step_id;
+      delete obj.step_id;
+    }
+    if (!obj.stepId && typeof obj.id === 'string') {
+      obj.stepId = obj.id;
+      delete obj.id;
+    }
+  }
+
+  if (toolName === 'search' && typeof obj.query !== 'string' && typeof obj.pattern === 'string') {
+    obj.query = obj.pattern;
+    delete obj.pattern;
+  }
+
   return obj;
 }

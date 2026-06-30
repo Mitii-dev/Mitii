@@ -53,16 +53,26 @@ export function createMarkStepCompleteTool(ctx: PlanToolsContext): Tool<{ stepId
   return {
     name: 'mark_step_complete',
     description:
-      'Mark the current plan step as completed. Call this ONLY after the active step objective is fully satisfied. The orchestrator updates plan state — do not skip this when a step is done.',
+      'Mark a plan step as completed. Prefer the exact step id from the plan (e.g. step_1). The orchestrator also auto-completes steps — only call when explicitly needed.',
     risk: 'low',
     inputSchema: z.object({ stepId: z.string() }),
     async execute(input): Promise<ToolResult> {
       const plan = ctx.getPlan();
       if (!plan) {
-        return { success: false, output: '', error: 'No active plan' };
+        return { success: false, output: '', error: 'No active plan — orchestrator manages step state in Agent mode' };
       }
 
-      const step = plan.steps.find((s) => s.id === input.stepId);
+      const resolvedId = resolvePlanStepId(plan, input.stepId);
+      if (!resolvedId) {
+        const known = plan.steps.map((s) => s.id).join(', ');
+        return {
+          success: false,
+          output: '',
+          error: `Step not found: ${input.stepId}. Valid step ids: ${known}`,
+        };
+      }
+
+      const step = plan.steps.find((s) => s.id === resolvedId);
       if (!step) {
         return { success: false, output: '', error: `Step not found: ${input.stepId}` };
       }
@@ -70,7 +80,7 @@ export function createMarkStepCompleteTool(ctx: PlanToolsContext): Tool<{ stepId
       step.status = 'done';
 
       for (const s of plan.steps) {
-        if (s.dependsOn?.includes(input.stepId) && s.status === 'blocked_by_dependency') {
+        if (s.dependsOn?.includes(resolvedId) && s.status === 'blocked_by_dependency') {
           const depsMet = (s.dependsOn ?? []).every((depId) => {
             const dep = plan.steps.find((d) => d.id === depId);
             return dep?.status === 'done';
@@ -81,17 +91,43 @@ export function createMarkStepCompleteTool(ctx: PlanToolsContext): Tool<{ stepId
 
       ctx.setPlan(plan);
       ctx.planPersistence?.updatePlan(ctx.getSessionId(), plan, 'running');
-      ctx.planFileStore?.markStepComplete(input.stepId);
+      ctx.planFileStore?.markStepComplete(resolvedId);
 
-      log.info('Step marked complete', { stepId: input.stepId });
+      log.info('Step marked complete', { stepId: resolvedId });
       return {
         success: true,
-        output: `Step ${input.stepId} marked complete. Next pending: ${
+        output: `Step ${resolvedId} marked complete. Next pending: ${
           plan.steps.find((s) => s.status === 'pending')?.title ?? '(none — plan may be finished)'
         }`,
       };
     },
   };
+}
+
+function resolvePlanStepId(
+  plan: ThunderPlan,
+  rawStepId: string
+): string | undefined {
+  const direct = plan.steps.find((s) => s.id === rawStepId);
+  if (direct) return direct.id;
+
+  const slug = rawStepId.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  const bySlug = plan.steps.find((s) => {
+    const stepSlug = s.id.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    const titleSlug = s.title.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    return stepSlug === slug || titleSlug === slug || stepSlug.includes(slug) || titleSlug.includes(slug);
+  });
+  if (bySlug) return bySlug.id;
+
+  const running = plan.steps.find((s) => s.status === 'running');
+  if (running) return running.id;
+
+  const pending = plan.steps.find((s) => s.status === 'pending');
+  if (pending && /^(execute|verify|complete|done|task_complete)$/i.test(rawStepId)) {
+    return pending.id;
+  }
+
+  return undefined;
 }
 
 const newStepSchema = z.object({

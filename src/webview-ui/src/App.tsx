@@ -139,11 +139,6 @@ export function App() {
             contextPreview={state.contextPreview}
             contextTokenEstimate={state.contextTokenEstimate}
             tokenUsage={state.tokenUsage}
-            memories={state.memories}
-            checkpoints={state.checkpoints}
-            onDeleteMemory={(id) => postMessage({ type: 'deleteMemory', payload: { id } })}
-            onClearMemory={() => postMessage({ type: 'clearMemory' })}
-            onRestoreCheckpoint={(id) => postMessage({ type: 'restoreCheckpoint', payload: { id } })}
           />
           <div className="chat-body">
             <MessageList
@@ -208,6 +203,8 @@ export function App() {
             contextToggles={state.contextToggles}
             mcpToggles={state.mcpToggles}
             vectorIndex={state.vectorIndex}
+            memories={state.memories}
+            checkpoints={state.checkpoints}
             onSaveApiKey={(key) => postMessage({ type: 'saveApiKey', payload: { key } })}
             onSaveAllSettings={(payload) => postMessage({ type: 'saveAllSettings', payload })}
             onTestConnection={(payload) => postMessage({ type: 'testProviderConnection', payload })}
@@ -226,6 +223,9 @@ export function App() {
             onSaveCustomMcpServers={(servers) =>
               postMessage({ type: 'saveCustomMcpServers', payload: { servers } })
             }
+            onDeleteMemory={(id) => postMessage({ type: 'deleteMemory', payload: { id } })}
+            onClearMemory={() => postMessage({ type: 'clearMemory' })}
+            onRestoreCheckpoint={(id) => postMessage({ type: 'restoreCheckpoint', payload: { id } })}
           />
         </main>
       )}

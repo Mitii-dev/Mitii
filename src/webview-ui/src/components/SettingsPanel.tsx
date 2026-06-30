@@ -8,6 +8,8 @@ import type {
   SafetySettingsPayload,
   SettingsView,
   IndexingStatusView,
+  MemoryItemView,
+  CheckpointView,
   ThunderSettingsPayload,
   VectorIndexStatusView,
   WorkspaceNoticeView,
@@ -17,6 +19,8 @@ import { WorkspaceSettingsSection } from './WorkspaceSettingsSection';
 import { SettingsCard } from './SettingsCard';
 import { SettingSwitch } from './SettingSwitch';
 import { SettingStepper } from './SettingStepper';
+import { MemoryPanel } from './MemoryPanel';
+import { CheckpointPanel } from './CheckpointPanel';
 import {
   APPROVAL_MODE_OPTIONS,
   approvalModeDescription,
@@ -153,6 +157,8 @@ interface SettingsPanelProps {
   contextToggles: ContextToggles;
   mcpToggles: McpToggles;
   vectorIndex: VectorIndexStatusView;
+  memories: MemoryItemView[];
+  checkpoints: CheckpointView[];
   onSaveApiKey: (key: string) => void;
   onSaveAllSettings: (settings: ThunderSettingsPayload) => void;
   onTestConnection: (settings: ProviderSettingsPayload) => void;
@@ -163,6 +169,9 @@ interface SettingsPanelProps {
   onToggleContext: (source: keyof ContextToggles, enabled: boolean) => void;
   onToggleMcp: (server: keyof McpToggles, enabled: boolean) => void;
   onSaveCustomMcpServers: (servers: import('../../../vscode/webview/messages').McpCustomServerView[]) => void;
+  onDeleteMemory: (id: number) => void;
+  onClearMemory: () => void;
+  onRestoreCheckpoint: (id: string) => void;
 }
 
 export function SettingsPanel({
@@ -178,6 +187,8 @@ export function SettingsPanel({
   contextToggles,
   mcpToggles,
   vectorIndex,
+  memories,
+  checkpoints,
   onSaveApiKey,
   onSaveAllSettings,
   onTestConnection,
@@ -188,6 +199,9 @@ export function SettingsPanel({
   onToggleContext,
   onToggleMcp,
   onSaveCustomMcpServers,
+  onDeleteMemory,
+  onClearMemory,
+  onRestoreCheckpoint,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('workspace');
   const [apiKey, setApiKey] = useState('');
@@ -290,7 +304,7 @@ export function SettingsPanel({
         actBaseUrl: actBaseUrl.trim(),
         checkpointStrategy,
       },
-      safety: { ...deriveSafetySettings(approvalMode), autonomyPreset },
+      safety: deriveSafetySettings(approvalMode),
       mcp: { enabled: mcpEnabled, builtinServers: mcpToggles },
       indexing: {
         vectorsEnabled,
@@ -518,151 +532,160 @@ export function SettingsPanel({
         )}
 
         {activeTab === 'agent' && (
-          <SettingsCard
-            title="Agent behavior"
-            description="Control tool rounds, subagents, and editor integration."
-          >
-            <SettingSwitch
-              label="Research subagents"
-              description="Parallel read-only investigation via spawn_research_agent."
-              checked={subagentsEnabled}
-              onChange={(v) => {
-                setSubagentsEnabled(v);
-                markDirty();
-              }}
-            />
-            <SettingSwitch
-              label="Auto-continue rounds"
-              description="Keep working after the main step budget is spent."
-              checked={agentAutoContinue}
-              onChange={(v) => {
-                setAgentAutoContinue(v);
-                markDirty();
-              }}
-            />
-            <SettingSwitch
-              label="Diff previews"
-              description="Open VS Code diff tabs before file edits."
-              checked={showDiffPreview}
-              onChange={(v) => {
-                setShowDiffPreview(v);
-                markDirty();
-              }}
-            />
-
-            <div className="settings-divider" />
-
-            <SettingStepper
-              label="Main agent max steps"
-              value={agentMaxSteps}
-              min={1}
-              max={100}
-              onChange={(v) => {
-                setAgentMaxSteps(v);
-                markDirty();
-              }}
-            />
-            <SettingStepper
-              label="Max auto-continues"
-              value={agentMaxAutoContinues}
-              min={0}
-              max={10}
-              disabled={!agentAutoContinue}
-              onChange={(v) => {
-                setAgentMaxAutoContinues(v);
-                markDirty();
-              }}
-            />
-            <SettingStepper
-              label="Research subagent max steps"
-              value={researchAgentMaxSteps}
-              min={1}
-              max={50}
-              disabled={!subagentsEnabled}
-              onChange={(v) => {
-                setResearchAgentMaxSteps(v);
-                markDirty();
-              }}
-            />
-
-            <div className="settings-divider" />
-
-            <h4 className="settings-subheading">Plan vs Act models</h4>
-            <p className="settings-inline-note">
-              Optional overrides. Leave blank to use the main provider model for both modes.
-            </p>
-            <label className="settings-field">
-              <span className="settings-label">Plan mode model</span>
-              <input
-                type="text"
-                className="settings-input"
-                value={planModel}
-                onChange={(e) => {
-                  setPlanModel(e.target.value);
+          <>
+            <SettingsCard
+              title="Agent behavior"
+              description="Control tool rounds, subagents, and editor integration."
+            >
+              <SettingSwitch
+                label="Research subagents"
+                description="Parallel read-only investigation via spawn_research_agent."
+                checked={subagentsEnabled}
+                onChange={(v) => {
+                  setSubagentsEnabled(v);
                   markDirty();
                 }}
-                placeholder={model || 'Same as main model'}
               />
-            </label>
-            <label className="settings-field">
-              <span className="settings-label">Plan mode base URL (optional)</span>
-              <input
-                type="url"
-                className="settings-input"
-                value={planBaseUrl}
-                onChange={(e) => {
-                  setPlanBaseUrl(e.target.value);
+              <SettingSwitch
+                label="Auto-continue rounds"
+                description="Keep working after the main step budget is spent."
+                checked={agentAutoContinue}
+                onChange={(v) => {
+                  setAgentAutoContinue(v);
                   markDirty();
                 }}
-                placeholder={baseUrl || 'Same as main provider'}
               />
-            </label>
-            <label className="settings-field">
-              <span className="settings-label">Act mode model</span>
-              <input
-                type="text"
-                className="settings-input"
-                value={actModel}
-                onChange={(e) => {
-                  setActModel(e.target.value);
+              <SettingSwitch
+                label="Diff previews"
+                description="Open VS Code diff tabs before file edits."
+                checked={showDiffPreview}
+                onChange={(v) => {
+                  setShowDiffPreview(v);
                   markDirty();
                 }}
-                placeholder={model || 'Same as main model'}
               />
-            </label>
-            <label className="settings-field">
-              <span className="settings-label">Act mode base URL (optional)</span>
-              <input
-                type="url"
-                className="settings-input"
-                value={actBaseUrl}
-                onChange={(e) => {
-                  setActBaseUrl(e.target.value);
-                  markDirty();
-                }}
-                placeholder={baseUrl || 'Same as main provider'}
-              />
-            </label>
 
-            <label className="settings-field">
-              <span className="settings-label">Checkpoint strategy</span>
-              <select
-                className="settings-input settings-select"
-                value={checkpointStrategy}
-                onChange={(e) => {
-                  setCheckpointStrategy(e.target.value as SettingsView['checkpointStrategy']);
+              <div className="settings-divider" />
+
+              <SettingStepper
+                label="Main agent max steps"
+                value={agentMaxSteps}
+                min={1}
+                max={100}
+                onChange={(v) => {
+                  setAgentMaxSteps(v);
                   markDirty();
                 }}
-              >
-                <option value="git-stash">Git stash (recommended)</option>
-                <option value="shadow-git">Shadow git stash</option>
-                <option value="file-copy">File copy fallback</option>
-              </select>
-              <span className="settings-hint">
-                Uses git stash when the workspace is a repo; falls back to file copies otherwise.
-              </span>
-            </label>
-          </SettingsCard>
+              />
+              <SettingStepper
+                label="Max auto-continues"
+                value={agentMaxAutoContinues}
+                min={0}
+                max={10}
+                disabled={!agentAutoContinue}
+                onChange={(v) => {
+                  setAgentMaxAutoContinues(v);
+                  markDirty();
+                }}
+              />
+              <SettingStepper
+                label="Research subagent max steps"
+                value={researchAgentMaxSteps}
+                min={1}
+                max={50}
+                disabled={!subagentsEnabled}
+                onChange={(v) => {
+                  setResearchAgentMaxSteps(v);
+                  markDirty();
+                }}
+              />
+
+              <div className="settings-divider" />
+
+              <h4 className="settings-subheading">Plan vs Act models</h4>
+              <p className="settings-inline-note">
+                Optional overrides. Leave blank to use the main provider model for both modes.
+              </p>
+              <label className="settings-field">
+                <span className="settings-label">Plan mode model</span>
+                <input
+                  type="text"
+                  className="settings-input"
+                  value={planModel}
+                  onChange={(e) => {
+                    setPlanModel(e.target.value);
+                    markDirty();
+                  }}
+                  placeholder={model || 'Same as main model'}
+                />
+              </label>
+              <label className="settings-field">
+                <span className="settings-label">Plan mode base URL (optional)</span>
+                <input
+                  type="url"
+                  className="settings-input"
+                  value={planBaseUrl}
+                  onChange={(e) => {
+                    setPlanBaseUrl(e.target.value);
+                    markDirty();
+                  }}
+                  placeholder={baseUrl || 'Same as main provider'}
+                />
+              </label>
+              <label className="settings-field">
+                <span className="settings-label">Act mode model</span>
+                <input
+                  type="text"
+                  className="settings-input"
+                  value={actModel}
+                  onChange={(e) => {
+                    setActModel(e.target.value);
+                    markDirty();
+                  }}
+                  placeholder={model || 'Same as main model'}
+                />
+              </label>
+              <label className="settings-field">
+                <span className="settings-label">Act mode base URL (optional)</span>
+                <input
+                  type="url"
+                  className="settings-input"
+                  value={actBaseUrl}
+                  onChange={(e) => {
+                    setActBaseUrl(e.target.value);
+                    markDirty();
+                  }}
+                  placeholder={baseUrl || 'Same as main provider'}
+                />
+              </label>
+
+              <label className="settings-field">
+                <span className="settings-label">Checkpoint strategy</span>
+                <select
+                  className="settings-input settings-select"
+                  value={checkpointStrategy}
+                  onChange={(e) => {
+                    setCheckpointStrategy(e.target.value as SettingsView['checkpointStrategy']);
+                    markDirty();
+                  }}
+                >
+                  <option value="git-stash">Git stash (recommended)</option>
+                  <option value="shadow-git">Shadow git stash</option>
+                  <option value="file-copy">File copy fallback</option>
+                </select>
+                <span className="settings-hint">
+                  Uses git stash when the workspace is a repo; falls back to file copies otherwise.
+                </span>
+              </label>
+            </SettingsCard>
+
+            <SettingsCard
+              title={`Checkpoints (${checkpoints.length})`}
+              description="Restore pre-write snapshots created before agent edits."
+            >
+              <CheckpointPanel checkpoints={checkpoints} onRestore={onRestoreCheckpoint} />
+            </SettingsCard>
+          </>
         )}
 
         {activeTab === 'context' && (
@@ -770,6 +793,13 @@ export function SettingsPanel({
                 onChange={(enabled) => onToggleContext(key, enabled)}
               />
             ))}
+            </SettingsCard>
+
+            <SettingsCard
+              title={`Memory (${memories.length})`}
+              description="Review or clear saved observations that can be recalled in future chats."
+            >
+              <MemoryPanel memories={memories} onDelete={onDeleteMemory} onClear={onClearMemory} />
             </SettingsCard>
           </>
         )}
@@ -890,7 +920,7 @@ export function SettingsPanel({
                   } else if (preset === 'builder') {
                     setApprovalMode('ask_commands');
                   } else if (preset === 'pilot') {
-                    setApprovalMode('ask_commands');
+                    setApprovalMode('auto');
                   }
                   markDirty();
                 }}
@@ -912,7 +942,9 @@ export function SettingsPanel({
                 className="settings-input settings-select"
                 value={approvalMode}
                 onChange={(e) => {
-                  setApprovalMode(e.target.value as ApprovalMode);
+                  const mode = e.target.value as ApprovalMode;
+                  setApprovalMode(mode);
+                  setAutonomyPreset(deriveSafetySettings(mode).autonomyPreset);
                   markDirty();
                 }}
               >

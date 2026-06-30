@@ -45,7 +45,18 @@ export class PatchApplyService {
     }
 
     if (patch.oldText && !current.includes(patch.oldText)) {
-      return { success: false, error: 'oldText not found in file' };
+      const fuzzy = findFuzzyReplacement(current, patch.oldText);
+      if (fuzzy) {
+        const proposed = current.replace(fuzzy.matched, patch.newText);
+        return { success: true, proposedContent: proposed };
+      }
+      const hint = buildOldTextHint(current, patch.oldText);
+      return {
+        success: false,
+        error: hint
+          ? `oldText not found in file. ${hint}`
+          : 'oldText not found in file — read_file the target first and copy exact text including whitespace.',
+      };
     }
 
     const proposed = patch.oldText
@@ -296,4 +307,45 @@ function isSelfClosingTag(content: string, tagEnd: number): boolean {
     return ch === '/';
   }
   return false;
+}
+
+/** Try line-trimmed contiguous block match when exact oldText is missing. */
+function findFuzzyReplacement(
+  current: string,
+  oldText: string
+): { matched: string } | null {
+  if (!oldText.trim()) return null;
+  if (current.includes(oldText)) return { matched: oldText };
+
+  const normalizedOld = normalizePatchText(oldText);
+  const lines = current.split(/\r?\n/);
+  const oldLines = oldText.split(/\r?\n/);
+  const window = oldLines.length;
+  if (window < 1) return null;
+
+  for (let i = 0; i <= lines.length - window; i += 1) {
+    const slice = lines.slice(i, i + window).join('\n');
+    if (normalizePatchText(slice) === normalizedOld) {
+      return { matched: slice };
+    }
+  }
+  return null;
+}
+
+function normalizePatchText(text: string): string {
+  return text
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .join('\n')
+    .trim();
+}
+
+function buildOldTextHint(current: string, oldText: string): string | undefined {
+  const probe = oldText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 2);
+  if (probe.length === 0) return undefined;
+  const idx = current.indexOf(probe[0]!);
+  if (idx < 0) return undefined;
+  const lineNo = current.slice(0, idx).split(/\r?\n/).length;
+  return `Near line ${lineNo} the file contains similar text — re-read the file and patch the exact block.`;
 }

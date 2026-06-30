@@ -140,7 +140,7 @@ describe('IgnoreService', () => {
       const result = await createReadFileTool(tempDir, ig).execute({ path: outsideFile });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Invalid or ignored path');
+      expect(result.error).toMatch(/Invalid (or ignored )?path/);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
       rmSync(outsideDir, { recursive: true, force: true });
@@ -973,6 +973,31 @@ describe('autonomyPresets', () => {
     expect(pilot.requireApprovalForShell).toBe(true);
   });
 
+  it('resolveEffectiveSafety keeps auto approval when preset is guided', async () => {
+    const { resolveEffectiveSafety } = await import('../src/core/safety/autonomyPresets');
+    const resolved = resolveEffectiveSafety({
+      ...defaultThunderConfig().safety,
+      approvalMode: 'auto',
+      autonomyPreset: 'guided',
+    });
+    expect(resolved.approvalMode).toBe('auto');
+    expect(resolved.requireApprovalForWrites).toBe(false);
+    expect(resolved.requireApprovalForShell).toBe(false);
+    expect(resolved.allowNetwork).toBe(true);
+  });
+
+  it('resolveEffectiveSafety honors ask_edits over pilot preset defaults', async () => {
+    const { resolveEffectiveSafety } = await import('../src/core/safety/autonomyPresets');
+    const resolved = resolveEffectiveSafety({
+      ...defaultThunderConfig().safety,
+      approvalMode: 'ask_edits',
+      autonomyPreset: 'pilot',
+    });
+    expect(resolved.approvalMode).toBe('ask_edits');
+    expect(resolved.requireApprovalForWrites).toBe(true);
+    expect(resolved.requireApprovalForShell).toBe(false);
+  });
+
   it('differentiates safe, guided, and builder', async () => {
     const { applyAutonomyPreset } = await import('../src/core/safety/autonomyPresets');
     const base = defaultThunderConfig().safety;
@@ -1316,6 +1341,8 @@ describe('PlanActEngine read-only shell', () => {
     expect(isReadOnlyCommand("grep -n 'uuid\\|randomUUID' src/screens/printer/printer.tsx")).toBe(true);
     expect(isReadOnlyCommand('npx tsc --noEmit')).toBe(true);
     expect(isReadOnlyCommand('npm run compile')).toBe(true);
+    expect(isReadOnlyCommand('npx docusaurus build')).toBe(true);
+    expect(isReadOnlyCommand('cd apps/docs && npm run build 2>&1 | head -50')).toBe(true);
     expect(isReadOnlyCommand('npx vitest run')).toBe(true);
     expect(isReadOnlyCommand('npx vitest')).toBe(false);
     expect(stripLeadingCd('cd /home/user && npm ls')).toBe('npm ls');
@@ -1472,6 +1499,41 @@ describe('pathUtils', () => {
     expect(normalizeWorkspaceRoot('')).toBeNull();
     expect(normalizeWorkspaceRoot('   ')).toBeNull();
     expect(normalizeWorkspaceRoot('/tmp')).toMatch(/tmp/);
+  });
+
+  it('strips embedded workspace root from pseudo-absolute paths', async () => {
+    const { resolveWorkspaceRelPath } = await import('../src/core/vscode/pathUtils');
+    const ws = '/Users/me/proj';
+    expect(resolveWorkspaceRelPath(ws, 'Users/me/proj/apps/docs/config.ts')).toBe('apps/docs/config.ts');
+    expect(resolveWorkspaceRelPath(ws, '/Users/me/proj/apps/docs/config.ts')).toBe('apps/docs/config.ts');
+    expect(resolveWorkspaceRelPath(ws, 'apps/docs/config.ts')).toBe('apps/docs/config.ts');
+  });
+
+  it('suggests extension variants for missing paths', async () => {
+    const { pathExistenceVariants } = await import('../src/core/vscode/pathUtils');
+    const variants = pathExistenceVariants('apps/docs/docusaurus.config.js');
+    expect(variants).toContain('apps/docs/docusaurus.config.ts');
+  });
+});
+
+describe('modelNormalize', () => {
+  it('maps deepseek-v4-flash to deepseek-chat', async () => {
+    const { normalizeProviderModel } = await import('../src/core/llm/modelNormalize');
+    expect(normalizeProviderModel('deepseek', 'deepseek-v4-flash').model).toBe('deepseek-chat');
+  });
+
+  it('rejects local Ollama model ids on DeepSeek provider', async () => {
+    const { normalizeProviderModel } = await import('../src/core/llm/modelNormalize');
+    const result = normalizeProviderModel('deepseek', 'qwen3-coder:30b');
+    expect(result.model).toBe('deepseek-chat');
+    expect(result.warning).toMatch(/local/i);
+  });
+});
+
+describe('toolAliases', () => {
+  it('maps search_files to search', async () => {
+    const { resolveToolName } = await import('../src/core/tools/toolAliases');
+    expect(resolveToolName('search_files')).toBe('search');
   });
 });
 
