@@ -5,7 +5,8 @@
 [![Node](https://img.shields.io/badge/Node-20%2B-339933?logo=node.js)](https://nodejs.org/)
 [![Website](https://img.shields.io/badge/website-mitii.dev-000000)](https://mitii.dev)
 
-Local-first AI coding agent for VS Code. Bring your own model (Ollama, vLLM, any OpenAI-compatible endpoint), keep your code on your machine, and get an agent that actually knows your repo before it starts editing files.
+The Local-First AI Context Engine & Coding Agent
+Your workspace-driven AI assistant for complex development. Mitti combines hybrid SQLite memory with seamless Model Context Protocol (MCP) tool integration to read files, write code, and run commands, all while keeping your data 100% self-hosted and protecting your token budget.
 
 **Docs:** [docs.mitii.dev](https://docs.mitii.dev) · **Discord:** [discord.gg/sa8rubf6HH](https://discord.gg/sa8rubf6HH)
 
