@@ -26,6 +26,7 @@ import type { ToolDefinition } from '../llm/toolTypes';
 import type { ToolExecutor } from '../safety/ToolExecutor';
 import type { SkillCatalogService } from '../skills/SkillCatalogService';
 import { createLogger } from '../telemetry/Logger';
+import { analyzeChangeImpact, discoverProjectCatalog, formatProjectCatalog, saveProjectCatalog } from '../ask';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -579,6 +580,72 @@ export function createDiagnosticsTool(diagnostics: DiagnosticsService): Tool<Rec
     inputSchema: z.object({}),
     async execute(): Promise<ToolResult> {
       return { success: true, output: diagnostics.formatCompact() || '(no diagnostics)' };
+    },
+  };
+}
+
+export function createProjectCatalogTool(workspace: string): Tool<Record<string, never>> {
+  return {
+    name: 'project_catalog',
+    description: 'Detect workspace projects/packages and return their roots, types, entry files, and scripts.',
+    risk: 'low',
+    inputSchema: z.object({}),
+    async execute(): Promise<ToolResult> {
+      const catalog = discoverProjectCatalog(workspace);
+      try {
+        saveProjectCatalog(catalog);
+      } catch {
+        // Saving is best-effort; the catalog output is still useful.
+      }
+      return {
+        success: true,
+        output: JSON.stringify({
+          ...catalog,
+          formatted: formatProjectCatalog(catalog),
+        }, null, 2),
+      };
+    },
+  };
+}
+
+export function createAnalyzeChangeImpactTool(
+  workspace: string
+): Tool<{ feature: string; scopeRoot?: string; entrySymbols?: string[] }> {
+  return {
+    name: 'analyze_change_impact',
+    description:
+      'Read-only impact analysis for an implementation question. Returns likely files to modify/create, tests, dependencies, risks, and verify commands.',
+    risk: 'low',
+    inputSchema: z.object({
+      feature: z.string(),
+      scopeRoot: z.string().optional(),
+      entrySymbols: z.array(z.string()).optional(),
+    }),
+    parametersJsonSchema: {
+      type: 'object',
+      properties: {
+        feature: {
+          type: 'string',
+          description: 'Feature/change being considered, e.g. "add OAuth to the extension".',
+        },
+        scopeRoot: {
+          type: 'string',
+          description: 'Optional project root or project id from project_catalog.',
+        },
+        entrySymbols: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional starting symbols the user mentioned.',
+        },
+      },
+      required: ['feature'],
+    },
+    async execute(input): Promise<ToolResult> {
+      const enrichedFeature = input.entrySymbols?.length
+        ? `${input.feature}\nEntry symbols: ${input.entrySymbols.join(', ')}`
+        : input.feature;
+      const analysis = analyzeChangeImpact(workspace, enrichedFeature, input.scopeRoot);
+      return { success: true, output: JSON.stringify(analysis, null, 2) };
     },
   };
 }

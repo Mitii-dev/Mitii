@@ -657,8 +657,11 @@ describe('Plan/Act task analysis', () => {
     const analysis = analyzeTask('implement auth and add tests for all routes', 'ask');
 
     expect(analysis.kind).toBe('question');
+    expect(analysis.complexity).toBe('high');
     expect(analysis.shouldPlan).toBe(false);
     expect(analysis.shouldVerify).toBe(false);
+    expect(analysis.shouldUseSubagents).toBe(true);
+    expect(analysis.askIntent).toBe('implement_here');
     expect(analysis.summary).toContain('Ask mode');
   });
 });
@@ -669,11 +672,13 @@ describe('Ask mode helpers', () => {
     const tools = [
       { type: 'function' as const, function: { name: 'read_file', description: '', parameters: {} } },
       { type: 'function' as const, function: { name: 'write_file', description: '', parameters: {} } },
+      { type: 'function' as const, function: { name: 'analyze_change_impact', description: '', parameters: {} } },
       { type: 'function' as const, function: { name: 'mcp__fs__read', description: '', parameters: {} } },
     ];
     const filtered = filterAskModeTools(tools);
-    expect(filtered.map((t) => t.function.name)).toEqual(['read_file', 'mcp__fs__read']);
+    expect(filtered.map((t) => t.function.name)).toEqual(['read_file', 'analyze_change_impact', 'mcp__fs__read']);
     expect(ASK_ALLOWED_TOOLS.has('spawn_research_agent')).toBe(true);
+    expect(ASK_ALLOWED_TOOLS.has('project_catalog')).toBe(true);
     expect(ASK_ALLOWED_TOOLS.has('write_file')).toBe(false);
   });
 
@@ -686,6 +691,7 @@ describe('Ask mode helpers', () => {
     expect(isGeneralKnowledgeQuestion('What is a binary search tree?')).toBe(true);
     expect(needsAskGrounding('What is a binary search tree?')).toBe(false);
     expect(shouldEnableAskSubagents('How does authentication flow across the entire codebase?')).toBe(true);
+    expect(shouldEnableAskSubagents('How do I implement OAuth in this project?')).toBe(true);
     expect(shouldEnableAskSubagents('What is OAuth?')).toBe(false);
   });
 
@@ -2085,5 +2091,189 @@ describe('run_command exit codes', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('Ask v2 routing, scope, and impact', () => {
+  it('routes canonical Ask intents and profiles', async () => {
+    const { routeAskIntent } = await import('../src/core/ask');
+
+    expect(routeAskIntent('Where is Ask mode defined?')).toMatchObject({
+      intent: 'locate',
+      profile: 'concise',
+      includeImpact: false,
+    });
+    expect(routeAskIntent('Explain ChatOrchestrator flow across the repo')).toMatchObject({
+      intent: 'architecture',
+      profile: 'deep',
+      shouldUseSubagents: true,
+    });
+    expect(routeAskIntent('How do I implement OAuth in this project?')).toMatchObject({
+      intent: 'implement_here',
+      profile: 'deep',
+      includeImpact: true,
+      allowWeb: true,
+    });
+    expect(routeAskIntent('What is recursion?')).toMatchObject({
+      intent: 'general_knowledge',
+      groundingRequired: false,
+    });
+  });
+
+  it('discovers monorepo projects and persists a catalog file', async () => {
+    const { discoverProjectCatalog, saveProjectCatalog, loadProjectCatalog, formatProjectCatalog } =
+      await import('../src/core/ask');
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-project-catalog-test-'));
+    try {
+      writeFileSync(join(tempDir, 'pnpm-workspace.yaml'), ['packages:', "  - 'apps/*'", "  - 'packages/*'"].join('\n'));
+      mkdirSync(join(tempDir, 'apps/docs'), { recursive: true });
+      writeFileSync(join(tempDir, 'apps/docs/package.json'), JSON.stringify({
+        name: 'mitii-docs',
+        dependencies: { '@docusaurus/core': '^3.0.0' },
+        scripts: { build: 'docusaurus build' },
+      }));
+      writeFileSync(join(tempDir, 'apps/docs/docusaurus.config.ts'), 'export default {};');
+      mkdirSync(join(tempDir, 'packages/sdk/src'), { recursive: true });
+      writeFileSync(join(tempDir, 'packages/sdk/package.json'), JSON.stringify({
+        name: '@mitii/sdk',
+        scripts: { test: 'vitest' },
+      }));
+      writeFileSync(join(tempDir, 'packages/sdk/src/index.ts'), 'export const sdk = true;');
+
+      const catalog = discoverProjectCatalog(tempDir);
+      expect(catalog.projects.map((project) => project.id)).toEqual(['docs', 'sdk']);
+      expect(catalog.projects.find((project) => project.id === 'docs')?.type).toBe('docs');
+      expect(catalog.projects.find((project) => project.id === 'sdk')?.type).toBe('lib');
+
+      saveProjectCatalog(catalog);
+      expect(existsSync(join(tempDir, '.mitii/projects.json'))).toBe(true);
+      expect(loadProjectCatalog(tempDir).projects).toHaveLength(2);
+      expect(formatProjectCatalog(catalog)).toContain('## Workspace projects');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves explicit, type-based, and cross-project scopes', async () => {
+    const { resolveAskScope } = await import('../src/core/ask');
+    const catalog = {
+      workspaceRoot: '/tmp/repo',
+      generatedAt: 'now',
+      projects: [
+        { id: 'agent', name: 'mitii-agent', root: 'apps/agent', type: 'extension' as const, entryFiles: [], scripts: {} },
+        { id: 'docs', name: 'mitii-docs', root: 'apps/docs', type: 'docs' as const, entryFiles: [], scripts: {} },
+      ],
+    };
+
+    expect(resolveAskScope('How do I implement OAuth in mitii-docs?', catalog)).toMatchObject({
+      status: 'matched',
+      scopeRoot: 'apps/docs',
+    });
+    expect(resolveAskScope('Where is the extension entry point?', catalog)).toMatchObject({
+      status: 'matched',
+      scopeRoot: 'apps/agent',
+    });
+    expect(resolveAskScope('How do docs relate to the agent across projects?', catalog).status).toBe('all');
+  });
+
+  it('analyzes likely affected files without mutating source files', async () => {
+    const { analyzeChangeImpact } = await import('../src/core/ask');
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-impact-test-'));
+    try {
+      mkdirSync(join(tempDir, 'src/core/auth'), { recursive: true });
+      mkdirSync(join(tempDir, 'test'), { recursive: true });
+      writeFileSync(join(tempDir, 'package.json'), JSON.stringify({
+        name: 'impact-app',
+        scripts: { test: 'vitest', lint: 'eslint .' },
+      }));
+      writeFileSync(join(tempDir, 'src/core/auth/session.ts'), 'export function createSession(token: string) { return token; }');
+      writeFileSync(join(tempDir, 'src/core/routes.ts'), 'export const routes = ["/login"];');
+      writeFileSync(join(tempDir, 'test/unit.test.ts'), 'import { describe } from "vitest";');
+
+      const impact = analyzeChangeImpact(tempDir, 'How do I implement OAuth login?', '.');
+
+      expect(impact.summary).toContain('OAuth');
+      expect(impact.files.modify.some((file) => file.path === 'src/core/auth/session.ts')).toBe(true);
+      expect(impact.files.create.some((file) => file.path.includes('OAuthProvider.ts'))).toBe(true);
+      expect(impact.files.maybe.some((file) => file.path === 'package.json')).toBe(true);
+      expect(impact.files.tests).toContain('test/unit.test.ts');
+      expect(impact.suggestedOrder.join('\n')).toContain('npm run test');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('exposes project catalog and impact through read-only built-in tools', async () => {
+    const { createProjectCatalogTool, createAnalyzeChangeImpactTool } = await import('../src/core/tools/builtinTools');
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-ask-tools-test-'));
+    try {
+      mkdirSync(join(tempDir, 'src'), { recursive: true });
+      writeFileSync(join(tempDir, 'package.json'), JSON.stringify({
+        name: 'tool-app',
+        scripts: { test: 'vitest' },
+      }));
+      writeFileSync(join(tempDir, 'src/index.ts'), 'export const auth = true;');
+
+      const catalog = await createProjectCatalogTool(tempDir).execute({});
+      expect(catalog.success).toBe(true);
+      expect(catalog.output).toContain('tool-app');
+
+      const impact = await createAnalyzeChangeImpactTool(tempDir).execute({
+        feature: 'How do I add auth?',
+        scopeRoot: '.',
+      });
+      expect(impact.success).toBe(true);
+      expect(impact.output).toContain('"files"');
+      expect(readFileSync(join(tempDir, 'src/index.ts'), 'utf8')).toContain('auth');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('prepares a headless Ask run plan for SDK-compatible callers', async () => {
+    const { AskOrchestrator } = await import('../src/core/ask');
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-ask-orchestrator-test-'));
+    try {
+      writeFileSync(join(tempDir, 'package.json'), JSON.stringify({ name: 'ask-app' }));
+
+      const plan = AskOrchestrator.prepare('How do I implement rate limiting here?', {
+        workspaceRoot: tempDir,
+      });
+
+      expect(plan.route.intent).toBe('implement_here');
+      expect(plan.promptContext).toContain('## Ask routing');
+      expect(plan.promptContext).toContain('analyze_change_impact');
+      expect(plan.maxSteps).toBeGreaterThanOrEqual(16);
+      expect(plan.autoContinue).toBe(true);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('injects deep Ask instructions into prompts without applying concise global prose rules', async () => {
+    const { buildPrompt, buildSystemPrompt } = await import('../src/core/planning/promptBuilder');
+
+    const system = buildSystemPrompt('ask', true);
+    expect(system).toContain('technical blog post');
+    expect(system).toContain('analyze_change_impact');
+    expect(system).not.toContain('Keep prose concise. Avoid filler');
+
+    const messages = buildPrompt(
+      'ask',
+      { items: [], totalTokens: 0, formatted: 'repo context', retrievedCount: 0, budgetLimit: 100, dropped: [], truncatedCount: 0 },
+      'Explain the architecture',
+      [],
+      true,
+      false,
+      false,
+      undefined,
+      undefined,
+      false,
+      undefined,
+      '## Ask routing\nIntent: architecture'
+    );
+
+    expect(messages.at(-1)?.content).toContain('## Ask routing');
+    expect(messages.at(-1)?.content).toContain('repo context');
   });
 });

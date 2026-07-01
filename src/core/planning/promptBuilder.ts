@@ -6,6 +6,7 @@ import { AGENT_NAME } from '../../shared/brand';
 import { CHAT_HISTORY_GUIDANCE, STATE_MACHINE_GUIDANCE } from '../agent/taskStatePrompt';
 import { buildAuditBootstrapBlock } from '../agent/auditRouting';
 import { buildMdxRepairBootstrapBlock } from '../agent/mdxRepairRouting';
+import { ASK_DEEP_RESPONSE_TEMPLATE } from '../ask/askPrompts';
 
 const ASK_TOOL_GUIDANCE = `
 ASK MODE TOOLS — read-only exploration only:
@@ -14,17 +15,27 @@ ASK MODE TOOLS — read-only exploration only:
 - Use git_diff and diagnostics when the question is about changes or errors.
 - Use run_command only for read-only inspection (rg, git status/diff/log, lint/test without --fix).
 - Use execute_workspace_script for approved audit helpers (depcheck/knip) — not for writes.
-- Use spawn_research_agent for broad "how does X work across the repo?" questions.
-- Use fetch_web only for external docs when local context is insufficient.
+- Use project_catalog when project/package scope matters.
+- Use analyze_change_impact for "how would I implement..." or "what files change..." questions.
+- Use spawn_research_agent for broad architecture, cross-project, or deep explain questions.
+- Use fetch_web for external docs when implement_here depends on a library/API or local context is insufficient.
 - Use ask_question when scope is ambiguous (2-5 options).
 - NEVER call write_file, apply_patch, or mutating shell commands.
 - NEVER say "I will search…" without calling tools in the same turn.
 
-Answer format:
-1. **Summary** — 1-2 sentences
-2. **Details** — bullets with \`path:line\` citations when referencing code
-3. **Not found** — anything you could not verify in the repo (or omit if fully grounded)
-4. **Next step** — if the user wants edits, suggest switching to Agent mode`;
+Ask intent taxonomy:
+- explain_code: long narrative with citations
+- locate: direct answer with 1-3 key files
+- architecture: overview plus data/control flow
+- compare: side-by-side differences
+- implement_here: implementation guide plus affected files, no writes
+- debug_explain: root-cause analysis using diagnostics/diff/context
+- general_knowledge: answer without forced repo grounding
+- cross_project: resolve scope and answer per project
+
+${ASK_DEEP_RESPONSE_TEMPLATE}
+
+For concise profile requests, shorten the same structure instead of using a generic bullet dump.`;
 
 const TOOL_GUIDANCE = `
 TOOLS: You have tools to read files, search code, run commands, write files, and manage memory.
@@ -103,7 +114,9 @@ export function buildSystemPrompt(
   const modeInstructions: Record<ThunderMode, string> = {
     ask: `You are in ASK mode. Answer questions about the codebase using read-only exploration.
 - Investigate with tools before stating facts about this repo — do not guess from training data.
-- Give direct, well-structured answers with \`path:line\` citations when referencing code.
+- Give thorough, well-structured answers with \`path:line\` citations when referencing code.
+- For deep Ask responses, write like a technical blog post: clear sections, complete sentences, context, tradeoffs, and gotchas.
+- For "how do I implement X here?", produce a read-only implementation guide with likely affected files and verification commands.
 - Say explicitly when something was not found in the workspace.
 - Do NOT edit files, run mutating shell commands, or implement changes — suggest switching to Agent mode if the user wants edits.`,
     plan: `You are in PLAN mode. Analyze the codebase and give a direct answer.
@@ -176,7 +189,9 @@ RULES:
 - If context says a file was not found, report that and suggest the closest matching path if any.
 - Do not invent generic boilerplate unless those exact files are in context.
 - Cite file paths when referencing code.
-- Keep prose concise. Avoid filler, repetition, and long preambles.`;
+${mode === 'ask'
+  ? '- In Ask mode, prioritize completeness over brevity unless the Ask routing block says concise profile. Avoid filler, but do not compress deep explanations into a few bullets.'
+  : '- Keep prose concise. Avoid filler, repetition, and long preambles.'}`;
 }
 
 export function buildPrompt(
@@ -190,7 +205,8 @@ export function buildPrompt(
   mdxErrorFile?: string,
   taskStateBlock?: string,
   isContinuation = false,
-  explicitContextBlock?: string
+  explicitContextBlock?: string,
+  askContextBlock?: string
 ): ChatMessage[] {
   const contextBlock = contextPack.formatted
     ? contextPack.formatted
@@ -217,8 +233,11 @@ export function buildPrompt(
   const explicitBlock = explicitContextBlock?.trim()
     ? `${explicitContextBlock.trim()}\n\n---\n\n`
     : '';
+  const askBlock = askContextBlock?.trim()
+    ? `${askContextBlock.trim()}\n\n---\n\n`
+    : '';
 
-  const userContent = `${explicitBlock}## Codebase Context
+  const userContent = `${explicitBlock}${askBlock}## Codebase Context
 
 ${contextBlock}
 ${taskProgress}${continuationNote}${auditBootstrap}${mdxBootstrap}

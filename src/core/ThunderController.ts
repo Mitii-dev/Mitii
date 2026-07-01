@@ -34,9 +34,10 @@ import {
   createRepoMapTool, createRetrieveContextTool, createGitDiffTool,
   createDiagnosticsTool, createWriteFileTool, createApplyPatchTool, createRunCommandTool,
   createMemorySearchTool, createMemoryWriteTool, createSaveTaskStateTool,
-  createFetchWebTool, createAskQuestionTool,
+  createFetchWebTool, createAskQuestionTool, createProjectCatalogTool, createAnalyzeChangeImpactTool,
   setSubagentTracker,
 } from './tools/builtinTools';
+import { ProjectCatalogContextSource, discoverProjectCatalog, saveProjectCatalog } from './ask';
 import { createMarkStepCompleteTool, createProposePlanMutationTool } from './tools/planTools';
 import type { LlmProvider } from './llm/types';
 import { UsageTrackingProvider, type ModelCallUsage } from './llm/UsageTrackingProvider';
@@ -389,6 +390,7 @@ export class ThunderController {
       [
         new ProjectRulesContextSource(this.projectRulesService),
         new SkillCatalogContextSource(this.skillCatalogService),
+        new ProjectCatalogContextSource(workspace),
         new MentionedFileContextSource(workspace),
         new WorkspaceOverviewContextSource(workspace),
         new CurrentEditorContextSource(workspace),
@@ -407,6 +409,13 @@ export class ThunderController {
     this.indexService = new IndexService(workspace);
     await this.indexService.initialize();
     scaffoldMitiiWorkspace(workspace);
+    try {
+      saveProjectCatalog(discoverProjectCatalog(workspace));
+    } catch (error) {
+      log.warn('Project catalog discovery failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     const db = this.indexService.getDb();
     if (!db) return;
@@ -561,6 +570,8 @@ export class ThunderController {
     this.toolRuntime.register(createRetrieveContextTool(retriever, budgeter));
     this.toolRuntime.register(createGitDiffTool(this.gitService));
     this.toolRuntime.register(createDiagnosticsTool(this.diagnosticsService));
+    this.toolRuntime.register(createProjectCatalogTool(workspace));
+    this.toolRuntime.register(createAnalyzeChangeImpactTool(workspace));
     this.toolRuntime.register(createWriteFileTool(workspace, this.ignoreService));
     this.toolRuntime.register(createApplyPatchTool(workspace, this.ignoreService));
     this.toolRuntime.register(createRunCommandTool(workspace, () => this.session?.mode ?? 'plan'));
@@ -722,6 +733,7 @@ export class ThunderController {
     if (this.skillCatalogService) {
       sources.push(new SkillCatalogContextSource(this.skillCatalogService));
     }
+    sources.push(new ProjectCatalogContextSource(workspace));
     sources.push(
       new MentionedFileContextSource(workspace),
       new WorkspaceOverviewContextSource(workspace),
