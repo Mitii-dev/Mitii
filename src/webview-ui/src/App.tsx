@@ -206,6 +206,7 @@ export function App() {
             memories={state.memories}
             checkpoints={state.checkpoints}
             onSaveApiKey={(key) => postMessage({ type: 'saveApiKey', payload: { key } })}
+            onSaveGitHubToken={(token) => postMessage({ type: 'saveGitHubToken', payload: { token } })}
             onSaveAllSettings={(payload) => postMessage({ type: 'saveAllSettings', payload })}
             onTestConnection={(payload) => postMessage({ type: 'testProviderConnection', payload })}
             onPickWorkspaceFolder={() => postMessage({ type: 'pickWorkspaceFolder' })}

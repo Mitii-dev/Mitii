@@ -24,7 +24,7 @@ describe('GitHub issue integration', () => {
     const fetcher = new GitHubIssueFetcher(async (url, init) => {
       calls.push(String(url));
       expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer ghp_secret');
-      if (String(url).endsWith('/comments?per_page=2')) {
+      if (String(url).endsWith('/comments?per_page=100&page=1')) {
         return jsonResponse([
           { id: 1, body: 'older clue', user: { login: 'alice' }, updated_at: '2026-01-01T00:00:00Z' },
           { id: 2, body: 'newer clue', user: { login: 'bob' }, updated_at: '2026-01-02T00:00:00Z' },
@@ -49,11 +49,63 @@ describe('GitHub issue integration', () => {
 
     expect(calls).toEqual([
       'https://api.github.com/repos/acme/app/issues/7',
-      'https://api.github.com/repos/acme/app/issues/7/comments?per_page=2',
+      'https://api.github.com/repos/acme/app/issues/7/comments?per_page=100&page=1',
     ]);
     expect(issue.title).toBe('Crash on save');
     expect(issue.labels).toEqual(['bug', 'priority']);
     expect(issue.comments.map((comment) => comment.body)).toEqual(['newer clue', 'older clue']);
+  });
+
+  it('fetches the newest comments for busy issues', async () => {
+    const calls: string[] = [];
+    const fetcher = new GitHubIssueFetcher(async (url) => {
+      calls.push(String(url));
+      if (String(url).endsWith('/comments?per_page=100&page=2')) {
+        return jsonResponse([
+          { id: 101, body: 'recent clue', updated_at: '2026-01-03T00:00:00Z' },
+          { id: 102, body: 'newest clue', updated_at: '2026-01-04T00:00:00Z' },
+        ]);
+      }
+      if (String(url).endsWith('/comments?per_page=100&page=1')) {
+        return jsonResponse([
+          { id: 95, body: 'older 95', updated_at: '2026-01-01T00:00:00Z' },
+          { id: 96, body: 'older 96', updated_at: '2026-01-01T00:00:00Z' },
+          { id: 97, body: 'older 97', updated_at: '2026-01-01T00:00:00Z' },
+          { id: 98, body: 'older 98', updated_at: '2026-01-01T00:00:00Z' },
+          { id: 99, body: 'older 99', updated_at: '2026-01-01T00:00:00Z' },
+          { id: 100, body: 'older 100', updated_at: '2026-01-01T00:00:00Z' },
+        ]);
+      }
+      return jsonResponse({
+        title: 'Busy issue',
+        body: '',
+        state: 'open',
+        html_url: 'https://github.com/acme/app/issues/8',
+        comments: 102,
+      });
+    });
+
+    const issue = await fetcher.fetchIssue(
+      { owner: 'acme', repo: 'app', number: 8, url: 'https://github.com/acme/app/issues/8' },
+      { maxComments: 8 }
+    );
+
+    expect(calls).toEqual([
+      'https://api.github.com/repos/acme/app/issues/8',
+      'https://api.github.com/repos/acme/app/issues/8/comments?per_page=100&page=2',
+      'https://api.github.com/repos/acme/app/issues/8/comments?per_page=100&page=1',
+    ]);
+    expect(issue.comments.map((comment) => comment.body)).toEqual([
+      'newest clue',
+      'recent clue',
+      'older 100',
+      'older 99',
+      'older 98',
+      'older 97',
+      'older 96',
+      'older 95',
+    ]);
+    expect(issue.totalComments).toBe(102);
   });
 
   it('builds bounded issue context for prompts', () => {

@@ -859,6 +859,7 @@ export class ThunderController {
   async buildUiState(base: Partial<WebviewState> = {}): Promise<WebviewState> {
     const config = this.configService.getConfig();
     const apiKey = await this.configService.getApiKey();
+    const githubToken = await this.configService.getApiKey(config.github.tokenRef);
     const workspacePath = this.resolveWorkspacePath();
     const override = this.configService.getWorkspaceOverride();
     const vscodeFolders = this.getVscodeWorkspaceFolders();
@@ -950,6 +951,7 @@ export class ThunderController {
         researchAgentMaxSteps: config.agent.researchAgentMaxSteps,
         showDiffPreview: config.agent.showDiffPreview,
         hasApiKey: Boolean(apiKey),
+        hasGithubToken: Boolean(githubToken),
         mcpEnabled: config.mcp.enabled,
         mcpServers: this.mcpManager.getStatuses().length,
         mcpTools: this.mcpManager.getConnectedToolCount(),
@@ -1969,6 +1971,11 @@ export class ThunderController {
     await this.providerRegistry.resolveFromConfig(config.provider, apiKey);
     await this.refreshResearchAgentProvider();
     this.chatOrchestrator?.configure({ researchAgentProvider: this.researchAgentProvider });
+    this.notifyUi({ settings: (await this.buildUiState()).settings });
+  }
+
+  async saveGitHubToken(token: string): Promise<void> {
+    await this.configService.setApiKey(token, this.configService.getConfig().github.tokenRef);
     this.notifyUi({ settings: (await this.buildUiState()).settings });
   }
 

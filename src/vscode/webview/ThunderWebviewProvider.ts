@@ -282,6 +282,13 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         }
         break;
 
+      case 'saveGitHubToken':
+        if (message.payload.token.trim()) {
+          await this.controller.saveGitHubToken(message.payload.token.trim());
+          await this.syncState();
+        }
+        break;
+
       case 'saveProviderSettings':
         await this.controller.saveProviderSettings(message.payload);
         await this.syncState();

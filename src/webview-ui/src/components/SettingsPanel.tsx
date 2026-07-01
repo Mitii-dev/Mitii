@@ -160,6 +160,7 @@ interface SettingsPanelProps {
   memories: MemoryItemView[];
   checkpoints: CheckpointView[];
   onSaveApiKey: (key: string) => void;
+  onSaveGitHubToken: (token: string) => void;
   onSaveAllSettings: (settings: ThunderSettingsPayload) => void;
   onTestConnection: (settings: ProviderSettingsPayload) => void;
   onPickWorkspaceFolder: () => void;
@@ -205,6 +206,7 @@ export function SettingsPanel({
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('workspace');
   const [apiKey, setApiKey] = useState('');
+  const [githubToken, setGithubToken] = useState('');
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
 
@@ -344,6 +346,10 @@ export function SettingsPanel({
     if (apiKey.trim()) {
       onSaveApiKey(apiKey.trim());
       setApiKey('');
+    }
+    if (githubToken.trim()) {
+      onSaveGitHubToken(githubToken.trim());
+      setGithubToken('');
     }
     setSaved(true);
     setDirty(false);
@@ -930,6 +936,24 @@ export function SettingsPanel({
         {activeTab === 'integrations' && (
           <>
             <SettingsCard
+              title="GitHub issues"
+              description="Fetch private issue details when a GitHub issue URL is pasted into chat."
+            >
+              <div className="settings-key-row">
+                <input
+                  type="password"
+                  className="settings-input"
+                  placeholder={settings.hasGithubToken ? 'Token saved - enter to replace' : 'Enter GitHub token...'}
+                  value={githubToken}
+                  onChange={(e) => setGithubToken(e.target.value)}
+                />
+              </div>
+              <p className="settings-inline-note">
+                Status: <strong>{settings.hasGithubToken ? 'Saved' : 'Not set'}</strong>
+              </p>
+            </SettingsCard>
+
+            <SettingsCard
               title="Model Context Protocol (MCP)"
               description="Enable built-in servers per task and add custom MCP servers without editing JSON."
             >
@@ -1131,7 +1155,7 @@ export function SettingsPanel({
             type="button"
             className="btn btn--primary"
             onClick={handleSaveAll}
-            disabled={!dirty && !apiKey.trim()}
+            disabled={!dirty && !apiKey.trim() && !githubToken.trim()}
           >
             {saved ? 'Saved' : 'Save changes'}
           </button>

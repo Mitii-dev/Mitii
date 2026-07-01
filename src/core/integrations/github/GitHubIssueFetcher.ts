@@ -69,8 +69,9 @@ export class GitHubIssueFetcher {
       options,
       'GitHub issue'
     );
-    const comments = maxComments > 0 && (issue.comments ?? 0) > 0
-      ? await this.fetchComments(ref, maxComments, options)
+    const totalComments = issue.comments ?? 0;
+    const comments = maxComments > 0 && totalComments > 0
+      ? await this.fetchComments(ref, maxComments, totalComments, options)
       : [];
 
     return {
@@ -87,20 +88,33 @@ export class GitHubIssueFetcher {
       updatedAt: issue.updated_at,
       closedAt: issue.closed_at ?? undefined,
       comments,
-      totalComments: issue.comments ?? comments.length,
+      totalComments,
     };
   }
 
   private async fetchComments(
     ref: GitHubIssueRef,
     maxComments: number,
+    totalComments: number,
     options: GitHubIssueFetchOptions
   ): Promise<GitHubIssueComment[]> {
-    const comments = await this.requestJson<GitHubApiComment[]>(
-      `${issueApiUrl(ref)}/comments?per_page=${maxComments}`,
+    const perPage = 100;
+    const page = Math.max(1, Math.ceil(totalComments / perPage));
+    const latestPage = await this.requestJson<GitHubApiComment[]>(
+      commentsApiUrl(ref, perPage, page),
       options,
       'GitHub issue comments'
     );
+    const comments = latestPage.length < maxComments && page > 1
+      ? [
+          ...await this.requestJson<GitHubApiComment[]>(
+            commentsApiUrl(ref, perPage, page - 1),
+            options,
+            'GitHub issue comments'
+          ),
+          ...latestPage,
+        ]
+      : latestPage;
     return comments
       .slice(-maxComments)
       .reverse()
@@ -157,6 +171,10 @@ export class GitHubIssueFetcher {
 
 function issueApiUrl(ref: GitHubIssueRef): string {
   return `https://api.github.com/repos/${ref.owner}/${ref.repo}/issues/${ref.number}`;
+}
+
+function commentsApiUrl(ref: GitHubIssueRef, perPage: number, page: number): string {
+  return `${issueApiUrl(ref)}/comments?per_page=${perPage}&page=${page}`;
 }
 
 function normalizeUser(user: GitHubApiUser | undefined): GitHubIssueUser | undefined {

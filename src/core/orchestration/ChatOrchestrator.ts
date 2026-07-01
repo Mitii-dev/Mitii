@@ -315,7 +315,7 @@ export class ChatOrchestrator {
           orchestrationEnabled,
           auditMode,
           mdxRepairMode,
-          githubIssueMode: Boolean(taskEnrichment.signals.githubIssue),
+          githubIssueMode: taskEnrichment.signals.githubIssue?.fetched === true,
           hasActivePlan: Boolean(activePlanAtStart?.plan),
           savedPlanId: activePlanAtStart?.id,
           verifyCommands: agentConfig?.verifyCommands,

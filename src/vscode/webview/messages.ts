@@ -243,6 +243,7 @@ export interface SettingsView {
   researchAgentMaxSteps: number;
   showDiffPreview: boolean;
   hasApiKey: boolean;
+  hasGithubToken: boolean;
   connectionStatus?: string;
   connectionOk?: boolean;
   mcpEnabled: boolean;
@@ -361,6 +362,7 @@ export type WebviewToExtensionMessage =
   | { type: 'resolveApproval'; payload: { id: string; decision: 'approved' | 'denied'; selectedOption?: string; scope?: 'single' | 'task' } }
   | { type: 'approveAllPending' }
   | { type: 'saveApiKey'; payload: { key: string } }
+  | { type: 'saveGitHubToken'; payload: { token: string } }
   | { type: 'saveProviderSettings'; payload: ProviderSettingsPayload }
   | { type: 'saveAgentSettings'; payload: AgentSettingsPayload }
   | { type: 'saveSafetySettings'; payload: SafetySettingsPayload }
@@ -427,6 +429,7 @@ export const defaultSettingsView = (): SettingsView => ({
   researchAgentMaxSteps: 6,
   showDiffPreview: false,
   hasApiKey: false,
+  hasGithubToken: false,
   mcpEnabled: true,
   mcpServers: 0,
   mcpTools: 0,
