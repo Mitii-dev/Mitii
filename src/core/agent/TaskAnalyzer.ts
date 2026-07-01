@@ -1,4 +1,5 @@
 import { extractOriginalTaskMessage, isApprovalContinuationMessage } from './taskMessage';
+import { routeAskIntent } from '../ask/AskIntentRouter';
 
 export type TaskKind = 'question' | 'audit' | 'simple_edit' | 'implementation' | 'explicit_plan';
 
@@ -11,6 +12,8 @@ export interface TaskAnalysis {
   shouldVerify: boolean;
   shouldUseSubagents: boolean;
   summary: string;
+  askIntent?: import('../ask/askTypes').AskIntent;
+  askProfile?: import('../ask/askTypes').AskResponseProfile;
 }
 
 const ACTION_VERBS =
@@ -62,13 +65,16 @@ export function analyzeTask(userMessage: string, mode: string): TaskAnalysis {
 
   const classified = classifyTask(taskText);
   if (mode === 'ask') {
+    const askRoute = routeAskIntent(taskText);
     return {
-      kind: classified.kind === 'question' ? 'question' : 'question',
-      complexity: 'low',
+      kind: 'question',
+      complexity: estimateAskComplexity(askRoute.intent, taskText),
       shouldPlan: false,
       shouldVerify: false,
-      shouldUseSubagents: false,
-      summary: 'Ask mode — explore with read-only tools and answer directly.',
+      shouldUseSubagents: askRoute.shouldUseSubagents,
+      summary: askRoute.summary,
+      askIntent: askRoute.intent,
+      askProfile: askRoute.profile,
     };
   }
 
@@ -93,6 +99,16 @@ export function analyzeTask(userMessage: string, mode: string): TaskAnalysis {
   }
 
   return classified;
+}
+
+function estimateAskComplexity(
+  intent: import('../ask/askTypes').AskIntent,
+  text: string
+): TaskComplexity {
+  if (intent === 'general_knowledge' || intent === 'locate') return 'low';
+  if (intent === 'implement_here' || intent === 'cross_project' || intent === 'architecture') return 'high';
+  const base = estimateComplexity(text);
+  return base === 'low' ? 'medium' : base;
 }
 
 function classifyTask(text: string): TaskAnalysis {

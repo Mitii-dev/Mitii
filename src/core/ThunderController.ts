@@ -34,9 +34,10 @@ import {
   createRepoMapTool, createRetrieveContextTool, createGitDiffTool,
   createDiagnosticsTool, createWriteFileTool, createApplyPatchTool, createRunCommandTool,
   createMemorySearchTool, createMemoryWriteTool, createSaveTaskStateTool,
-  createFetchWebTool, createAskQuestionTool,
+  createFetchWebTool, createAskQuestionTool, createProjectCatalogTool, createAnalyzeChangeImpactTool,
   setSubagentTracker,
 } from './tools/builtinTools';
+import { ProjectCatalogContextSource, discoverProjectCatalog, saveProjectCatalog } from './ask';
 import { createMarkStepCompleteTool, createProposePlanMutationTool } from './tools/planTools';
 import type { LlmProvider } from './llm/types';
 import { UsageTrackingProvider, type ModelCallUsage } from './llm/UsageTrackingProvider';
@@ -94,6 +95,7 @@ import { listCustomMcpServers } from './mcp/mcpWorkspaceConfig';
 import { resolveDbPath } from './indexing/paths';
 import { searchWorkspacePaths, resolvePickedPaths } from './context/contextPathSearch';
 import { createWorkspacePattern, isWorkspaceInVscodeFolders, normalizeWorkspaceRoot, toWorkspaceRelPath } from './vscode/pathUtils';
+import { collectCommitMessageInput, generateCommitMessage, type CommitMessageResult } from './scm';
 
 const log = createLogger('ThunderController');
 
@@ -389,6 +391,7 @@ export class ThunderController {
       [
         new ProjectRulesContextSource(this.projectRulesService),
         new SkillCatalogContextSource(this.skillCatalogService),
+        new ProjectCatalogContextSource(workspace),
         new MentionedFileContextSource(workspace),
         new WorkspaceOverviewContextSource(workspace),
         new CurrentEditorContextSource(workspace),
@@ -407,6 +410,13 @@ export class ThunderController {
     this.indexService = new IndexService(workspace);
     await this.indexService.initialize();
     scaffoldMitiiWorkspace(workspace);
+    try {
+      saveProjectCatalog(discoverProjectCatalog(workspace));
+    } catch (error) {
+      log.warn('Project catalog discovery failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     const db = this.indexService.getDb();
     if (!db) return;
@@ -561,6 +571,8 @@ export class ThunderController {
     this.toolRuntime.register(createRetrieveContextTool(retriever, budgeter));
     this.toolRuntime.register(createGitDiffTool(this.gitService));
     this.toolRuntime.register(createDiagnosticsTool(this.diagnosticsService));
+    this.toolRuntime.register(createProjectCatalogTool(workspace));
+    this.toolRuntime.register(createAnalyzeChangeImpactTool(workspace));
     this.toolRuntime.register(createWriteFileTool(workspace, this.ignoreService));
     this.toolRuntime.register(createApplyPatchTool(workspace, this.ignoreService));
     this.toolRuntime.register(createRunCommandTool(workspace, () => this.session?.mode ?? 'plan'));
@@ -722,6 +734,7 @@ export class ThunderController {
     if (this.skillCatalogService) {
       sources.push(new SkillCatalogContextSource(this.skillCatalogService));
     }
+    sources.push(new ProjectCatalogContextSource(workspace));
     sources.push(
       new MentionedFileContextSource(workspace),
       new WorkspaceOverviewContextSource(workspace),
@@ -889,6 +902,10 @@ export class ThunderController {
         memoryEnabled: config.memory.enabled,
         subagentsEnabled: config.agent.subagentsEnabled,
         agentMaxSteps: config.agent.maxSteps,
+        askDepth: config.agent.askDepth,
+        askMaxSteps: config.agent.askMaxSteps,
+        askAutoContinue: config.agent.askAutoContinue,
+        askMaxAutoContinues: config.agent.askMaxAutoContinues,
         agentAutoContinue: config.agent.autoContinue,
         agentMaxAutoContinues: config.agent.maxAutoContinues,
         researchAgentMaxSteps: config.agent.researchAgentMaxSteps,
@@ -1062,6 +1079,22 @@ export class ThunderController {
   getToolExecutor(): ToolExecutor | undefined { return this.toolExecutor; }
   getMemoryService(): MemoryService | undefined { return this.memoryService; }
   getCheckpointService(): CheckpointService | undefined { return this.checkpointService; }
+
+  async generateCommitMessage(): Promise<CommitMessageResult> {
+    const config = this.configService.getConfig();
+    if (!config.scm.commitMessageEnabled) {
+      throw normalizeError(new Error('Commit message generation is disabled in settings.'));
+    }
+    if (!this.gitService?.isGitRepo) {
+      throw normalizeError(new Error('No Git repository found for this workspace.'));
+    }
+    const provider = this.trackProvider(await this.resolveProviderForMode('ask'));
+    const input = await collectCommitMessageInput(this.gitService);
+    if (!input.stagedDiff.trim() && input.unstagedDiff?.trim()) {
+      throw normalizeError(new Error('Only unstaged changes found. Stage files before generating a commit message.'));
+    }
+    return generateCommitMessage(input, provider);
+  }
 
   private async resolveProviderForMode(mode: string): Promise<LlmProvider> {
     const config = this.configService.getConfig();
@@ -1919,6 +1952,10 @@ export class ThunderController {
     await this.configService.updateAgentSettings({
       subagentsEnabled: settings.subagentsEnabled,
       maxSteps: clamp(settings.maxSteps, 1, 100),
+      askDepth: settings.askDepth,
+      askMaxSteps: clamp(settings.askMaxSteps, 1, 50),
+      askAutoContinue: settings.askAutoContinue,
+      askMaxAutoContinues: clamp(settings.askMaxAutoContinues, 0, 10),
       autoContinue: settings.autoContinue,
       maxAutoContinues: clamp(settings.maxAutoContinues, 0, 10),
       researchAgentMaxSteps: clamp(settings.researchAgentMaxSteps, 1, 50),
@@ -1974,6 +2011,8 @@ export class ThunderController {
       agent: {
         ...settings.agent,
         maxSteps: clamp(settings.agent.maxSteps, 1, 100),
+        askMaxSteps: clamp(settings.agent.askMaxSteps, 1, 50),
+        askMaxAutoContinues: clamp(settings.agent.askMaxAutoContinues, 0, 10),
         maxAutoContinues: clamp(settings.agent.maxAutoContinues, 0, 10),
         researchAgentMaxSteps: clamp(settings.agent.researchAgentMaxSteps, 1, 50),
       },

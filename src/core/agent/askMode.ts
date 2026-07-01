@@ -1,4 +1,5 @@
 import type { ToolDefinition } from '../llm/toolTypes';
+import { routeAskIntent } from '../ask/AskIntentRouter';
 
 /** Read-only tools exposed to the model in Ask mode. */
 export const ASK_ALLOWED_TOOLS = new Set([
@@ -19,6 +20,8 @@ export const ASK_ALLOWED_TOOLS = new Set([
   'fetch_web',
   'ask_question',
   'spawn_research_agent',
+  'project_catalog',
+  'analyze_change_impact',
 ]);
 
 const GROUNDING_TOOLS = new Set([
@@ -33,6 +36,8 @@ const GROUNDING_TOOLS = new Set([
   'diagnostics',
   'execute_workspace_script',
   'spawn_research_agent',
+  'project_catalog',
+  'analyze_change_impact',
 ]);
 
 export function filterAskModeTools(tools: ToolDefinition[]): ToolDefinition[] {
@@ -52,7 +57,7 @@ export function needsAskGrounding(userMessage: string): boolean {
   const text = userMessage.trim();
   if (!text) return false;
   if (/^(hi|hello|hey|thanks|thank you|ok|okay)\b/i.test(text) && text.length < 48) return false;
-  if (isGeneralKnowledgeQuestion(text)) return false;
+  if (routeAskIntent(text).intent === 'general_knowledge') return false;
   return true;
 }
 
@@ -71,6 +76,8 @@ export function isGeneralKnowledgeQuestion(text: string): boolean {
 export function shouldEnableAskSubagents(userMessage: string): boolean {
   if (!needsAskGrounding(userMessage)) return false;
   const text = userMessage.trim();
+  const route = routeAskIntent(text);
+  if (route.shouldUseSubagents) return true;
   return (
     text.length > 120 ||
     /\b(how does|how do|architecture|across|entire|whole codebase|all files|map out|overview|trace|flow)\b/i.test(text)
@@ -89,8 +96,9 @@ In this turn, call at least one of:
 - retrieve_context — widen context for the question
 
 Then answer with:
-1. A short summary
-2. Details with \`path:line\` citations from files you actually read
-3. An explicit "Not found in repo" section for anything you could not verify
+1. A grounded overview
+2. A structured explanation with \`path:line\` citations from files you actually read
+3. Key files and responsibilities when this is a codebase question
+4. An explicit "What I could not verify" section for anything you could not verify
 
 Do NOT guess file contents or APIs. If the user wants edits, say to switch to Agent mode.`;

@@ -9,7 +9,7 @@ const SOURCE_TIMEOUT_MS = 800;
 
 /** Fast explicit sources first; heavy search sources in parallel tier 2. */
 const SOURCE_TIERS: string[][] = [
-  ['project-rules', 'mentioned-files', 'skill-catalog'],
+  ['project-rules', 'project-catalog', 'mentioned-files', 'skill-catalog'],
   ['workspace-overview', 'current-editor', 'open-files', 'git-diff', 'diagnostics'],
   ['fts', 'indexed-file-search', 'vector', 'repo-map', 'memory'],
 ];

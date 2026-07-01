@@ -40,6 +40,7 @@ import {
   needsAskGrounding,
   shouldEnableAskSubagents,
 } from './agent/askMode';
+import { AskOrchestrator } from './ask/AskOrchestrator';
 import {
   extractMdxErrorFile,
   isMdxRepairTask,
@@ -233,6 +234,20 @@ export class ChatOrchestrator {
       }
     }
 
+    const agentConfig = this.deps.agentConfig;
+    const taskForClassification = extractOriginalTaskMessage(userMessage) ?? userMessage;
+    const isAskMode = session.mode === 'ask';
+    const askPlan = isAskMode
+      ? AskOrchestrator.prepare(taskForClassification, {
+          workspaceRoot: this.deps.workspace,
+          configuredMaxSteps: agentConfig?.askMaxSteps,
+          askDepth: agentConfig?.askDepth,
+          askAutoContinue: agentConfig?.askAutoContinue,
+          askMaxAutoContinues: agentConfig?.askMaxAutoContinues,
+        })
+      : undefined;
+    const askScopeRoot = askPlan?.scope.status === 'matched' ? askPlan.scope.scopeRoot : undefined;
+
     this.setLiveStatus('Gathering context');
     this.emitActivity('context', 'Retrieving workspace context…', extractFileMentions(userMessage).join(', ') || undefined);
 
@@ -253,6 +268,7 @@ export class ChatOrchestrator {
       text: retrievalText,
       currentFile,
       openFiles,
+      scopeRoot: askScopeRoot,
       pinned: pinnedContext.map((p) => p.path),
     });
     const cacheFresh =
@@ -270,6 +286,7 @@ export class ChatOrchestrator {
           text: retrievalText,
           currentFile,
           openFiles,
+          scopeRoot: askScopeRoot,
           pinnedContext: pinnedContext.map((p) => ({ path: p.path, kind: p.kind })),
           maxItems: retrievalText === userMessage ? 28 : 40,
         });
@@ -366,8 +383,6 @@ export class ChatOrchestrator {
 
     const toolsEnabled = provider.capabilities.supportsTools
       && Boolean(this.deps.toolRuntime && this.deps.toolExecutor && this.agentLoop);
-    const agentConfig = this.deps.agentConfig;
-    const taskForClassification = extractOriginalTaskMessage(userMessage) ?? userMessage;
     const auditMode = isAuditCleanupTask(taskForClassification);
     const mdxRepairMode = isMdxRepairTask(taskForClassification);
     const mdxErrorFile = mdxRepairMode ? extractMdxErrorFile(taskForClassification) : undefined;
@@ -379,12 +394,11 @@ export class ChatOrchestrator {
       this.agentLoop?.clearSuspendState();
     }
     const orchestrationEnabled = agentConfig?.orchestrationEnabled ?? true;
-    const isAskMode = session.mode === 'ask';
     const plannerEnabled = shouldUsePlanner(session.mode, taskAnalysis, orchestrationEnabled, auditMode);
     const subagentsEnabled =
       (agentConfig?.subagentsEnabled ?? true) &&
       !auditMode &&
-      (isAskMode ? shouldEnableAskSubagents(userMessage) : taskAnalysis.shouldUseSubagents);
+      (isAskMode ? (askPlan?.route.shouldUseSubagents ?? shouldEnableAskSubagents(userMessage)) : taskAnalysis.shouldUseSubagents);
     let tools = toolsEnabled
       ? toolsToDefinitions(this.deps.toolRuntime!.list()).filter((tool) =>
           subagentsEnabled || tool.function.name !== 'spawn_research_agent'
@@ -425,6 +439,9 @@ export class ChatOrchestrator {
       shouldPlan: taskAnalysis.shouldPlan,
       plannerEnabled,
       shouldUseSubagents: subagentsEnabled,
+      askIntent: askPlan?.route.intent,
+      askProfile: askPlan?.route.profile,
+      askScope: askPlan?.scope.status,
       auditMode,
       mdxRepairMode,
       toolsEnabled,
@@ -687,7 +704,8 @@ export class ChatOrchestrator {
         mdxErrorFile,
         taskStateBlock,
         isResume,
-        explicitResult.formatted || undefined
+        explicitResult.formatted || undefined,
+        askPlan?.promptContext
       );
       const promptTokens = estimateChatRequestTokens({
         messages,
@@ -718,12 +736,12 @@ export class ChatOrchestrator {
             askMode: isAskMode,
             requiresAskGrounding: isAskMode && needsAskGrounding(userMessage),
             maxSteps: isAskMode
-              ? (agentConfig?.askMaxSteps ?? 8)
+              ? (askPlan?.maxSteps ?? agentConfig?.askMaxSteps ?? 18)
               : auditMode
                 ? AUDIT_AGENT_MAX_STEPS
                 : agentConfig?.maxSteps,
-            autoContinue: isAskMode ? false : (agentConfig?.autoContinue ?? true),
-            maxAutoContinues: isAskMode ? 0 : agentConfig?.maxAutoContinues,
+            autoContinue: isAskMode ? (askPlan?.autoContinue ?? true) : (agentConfig?.autoContinue ?? true),
+            maxAutoContinues: isAskMode ? (askPlan?.maxAutoContinues ?? 1) : agentConfig?.maxAutoContinues,
           }
         )) {
           if (signal.aborted) break;
