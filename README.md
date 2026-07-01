@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.7.3" src="https://img.shields.io/badge/version-2.7.3-111111">
+  <img alt="Version 2.7.6" src="https://img.shields.io/badge/version-2.7.6-111111">
   <a href="https://mitii.dev"><img alt="Website" src="https://img.shields.io/badge/website-mitii.dev-000000"></a>
   <a href="https://docs.mitii.dev"><img alt="Docs" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
@@ -124,6 +124,18 @@ Mitii creates a useful working map of your repository before it asks the model t
 | Review | Inspecting diffs, tests, risk, and quality | No by default |
 
 Plan mode produces structured work with phases such as diagnostics, review, execute, and verify. Agent mode runs the tool loop against the task. Review mode helps inspect changes without casually rewriting them.
+
+Agent mode is implemented as the **Act** runtime internally. Act now has the same kind of headless preparation boundary as Ask and Plan:
+
+| Act component | Purpose |
+|---|---|
+| `ActOrchestrator.prepare()` | Chooses direct execution, orchestrated plan-and-execute, saved-plan resume, audit, or MDX repair |
+| `ActIntentRouter` | Classifies execution intent and broadens Plan to Act handoff phrases |
+| `actMode` | Keeps plan-management tools out of direct Agent loops |
+| `actSkillRouting` | Preloads debugging, testing, and cleanup playbooks when available |
+| `actPrompts` | Injects execution contract, scope, skills, saved-plan metadata, and verification guidance |
+
+When a plan is ready, Agent mode can resume it with explicit phrases such as `execute the plan` or natural confirmations such as `go ahead`, `implement it`, `apply it`, `finish it`, or `fix it`. If no saved plan is active, those phrases are treated as ordinary Agent requests instead of triggering a stale handoff.
 
 ### 3. Safer Tool Execution
 

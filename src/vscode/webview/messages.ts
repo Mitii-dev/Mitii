@@ -211,6 +211,7 @@ export interface SettingsView {
   agentMaxSteps: number;
   askDepth: 'auto' | 'quick' | 'standard' | 'deep';
   planDepth: 'auto' | 'quick' | 'standard' | 'deep';
+  actDepth: 'auto' | 'quick' | 'standard' | 'deep';
   askMaxSteps: number;
   askAutoContinue: boolean;
   askMaxAutoContinues: number;
@@ -258,6 +259,7 @@ export interface AgentSettingsPayload {
   maxSteps: number;
   askDepth: 'auto' | 'quick' | 'standard' | 'deep';
   planDepth: 'auto' | 'quick' | 'standard' | 'deep';
+  actDepth: 'auto' | 'quick' | 'standard' | 'deep';
   askMaxSteps: number;
   askAutoContinue: boolean;
   askMaxAutoContinues: number;
@@ -322,12 +324,6 @@ export interface IndexingSettingsPayload {
   embeddingProvider: 'minilm' | 'hash';
   vectorBackend: 'sqlite' | 'lancedb';
   hybridMemorySearch: boolean;
-  autonomyPreset: 'safe' | 'guided' | 'builder' | 'pilot' | 'enterprise';
-  planModel: string;
-  planBaseUrl: string;
-  actModel: string;
-  actBaseUrl: string;
-  checkpointStrategy: 'file-copy' | 'git-stash' | 'shadow-git';
 }
 
 export type ProviderTypeView =
@@ -491,6 +487,7 @@ export const defaultSettingsView = (): SettingsView => ({
   agentMaxSteps: 15,
   askDepth: 'auto',
   planDepth: 'auto',
+  actDepth: 'auto',
   askMaxSteps: 18,
   askAutoContinue: true,
   askMaxAutoContinues: 1,

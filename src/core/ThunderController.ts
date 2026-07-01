@@ -70,6 +70,8 @@ import { ProjectRulesContextSource, ProjectRulesService } from './rules/ProjectR
 import { SkillCatalogContextSource, SkillCatalogService } from './skills/SkillCatalogService';
 import { InlineDiffManager } from '../vscode/inlineDiffManager';
 import { testProviderConnection } from './llm/testConnection';
+import { getProviderPreset, isCloudProvider } from './llm/providerPresets';
+import { resolveLocalModelPresetContextWindow } from '../shared/modelPresets';
 import { createLogger } from './telemetry/Logger';
 import { SessionLogService } from './telemetry/SessionLogService';
 import { normalizeError } from './telemetry/errors';
@@ -906,6 +908,7 @@ export class ThunderController {
         agentMaxSteps: config.agent.maxSteps,
         askDepth: config.agent.askDepth,
         planDepth: config.agent.planDepth,
+        actDepth: config.agent.actDepth,
         askMaxSteps: config.agent.askMaxSteps,
         askAutoContinue: config.agent.askAutoContinue,
         askMaxAutoContinues: config.agent.askMaxAutoContinues,
@@ -1877,9 +1880,15 @@ export class ThunderController {
     const providerType = settings?.providerType ?? config.provider.type;
     const baseUrl = settings?.baseUrl.trim() || config.provider.baseUrl;
     const model = settings?.model.trim() || config.provider.model;
-    const contextWindow = settings?.contextWindow
+    const requestedContextWindow = settings?.contextWindow
       ? Math.max(1024, Math.min(settings.contextWindow, 1_000_000))
       : config.provider.contextWindow;
+    const contextWindow = resolveAutoContextWindow(
+      providerType,
+      model,
+      requestedContextWindow,
+      config.provider.contextWindow
+    );
 
     if (providerType === 'echo') {
       this.notifyUi({
@@ -1931,7 +1940,13 @@ export class ThunderController {
   }
 
   async saveProviderSettings(settings: import('../vscode/webview/messages').ProviderSettingsPayload): Promise<void> {
-    const contextWindow = Math.max(1024, Math.min(settings.contextWindow, 1_000_000));
+    const requestedContextWindow = Math.max(1024, Math.min(settings.contextWindow, 1_000_000));
+    const contextWindow = resolveAutoContextWindow(
+      settings.providerType,
+      settings.model.trim(),
+      requestedContextWindow,
+      this.configService.getConfig().provider.contextWindow
+    );
     await this.configService.updateProviderSettings({
       providerType: settings.providerType,
       baseUrl: settings.baseUrl.trim(),
@@ -1957,6 +1972,7 @@ export class ThunderController {
       maxSteps: clamp(settings.maxSteps, 1, 100),
       askDepth: settings.askDepth,
       planDepth: settings.planDepth,
+      actDepth: settings.actDepth,
       askMaxSteps: clamp(settings.askMaxSteps, 1, 50),
       askAutoContinue: settings.askAutoContinue,
       askMaxAutoContinues: clamp(settings.askMaxAutoContinues, 0, 10),
@@ -2004,7 +2020,13 @@ export class ThunderController {
       Math.max(min, Math.min(Number.isFinite(value) ? Math.floor(value) : min, max));
 
     const beforeConfig = this.configService.getConfig();
-    const contextWindow = Math.max(1024, Math.min(settings.provider.contextWindow, 1_000_000));
+    const requestedContextWindow = Math.max(1024, Math.min(settings.provider.contextWindow, 1_000_000));
+    const contextWindow = resolveAutoContextWindow(
+      settings.provider.providerType,
+      settings.provider.model.trim(),
+      requestedContextWindow,
+      beforeConfig.provider.contextWindow
+    );
     const normalized: import('../vscode/webview/messages').ThunderSettingsPayload = {
       provider: {
         ...settings.provider,
@@ -2285,6 +2307,27 @@ export class ThunderController {
     this.session = undefined;
     log.info('ThunderController disposed');
   }
+}
+
+function resolveAutoContextWindow(
+  providerType: string,
+  model: string,
+  requestedContextWindow: number,
+  previousContextWindow: number
+): number {
+  const requested = Math.max(1024, Math.min(Math.floor(requestedContextWindow), 1_000_000));
+  const previous = Math.max(1024, Math.min(Math.floor(previousContextWindow), 1_000_000));
+  if (requested !== previous) return requested;
+
+  if (providerType === 'openai-compatible') {
+    return resolveLocalModelPresetContextWindow(model) ?? requested;
+  }
+
+  if (isCloudProvider(providerType as import('./config/schema').ProviderType)) {
+    return getProviderPreset(providerType as import('./config/schema').ProviderType)?.contextWindow ?? requested;
+  }
+
+  return requested;
 }
 
 function toApprovalView(r: import('./safety/ApprovalQueue').ApprovalRequest): ApprovalRequestView {

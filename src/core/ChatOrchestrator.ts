@@ -27,7 +27,6 @@ import { AutoApplyService } from './apply/AutoApplyService';
 import type { ToolExecutor } from './safety/ToolExecutor';
 import type { ToolRuntime } from './tools/ToolRuntime';
 import { toolsToDefinitions } from './tools/toolSchema';
-import { filterDirectAgentTools } from './tools/toolAliases';
 import { AgentLoop, type ApprovedToolResult, type AgentLoopSuspendState } from './agent/AgentLoop';
 import { PlanExecutor } from './agent/PlanExecutor';
 import { analyzeTask } from './agent/TaskAnalyzer';
@@ -45,6 +44,7 @@ import { PlanOrchestrator } from './plan/PlanOrchestrator';
 import { filterPlanModeTools, needsPlanGrounding } from './plan/planMode';
 import { loadPlanningSkillPlaybooks, resolvePlanningSkillNames } from './plan/planSkillRouting';
 import { routePlanIntent } from './plan/PlanIntentRouter';
+import { ActOrchestrator, filterActModeTools, shouldResumeSavedPlan, shouldUsePlannerForAct } from './act';
 import {
   extractMdxErrorFile,
   isMdxRepairTask,
@@ -65,6 +65,7 @@ import { thunderPlanToView } from './plan/planViewMapper';
 import { showWriteDiffPreview, showPatchDiffPreview } from '../vscode/diffPreview';
 import { toWorkspaceRelPath } from './vscode/pathUtils';
 import { estimateChatRequestTokens } from './llm/UsageTrackingProvider';
+import { resolveMaxContextItems } from './context/resolveMaxContextItems';
 
 const log = createLogger('ChatOrchestrator');
 
@@ -245,6 +246,14 @@ export class ChatOrchestrator {
     const taskForClassification = extractOriginalTaskMessage(userMessage) ?? userMessage;
     const isAskMode = session.mode === 'ask';
     const isPlanMode = session.mode === 'plan';
+    const isAgentMode = session.mode === 'agent';
+    const auditMode = isAuditCleanupTask(taskForClassification);
+    const mdxRepairMode = isMdxRepairTask(taskForClassification);
+    const mdxErrorFile = mdxRepairMode ? extractMdxErrorFile(taskForClassification) : undefined;
+    const orchestrationEnabled = agentConfig?.orchestrationEnabled ?? true;
+    const activePlanAtStart = isAgentMode
+      ? this.deps.planPersistence?.getActive(session.id)
+      : undefined;
     const taskAnalysis = analyzeTask(taskForClassification, session.mode);
     const askPlan = isAskMode
       ? AskOrchestrator.prepare(taskForClassification, {
@@ -266,18 +275,39 @@ export class ChatOrchestrator {
           taskAnalysis,
         })
       : undefined;
+    const actPlan = isAgentMode
+      ? ActOrchestrator.prepare(taskForClassification, {
+          workspaceRoot: this.deps.workspace,
+          skillCatalog: this.deps.skillCatalog,
+          configuredMaxSteps: agentConfig?.maxSteps,
+          actDepth: agentConfig?.actDepth,
+          actAutoContinue: agentConfig?.autoContinue,
+          actMaxAutoContinues: agentConfig?.maxAutoContinues,
+          taskAnalysis,
+          orchestrationEnabled,
+          auditMode,
+          mdxRepairMode,
+          hasActivePlan: Boolean(activePlanAtStart?.plan),
+          savedPlanId: activePlanAtStart?.id,
+          verifyCommands: agentConfig?.verifyCommands,
+        })
+      : undefined;
     const scopedRoot =
       askPlan?.scope.status === 'matched'
         ? askPlan.scope.scopeRoot
         : planPlan?.scope.status === 'matched'
           ? planPlan.scope.scopeRoot
-          : undefined;
+          : actPlan?.scope.status === 'matched'
+            ? actPlan.scope.scopeRoot
+            : undefined;
 
     this.setLiveStatus('Gathering context');
     this.emitActivity('context', 'Retrieving workspace context…', extractFileMentions(userMessage).join(', ') || undefined);
 
+    const maxInputTokens = getMaxInputTokens(provider.capabilities.contextWindow);
+    const explicitContextTokenBudget = Math.min(32_000, Math.floor(maxInputTokens * 0.08));
     const pinnedContext = options?.pinnedContext ?? [];
-    const explicitBuilder = new UserExplicitContextBuilder(this.db, ws);
+    const explicitBuilder = new UserExplicitContextBuilder(this.db, ws, explicitContextTokenBudget);
     const explicitResult = explicitBuilder.build(pinnedContext);
     if (explicitResult.items.length > 0) {
       this.emitActivity(
@@ -313,7 +343,11 @@ export class ChatOrchestrator {
           openFiles,
           scopeRoot: scopedRoot,
           pinnedContext: pinnedContext.map((p) => ({ path: p.path, kind: p.kind })),
-          maxItems: retrievalText === userMessage ? 28 : 40,
+          maxItems: resolveMaxContextItems({
+            contextWindow: provider.capabilities.contextWindow,
+            actDepth: agentConfig?.actDepth,
+            expandedQuery: retrievalText !== userMessage,
+          }),
         });
         this.retrievalCache = { key: retrievalKey, items, at: Date.now() };
         sessionTiming.end('context_retrieval', sessionLog, {
@@ -359,7 +393,6 @@ export class ChatOrchestrator {
       this.emitActivity('info', 'UserPromptSubmit hook injected context');
     }
 
-    const maxInputTokens = getMaxInputTokens(provider.capabilities.contextWindow);
     const contextBudget = Math.floor(maxInputTokens * 0.65);
     const pack = this.budgeter.budget(items, contextBudget);
     const displayPack: ContextPack = {
@@ -408,17 +441,14 @@ export class ChatOrchestrator {
 
     const toolsEnabled = provider.capabilities.supportsTools
       && Boolean(this.deps.toolRuntime && this.deps.toolExecutor && this.agentLoop);
-    const auditMode = isAuditCleanupTask(taskForClassification);
-    const mdxRepairMode = isMdxRepairTask(taskForClassification);
-    const mdxErrorFile = mdxRepairMode ? extractMdxErrorFile(taskForClassification) : undefined;
     const isResume = isApprovalContinuationMessage(userMessage);
     this.deps.taskState?.setTaskContext(taskAnalysis.kind, taskAnalysis.summary, taskForClassification);
     if (!isResume) {
       this.suspendContext = undefined;
       this.agentLoop?.clearSuspendState();
     }
-    const orchestrationEnabled = agentConfig?.orchestrationEnabled ?? true;
-    const plannerEnabled = shouldUsePlanner(session.mode, taskAnalysis, orchestrationEnabled, auditMode);
+    const plannerEnabled = actPlan?.route.shouldUsePlanner
+      ?? shouldUsePlanner(session.mode, taskAnalysis, orchestrationEnabled, auditMode);
     const subagentsEnabled =
       (agentConfig?.subagentsEnabled ?? true) &&
       !auditMode &&
@@ -426,7 +456,7 @@ export class ChatOrchestrator {
         ? (askPlan?.route.shouldUseSubagents ?? shouldEnableAskSubagents(userMessage))
         : isPlanMode
           ? (planPlan?.route.shouldUseSubagents ?? taskAnalysis.shouldUseSubagents)
-          : taskAnalysis.shouldUseSubagents);
+          : (actPlan?.route.shouldUseSubagents ?? taskAnalysis.shouldUseSubagents));
     let tools = toolsEnabled
       ? toolsToDefinitions(this.deps.toolRuntime!.list()).filter((tool) =>
           subagentsEnabled || tool.function.name !== 'spawn_research_agent'
@@ -458,6 +488,8 @@ export class ChatOrchestrator {
       this.emitActivity('info', 'Resuming after approval — continuing execution');
     } else if (isAskMode) {
       this.emitActivity('info', 'Ask mode — read-only exploration', taskAnalysis.summary);
+    } else if (actPlan?.executionPath === 'resume_saved_plan') {
+      this.emitActivity('info', 'Act handoff — executing the saved plan', actPlan.route.summary);
     } else if (plannerEnabled) {
       this.emitActivity('info', `Orchestration: ${taskAnalysis.kind} (${taskAnalysis.complexity})`, taskAnalysis.summary);
     } else if (orchestrationEnabled && taskAnalysis.shouldPlan && session.mode === 'agent') {
@@ -475,6 +507,10 @@ export class ChatOrchestrator {
       planIntent: planPlan?.route.intent,
       planScope: planPlan?.scope.status,
       planQualityProfile: planPlan?.route.qualityProfile,
+      actIntent: actPlan?.route.intent,
+      actExecutionPath: actPlan?.executionPath,
+      actScope: actPlan?.scope.status,
+      actSkills: actPlan?.appliedSkills,
       auditMode,
       mdxRepairMode,
       toolsEnabled,
@@ -501,20 +537,24 @@ export class ChatOrchestrator {
     const sharedPlanOptions = {
       stepMaxRetries: agentConfig?.stepMaxRetries,
       finalValidationEnabled: agentConfig?.finalValidationEnabled,
-      agentMaxSteps: agentConfig?.maxSteps,
+      agentMaxSteps: actPlan?.maxSteps ?? agentConfig?.maxSteps,
       restrictRunCommandToReadOnly: auditMode,
       workspace: this.deps.workspace,
       sessionLog,
     };
-    const planningRequest = planPlan?.promptContext
-      ? `${planPlan.promptContext}\n\n## User request\n${userMessage}`
+    const planningContextBlock = mergePromptContexts(
+      isAgentMode && actPlan ? actPlan.promptContext : undefined,
+      planPlan?.promptContext
+    );
+    const planningRequest = planningContextBlock
+      ? `${planningContextBlock}\n\n## User request\n${userMessage}`
       : userMessage;
 
     try {
-      const activePlan = this.deps.planPersistence?.getActive(session.id);
+      const activePlan = activePlanAtStart ?? this.deps.planPersistence?.getActive(session.id);
       if (
         !isApprovalContinuationMessage(userMessage) &&
-        shouldExecuteSavedPlan(session.mode, userMessage, Boolean(activePlan?.plan)) &&
+        actPlan?.executionPath === 'resume_saved_plan' &&
         this.planExecutor &&
         activePlan
       ) {
@@ -557,6 +597,11 @@ export class ChatOrchestrator {
               skillPlaybookContext: planPlan.skillPlaybookContext,
               appliedSkills: planPlan.appliedSkills,
             }
+          : actPlan
+            ? {
+                skillPlaybookContext: actPlan.skillPlaybookContext,
+                appliedSkills: actPlan.appliedSkills,
+              }
           : (() => {
               const loaded = loadPlanningSkillPlaybooks(
                 this.deps.skillCatalog,
@@ -604,12 +649,14 @@ export class ChatOrchestrator {
               signal,
               sharedLoopCallbacks,
               {
-                agentMaxSteps: planPlan?.discoveryMaxSteps ?? (
-                  auditMode ? Math.min(agentConfig?.maxSteps ?? 10, 12) : Math.min(agentConfig?.maxSteps ?? 6, 8)
-                ),
+                agentMaxSteps: planPlan?.discoveryMaxSteps ??
+                  actPlan?.maxSteps ??
+                  (auditMode ? Math.min(agentConfig?.maxSteps ?? 10, 12) : Math.min(agentConfig?.maxSteps ?? 6, 8)),
                 restrictRunCommandToReadOnly: true,
-                planAutoContinue: planPlan?.autoContinue ?? agentConfig?.autoContinue,
-                planMaxAutoContinues: planPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues,
+                planAutoContinue: planPlan?.autoContinue ?? actPlan?.autoContinue ?? agentConfig?.autoContinue,
+                planMaxAutoContinues: planPlan?.maxAutoContinues ??
+                  actPlan?.maxAutoContinues ??
+                  agentConfig?.maxAutoContinues,
                 ...planningSkillOptions,
               }
             );
@@ -802,8 +849,11 @@ export class ChatOrchestrator {
         taskStateBlock,
         isResume,
         explicitResult.formatted || undefined,
-        askPlan?.promptContext
-          ?? planPlan?.promptContext
+        mergePromptContexts(
+          askPlan?.promptContext,
+          planPlan?.promptContext,
+          actPlan?.promptContext
+        )
       );
       const promptTokens = estimateChatRequestTokens({
         messages,
@@ -815,7 +865,7 @@ export class ChatOrchestrator {
       emitLiveTokenUsage();
 
       if (toolsEnabled && this.agentLoop) {
-        const directAgentTools = filterDirectAgentTools(tools);
+        const directAgentTools = filterActModeTools(tools);
         this.setLiveStatus(isAskMode ? 'Answering' : 'Agent running');
         this.emitActivity(
           'info',
@@ -841,17 +891,17 @@ export class ChatOrchestrator {
                 ? (planPlan?.discoveryMaxSteps ?? agentConfig?.maxSteps ?? 8)
                 : auditMode
                   ? AUDIT_AGENT_MAX_STEPS
-                  : agentConfig?.maxSteps,
+                  : (actPlan?.maxSteps ?? agentConfig?.maxSteps),
             autoContinue: isAskMode
               ? (askPlan?.autoContinue ?? true)
               : isPlanMode
                 ? (planPlan?.autoContinue ?? agentConfig?.autoContinue ?? true)
-                : (agentConfig?.autoContinue ?? true),
+                : (actPlan?.autoContinue ?? agentConfig?.autoContinue ?? true),
             maxAutoContinues: isAskMode
               ? (askPlan?.maxAutoContinues ?? 1)
               : isPlanMode
                 ? (planPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues)
-                : agentConfig?.maxAutoContinues,
+                : (actPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues),
           }
         )) {
           if (signal.aborted) break;
@@ -1429,28 +1479,20 @@ function shouldUsePlanner(
   orchestrationEnabled: boolean,
   auditMode = false
 ): boolean {
-  if (!taskAnalysis.shouldPlan) return false;
   // Plan mode always uses the structured planner when the route requires a plan.
-  if (mode === 'plan') return true;
-  if (!orchestrationEnabled) return false;
-  // Audit in Agent mode: script-first direct path — skip 9-step planner overhead
-  if (auditMode && mode === 'agent') return false;
-  return mode === 'agent';
+  if (mode === 'plan') return taskAnalysis.shouldPlan;
+  if (mode === 'agent') return shouldUsePlannerForAct(taskAnalysis, orchestrationEnabled, auditMode);
+  return false;
 }
 
 export { shouldUsePlanner };
 
-function shouldExecuteSavedPlan(
+export function shouldExecuteSavedPlan(
   mode: ThunderSession['mode'],
   userMessage: string,
   hasActivePlan: boolean
 ): boolean {
-  if (mode !== 'agent' || !hasActivePlan) return false;
-  const lower = userMessage.toLowerCase();
-  return /\b(execute|run|start|continue|resume)\b.*\bplan\b/.test(lower)
-    || /\bplan\b.*\b(execute|run|start|continue|resume)\b/.test(lower)
-    || lower.includes('execute this plan')
-    || lower.includes('run the plan');
+  return mode === 'agent' && shouldResumeSavedPlan(userMessage, hasActivePlan);
 }
 
 function getTouchedFilesFromAudit(toolRuntime?: ToolRuntime): string[] {
@@ -1469,6 +1511,14 @@ function touchesDocs(files: string[]): boolean {
     /(?:^|\/)(?:apps\/docs|docs)\/.+\.(?:mdx?|tsx?|jsx?)$/i.test(file) ||
     /\.(?:mdx?)$/i.test(file)
   );
+}
+
+function mergePromptContexts(...blocks: Array<string | undefined>): string | undefined {
+  const merged = blocks
+    .map((block) => block?.trim())
+    .filter((block): block is string => Boolean(block));
+  if (merged.length === 0) return undefined;
+  return [...new Set(merged)].join('\n\n---\n\n');
 }
 
 export function contextPackToBudgetView(pack: ContextPack): ContextBudgetView {

@@ -8,6 +8,7 @@ import { buildAuditBootstrapBlock } from '../agent/auditRouting';
 import { buildMdxRepairBootstrapBlock } from '../agent/mdxRepairRouting';
 import { ASK_DEEP_RESPONSE_TEMPLATE } from '../ask/askPrompts';
 import { PLAN_SKILL_TOOL_GUIDANCE } from '../plan/planSkillRouting';
+import { ACT_SKILL_TOOL_GUIDANCE } from '../act/actSkillRouting';
 
 const ASK_TOOL_GUIDANCE = `
 ASK MODE TOOLS — read-only exploration only:
@@ -173,6 +174,7 @@ For multi-step tasks in Plan mode, include:
 
 ${modeInstructions[mode]}
 ${toolsEnabled ? (mode === 'ask' ? ASK_TOOL_GUIDANCE : TOOL_GUIDANCE) : ''}
+${toolsEnabled && mode === 'agent' ? ACT_SKILL_TOOL_GUIDANCE : ''}
 ${toolsEnabled && mode !== 'ask' ? DOCS_TASK_GUIDANCE : ''}
 ${toolsEnabled && mode !== 'ask' ? MDX_REPAIR_GUIDANCE : ''}
 ${toolsEnabled && auditMode ? AUDIT_GUIDANCE : ''}

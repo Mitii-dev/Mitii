@@ -70,6 +70,7 @@ export const AgentConfigSchema = z.object({
   askAutoContinue: z.boolean().default(true),
   askMaxAutoContinues: z.number().int().min(0).max(10).default(1),
   planDepth: z.enum(['auto', 'quick', 'standard', 'deep']).default('auto'),
+  actDepth: z.enum(['auto', 'quick', 'standard', 'deep']).default('auto'),
   autoContinue: z.boolean().default(true),
   maxAutoContinues: z.number().int().min(0).max(10).default(2),
   researchAgentMaxSteps: z.number().int().min(1).max(50).default(6),

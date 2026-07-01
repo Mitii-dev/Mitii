@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AGENT_NAME } from '../../../shared/brand';
+import { LOCAL_MODEL_PRESETS, findLocalModelPreset } from '../../../shared/modelPresets';
 import type {
   ApprovalMode,
   ContextToggles,
@@ -21,6 +22,7 @@ import { SettingSwitch } from './SettingSwitch';
 import { SettingStepper } from './SettingStepper';
 import { MemoryPanel } from './MemoryPanel';
 import { CheckpointPanel } from './CheckpointPanel';
+import { getProviderPreset } from '../../../core/llm/providerPresets';
 import {
   APPROVAL_MODE_OPTIONS,
   approvalModeDescription,
@@ -62,6 +64,13 @@ const PLAN_DEPTH_OPTIONS: Array<{ id: SettingsView['planDepth']; label: string }
   { id: 'quick', label: 'Quick discovery' },
   { id: 'standard', label: 'Standard discovery' },
   { id: 'deep', label: 'Deep discovery' },
+];
+
+const ACT_DEPTH_OPTIONS: Array<{ id: SettingsView['actDepth']; label: string }> = [
+  { id: 'auto', label: 'Auto' },
+  { id: 'quick', label: 'Quick execution' },
+  { id: 'standard', label: 'Standard execution' },
+  { id: 'deep', label: 'Deep execution' },
 ];
 
 const AUTONOMY_PRESETS: Array<{
@@ -133,29 +142,6 @@ const MCP_BUILTIN_TOGGLES: Array<{
     label: 'Sequential thinking',
     description: 'Structured reasoning helper for multi-step problems.',
   },
-];
-
-const LOCAL_MODEL_PRESETS: Array<{
-  model: string;
-  label: string;
-  contextWindow?: number;
-}> = [
-  { model: 'devstral-small-2:24b', label: 'Devstral Small 2 24B' },
-  { model: 'codestral:22b', label: 'Codestral 22B' },
-  { model: 'deepseek-coder:33b-instruct-q4_0', label: 'DeepSeek Coder 33B Instruct Q4_0' },
-  { model: 'qwen3-coder:30b', label: 'Qwen3 Coder 30B' },
-  { model: 'qwen3.6:27b', label: 'Qwen3.6 27B' },
-  { model: 'qwen3.5:latest', label: 'Qwen3.5 latest - 6.6GB - 256K - Text/Image', contextWindow: 256_000 },
-  { model: 'qwen3.5:0.8b', label: 'Qwen3.5 0.8B - 1.0GB - 256K - Text/Image', contextWindow: 256_000 },
-  { model: 'qwen3.5:2b', label: 'Qwen3.5 2B - 2.7GB - 256K - Text/Image', contextWindow: 256_000 },
-  { model: 'qwen3.5:4b', label: 'Qwen3.5 4B - 3.4GB - 256K - Text/Image', contextWindow: 256_000 },
-  { model: 'qwen3.5:9b', label: 'Qwen3.5 9B - 6.6GB - 256K - Text/Image', contextWindow: 256_000 },
-  { model: 'gemma4:latest', label: 'Gemma4 latest - 9.6GB - 128K - Text/Image', contextWindow: 128_000 },
-  { model: 'gemma4:e2b', label: 'Gemma4 E2B - 7.2GB - 128K - Text/Image', contextWindow: 128_000 },
-  { model: 'gemma4:e4b', label: 'Gemma4 E4B - 9.6GB - 128K - Text/Image', contextWindow: 128_000 },
-  { model: 'gemma4:12b', label: 'Gemma4 12B - 7.6GB - 256K - Text/Image', contextWindow: 256_000 },
-  { model: 'gemma4:26b', label: 'Gemma4 26B - 18GB - 256K - Text/Image', contextWindow: 256_000 },
-  { model: 'gemma4:31b', label: 'Gemma4 31B - 20GB - 256K - Text/Image', contextWindow: 256_000 },
 ];
 
 interface SettingsPanelProps {
@@ -233,6 +219,7 @@ export function SettingsPanel({
   const [agentMaxSteps, setAgentMaxSteps] = useState(settings.agentMaxSteps);
   const [askDepth, setAskDepth] = useState<SettingsView['askDepth']>(settings.askDepth);
   const [planDepth, setPlanDepth] = useState<SettingsView['planDepth']>(settings.planDepth);
+  const [actDepth, setActDepth] = useState<SettingsView['actDepth']>(settings.actDepth);
   const [askMaxSteps, setAskMaxSteps] = useState(settings.askMaxSteps);
   const [askAutoContinue, setAskAutoContinue] = useState(settings.askAutoContinue);
   const [askMaxAutoContinues, setAskMaxAutoContinues] = useState(settings.askMaxAutoContinues);
@@ -267,6 +254,7 @@ export function SettingsPanel({
     setAgentMaxSteps(settings.agentMaxSteps);
     setAskDepth(settings.askDepth);
     setPlanDepth(settings.planDepth);
+    setActDepth(settings.actDepth);
     setAskMaxSteps(settings.askMaxSteps);
     setAskAutoContinue(settings.askAutoContinue);
     setAskMaxAutoContinues(settings.askMaxAutoContinues);
@@ -297,7 +285,7 @@ export function SettingsPanel({
     Math.max(1024, Math.min(Number.isFinite(value) ? Math.floor(value) : 1024, 1_000_000));
 
   const applyModelPreset = (value: string) => {
-    const preset = LOCAL_MODEL_PRESETS.find((item) => item.model === value.trim());
+    const preset = findLocalModelPreset(value);
     if (preset?.contextWindow) {
       setContextWindow(preset.contextWindow);
     }
@@ -320,6 +308,7 @@ export function SettingsPanel({
         maxSteps: agentMaxSteps,
         askDepth,
         planDepth,
+        actDepth,
         askMaxSteps,
         askAutoContinue,
         askMaxAutoContinues,
@@ -367,6 +356,11 @@ export function SettingsPanel({
     model: model.trim(),
     contextWindow: clampContextWindow(contextWindow),
   });
+
+  const activeLocalPreset = providerType === 'openai-compatible' ? findLocalModelPreset(model) : undefined;
+  const hasPresetContextMismatch = Boolean(
+    activeLocalPreset?.contextWindow && activeLocalPreset.contextWindow !== clampContextWindow(contextWindow)
+  );
 
   const contextWindowField = (
     <label className="settings-field">
@@ -459,6 +453,12 @@ export function SettingsPanel({
                   onChange={(e) => {
                     const next = e.target.value as ProviderSettingsPayload['providerType'];
                     setProviderType(next);
+                    const preset = getProviderPreset(next);
+                    if (preset) {
+                      setBaseUrl(preset.baseUrl);
+                      setModel(preset.model);
+                      setContextWindow(preset.contextWindow);
+                    }
                     markDirty();
                   }}
                 >
@@ -512,6 +512,13 @@ export function SettingsPanel({
                   </label>
 
                   {contextWindowField}
+                  {hasPresetContextMismatch && activeLocalPreset?.contextWindow && (
+                    <p className="settings-inline-note" role="status">
+                      Preset context for <strong>{activeLocalPreset.model}</strong> is{' '}
+                      <strong>{activeLocalPreset.contextWindow.toLocaleString()}</strong> tokens. Save or reselect the model
+                      to use that window, or keep your custom value.
+                    </p>
+                  )}
                 </>
               )}
 
@@ -619,6 +626,24 @@ export function SettingsPanel({
                 </select>
                 <span className="settings-hint">
                   Controls read-only discovery before plan compilation. Deep allows more codebase exploration in Plan mode.
+                </span>
+              </label>
+              <label className="settings-field">
+                <span className="settings-label">Act depth</span>
+                <select
+                  className="settings-input settings-select"
+                  value={actDepth}
+                  onChange={(e) => {
+                    setActDepth(e.target.value as SettingsView['actDepth']);
+                    markDirty();
+                  }}
+                >
+                  {ACT_DEPTH_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
+                <span className="settings-hint">
+                  Controls direct Agent execution steps. Deep allows longer implementation runs before auto-continue.
                 </span>
               </label>
 
