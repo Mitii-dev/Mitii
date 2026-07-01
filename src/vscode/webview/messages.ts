@@ -193,6 +193,7 @@ export interface SettingsView {
   subagentsEnabled: boolean;
   agentMaxSteps: number;
   askDepth: 'auto' | 'quick' | 'standard' | 'deep';
+  planDepth: 'auto' | 'quick' | 'standard' | 'deep';
   askMaxSteps: number;
   askAutoContinue: boolean;
   askMaxAutoContinues: number;
@@ -239,6 +240,7 @@ export interface AgentSettingsPayload {
   subagentsEnabled: boolean;
   maxSteps: number;
   askDepth: 'auto' | 'quick' | 'standard' | 'deep';
+  planDepth: 'auto' | 'quick' | 'standard' | 'deep';
   askMaxSteps: number;
   askAutoContinue: boolean;
   askMaxAutoContinues: number;
@@ -471,6 +473,7 @@ export const defaultSettingsView = (): SettingsView => ({
   subagentsEnabled: true,
   agentMaxSteps: 15,
   askDepth: 'auto',
+  planDepth: 'auto',
   askMaxSteps: 18,
   askAutoContinue: true,
   askMaxAutoContinues: 1,

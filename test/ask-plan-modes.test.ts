@@ -201,4 +201,24 @@ describe('Ask and Plan mode reliability', () => {
     expect(quick.discoveryMaxSteps).toBeLessThan(deep.discoveryMaxSteps);
     expect(quick.promptContext).toContain('Plan routing');
   });
+
+  it('parses SKILL.md frontmatter descriptions for the skill catalog', async () => {
+    const { parseSkillFrontmatter } = await import('../src/core/skills/SkillCatalogService');
+    const parsed = parseSkillFrontmatter(`---
+name: performance-optimization
+description: Optimizes application performance when Core Web Vitals need improvement.
+---
+
+# Performance Optimization
+`);
+
+    expect(parsed.name).toBe('performance-optimization');
+    expect(parsed.description).toContain('Core Web Vitals');
+  });
+
+  it('defaults planDepth in agent config schema', async () => {
+    const { AgentConfigSchema } = await import('../src/core/config/schema');
+    const parsed = AgentConfigSchema.parse({});
+    expect(parsed.planDepth).toBe('auto');
+  });
 });

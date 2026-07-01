@@ -59,6 +59,7 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       maxSteps: config.get<number>('agent.maxSteps'),
       askMaxSteps: config.get<number>('agent.askMaxSteps'),
       askDepth: config.get<string>('agent.askDepth'),
+      planDepth: config.get<string>('agent.planDepth'),
       askAutoContinue: config.get<boolean>('agent.askAutoContinue'),
       askMaxAutoContinues: config.get<number>('agent.askMaxAutoContinues'),
       autoContinue: config.get<boolean>('agent.autoContinue'),

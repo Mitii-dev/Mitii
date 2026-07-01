@@ -125,9 +125,24 @@ function skillNameFromPath(skillPath: string): string {
 }
 
 function extractDescription(content: string): string {
+  const frontmatter = parseSkillFrontmatter(content);
+  if (frontmatter.description) return frontmatter.description.slice(0, 240);
+
   const lines = content
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith('#'));
+    .filter((line) => line && !line.startsWith('#') && !line.startsWith('---'));
   return (lines[0] ?? 'Workspace skill playbook').slice(0, 240);
 }
+
+function parseSkillFrontmatter(content: string): { name?: string; description?: string } {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) return {};
+
+  const block = match[1];
+  const name = block.match(/^name:\s*(.+)$/m)?.[1]?.trim().replace(/^['"]|['"]$/g, '');
+  const description = block.match(/^description:\s*(.+)$/m)?.[1]?.trim().replace(/^['"]|['"]$/g, '');
+  return { name, description };
+}
+
+export { parseSkillFrontmatter };
