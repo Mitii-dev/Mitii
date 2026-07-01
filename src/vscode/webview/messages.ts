@@ -156,7 +156,7 @@ export interface VectorIndexStatusView {
 
 export interface AgentActivityEntry {
   id: string;
-  kind: 'context' | 'read' | 'budget' | 'apply' | 'info' | 'approval' | 'error' | 'tool' | 'success';
+  kind: 'context' | 'read' | 'budget' | 'apply' | 'info' | 'approval' | 'error' | 'tool' | 'success' | 'skipped';
   message: string;
   detail?: string;
   timestamp: number;

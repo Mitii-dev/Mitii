@@ -576,7 +576,7 @@ body,
 
 .plan-step__row {
   display: grid;
-  grid-template-columns: 10px 22px minmax(0, 1fr) auto;
+  grid-template-columns: 16px 22px minmax(0, 1fr) auto;
   align-items: start;
   gap: 8px;
   width: 100%;
@@ -593,26 +593,37 @@ body,
   cursor: default;
 }
 
-.plan-step__status-dot {
-  width: 8px;
-  height: 8px;
-  margin-top: 6px;
-  border-radius: 50%;
-  background: var(--thunder-muted);
+.plan-step__check {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  border: 1px solid var(--thunder-border);
+  border-radius: 3px;
+  color: var(--thunder-muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
 }
 
-.plan-step__status-dot--running {
-  background: var(--thunder-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--thunder-accent) 20%, transparent);
+.plan-step__check--running {
+  border-color: color-mix(in srgb, var(--thunder-accent) 70%, var(--thunder-border));
+  color: var(--thunder-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--thunder-accent) 16%, transparent);
 }
 
-.plan-step__status-dot--done {
-  background: #4ade80;
+.plan-step__check--done {
+  border-color: #4ade80;
+  background: color-mix(in srgb, #4ade80 18%, transparent);
+  color: #4ade80;
 }
 
-.plan-step__status-dot--failed,
-.plan-step__status-dot--blocked {
-  background: #f87171;
+.plan-step__check--failed,
+.plan-step__check--blocked {
+  border-color: #f87171;
+  background: color-mix(in srgb, #f87171 12%, transparent);
+  color: #f87171;
 }
 
 .plan-step__meta {
@@ -877,9 +888,27 @@ body,
   color: #4ade80;
 }
 
+.plan-step--done .plan-step__title {
+  color: var(--thunder-muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
 .plan-step--blocked .plan-step__status,
 .plan-step--failed .plan-step__status {
   color: #f87171;
+}
+
+.plan-panel--done {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, #4ade80 5%, var(--thunder-surface)) 0%,
+    var(--thunder-surface) 100%
+  );
+}
+
+.plan-panel__running--done {
+  color: #4ade80;
 }
 
 .chat-footer {
@@ -1105,6 +1134,7 @@ body,
 .assistant-thinking__item--error .assistant-thinking__kind { color: #f87171; }
 .assistant-thinking__item--tool .assistant-thinking__kind { color: var(--thunder-accent); }
 .assistant-thinking__item--context .assistant-thinking__kind { color: #93c5fd; }
+.assistant-thinking__item--skipped .assistant-thinking__kind { color: #fbbf24; }
 
 .message-list__anchor {
   height: 1px;

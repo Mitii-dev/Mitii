@@ -281,7 +281,7 @@ export class PlanExecutor {
         if (signal?.aborted) break;
 
         if (attempt > 0) {
-          yield `\n\n🔄 Retrying step ${i + 1} (attempt ${attempt + 1}/${maxRetries + 1})…\n\n`;
+          yield `\n\nRetrying step ${i + 1}/${plan.steps.length} (${attempt + 1}/${maxRetries + 1})…\n\n`;
         } else {
           yield `\n\n### Step ${i + 1}/${plan.steps.length}: ${step.title}\n\n`;
         }
@@ -327,7 +327,7 @@ export class PlanExecutor {
             lastValidationErrors = [`${explicitToolCall.name} failed: ${execResult.error ?? execResult.output}`];
             attempt += 1;
             if (attempt <= maxRetries) {
-              yield `\n\n⚠️ Step tool failed — retrying step (${attempt}/${maxRetries + 1})…\n`;
+              yield `\n\nStep tool did not complete. Retrying step ${i + 1}/${plan.steps.length} (${attempt + 1}/${maxRetries + 1})…\n`;
               plan.steps[i] = { ...plan.steps[i], status: 'pending' };
               continue;
             }
@@ -390,7 +390,7 @@ export class PlanExecutor {
           ];
           attempt += 1;
           if (attempt <= maxRetries) {
-            yield `\n\n⚠️ No file changes were applied — retrying step (${attempt}/${maxRetries + 1})…\n`;
+            yield `\n\nNo file changes were applied yet. Retrying step ${i + 1}/${plan.steps.length} (${attempt + 1}/${maxRetries + 1})…\n`;
             plan.steps[i] = { ...plan.steps[i], status: 'pending' };
             continue;
           }

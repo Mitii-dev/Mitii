@@ -1218,6 +1218,11 @@ export class ChatOrchestrator {
           );
           return;
         }
+        if (!success && isSkippedToolOutput(output)) {
+          this.setLiveStatus('Skipped redundant tool', toolDisplayName(name));
+          this.emitActivity('skipped', `${toolDisplayName(name)} skipped`, output?.slice(0, 240));
+          return;
+        }
         if (success) {
           const input = lastToolInputs.get(name);
           if (input) void this.previewDiffIfWrite(name, input);
@@ -1449,6 +1454,10 @@ function describeToolActivity(
 
 function toolDisplayName(name: string): string {
   return name.replace(/_/g, ' ');
+}
+
+function isSkippedToolOutput(output?: string): boolean {
+  return Boolean(output && /\bSkipped redundant\b|Skipped redundant tool call/i.test(output));
 }
 
 function uniqueContextNames(items: Array<{ relPath?: string; source: string }>): string[] {
