@@ -99,7 +99,8 @@ export class ToolExecutor {
       );
     }
 
-    const blocked = this.getTaskState?.()?.checkBlocked(resolvedName, input);
+    const readOnlyMode = normalizeThunderMode(mode) === 'ask' || normalizeThunderMode(mode) === 'plan';
+    const blocked = readOnlyMode ? null : this.getTaskState?.()?.checkBlocked(resolvedName, input);
     if (blocked) {
       const soft = this.getTaskState?.()?.buildSoftBlockResponse(resolvedName, input);
       const output = soft ?? blocked;

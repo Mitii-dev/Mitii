@@ -373,11 +373,13 @@ export function buildIsolatedPlanPrompt(
   contextPack: ContextPack,
   userMessage: string,
   requirementAnalysis?: string,
+  planningDiscovery?: string,
   task?: { kind: string; complexity: string }
 ): ChatMessage[] {
   const repoMapItem = contextPack.items.find((i) => i.source === 'repo-map' || i.reason.includes('repo'));
   const repoMapBlock = repoMapItem?.content ?? '(repo map unavailable — use retrieve_context after execution begins)';
   const analysisBlock = requirementAnalysis ? `\n\n## Requirement analysis\n${requirementAnalysis}` : '';
+  const discoveryBlock = planningDiscovery ? `\n\n## Tool-assisted planning discovery\n${planningDiscovery}` : '';
   const isAudit = task?.kind === 'audit';
 
   return [
@@ -387,6 +389,7 @@ export function buildIsolatedPlanPrompt(
 1. The user's goal
 2. A compressed repo_map
 3. Requirement analysis (if any)
+4. Tool-assisted planning discovery (if any)
 
 Output a strict JSON DAG plan with dependsOn edges. Each step must declare:
 - id, title, objective, tools (array), successCriteria, files, risk, phase
@@ -427,7 +430,7 @@ Mode: ${mode}.`,
     },
     {
       role: 'user',
-      content: `## Repo map (compressed)\n${repoMapBlock}${analysisBlock}\n\n## Task\n${userMessage}\n\nCompile the DAG plan JSON.`,
+      content: `## Repo map (compressed)\n${repoMapBlock}${analysisBlock}${discoveryBlock}\n\n## Task\n${userMessage}\n\nCompile the DAG plan JSON.`,
     },
   ];
 }

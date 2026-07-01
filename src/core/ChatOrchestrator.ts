@@ -41,6 +41,8 @@ import {
   shouldEnableAskSubagents,
 } from './agent/askMode';
 import { AskOrchestrator } from './ask/AskOrchestrator';
+import { PlanOrchestrator } from './plan/PlanOrchestrator';
+import { filterPlanModeTools, needsPlanGrounding } from './plan/planMode';
 import {
   extractMdxErrorFile,
   isMdxRepairTask,
@@ -237,6 +239,7 @@ export class ChatOrchestrator {
     const agentConfig = this.deps.agentConfig;
     const taskForClassification = extractOriginalTaskMessage(userMessage) ?? userMessage;
     const isAskMode = session.mode === 'ask';
+    const isPlanMode = session.mode === 'plan';
     const askPlan = isAskMode
       ? AskOrchestrator.prepare(taskForClassification, {
           workspaceRoot: this.deps.workspace,
@@ -246,7 +249,22 @@ export class ChatOrchestrator {
           askMaxAutoContinues: agentConfig?.askMaxAutoContinues,
         })
       : undefined;
-    const askScopeRoot = askPlan?.scope.status === 'matched' ? askPlan.scope.scopeRoot : undefined;
+    const planPlan = isPlanMode
+      ? PlanOrchestrator.prepare(taskForClassification, {
+          workspaceRoot: this.deps.workspace,
+          configuredMaxSteps: agentConfig?.maxSteps,
+          planDepth: agentConfig?.planDepth,
+          planAutoContinue: agentConfig?.autoContinue,
+          planMaxAutoContinues: agentConfig?.maxAutoContinues,
+          taskAnalysis,
+        })
+      : undefined;
+    const scopedRoot =
+      askPlan?.scope.status === 'matched'
+        ? askPlan.scope.scopeRoot
+        : planPlan?.scope.status === 'matched'
+          ? planPlan.scope.scopeRoot
+          : undefined;
 
     this.setLiveStatus('Gathering context');
     this.emitActivity('context', 'Retrieving workspace context…', extractFileMentions(userMessage).join(', ') || undefined);
@@ -268,7 +286,7 @@ export class ChatOrchestrator {
       text: retrievalText,
       currentFile,
       openFiles,
-      scopeRoot: askScopeRoot,
+      scopeRoot: scopedRoot,
       pinned: pinnedContext.map((p) => p.path),
     });
     const cacheFresh =
@@ -286,7 +304,7 @@ export class ChatOrchestrator {
           text: retrievalText,
           currentFile,
           openFiles,
-          scopeRoot: askScopeRoot,
+          scopeRoot: scopedRoot,
           pinnedContext: pinnedContext.map((p) => ({ path: p.path, kind: p.kind })),
           maxItems: retrievalText === userMessage ? 28 : 40,
         });
@@ -398,7 +416,11 @@ export class ChatOrchestrator {
     const subagentsEnabled =
       (agentConfig?.subagentsEnabled ?? true) &&
       !auditMode &&
-      (isAskMode ? (askPlan?.route.shouldUseSubagents ?? shouldEnableAskSubagents(userMessage)) : taskAnalysis.shouldUseSubagents);
+      (isAskMode
+        ? (askPlan?.route.shouldUseSubagents ?? shouldEnableAskSubagents(userMessage))
+        : isPlanMode
+          ? (planPlan?.route.shouldUseSubagents ?? taskAnalysis.shouldUseSubagents)
+          : taskAnalysis.shouldUseSubagents);
     let tools = toolsEnabled
       ? toolsToDefinitions(this.deps.toolRuntime!.list()).filter((tool) =>
           subagentsEnabled || tool.function.name !== 'spawn_research_agent'
@@ -406,6 +428,8 @@ export class ChatOrchestrator {
       : [];
     if (isAskMode) {
       tools = filterAskModeTools(tools);
+    } else if (isPlanMode) {
+      tools = filterPlanModeTools(tools);
     }
 
     if (toolsEnabled && this.deps.toolExecutor) {
@@ -442,6 +466,9 @@ export class ChatOrchestrator {
       askIntent: askPlan?.route.intent,
       askProfile: askPlan?.route.profile,
       askScope: askPlan?.scope.status,
+      planIntent: planPlan?.route.intent,
+      planScope: planPlan?.scope.status,
+      planQualityProfile: planPlan?.route.qualityProfile,
       auditMode,
       mdxRepairMode,
       toolsEnabled,
@@ -473,6 +500,9 @@ export class ChatOrchestrator {
       workspace: this.deps.workspace,
       sessionLog,
     };
+    const planningRequest = planPlan?.promptContext
+      ? `${planPlan.promptContext}\n\n## User request\n${userMessage}`
+      : userMessage;
 
     try {
       const activePlan = this.deps.planPersistence?.getActive(session.id);
@@ -526,14 +556,18 @@ export class ChatOrchestrator {
               provider,
               session.mode,
               displayPack,
-              userMessage,
+              planningRequest,
               taskAnalysis,
               tools,
               signal,
               sharedLoopCallbacks,
               {
-                agentMaxSteps: auditMode ? Math.min(agentConfig?.maxSteps ?? 10, 12) : Math.min(agentConfig?.maxSteps ?? 6, 8),
+                agentMaxSteps: planPlan?.discoveryMaxSteps ?? (
+                  auditMode ? Math.min(agentConfig?.maxSteps ?? 10, 12) : Math.min(agentConfig?.maxSteps ?? 6, 8)
+                ),
                 restrictRunCommandToReadOnly: true,
+                planAutoContinue: planPlan?.autoContinue ?? agentConfig?.autoContinue,
+                planMaxAutoContinues: planPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues,
               }
             );
             if (planningDiscovery) {
@@ -566,7 +600,7 @@ export class ChatOrchestrator {
         for await (const chunk of this.planExecutor.analyzeRequirementsStream(
           provider,
           displayPack,
-          userMessage,
+          planningRequest,
           taskAnalysis
         )) {
           if (signal.aborted) break;
@@ -587,7 +621,7 @@ export class ChatOrchestrator {
           provider,
           session.mode,
           displayPack,
-          userMessage,
+          planningRequest,
           requirementAnalysis,
           planningDiscovery,
           taskAnalysis,
@@ -706,6 +740,7 @@ export class ChatOrchestrator {
         isResume,
         explicitResult.formatted || undefined,
         askPlan?.promptContext
+          ?? planPlan?.promptContext
       );
       const promptTokens = estimateChatRequestTokens({
         messages,
@@ -734,14 +769,26 @@ export class ChatOrchestrator {
           {
             auditMode,
             askMode: isAskMode,
+            planMode: isPlanMode,
             requiresAskGrounding: isAskMode && needsAskGrounding(userMessage),
+            requiresPlanGrounding: isPlanMode && needsPlanGrounding(taskForClassification),
             maxSteps: isAskMode
               ? (askPlan?.maxSteps ?? agentConfig?.askMaxSteps ?? 18)
-              : auditMode
-                ? AUDIT_AGENT_MAX_STEPS
-                : agentConfig?.maxSteps,
-            autoContinue: isAskMode ? (askPlan?.autoContinue ?? true) : (agentConfig?.autoContinue ?? true),
-            maxAutoContinues: isAskMode ? (askPlan?.maxAutoContinues ?? 1) : agentConfig?.maxAutoContinues,
+              : isPlanMode
+                ? (planPlan?.discoveryMaxSteps ?? agentConfig?.maxSteps ?? 8)
+                : auditMode
+                  ? AUDIT_AGENT_MAX_STEPS
+                  : agentConfig?.maxSteps,
+            autoContinue: isAskMode
+              ? (askPlan?.autoContinue ?? true)
+              : isPlanMode
+                ? (planPlan?.autoContinue ?? agentConfig?.autoContinue ?? true)
+                : (agentConfig?.autoContinue ?? true),
+            maxAutoContinues: isAskMode
+              ? (askPlan?.maxAutoContinues ?? 1)
+              : isPlanMode
+                ? (planPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues)
+                : agentConfig?.maxAutoContinues,
           }
         )) {
           if (signal.aborted) break;
@@ -1326,10 +1373,13 @@ function shouldUsePlanner(
   orchestrationEnabled: boolean,
   auditMode = false
 ): boolean {
-  if (!orchestrationEnabled || !taskAnalysis.shouldPlan) return false;
+  if (!taskAnalysis.shouldPlan) return false;
+  // Plan mode always uses the structured planner when the route requires a plan.
+  if (mode === 'plan') return true;
+  if (!orchestrationEnabled) return false;
   // Audit in Agent mode: script-first direct path — skip 9-step planner overhead
   if (auditMode && mode === 'agent') return false;
-  return mode === 'plan' || mode === 'agent';
+  return mode === 'agent';
 }
 
 export { shouldUsePlanner };

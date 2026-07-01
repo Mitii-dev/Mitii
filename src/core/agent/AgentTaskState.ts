@@ -339,6 +339,10 @@ export class AgentTaskState {
 }
 
 export function toolKey(toolName: string, input: Record<string, unknown>): string | null {
+  if (toolName === 'git_diff') {
+    const staged = input.staged === true || input.cached === true;
+    return staged ? 'git-diff:cached' : 'git-diff:unstaged';
+  }
   if (toolName === 'run_command') {
     const cmd = typeof input.command === 'string' ? input.command : '';
     return normalizeDiagnosticKey(cmd);
@@ -371,7 +375,11 @@ export function normalizeDiagnosticKey(command: string): string | null {
   if (/\bdocusaurus\s+build\b/.test(cmd) || /\bnpm\s+run\s+build(?:\s|$)/.test(cmd)) return 'docs-build';
   if (/\bpnpm\s+--filter\s+docs\s+build\b/.test(cmd)) return 'docs-build';
   if (/\bgrep\b|\brg\b/.test(cmd)) return 'grep/rg';
-  if (/\bgit\s+diff\b/.test(cmd)) return 'git-diff';
+  if (/\bgit\s+diff\b/.test(cmd)) {
+    if (/--cached|--staged/.test(cmd)) return 'git-diff:cached';
+    if (/\bhead\b/.test(cmd)) return 'git-diff:head';
+    return 'git-diff:unstaged';
+  }
   if (/^cat\s+.*package\.json/.test(cmd)) return 'read-package-json';
   return null;
 }
@@ -381,7 +389,8 @@ function isPostEditVerificationKey(key: string): boolean {
     key === 'eslint' ||
     key === 'eslint:fix' ||
     key === 'npm-ls' ||
-    key === 'git-diff';
+    key === 'git-diff' ||
+    key.startsWith('git-diff:');
 }
 
 function phaseInstructions(phase: TaskPhase): string {

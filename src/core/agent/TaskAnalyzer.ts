@@ -1,5 +1,6 @@
 import { extractOriginalTaskMessage, isApprovalContinuationMessage } from './taskMessage';
 import { routeAskIntent } from '../ask/AskIntentRouter';
+import { routePlanIntent } from '../plan/PlanIntentRouter';
 
 export type TaskKind = 'question' | 'audit' | 'simple_edit' | 'implementation' | 'explicit_plan';
 
@@ -79,11 +80,17 @@ export function analyzeTask(userMessage: string, mode: string): TaskAnalysis {
   }
 
   if (mode === 'plan') {
+    const planRoute = routePlanIntent(taskText, classified);
     return {
       ...classified,
+      complexity: planRoute.complexity,
+      shouldPlan: planRoute.forcePlan,
       shouldVerify: false,
-      shouldUseSubagents: classified.shouldUseSubagents || (classified.kind === 'audit' && !/\bdependenc/i.test(taskText)),
-      summary: `${classified.summary} Plan mode — produce the plan only; do not execute.`,
+      shouldUseSubagents:
+        planRoute.shouldUseSubagents ||
+        classified.shouldUseSubagents ||
+        (classified.kind === 'audit' && !/\bdependenc/i.test(taskText)),
+      summary: planRoute.summary,
     };
   }
 

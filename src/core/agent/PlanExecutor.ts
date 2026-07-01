@@ -26,6 +26,7 @@ import {
 } from '../planning/promptBuilder';
 import { PlanFileStore } from '../planning/PlanFileStore';
 import { applyDependencyLocks, getNextExecutableStep, PLANNING_DISCOVERY_TOOLS } from '../tools/planTools';
+import { needsPlanGrounding } from '../plan/planMode';
 import { filterDirectAgentTools } from '../tools/toolAliases';
 import { createLogger } from '../telemetry/Logger';
 
@@ -42,6 +43,8 @@ export interface PlanExecutorOptions {
   useIsolatedPlanning?: boolean;
   sessionLog?: SessionLogService;
   touchedFiles?: string[];
+  planAutoContinue?: boolean;
+  planMaxAutoContinues?: number;
 }
 
 export interface StepExecutionResult {
@@ -110,6 +113,7 @@ export class PlanExecutor {
     options?: PlanExecutorOptions
   ): Promise<ThunderPlan | null> {
     let repairNotes = '';
+    let relaxedFallback: { plan: ThunderPlan; issues: string[] } | null = null;
 
     for (let attempt = 0; attempt < 2; attempt++) {
       const effectiveAnalysis = repairNotes
@@ -117,7 +121,7 @@ export class PlanExecutor {
         : requirementAnalysis;
 
       const messages = options?.useIsolatedPlanning
-        ? buildIsolatedPlanPrompt(mode, pack, userMessage, effectiveAnalysis, taskAnalysis)
+        ? buildIsolatedPlanPrompt(mode, pack, userMessage, effectiveAnalysis, planningDiscovery, taskAnalysis)
         : buildPlanGenerationPrompt(
             mode,
             pack,
@@ -150,8 +154,28 @@ export class PlanExecutor {
       }
 
       repairNotes = issues.map((issue) => `- ${issue}`).join('\n');
+      relaxedFallback = { plan, issues };
       log.warn('Generated plan failed quality gate', { attempt: attempt + 1, issues });
     }
+
+    if (mode === 'plan' && relaxedFallback) {
+      const plan = relaxedFallback.plan;
+      plan.assumptions = [
+        ...plan.assumptions,
+        `Planning quality warning: ${relaxedFallback.issues.join(' ')}`,
+      ];
+      applyDependencyLocks(plan);
+      if (sessionId && options?.workspace) {
+        const fileStore = new PlanFileStore(options.workspace, sessionId);
+        fileStore.save(plan, 'planning');
+      }
+      log.warn('Returning relaxed Plan-mode fallback after quality gate rejection', {
+        issues: relaxedFallback.issues,
+        stepCount: plan.steps.length,
+      });
+      return plan;
+    }
+
     return null;
   }
 
@@ -180,6 +204,10 @@ export class PlanExecutor {
         maxSteps: Math.min(options?.agentMaxSteps ?? 8, 12),
         phaseLock: 'diagnostics',
         restrictRunCommandToReadOnly: true,
+        planMode: mode === 'plan',
+        requiresPlanGrounding: mode === 'plan' && needsPlanGrounding(userMessage),
+        autoContinue: options?.planAutoContinue ?? true,
+        maxAutoContinues: options?.planMaxAutoContinues ?? 1,
       }
     )) {
       output += chunk;

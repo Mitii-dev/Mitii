@@ -88,6 +88,13 @@ export function isGroundingToolCall(toolName: string): boolean {
   return GROUNDING_TOOLS.has(toolName) || toolName.startsWith('mcp__');
 }
 
+export const ASK_SYNTHESIS_NUDGE = `You have finished read-only exploration for this Ask-mode turn.
+
+Provide your complete final answer NOW in plain text:
+- Answer the user's question directly with citations (\`path:line\`) from files you read or tools you ran.
+- Do NOT call any more tools in this turn.
+- If something could not be verified, say so explicitly.`;
+
 export const NO_TOOLS_ASK_NUDGE = `You answered without reading or searching the codebase. For Ask mode you MUST ground factual claims in tools first.
 
 In this turn, call at least one of:
