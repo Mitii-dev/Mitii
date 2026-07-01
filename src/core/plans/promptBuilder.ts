@@ -82,6 +82,8 @@ ${PLAN_SKILL_TOOL_GUIDANCE}
 - For audit/cleanup: execute_workspace_script (audit-dependencies.mjs, audit-dead-code.sh) — NOT spawn_research_agent.
 - For unused exports/dead code: use knip/ts-prune through audit-dead-code.sh or read-only npx commands; do NOT manually grep.
 - Use run_command only for read-only inspection commands such as rg, find, git status, npx depcheck, npx knip, lint/test/typecheck checks.
+- Use ask_question when a missing user decision would materially change the plan scope, target files, risk, or acceptance criteria. Ask exactly ONE concise question with 2-5 actionable options, then stop for the answer.
+- Do not ask for information that can be discovered from the workspace. If ambiguity is low-risk, record an assumption in DISCOVERY_SUMMARY and continue.
 - Do NOT call write_file, apply_patch, memory_write, or save_task_state during planning discovery.`;
 
 const DOCS_TASK_GUIDANCE = `
@@ -475,6 +477,7 @@ Rules:
 - Use tools to fill gaps in the provided context before planning.
 - Prefer batched reads/searches and parallel research subagents when useful.
 - For audit/cleanup tasks, inspect package manifests and repo shape before finalizing findings.
+- If a material planning choice is ambiguous after reading available context, call ask_question before producing DISCOVERY_SUMMARY.
 - Finish with a concise "DISCOVERY_SUMMARY" containing facts, relevant files, risks, and verification commands.
 - If planning skill playbooks are loaded above, align discovery findings with their workflow (dependency graph, vertical slices).`,
     },

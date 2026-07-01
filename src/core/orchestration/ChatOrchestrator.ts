@@ -30,7 +30,7 @@ import { toolsToDefinitions } from '../tools/toolSchema';
 import { AgentLoop, type ApprovedToolResult, type AgentLoopSuspendState } from '../runtime/AgentLoop';
 import { isSkippedToolOutput } from '../runtime/toolSkip';
 import { PlanExecutor } from '../runtime/PlanExecutor';
-import { analyzeTask } from '../runtime/TaskAnalyzer';
+import { analyzeTask, type TaskAnalysis } from '../runtime/TaskAnalyzer';
 import { extractOriginalTaskMessage, isApprovalContinuationMessage } from '../runtime/taskMessage';
 import { compactMessagesWithLlm } from '../runtime/ContextCompaction';
 import { getMaxInputTokens } from '../runtime/PromptBudget';
@@ -130,6 +130,14 @@ export class ChatOrchestrator {
     agentMaxSteps?: number;
     autoContinue?: boolean;
     maxAutoContinues?: number;
+    planningResume?: {
+      displayPack: ContextPack;
+      planningRequest: string;
+      taskAnalysis: TaskAnalysis;
+      initialPlanningDiscovery: string;
+      skillPlaybookContext: string;
+      appliedSkills: string[];
+    };
   } | undefined;
   private retrievalCache: { key: string; items: ContextItem[]; at: number } | null = null;
 
@@ -708,6 +716,35 @@ export class ChatOrchestrator {
             'Planning discovery skipped — current model/provider does not support tools',
             'Use a tool-capable model: qwen3-coder via OpenAI-compatible (Ollama), or deepseek-chat via DeepSeek API. Do not pair DeepSeek provider with local Ollama model names.'
           );
+        }
+
+        if (session.mode === 'plan' && this.agentLoop?.hadPendingApproval()) {
+          this.suspendContext = {
+            session,
+            provider,
+            userMessage: taskForClassification,
+            auditMode,
+            agentMaxSteps: agentConfig?.maxSteps,
+            autoContinue: agentConfig?.autoContinue,
+            maxAutoContinues: agentConfig?.maxAutoContinues,
+            planningResume: {
+              displayPack,
+              planningRequest,
+              taskAnalysis,
+              initialPlanningDiscovery: planningDiscovery,
+              skillPlaybookContext: skillContext.skillPlaybookContext,
+              appliedSkills: skillContext.appliedSkills,
+            },
+          };
+          const questionNote =
+            '\n\n**Planning paused for a clarification.** Choose an option in the question panel below, and I will resume discovery and compile the plan from that answer.\n';
+          fullResponse += questionNote;
+          yield questionNote;
+          this.setLiveStatus('Waiting for planning answer', 'Choose an option below');
+          this.emitActivity('approval', 'Planning paused for a clarifying question');
+          await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted);
+          this.setLiveStatus(null);
+          return;
         }
 
         this.setLiveStatus('Analyzing requirements');
@@ -1295,6 +1332,7 @@ export class ChatOrchestrator {
 
     const { session, provider, userMessage } = this.suspendContext;
     const taskStateBlock = this.deps.taskState?.buildPromptBlock();
+    const planningResume = this.suspendContext.planningResume;
 
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
@@ -1308,14 +1346,21 @@ export class ChatOrchestrator {
         {
           role: 'user',
           content:
-            [
-              'User approved the pending tool(s). Resume the existing task state machine from the approved tool result(s).',
-              taskStateBlock ? `\n## Task progress\n${taskStateBlock}` : '',
-              baseState.checkpoint ? `\n## Approval checkpoint\n${baseState.checkpoint}` : '',
-              '\nContinue from the pending Execute/Verify step. Do not restart planning or diagnostics.',
-              'Do not re-run audit-dependencies, audit-dead-code, depcheck, knip, eslint discovery, list_files, or memory_search unless the approved result proves the prior output is stale.',
-              'If final verification reports unrelated TypeScript errors outside touched files, log them as remaining issues instead of derailing the cleanup task.',
-            ].filter(Boolean).join('\n'),
+            planningResume
+              ? [
+                  'User answered the pending planning clarification. Resume read-only planning discovery from the approved tool result.',
+                  baseState.checkpoint ? `\n## Approval checkpoint\n${baseState.checkpoint}` : '',
+                  '\nContinue with only the extra read-only discovery needed, then output DISCOVERY_SUMMARY.',
+                  'Do not execute edits. Do not compile the structured plan yourself; the orchestrator will compile it after discovery.',
+                ].filter(Boolean).join('\n')
+              : [
+                  'User approved the pending tool(s). Resume the existing task state machine from the approved tool result(s).',
+                  taskStateBlock ? `\n## Task progress\n${taskStateBlock}` : '',
+                  baseState.checkpoint ? `\n## Approval checkpoint\n${baseState.checkpoint}` : '',
+                  '\nContinue from the pending Execute/Verify step. Do not restart planning or diagnostics.',
+                  'Do not re-run audit-dependencies, audit-dead-code, depcheck, knip, eslint discovery, list_files, or memory_search unless the approved result proves the prior output is stale.',
+                  'If final verification reports unrelated TypeScript errors outside touched files, log them as remaining issues instead of derailing the cleanup task.',
+                ].filter(Boolean).join('\n'),
         },
       ],
     };
@@ -1337,13 +1382,37 @@ export class ChatOrchestrator {
       }
 
       if (this.agentLoop.hadPendingApproval()) {
-        const pauseBlock = this.savePauseState(session, userMessage);
-        const approvalNote =
-          `\n\n${pauseBlock}\n\n⏸ **Waiting for your approval** — review the proposed changes above, then approve or deny in the panel below.\n`;
+        const pauseBlock = planningResume ? '' : this.savePauseState(session, userMessage);
+        const approvalNote = planningResume
+          ? '\n\n**Planning paused for another clarification.** Choose an option below and I will continue the plan.\n'
+          : `\n\n${pauseBlock}\n\n⏸ **Waiting for your approval** — review the proposed changes above, then approve or deny in the panel below.\n`;
         fullResponse += approvalNote;
         yield approvalNote;
-        this.setLiveStatus('Waiting for approval', 'Review and approve below');
-        this.emitActivity('approval', 'Paused — waiting for your approval', this.deps.taskState?.getPauseSummary());
+        this.setLiveStatus(
+          planningResume ? 'Waiting for planning answer' : 'Waiting for approval',
+          planningResume ? 'Choose an option below' : 'Review and approve below'
+        );
+        this.emitActivity(
+          'approval',
+          planningResume ? 'Planning paused for a clarifying question' : 'Paused — waiting for your approval',
+          planningResume ? undefined : this.deps.taskState?.getPauseSummary()
+        );
+      } else if (planningResume) {
+        const planText = await this.compilePlanAfterPlanningDiscovery(
+          session,
+          provider,
+          planningResume.displayPack,
+          planningResume.planningRequest,
+          planningResume.taskAnalysis,
+          [planningResume.initialPlanningDiscovery, fullResponse].filter((part) => part.trim()).join('\n\n'),
+          planningResume.skillPlaybookContext,
+          planningResume.appliedSkills,
+          signal
+        );
+        fullResponse += planText;
+        yield planText;
+        this.suspendContext = undefined;
+        this.agentLoop.clearSuspendState();
       } else {
         this.suspendContext = undefined;
         this.agentLoop.clearSuspendState();
@@ -1358,6 +1427,89 @@ export class ChatOrchestrator {
     } finally {
       this.onLiveStatus?.(null);
     }
+  }
+
+  private async compilePlanAfterPlanningDiscovery(
+    session: ThunderSession,
+    provider: LlmProvider,
+    displayPack: ContextPack,
+    planningRequest: string,
+    taskAnalysis: TaskAnalysis,
+    planningDiscovery: string,
+    skillPlaybookContext: string,
+    appliedSkills: string[],
+    signal?: AbortSignal
+  ): Promise<string> {
+    if (!this.planExecutor) {
+      return '\n\n⚠️ Planning could not resume because the plan executor is unavailable.\n';
+    }
+
+    this.setLiveStatus('Analyzing requirements');
+    this.emitActivity('info', 'Analyzing requirements after clarification…');
+    let requirementAnalysisText = '';
+    for await (const chunk of this.planExecutor.analyzeRequirementsStream(
+      provider,
+      displayPack,
+      planningRequest,
+      taskAnalysis,
+      skillPlaybookContext,
+      (text) => {
+        requirementAnalysisText = text;
+        this.onPlan?.({
+          goal: planningRequest.slice(0, 240),
+          assumptions: [],
+          steps: [],
+          status: 'planning',
+          requirementAnalysis: text,
+          appliedSkills,
+        });
+      }
+    )) {
+      if (signal?.aborted) break;
+      void chunk;
+    }
+
+    if (signal?.aborted) return '';
+
+    this.setLiveStatus('Creating plan');
+    this.emitActivity('info', 'Creating plan from clarified requirements…');
+    const requirementAnalysis = requirementAnalysisText.trim();
+    const plan = await this.planExecutor.generatePlan(
+      provider,
+      session.mode,
+      displayPack,
+      planningRequest,
+      requirementAnalysis,
+      planningDiscovery,
+      taskAnalysis,
+      session.id,
+      {
+        workspace: this.deps.workspace,
+        useIsolatedPlanning: true,
+        skillPlaybookContext,
+      }
+    );
+
+    if (plan && plan.steps.length >= 1) {
+      const planView = thunderPlanToView(plan, {
+        status: 'ready',
+        requirementAnalysis: requirementAnalysis || undefined,
+        appliedSkills,
+      });
+      this.onPlan?.(planView);
+      this.deps.planPersistence?.save(session.id, plan);
+      this.deps.sessionLog?.append('plan_created', plan.goal, {
+        stepCount: plan.steps.length,
+        steps: plan.steps.map((s) => ({ id: s.id, title: s.title, risk: s.risk, phase: s.phase })),
+        appliedSkills,
+        resumedAfterClarification: true,
+      });
+      this.emitActivity('info', 'Plan ready — switch to Agent mode to execute steps');
+      return formatPlanModeChatSummary(planView);
+    }
+
+    this.emitActivity('error', 'Planning failed quality gate after clarification');
+    return '\n\n⚠️ I could not produce a plan that passed the planning quality gate after the clarification. Please retry with a little more scope detail.\n';
   }
 
   stop(): void {

@@ -16,14 +16,8 @@ const DOCS_HINT = /\b(docs?|documentation|docusaurus|mdx?|examples?)\b/i;
 const REFACTOR_HINT = /\b(refactor|rewrite|migrate|cleanup architecture|restructure)\b/i;
 const BUGFIX_HINT = /\b(fix|debug|repair|failing|failed|error|bug|regression|broken|crash|compile|test failure)\b/i;
 
-const PLAN_NOUN_RESUME =
-  /\b(execute|run|start|continue|resume|apply|implement|finish|complete|carry out)\b[\s\S]{0,80}\b(?:the|this|that|saved|approved|current|existing)?\s*plan\b/i;
-
-const PLAN_NOUN_REVERSE =
-  /\b(?:the|this|that|saved|approved|current|existing)?\s*plan\b[\s\S]{0,80}\b(execute|run|start|continue|resume|apply|implement|finish|complete|carry out)\b/i;
-
-const IMPLICIT_APPROVAL_RESUME =
-  /^(?:yes|yep|yeah|ok|okay|approved?|looks good|go ahead|do it|ship it|proceed|continue|resume|start|run it|execute it|implement it|apply it|make the changes|finish it|fix it|let'?s do it)[.!\s]*$/i;
+const ACTIVE_PLAN_NEW_TASK =
+  /\b(?:new|different|separate|another)\s+task\b|\b(?:ignore|discard|cancel|drop|replace)\b[\s\S]{0,80}\b(?:the|this|that|saved|current|existing)?\s*plan\b|\b(?:do not|don't)\b[\s\S]{0,80}\b(?:use|resume|execute|follow)\b[\s\S]{0,80}\bplan\b/i;
 
 export function routeActIntent(userMessage: string, analysis: TaskAnalysis, options: ActRouteOptions = {}): ActRoute {
   const mode = options.mode ?? 'agent';
@@ -115,9 +109,8 @@ export function shouldResumeSavedPlan(userMessage: string, hasActivePlan: boolea
   if (!hasActivePlan) return false;
   const text = userMessage.trim();
   if (!text) return false;
-  return PLAN_NOUN_RESUME.test(text) ||
-    PLAN_NOUN_REVERSE.test(text) ||
-    IMPLICIT_APPROVAL_RESUME.test(text);
+  if (ACTIVE_PLAN_NEW_TASK.test(text)) return false;
+  return true;
 }
 
 export function shouldUsePlannerForAct(

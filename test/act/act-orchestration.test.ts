@@ -12,7 +12,11 @@ describe('Act orchestration boundary', () => {
     expect(shouldResumeSavedPlan('plan looks good, implement it', true)).toBe(true);
     expect(shouldResumeSavedPlan('go ahead', true)).toBe(true);
     expect(shouldResumeSavedPlan('fix it', true)).toBe(true);
+    expect(shouldResumeSavedPlan('please fix it', true)).toBe(true);
+    expect(shouldResumeSavedPlan('fix the login bug we planned', true)).toBe(true);
     expect(shouldResumeSavedPlan('go ahead', false)).toBe(false);
+    expect(shouldResumeSavedPlan('new task: fix the login bug', true)).toBe(false);
+    expect(shouldResumeSavedPlan('ignore the current plan and fix the login bug', true)).toBe(false);
   });
 
   it('routes active-plan handoffs before replanning', () => {

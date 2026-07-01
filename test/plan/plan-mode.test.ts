@@ -164,6 +164,34 @@ describe('Plan mode orchestration', () => {
     expect(capturedMessages.map((m) => m.content).join('\n')).toContain(discovery);
   });
 
+  it('tells planning discovery to ask material clarifying questions before compiling', async () => {
+    const { buildPlanningDiscoveryPrompt } = await import('../../src/core/plans/promptBuilder');
+    const pack = {
+      items: [],
+      totalTokens: 0,
+      formatted: 'repo map',
+      budgetLimit: 100,
+      retrievedCount: 0,
+      truncatedCount: 0,
+      dropped: [],
+    };
+
+    const messages = buildPlanningDiscoveryPrompt(
+      'plan',
+      pack,
+      'Implement the settings workflow',
+      {
+        kind: 'implementation',
+        complexity: 'medium',
+        summary: 'Implementation task.',
+      }
+    );
+    const prompt = messages.map((m) => m.content).join('\n');
+
+    expect(prompt).toContain('Use ask_question when a missing user decision would materially change the plan');
+    expect(prompt).toContain('call ask_question before producing DISCOVERY_SUMMARY');
+  });
+
   it('returns a best-effort fallback in Plan mode when quality gate rejects a parsed plan', async () => {
     const { PlanExecutor } = await import('../../src/core/runtime/PlanExecutor');
     const provider = {

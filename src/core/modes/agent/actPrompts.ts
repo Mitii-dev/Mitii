@@ -56,10 +56,17 @@ export function buildActPromptContext(
     lines.push(`Applied skills: ${options.appliedSkills.join(', ')}`);
   }
 
+  const configuredVerifyCommands = (options.verifyCommands ?? [])
+    .map((command) => command.trim())
+    .filter(Boolean);
+  if (configuredVerifyCommands.length > 0) {
+    lines.push('', '## Verification commands', ...configuredVerifyCommands.map((command) => `- ${command}`));
+  }
+
   if (options.workspaceRoot) {
     const plan = resolveProjectVerifyCommands(
       options.workspaceRoot,
-      options.verifyCommands ?? [],
+      configuredVerifyCommands,
       { userMessage }
     );
     lines.push('', formatVerifyPlanForAgent(plan));
