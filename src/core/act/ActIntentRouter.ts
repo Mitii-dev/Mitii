@@ -9,6 +9,7 @@ export interface ActRouteOptions {
   orchestrationEnabled?: boolean;
   auditMode?: boolean;
   mdxRepairMode?: boolean;
+  githubIssueMode?: boolean;
 }
 
 const DOCS_HINT = /\b(docs?|documentation|docusaurus|mdx?|examples?)\b/i;
@@ -28,6 +29,7 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
   const mode = options.mode ?? 'agent';
   const auditMode = Boolean(options.auditMode || analysis.kind === 'audit');
   const mdxRepairMode = Boolean(options.mdxRepairMode);
+  const githubIssueMode = Boolean(options.githubIssueMode);
   const hasActivePlan = Boolean(options.hasActivePlan);
   const orchestrationEnabled = options.orchestrationEnabled ?? true;
 
@@ -80,6 +82,20 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
   }
 
   const shouldUsePlanner = shouldUsePlannerForAct(analysis, orchestrationEnabled, auditMode);
+  if (githubIssueMode) {
+    return {
+      intent: 'bugfix',
+      executionPath: shouldUsePlanner ? 'orchestrated' : 'direct',
+      complexity: analysis.complexity,
+      shouldUsePlanner,
+      shouldUseSubagents: analysis.shouldUseSubagents,
+      shouldVerify: true,
+      summary: shouldUsePlanner
+        ? 'GitHub issue Act route — plan from structured issue context, execute the fix, and verify.'
+        : 'GitHub issue Act route — investigate issue context, make a focused fix, and verify.',
+    };
+  }
+
   const intent = inferActIntent(userMessage, analysis);
 
   return {

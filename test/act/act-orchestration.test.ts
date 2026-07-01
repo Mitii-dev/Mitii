@@ -109,6 +109,19 @@ describe('Act orchestration boundary', () => {
     expect(plan.promptContext).toContain('- npm run lint');
   });
 
+  it('routes GitHub issue signals to the verified bugfix path', () => {
+    const analysis = analyzeTask('https://github.com/acme/app/issues/7\n\nCrash on save', 'agent');
+    const route = routeActIntent('https://github.com/acme/app/issues/7', analysis, {
+      mode: 'agent',
+      githubIssueMode: true,
+      orchestrationEnabled: true,
+    });
+
+    expect(route.intent).toBe('bugfix');
+    expect(route.shouldVerify).toBe(true);
+    expect(route.summary).toContain('GitHub issue');
+  });
+
   it('adds ACT skill tool guidance to Agent system prompts when tools are enabled', () => {
     const prompt = buildSystemPrompt('agent', true);
     expect(prompt).toContain('ACT SKILLS:');

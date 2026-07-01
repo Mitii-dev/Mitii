@@ -135,6 +135,12 @@ export const ScmConfigSchema = z.object({
   commitMessageEnabled: z.boolean().default(true),
 });
 
+export const GitHubConfigSchema = z.object({
+  issueFetchEnabled: z.boolean().default(true),
+  issueCommentLimit: z.number().int().min(0).max(25).default(8),
+  tokenRef: z.string().default('thunder.github.token'),
+});
+
 export const TelemetryConfigSchema = z.object({
   sessionLogging: z.boolean().default(true),
   /** Extra diagnostics: tool inputs, context sources, LLM step metadata. Off by default for speed. */
@@ -152,6 +158,7 @@ export const ThunderConfigSchema = z.object({
   mcp: McpConfigSchema.default({}),
   workspace: WorkspaceConfigSchema.default({}),
   scm: ScmConfigSchema.default({}),
+  github: GitHubConfigSchema.default({}),
   telemetry: TelemetryConfigSchema.default({}),
 });
 
@@ -168,6 +175,7 @@ export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 export type McpConfig = z.infer<typeof McpConfigSchema>;
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
 export type ScmConfig = z.infer<typeof ScmConfigSchema>;
+export type GitHubConfig = z.infer<typeof GitHubConfigSchema>;
 export type TelemetryConfig = z.infer<typeof TelemetryConfigSchema>;
 export type ThunderConfig = z.infer<typeof ThunderConfigSchema>;
 

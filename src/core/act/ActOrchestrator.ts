@@ -22,6 +22,7 @@ export interface ActPrepareOptions {
   orchestrationEnabled?: boolean;
   auditMode?: boolean;
   mdxRepairMode?: boolean;
+  githubIssueMode?: boolean;
   hasActivePlan?: boolean;
   savedPlanId?: string;
   verifyCommands?: string[];
@@ -36,6 +37,7 @@ export class ActOrchestrator {
       orchestrationEnabled: options.orchestrationEnabled,
       auditMode: options.auditMode,
       mdxRepairMode: options.mdxRepairMode,
+      githubIssueMode: options.githubIssueMode,
     });
     const catalog = options.catalog ?? (options.workspaceRoot ? loadProjectCatalog(options.workspaceRoot) : undefined);
     const scope = resolvePlanScope(userMessage, catalog);

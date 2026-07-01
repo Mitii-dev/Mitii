@@ -623,14 +623,15 @@ export class ThunderController {
   ): ChatOrchestrator {
     const orchestrator = new ChatOrchestrator(retriever, budgeter, db);
     const ws = workspace ?? this.resolveWorkspacePath();
+    const config = this.configService.getConfig();
     orchestrator.configure({
       toolRuntime: this.toolRuntime,
       toolExecutor: this.toolExecutor,
       sessionService: this.sessionService,
       planPersistence: this.planPersistence,
       memoryExtractor: this.memoryExtractor,
-      memoryConfig: this.configService.getConfig().memory,
-      agentConfig: this.configService.getConfig().agent,
+      memoryConfig: config.memory,
+      agentConfig: config.agent,
       researchAgentProvider: this.researchAgentProvider,
       passiveMemoryInjector: this.passiveMemoryInjector,
       memoryHookService: this.memoryHookService,
@@ -644,6 +645,12 @@ export class ThunderController {
       memoryService: this.memoryService,
       taskState: this.agentTaskState,
       skillCatalog: this.skillCatalogService,
+      allowNetwork: () => resolveEffectiveSafety(this.configService.getConfig().safety).allowNetwork,
+      githubTokenProvider: async () => this.configService.getApiKey(
+        this.configService.getConfig().github.tokenRef
+      ),
+      githubIssueFetchEnabled: config.github.issueFetchEnabled,
+      githubIssueCommentLimit: config.github.issueCommentLimit,
     });
     orchestrator.setToolExecutor(this.toolExecutor);
     orchestrator.setContextPackCallback((pack, views, budget) => {

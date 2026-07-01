@@ -96,6 +96,11 @@ export function readThunderConfigFromSettings(): ThunderConfig {
     scm: {
       commitMessageEnabled: config.get<boolean>('scm.commitMessageEnabled'),
     },
+    github: {
+      issueFetchEnabled: config.get<boolean>('github.issueFetchEnabled'),
+      issueCommentLimit: config.get<number>('github.issueCommentLimit'),
+      tokenRef: config.get<string>('github.tokenRef'),
+    },
     telemetry: {
       sessionLogging: config.get<boolean>('telemetry.sessionLogging'),
       debugMetrics: config.get<boolean>('telemetry.debugMetrics'),

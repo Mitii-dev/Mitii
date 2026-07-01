@@ -66,6 +66,8 @@ import { showWriteDiffPreview, showPatchDiffPreview } from '../vscode/diffPrevie
 import { toWorkspaceRelPath } from './vscode/pathUtils';
 import { estimateChatRequestTokens } from './llm/UsageTrackingProvider';
 import { resolveMaxContextItems } from './context/resolveMaxContextItems';
+import { enrichTask } from './task';
+import type { GitHubIssueFetcher } from './integrations/github';
 
 const log = createLogger('ChatOrchestrator');
 
@@ -101,6 +103,11 @@ export interface ChatOrchestratorDeps {
   researchAgentProvider?: LlmProvider;
   runVerifyHooks?: (commands: string[]) => Promise<string>;
   skillCatalog?: SkillCatalogService;
+  allowNetwork?: () => boolean;
+  githubIssueFetcher?: GitHubIssueFetcher;
+  githubTokenProvider?: () => Promise<string | undefined>;
+  githubIssueFetchEnabled?: boolean;
+  githubIssueCommentLimit?: number;
 }
 
 export class ChatOrchestrator {
@@ -243,7 +250,28 @@ export class ChatOrchestrator {
     }
 
     const agentConfig = this.deps.agentConfig;
-    const taskForClassification = extractOriginalTaskMessage(userMessage) ?? userMessage;
+    const originalTaskMessage = extractOriginalTaskMessage(userMessage) ?? userMessage;
+    const taskEnrichment = await enrichTask(originalTaskMessage, {
+      github: {
+        enabled: this.deps.githubIssueFetchEnabled ?? true,
+        allowNetwork: Boolean(this.deps.allowNetwork?.()),
+        tokenProvider: this.deps.githubTokenProvider,
+        fetcher: this.deps.githubIssueFetcher,
+        maxComments: this.deps.githubIssueCommentLimit,
+      },
+    });
+    if (taskEnrichment.signals.githubIssue) {
+      const signalInfo = taskEnrichment.signals.githubIssue;
+      this.emitActivity(
+        signalInfo.fetched ? 'context' : 'info',
+        signalInfo.fetched
+          ? `Fetched GitHub issue ${signalInfo.ref.owner}/${signalInfo.ref.repo}#${signalInfo.ref.number}`
+          : `Detected GitHub issue ${signalInfo.ref.owner}/${signalInfo.ref.repo}#${signalInfo.ref.number}`,
+        signalInfo.error
+      );
+    }
+
+    const taskForClassification = taskEnrichment.classificationText;
     const isAskMode = session.mode === 'ask';
     const isPlanMode = session.mode === 'plan';
     const isAgentMode = session.mode === 'agent';
@@ -287,6 +315,7 @@ export class ChatOrchestrator {
           orchestrationEnabled,
           auditMode,
           mdxRepairMode,
+          githubIssueMode: Boolean(taskEnrichment.signals.githubIssue),
           hasActivePlan: Boolean(activePlanAtStart?.plan),
           savedPlanId: activePlanAtStart?.id,
           verifyCommands: agentConfig?.verifyCommands,
@@ -317,7 +346,7 @@ export class ChatOrchestrator {
       );
     }
 
-    const retrievalText = expandContextQuery(userMessage);
+    const retrievalText = expandContextQuery(taskEnrichment.retrievalText);
     let items;
     const retrievalKey = JSON.stringify({
       text: retrievalText,
@@ -544,7 +573,8 @@ export class ChatOrchestrator {
     };
     const planningContextBlock = mergePromptContexts(
       isAgentMode && actPlan ? actPlan.promptContext : undefined,
-      planPlan?.promptContext
+      planPlan?.promptContext,
+      ...taskEnrichment.contextBlocks
     );
     const planningRequest = planningContextBlock
       ? `${planningContextBlock}\n\n## User request\n${userMessage}`
@@ -852,7 +882,8 @@ export class ChatOrchestrator {
         mergePromptContexts(
           askPlan?.promptContext,
           planPlan?.promptContext,
-          actPlan?.promptContext
+          actPlan?.promptContext,
+          ...taskEnrichment.contextBlocks
         )
       );
       const promptTokens = estimateChatRequestTokens({
