@@ -3,7 +3,8 @@ import type { ToolDefinition, ToolCall } from '../llm/toolTypes';
 import type { ToolExecutor } from '../safety/ToolExecutor';
 import { formatToolResult } from '../tools/builtinTools';
 import { NO_TOOLS_AUDIT_NUDGE } from './taskKind';
-import { NO_TOOLS_ASK_NUDGE, isGroundingToolCall } from './askMode';
+import { NO_TOOLS_ASK_NUDGE, ASK_SYNTHESIS_NUDGE, isGroundingToolCall } from './askMode';
+import { NO_TOOLS_PLAN_NUDGE, PLAN_SYNTHESIS_NUDGE, isPlanGroundingToolCall } from '../plan/planMode';
 import type { PlanPhase, ThunderPlan } from '../planning/PlanActEngine';
 import { isPhaseLockRunCommandError, isPhaseLockWriteError } from '../planning/PlanActEngine';
 import { buildPlanTrackerPacket } from '../planning/PlanFileStore';
@@ -50,6 +51,9 @@ export interface AgentLoopOptions {
   /** Ask mode: retry once when the model answers without grounding tools. */
   askMode?: boolean;
   requiresAskGrounding?: boolean;
+  /** Plan mode discovery / read-only fallback loop. */
+  planMode?: boolean;
+  requiresPlanGrounding?: boolean;
 }
 
 export interface AgentLoopSuspendState {
@@ -113,12 +117,17 @@ export class AgentLoop {
     const maxAutoContinues = options?.maxAutoContinues ?? 2;
     let auditNudgeUsed = false;
     let askNudgeUsed = false;
+    let planNudgeUsed = false;
     let groundingToolCallsMade = false;
     let autoContinuesUsed = 0;
     let totalSteps = 0;
     let phaseLockWriteFailures = 0;
     let phaseLockRunCommandFailures = 0;
     const hardLimit = maxSteps + maxAutoContinues * maxSteps;
+
+    const readOnlyMode = Boolean(options?.askMode || options?.planMode);
+    const isGroundingTool = (toolName: string): boolean =>
+      options?.planMode ? isPlanGroundingToolCall(toolName) : isGroundingToolCall(toolName);
 
     this.toolExecutor.clearPlanPhaseLock?.();
 
@@ -193,6 +202,18 @@ export class AgentLoop {
           messages.push({ role: 'user', content: NO_TOOLS_ASK_NUDGE });
           continue;
         }
+        if (
+          options?.planMode &&
+          options?.requiresPlanGrounding &&
+          stepContent &&
+          !planNudgeUsed &&
+          !groundingToolCallsMade
+        ) {
+          planNudgeUsed = true;
+          messages.push({ role: 'assistant', content: stepContent });
+          messages.push({ role: 'user', content: NO_TOOLS_PLAN_NUDGE });
+          continue;
+        }
         if (stepContent) {
           messages.push({ role: 'assistant', content: stepContent });
         }
@@ -231,7 +252,7 @@ export class AgentLoop {
       for (const { tc, input, execResult, durationMs } of executions) {
         if (signal?.aborted) break;
 
-        if (execResult.success && isGroundingToolCall(tc.function.name)) {
+        if (execResult.success && isGroundingTool(tc.function.name)) {
           groundingToolCallsMade = true;
         }
 
@@ -350,6 +371,30 @@ export class AgentLoop {
           content: 'Continue the task from where you left off. Use tools as needed until complete.',
         });
         log.info('Auto-continuing agent loop', { continueRound: autoContinuesUsed });
+      }
+    }
+
+    if (
+      readOnlyMode &&
+      groundingToolCallsMade &&
+      !pendingApproval &&
+      !signal?.aborted &&
+      needsReadOnlySynthesis(messages)
+    ) {
+      const synthesisNudge = options?.planMode ? PLAN_SYNTHESIS_NUDGE : ASK_SYNTHESIS_NUDGE;
+      messages.push({ role: 'user', content: synthesisNudge });
+      callbacks?.onStep?.(1, 1);
+
+      for await (const delta of provider.complete({
+        messages,
+        tools: [],
+        toolChoice: 'none',
+        stream: true,
+      })) {
+        if (signal?.aborted) break;
+        if (delta.error) throw new Error(delta.error);
+        if (delta.content) yield delta.content;
+        if (delta.done) break;
       }
     }
 
@@ -895,4 +940,19 @@ async function collectCompletion(
     : undefined;
 
   return { content, toolCalls };
+}
+
+/** True when the loop ended after tool exploration without a substantive final answer. */
+export function needsReadOnlySynthesis(messages: ChatMessage[]): boolean {
+  const assistants = messages.filter((m) => m.role === 'assistant');
+  const lastAssistant = assistants[assistants.length - 1];
+  if (!lastAssistant) return true;
+  if (lastAssistant.tool_calls && lastAssistant.tool_calls.length > 0) return true;
+
+  const content = (lastAssistant.content ?? '').trim();
+  if (!content) return true;
+  if (content.length < 160 && /\b(let me|i will|i'll|fetching|checking|searching|reading)\b/i.test(content)) {
+    return true;
+  }
+  return false;
 }

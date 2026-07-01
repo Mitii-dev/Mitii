@@ -384,6 +384,7 @@ export class ThunderController {
 
   private initMinimalChat(workspace: string): void {
     this.diagnosticsService.setWorkspaceRoot(workspace);
+    scaffoldMitiiWorkspace(workspace, { extensionRoot: this.context.extensionPath });
     this.projectRulesService = new ProjectRulesService(workspace);
     this.skillCatalogService = new SkillCatalogService(workspace);
     this.skillCatalogService.refresh();
@@ -409,7 +410,7 @@ export class ThunderController {
 
     this.indexService = new IndexService(workspace);
     await this.indexService.initialize();
-    scaffoldMitiiWorkspace(workspace);
+    scaffoldMitiiWorkspace(workspace, { extensionRoot: this.context.extensionPath });
     try {
       saveProjectCatalog(discoverProjectCatalog(workspace));
     } catch (error) {
@@ -639,6 +640,7 @@ export class ThunderController {
       workspace: ws,
       memoryService: this.memoryService,
       taskState: this.agentTaskState,
+      skillCatalog: this.skillCatalogService,
     });
     orchestrator.setToolExecutor(this.toolExecutor);
     orchestrator.setContextPackCallback((pack, views, budget) => {
@@ -903,6 +905,7 @@ export class ThunderController {
         subagentsEnabled: config.agent.subagentsEnabled,
         agentMaxSteps: config.agent.maxSteps,
         askDepth: config.agent.askDepth,
+        planDepth: config.agent.planDepth,
         askMaxSteps: config.agent.askMaxSteps,
         askAutoContinue: config.agent.askAutoContinue,
         askMaxAutoContinues: config.agent.askMaxAutoContinues,
@@ -1953,6 +1956,7 @@ export class ThunderController {
       subagentsEnabled: settings.subagentsEnabled,
       maxSteps: clamp(settings.maxSteps, 1, 100),
       askDepth: settings.askDepth,
+      planDepth: settings.planDepth,
       askMaxSteps: clamp(settings.askMaxSteps, 1, 50),
       askAutoContinue: settings.askAutoContinue,
       askMaxAutoContinues: clamp(settings.askMaxAutoContinues, 0, 10),

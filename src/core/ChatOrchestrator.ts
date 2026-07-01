@@ -41,6 +41,10 @@ import {
   shouldEnableAskSubagents,
 } from './agent/askMode';
 import { AskOrchestrator } from './ask/AskOrchestrator';
+import { PlanOrchestrator } from './plan/PlanOrchestrator';
+import { filterPlanModeTools, needsPlanGrounding } from './plan/planMode';
+import { loadPlanningSkillPlaybooks, resolvePlanningSkillNames } from './plan/planSkillRouting';
+import { routePlanIntent } from './plan/PlanIntentRouter';
 import {
   extractMdxErrorFile,
   isMdxRepairTask,
@@ -56,6 +60,8 @@ import type { MemoryHookService } from './memory/MemoryHookService';
 import type { MemoryService } from './memory/MemoryService';
 import type { AgentTaskState } from './agent/AgentTaskState';
 import type { PostEditValidator } from './apply/PostEditValidator';
+import type { SkillCatalogService } from './skills/SkillCatalogService';
+import { thunderPlanToView } from './plan/planViewMapper';
 import { showWriteDiffPreview, showPatchDiffPreview } from '../vscode/diffPreview';
 import { toWorkspaceRelPath } from './vscode/pathUtils';
 import { estimateChatRequestTokens } from './llm/UsageTrackingProvider';
@@ -93,6 +99,7 @@ export interface ChatOrchestratorDeps {
   taskState?: AgentTaskState;
   researchAgentProvider?: LlmProvider;
   runVerifyHooks?: (commands: string[]) => Promise<string>;
+  skillCatalog?: SkillCatalogService;
 }
 
 export class ChatOrchestrator {
@@ -237,6 +244,8 @@ export class ChatOrchestrator {
     const agentConfig = this.deps.agentConfig;
     const taskForClassification = extractOriginalTaskMessage(userMessage) ?? userMessage;
     const isAskMode = session.mode === 'ask';
+    const isPlanMode = session.mode === 'plan';
+    const taskAnalysis = analyzeTask(taskForClassification, session.mode);
     const askPlan = isAskMode
       ? AskOrchestrator.prepare(taskForClassification, {
           workspaceRoot: this.deps.workspace,
@@ -246,7 +255,23 @@ export class ChatOrchestrator {
           askMaxAutoContinues: agentConfig?.askMaxAutoContinues,
         })
       : undefined;
-    const askScopeRoot = askPlan?.scope.status === 'matched' ? askPlan.scope.scopeRoot : undefined;
+    const planPlan = isPlanMode
+      ? PlanOrchestrator.prepare(taskForClassification, {
+          workspaceRoot: this.deps.workspace,
+          skillCatalog: this.deps.skillCatalog,
+          configuredMaxSteps: agentConfig?.maxSteps,
+          planDepth: agentConfig?.planDepth,
+          planAutoContinue: agentConfig?.autoContinue,
+          planMaxAutoContinues: agentConfig?.maxAutoContinues,
+          taskAnalysis,
+        })
+      : undefined;
+    const scopedRoot =
+      askPlan?.scope.status === 'matched'
+        ? askPlan.scope.scopeRoot
+        : planPlan?.scope.status === 'matched'
+          ? planPlan.scope.scopeRoot
+          : undefined;
 
     this.setLiveStatus('Gathering context');
     this.emitActivity('context', 'Retrieving workspace context…', extractFileMentions(userMessage).join(', ') || undefined);
@@ -268,7 +293,7 @@ export class ChatOrchestrator {
       text: retrievalText,
       currentFile,
       openFiles,
-      scopeRoot: askScopeRoot,
+      scopeRoot: scopedRoot,
       pinned: pinnedContext.map((p) => p.path),
     });
     const cacheFresh =
@@ -286,7 +311,7 @@ export class ChatOrchestrator {
           text: retrievalText,
           currentFile,
           openFiles,
-          scopeRoot: askScopeRoot,
+          scopeRoot: scopedRoot,
           pinnedContext: pinnedContext.map((p) => ({ path: p.path, kind: p.kind })),
           maxItems: retrievalText === userMessage ? 28 : 40,
         });
@@ -386,7 +411,6 @@ export class ChatOrchestrator {
     const auditMode = isAuditCleanupTask(taskForClassification);
     const mdxRepairMode = isMdxRepairTask(taskForClassification);
     const mdxErrorFile = mdxRepairMode ? extractMdxErrorFile(taskForClassification) : undefined;
-    const taskAnalysis = analyzeTask(userMessage, session.mode);
     const isResume = isApprovalContinuationMessage(userMessage);
     this.deps.taskState?.setTaskContext(taskAnalysis.kind, taskAnalysis.summary, taskForClassification);
     if (!isResume) {
@@ -398,7 +422,11 @@ export class ChatOrchestrator {
     const subagentsEnabled =
       (agentConfig?.subagentsEnabled ?? true) &&
       !auditMode &&
-      (isAskMode ? (askPlan?.route.shouldUseSubagents ?? shouldEnableAskSubagents(userMessage)) : taskAnalysis.shouldUseSubagents);
+      (isAskMode
+        ? (askPlan?.route.shouldUseSubagents ?? shouldEnableAskSubagents(userMessage))
+        : isPlanMode
+          ? (planPlan?.route.shouldUseSubagents ?? taskAnalysis.shouldUseSubagents)
+          : taskAnalysis.shouldUseSubagents);
     let tools = toolsEnabled
       ? toolsToDefinitions(this.deps.toolRuntime!.list()).filter((tool) =>
           subagentsEnabled || tool.function.name !== 'spawn_research_agent'
@@ -406,6 +434,8 @@ export class ChatOrchestrator {
       : [];
     if (isAskMode) {
       tools = filterAskModeTools(tools);
+    } else if (isPlanMode) {
+      tools = filterPlanModeTools(tools);
     }
 
     if (toolsEnabled && this.deps.toolExecutor) {
@@ -442,6 +472,9 @@ export class ChatOrchestrator {
       askIntent: askPlan?.route.intent,
       askProfile: askPlan?.route.profile,
       askScope: askPlan?.scope.status,
+      planIntent: planPlan?.route.intent,
+      planScope: planPlan?.scope.status,
+      planQualityProfile: planPlan?.route.qualityProfile,
       auditMode,
       mdxRepairMode,
       toolsEnabled,
@@ -473,6 +506,9 @@ export class ChatOrchestrator {
       workspace: this.deps.workspace,
       sessionLog,
     };
+    const planningRequest = planPlan?.promptContext
+      ? `${planPlan.promptContext}\n\n## User request\n${userMessage}`
+      : userMessage;
 
     try {
       const activePlan = this.deps.planPersistence?.getActive(session.id);
@@ -483,7 +519,7 @@ export class ChatOrchestrator {
         activePlan
       ) {
         const plan = activePlan.plan;
-        this.onPlan?.({ goal: plan.goal, assumptions: plan.assumptions, steps: plan.steps });
+        this.onPlan?.(thunderPlanToView(plan, { status: 'running' }));
         this.setLiveStatus('Executing saved plan', plan.goal, 1, plan.steps.length);
         this.emitActivity('info', `Resuming saved plan (${plan.steps.length} steps)…`);
         sessionTiming.start('plan_execution');
@@ -494,7 +530,7 @@ export class ChatOrchestrator {
           plan,
           displayPack,
           tools,
-          (updated) => this.onPlan?.({ goal: updated.goal, assumptions: updated.assumptions, steps: updated.steps }),
+          (updated) => this.onPlan?.(thunderPlanToView(updated, { status: 'running' })),
           signal,
           sharedLoopCallbacks,
           sharedPlanOptions
@@ -515,25 +551,66 @@ export class ChatOrchestrator {
         this.planExecutor &&
         taskAnalysis.shouldPlan
       ) {
+        const planningRoute = planPlan?.route ?? routePlanIntent(planningRequest, taskAnalysis);
+        const skillContext = planPlan
+          ? {
+              skillPlaybookContext: planPlan.skillPlaybookContext,
+              appliedSkills: planPlan.appliedSkills,
+            }
+          : (() => {
+              const loaded = loadPlanningSkillPlaybooks(
+                this.deps.skillCatalog,
+                resolvePlanningSkillNames(planningRoute.intent, taskAnalysis)
+              );
+              return {
+                skillPlaybookContext: loaded.context,
+                appliedSkills: loaded.loaded,
+              };
+            })();
+
+        const planningSkillOptions = {
+          skillPlaybookContext: skillContext.skillPlaybookContext,
+        };
+
+        let requirementAnalysisText = '';
         let planningDiscovery = '';
+
+        this.onPlan?.({
+          goal: planningRequest.slice(0, 240),
+          assumptions: [],
+          steps: [],
+          status: 'planning',
+          appliedSkills: skillContext.appliedSkills,
+        });
 
         if (toolsEnabled) {
           this.setLiveStatus('Planning discovery');
           this.emitActivity('info', 'Running read-only planning discovery…');
+          if (skillContext.appliedSkills.length > 0) {
+            this.emitActivity(
+              'info',
+              `Loaded planning skills: ${skillContext.appliedSkills.join(', ')}`
+            );
+          }
           sessionTiming.start('planning_discovery');
           try {
             planningDiscovery = await this.planExecutor.runPlanningDiscovery(
               provider,
               session.mode,
               displayPack,
-              userMessage,
+              planningRequest,
               taskAnalysis,
               tools,
               signal,
               sharedLoopCallbacks,
               {
-                agentMaxSteps: auditMode ? Math.min(agentConfig?.maxSteps ?? 10, 12) : Math.min(agentConfig?.maxSteps ?? 6, 8),
+                agentMaxSteps: planPlan?.discoveryMaxSteps ?? (
+                  auditMode ? Math.min(agentConfig?.maxSteps ?? 10, 12) : Math.min(agentConfig?.maxSteps ?? 6, 8)
+                ),
                 restrictRunCommandToReadOnly: true,
+                planAutoContinue: planPlan?.autoContinue ?? agentConfig?.autoContinue,
+                planMaxAutoContinues: planPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues,
+                ...planningSkillOptions,
               }
             );
             if (planningDiscovery) {
@@ -559,35 +636,46 @@ export class ChatOrchestrator {
         this.emitActivity('info', 'Analyzing requirements…');
         sessionTiming.start('requirement_analysis');
 
-        const requirementHeader = '## Requirement analysis\n\n';
-        yield requirementHeader;
-        fullResponse += requirementHeader;
-
         for await (const chunk of this.planExecutor.analyzeRequirementsStream(
           provider,
           displayPack,
-          userMessage,
-          taskAnalysis
+          planningRequest,
+          taskAnalysis,
+          skillContext.skillPlaybookContext,
+          (text) => {
+            requirementAnalysisText = text;
+            if (session.mode === 'plan') {
+              this.onPlan?.({
+                goal: planningRequest.slice(0, 240),
+                assumptions: [],
+                steps: [],
+                status: 'planning',
+                requirementAnalysis: text,
+                appliedSkills: skillContext.appliedSkills,
+              });
+            }
+          }
         )) {
           if (signal.aborted) break;
-          fullResponse += chunk;
-          yield chunk;
+          if (session.mode !== 'plan') {
+            fullResponse += chunk;
+            yield chunk;
+          }
         }
-        yield '\n\n';
-        fullResponse += '\n\n';
         sessionTiming.end('requirement_analysis', sessionLog);
 
         this.setLiveStatus('Creating plan');
         this.emitActivity('info', 'Planning multi-step task…');
         sessionTiming.start('plan_generation');
 
-        const requirementAnalysis = extractRequirementAnalysis(fullResponse);
+        const requirementAnalysis =
+          requirementAnalysisText.trim() || extractRequirementAnalysis(fullResponse);
 
         const plan = await this.planExecutor.generatePlan(
           provider,
           session.mode,
           displayPack,
-          userMessage,
+          planningRequest,
           requirementAnalysis,
           planningDiscovery,
           taskAnalysis,
@@ -595,6 +683,7 @@ export class ChatOrchestrator {
           {
             workspace: this.deps.workspace,
             useIsolatedPlanning: true,
+            ...planningSkillOptions,
           }
         );
         sessionTiming.end('plan_generation', sessionLog, {
@@ -602,11 +691,17 @@ export class ChatOrchestrator {
           stepCount: plan?.steps.length ?? 0,
         });
         if (plan && plan.steps.length >= 1) {
-          this.onPlan?.({ goal: plan.goal, assumptions: plan.assumptions, steps: plan.steps });
+          const planView = thunderPlanToView(plan, {
+            status: session.mode === 'plan' ? 'ready' : 'running',
+            requirementAnalysis: requirementAnalysis || undefined,
+            appliedSkills: skillContext.appliedSkills,
+          });
+          this.onPlan?.(planView);
           this.deps.planPersistence?.save(session.id, plan);
           this.deps.sessionLog?.append('plan_created', plan.goal, {
             stepCount: plan.steps.length,
             steps: plan.steps.map((s) => ({ id: s.id, title: s.title, risk: s.risk, phase: s.phase })),
+            appliedSkills: skillContext.appliedSkills,
           });
 
           if (session.mode === 'agent') {
@@ -624,11 +719,13 @@ export class ChatOrchestrator {
               displayPack,
               tools,
               (updated) => {
-                this.onPlan?.({
-                  goal: updated.goal,
-                  assumptions: updated.assumptions,
-                  steps: updated.steps,
-                });
+                this.onPlan?.(
+                  thunderPlanToView(updated, {
+                    status: 'running',
+                    requirementAnalysis: requirementAnalysis || undefined,
+                    appliedSkills: skillContext.appliedSkills,
+                  })
+                );
                 const running = updated.steps.findIndex((s) => s.status === 'running');
                 const idx = running >= 0 ? running : updated.steps.filter((s) => s.status === 'done').length;
                 const step = updated.steps[idx];
@@ -670,7 +767,7 @@ export class ChatOrchestrator {
               return;
             }
           } else {
-            const planText = formatPlanAsResponse(plan);
+            const planText = formatPlanModeChatSummary(planView);
             fullResponse = planText;
             yield planText;
             this.emitActivity('info', 'Plan ready — switch to Agent mode to execute steps');
@@ -706,6 +803,7 @@ export class ChatOrchestrator {
         isResume,
         explicitResult.formatted || undefined,
         askPlan?.promptContext
+          ?? planPlan?.promptContext
       );
       const promptTokens = estimateChatRequestTokens({
         messages,
@@ -734,14 +832,26 @@ export class ChatOrchestrator {
           {
             auditMode,
             askMode: isAskMode,
+            planMode: isPlanMode,
             requiresAskGrounding: isAskMode && needsAskGrounding(userMessage),
+            requiresPlanGrounding: isPlanMode && needsPlanGrounding(taskForClassification),
             maxSteps: isAskMode
               ? (askPlan?.maxSteps ?? agentConfig?.askMaxSteps ?? 18)
-              : auditMode
-                ? AUDIT_AGENT_MAX_STEPS
-                : agentConfig?.maxSteps,
-            autoContinue: isAskMode ? (askPlan?.autoContinue ?? true) : (agentConfig?.autoContinue ?? true),
-            maxAutoContinues: isAskMode ? (askPlan?.maxAutoContinues ?? 1) : agentConfig?.maxAutoContinues,
+              : isPlanMode
+                ? (planPlan?.discoveryMaxSteps ?? agentConfig?.maxSteps ?? 8)
+                : auditMode
+                  ? AUDIT_AGENT_MAX_STEPS
+                  : agentConfig?.maxSteps,
+            autoContinue: isAskMode
+              ? (askPlan?.autoContinue ?? true)
+              : isPlanMode
+                ? (planPlan?.autoContinue ?? agentConfig?.autoContinue ?? true)
+                : (agentConfig?.autoContinue ?? true),
+            maxAutoContinues: isAskMode
+              ? (askPlan?.maxAutoContinues ?? 1)
+              : isPlanMode
+                ? (planPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues)
+                : agentConfig?.maxAutoContinues,
           }
         )) {
           if (signal.aborted) break;
@@ -890,7 +1000,7 @@ export class ChatOrchestrator {
 
     const parsed = parsePlanFromText(fullResponse);
     if (parsed) {
-      this.onPlan?.({ goal: parsed.goal, assumptions: parsed.assumptions, steps: parsed.steps });
+      this.onPlan?.(thunderPlanToView(parsed, { status: 'ready' }));
       this.deps.planPersistence?.save(session.id, parsed);
       this.deps.sessionLog?.append('plan_created', parsed.goal, {
         stepCount: parsed.steps.length,
@@ -1284,29 +1394,22 @@ function formatPlanHeader(plan: import('./planning/PlanActEngine').ThunderPlan):
   return `## Plan: ${plan.goal}\n\n${plan.steps.length} validated steps to execute.\n\n`;
 }
 
-function formatPlanAsResponse(plan: import('./planning/PlanActEngine').ThunderPlan): string {
-  const lines = [
-    `## ${plan.goal}`,
+function formatPlanModeChatSummary(plan: PlanView): string {
+  const stepCount = plan.steps.length;
+  const skillNote = plan.appliedSkills?.length
+    ? `\n\nSkills applied: ${plan.appliedSkills.join(', ')}`
+    : '';
+  return [
+    `## Plan ready`,
     '',
-    '### Recommended steps',
-  ];
-
-  for (const [i, step] of plan.steps.entries()) {
-    lines.push(`${i + 1}. **${step.title}** (${step.risk} risk${step.phase ? `, ${step.phase}` : ''})`);
-    if (step.objective) lines.push(`   Objective: ${step.objective}`);
-    if (step.files?.length) lines.push(`   Files: \`${step.files.join('`, `')}\``);
-    if (step.tools?.length) lines.push(`   Tools: ${step.tools.join(', ')}`);
-    if (step.successCriteria?.length) lines.push(`   Success: ${step.successCriteria.join('; ')}`);
-  }
-
-  if (plan.assumptions.length > 0) {
-    lines.push('', '### Assumptions', ...plan.assumptions.map((a) => `- ${a}`));
-  }
-  if (plan.requiredApprovals.length > 0) {
-    lines.push('', '### Required approvals', ...plan.requiredApprovals.map((a) => `- ${a}`));
-  }
-  lines.push('', '---', '*Switch to **Agent** mode and ask to execute this plan when ready.*');
-  return lines.join('\n');
+    `**${plan.goal}**`,
+    '',
+    `${stepCount} step${stepCount === 1 ? '' : 's'} compiled in the **Planner** panel above — requirement analysis, phased steps, tools, and success criteria are shown there.`,
+    skillNote,
+    '',
+    '---',
+    '*Switch to **Agent** mode and ask to execute this plan when ready.*',
+  ].join('\n');
 }
 
 export { filterDirectAgentTools } from './tools/toolAliases';
@@ -1326,10 +1429,13 @@ function shouldUsePlanner(
   orchestrationEnabled: boolean,
   auditMode = false
 ): boolean {
-  if (!orchestrationEnabled || !taskAnalysis.shouldPlan) return false;
+  if (!taskAnalysis.shouldPlan) return false;
+  // Plan mode always uses the structured planner when the route requires a plan.
+  if (mode === 'plan') return true;
+  if (!orchestrationEnabled) return false;
   // Audit in Agent mode: script-first direct path — skip 9-step planner overhead
   if (auditMode && mode === 'agent') return false;
-  return mode === 'plan' || mode === 'agent';
+  return mode === 'agent';
 }
 
 export { shouldUsePlanner };

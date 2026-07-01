@@ -145,12 +145,29 @@ export interface PlanStepView {
   status: 'pending' | 'running' | 'done' | 'blocked' | 'failed' | 'blocked_by_dependency';
   risk: 'low' | 'medium' | 'high';
   files?: string[];
+  phase?: 'diagnostics' | 'review' | 'execute' | 'verify';
+  objective?: string;
+  tools?: string[];
+  successCriteria?: string[];
+  dependsOn?: string[];
+}
+
+export interface PlanPhaseView {
+  id: string;
+  title: string;
+  phase: 'diagnostics' | 'review' | 'execute' | 'verify';
+  steps: PlanStepView[];
 }
 
 export interface PlanView {
   goal: string;
   assumptions: string[];
+  requiredApprovals?: string[];
   steps: PlanStepView[];
+  phases?: PlanPhaseView[];
+  requirementAnalysis?: string;
+  status?: 'planning' | 'ready' | 'running' | 'completed';
+  appliedSkills?: string[];
 }
 
 export interface IndexingStatusView {
@@ -193,6 +210,7 @@ export interface SettingsView {
   subagentsEnabled: boolean;
   agentMaxSteps: number;
   askDepth: 'auto' | 'quick' | 'standard' | 'deep';
+  planDepth: 'auto' | 'quick' | 'standard' | 'deep';
   askMaxSteps: number;
   askAutoContinue: boolean;
   askMaxAutoContinues: number;
@@ -239,6 +257,7 @@ export interface AgentSettingsPayload {
   subagentsEnabled: boolean;
   maxSteps: number;
   askDepth: 'auto' | 'quick' | 'standard' | 'deep';
+  planDepth: 'auto' | 'quick' | 'standard' | 'deep';
   askMaxSteps: number;
   askAutoContinue: boolean;
   askMaxAutoContinues: number;
@@ -471,6 +490,7 @@ export const defaultSettingsView = (): SettingsView => ({
   subagentsEnabled: true,
   agentMaxSteps: 15,
   askDepth: 'auto',
+  planDepth: 'auto',
   askMaxSteps: 18,
   askAutoContinue: true,
   askMaxAutoContinues: 1,

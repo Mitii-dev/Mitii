@@ -26,6 +26,7 @@ import {
 } from '../planning/promptBuilder';
 import { PlanFileStore } from '../planning/PlanFileStore';
 import { applyDependencyLocks, getNextExecutableStep, PLANNING_DISCOVERY_TOOLS } from '../tools/planTools';
+import { needsPlanGrounding } from '../plan/planMode';
 import { filterDirectAgentTools } from '../tools/toolAliases';
 import { createLogger } from '../telemetry/Logger';
 
@@ -42,6 +43,10 @@ export interface PlanExecutorOptions {
   useIsolatedPlanning?: boolean;
   sessionLog?: SessionLogService;
   touchedFiles?: string[];
+  planAutoContinue?: boolean;
+  planMaxAutoContinues?: number;
+  skillPlaybookContext?: string;
+  onRequirementAnalysisDelta?: (text: string) => void;
 }
 
 export interface StepExecutionResult {
@@ -67,14 +72,17 @@ export class PlanExecutor {
     provider: LlmProvider,
     pack: ContextPack,
     userMessage: string,
-    analysis: TaskAnalysis
+    analysis: TaskAnalysis,
+    skillPlaybookContext?: string,
+    onDelta?: (text: string) => void
   ): AsyncIterable<string> {
-    const messages = buildRequirementAnalysisPrompt(pack, userMessage, analysis);
+    const messages = buildRequirementAnalysisPrompt(pack, userMessage, analysis, skillPlaybookContext);
     let response = '';
 
     for await (const delta of provider.complete({ messages, stream: true })) {
       if (delta.content) {
         response += delta.content;
+        onDelta?.(response);
         yield delta.content;
       }
       if (delta.error) throw new Error(delta.error);
@@ -110,6 +118,7 @@ export class PlanExecutor {
     options?: PlanExecutorOptions
   ): Promise<ThunderPlan | null> {
     let repairNotes = '';
+    let relaxedFallback: { plan: ThunderPlan; issues: string[] } | null = null;
 
     for (let attempt = 0; attempt < 2; attempt++) {
       const effectiveAnalysis = repairNotes
@@ -117,14 +126,23 @@ export class PlanExecutor {
         : requirementAnalysis;
 
       const messages = options?.useIsolatedPlanning
-        ? buildIsolatedPlanPrompt(mode, pack, userMessage, effectiveAnalysis, taskAnalysis)
+        ? buildIsolatedPlanPrompt(
+            mode,
+            pack,
+            userMessage,
+            effectiveAnalysis,
+            planningDiscovery,
+            taskAnalysis,
+            options?.skillPlaybookContext
+          )
         : buildPlanGenerationPrompt(
             mode,
             pack,
             userMessage,
             effectiveAnalysis,
             planningDiscovery,
-            taskAnalysis
+            taskAnalysis,
+            options?.skillPlaybookContext
           );
       let response = '';
 
@@ -150,8 +168,28 @@ export class PlanExecutor {
       }
 
       repairNotes = issues.map((issue) => `- ${issue}`).join('\n');
+      relaxedFallback = { plan, issues };
       log.warn('Generated plan failed quality gate', { attempt: attempt + 1, issues });
     }
+
+    if (mode === 'plan' && relaxedFallback) {
+      const plan = relaxedFallback.plan;
+      plan.assumptions = [
+        ...plan.assumptions,
+        `Planning quality warning: ${relaxedFallback.issues.join(' ')}`,
+      ];
+      applyDependencyLocks(plan);
+      if (sessionId && options?.workspace) {
+        const fileStore = new PlanFileStore(options.workspace, sessionId);
+        fileStore.save(plan, 'planning');
+      }
+      log.warn('Returning relaxed Plan-mode fallback after quality gate rejection', {
+        issues: relaxedFallback.issues,
+        stepCount: plan.steps.length,
+      });
+      return plan;
+    }
+
     return null;
   }
 
@@ -166,7 +204,13 @@ export class PlanExecutor {
     loopCallbacks?: AgentLoopCallbacks,
     options?: PlanExecutorOptions
   ): Promise<string> {
-    const messages = buildPlanningDiscoveryPrompt(mode, pack, userMessage, analysis);
+    const messages = buildPlanningDiscoveryPrompt(
+      mode,
+      pack,
+      userMessage,
+      analysis,
+      options?.skillPlaybookContext
+    );
     const readOnlyTools = tools.filter((tool) => PLANNING_DISCOVERY_TOOLS.has(tool.function.name));
     let output = '';
 
@@ -180,6 +224,10 @@ export class PlanExecutor {
         maxSteps: Math.min(options?.agentMaxSteps ?? 8, 12),
         phaseLock: 'diagnostics',
         restrictRunCommandToReadOnly: true,
+        planMode: mode === 'plan',
+        requiresPlanGrounding: mode === 'plan' && needsPlanGrounding(userMessage),
+        autoContinue: options?.planAutoContinue ?? true,
+        maxAutoContinues: options?.planMaxAutoContinues ?? 1,
       }
     )) {
       output += chunk;
@@ -623,6 +671,17 @@ function validatePlanQuality(plan: ThunderPlan, taskAnalysis?: TaskAnalysis): st
   );
   if (taskAnalysis?.kind === 'audit' && missingExecutionDetail.length > 0) {
     issues.push(`Audit steps must include objective, tools, and successCriteria: ${missingExecutionDetail.map((step) => step.id).join(', ')}.`);
+  }
+
+  const missingVerification = plan.steps.filter(
+    (step) => !step.successCriteria?.some((criterion) => /\b(verify|test|lint|build|validate|pass)\b/i.test(criterion))
+  );
+  if (
+    (taskAnalysis?.shouldPlan || taskAnalysis?.complexity === 'high') &&
+    missingVerification.length === plan.steps.length &&
+    plan.steps.length >= 3
+  ) {
+    issues.push('Planned tasks should include verification-oriented successCriteria on at least one step.');
   }
 
   return issues;

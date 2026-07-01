@@ -57,6 +57,13 @@ const ASK_DEPTH_OPTIONS: Array<{ id: SettingsView['askDepth']; label: string }> 
   { id: 'deep', label: 'Deep' },
 ];
 
+const PLAN_DEPTH_OPTIONS: Array<{ id: SettingsView['planDepth']; label: string }> = [
+  { id: 'auto', label: 'Auto' },
+  { id: 'quick', label: 'Quick discovery' },
+  { id: 'standard', label: 'Standard discovery' },
+  { id: 'deep', label: 'Deep discovery' },
+];
+
 const AUTONOMY_PRESETS: Array<{
   id: SafetySettingsPayload['autonomyPreset'];
   label: string;
@@ -225,6 +232,7 @@ export function SettingsPanel({
   const [subagentsEnabled, setSubagentsEnabled] = useState(settings.subagentsEnabled);
   const [agentMaxSteps, setAgentMaxSteps] = useState(settings.agentMaxSteps);
   const [askDepth, setAskDepth] = useState<SettingsView['askDepth']>(settings.askDepth);
+  const [planDepth, setPlanDepth] = useState<SettingsView['planDepth']>(settings.planDepth);
   const [askMaxSteps, setAskMaxSteps] = useState(settings.askMaxSteps);
   const [askAutoContinue, setAskAutoContinue] = useState(settings.askAutoContinue);
   const [askMaxAutoContinues, setAskMaxAutoContinues] = useState(settings.askMaxAutoContinues);
@@ -258,6 +266,7 @@ export function SettingsPanel({
     setSubagentsEnabled(settings.subagentsEnabled);
     setAgentMaxSteps(settings.agentMaxSteps);
     setAskDepth(settings.askDepth);
+    setPlanDepth(settings.planDepth);
     setAskMaxSteps(settings.askMaxSteps);
     setAskAutoContinue(settings.askAutoContinue);
     setAskMaxAutoContinues(settings.askMaxAutoContinues);
@@ -310,6 +319,7 @@ export function SettingsPanel({
         subagentsEnabled,
         maxSteps: agentMaxSteps,
         askDepth,
+        planDepth,
         askMaxSteps,
         askAutoContinue,
         askMaxAutoContinues,
@@ -593,6 +603,25 @@ export function SettingsPanel({
                   Auto chooses by question type; quick favors locate answers, deep allows broader read-only exploration.
                 </span>
               </label>
+              <label className="settings-field">
+                <span className="settings-label">Plan depth</span>
+                <select
+                  className="settings-input settings-select"
+                  value={planDepth}
+                  onChange={(e) => {
+                    setPlanDepth(e.target.value as SettingsView['planDepth']);
+                    markDirty();
+                  }}
+                >
+                  {PLAN_DEPTH_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
+                <span className="settings-hint">
+                  Controls read-only discovery before plan compilation. Deep allows more codebase exploration in Plan mode.
+                </span>
+              </label>
+
               <SettingSwitch
                 label="Ask auto-continue"
                 description="Let deep Ask continue once when exploration reaches its cap."

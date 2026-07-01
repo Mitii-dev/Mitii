@@ -22,6 +22,7 @@ export const PLANNING_DISCOVERY_TOOLS = new Set([
   'diagnostics',
   'memory_search',
   'run_command',
+  'execute_workspace_script',
   'spawn_research_agent',
   'fetch_web',
   'ask_question',
