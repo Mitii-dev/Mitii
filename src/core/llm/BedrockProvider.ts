@@ -26,6 +26,8 @@ export class BedrockProvider implements LlmProvider {
       supportsStreaming: config.capabilities?.supportsStreaming ?? true,
       supportsTools: false,
       supportsEmbeddings: false,
+      supportsVision: config.capabilities?.supportsVision ?? true,
+      supportsReasoning: config.capabilities?.supportsReasoning ?? false,
     };
     this.client = new BedrockRuntimeClient({ region: config.region || 'us-east-1' });
   }

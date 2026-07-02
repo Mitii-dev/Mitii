@@ -142,6 +142,19 @@ describe('Act orchestration boundary', () => {
     expect(route.summary).toContain('GitHub issue');
   });
 
+  it('does not use the GitHub issue route for reference-only issue detections', () => {
+    const message = 'Can you summarize https://github.com/acme/app/issues/7?';
+    const analysis = analyzeTask(message, 'agent');
+    const route = routeActIntent(message, analysis, {
+      mode: 'agent',
+      githubIssueMode: false,
+      orchestrationEnabled: true,
+    });
+
+    expect(route.summary).not.toContain('GitHub issue');
+    expect(route.shouldVerify).toBe(false);
+  });
+
   it('adds ACT skill tool guidance to Agent system prompts when tools are enabled', () => {
     const prompt = buildSystemPrompt('agent', true);
     expect(prompt).toContain('ACT SKILLS:');

@@ -11,6 +11,7 @@ import type {
   AgentLiveStatusView,
   SubagentStatusView,
   TokenUsageView,
+  ReviewDiffView,
 } from '../../../vscode/webview/messages';
 import { initialWebviewState } from '../../../vscode/webview/messages';
 
@@ -29,7 +30,8 @@ export type WebviewAction =
   | { type: 'SET_AGENT_ACTIVITY'; payload: AgentActivityEntry[] }
   | { type: 'SET_AGENT_LIVE_STATUS'; payload: AgentLiveStatusView | null }
   | { type: 'SET_SUBAGENTS'; payload: SubagentStatusView[] }
-  | { type: 'SET_TOKEN_USAGE'; payload: TokenUsageView };
+  | { type: 'SET_TOKEN_USAGE'; payload: TokenUsageView }
+  | { type: 'SET_REVIEW_DIFF'; payload: ReviewDiffView | null };
 
 export const initialState: WebviewState = initialWebviewState();
 
@@ -126,6 +128,9 @@ export function webviewReducer(state: WebviewState, action: WebviewAction): Webv
 
     case 'SET_TOKEN_USAGE':
       return { ...state, tokenUsage: action.payload };
+
+    case 'SET_REVIEW_DIFF':
+      return { ...state, reviewDiff: action.payload };
 
     default:
       return state;

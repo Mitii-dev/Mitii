@@ -99,10 +99,12 @@ import type { CommitMessageResult } from '../scm';
 import { MicroTaskExecutor } from '../microtasks';
 import { AuditPackBuilder } from '../audit';
 import { GitHistoryCollector, generateChangelogEntry, generateReleaseNotes, insertChangelogEntry } from '../release';
+import { collectReviewDiff } from '../scm/ReviewDiffCollector';
 import {
   normalizeAgentSettings,
   normalizeProviderSettings,
   normalizeThunderSettings,
+  validateProviderSettings,
   resolveAutoContextWindow,
 } from '../config/ui/mappers';
 import type {
@@ -114,6 +116,7 @@ import type {
 } from '../config/ui/payloads';
 
 const log = createLogger('ThunderController');
+const ONBOARDING_STATE_KEY = 'thunder.onboarding.completed.v1';
 
 export type UiUpdateCallback = (partial: Partial<WebviewState>) => void;
 
@@ -149,6 +152,7 @@ export class ThunderController {
   private inlineDiffManager: InlineDiffManager | undefined;
   private researchAgentProvider: LlmProvider | undefined;
   private sessionLog = new SessionLogService();
+  private lastAutoAuditExportSignature = '';
   private lastSubagentSnapshot = new Map<string, string>();
   private indexingStatus: IndexingStatus = { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0, processed: 0, runTotal: 0 };
   private contextToggles: ContextToggles = defaultContextToggles();
@@ -157,6 +161,7 @@ export class ThunderController {
   private watchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
   private debouncedRebuildRetriever: (() => void) | undefined;
   private currentPlan: PlanView | null = null;
+  private currentReviewDiff: WebviewState['reviewDiff'] = null;
   private agentActivity: import('../../vscode/webview/messages').AgentActivityEntry[] = [];
   private agentLiveStatus: import('../../vscode/webview/messages').AgentLiveStatusView | null = null;
   private tokenUsage: Omit<TokenUsageView, 'contextWindow'> = {
@@ -284,6 +289,11 @@ export class ThunderController {
   private configureSessionLogging(session: ThunderSession, workspace: string): void {
     const telemetry = this.configService.getConfig().telemetry;
     this.sessionLog.configure(workspace, session.id, telemetry.sessionLogging, telemetry.debugMetrics);
+    this.sessionLog.configureWebhook({
+      url: telemetry.webhookUrl,
+      secret: telemetry.webhookSecret || process.env.MITII_TELEMETRY_WEBHOOK_SECRET,
+      timeoutMs: telemetry.webhookTimeoutMs,
+    });
     this.sessionLog.writeSessionHeader({
       mode: session.mode,
       model: this.configService.getConfig().provider.model,
@@ -882,6 +892,8 @@ export class ThunderController {
     const vscodeFolders = this.getVscodeWorkspaceFolders();
     const indexDbPath = workspacePath ? resolveDbPath(workspacePath) : '';
     const appVersion = String(this.context.extension.packageJSON.version ?? '');
+    const onboardingCompleted = this.context.globalState.get<boolean>(ONBOARDING_STATE_KEY, false);
+    const providerConfigured = config.provider.type !== 'echo' || Boolean(apiKey);
 
     const approvals: ApprovalRequestView[] = (this.approvalQueue?.getPending() ?? []).map((r) => ({
       id: r.id,
@@ -931,6 +943,13 @@ export class ThunderController {
       indexing: this.indexingStatus,
       approvals,
       plan: this.currentPlan,
+      reviewDiff: base.reviewDiff ?? this.currentReviewDiff,
+      onboarding: {
+        completed: onboardingCompleted,
+        providerConfigured,
+        workspaceIndexed: this.indexingStatus.indexed > 0,
+        shouldShow: !onboardingCompleted && (!providerConfigured || this.indexingStatus.indexed === 0),
+      },
       memories: (this.memoryService?.recent(20) ?? []).map((m) => ({
         id: m.id,
         type: m.type,
@@ -1024,6 +1043,21 @@ export class ThunderController {
       workspaceNotice: this.workspaceNotice,
       workspaceTrusted: this.isWorkspaceTrusted(),
     };
+  }
+
+  async refreshReviewDiff(): Promise<void> {
+    if (!this.gitService?.isGitRepo) {
+      this.currentReviewDiff = null;
+      this.notifyUi({ reviewDiff: null });
+      return;
+    }
+    this.currentReviewDiff = await collectReviewDiff(this.gitService);
+    this.notifyUi({ reviewDiff: this.currentReviewDiff });
+  }
+
+  async completeOnboarding(): Promise<void> {
+    await this.context.globalState.update(ONBOARDING_STATE_KEY, true);
+    this.notifyUi({ onboarding: (await this.buildUiState()).onboarding });
   }
 
   private pushActivity(
@@ -1509,8 +1543,12 @@ export class ThunderController {
 
   async sendMessage(
     content: string,
-    recentMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [],
-    options?: { preserveActivity?: boolean; pinnedContext?: PinnedContextView[] }
+    recentMessages: Array<{ role: 'user' | 'assistant'; content: string; attachments?: import('../../vscode/webview/messages').ChatImageAttachment[] }> = [],
+    options?: {
+      preserveActivity?: boolean;
+      pinnedContext?: PinnedContextView[];
+      attachments?: import('../../vscode/webview/messages').ChatImageAttachment[];
+    }
   ): Promise<AsyncIterable<AssistantStreamChunk>> {
     if (!this.session) throw normalizeError(new Error('Session not initialized'));
     const provider = await this.resolveProviderForMode(this.session.mode);
@@ -1553,6 +1591,7 @@ export class ThunderController {
     });
     return this.chatOrchestrator.send(this.session, meteredProvider, content, recentMessages, {
       pinnedContext: options?.pinnedContext ?? this.pinnedContext,
+      attachments: options?.attachments,
     });
   }
 
@@ -1716,7 +1755,50 @@ export class ThunderController {
       hadError,
       tools: audit.map((a) => a.toolName),
     });
+    this.sessionLog.append('session_end', hadError ? 'Session completed with issues' : 'Session completed', {
+      sessionId: this.session?.id,
+      hadError,
+      toolCalls: audit.length,
+    });
+    void this.maybeAutoExportAuditPack(hadError);
     this.notifyUi({ agentActivity: this.agentActivity, agentLiveStatus: null });
+  }
+
+  private async maybeAutoExportAuditPack(hadError: boolean): Promise<void> {
+    const config = this.configService.getConfig();
+    if (!config.enterprise.autoExportAuditPackOnSessionEnd) return;
+
+    const workspace = this.resolveWorkspacePath();
+    if (!workspace) return;
+    const sessionId = this.session?.id ?? 'no-session';
+    const logPath = this.sessionLog.getLogPath();
+    const signature = `${sessionId}:${logPath}:${this.sessionLog.exportForAnalysis().length}:${this.toolRuntime.getAuditLog().length}`;
+    if (signature === this.lastAutoAuditExportSignature) return;
+    this.lastAutoAuditExportSignature = signature;
+
+    try {
+      const target = join(
+        workspace,
+        '.mitii',
+        'audit',
+        `mitii-audit-${sessionId}-${formatTimestampForFile(Date.now())}.zip`
+      );
+      mkdirSync(dirname(target), { recursive: true });
+      const pack = this.buildAuditPack(workspace, sessionId, config.enterprise.stripFileContentsFromAuditPacks);
+      writeFileSync(target, pack.buffer);
+      this.sessionLog.append('audit_export', 'Audit pack auto-exported', {
+        path: target,
+        entries: pack.entries,
+        redactionReport: pack.redactionReport,
+        hadError,
+        automatic: true,
+      });
+      this.pushActivity('info', 'Audit pack saved', target);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.sessionLog.append('error', 'Automatic audit pack export failed', { error: message });
+      this.pushActivity('error', 'Automatic audit pack export failed', message);
+    }
   }
 
   private buildTurnSummary(audit: import('../tools/types').ToolCallAudit[]): string {
@@ -1816,17 +1898,7 @@ export class ThunderController {
     if (!target) return;
 
     const config = this.configService.getConfig();
-    const pack = new AuditPackBuilder().build({
-      sessionId,
-      workspace,
-      extensionVersion: this.context.extension.packageJSON.version ?? '',
-      model: `${config.provider.type}/${config.provider.model}`,
-      logPath: this.sessionLog.getLogPath(),
-      summaryMarkdown: this.sessionLog.exportSummary(),
-      toolAudit: this.toolRuntime.getAuditLog(),
-      approvals: this.approvalQueue?.getPending() ?? [],
-      stripFileContents: config.enterprise.stripFileContentsFromAuditPacks,
-    });
+    const pack = this.buildAuditPack(workspace, sessionId, config.enterprise.stripFileContentsFromAuditPacks);
 
     mkdirSync(dirname(target.fsPath), { recursive: true });
     await vscode.workspace.fs.writeFile(target, pack.buffer);
@@ -1844,6 +1916,22 @@ export class ThunderController {
     if (choice === revealLabel) {
       await vscode.commands.executeCommand('revealFileInOS', target);
     }
+  }
+
+  private buildAuditPack(workspace: string, sessionId: string, stripFileContents: boolean): ReturnType<AuditPackBuilder['build']> {
+    const config = this.configService.getConfig();
+    return new AuditPackBuilder().build({
+      sessionId,
+      workspace,
+      extensionVersion: this.context.extension.packageJSON.version ?? '',
+      model: `${config.provider.type}/${config.provider.model}`,
+      logPath: this.sessionLog.getLogPath(),
+      summaryMarkdown: this.sessionLog.exportSummary(),
+      toolAudit: this.toolRuntime.getAuditLog(),
+      approvals: this.approvalQueue?.getPending() ?? [],
+      stripFileContents,
+      signingKey: process.env.MITII_AUDIT_SIGNING_KEY,
+    });
   }
 
   async generateChangelog(): Promise<void> {
@@ -2108,6 +2196,30 @@ export class ThunderController {
       requestedContextWindow,
       config.provider.contextWindow
     );
+    const validation = validateProviderSettings({
+      providerType,
+      baseUrl,
+      model,
+      apiVersion,
+      region,
+      contextWindow,
+    } as ProviderSettingsPayload);
+    if (!validation.ok) {
+      this.notifyUi({
+        settings: {
+          ...(await this.buildUiState()).settings,
+          providerType,
+          baseUrl,
+          model,
+          apiVersion,
+          region,
+          contextWindow,
+          connectionOk: false,
+          connectionStatus: validation.errors.join(' '),
+        },
+      });
+      return;
+    }
 
     if (providerType === 'echo') {
       this.notifyUi({
@@ -2170,6 +2282,18 @@ export class ThunderController {
   }
 
   async saveProviderSettings(settings: ProviderSettingsPayload): Promise<void> {
+    const validation = validateProviderSettings(settings);
+    if (!validation.ok) {
+      void vscode.window.showErrorMessage(`${AGENT_NAME}: ${validation.errors.join(' ')}`);
+      this.notifyUi({
+        settings: {
+          ...(await this.buildUiState()).settings,
+          connectionOk: false,
+          connectionStatus: validation.errors.join(' '),
+        },
+      });
+      return;
+    }
     await this.configService.updateProviderSettings(
       normalizeProviderSettings(settings, this.configService.getConfig().provider.contextWindow)
     );

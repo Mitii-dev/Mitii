@@ -3,6 +3,7 @@ import type { ToolDefinition } from './toolTypes';
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  attachments?: ChatImageAttachment[];
   name?: string;
   tool_call_id?: string;
   tool_calls?: Array<{
@@ -10,6 +11,13 @@ export interface ChatMessage {
     type: 'function';
     function: { name: string; arguments: string };
   }>;
+}
+
+export interface ChatImageAttachment {
+  kind: 'image';
+  mimeType: string;
+  data: string;
+  name?: string;
 }
 
 export interface ChatRequest {
@@ -54,6 +62,8 @@ export interface ModelCapabilities {
   supportsStreaming: boolean;
   supportsTools: boolean;
   supportsEmbeddings: boolean;
+  supportsVision?: boolean;
+  supportsReasoning?: boolean;
 }
 
 export interface LlmProvider {

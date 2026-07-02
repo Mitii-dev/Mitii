@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow",
-  "version": "2.7.17",
+  "version": "2.7.18",
   "publisher": "mitii",
   "icon": "media/mitii-short-logo.png",
   "license": "AGPL-3.0-or-later",
@@ -163,6 +163,23 @@
           "default": false,
           "description": "Capture extra session diagnostics (tool inputs, context sources, LLM step metadata). Process timing is always logged when session logging is on."
         },
+        "thunder.telemetry.webhookUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional SIEM/webhook endpoint. When set, sanitized session events are POSTed as JSON."
+        },
+        "thunder.telemetry.webhookSecret": {
+          "type": "string",
+          "default": "",
+          "description": "Optional HMAC signing secret for webhook events. Prefer workspace or managed settings for enterprise deployments."
+        },
+        "thunder.telemetry.webhookTimeoutMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "maximum": 60000,
+          "description": "Timeout in milliseconds for telemetry webhook delivery attempts."
+        },
         "thunder.ui.showReasoning": {
           "type": "boolean",
           "default": true,
@@ -188,7 +205,7 @@
         "thunder.enterprise.autoExportAuditPackOnSessionEnd": {
           "type": "boolean",
           "default": false,
-          "description": "Reserved enterprise toggle for exporting audit packs automatically when a session ends."
+          "description": "Export a sanitized audit pack automatically to .mitii/audit/ when an agent turn completes."
         },
         "thunder.provider.type": {
           "type": "string",
@@ -232,6 +249,14 @@
           "type": "number",
           "default": 8192,
           "description": "Model context window size. Thunder trims prompts automatically to stay within this limit."
+        },
+        "thunder.provider.supportsVision": {
+          "type": "boolean",
+          "description": "Optional override for model vision support. Leave unset to use automatic provider/model detection."
+        },
+        "thunder.provider.supportsReasoning": {
+          "type": "boolean",
+          "description": "Optional override for streamed reasoning support. Leave unset to use automatic provider/model detection."
         },
         "thunder.indexing.enabled": {
           "type": "boolean",
@@ -592,6 +617,10 @@
     "postinstall": "node -e \"console.log('Run npm run rebuild:native before F5 if better-sqlite3 fails to load')\"",
     "prepare": "node scripts/install-git-hooks.mjs",
     "version:bump": "node scripts/bump-version.mjs",
+    "readme:sync-version": "node scripts/sync-readme-version.mjs",
+    "release:check-assets": "node scripts/check-release-assets.mjs",
+    "release:prepare": "npm run compile:cli && node dist/cli.js prepare-release",
+    "benchmark": "node benchmark/run-benchmark.mjs",
     "compile:extension": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --packages=external --platform=node --format=cjs --sourcemap",
     "compile:webview": "vite build",
     "compile:cli": "esbuild src/node/cli.ts --bundle --outfile=dist/cli.js --platform=node --format=cjs --packages=external",
@@ -616,7 +645,7 @@
     "checkpoint:read": "bash scripts/read-checkpoint.sh",
     "lint:safe-target": "bash scripts/safe-lint-target.sh",
     "env:sync": "node scripts/sync-env-files.mjs",
-    "preflight": "npm run lint && npm run rebuild:node && npm test && npm run rebuild:native",
+    "preflight": "npm run release:check-assets && npm run lint && npm run rebuild:node && npm test && npm run rebuild:native",
     "clean:vsce-deps": "node -e \"const fs=require('fs'); for (const p of ['node_modules/@emnapi','node_modules/@napi-rs','node_modules/@tybys']) fs.rmSync(p,{recursive:true,force:true});\"",
     "package": "npm run clean:vsce-deps && vsce package",
     "package:preflight": "npm run preflight && npm run package",

@@ -78,6 +78,9 @@ export interface McpSettingsPayload {
 export interface TelemetrySettingsPayload {
   sessionLogging: boolean;
   debugMetrics: boolean;
+  webhookUrl?: string;
+  webhookSecret?: string;
+  webhookTimeoutMs?: number;
 }
 
 export interface IndexingSettingsPayload {

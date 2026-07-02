@@ -86,6 +86,15 @@ export async function updateTelemetrySettings(settings: TelemetrySettingsPayload
   const target = vscode.ConfigurationTarget.Global;
   await config.update('telemetry.sessionLogging', settings.sessionLogging, target);
   await config.update('telemetry.debugMetrics', settings.debugMetrics, target);
+  if (settings.webhookUrl !== undefined) {
+    await config.update('telemetry.webhookUrl', settings.webhookUrl.trim(), target);
+  }
+  if (settings.webhookSecret !== undefined) {
+    await config.update('telemetry.webhookSecret', settings.webhookSecret, target);
+  }
+  if (settings.webhookTimeoutMs !== undefined) {
+    await config.update('telemetry.webhookTimeoutMs', settings.webhookTimeoutMs, target);
+  }
 }
 
 export async function updateAllSettings(settings: ThunderSettingsPayload): Promise<void> {

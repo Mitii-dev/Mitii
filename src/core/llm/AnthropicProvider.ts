@@ -21,6 +21,8 @@ export class AnthropicProvider implements LlmProvider {
       supportsStreaming: config.capabilities?.supportsStreaming ?? true,
       supportsTools: config.capabilities?.supportsTools ?? true,
       supportsEmbeddings: false,
+      supportsVision: config.capabilities?.supportsVision ?? true,
+      supportsReasoning: config.capabilities?.supportsReasoning ?? false,
     };
   }
 
@@ -148,6 +150,26 @@ function splitAnthropicMessages(messages: ChatMessage[]): {
         });
       }
       out.push({ role: 'assistant', content });
+      continue;
+    }
+    if (msg.attachments?.length && (msg.role === 'user' || msg.role === 'assistant')) {
+      const content: Array<Record<string, unknown>> = [];
+      if (msg.content) content.push({ type: 'text', text: msg.content });
+      for (const attachment of msg.attachments) {
+        if (attachment.kind !== 'image') continue;
+        content.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: attachment.mimeType,
+            data: attachment.data,
+          },
+        });
+      }
+      out.push({
+        role: msg.role === 'assistant' ? 'assistant' : 'user',
+        content,
+      });
       continue;
     }
     out.push({

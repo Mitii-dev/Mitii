@@ -7,6 +7,7 @@ import { GeminiProvider } from './GeminiProvider';
 import { BedrockProvider } from './BedrockProvider';
 import { getProviderPreset } from './providerPresets';
 import { normalizeProviderModel } from './modelNormalize';
+import { detectModelCapabilities } from './modelCapabilities';
 import { createLogger } from '../telemetry/Logger';
 
 const log = createLogger('createProvider');
@@ -22,6 +23,8 @@ export interface ProviderResolveOptions {
   supportsStreaming?: boolean;
   supportsTools?: boolean;
   supportsEmbeddings?: boolean;
+  supportsVision?: boolean;
+  supportsReasoning?: boolean;
 }
 
 export function createProvider(
@@ -43,12 +46,14 @@ export function createProvider(
   const region = 'region' in config && config.region
     ? config.region
     : 'us-east-1';
-  const capabilities = {
-    contextWindow: config.contextWindow ?? preset?.contextWindow ?? 8192,
-    supportsStreaming: config.supportsStreaming ?? true,
-    supportsTools: config.supportsTools ?? true,
-    supportsEmbeddings: config.supportsEmbeddings ?? false,
-  };
+  const capabilities = detectModelCapabilities(type, model, preset?.contextWindow ?? 8192, {
+    contextWindow: config.contextWindow,
+    supportsStreaming: config.supportsStreaming,
+    supportsTools: config.supportsTools,
+    supportsEmbeddings: config.supportsEmbeddings,
+    supportsVision: config.supportsVision,
+    supportsReasoning: config.supportsReasoning,
+  });
 
   switch (type) {
     case 'anthropic':

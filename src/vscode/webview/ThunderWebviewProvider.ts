@@ -159,7 +159,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       case 'sendMessage': {
         const content = message.payload.content.trim();
         const pinnedContext = message.payload.pinnedContext ?? this.state.pinnedContext;
-        await this.runChatCompletion(content, true, pinnedContext);
+        await this.runChatCompletion(content, true, pinnedContext, message.payload.attachments ?? []);
         break;
       }
 
@@ -221,6 +221,9 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       case 'setMode': {
         this.state = { ...this.state, mode: message.payload };
         this.controller.getSession()?.setMode(message.payload);
+        if (message.payload === 'review') {
+          await this.controller.refreshReviewDiff();
+        }
         this.postMessage({ type: 'setMode', payload: message.payload });
         break;
       }
@@ -437,13 +440,23 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         this.postMessage({ type: 'state', payload: this.state });
         break;
       }
+
+      case 'refreshReviewDiff':
+        await this.controller.refreshReviewDiff();
+        break;
+
+      case 'completeOnboarding':
+        await this.controller.completeOnboarding();
+        await this.syncState();
+        break;
     }
   }
 
   private async runChatCompletion(
     content: string,
     appendUser: boolean,
-    pinnedContext = this.state.pinnedContext
+    pinnedContext = this.state.pinnedContext,
+    attachments: ChatMessage['attachments'] = []
   ): Promise<void> {
     if (!content || this.state.loading) return;
 
@@ -451,6 +464,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       id: `msg-${Date.now()}`,
       role: 'user',
       content,
+      attachments,
       timestamp: Date.now(),
     };
 
@@ -470,9 +484,9 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       const recentMessages = messages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .slice(0, -1)
-        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content, attachments: m.attachments }));
 
-      const stream = await this.controller.sendMessage(content, recentMessages, { pinnedContext });
+      const stream = await this.controller.sendMessage(content, recentMessages, { pinnedContext, attachments });
       let rawContent = '';
       let fullContent = '';
       let reasoningContent = '';

@@ -3,12 +3,13 @@ import type { ThunderMode } from '../../../core/session/ThunderSession';
 import type {
   ApprovalMode,
   AgentDepthView,
+  ChatImageAttachment,
   ContextPathSuggestion,
   PinnedContextView,
   TokenUsageView,
 } from '../../../vscode/webview/messages';
 import { IconButton } from './IconButton';
-import { IconChevronDown, IconCopy, IconMarkdown, IconRetry, IconSend, IconStop } from './Icons';
+import { IconChevronDown, IconCopy, IconImage, IconMarkdown, IconRetry, IconSend, IconStop } from './Icons';
 import { TokenMeter } from './TokenMeter';
 import { APPROVAL_MODE_OPTIONS, deriveSafetySettings } from '../utils/approvalMode';
 
@@ -20,7 +21,7 @@ interface ChatInputProps {
   tokenUsage: TokenUsageView;
   pinnedContext: PinnedContextView[];
   canRetry: boolean;
-  onSend: (content: string, pinnedContext: PinnedContextView[]) => void;
+  onSend: (content: string, pinnedContext: PinnedContextView[], attachments: ChatImageAttachment[]) => void;
   onStop?: () => void;
   onModeChange: (mode: ThunderMode) => void;
   onApprovalModeChange: (mode: ApprovalMode) => void;
@@ -79,7 +80,9 @@ export function ChatInput({
   const [mentionIndex, setMentionIndex] = useState(0);
   const [mentionStart, setMentionStart] = useState<number | null>(null);
   const [searchRequestId, setSearchRequestId] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<ChatImageAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const activeMode = MODES.find((m) => m.id === mode) ?? MODES[0];
   const activeApproval =
     APPROVAL_MODE_OPTIONS.find((option) => option.id === approvalMode) ?? APPROVAL_MODE_OPTIONS[0];
@@ -136,11 +139,35 @@ export function ChatInput({
 
   const handleSend = useCallback(() => {
     const trimmed = value.trim();
-    if (!trimmed || loading) return;
-    onSend(trimmed, pinnedContext);
+    if ((!trimmed && attachments.length === 0) || loading) return;
+    onSend(trimmed || 'Please review the attached image.', pinnedContext, attachments);
     setValue('');
+    setAttachments([]);
     closeMention();
-  }, [value, loading, onSend, pinnedContext, closeMention]);
+  }, [value, attachments, loading, onSend, pinnedContext, closeMention]);
+
+  const addImageFiles = useCallback((files: FileList | File[]) => {
+    const images = Array.from(files).filter((file) => file.type.startsWith('image/')).slice(0, 6);
+    for (const file of images) {
+      if (file.size > 5 * 1024 * 1024) continue;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result ?? '');
+        const data = result.includes(',') ? result.slice(result.indexOf(',') + 1) : result;
+        setAttachments((current) => [
+          ...current,
+          {
+            kind: 'image',
+            mimeType: file.type || 'image/png',
+            data,
+            name: file.name,
+            size: file.size,
+          },
+        ].slice(0, 6));
+      };
+      reader.readAsDataURL(file);
+    }
+  }, []);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (mentionOpen && pathSuggestions.length > 0) {
@@ -174,7 +201,17 @@ export function ChatInput({
   };
 
   return (
-    <div className="composer">
+    <div
+      className="composer"
+      onDragOver={(e) => {
+        if (!loading) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        if (loading) return;
+        e.preventDefault();
+        addImageFiles(e.dataTransfer.files);
+      }}
+    >
       <div className="composer__box">
         {mentionOpen && (
           <div className="mention-picker" role="listbox" aria-label="Context path suggestions">
@@ -217,11 +254,32 @@ export function ChatInput({
             )
           }
           onKeyDown={handleKeyDown}
+          onPaste={(e) => {
+            const files = Array.from(e.clipboardData.files).filter((file) => file.type.startsWith('image/'));
+            if (files.length > 0) {
+              addImageFiles(files);
+            }
+          }}
           placeholder="Ask anything… use @ to add files or folders"
           disabled={loading}
           rows={3}
           aria-label="Chat message input"
         />
+        {attachments.length > 0 && (
+          <div className="composer__attachments" aria-label="Attached images">
+            {attachments.map((attachment, index) => (
+              <button
+                key={`${attachment.name ?? 'image'}-${index}`}
+                type="button"
+                className="composer__attachment"
+                onClick={() => setAttachments((current) => current.filter((_, i) => i !== index))}
+                title="Remove image"
+              >
+                <span className="composer__attachment-name">{attachment.name ?? `image-${index + 1}`}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="composer__footer">
           <div className="composer__left">
             <div className="composer__mode-select-wrap">
@@ -275,6 +333,25 @@ export function ChatInput({
             <TokenMeter usage={tokenUsage} compact placement="above" />
           </div>
           <div className="composer__actions">
+            <input
+              ref={fileInputRef}
+              className="composer__file-input"
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => {
+                if (e.target.files) addImageFiles(e.target.files);
+                e.currentTarget.value = '';
+              }}
+            />
+            <IconButton
+              label="Attach image"
+              variant="ghost"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={loading}
+            >
+              <IconImage />
+            </IconButton>
             {onRetry && (
               <IconButton label="Retry last message" variant="ghost" onClick={onRetry} disabled={loading || !canRetry}>
                 <IconRetry />
@@ -304,7 +381,7 @@ export function ChatInput({
                 label="Send message"
                 variant="accent"
                 onClick={handleSend}
-                disabled={!value.trim()}
+                disabled={!value.trim() && attachments.length === 0}
               >
                 <IconSend />
               </IconButton>

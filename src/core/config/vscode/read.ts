@@ -21,6 +21,8 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       supportsStreaming: config.get<boolean>('provider.supportsStreaming'),
       supportsTools: config.get<boolean>('provider.supportsTools'),
       supportsEmbeddings: config.get<boolean>('provider.supportsEmbeddings'),
+      supportsVision: config.get<boolean>('provider.supportsVision'),
+      supportsReasoning: config.get<boolean>('provider.supportsReasoning'),
     },
     indexing: {
       enabled: config.get<boolean>('indexing.enabled'),
@@ -106,6 +108,9 @@ export function readThunderConfigFromSettings(): ThunderConfig {
     telemetry: {
       sessionLogging: config.get<boolean>('telemetry.sessionLogging'),
       debugMetrics: config.get<boolean>('telemetry.debugMetrics'),
+      webhookUrl: config.get<string>('telemetry.webhookUrl'),
+      webhookSecret: config.get<string>('telemetry.webhookSecret'),
+      webhookTimeoutMs: config.get<number>('telemetry.webhookTimeoutMs'),
     },
     ui: {
       showReasoning: config.get<boolean>('ui.showReasoning'),

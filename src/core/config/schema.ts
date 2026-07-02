@@ -25,6 +25,8 @@ export const ProviderConfigSchema = z.object({
   supportsStreaming: z.boolean().default(true),
   supportsTools: z.boolean().default(true),
   supportsEmbeddings: z.boolean().default(false),
+  supportsVision: z.boolean().optional(),
+  supportsReasoning: z.boolean().optional(),
 });
 
 export const EmbeddingProviderSchema = z.enum(['hash', 'minilm']).default('minilm');
@@ -166,6 +168,9 @@ export const TelemetryConfigSchema = z.object({
   sessionLogging: z.boolean().default(true),
   /** Extra diagnostics: tool inputs, context sources, LLM step metadata. Off by default for speed. */
   debugMetrics: z.boolean().default(false),
+  webhookUrl: z.string().default(''),
+  webhookSecret: z.string().default(''),
+  webhookTimeoutMs: z.number().int().min(1000).max(60_000).default(5000),
 });
 
 export const ThunderConfigSchema = z.object({

@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.7.16" src="https://img.shields.io/badge/version-2.7.16-111111">
+  <img alt="Version 2.7.17" src="https://img.shields.io/badge/version-2.7.17-111111">
   <a href="https://mitii.dev"><img alt="Website" src="https://img.shields.io/badge/website-mitii.dev-000000"></a>
   <a href="https://docs.mitii.dev"><img alt="Docs" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
@@ -150,9 +150,9 @@ Paste a GitHub issue URL in Agent mode, for example:
 Fix https://github.com/owner/repo/issues/123
 ```
 
-Mitii detects `github.com/{owner}/{repo}/issues/{number}`, fetches the issue through the GitHub REST API when network access is allowed, and injects a structured context block containing the title, body, state, labels, assignees, milestone, and recent comments. The Act router treats the issue signal as a verified bugfix workflow, so the agent investigates the open workspace, makes scoped edits, and runs relevant verification.
+Mitii detects `github.com/{owner}/{repo}/issues/{number}`, fetches the issue through the GitHub REST API when network access is allowed, and injects a structured context block containing the title, body, state, labels, assignees, milestone, and newest comments. When the fetch succeeds, the Act router treats the issue signal as a verified bugfix workflow, so the agent investigates the open workspace, makes scoped edits, and runs relevant verification.
 
-If the active safety preset disables network access, Mitii still injects a lightweight reference block with the repository and issue number instead of scraping GitHub HTML. Private repository support uses a GitHub token stored in VS Code SecretStorage under `thunder.github.token` by default; the setting stores only the secret key name, not the token value.
+If the active safety preset disables network access or GitHub cannot be reached, Mitii still injects a lightweight reference block with the repository and issue number instead of scraping GitHub HTML. Private repository support uses a GitHub token stored in VS Code SecretStorage under `thunder.github.token` by default; enter or replace the token from **Settings → Integrations → GitHub issues**. The VS Code setting stores only the secret key name, not the token value.
 
 ### 4. Safer Tool Execution
 
@@ -204,7 +204,7 @@ Mitii stores useful state locally so every serious task does not start from zero
 
 Post-task memory extraction can capture useful observations after completed work, so future sessions can reuse decisions without asking you to repeat context.
 
-Audit review is available through `Mitii: Export Audit Pack`. The zip contains sanitized `session.jsonl`, `summary.md`, `manifest.json`, `tool-audit.json`, `approvals.json`, and `redaction-report.json`.
+Audit review is available through `Mitii: Export Audit Pack`. The zip contains sanitized `session.jsonl`, `summary.md`, `manifest.json`, `tool-audit.json`, `approvals.json`, `redaction-report.json`, and `signature.json` with SHA-256 hashes for tamper detection. Set `MITII_AUDIT_SIGNING_KEY` to add HMAC signing, then verify archives with `mitii verify-audit <zip>`.
 
 ### Release Automation
 
@@ -217,6 +217,7 @@ Mitii includes release hygiene commands:
 | `mitii changelog` | Headless changelog entry for CI/scripts |
 | `mitii prepare-release` | Headless changelog + release-notes generation |
 | `mitii export-audit` | Headless audit pack export from JSONL logs |
+| `mitii verify-audit` | Verify audit pack signatures and file hashes |
 
 ### 7. Skills And Project Playbooks
 
@@ -262,6 +263,8 @@ The sidebar is a React webview with:
 
 Reasoning deltas from supported providers stream live in the chat UI. Use `thunder.ui.showReasoning` and `thunder.ui.reasoningPreviewMaxChars` to control visibility and inline preview size.
 
+Mitii also detects common model capabilities from the provider/model name, including vision and reasoning support. Enterprise teams can override detection with `thunder.provider.supportsVision` and `thunder.provider.supportsReasoning` when routing through private or custom OpenAI-compatible gateways.
+
 ## Enterprise Readiness
 
 Enterprise review materials live in [docs/enterprise](docs/enterprise/README.md). The pack covers data flow, provider boundaries, procurement FAQs, compliance mapping, Windows support, and auditability.
@@ -271,7 +274,10 @@ Enterprise review materials live in [docs/enterprise](docs/enterprise/README.md)
 | Route narrow Git/release tasks through minimal context | `thunder.context.microTaskRoutingEnabled` |
 | Require local model providers | `thunder.enterprise.localProvidersOnly` |
 | Strip file contents from exported audit packs | `thunder.enterprise.stripFileContentsFromAuditPacks` |
+| Auto-export audit packs after agent turns | `thunder.enterprise.autoExportAuditPackOnSessionEnd` |
+| Verify audit pack integrity | `mitii verify-audit <zip>` |
 | Disable session logging | `thunder.telemetry.sessionLogging` |
+| Stream sanitized SIEM events | `thunder.telemetry.webhookUrl` and optional `thunder.telemetry.webhookSecret` |
 | Export audit evidence | `Mitii: Export Audit Pack` |
 | Windows smoke checklist | [docs/qa/WINDOWS_SMOKE.md](docs/qa/WINDOWS_SMOKE.md) |
 
@@ -471,7 +477,9 @@ Use the Echo provider for UI testing without an LLM. API keys are stored through
   "thunder.github.issueCommentLimit": 8,
   "thunder.github.tokenRef": "thunder.github.token",
   "thunder.agent.verifyCommands": ["npm run lint", "npm test"],
-  "thunder.telemetry.sessionLogging": true
+  "thunder.telemetry.sessionLogging": true,
+  "thunder.telemetry.webhookUrl": "",
+  "thunder.enterprise.autoExportAuditPackOnSessionEnd": false
 }
 ```
 

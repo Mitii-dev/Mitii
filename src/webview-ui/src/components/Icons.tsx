@@ -83,6 +83,16 @@ export function IconMarkdown(props: IconProps) {
   );
 }
 
+export function IconImage(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <rect x="2.5" y="3" width="11" height="10" rx="1.5" />
+      <circle cx="6" cy="6.25" r="1" />
+      <path d="M4 11l2.5-2.75 1.8 1.9 1.2-1.25L12 11" />
+    </svg>
+  );
+}
+
 export function IconContext(props: IconProps) {
   return (
     <svg {...defaults} {...props}>

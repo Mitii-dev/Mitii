@@ -28,6 +28,8 @@ export class OpenAiCompatibleProvider implements LlmProvider {
       supportsStreaming: config.capabilities?.supportsStreaming ?? true,
       supportsTools: config.capabilities?.supportsTools ?? true,
       supportsEmbeddings: config.capabilities?.supportsEmbeddings ?? false,
+      supportsVision: config.capabilities?.supportsVision ?? false,
+      supportsReasoning: config.capabilities?.supportsReasoning ?? false,
     };
   }
 
@@ -215,9 +217,21 @@ function toolResultAsUserMessage(message: ChatRequest['messages'][number]): Chat
 }
 
 function formatMessage(msg: ChatRequest['messages'][number]): Record<string, unknown> {
+  const attachments = msg.attachments?.filter((attachment) => attachment.kind === 'image') ?? [];
+  const content = attachments.length > 0 && (msg.role === 'user' || msg.role === 'assistant')
+    ? [
+        ...(msg.content ? [{ type: 'text', text: msg.content }] : []),
+        ...attachments.map((attachment) => ({
+          type: 'image_url',
+          image_url: {
+            url: `data:${attachment.mimeType};base64,${attachment.data}`,
+          },
+        })),
+      ]
+    : msg.content;
   const out: Record<string, unknown> = {
     role: msg.role,
-    content: msg.content,
+    content,
   };
   if (msg.name) out.name = msg.name;
   if (msg.tool_call_id) out.tool_call_id = msg.tool_call_id;

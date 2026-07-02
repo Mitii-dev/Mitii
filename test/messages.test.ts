@@ -9,6 +9,7 @@ describe('Webview message protocol', () => {
     expect(state.messages).toHaveLength(0);
     expect(state.approvals).toHaveLength(0);
     expect(state.indexing.running).toBe(false);
+    expect(state.settings.hasGithubToken).toBe(false);
   });
 
   it('has default context toggles with diagnostics off by default', () => {

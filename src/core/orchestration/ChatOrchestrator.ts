@@ -219,7 +219,7 @@ export class ChatOrchestrator {
     provider: LlmProvider,
     userMessage: string,
     recentMessages: ChatMessage[] = [],
-    options?: { pinnedContext?: PinnedContextEntry[] }
+    options?: { pinnedContext?: PinnedContextEntry[]; attachments?: ChatMessage['attachments'] }
   ): AsyncIterable<AssistantStreamChunk> {
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
@@ -939,7 +939,7 @@ export class ChatOrchestrator {
 
       const isResume = isApprovalContinuationMessage(userMessage);
       const taskStateBlock = this.deps.taskState?.buildPromptBlock();
-      const messages = buildPrompt(
+      const messages = attachImagesToLastUser(buildPrompt(
         session.mode,
         pack,
         userMessage,
@@ -957,7 +957,7 @@ export class ChatOrchestrator {
           actPlan?.promptContext,
           ...taskEnrichment.contextBlocks
         )
-      );
+      ), options?.attachments);
       const promptTokens = estimateChatRequestTokens({
         messages,
         tools: tools.length > 0 ? tools : undefined,
@@ -1749,6 +1749,24 @@ function mergePromptContexts(...blocks: Array<string | undefined>): string | und
     .filter((block): block is string => Boolean(block));
   if (merged.length === 0) return undefined;
   return [...new Set(merged)].join('\n\n---\n\n');
+}
+
+function attachImagesToLastUser(
+  messages: ChatMessage[],
+  attachments: ChatMessage['attachments'] | undefined
+): ChatMessage[] {
+  const images = attachments?.filter((attachment) => attachment.kind === 'image') ?? [];
+  if (images.length === 0) return messages;
+  const next = [...messages];
+  for (let index = next.length - 1; index >= 0; index -= 1) {
+    if (next[index].role !== 'user') continue;
+    next[index] = {
+      ...next[index],
+      attachments: [...(next[index].attachments ?? []), ...images],
+    };
+    return next;
+  }
+  return [...next, { role: 'user', content: 'Attached image context.', attachments: images }];
 }
 
 function emptyContextPack(): ContextPack {

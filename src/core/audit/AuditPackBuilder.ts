@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'fs';
+import { createHmac, createHash } from 'crypto';
 import { basename } from 'path';
 import type { ToolCallAudit } from '../tools/types';
 
@@ -22,6 +23,7 @@ export interface AuditPackInput {
   toolAudit?: ToolCallAudit[];
   approvals?: unknown[];
   stripFileContents?: boolean;
+  signingKey?: string;
 }
 
 export interface AuditPackBuildResult {
@@ -65,6 +67,7 @@ export class AuditPackBuilder {
       'approvals.json': JSON.stringify(sanitizeValue(input.approvals ?? [], report, input.stripFileContents), null, 2),
       'redaction-report.json': JSON.stringify(report, null, 2),
     };
+    files['signature.json'] = JSON.stringify(createSignature(hashFiles(files), input.signingKey), null, 2);
     return {
       buffer: createZip(files),
       manifest,
@@ -72,6 +75,76 @@ export class AuditPackBuilder {
       entries: Object.keys(files),
     };
   }
+}
+
+export interface AuditSignature {
+  algorithm: 'sha256' | 'hmac-sha256';
+  createdAt: string;
+  signedFiles: Record<string, string>;
+  signature: string;
+}
+
+export interface AuditVerificationResult {
+  ok: boolean;
+  errors: string[];
+  entries: string[];
+}
+
+export function verifyAuditPack(buffer: Buffer, signingKey?: string): AuditVerificationResult {
+  const entries = readZipEntries(buffer);
+  const signatureText = entries['signature.json'];
+  if (!signatureText) {
+    return { ok: false, errors: ['signature.json is missing'], entries: Object.keys(entries) };
+  }
+  const errors: string[] = [];
+  let signature: AuditSignature;
+  try {
+    signature = JSON.parse(signatureText) as AuditSignature;
+  } catch {
+    return { ok: false, errors: ['signature.json is malformed'], entries: Object.keys(entries) };
+  }
+
+  for (const [name, expectedHash] of Object.entries(signature.signedFiles ?? {})) {
+    const content = entries[name];
+    if (content === undefined) {
+      errors.push(`${name} is missing`);
+      continue;
+    }
+    const actualHash = sha256(content);
+    if (actualHash !== expectedHash) {
+      errors.push(`${name} hash mismatch`);
+    }
+  }
+
+  const expectedSignature = createSignature(signature.signedFiles, signingKey).signature;
+  if (signature.signature !== expectedSignature) {
+    errors.push('signature mismatch');
+  }
+
+  return { ok: errors.length === 0, errors, entries: Object.keys(entries) };
+}
+
+function createSignature(fileHashes: Record<string, string>, signingKey?: string): AuditSignature {
+  const canonical = JSON.stringify(Object.keys(fileHashes).sort().map((name) => [name, fileHashes[name]]));
+  const key = signingKey || '';
+  return {
+    algorithm: key ? 'hmac-sha256' : 'sha256',
+    createdAt: new Date().toISOString(),
+    signedFiles: fileHashes,
+    signature: key
+      ? createHmac('sha256', key).update(canonical).digest('hex')
+      : sha256(canonical),
+  };
+}
+
+function hashFiles(files: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(files).map(([name, content]) => [name, sha256(content)])
+  );
+}
+
+function sha256(content: string | Buffer): string {
+  return createHash('sha256').update(content).digest('hex');
 }
 
 function sanitizeJsonl(jsonl: string, report: RedactionReport, stripFileContents = false): string {
@@ -191,6 +264,27 @@ function createZip(files: Record<string, string>): Buffer {
   return Buffer.concat([...localParts, centralDir, end]);
 }
 
+function readZipEntries(buffer: Buffer): Record<string, string> {
+  const entries: Record<string, string> = {};
+  let offset = 0;
+  while (offset + 30 <= buffer.length && buffer.readUInt32LE(offset) === 0x04034b50) {
+    const compressionMethod = buffer.readUInt16LE(offset + 8);
+    const compressedSize = buffer.readUInt32LE(offset + 18);
+    const fileNameLength = buffer.readUInt16LE(offset + 26);
+    const extraLength = buffer.readUInt16LE(offset + 28);
+    const nameStart = offset + 30;
+    const dataStart = nameStart + fileNameLength + extraLength;
+    const dataEnd = dataStart + compressedSize;
+    if (dataEnd > buffer.length) break;
+    const name = buffer.slice(nameStart, nameStart + fileNameLength).toString('utf8');
+    if (compressionMethod === 0) {
+      entries[name] = buffer.slice(dataStart, dataEnd).toString('utf8');
+    }
+    offset = dataEnd;
+  }
+  return entries;
+}
+
 function crc32(buffer: Buffer): number {
   let crc = 0xffffffff;
   for (const byte of buffer) {
@@ -206,4 +300,3 @@ const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
   }
   return c >>> 0;
 });
-

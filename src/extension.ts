@@ -4,6 +4,7 @@ import { registerCommands } from './vscode/commands';
 import { ThunderWebviewProvider } from './vscode/webview/ThunderWebviewProvider';
 import { createLogger } from './core/telemetry/Logger';
 import { AGENT_FULL_NAME } from './shared/brand';
+import { notifyNativeModuleHealth } from './vscode/nativeModuleHealth';
 
 const log = createLogger('extension');
 
@@ -12,6 +13,7 @@ let webviewProvider: ThunderWebviewProvider | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   log.info(`${AGENT_FULL_NAME} activating`);
+  void notifyNativeModuleHealth();
 
   controller = new ThunderController(context);
   await controller.initialize();

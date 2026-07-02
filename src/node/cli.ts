@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
-import { AuditPackBuilder } from '../core/audit';
-import { generateHeadlessChangelog, prepareHeadlessRelease } from '../core/headless';
+import { AuditPackBuilder, verifyAuditPack } from '../core/audit';
+import { HeadlessAgentRunner, generateHeadlessChangelog, prepareHeadlessRelease } from '../core/headless';
+import type { ProviderType } from '../core/config/schema';
 
 async function main(argv: string[]): Promise<number> {
   const [command, ...args] = argv;
   const cwd = resolve(valueOf(args, '--cwd') ?? process.cwd());
   const since = valueOf(args, '--since');
   const json = args.includes('--json');
+  const prompt = positional(args).join(' ').trim();
 
   if (!command || command === '--help' || command === 'help') {
     printHelp();
@@ -43,8 +45,47 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
 
-  if (command === 'ask' || command === 'agent' || command === 'commit-msg') {
-    process.stderr.write(`${command} requires the VS Code extension runtime in this MVP. Use changelog, prepare-release, or export-audit headlessly.\n`);
+  if (command === 'verify-audit') {
+    const target = positional(args)[0];
+    if (!target) {
+      process.stderr.write('verify-audit requires a zip path.\n');
+      return 2;
+    }
+    const result = verifyAuditPack(readFileSync(resolve(cwd, target)), process.env.MITII_AUDIT_SIGNING_KEY);
+    process.stdout.write(json ? JSON.stringify(result, null, 2) + '\n' : formatAuditVerification(result));
+    return result.ok ? 0 : 1;
+  }
+
+  if (command === 'ask') {
+    const runner = createRunner(cwd, args, json);
+    const answer = await runner.ask(prompt || readStdin());
+    process.stdout.write(json ? JSON.stringify({ answer }, null, 2) + '\n' : `${answer}\n`);
+    return 0;
+  }
+
+  if (command === 'plan') {
+    const runner = createRunner(cwd, args, json);
+    const plan = runner.plan(prompt || readStdin());
+    process.stdout.write(JSON.stringify(plan, null, 2) + '\n');
+    return 0;
+  }
+
+  if (command === 'agent') {
+    const runner = createRunner(cwd, args, json);
+    for await (const event of runner.agent(prompt || readStdin())) {
+      if (json) {
+        process.stdout.write(JSON.stringify(event) + '\n');
+      } else if (event.content) {
+        process.stdout.write(`${event.content}\n`);
+      } else if (event.message) {
+        process.stderr.write(`${event.message}\n`);
+      }
+    }
+    return 0;
+  }
+
+  if (command === 'commit-msg') {
+    process.stderr.write(`${command} requires git diff context from the VS Code extension runtime. Use changelog, prepare-release, export-audit, verify-audit, ask, plan, or agent headlessly.\n`);
     return 2;
   }
 
@@ -53,9 +94,41 @@ async function main(argv: string[]): Promise<number> {
   return 1;
 }
 
+function createRunner(cwd: string, args: string[], json: boolean): HeadlessAgentRunner {
+  return new HeadlessAgentRunner({
+    cwd,
+    providerType: (valueOf(args, '--provider') as ProviderType | undefined) ?? 'echo',
+    baseUrl: valueOf(args, '--base-url'),
+    model: valueOf(args, '--model'),
+    approval: (valueOf(args, '--approval') as 'auto' | 'manual' | undefined) ?? 'manual',
+    json,
+  });
+}
+
 function valueOf(args: string[], name: string): string | undefined {
   const idx = args.indexOf(name);
   return idx >= 0 ? args[idx + 1] : undefined;
+}
+
+function positional(args: string[]): string[] {
+  const out: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg.startsWith('--')) {
+      if (!['--json'].includes(arg)) index += 1;
+      continue;
+    }
+    out.push(arg);
+  }
+  return out;
+}
+
+function readStdin(): string {
+  try {
+    return readFileSync(0, 'utf8').trim();
+  } catch {
+    return '';
+  }
 }
 
 function latestSessionLog(cwd: string): string | undefined {
@@ -86,8 +159,19 @@ function printHelp(): void {
     '  mitii changelog [--since <tag>] [--cwd <path>] [--json]',
     '  mitii prepare-release [--since <tag>] [--cwd <path>] [--json]',
     '  mitii export-audit [--session <jsonl-path>] [--output <zip>] [--cwd <path>] [--json]',
+    '  mitii verify-audit <zip> [--cwd <path>] [--json]',
+    '  mitii ask "question" [--provider echo|openai|...] [--model <id>] [--base-url <url>] [--cwd <path>] [--json]',
+    '  mitii plan "goal" [--provider echo|openai|...] [--model <id>] [--approval auto|manual] [--cwd <path>]',
+    '  mitii agent "goal" [--provider echo|openai|...] [--model <id>] [--approval auto|manual] [--json]',
     '',
   ].join('\n'));
+}
+
+function formatAuditVerification(result: ReturnType<typeof verifyAuditPack>): string {
+  if (result.ok) {
+    return `Audit pack verified (${result.entries.length} entries).\n`;
+  }
+  return `Audit pack verification failed:\n${result.errors.map((error) => `- ${error}`).join('\n')}\n`;
 }
 
 void main(process.argv.slice(2)).then((code) => {
@@ -96,4 +180,3 @@ void main(process.argv.slice(2)).then((code) => {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;
 });
-

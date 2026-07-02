@@ -23,6 +23,7 @@ import { SettingStepper } from './SettingStepper';
 import { MemoryPanel } from './MemoryPanel';
 import { CheckpointPanel } from './CheckpointPanel';
 import { getProviderPreset } from '../../../core/llm/providerPresets';
+import { validateProviderSettings } from '../../../core/config/ui/mappers';
 import {
   APPROVAL_MODE_OPTIONS,
   approvalModeDescription,
@@ -200,6 +201,7 @@ export function SettingsPanel({
   memories,
   checkpoints,
   onSaveApiKey,
+  onSaveGitHubToken,
   onSaveAllSettings,
   onTestConnection,
   onPickWorkspaceFolder,
@@ -379,6 +381,7 @@ export function SettingsPanel({
     region: region.trim(),
     contextWindow: clampContextWindow(contextWindow),
   });
+  const providerValidation = validateProviderSettings(currentProviderSettings());
 
   const activeLocalPreset = providerType === 'openai-compatible' ? findLocalModelPreset(model) : undefined;
   const hasPresetContextMismatch = Boolean(
@@ -599,6 +602,7 @@ export function SettingsPanel({
                   type="button"
                   className="btn btn--ghost"
                   onClick={() => onTestConnection(currentProviderSettings())}
+                  disabled={!providerValidation.ok}
                 >
                   Test connection
                 </button>
@@ -611,6 +615,11 @@ export function SettingsPanel({
                   </span>
                 )}
               </div>
+              {!providerValidation.ok && (
+                <p className="settings-inline-note settings-inline-note--error" role="alert">
+                  {providerValidation.errors.join(' ')}
+                </p>
+              )}
             </SettingsCard>
 
             <SettingsCard title="API key" description="Optional for local Ollama. Stored in VS Code SecretStorage.">
@@ -1002,7 +1011,10 @@ export function SettingsPanel({
                   className="settings-input"
                   placeholder={settings.hasGithubToken ? 'Token saved - enter to replace' : 'Enter GitHub token...'}
                   value={githubToken}
-                  onChange={(e) => setGithubToken(e.target.value)}
+                  onChange={(e) => {
+                    setGithubToken(e.target.value);
+                    markDirty();
+                  }}
                 />
               </div>
               <p className="settings-inline-note">
@@ -1212,7 +1224,7 @@ export function SettingsPanel({
             type="button"
             className="btn btn--primary"
             onClick={handleSaveAll}
-            disabled={!dirty && !apiKey.trim() && !githubToken.trim()}
+            disabled={(!dirty && !apiKey.trim() && !githubToken.trim()) || (dirty && !providerValidation.ok)}
           >
             {saved ? 'Saved' : 'Save changes'}
           </button>

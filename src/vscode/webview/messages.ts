@@ -27,10 +27,19 @@ export type {
 
 export type WebviewTab = 'chat' | 'history' | 'settings';
 
+export interface ChatImageAttachment {
+  kind: 'image';
+  mimeType: string;
+  data: string;
+  name?: string;
+  size?: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  attachments?: ChatImageAttachment[];
   reasoningContent?: string;
   timestamp: number;
   streaming?: boolean;
@@ -222,6 +231,33 @@ export interface CheckpointView {
   strategy?: string;
 }
 
+export interface ReviewDiffFileView {
+  path: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  diff: string;
+}
+
+export interface ReviewDiffView {
+  branch: string | null;
+  files: ReviewDiffFileView[];
+  summary: {
+    fileCount: number;
+    additions: number;
+    deletions: number;
+  };
+  truncated: boolean;
+  updatedAt: number;
+}
+
+export interface OnboardingView {
+  shouldShow: boolean;
+  completed: boolean;
+  providerConfigured: boolean;
+  workspaceIndexed: boolean;
+}
+
 export interface SettingsView {
   appVersion: string;
   providerType: string;
@@ -314,6 +350,8 @@ export interface WebviewState {
   indexing: IndexingStatusView;
   memories: MemoryItemView[];
   checkpoints: CheckpointView[];
+  reviewDiff: ReviewDiffView | null;
+  onboarding: OnboardingView;
   settings: SettingsView;
   contextToggles: ContextToggles;
   mcpToggles: McpToggles;
@@ -353,12 +391,13 @@ export type ExtensionToWebviewMessage =
   | { type: 'setAgentLiveStatus'; payload: AgentLiveStatusView | null }
   | { type: 'setSubagents'; payload: SubagentStatusView[] }
   | { type: 'setTokenUsage'; payload: TokenUsageView }
+  | { type: 'setReviewDiff'; payload: ReviewDiffView | null }
   | { type: 'setContextPaths'; payload: { requestId: string; paths: ContextPathSuggestion[] } };
 
 // Webview -> Extension messages
 export type WebviewToExtensionMessage =
   | { type: 'ready' }
-  | { type: 'sendMessage'; payload: { content: string; pinnedContext?: PinnedContextView[] } }
+  | { type: 'sendMessage'; payload: { content: string; pinnedContext?: PinnedContextView[]; attachments?: ChatImageAttachment[] } }
   | { type: 'retryLastMessage' }
   | { type: 'newChat' }
   | { type: 'openChatThread'; payload: { id: string } }
@@ -395,6 +434,8 @@ export type WebviewToExtensionMessage =
   | { type: 'clearPinnedContext' }
   | { type: 'searchContextPaths'; payload: { query: string; requestId: string } }
   | { type: 'pickContextPath' }
+  | { type: 'refreshReviewDiff' }
+  | { type: 'completeOnboarding' }
   | { type: 'refreshPanels' };
 
 export const defaultMcpToggles = (): McpToggles => ({
@@ -485,6 +526,13 @@ export const initialWebviewState = (): WebviewState => ({
   indexing: { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0, processed: 0, runTotal: 0 },
   memories: [],
   checkpoints: [],
+  reviewDiff: null,
+  onboarding: {
+    shouldShow: false,
+    completed: false,
+    providerConfigured: false,
+    workspaceIndexed: false,
+  },
   settings: defaultSettingsView(),
   contextToggles: defaultContextToggles(),
   mcpToggles: defaultMcpToggles(),
