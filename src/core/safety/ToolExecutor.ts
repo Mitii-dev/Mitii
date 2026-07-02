@@ -1,7 +1,7 @@
 import type { ToolRuntime } from '../tools/ToolRuntime';
 import type { ToolPolicyEngine } from './ToolPolicyEngine';
 import type { ApprovalQueue } from './ApprovalQueue';
-import type { AgentTaskState } from '../agent/AgentTaskState';
+import type { AgentTaskState } from '../runtime/AgentTaskState';
 import {
   isWriteAllowed,
   isShellAllowed,
@@ -10,10 +10,10 @@ import {
   isToolAllowedInPlanPhase,
   isPhaseLockWriteError,
   type PlanPhase,
-} from '../planning/PlanActEngine';
+} from '../plans/PlanActEngine';
 import { resolveToolName } from '../tools/toolAliases';
-import { normalizeThunderMode } from '../ThunderSession';
-import { isAskAllowedTool } from '../agent/askMode';
+import { normalizeThunderMode } from '../session/ThunderSession';
+import { isAskAllowedTool } from '../runtime/askMode';
 import { createLogger } from '../telemetry/Logger';
 import type { SessionLogService } from '../telemetry/SessionLogService';
 
@@ -24,6 +24,8 @@ export interface ToolExecutionResult {
   output: string;
   error?: string;
   pendingApproval?: boolean;
+  /** Intentional dedup / policy skip — not a real failure. */
+  skipped?: boolean;
 }
 
 export interface ToolExecuteContext {
@@ -100,12 +102,16 @@ export class ToolExecutor {
     }
 
     const readOnlyMode = normalizeThunderMode(mode) === 'ask' || normalizeThunderMode(mode) === 'plan';
+    const mcpCap = readOnlyMode ? null : this.getTaskState?.()?.checkMcpCap(resolvedName);
+    if (mcpCap) {
+      return this.finishSoftBlock(resolvedName, input, mcpCap);
+    }
+
     const blocked = readOnlyMode ? null : this.getTaskState?.()?.checkBlocked(resolvedName, input);
     if (blocked) {
       const soft = this.getTaskState?.()?.buildSoftBlockResponse(resolvedName, input);
       const output = soft ?? blocked;
-      this.logRejectedToolCall(resolvedName, input, false, output, 'Skipped redundant tool call');
-      return { success: false, output, error: 'Skipped redundant tool call' };
+      return this.finishSoftBlock(resolvedName, input, output);
     }
 
     if (['write_file', 'apply_patch', 'memory_write', 'save_task_state'].includes(resolvedName) && !isWriteAllowed(mode)) {
@@ -151,9 +157,54 @@ export class ToolExecutor {
     return result;
   }
 
+  private finishSoftBlock(toolName: string, input: Record<string, unknown>, output: string): ToolExecutionResult {
+    this.logSkippedToolCall(toolName, input, output);
+    return { success: false, skipped: true, output, error: 'Skipped redundant tool call' };
+  }
+
   private finishBlocked(toolName: string, input: Record<string, unknown>, error: string): ToolExecutionResult {
     this.logRejectedToolCall(toolName, input, false, error, error);
     return { success: false, output: '', error };
+  }
+
+  private logSkippedToolCall(toolName: string, input: Record<string, unknown>, output: string): void {
+    const toolCallId = createToolCallId(toolName);
+    const inputPreview = previewInput(input);
+    this.sessionLog?.append('info', `tool skipped: ${toolName}`, {
+      toolCallId,
+      tool: toolName,
+      detail: output.slice(0, 500),
+    });
+    this.sessionLog?.append('tool_start', toolName, {
+      toolCallId,
+      tool: toolName,
+      toolName,
+      path: typeof input.path === 'string' ? input.path : undefined,
+      command: typeof input.command === 'string' ? input.command : undefined,
+      inputPreview,
+      skipped: true,
+    });
+    this.sessionLog?.append('tool_end', toolName, {
+      toolCallId,
+      tool: toolName,
+      toolName,
+      path: typeof input.path === 'string' ? input.path : undefined,
+      command: typeof input.command === 'string' ? input.command : undefined,
+      success: true,
+      failure: false,
+      skipped: true,
+      durationMs: 0,
+      inputPreview,
+      outputPreview: output.slice(0, 500),
+    });
+    this.sessionLog?.appendDebug('info', `debug tool_skipped ${toolName}`, {
+      eventType: 'tool_skipped',
+      toolCallId,
+      tool: toolName,
+      toolName,
+      input,
+      output,
+    });
   }
 
   private logRejectedToolCall(
@@ -173,7 +224,13 @@ export class ToolExecutor {
       command: typeof input.command === 'string' ? input.command : undefined,
       inputPreview,
     });
-    this.sessionLog?.appendDebug('tool_start', toolName, { toolCallId, tool: toolName, toolName, input });
+    this.sessionLog?.appendDebug('info', `debug tool_start ${toolName}`, {
+      eventType: 'tool_start',
+      toolCallId,
+      tool: toolName,
+      toolName,
+      input,
+    });
     this.sessionLog?.append('tool_end', toolName, {
       toolCallId,
       tool: toolName,
@@ -187,7 +244,8 @@ export class ToolExecutor {
       outputPreview: output.slice(0, 500),
       error,
     });
-    this.sessionLog?.appendDebug('tool_end', toolName, {
+    this.sessionLog?.appendDebug('info', `debug tool_end ${toolName}`, {
+      eventType: 'tool_end',
       toolCallId,
       tool: toolName,
       toolName,

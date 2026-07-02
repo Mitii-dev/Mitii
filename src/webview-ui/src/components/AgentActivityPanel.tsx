@@ -21,6 +21,7 @@ const KIND_LABEL: Record<AgentActivityEntry['kind'], string> = {
   error: 'Error',
   tool: 'Tool',
   success: 'Done',
+  skipped: 'Skipped',
 };
 
 function resolvePhase(loading: boolean, waitingForApproval: boolean, entries: AgentActivityEntry[]): ActivityPhase {

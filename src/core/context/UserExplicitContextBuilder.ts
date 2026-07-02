@@ -26,10 +26,15 @@ export interface ExplicitContextResult {
 }
 
 export class UserExplicitContextBuilder {
+  private readonly tokenBudget: number;
+
   constructor(
     private readonly db: ThunderDb | undefined,
-    private readonly workspace: string
-  ) {}
+    private readonly workspace: string,
+    tokenBudget = EXPLICIT_CONTEXT_TOKEN_LIMIT
+  ) {
+    this.tokenBudget = Math.max(1000, Math.floor(tokenBudget));
+  }
 
   build(entries: PinnedContextEntry[]): ExplicitContextResult {
     if (entries.length === 0) {
@@ -104,10 +109,10 @@ export class UserExplicitContextBuilder {
       return undefined;
     }
 
-    const remaining = EXPLICIT_CONTEXT_TOKEN_LIMIT - usedTokens;
+    const remaining = this.tokenBudget - usedTokens;
     const fullTokens = estimateTokens(content);
 
-    if (fullTokens <= remaining && fullTokens <= EXPLICIT_CONTEXT_TOKEN_LIMIT) {
+    if (fullTokens <= remaining && fullTokens <= this.tokenBudget) {
       const xml = `  <file path="${relPath}">\n${indentBlock(content)}\n  </file>`;
       return {
         item: {
@@ -126,6 +131,7 @@ export class UserExplicitContextBuilder {
 
     const astContent = this.buildScopedAst(relPath, content);
     const astTokens = estimateTokens(astContent);
+    if (usedTokens > 0 && astTokens > remaining) return undefined;
     const xml = `  <file path="${relPath}" representation="scoped-ast">\n${indentBlock(astContent)}\n  </file>`;
     return {
       item: {
@@ -159,7 +165,7 @@ export class UserExplicitContextBuilder {
       : `(folder ${relPath} — index workspace for scoped repo map)`;
 
     const tokens = estimateTokens(mapContent);
-    if (usedTokens + tokens > EXPLICIT_CONTEXT_TOKEN_LIMIT) return undefined;
+    if (usedTokens + tokens > this.tokenBudget) return undefined;
 
     const xml = `  <folder_map path="${relPath}">\n${indentBlock(mapContent)}\n  </folder_map>`;
     return {

@@ -1,4 +1,29 @@
-import type { ThunderMode } from '../../core/ThunderSession';
+import type { ThunderMode } from '../../core/session/ThunderSession';
+import type {
+  AgentSettingsPayload,
+  AgentDepthView,
+  ApprovalMode,
+  McpCustomServerView,
+  McpSettingsPayload,
+  McpToggles,
+  ProviderSettingsPayload,
+  SafetySettingsPayload,
+  ThunderSettingsPayload,
+} from '../../core/config/ui/payloads';
+export type {
+  AgentSettingsPayload,
+  AgentDepthView,
+  ApprovalMode,
+  IndexingSettingsPayload,
+  McpCustomServerView,
+  McpSettingsPayload,
+  McpToggles,
+  ProviderSettingsPayload,
+  ProviderTypeView,
+  SafetySettingsPayload,
+  TelemetrySettingsPayload,
+  ThunderSettingsPayload,
+} from '../../core/config/ui/payloads';
 
 export type WebviewTab = 'chat' | 'history' | 'settings';
 
@@ -133,7 +158,7 @@ export interface VectorIndexStatusView {
 
 export interface AgentActivityEntry {
   id: string;
-  kind: 'context' | 'read' | 'budget' | 'apply' | 'info' | 'approval' | 'error' | 'tool' | 'success';
+  kind: 'context' | 'read' | 'budget' | 'apply' | 'info' | 'approval' | 'error' | 'tool' | 'success' | 'skipped';
   message: string;
   detail?: string;
   timestamp: number;
@@ -209,8 +234,9 @@ export interface SettingsView {
   memoryEnabled: boolean;
   subagentsEnabled: boolean;
   agentMaxSteps: number;
-  askDepth: 'auto' | 'quick' | 'standard' | 'deep';
-  planDepth: 'auto' | 'quick' | 'standard' | 'deep';
+  askDepth: AgentDepthView;
+  planDepth: AgentDepthView;
+  actDepth: AgentDepthView;
   askMaxSteps: number;
   askAutoContinue: boolean;
   askMaxAutoContinues: number;
@@ -219,6 +245,7 @@ export interface SettingsView {
   researchAgentMaxSteps: number;
   showDiffPreview: boolean;
   hasApiKey: boolean;
+  hasGithubToken: boolean;
   connectionStatus?: string;
   connectionOk?: boolean;
   mcpEnabled: boolean;
@@ -244,109 +271,12 @@ export interface SettingsView {
   checkpointStrategy: 'file-copy' | 'git-stash' | 'shadow-git';
 }
 
-export type ApprovalMode = 'review_all' | 'ask_edits' | 'ask_deletes' | 'ask_commands' | 'auto';
-
-export interface ProviderSettingsPayload {
-  providerType: ProviderTypeView;
-  baseUrl: string;
-  model: string;
-  contextWindow: number;
-}
-
-export interface AgentSettingsPayload {
-  subagentsEnabled: boolean;
-  maxSteps: number;
-  askDepth: 'auto' | 'quick' | 'standard' | 'deep';
-  planDepth: 'auto' | 'quick' | 'standard' | 'deep';
-  askMaxSteps: number;
-  askAutoContinue: boolean;
-  askMaxAutoContinues: number;
-  autoContinue: boolean;
-  maxAutoContinues: number;
-  researchAgentMaxSteps: number;
-  showDiffPreview: boolean;
-  planModel: string;
-  planBaseUrl: string;
-  actModel: string;
-  actBaseUrl: string;
-  checkpointStrategy: 'file-copy' | 'git-stash' | 'shadow-git';
-}
-
-export interface SafetySettingsPayload {
-  approvalMode: ApprovalMode;
-  requireApprovalForWrites: boolean;
-  requireApprovalForShell: boolean;
-  autonomyPreset: 'safe' | 'guided' | 'builder' | 'pilot' | 'enterprise';
-}
-
-export interface McpSettingsPayload {
-  enabled: boolean;
-  builtinServers?: McpToggles;
-  customServers?: McpCustomServerView[];
-}
-
-export interface McpToggles {
-  filesystem: boolean;
-  memory: boolean;
-  sequentialThinking: boolean;
-}
-
-export interface McpCustomServerView {
-  name: string;
-  type?: 'stdio' | 'sse' | 'streamable-http';
-  command: string;
-  args: string[];
-  env: Record<string, string>;
-  cwd?: string;
-  url?: string;
-  headers?: Record<string, string>;
-  disabled: boolean;
-  source: 'workspace' | 'settings';
-}
-
-export interface TelemetrySettingsPayload {
-  sessionLogging: boolean;
-  debugMetrics: boolean;
-}
-
 export interface McpServerStatusView {
   name: string;
   connected: boolean;
   toolCount: number;
   builtin?: boolean;
   error?: string;
-}
-
-export interface IndexingSettingsPayload {
-  vectorsEnabled: boolean;
-  embeddingProvider: 'minilm' | 'hash';
-  vectorBackend: 'sqlite' | 'lancedb';
-  hybridMemorySearch: boolean;
-  autonomyPreset: 'safe' | 'guided' | 'builder' | 'pilot' | 'enterprise';
-  planModel: string;
-  planBaseUrl: string;
-  actModel: string;
-  actBaseUrl: string;
-  checkpointStrategy: 'file-copy' | 'git-stash' | 'shadow-git';
-}
-
-export type ProviderTypeView =
-  | 'echo'
-  | 'openai-compatible'
-  | 'openai'
-  | 'anthropic'
-  | 'gemini'
-  | 'deepseek'
-  | 'cursor'
-  | 'codex';
-
-export interface ThunderSettingsPayload {
-  provider: ProviderSettingsPayload;
-  agent: AgentSettingsPayload;
-  safety: SafetySettingsPayload;
-  mcp: McpSettingsPayload;
-  indexing: IndexingSettingsPayload;
-  telemetry: TelemetrySettingsPayload;
 }
 
 export interface ContextToggles {
@@ -434,6 +364,7 @@ export type WebviewToExtensionMessage =
   | { type: 'resolveApproval'; payload: { id: string; decision: 'approved' | 'denied'; selectedOption?: string; scope?: 'single' | 'task' } }
   | { type: 'approveAllPending' }
   | { type: 'saveApiKey'; payload: { key: string } }
+  | { type: 'saveGitHubToken'; payload: { token: string } }
   | { type: 'saveProviderSettings'; payload: ProviderSettingsPayload }
   | { type: 'saveAgentSettings'; payload: AgentSettingsPayload }
   | { type: 'saveSafetySettings'; payload: SafetySettingsPayload }
@@ -491,6 +422,7 @@ export const defaultSettingsView = (): SettingsView => ({
   agentMaxSteps: 15,
   askDepth: 'auto',
   planDepth: 'auto',
+  actDepth: 'auto',
   askMaxSteps: 18,
   askAutoContinue: true,
   askMaxAutoContinues: 1,
@@ -499,6 +431,7 @@ export const defaultSettingsView = (): SettingsView => ({
   researchAgentMaxSteps: 6,
   showDiffPreview: false,
   hasApiKey: false,
+  hasGithubToken: false,
   mcpEnabled: true,
   mcpServers: 0,
   mcpTools: 0,

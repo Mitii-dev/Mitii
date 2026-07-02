@@ -45,6 +45,8 @@ export const ContextConfigSchema = z.object({
   rerankerTopK: z.number().int().min(3).max(30).default(8),
 });
 
+export const AgentDepthSchema = z.enum(['auto', 'quick', 'standard', 'deep', 'pilot', 'enterprise']);
+
 export const SafetyConfigSchema = z.object({
   requireApprovalForWrites: z.boolean().default(true),
   requireApprovalForShell: z.boolean().default(true),
@@ -66,10 +68,11 @@ export const AgentConfigSchema = z.object({
   subagentsEnabled: z.boolean().default(true),
   maxSteps: z.number().int().min(1).max(100).default(15),
   askMaxSteps: z.number().int().min(1).max(50).default(18),
-  askDepth: z.enum(['auto', 'quick', 'standard', 'deep']).default('auto'),
+  askDepth: AgentDepthSchema.default('auto'),
   askAutoContinue: z.boolean().default(true),
   askMaxAutoContinues: z.number().int().min(0).max(10).default(1),
-  planDepth: z.enum(['auto', 'quick', 'standard', 'deep']).default('auto'),
+  planDepth: AgentDepthSchema.default('auto'),
+  actDepth: AgentDepthSchema.default('auto'),
   autoContinue: z.boolean().default(true),
   maxAutoContinues: z.number().int().min(0).max(10).default(2),
   researchAgentMaxSteps: z.number().int().min(1).max(50).default(6),
@@ -80,7 +83,9 @@ export const AgentConfigSchema = z.object({
   stepMaxRetries: z.number().int().min(0).max(5).default(2),
   finalValidationEnabled: z.boolean().default(true),
   showDiffPreview: z.boolean().default(false),
-  verifyCommands: z.array(z.string()).default(['npm run lint', 'npm test']),
+  /** Max MCP sequential-thinking calls per user task (0 = unlimited). */
+  maxSequentialThinkingCallsPerTurn: z.number().int().min(0).max(50).default(6),
+  verifyCommands: z.array(z.string()).default([]),
   verifyOnActComplete: z.boolean().default(true),
   planModel: z.string().default(''),
   planBaseUrl: z.string().default(''),
@@ -134,6 +139,12 @@ export const ScmConfigSchema = z.object({
   commitMessageEnabled: z.boolean().default(true),
 });
 
+export const GitHubConfigSchema = z.object({
+  issueFetchEnabled: z.boolean().default(true),
+  issueCommentLimit: z.number().int().min(0).max(25).default(8),
+  tokenRef: z.string().default('thunder.github.token'),
+});
+
 export const TelemetryConfigSchema = z.object({
   sessionLogging: z.boolean().default(true),
   /** Extra diagnostics: tool inputs, context sources, LLM step metadata. Off by default for speed. */
@@ -151,6 +162,7 @@ export const ThunderConfigSchema = z.object({
   mcp: McpConfigSchema.default({}),
   workspace: WorkspaceConfigSchema.default({}),
   scm: ScmConfigSchema.default({}),
+  github: GitHubConfigSchema.default({}),
   telemetry: TelemetryConfigSchema.default({}),
 });
 
@@ -162,14 +174,12 @@ export type IndexingConfig = z.infer<typeof IndexingConfigSchema>;
 export type ContextConfig = z.infer<typeof ContextConfigSchema>;
 export type SafetyConfig = z.infer<typeof SafetyConfigSchema>;
 export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
+export type AgentDepth = z.infer<typeof AgentDepthSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 export type McpConfig = z.infer<typeof McpConfigSchema>;
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
 export type ScmConfig = z.infer<typeof ScmConfigSchema>;
+export type GitHubConfig = z.infer<typeof GitHubConfigSchema>;
 export type TelemetryConfig = z.infer<typeof TelemetryConfigSchema>;
 export type ThunderConfig = z.infer<typeof ThunderConfigSchema>;
-
-export function defaultThunderConfig(): ThunderConfig {
-  return ThunderConfigSchema.parse({});
-}

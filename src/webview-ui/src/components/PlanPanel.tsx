@@ -30,6 +30,20 @@ const PHASE_LABEL: Record<PlanPhaseView['phase'], string> = {
   verify: 'Verify',
 };
 
+function statusGlyph(status: PlanStepView['status']): string {
+  switch (status) {
+    case 'done':
+      return '✓';
+    case 'running':
+      return '•';
+    case 'blocked':
+    case 'failed':
+      return '!';
+    default:
+      return '';
+  }
+}
+
 function PlanStepRow({ step, index }: { step: PlanStepView; index: number }) {
   const [expanded, setExpanded] = useState(step.status === 'running');
   const hasDetails = Boolean(
@@ -45,7 +59,9 @@ function PlanStepRow({ step, index }: { step: PlanStepView; index: number }) {
         aria-expanded={hasDetails ? expanded : undefined}
         disabled={!hasDetails}
       >
-        <span className={`plan-step__status-dot plan-step__status-dot--${step.status}`} aria-hidden="true" />
+        <span className={`plan-step__check plan-step__check--${step.status}`} aria-hidden="true">
+          {statusGlyph(step.status)}
+        </span>
         <span className="plan-step__index">{index + 1}</span>
         <span className="plan-step__body">
           <span className="plan-step__title">{step.title}</span>
@@ -139,11 +155,20 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
 
   const done = plan.steps.filter((step) => step.status === 'done').length;
   const running = plan.steps.find((step) => step.status === 'running');
+  const runningIndex = running ? plan.steps.findIndex((step) => step.id === running.id) : -1;
+  const isPlanComplete = hasSteps && done === plan.steps.length;
   const phases = plan.phases?.length ? plan.phases : undefined;
+  const plannerState = isPlanningSession
+    ? 'Planning'
+    : isPlanComplete || plan.status === 'completed'
+      ? 'Plan done'
+      : plan.status === 'ready'
+        ? 'Plan ready'
+        : 'Planner';
 
   return (
     <section
-      className={`plan-panel ${isPlanningSession ? 'plan-panel--planning' : ''} ${mode === 'plan' ? 'plan-panel--plan-mode' : ''}`}
+      className={`plan-panel ${isPlanningSession ? 'plan-panel--planning' : ''} ${isPlanComplete ? 'plan-panel--done' : ''} ${mode === 'plan' ? 'plan-panel--plan-mode' : ''}`}
       aria-label="Planner"
       aria-busy={isPlanningSession}
     >
@@ -161,7 +186,7 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
         <div className="plan-panel__header">
           <div>
             <p className="plan-panel__eyebrow">
-              {isPlanningSession ? 'Planning' : plan.status === 'ready' ? 'Plan ready' : 'Planner'}
+              {plannerState}
             </p>
             <h2>{plan.goal}</h2>
             {!collapsed && isPlanningSession && (
@@ -172,7 +197,12 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
               </p>
             )}
             {!collapsed && running && loading && !isPlanningSession && (
-              <p className="plan-panel__running">Running: {running.title}</p>
+              <p className="plan-panel__running">
+                Running step {runningIndex + 1}/{plan.steps.length}: {running.title}
+              </p>
+            )}
+            {!collapsed && isPlanComplete && (
+              <p className="plan-panel__running plan-panel__running--done">All plan steps done.</p>
             )}
           </div>
           <span className="plan-panel__meta">

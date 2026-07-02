@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ThunderController } from '../../core/ThunderController';
+import { ThunderController } from '../../core/app/ThunderController';
 import { createLogger } from '../../core/telemetry/Logger';
 import { normalizeError, formatUserError } from '../../core/telemetry/errors';
 import { AGENT_FULL_NAME, AGENT_NAME, brandMessage } from '../../shared/brand';
@@ -282,6 +282,13 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         }
         break;
 
+      case 'saveGitHubToken':
+        if (message.payload.token.trim()) {
+          await this.controller.saveGitHubToken(message.payload.token.trim());
+          await this.syncState();
+        }
+        break;
+
       case 'saveProviderSettings':
         await this.controller.saveProviderSettings(message.payload);
         await this.syncState();
@@ -465,6 +472,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
       const stream = await this.controller.sendMessage(content, recentMessages, { pinnedContext });
+      let rawContent = '';
       let fullContent = '';
 
       this.state = {
@@ -477,7 +485,8 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       this.postMessage({ type: 'state', payload: this.state });
 
       for await (const chunk of stream) {
-        fullContent += chunk;
+        rawContent += chunk;
+        fullContent = stripLeakedChannelMarkers(rawContent);
         this.state = {
           ...this.state,
           messages: this.state.messages.map((m) =>
@@ -588,12 +597,14 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
     this.isStreaming = true;
 
     const assistantId = lastAssistant.id;
-    let fullContent = lastAssistant.content;
+    let rawContent = lastAssistant.content;
+    let fullContent = stripLeakedChannelMarkers(rawContent);
 
     try {
       const stream = this.controller.resumeAfterApproval();
       for await (const chunk of stream) {
-        fullContent += chunk;
+        rawContent += chunk;
+        fullContent = stripLeakedChannelMarkers(rawContent);
         this.state = {
           ...this.state,
           messages: this.state.messages.map((m) =>
@@ -782,6 +793,14 @@ function getNonce(): string {
     text += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return text;
+}
+
+function stripLeakedChannelMarkers(content: string): string {
+  return content
+    .replace(/(?:^|\n)\s*<channel\|>\s*(?:thought)?\s*(?=\n|$)/gi, '\n')
+    .replace(/(?:^|\n)\s*thought\s*(?=\n\s*<channel\|>|\n\s*thought\s*(?:\n|$))/gi, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trimStart();
 }
 
 function formatErrorHint(message: string): string {

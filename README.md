@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.7.3" src="https://img.shields.io/badge/version-2.7.3-111111">
+  <img alt="Version 2.7.7" src="https://img.shields.io/badge/version-2.7.7-111111">
   <a href="https://mitii.dev"><img alt="Website" src="https://img.shields.io/badge/website-mitii.dev-000000"></a>
   <a href="https://docs.mitii.dev"><img alt="Docs" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
@@ -53,6 +53,7 @@ Most coding agents are powerful, but they often make one of these tradeoffs:
 | Lost progress | Long tasks stall after approvals or context limits | Saves task state, plans, memory, session logs, and approval wake-up checkpoints |
 | Tool limits | External tools are hard to connect or audit | Supports MCP servers while still routing tools through Mitii safety policy |
 | Repeated workflows | Teams paste the same instructions into every chat | Supports project rules and workspace skills through `SKILL.md` files |
+| Issue-to-fix handoff | Bug reports live in GitHub while the code lives in the editor | Detects GitHub issue URLs, fetches structured issue context, and routes Agent mode through the verified bugfix path |
 
 Mitii is not just a chat panel. It is a workspace-aware agent runtime for real engineering work.
 
@@ -69,6 +70,7 @@ The strongest thing Mitii provides is a practical balance: **deep local context 
 | Plan before action | Complex work can be scoped, reviewed, and executed phase by phase |
 | Approval-aware autonomy | You can stay strict, go fast, or choose a middle ground without disabling safety entirely |
 | MCP without chaos | External tools are useful, but Mitii still evaluates risk before running them |
+| GitHub issue ingestion | Paste a GitHub issue URL and Mitii turns title, body, labels, and comments into structured task context |
 | Built for long tasks | Auto-continue, persisted task state, context compaction, and session history reduce restart pain |
 | Model freedom | Use local models for privacy, cloud models for capability, or different models for Plan, Act, and research |
 
@@ -85,6 +87,7 @@ flowchart LR
   Context --> Vectors[MiniLM or Hash Vectors]
   Context --> RepoMap[PageRank Repo Map]
   Context --> Git[Git Diff + SCM]
+  Context --> Issues[GitHub Issues]
   Context --> LSP[Diagnostics]
   Modes --> Agent[Agent Loop]
   Agent --> Safety[Tool Policy + Approvals]
@@ -125,7 +128,31 @@ Mitii creates a useful working map of your repository before it asks the model t
 
 Plan mode produces structured work with phases such as diagnostics, review, execute, and verify. Agent mode runs the tool loop against the task. Review mode helps inspect changes without casually rewriting them.
 
-### 3. Safer Tool Execution
+Agent mode is implemented as the **Act** runtime internally. Act now has the same kind of headless preparation boundary as Ask and Plan:
+
+| Act component | Purpose |
+|---|---|
+| `ActOrchestrator.prepare()` | Chooses direct execution, orchestrated plan-and-execute, saved-plan resume, audit, or MDX repair |
+| `ActIntentRouter` | Classifies execution intent and broadens Plan to Act handoff phrases |
+| `actMode` | Keeps plan-management tools out of direct Agent loops |
+| `actSkillRouting` | Preloads debugging, testing, and cleanup playbooks when available |
+| `actPrompts` | Injects execution contract, scope, skills, saved-plan metadata, and verification guidance |
+
+When a plan is ready, Agent mode can resume it with explicit phrases such as `execute the plan` or natural confirmations such as `go ahead`, `implement it`, `apply it`, `finish it`, or `fix it`. If no saved plan is active, those phrases are treated as ordinary Agent requests instead of triggering a stale handoff.
+
+### 3. GitHub Issue To Fix
+
+Paste a GitHub issue URL in Agent mode, for example:
+
+```text
+Fix https://github.com/owner/repo/issues/123
+```
+
+Mitii detects `github.com/{owner}/{repo}/issues/{number}`, fetches the issue through the GitHub REST API when network access is allowed, and injects a structured context block containing the title, body, state, labels, assignees, milestone, and recent comments. The Act router treats the issue signal as a verified bugfix workflow, so the agent investigates the open workspace, makes scoped edits, and runs relevant verification.
+
+If the active safety preset disables network access, Mitii still injects a lightweight reference block with the repository and issue number instead of scraping GitHub HTML. Private repository support uses a GitHub token stored in VS Code SecretStorage under `thunder.github.token` by default; the setting stores only the secret key name, not the token value.
+
+### 4. Safer Tool Execution
 
 Mitii gives the model real tools, but those tools pass through policy.
 
@@ -141,7 +168,7 @@ Mitii gives the model real tools, but those tools pass through policy.
 | Memory tools | local memory search and write |
 | Skill tools | workspace playbooks from `.mitii/skills/` |
 
-### 4. Approval Modes And Autonomy Presets
+### 5. Approval Modes And Autonomy Presets
 
 | Mode | Behavior |
 |---|---|
@@ -161,7 +188,7 @@ Mitii gives the model real tools, but those tools pass through policy.
 
 Mitii also supports untrusted workspace blocking, optional VS Code diff previews before patches land, automatic checkpoints before approved writes, and patch validation that refuses shell commands disguised as source code.
 
-### 5. Memory, Logs, And Checkpoints
+### 6. Memory, Logs, And Checkpoints
 
 Mitii stores useful state locally so every serious task does not start from zero.
 
@@ -175,7 +202,7 @@ Mitii stores useful state locally so every serious task does not start from zero
 
 Post-task memory extraction can capture useful observations after completed work, so future sessions can reuse decisions without asking you to repeat context.
 
-### 6. Skills And Project Playbooks
+### 7. Skills And Project Playbooks
 
 Mitii can load reusable workflow instructions from `SKILL.md` files. Bundled skills are copied into each workspace under `.mitii/skills/` on first init, and teams can add their own skills for code review, planning, debugging, testing, performance work, release flow, and cleanup.
 
@@ -188,7 +215,7 @@ Mitii can load reusable workflow instructions from `SKILL.md` files. Bundled ski
 | Performance | Profile, measure, and optimize carefully |
 | Cleanup | Audit dead code, dependencies, and risky patterns |
 
-### 7. MCP Integrations
+### 8. MCP Integrations
 
 Mitii can preload keyless MCP servers:
 
@@ -200,7 +227,7 @@ Mitii can preload keyless MCP servers:
 
 You can add custom servers with `thunder.mcp.servers`, `.mitii/mcp.json`, or `.mcp.json`. MCP tools appear as `mcp__server__tool` and still pass through the same approval policy.
 
-### 8. Developer UI
+### 9. Developer UI
 
 The sidebar is a React webview with:
 
@@ -404,6 +431,9 @@ Use the Echo provider for UI testing without an LLM. API keys are stored through
   "thunder.context.rerankerEnabled": true,
   "thunder.memory.enabled": true,
   "thunder.mcp.enabled": true,
+  "thunder.github.issueFetchEnabled": true,
+  "thunder.github.issueCommentLimit": 8,
+  "thunder.github.tokenRef": "thunder.github.token",
   "thunder.agent.verifyCommands": ["npm run lint", "npm test"],
   "thunder.telemetry.sessionLogging": true
 }
