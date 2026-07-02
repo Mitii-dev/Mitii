@@ -137,8 +137,21 @@ export class ToolExecutor {
 
     if (policy.decision === 'require_approval') {
       if (!this.approvalQueue.hasApprovalGrant(sessionId, resolvedName)) {
-        this.approvalQueue.createRequest(sessionId, resolvedName, input, policy, {
+        const request = this.approvalQueue.createRequest(sessionId, resolvedName, input, policy, {
           toolCallId: context?.toolCallId,
+        });
+        this.sessionLog?.append('approval_request', `${request.kind ?? 'approval'}: ${resolvedName}`, {
+          id: request.id,
+          toolName: request.toolName,
+          kind: request.kind,
+          risk: request.risk,
+          reason: request.reason,
+          files: request.files,
+          contentLength: request.contentLength,
+          question: request.question,
+          options: request.options,
+          optionCount: request.options?.length ?? 0,
+          toolCallId: request.toolCallId,
         });
         this.onPendingApproval?.();
         this.logRejectedToolCall(resolvedName, input, false, 'Awaiting approval', 'Awaiting approval');

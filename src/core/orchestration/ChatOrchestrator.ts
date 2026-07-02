@@ -74,6 +74,14 @@ import { detectMicroTask, type MicroTaskExecutor } from '../microtasks';
 
 const log = createLogger('ChatOrchestrator');
 
+export const EMPTY_ASSISTANT_RESPONSE_MESSAGE =
+  'I did not receive any response from the model for this turn. Please try again, or switch models if it keeps happening.';
+
+export function normalizeAssistantResponse(fullResponse: string): { content: string; wasEmpty: boolean } {
+  if (fullResponse.trim()) return { content: fullResponse, wasEmpty: false };
+  return { content: EMPTY_ASSISTANT_RESPONSE_MESSAGE, wasEmpty: true };
+}
+
 export type ContextPackCallback = (pack: ContextPack, views: ContextItemView[], budget: ContextBudgetView) => void;
 export type PlanCallback = (plan: PlanView | null) => void;
 export type ActivityCallback = (entry: AgentActivityEntry) => void;
@@ -201,6 +209,14 @@ export class ChatOrchestrator {
     });
   }
 
+  private emitEmptyResponse(providerId: string): void {
+    this.emitActivity('error', 'Model returned an empty response', providerId);
+    this.deps.sessionLog?.append('error', 'Model returned an empty response', {
+      provider: providerId,
+      fallbackMessage: EMPTY_ASSISTANT_RESPONSE_MESSAGE,
+    });
+  }
+
   private setLiveStatus(
     label: string | null,
     detail?: string,
@@ -246,7 +262,11 @@ export class ChatOrchestrator {
       sessionTiming.start('microtask');
       const result = await this.deps.microTaskExecutorFactory(provider).execute(microTaskId, userMessage);
       sessionTiming.end('microtask', sessionLog, result.metadata);
-      const content = result.content;
+      const normalizedResult = normalizeAssistantResponse(result.content);
+      const content = normalizedResult.content;
+      if (normalizedResult.wasEmpty) {
+        this.emitEmptyResponse(provider.id);
+      }
       this.saveTurn(session.id, 'user', userMessage);
       const emptyPack = emptyContextPack();
       await this.finishTurn(
@@ -1106,6 +1126,13 @@ export class ChatOrchestrator {
         }
       }
 
+      const normalizedResponse = normalizeAssistantResponse(fullResponse);
+      if (normalizedResponse.wasEmpty) {
+        fullResponse = normalizedResponse.content;
+        this.emitEmptyResponse(provider.id);
+        yield fullResponse;
+      }
+
       await this.finishTurn(
         session,
         provider,
@@ -1144,7 +1171,11 @@ export class ChatOrchestrator {
     const tokens = promptTokens || estimateChatRequestTokens({ messages: usageMessages });
     this.emitTurnTokenUsage(tokens, pack, fullResponse, usageMessages, compacted);
 
-    if (!fullResponse) return;
+    const normalizedResponse = normalizeAssistantResponse(fullResponse);
+    fullResponse = normalizedResponse.content;
+    if (normalizedResponse.wasEmpty) {
+      this.emitEmptyResponse(provider.id);
+    }
 
     this.saveTurn(session.id, 'assistant', fullResponse);
     this.deps.sessionLog?.append('assistant_message', fullResponse.slice(0, 200), {

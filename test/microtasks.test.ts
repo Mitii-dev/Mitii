@@ -8,6 +8,8 @@ import type { LlmProvider } from '../src/core/llm/types';
 describe('microtasks', () => {
   it('detects supported micro-task intents', () => {
     expect(detectMicroTask('write commit message please')).toBe('commit_message');
+    expect(detectMicroTask('Need commit message for the changes in stage @mitii-ai-agent')).toBe('commit_message');
+    expect(detectMicroTask('suggest a subject for staged changes')).toBe('commit_message');
     expect(detectMicroTask('what changed since v1.2.0')).toBe('changelog_entry');
     expect(detectMicroTask("draft what's new")).toBe('release_notes_draft');
     expect(detectMicroTask('explain the auth flow')).toBeNull();
@@ -80,4 +82,3 @@ describe('microtasks', () => {
     expect(redactSensitiveDiff('+password=abc123')).toBe('+[redacted sensitive line]');
   });
 });
-

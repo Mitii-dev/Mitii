@@ -895,14 +895,7 @@ export class ThunderController {
     const onboardingCompleted = this.context.globalState.get<boolean>(ONBOARDING_STATE_KEY, false);
     const providerConfigured = config.provider.type !== 'echo' || Boolean(apiKey);
 
-    const approvals: ApprovalRequestView[] = (this.approvalQueue?.getPending() ?? []).map((r) => ({
-      id: r.id,
-      toolName: r.toolName,
-      inputPreview: r.inputPreview,
-      files: r.files,
-      risk: r.risk,
-      reason: r.reason,
-    }));
+    const approvals: ApprovalRequestView[] = (this.approvalQueue?.getPending() ?? []).map(toApprovalView);
 
     return {
       ...initialWebviewState(),
@@ -2597,7 +2590,7 @@ export class ThunderController {
   }
 }
 
-function toApprovalView(r: import('../safety/ApprovalQueue').ApprovalRequest): ApprovalRequestView {
+export function toApprovalView(r: import('../safety/ApprovalQueue').ApprovalRequest): ApprovalRequestView {
   return {
     id: r.id,
     toolName: r.toolName,

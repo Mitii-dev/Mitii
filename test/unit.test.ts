@@ -767,6 +767,23 @@ describe('ThunderMode normalization', () => {
   });
 });
 
+describe('ChatOrchestrator response handling', () => {
+  it('turns empty model output into an explicit assistant message', async () => {
+    const { EMPTY_ASSISTANT_RESPONSE_MESSAGE, normalizeAssistantResponse } =
+      await import('../src/core/orchestration/ChatOrchestrator');
+
+    expect(normalizeAssistantResponse('')).toEqual({
+      content: EMPTY_ASSISTANT_RESPONSE_MESSAGE,
+      wasEmpty: true,
+    });
+    expect(normalizeAssistantResponse('   ')).toEqual({
+      content: EMPTY_ASSISTANT_RESPONSE_MESSAGE,
+      wasEmpty: true,
+    });
+    expect(normalizeAssistantResponse('ok')).toEqual({ content: 'ok', wasEmpty: false });
+  });
+});
+
 describe('Plan parser', () => {
   it('flattens rich phase plans into executable steps', async () => {
     const { parsePlanFromText } = await import('../src/core/plans/PlanActEngine');
@@ -995,6 +1012,27 @@ describe('fuzzyFileMatch', () => {
 });
 
 describe('ApprovalQueue', () => {
+  it('maps clarifying questions with options for persisted UI state', async () => {
+    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
+    const { toApprovalView } = await import('../src/core/app/ThunderController');
+    const queue = new ApprovalQueue();
+    const req = queue.createRequest('s1', 'ask_question', {
+      question: 'Which project should I inspect?',
+      options: ['agent', 'docs'],
+    }, {
+      decision: 'require_approval',
+      reason: 'Clarifying question requires user response',
+    });
+
+    expect(toApprovalView(req)).toMatchObject({
+      id: req.id,
+      toolName: 'ask_question',
+      kind: 'question',
+      question: 'Which project should I inspect?',
+      options: ['agent', 'docs'],
+    });
+  });
+
   it('stores full input for large write_file payloads', async () => {
     const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
     const queue = new ApprovalQueue();
@@ -2243,6 +2281,10 @@ describe('Ask v2 routing, scope, and impact', () => {
     expect(routeAskIntent('What is recursion?')).toMatchObject({
       intent: 'general_knowledge',
       groundingRequired: false,
+    });
+    expect(routeAskIntent('Need commit message for the changes in stage @mitii-ai-agent')).toMatchObject({
+      intent: 'explain_code',
+      groundingRequired: true,
     });
   });
 
