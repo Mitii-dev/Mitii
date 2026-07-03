@@ -23,7 +23,7 @@ export const APPROVAL_MODE_OPTIONS: Array<{ id: ApprovalMode; label: string; tit
   },
   {
     id: 'auto',
-    label: 'Auto',
+    label: 'Auto approve',
     title: 'Auto-approve allowed operations',
   },
 ];

@@ -17,9 +17,8 @@ import { PlanPanel } from './components/PlanPanel';
 import { DevPanels } from './components/DevPanels';
 import { IconButton } from './components/IconButton';
 import { IconChat, IconHistory, IconPlus, IconSettings } from './components/Icons';
-import { deriveSafetyFromAutonomyPreset } from './utils/autonomyPreset';
-import type { AutonomyPreset } from './utils/autonomyPreset';
-import type { AgentDepthView, AgentSettingsPayload, SettingsView } from '../../vscode/webview/messages';
+import { deriveSafetySettings } from './utils/approvalMode';
+import type { AgentDepthView, AgentSettingsPayload, ApprovalMode, SettingsView } from '../../vscode/webview/messages';
 import type { ThunderMode } from '../../core/session/ThunderSession';
 
 function activeDepthForMode(settings: SettingsView, mode: ThunderMode): AgentDepthView {
@@ -212,7 +211,7 @@ export function App() {
             <ChatInput
               loading={state.loading}
               mode={state.mode}
-              autonomyPreset={state.settings.autonomyPreset}
+              approvalMode={state.settings.approvalMode}
               activeDepth={activeDepth}
               tokenUsage={state.tokenUsage}
               pinnedContext={state.pinnedContext}
@@ -222,10 +221,10 @@ export function App() {
               }
               onStop={() => postMessage({ type: 'stopGeneration' })}
               onModeChange={(mode) => postMessage({ type: 'setMode', payload: mode })}
-              onAutonomyPresetChange={(preset: AutonomyPreset) =>
+              onApprovalModeChange={(approvalMode: ApprovalMode) =>
                 postMessage({
                   type: 'saveSafetySettings',
-                  payload: deriveSafetyFromAutonomyPreset(preset),
+                  payload: deriveSafetySettings(approvalMode),
                 })
               }
               onDepthChange={(depth) => {

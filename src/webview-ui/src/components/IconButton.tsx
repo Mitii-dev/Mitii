@@ -18,9 +18,9 @@ export function IconButton({
   return (
     <button
       type="button"
-      className={`icon-btn icon-btn--${variant}${active ? ' icon-btn--active' : ''} ${className}`.trim()}
+      className={`icon-btn icon-btn--${variant}${active ? ' icon-btn--active' : ''} has-tooltip ${className}`.trim()}
       aria-label={label}
-      title={label}
+      data-tooltip={label}
       {...props}
     >
       {children}

@@ -136,3 +136,31 @@ export function IconTokens(props: IconProps) {
     </svg>
   );
 }
+
+export function IconAsk(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M5.5 5.25a2.5 2.5 0 1 1 3.25 2.38c-.48.16-.75.56-.75 1.12v.25" />
+      <path d="M8 12.25h.01" />
+      <circle cx="8" cy="8" r="6" />
+    </svg>
+  );
+}
+
+export function IconPlan(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M3.5 3.5h9v9h-9z" />
+      <path d="M5.5 6h5M5.5 8h5M5.5 10h3" />
+    </svg>
+  );
+}
+
+export function IconAgent(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <rect x="3" y="5" width="10" height="7.5" rx="2" />
+      <path d="M8 2.5V5M5.75 8.25h.01M10.25 8.25h.01M6.25 10.5h3.5" />
+    </svg>
+  );
+}
