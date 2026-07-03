@@ -67,6 +67,10 @@ import { isLanceDbAvailable, isMinilmAvailable } from '../indexing/vectorAvailab
 import type { EmbeddingProvider } from '../indexing/EmbeddingProvider';
 import { McpManager } from '../mcp/McpManager';
 import { ProjectRulesContextSource, ProjectRulesService } from '../rules/ProjectRulesService';
+import {
+  ProviderProfilesService,
+  providerSecretRef,
+} from '../providers/ProviderProfilesService';
 import { SkillCatalogContextSource, SkillCatalogService } from '../skills/SkillCatalogService';
 import { InlineDiffManager } from '../../vscode/inlineDiffManager';
 import { testProviderConnection } from '../llm/testConnection';
@@ -148,6 +152,7 @@ export class ThunderController {
   private embeddingProvider: EmbeddingProvider | undefined;
   private mcpManager = new McpManager();
   private projectRulesService: ProjectRulesService | undefined;
+  private providerProfilesService: ProviderProfilesService | undefined;
   private skillCatalogService: SkillCatalogService | undefined;
   private inlineDiffManager: InlineDiffManager | undefined;
   private researchAgentProvider: LlmProvider | undefined;
@@ -184,6 +189,7 @@ export class ThunderController {
     breakdown: [] as import('../../vscode/webview/messages').TokenUsageBreakdownItem[],
   };
   private uiUpdate: UiUpdateCallback | undefined;
+  private preservedUiGetter: (() => Partial<WebviewState>) | undefined;
   private autoFixCallback: ((message: string) => Promise<void>) | undefined;
   private autoFixDepth = 0;
   private disposed = false;
@@ -197,6 +203,8 @@ export class ThunderController {
   private pendingIndexStatus: IndexingStatus | undefined;
   private tokenUsageNotifyTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingTokenUsage: TokenUsageView | undefined;
+  private settingsSaving = false;
+  private testingConnection = false;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.configService = new ConfigService(context);
@@ -222,6 +230,22 @@ export class ThunderController {
 
   setUiUpdateCallback(cb: UiUpdateCallback): void {
     this.uiUpdate = cb;
+  }
+
+  setPreservedUiGetter(getter: () => Partial<WebviewState>): void {
+    this.preservedUiGetter = getter;
+  }
+
+  private getPreservedUiBase(): Partial<WebviewState> {
+    const preserved = this.preservedUiGetter?.() ?? {};
+    return {
+      tab: preserved.tab,
+      mode: preserved.mode,
+      messages: preserved.messages,
+      currentSessionId: preserved.currentSessionId,
+      chatHistory: preserved.chatHistory,
+      loading: preserved.loading,
+    };
   }
 
   setAutoFixCallback(cb: (message: string) => Promise<void>): void {
@@ -412,6 +436,7 @@ export class ThunderController {
     this.diagnosticsService.setWorkspaceRoot(workspace);
     scaffoldMitiiWorkspace(workspace, { extensionRoot: this.context.extensionPath });
     this.projectRulesService = new ProjectRulesService(workspace);
+    this.providerProfilesService = new ProviderProfilesService(workspace);
     this.skillCatalogService = new SkillCatalogService(workspace);
     this.skillCatalogService.refresh();
     const retriever = new HybridRetriever(
@@ -484,6 +509,7 @@ export class ThunderController {
 
     this.diagnosticsService.setWorkspaceRoot(workspace);
     this.projectRulesService = new ProjectRulesService(workspace);
+    this.providerProfilesService = new ProviderProfilesService(workspace);
     this.skillCatalogService = new SkillCatalogService(workspace);
     this.skillCatalogService.refresh();
     this.memoryService = new MemoryService(db, workspace, {
@@ -932,7 +958,7 @@ export class ThunderController {
         ...this.tokenUsage,
         contextWindow: config.provider.contextWindow,
       },
-      mode: this.session?.mode ?? 'plan',
+      mode: base.mode ?? this.session?.mode ?? 'plan',
       indexing: this.indexingStatus,
       approvals,
       plan: this.currentPlan,
@@ -1023,6 +1049,8 @@ export class ThunderController {
         checkpointStrategy: config.agent.checkpointStrategy,
         showReasoning: config.ui.showReasoning,
         reasoningPreviewMaxChars: config.ui.reasoningPreviewMaxChars,
+        providerProfiles: this.providerProfilesService?.list() ?? [],
+        activeProviderProfileId: this.providerProfilesService?.getActiveId() ?? null,
       },
       contextToggles: this.contextToggles,
       mcpToggles: this.mcpToggles,
@@ -1035,6 +1063,8 @@ export class ThunderController {
       indexDbPath,
       workspaceNotice: this.workspaceNotice,
       workspaceTrusted: this.isWorkspaceTrusted(),
+      settingsSaving: this.settingsSaving,
+      testingConnection: this.testingConnection,
     };
   }
 
@@ -1695,6 +1725,7 @@ export class ThunderController {
     this.scanner = undefined;
     this.indexQueue = undefined;
     this.projectRulesService = undefined;
+    this.providerProfilesService = undefined;
     this.indexingStatus = { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0, processed: 0, runTotal: 0 };
     await this.mcpManager.closeAll();
     this.toolRuntime.unregisterByPrefix('mcp__');
@@ -1713,7 +1744,7 @@ export class ThunderController {
       }
     }
 
-    this.notifyUi(await this.buildUiState());
+    this.notifyUi(await this.buildUiState(this.getPreservedUiBase()));
     log.info('Workspace reloaded', { workspace });
     if (workspace && options.autoIndex !== false) {
       void this.maybeAutoIndex();
@@ -2173,6 +2204,9 @@ export class ThunderController {
   }
 
   async testProviderConnection(settings?: ProviderSettingsPayload): Promise<void> {
+    this.testingConnection = true;
+    this.notifyUi({ testingConnection: true });
+    try {
     const config = this.configService.getConfig();
     const apiKey = await this.configService.getApiKey();
     const providerType = settings?.providerType ?? config.provider.type;
@@ -2210,6 +2244,7 @@ export class ThunderController {
           connectionOk: false,
           connectionStatus: validation.errors.join(' '),
         },
+        testingConnection: false,
       });
       return;
     }
@@ -2227,6 +2262,7 @@ export class ThunderController {
           connectionOk: true,
           connectionStatus: 'Echo mode — no LLM needed. Responses are mirrored for UI testing.',
         },
+        testingConnection: false,
       });
       return;
     }
@@ -2252,10 +2288,15 @@ export class ThunderController {
         connectionOk: result.ok,
         connectionStatus: result.message,
       },
+      testingConnection: false,
     });
 
     if (!result.ok) {
       void vscode.window.showErrorMessage(`${AGENT_NAME}: ${result.message}`);
+    }
+    } finally {
+      this.testingConnection = false;
+      this.notifyUi({ testingConnection: false });
     }
   }
 
@@ -2332,6 +2373,9 @@ export class ThunderController {
   }
 
   async saveAllSettings(settings: ThunderSettingsPayload): Promise<void> {
+    this.settingsSaving = true;
+    this.notifyUi({ settingsSaving: true });
+    try {
     const beforeConfig = this.configService.getConfig();
     const normalized = normalizeThunderSettings(settings, beforeConfig.provider.contextWindow, this.mcpToggles);
 
@@ -2389,6 +2433,88 @@ export class ThunderController {
       });
       void vscode.window.showInformationMessage(brandMessage('Settings saved.'));
     }
+    } finally {
+      this.settingsSaving = false;
+      this.notifyUi({
+        ...(await this.buildUiState(this.getPreservedUiBase())),
+        settingsSaving: false,
+      });
+    }
+  }
+
+  async saveProviderProfile(options: {
+    id?: string;
+    name?: string;
+    settings: ProviderSettingsPayload;
+    apiKey?: string;
+  }): Promise<void> {
+    const workspace = this.resolveWorkspacePath();
+    if (!workspace) {
+      throw new Error('Open a workspace to save provider profiles under .mitii/providers.');
+    }
+    const validation = validateProviderSettings(options.settings);
+    if (!validation.ok) {
+      throw new Error(validation.errors.join(' '));
+    }
+
+    if (!this.providerProfilesService) {
+      this.providerProfilesService = new ProviderProfilesService(workspace);
+    }
+
+    const profile = this.providerProfilesService.upsert(options.settings, {
+      id: options.id,
+      name: options.name,
+      apiKey: options.apiKey,
+    });
+
+    if (options.apiKey?.trim()) {
+      await this.configService.setApiKey(options.apiKey.trim(), providerSecretRef(profile.id));
+    }
+
+    await this.applyProviderProfile(profile.id);
+  }
+
+  async selectProviderProfile(id: string): Promise<void> {
+    await this.applyProviderProfile(id);
+  }
+
+  async deleteProviderProfile(id: string): Promise<void> {
+    const workspace = this.resolveWorkspacePath();
+    if (!workspace || !this.providerProfilesService) return;
+    this.providerProfilesService.delete(id);
+    await this.configService.deleteApiKey(providerSecretRef(id));
+    this.notifyUi({ settings: (await this.buildUiState(this.getPreservedUiBase())).settings });
+  }
+
+  private async applyProviderProfile(id: string): Promise<void> {
+    const workspace = this.resolveWorkspacePath();
+    if (!workspace) return;
+
+    if (!this.providerProfilesService) {
+      this.providerProfilesService = new ProviderProfilesService(workspace);
+    }
+
+    const profile = this.providerProfilesService.setActive(id);
+    if (!profile) return;
+
+    await this.configService.updateProviderSettings({
+      providerType: profile.providerType,
+      baseUrl: profile.baseUrl,
+      model: profile.model,
+      apiVersion: profile.apiVersion,
+      region: profile.region,
+      contextWindow: profile.contextWindow,
+    });
+
+    const config = this.configService.getConfig();
+    const apiKey = profile.hasApiKey
+      ? await this.configService.getApiKey(providerSecretRef(profile.id))
+      : await this.configService.getApiKey();
+    await this.providerRegistry.resolveFromConfig(config.provider, apiKey);
+    await this.refreshResearchAgentProvider();
+    this.chatOrchestrator?.configure({ researchAgentProvider: this.researchAgentProvider });
+    this.debouncedRebuildRetriever?.();
+    this.notifyUi({ settings: (await this.buildUiState(this.getPreservedUiBase())).settings });
   }
 
   private async reloadMcpServers(): Promise<void> {
@@ -2404,6 +2530,7 @@ export class ThunderController {
       filesystem: builtin.filesystem,
       memory: builtin.memory,
       sequentialThinking: builtin.sequentialThinking,
+      puppeteer: builtin.puppeteer ?? false,
     };
   }
 

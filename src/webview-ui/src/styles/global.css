@@ -2602,6 +2602,7 @@ body,
   gap: 0;
   min-height: 0;
   flex: 1;
+  position: relative;
 }
 
 .settings-shell__header {
@@ -3109,6 +3110,76 @@ body,
 .settings-save-bar__hint {
   font-size: 11px;
   color: var(--thunder-muted);
+}
+
+.workspace-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.workspace-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.workspace-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--thunder-border);
+  border-radius: var(--thunder-radius);
+  background: var(--thunder-surface);
+}
+
+.workspace-stat__label {
+  font-size: 11px;
+  color: var(--thunder-muted);
+}
+
+.workspace-stat__value {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.workspace-stat__meta {
+  font-size: 11px;
+  color: var(--thunder-muted);
+}
+
+.settings-input--path {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+}
+
+.settings-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: color-mix(in srgb, var(--thunder-bg) 82%, transparent);
+  z-index: 5;
+  font-size: 13px;
+  color: var(--thunder-fg);
+}
+
+.settings-loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--thunder-border);
+  border-top-color: var(--thunder-accent, #007acc);
+  border-radius: 50%;
+  animation: settings-spin 0.8s linear infinite;
+}
+
+@keyframes settings-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .btn--ghost {

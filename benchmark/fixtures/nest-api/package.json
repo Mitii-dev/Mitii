@@ -1,0 +1,20 @@
+{
+  "name": "benchmark-nest-api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node dist/main.js",
+    "build": "tsc -p tsconfig.json",
+    "test": "node -e \"console.log('jest placeholder')\"",
+    "lint": "node -e \"console.log('lint ok')\""
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.3.0",
+    "@nestjs/core": "^10.3.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.2"
+  }
+}

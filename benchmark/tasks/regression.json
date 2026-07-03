@@ -1,0 +1,74 @@
+[
+  {
+    "id": "regression-verify-command-discovery",
+    "tier": "regression",
+    "category": "verify",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "What npm scripts exist in this project for test and lint verification?",
+    "verify": ["exit_0", "stdout_not_empty", "file_contains:package.json:test"]
+  },
+  {
+    "id": "regression-skill-routing-plan",
+    "tier": "regression",
+    "category": "skills",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Plan a test-driven development pass to add tests for the Button component.",
+    "verify": ["exit_0", "json_path:steps", "skills_installed:10"]
+  },
+  {
+    "id": "regression-empty-response-handling",
+    "tier": "regression",
+    "category": "orchestrator",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "Summarize AppModule providers without making anything up.",
+    "verify": ["exit_0", "stdout_not_empty"]
+  },
+  {
+    "id": "regression-phase-lock-guidance",
+    "tier": "regression",
+    "category": "agent-loop",
+    "mode": "agent",
+    "fixture": "node-express",
+    "prompt": "Review src/index.js and propose safe read-only inspection steps before any edits.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "regression-act-mcp-exclusion-note",
+    "tier": "regression",
+    "category": "mcp",
+    "mode": "agent",
+    "fixture": "next-app",
+    "prompt": "Explain which tools should be used for file edits in Agent mode vs MCP filesystem tools.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "regression-windows-path-safe",
+    "tier": "regression",
+    "category": "paths",
+    "mode": "ask",
+    "fixture": "react-vite",
+    "prompt": "List source files under src/ using workspace-relative paths.",
+    "verify": ["exit_0", "stdout_not_empty", "dir_has_files:src"]
+  },
+  {
+    "id": "regression-microtask-commit-msg-hint",
+    "tier": "regression",
+    "category": "microtasks",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Need commit message for staged changes in src/routes/users.js",
+    "verify": ["exit_0", "stdout_not_empty"]
+  },
+  {
+    "id": "regression-sequential-thinking-cap",
+    "tier": "regression",
+    "category": "mcp",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Plan debugging steps for a failing health check endpoint using structured reasoning.",
+    "verify": ["exit_0", "json_path:steps"]
+  }
+]

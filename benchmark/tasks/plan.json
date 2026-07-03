@@ -1,0 +1,38 @@
+[
+  {
+    "id": "plan-react-test-coverage",
+    "tier": "plan",
+    "category": "react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Plan adding unit tests for the Button component and updating package.json scripts.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:package.json"]
+  },
+  {
+    "id": "plan-nest-health-endpoint",
+    "tier": "plan",
+    "category": "nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Plan adding a /health endpoint with controller, service, and e2e test.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/main.ts"]
+  },
+  {
+    "id": "plan-next-seo-metadata",
+    "tier": "plan",
+    "category": "nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Plan improving SEO metadata in app/layout.tsx and documenting verification steps.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:app/layout.tsx"]
+  },
+  {
+    "id": "plan-node-error-middleware",
+    "tier": "plan",
+    "category": "node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Plan adding centralized error middleware and updating the users route tests.",
+    "verify": ["exit_0", "json_path:steps", "file_contains:src/index.js:express"]
+  }
+]

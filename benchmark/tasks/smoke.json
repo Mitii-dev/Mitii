@@ -1,0 +1,26 @@
+[
+  {
+    "id": "smoke-ask-echo",
+    "tier": "smoke",
+    "category": "infrastructure",
+    "mode": "ask",
+    "prompt": "Summarize the project structure and identify the main entry point.",
+    "verify": ["exit_0", "stdout_contains:Echo:"]
+  },
+  {
+    "id": "smoke-plan-echo",
+    "tier": "smoke",
+    "category": "infrastructure",
+    "mode": "plan",
+    "prompt": "Plan a release hygiene pass covering changelog, README, and tests.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "smoke-agent-echo",
+    "tier": "smoke",
+    "category": "infrastructure",
+    "mode": "agent",
+    "prompt": "Review the working tree and produce implementation guidance.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  }
+]

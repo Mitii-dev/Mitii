@@ -1,0 +1,10 @@
+{
+  "includes": [
+    "smoke.json",
+    "integration.json",
+    "ask.json",
+    "plan.json",
+    "agent.json",
+    "regression.json"
+  ]
+}

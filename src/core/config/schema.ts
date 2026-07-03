@@ -140,6 +140,7 @@ export const BuiltinMcpTogglesSchema = z.object({
   filesystem: z.boolean().default(true),
   memory: z.boolean().default(true),
   sequentialThinking: z.boolean().default(true),
+  puppeteer: z.boolean().default(false),
 });
 
 export const McpConfigSchema = z.object({

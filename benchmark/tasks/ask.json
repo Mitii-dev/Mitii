@@ -1,0 +1,47 @@
+[
+  {
+    "id": "ask-node-entry",
+    "tier": "ask",
+    "category": "node",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Explain how requests flow through this Express app. Where is the users router mounted?",
+    "verify": ["exit_0", "stdout_not_empty", "file_exists:src/index.js"]
+  },
+  {
+    "id": "ask-react-component",
+    "tier": "ask",
+    "category": "react",
+    "mode": "ask",
+    "fixture": "react-vite",
+    "prompt": "What does the Button component render and what props does it accept?",
+    "verify": ["exit_0", "stdout_not_empty", "file_exists:src/components/Button.tsx"]
+  },
+  {
+    "id": "ask-nest-module",
+    "tier": "ask",
+    "category": "nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "Describe the NestJS module structure and where AppController is registered.",
+    "verify": ["exit_0", "stdout_not_empty", "file_exists:src/app.module.ts"]
+  },
+  {
+    "id": "ask-next-page",
+    "tier": "ask",
+    "category": "nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "What is rendered on the home page and how is the root layout structured?",
+    "verify": ["exit_0", "stdout_not_empty", "file_exists:app/page.tsx"]
+  },
+  {
+    "id": "ask-retrieval-users-route",
+    "tier": "ask",
+    "category": "node",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Find the route handler for GET /users and summarize what it returns.",
+    "verify": ["exit_0", "stdout_not_empty", "file_contains:src/routes/users.js:router.get"]
+  }
+]

@@ -310,6 +310,20 @@ export interface SettingsView {
   checkpointStrategy: 'file-copy' | 'git-stash' | 'shadow-git';
   showReasoning: boolean;
   reasoningPreviewMaxChars: number;
+  providerProfiles: ProviderProfileView[];
+  activeProviderProfileId: string | null;
+}
+
+export interface ProviderProfileView {
+  id: string;
+  name: string;
+  providerType: string;
+  baseUrl: string;
+  model: string;
+  apiVersion: string;
+  region: string;
+  contextWindow: number;
+  hasApiKey: boolean;
 }
 
 export interface McpServerStatusView {
@@ -367,6 +381,8 @@ export interface WebviewState {
   workspaceNotice: WorkspaceNoticeView | null;
   tokenUsage: TokenUsageView;
   workspaceTrusted: boolean;
+  settingsSaving: boolean;
+  testingConnection: boolean;
 }
 
 export type WorkspaceNoticeView = {
@@ -415,6 +431,9 @@ export type WebviewToExtensionMessage =
   | { type: 'saveMcpSettings'; payload: McpSettingsPayload }
   | { type: 'saveAllSettings'; payload: ThunderSettingsPayload }
   | { type: 'testProviderConnection'; payload?: ProviderSettingsPayload }
+  | { type: 'saveProviderProfile'; payload: { id?: string; name?: string; settings: ProviderSettingsPayload; apiKey?: string } }
+  | { type: 'selectProviderProfile'; payload: { id: string } }
+  | { type: 'deleteProviderProfile'; payload: { id: string } }
   | { type: 'pickWorkspaceFolder' }
   | { type: 'setWorkspaceOverride'; payload: { path: string } }
   | { type: 'clearWorkspaceOverride' }
@@ -442,6 +461,7 @@ export const defaultMcpToggles = (): McpToggles => ({
   filesystem: true,
   memory: true,
   sequentialThinking: true,
+  puppeteer: false,
 });
 
 export const defaultContextToggles = (): ContextToggles => ({
@@ -503,6 +523,8 @@ export const defaultSettingsView = (): SettingsView => ({
   checkpointStrategy: 'git-stash',
   showReasoning: true,
   reasoningPreviewMaxChars: 8000,
+  providerProfiles: [],
+  activeProviderProfileId: null,
 });
 
 export const initialWebviewState = (): WebviewState => ({
@@ -567,4 +589,6 @@ export const initialWebviewState = (): WebviewState => ({
     breakdown: [],
   },
   workspaceTrusted: true,
+  settingsSaving: false,
+  testingConnection: false,
 });

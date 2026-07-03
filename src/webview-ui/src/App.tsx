@@ -17,7 +17,8 @@ import { PlanPanel } from './components/PlanPanel';
 import { DevPanels } from './components/DevPanels';
 import { IconButton } from './components/IconButton';
 import { IconChat, IconHistory, IconPlus, IconSettings } from './components/Icons';
-import { deriveSafetySettings } from './utils/approvalMode';
+import { deriveSafetyFromAutonomyPreset } from './utils/autonomyPreset';
+import type { AutonomyPreset } from './utils/autonomyPreset';
 import type { AgentDepthView, AgentSettingsPayload, SettingsView } from '../../vscode/webview/messages';
 import type { ThunderMode } from '../../core/session/ThunderSession';
 
@@ -211,7 +212,7 @@ export function App() {
             <ChatInput
               loading={state.loading}
               mode={state.mode}
-              approvalMode={state.settings.approvalMode}
+              autonomyPreset={state.settings.autonomyPreset}
               activeDepth={activeDepth}
               tokenUsage={state.tokenUsage}
               pinnedContext={state.pinnedContext}
@@ -221,10 +222,10 @@ export function App() {
               }
               onStop={() => postMessage({ type: 'stopGeneration' })}
               onModeChange={(mode) => postMessage({ type: 'setMode', payload: mode })}
-              onApprovalModeChange={(approvalMode) =>
+              onAutonomyPresetChange={(preset: AutonomyPreset) =>
                 postMessage({
                   type: 'saveSafetySettings',
-                  payload: deriveSafetySettings(approvalMode),
+                  payload: deriveSafetyFromAutonomyPreset(preset),
                 })
               }
               onDepthChange={(depth) => {
@@ -265,7 +266,6 @@ export function App() {
             settings={state.settings}
             workspaceOpen={state.workspaceOpen}
             workspacePath={state.workspacePath}
-            vscodeWorkspaceFolders={state.vscodeWorkspaceFolders}
             workspaceOverride={state.workspaceOverride}
             usingWorkspaceOverride={state.usingWorkspaceOverride}
             indexDbPath={state.indexDbPath}
@@ -298,6 +298,17 @@ export function App() {
             onDeleteMemory={(id) => postMessage({ type: 'deleteMemory', payload: { id } })}
             onClearMemory={() => postMessage({ type: 'clearMemory' })}
             onRestoreCheckpoint={(id) => postMessage({ type: 'restoreCheckpoint', payload: { id } })}
+            settingsSaving={state.settingsSaving}
+            testingConnection={state.testingConnection}
+            onSaveProviderProfile={(payload) =>
+              postMessage({ type: 'saveProviderProfile', payload })
+            }
+            onSelectProviderProfile={(id) =>
+              postMessage({ type: 'selectProviderProfile', payload: { id } })
+            }
+            onDeleteProviderProfile={(id) =>
+              postMessage({ type: 'deleteProviderProfile', payload: { id } })
+            }
           />
         </main>
       )}

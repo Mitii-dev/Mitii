@@ -1,7 +1,6 @@
 import { useState, useCallback, type KeyboardEvent, useRef, useEffect } from 'react';
 import type { ThunderMode } from '../../../core/session/ThunderSession';
 import type {
-  ApprovalMode,
   AgentDepthView,
   ChatImageAttachment,
   ContextPathSuggestion,
@@ -11,12 +10,13 @@ import type {
 import { IconButton } from './IconButton';
 import { IconChevronDown, IconCopy, IconImage, IconMarkdown, IconRetry, IconSend, IconStop } from './Icons';
 import { TokenMeter } from './TokenMeter';
-import { APPROVAL_MODE_OPTIONS, deriveSafetySettings } from '../utils/approvalMode';
+import { AUTONOMY_PRESET_OPTIONS, deriveSafetyFromAutonomyPreset } from '../utils/autonomyPreset';
+import type { AutonomyPreset } from '../utils/autonomyPreset';
 
 interface ChatInputProps {
   loading: boolean;
   mode: ThunderMode;
-  approvalMode: ApprovalMode;
+  autonomyPreset: AutonomyPreset;
   activeDepth: AgentDepthView;
   tokenUsage: TokenUsageView;
   pinnedContext: PinnedContextView[];
@@ -24,7 +24,7 @@ interface ChatInputProps {
   onSend: (content: string, pinnedContext: PinnedContextView[], attachments: ChatImageAttachment[]) => void;
   onStop?: () => void;
   onModeChange: (mode: ThunderMode) => void;
-  onApprovalModeChange: (mode: ApprovalMode) => void;
+  onAutonomyPresetChange: (preset: AutonomyPreset) => void;
   onDepthChange: (depth: AgentDepthView) => void;
   onRetry?: () => void;
   onCopyResponse?: () => void;
@@ -55,7 +55,7 @@ const DEPTH_OPTIONS: Array<{ id: AgentDepthView; label: string; title: string }>
 export function ChatInput({
   loading,
   mode,
-  approvalMode,
+  autonomyPreset,
   activeDepth,
   tokenUsage,
   pinnedContext,
@@ -63,7 +63,7 @@ export function ChatInput({
   onSend,
   onStop,
   onModeChange,
-  onApprovalModeChange,
+  onAutonomyPresetChange,
   onDepthChange,
   onRetry,
   onCopyResponse,
@@ -84,8 +84,8 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeMode = MODES.find((m) => m.id === mode) ?? MODES[0];
-  const activeApproval =
-    APPROVAL_MODE_OPTIONS.find((option) => option.id === approvalMode) ?? APPROVAL_MODE_OPTIONS[0];
+  const activeAutonomy =
+    AUTONOMY_PRESET_OPTIONS.find((option) => option.id === autonomyPreset) ?? AUTONOMY_PRESET_OPTIONS[1];
   const selectedDepth = DEPTH_OPTIONS.find((option) => option.id === activeDepth) ?? DEPTH_OPTIONS[0];
 
   useEffect(() => {
@@ -301,12 +301,12 @@ export function ChatInput({
             <div className="composer__mode-select-wrap">
               <select
                 className="composer__mode-select composer__approval-select"
-                value={approvalMode}
-                onChange={(e) => onApprovalModeChange(e.target.value as ApprovalMode)}
-                aria-label="Approval policy"
-                title={activeApproval.title}
+                value={autonomyPreset}
+                onChange={(e) => onAutonomyPresetChange(e.target.value as AutonomyPreset)}
+                aria-label="Autonomy preset"
+                title={activeAutonomy.title}
               >
-                {APPROVAL_MODE_OPTIONS.map((option) => (
+                {AUTONOMY_PRESET_OPTIONS.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.label}
                   </option>

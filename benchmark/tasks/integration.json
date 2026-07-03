@@ -1,0 +1,12 @@
+[
+  {
+    "id": "integration-real-ask-node",
+    "tier": "integration",
+    "category": "ask",
+    "mode": "ask",
+    "fixture": "node-express",
+    "runtime": "real",
+    "prompt": "Where is the Express app created and what port does it listen on?",
+    "verify": ["exit_0", "stdout_not_empty", "skills_installed:10"]
+  }
+]

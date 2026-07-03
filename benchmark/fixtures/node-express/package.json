@@ -1,0 +1,14 @@
+{
+  "name": "benchmark-node-express",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/users.test.js",
+    "lint": "node -e \"console.log('lint ok')\""
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

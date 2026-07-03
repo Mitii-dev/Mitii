@@ -74,6 +74,14 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
 
       this.postMessage({ type: 'state', payload: this.state });
     });
+    this.controller.setPreservedUiGetter(() => ({
+      tab: this.state.tab,
+      mode: this.state.mode,
+      messages: this.state.messages,
+      currentSessionId: this.state.currentSessionId,
+      chatHistory: this.state.chatHistory,
+      loading: this.state.loading,
+    }));
     this.controller.setAutoFixCallback(async (message) => {
       await this.runChatCompletion(message, true);
     });
@@ -320,6 +328,21 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
 
       case 'testProviderConnection':
         await this.controller.testProviderConnection(message.payload);
+        break;
+
+      case 'saveProviderProfile':
+        await this.controller.saveProviderProfile(message.payload);
+        await this.syncState();
+        break;
+
+      case 'selectProviderProfile':
+        await this.controller.selectProviderProfile(message.payload.id);
+        await this.syncState();
+        break;
+
+      case 'deleteProviderProfile':
+        await this.controller.deleteProviderProfile(message.payload.id);
+        await this.syncState();
         break;
 
       case 'pickWorkspaceFolder':

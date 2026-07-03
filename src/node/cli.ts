@@ -2,7 +2,8 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { AuditPackBuilder, verifyAuditPack } from '../core/audit';
-import { HeadlessAgentRunner, generateHeadlessChangelog, prepareHeadlessRelease } from '../core/headless';
+import { HeadlessAgentHost, generateHeadlessChangelog, prepareHeadlessRelease } from '../core/headless';
+import type { HeadlessRuntime } from '../core/headless/HeadlessConfig';
 import type { ProviderType } from '../core/config/schema';
 
 async function main(argv: string[]): Promise<number> {
@@ -57,31 +58,43 @@ async function main(argv: string[]): Promise<number> {
   }
 
   if (command === 'ask') {
-    const runner = createRunner(cwd, args, json);
-    const answer = await runner.ask(prompt || readStdin());
-    process.stdout.write(json ? JSON.stringify({ answer }, null, 2) + '\n' : `${answer}\n`);
-    return 0;
+    const host = createHost(cwd, args);
+    try {
+      const answer = await host.ask(prompt || readStdin());
+      process.stdout.write(json ? JSON.stringify({ answer }, null, 2) + '\n' : `${answer}\n`);
+      return 0;
+    } finally {
+      host.dispose();
+    }
   }
 
   if (command === 'plan') {
-    const runner = createRunner(cwd, args, json);
-    const plan = runner.plan(prompt || readStdin());
-    process.stdout.write(JSON.stringify(plan, null, 2) + '\n');
-    return 0;
+    const host = createHost(cwd, args);
+    try {
+      const plan = await host.plan(prompt || readStdin());
+      process.stdout.write(JSON.stringify(plan, null, 2) + '\n');
+      return 0;
+    } finally {
+      host.dispose();
+    }
   }
 
   if (command === 'agent') {
-    const runner = createRunner(cwd, args, json);
-    for await (const event of runner.agent(prompt || readStdin())) {
-      if (json) {
-        process.stdout.write(JSON.stringify(event) + '\n');
-      } else if (event.content) {
-        process.stdout.write(`${event.content}\n`);
-      } else if (event.message) {
-        process.stderr.write(`${event.message}\n`);
+    const host = createHost(cwd, args);
+    try {
+      for await (const event of host.agent(prompt || readStdin())) {
+        if (json) {
+          process.stdout.write(JSON.stringify(event) + '\n');
+        } else if (event.content) {
+          process.stdout.write(`${event.content}\n`);
+        } else if (event.message) {
+          process.stderr.write(`${event.message}\n`);
+        }
       }
+      return 0;
+    } finally {
+      host.dispose();
     }
-    return 0;
   }
 
   if (command === 'commit-msg') {
@@ -94,14 +107,19 @@ async function main(argv: string[]): Promise<number> {
   return 1;
 }
 
-function createRunner(cwd: string, args: string[], json: boolean): HeadlessAgentRunner {
-  return new HeadlessAgentRunner({
+function createHost(cwd: string, args: string[]): HeadlessAgentHost {
+  const provider = (valueOf(args, '--provider') as ProviderType | undefined) ?? 'echo';
+  const runtime = (valueOf(args, '--runtime') as HeadlessRuntime | undefined)
+    ?? (provider === 'echo' ? 'stub' : 'real');
+  return new HeadlessAgentHost({
     cwd,
-    providerType: (valueOf(args, '--provider') as ProviderType | undefined) ?? 'echo',
+    runtime,
+    providerType: provider,
     baseUrl: valueOf(args, '--base-url'),
     model: valueOf(args, '--model'),
-    approval: (valueOf(args, '--approval') as 'auto' | 'manual' | undefined) ?? 'manual',
-    json,
+    approval: (valueOf(args, '--approval') as 'auto' | 'manual' | undefined) ?? 'auto',
+    enablePuppeteer: args.includes('--enable-puppeteer'),
+    allowNetwork: args.includes('--allow-network'),
   });
 }
 
@@ -160,9 +178,9 @@ function printHelp(): void {
     '  mitii prepare-release [--since <tag>] [--cwd <path>] [--json]',
     '  mitii export-audit [--session <jsonl-path>] [--output <zip>] [--cwd <path>] [--json]',
     '  mitii verify-audit <zip> [--cwd <path>] [--json]',
-    '  mitii ask "question" [--provider echo|openai|...] [--model <id>] [--base-url <url>] [--cwd <path>] [--json]',
-    '  mitii plan "goal" [--provider echo|openai|...] [--model <id>] [--approval auto|manual] [--cwd <path>]',
-    '  mitii agent "goal" [--provider echo|openai|...] [--model <id>] [--approval auto|manual] [--json]',
+    '  mitii ask "question" [--runtime real|stub] [--provider echo|openai|...] [--model <id>] [--base-url <url>] [--cwd <path>] [--json]',
+    '  mitii plan "goal" [--runtime real|stub] [--provider echo|openai|...] [--model <id>] [--approval auto|manual] [--cwd <path>]',
+    '  mitii agent "goal" [--runtime real|stub] [--provider echo|openai|...] [--model <id>] [--approval auto|manual] [--enable-puppeteer] [--allow-network] [--json]',
     '',
   ].join('\n'));
 }

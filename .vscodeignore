@@ -26,4 +26,3 @@ vitest.config.ts
 
 !dist/**
 !media/**
-!bundled-skills/**

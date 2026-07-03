@@ -54,6 +54,7 @@ export interface McpToggles {
   filesystem: boolean;
   memory: boolean;
   sequentialThinking: boolean;
+  puppeteer: boolean;
 }
 
 export interface McpCustomServerView {

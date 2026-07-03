@@ -23,3 +23,5 @@ jobs:
       - run: npm ci
       - run: npm run release:check-assets
       - run: npm test
+      - run: npm run compile:cli
+      - run: npm run benchmark:smoke

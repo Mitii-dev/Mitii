@@ -1,0 +1,48 @@
+[
+  {
+    "id": "agent-node-fix-typo",
+    "tier": "agent",
+    "category": "node",
+    "mode": "agent",
+    "fixture": "node-express",
+    "prompt": "Fix the bug in src/routes/users.js where the list endpoint returns the wrong status message. Apply the fix and explain verification.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/routes/users.js:success"]
+  },
+  {
+    "id": "agent-react-button-variant",
+    "tier": "agent",
+    "category": "react",
+    "mode": "agent",
+    "fixture": "react-vite",
+    "prompt": "Add a secondary variant to Button.tsx and use it in App.tsx. Provide a verification checklist.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/App.tsx"]
+  },
+  {
+    "id": "agent-nest-add-dto",
+    "tier": "agent",
+    "category": "nestjs",
+    "mode": "agent",
+    "fixture": "nest-api",
+    "prompt": "Introduce a CreateUserDto and wire validation in AppController.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/app.controller.ts"]
+  },
+  {
+    "id": "agent-next-loading-ui",
+    "tier": "agent",
+    "category": "nextjs",
+    "mode": "agent",
+    "fixture": "next-app",
+    "prompt": "Add a loading.tsx for the home route and document how to verify it in dev.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:app/page.tsx"]
+  },
+  {
+    "id": "agent-browser-skill-available",
+    "tier": "agent",
+    "category": "browser",
+    "mode": "agent",
+    "fixture": "react-vite",
+    "enablePuppeteer": false,
+    "prompt": "List available Mitii skills for browser testing and when to use puppeteer MCP.",
+    "verify": ["exit_0", "jsonl_event:end", "skills_installed:10"]
+  }
+]

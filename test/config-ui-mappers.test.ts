@@ -119,6 +119,7 @@ describe('config UI mappers', () => {
           filesystem: false,
           memory: false,
           sequentialThinking: false,
+          puppeteer: false,
         },
       },
       indexing: {
@@ -138,6 +139,7 @@ describe('config UI mappers', () => {
         filesystem: true,
         memory: false,
         sequentialThinking: true,
+        puppeteer: false,
       })
     ).toMatchObject({
       provider: {
