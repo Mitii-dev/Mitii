@@ -83,7 +83,7 @@ function main() {
   }
 
   console.log('\nNative rebuild complete. Reload the Extension Development Host (F5).');
-  console.log('Note: run "pnpm run rebuild:node" before "pnpm test" if tests fail on sqlite.');
+  console.log('Note: run "pnpm run rebuild:node" before CLI eval or "pnpm test" if sqlite fails under Node.');
 }
 
 main();

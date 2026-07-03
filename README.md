@@ -587,7 +587,7 @@ pnpm run package:preflight  # lint, rebuild, test, package
 pnpm run compile:cli
 pnpm run benchmark:smoke      # enterprise benchmark (3 tasks, echo/stub)
 pnpm run benchmark:all        # all enterprise tasks, real runtime
-pnpm run eval:preflight       # rebuild better-sqlite3 for Node CLI eval
+pnpm run eval:preflight       # verifies better-sqlite3 for Node (run rebuild:node first)
 pnpm run eval:generate        # generate 500 standard eval tasks
 pnpm run eval:smoke           # eval wiring check (CI)
 pnpm run eval:standard -- --provider openai-compatible \

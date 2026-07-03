@@ -14,6 +14,7 @@
     "eval:smoke": "node scripts/generate-tasks.mjs --profile smoke --output tasks/eval/generated-smoke && node scripts/run-eval.mjs --provider echo --runtime stub --tier all --no-ensure-ready --tasks tasks/eval/generated-smoke/index.json",
     "eval:standard": "node scripts/run-eval.mjs --tier eval --runtime real --ensure-ready",
     "eval:aggregate": "node scripts/aggregate-results.mjs",
-    "eval:matrix": "bash scripts/ollama-matrix.sh"
+    "eval:matrix": "bash scripts/ollama-matrix.sh",
+    "reset-fixtures": "node scripts/reset-fixtures.mjs"
   }
 }

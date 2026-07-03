@@ -58,9 +58,9 @@ describe('eval preflight', () => {
     const result = checkSqliteLoad();
     if (!result.ok) {
       expect(result.message).toMatch(/NODE_MODULE_VERSION|better-sqlite3/i);
-    } else {
-      expect(result.ok).toBe(true);
+      return;
     }
+    expect(result.ok).toBe(true);
   });
 });
 

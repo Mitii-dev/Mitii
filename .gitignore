@@ -9,11 +9,23 @@ dist/
 .mitii
 project-goals/
 mitii-debug-logs/
+
+# Benchmark / eval runtime (local generation and reports)
 tools/benchmark/tasks/eval/generated/
 tools/benchmark/tasks/eval/generated-smoke/
 tools/benchmark/results/
+
+# Fixture sandboxes — deps, builds, Mitii session state
 tools/benchmark/fixtures/**/.mitii/
 tools/benchmark/fixtures/**/.next/
 tools/benchmark/fixtures/**/dist/
 tools/benchmark/fixtures/**/node_modules/
 tools/benchmark/fixtures/**/package-lock.json
+tools/benchmark/fixtures/**/pnpm-lock.yaml
+
+# Agent-created during eval (not part of pinned fixture baseline)
+tools/benchmark/fixtures/**/docs/
+tools/benchmark/fixtures/**/index.html
+tools/benchmark/fixtures/**/src/index.css
+tools/benchmark/fixtures/**/src/main.ts
+tools/benchmark/fixtures/**/src/main.tsx

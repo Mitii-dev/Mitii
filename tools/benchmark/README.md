@@ -85,14 +85,23 @@ Measures agent potential at scale **outside VS Code**. Uses the same `verify.mjs
 
 ### 1. Preflight (required for real runtime)
 
-Real eval uses **system Node**, not Electron. Rebuild `better-sqlite3` for Node before running:
+Real eval uses **system Node**, not Electron. `better-sqlite3` must be rebuilt for Node (not VS Code's Electron):
+
+```bash
+pnpm run rebuild:node
+pnpm run compile:cli
+pnpm run eval:preflight
+```
+
+`eval:preflight` opens an in-memory SQLite database to verify the native module matches your Node ABI. If you recently ran `pnpm run rebuild:native` for F5 debugging, run `pnpm run rebuild:node` again before eval.
+
+**Do not copy shell comments** from docs into your terminal. Run only the command itself:
 
 ```bash
 pnpm run eval:preflight
-# or manually:
-pnpm run rebuild:node
-pnpm run compile:cli
 ```
+
+not `pnpm run eval:preflight # rebuild better-sqlite3`.
 
 ### 2. Generate tasks
 
@@ -234,6 +243,18 @@ Fixture `node_modules` are gitignored. Install per fixture when running real bro
 ```bash
 cd tools/benchmark/fixtures/react-vite && pnpm install
 ```
+
+### Keeping git clean after eval
+
+Real eval runs **mutate fixture source files** (agents edit routes, components, READMEs, etc.). Session logs and build output are already gitignored. To restore the pinned fixture baseline after a run:
+
+```bash
+pnpm run eval:reset-fixtures
+```
+
+This reverts tracked changes under `tools/benchmark/fixtures/` and removes agent-created untracked files (e.g. `docs/`, scaffolded entry files). It also restores `generated-test` manifests if vitest touched them.
+
+**Already gitignored** (safe to leave on disk): `.mitii/`, `node_modules/`, `dist/`, `.next/`, `tools/benchmark/tasks/eval/generated/`, `tools/benchmark/results/`.
 
 ---
 

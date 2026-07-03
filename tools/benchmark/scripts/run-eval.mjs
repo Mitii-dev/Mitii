@@ -12,7 +12,7 @@ import { runEvalPreflight } from './preflight.mjs';
 
 const benchmarkDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageRoot = resolve(benchmarkDir, '../..');
-const args = process.argv.slice(2);
+const args = normalizeArgs(process.argv.slice(2));
 
 const tasksPath = resolve(valueOf(args, '--tasks') ?? join(benchmarkDir, 'tasks/eval/generated/index.json'));
 const outputPath = resolve(valueOf(args, '--output') ?? join(packageRoot, '.mitii/eval/report.json'));
@@ -96,6 +96,7 @@ mkdirSync(dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
 writeFileSync(outputPath.replace(/\.json$/, '.md'), toMarkdown(report), 'utf8');
 console.log(`${passed}/${results.length} eval tasks passed (${report.summary.score}%)`);
+printFailureHint(results, passed);
 if (passed !== results.length) process.exitCode = 1;
 
 function loadTasks(indexPath, selectedTier) {
@@ -201,9 +202,42 @@ function summarizeByCategory(results) {
   return map;
 }
 
+function normalizeArgs(argv) {
+  return argv.filter((arg) => arg !== '--');
+}
+
 function valueOf(argv, name) {
   const idx = argv.indexOf(name);
   return idx >= 0 ? argv[idx + 1] : undefined;
+}
+
+function printFailureHint(results, passed) {
+  if (passed > 0 || !results.length) return;
+
+  const stderrSamples = results
+    .map((result) => result.stderr?.trim())
+    .filter(Boolean);
+  if (!stderrSamples.length) return;
+
+  const common = stderrSamples[0];
+  const allSame = stderrSamples.every((sample) => sample === common);
+  if (!allSame) return;
+
+  if (/NODE_MODULE_VERSION/i.test(common)) {
+    console.error('');
+    console.error('All tasks failed before the agent could run.');
+    console.error('better-sqlite3 is built for Electron, not your system Node.');
+    console.error('Fix: pnpm run rebuild:node && pnpm run eval:preflight');
+    console.error('');
+    return;
+  }
+
+  if (stderrSamples.length === results.length) {
+    console.error('');
+    console.error('All tasks failed with the same error:');
+    console.error(common.split('\n').slice(0, 6).join('\n'));
+    console.error('');
+  }
 }
 
 function toMarkdown(report) {

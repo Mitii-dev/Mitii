@@ -13,7 +13,9 @@ const require = createRequire(import.meta.url);
 
 export function checkSqliteLoad() {
   try {
-    require('better-sqlite3');
+    const Database = require('better-sqlite3');
+    const db = new Database(':memory:');
+    db.close();
     return { ok: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -23,7 +25,7 @@ export function checkSqliteLoad() {
 
 export function rebuildSqliteForNode(packageDir = packageRoot) {
   console.log('Rebuilding better-sqlite3 for current Node (eval CLI requires Node ABI, not Electron)...');
-  const result = spawnSync(packageManager(), ['rebuild', 'better-sqlite3'], {
+  const result = spawnSync('node', [join(packageRoot, 'scripts/rebuild-node.mjs')], {
     cwd: packageDir,
     stdio: 'inherit',
     shell: process.platform === 'win32',
@@ -66,10 +68,6 @@ export function runEvalPreflight(options = {}) {
       '  pnpm run rebuild:all',
     ].join('\n'),
   };
-}
-
-function packageManager() {
-  return process.env.MITII_PACKAGE_MANAGER ?? 'pnpm';
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
