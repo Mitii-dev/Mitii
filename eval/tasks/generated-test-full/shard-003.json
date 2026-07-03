@@ -1,0 +1,1102 @@
+[
+  {
+    "id": "eval-coding-algo-100",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #100 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-101",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #101 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-102",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #102 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-103",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #103 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-104",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #104 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-105",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #105 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-106",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #106 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-107",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #107 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-108",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #108 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-109",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #109 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-11",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #11 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-110",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #110 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-12",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #12 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-13",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #13 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-14",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #14 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-15",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #15 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-16",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #16 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-17",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #17 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-18",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #18 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-19",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #19 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #2 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-20",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #20 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-21",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #21 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-22",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #22 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-23",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #23 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-24",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #24 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-25",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #25 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-26",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #26 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-27",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #27 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-28",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #28 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-29",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #29 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #3 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-30",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #30 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-31",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #31 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-32",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #32 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-33",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #33 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-34",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #34 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-35",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #35 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-36",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #36 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-37",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #37 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-38",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #38 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-39",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #39 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #4 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-40",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #40 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-41",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #41 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-42",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #42 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-43",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #43 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-44",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #44 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-45",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #45 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-46",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #46 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-47",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #47 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-48",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #48 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-49",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #49 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-5",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #5 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-50",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #50 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-51",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #51 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-52",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #52 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-53",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #53 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-54",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #54 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-55",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #55 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-56",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #56 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-57",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #57 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-58",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #58 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-59",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #59 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-6",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #6 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-60",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #60 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-61",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #61 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-62",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #62 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-63",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #63 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-64",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #64 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-65",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #65 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-66",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #66 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-67",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #67 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-68",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #68 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-69",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #69 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-7",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #7 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-70",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #70 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-71",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #71 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-72",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #72 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-73",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #73 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-74",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #74 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-75",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #75 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-76",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #76 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-77",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #77 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-78",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #78 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-79",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #79 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-8",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #8 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-80",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #80 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-81",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #81 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-82",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #82 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-83",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #83 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-84",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #84 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-85",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #85 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-86",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #86 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-87",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #87 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-88",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #88 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-89",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #89 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-9",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #9 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-90",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #90 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-91",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #91 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  }
+]

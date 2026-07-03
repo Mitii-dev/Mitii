@@ -1,0 +1,1120 @@
+[
+  {
+    "id": "eval-plan-react-vite-s10",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Add rate limiting for public routes in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s11",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Plan accessibility improvements for UI components in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s12",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Add integration tests with a test database or mock server in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s13",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Plan dependency audit and security hardening in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s14",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Add observability: metrics and tracing hooks in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s15",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Plan refactoring to reduce coupling between modules in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s16",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Add caching layer for frequently accessed data in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s17",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Plan feature flags for gradual rollout in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s18",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Add database migration strategy (if applicable) in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s19",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Plan dark mode support for the UI in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s2",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Add input validation for all public endpoints or components in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s3",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Plan a migration from JavaScript to TypeScript incrementally in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s4",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Add health check and readiness endpoints in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s5",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Improve error messages for API consumers in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s6",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Add API documentation generation (OpenAPI or similar) in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s7",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Plan performance profiling for hot paths in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s8",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Add environment-based configuration with validation in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s9",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Plan CI pipeline steps: lint, test, build in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-reasoning-0-v0",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "If a CI pipeline fails only on Windows, what hypotheses do you test first? (variant 1: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-0-v1",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "If a CI pipeline fails only on Windows, what hypotheses do you test first? (variant 2: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-0-v2",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "If a CI pipeline fails only on Windows, what hypotheses do you test first? (variant 3: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-0-v3",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "If a CI pipeline fails only on Windows, what hypotheses do you test first? (variant 4: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-0-v4",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "If a CI pipeline fails only on Windows, what hypotheses do you test first? (variant 5: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-1-v0",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Compare monorepo vs polyrepo for a 10-engineer team shipping JS libraries. (variant 1: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-1-v1",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Compare monorepo vs polyrepo for a 10-engineer team shipping JS libraries. (variant 2: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-1-v2",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Compare monorepo vs polyrepo for a 10-engineer team shipping JS libraries. (variant 3: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-1-v3",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Compare monorepo vs polyrepo for a 10-engineer team shipping JS libraries. (variant 4: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-1-v4",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Compare monorepo vs polyrepo for a 10-engineer team shipping JS libraries. (variant 5: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-2-v0",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "When should an agent ask for approval before editing package.json? (variant 1: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-2-v1",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "When should an agent ask for approval before editing package.json? (variant 2: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-2-v2",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "When should an agent ask for approval before editing package.json? (variant 3: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-2-v3",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "When should an agent ask for approval before editing package.json? (variant 4: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-2-v4",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "When should an agent ask for approval before editing package.json? (variant 5: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-3-v0",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "How do you verify an LLM-generated patch without running full e2e? (variant 1: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-3-v1",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "How do you verify an LLM-generated patch without running full e2e? (variant 2: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-3-v2",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "How do you verify an LLM-generated patch without running full e2e? (variant 3: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-3-v3",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "How do you verify an LLM-generated patch without running full e2e? (variant 4: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-3-v4",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "How do you verify an LLM-generated patch without running full e2e? (variant 5: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-4-v0",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "What signals indicate index staleness in a coding agent? (variant 1: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-4-v1",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "What signals indicate index staleness in a coding agent? (variant 2: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-4-v2",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "What signals indicate index staleness in a coding agent? (variant 3: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-4-v3",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "What signals indicate index staleness in a coding agent? (variant 4: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-4-v4",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "What signals indicate index staleness in a coding agent? (variant 5: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-5-v0",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Explain tradeoffs: stub runtime vs real runtime in benchmark harnesses. (variant 1: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-5-v1",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Explain tradeoffs: stub runtime vs real runtime in benchmark harnesses. (variant 2: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-5-v2",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Explain tradeoffs: stub runtime vs real runtime in benchmark harnesses. (variant 3: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-5-v3",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Explain tradeoffs: stub runtime vs real runtime in benchmark harnesses. (variant 4: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-5-v4",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Explain tradeoffs: stub runtime vs real runtime in benchmark harnesses. (variant 5: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-6-v0",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "How would you shard 1000 eval tasks across 8 workers fairly? (variant 1: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-6-v1",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "How would you shard 1000 eval tasks across 8 workers fairly? (variant 2: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-6-v2",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "How would you shard 1000 eval tasks across 8 workers fairly? (variant 3: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-6-v3",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "How would you shard 1000 eval tasks across 8 workers fairly? (variant 4: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-6-v4",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "How would you shard 1000 eval tasks across 8 workers fairly? (variant 5: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-7-v0",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "When is retrieval-augmented ask mode preferable to agent mode? (variant 1: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-7-v1",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "When is retrieval-augmented ask mode preferable to agent mode? (variant 2: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-7-v2",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "When is retrieval-augmented ask mode preferable to agent mode? (variant 3: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-7-v3",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "When is retrieval-augmented ask mode preferable to agent mode? (variant 4: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-7-v4",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "When is retrieval-augmented ask mode preferable to agent mode? (variant 5: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-8-v0",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Describe a safe rollback strategy after a bad agent edit. (variant 1: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-8-v1",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Describe a safe rollback strategy after a bad agent edit. (variant 2: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-8-v2",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Describe a safe rollback strategy after a bad agent edit. (variant 3: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-8-v3",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Describe a safe rollback strategy after a bad agent edit. (variant 4: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-8-v4",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Describe a safe rollback strategy after a bad agent edit. (variant 5: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-9-v0",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "How do session JSONL logs help post-hoc eval scoring? (variant 1: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-9-v1",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "How do session JSONL logs help post-hoc eval scoring? (variant 2: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-9-v2",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "How do session JSONL logs help post-hoc eval scoring? (variant 3: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-9-v3",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "How do session JSONL logs help post-hoc eval scoring? (variant 4: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-9-v4",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "How do session JSONL logs help post-hoc eval scoring? (variant 5: be concise and structured).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-1",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 1 where you sum integers from 1 to 11.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-10",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 10 where you sum integers from 1 to 20.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-11",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 11 where you sum integers from 1 to 21.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-12",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 12 where you sum integers from 1 to 22.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-13",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 13 where you sum integers from 1 to 23.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-14",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 14 where you sum integers from 1 to 24.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-15",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 15 where you sum integers from 1 to 25.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-16",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 16 where you sum integers from 1 to 26.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-17",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 17 where you sum integers from 1 to 27.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-18",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 18 where you sum integers from 1 to 28.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-19",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 19 where you sum integers from 1 to 29.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-2",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 2 where you sum integers from 1 to 12.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-20",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 20 where you sum integers from 1 to 30.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-21",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 21 where you sum integers from 1 to 31.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-22",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 22 where you sum integers from 1 to 32.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-23",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 23 where you sum integers from 1 to 33.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-24",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 24 where you sum integers from 1 to 34.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-25",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 25 where you sum integers from 1 to 35.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-26",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 26 where you sum integers from 1 to 36.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-27",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 27 where you sum integers from 1 to 37.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-28",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 28 where you sum integers from 1 to 38.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-29",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 29 where you sum integers from 1 to 39.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-3",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 3 where you sum integers from 1 to 13.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-30",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 30 where you sum integers from 1 to 40.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-31",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 31 where you sum integers from 1 to 41.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-32",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 32 where you sum integers from 1 to 42.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-33",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 33 where you sum integers from 1 to 43.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-34",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 34 where you sum integers from 1 to 44.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-35",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 35 where you sum integers from 1 to 45.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-36",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 36 where you sum integers from 1 to 46.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-37",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 37 where you sum integers from 1 to 47.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-reasoning-math-38",
+    "tier": "eval",
+    "category": "reasoning",
+    "mode": "ask",
+    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 38 where you sum integers from 1 to 48.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  }
+]

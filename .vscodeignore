@@ -26,3 +26,6 @@ vitest.config.ts
 
 !dist/**
 !media/**
+
+benchmark/**
+eval/**

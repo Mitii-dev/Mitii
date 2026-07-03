@@ -9,3 +9,6 @@ dist/
 .mitii
 project-goals/
 mitii-debug-logs/
+eval/tasks/
+eval/results/
+benchmark/fixtures/

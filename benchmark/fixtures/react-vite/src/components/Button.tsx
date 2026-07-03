@@ -1,6 +1,6 @@
 export interface ButtonProps {
   label: string;
-  variant?: 'primary';
+  variant?: 'primary' | 'secondary';
 }
 
 export default function Button({ label, variant = 'primary' }: ButtonProps) {

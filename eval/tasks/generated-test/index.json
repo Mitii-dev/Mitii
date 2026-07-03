@@ -1,0 +1,9 @@
+{
+  "includes": [
+    "shard-000.json",
+    "shard-001.json",
+    "shard-002.json",
+    "shard-003.json",
+    "shard-004.json"
+  ]
+}
