@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error benchmark verifier ships as plain ESM
-import { verifyTask } from '../../benchmark/verify.mjs';
+import { verifyTask } from '../../tools/benchmark/verify.mjs';
 import { resolveBundledSkillsRoot } from '../../src/core/skills/resolveBundledSkillsRoot';
 import { listBundledSkillNames } from '../../src/core/skills/installBundledSkills';
 import { buildHeadlessConfig } from '../../src/core/headless/HeadlessConfig';
@@ -10,7 +10,7 @@ import { join } from 'path';
 
 describe('benchmark verify rules', () => {
   it('checks stdout_contains and file_exists', () => {
-    const fixture = join(process.cwd(), 'benchmark/fixtures/node-express');
+    const fixture = join(process.cwd(), 'tools/benchmark/fixtures/node-express');
     expect(verifyTask('stdout_contains:Echo:', {
       stdout: 'Echo: hello',
       stderr: '',
@@ -75,7 +75,7 @@ describe('headless config', () => {
 
 describe('fixture discovery', () => {
   it('discovers JS files in node-express fixture', () => {
-    const fixture = join(process.cwd(), 'benchmark/fixtures/node-express');
+    const fixture = join(process.cwd(), 'tools/benchmark/fixtures/node-express');
     const ignore = new IgnoreService();
     ignore.load(fixture, { respectGitignore: true, respectThunderignore: true });
     const files = headlessDiscoverFiles(fixture, ignore, { hardSkipSizeBytes: 2_000_000 });

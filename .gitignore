@@ -9,6 +9,11 @@ dist/
 .mitii
 project-goals/
 mitii-debug-logs/
-eval/tasks/
-eval/results/
-benchmark/fixtures/
+tools/benchmark/tasks/eval/generated/
+tools/benchmark/tasks/eval/generated-smoke/
+tools/benchmark/results/
+tools/benchmark/fixtures/**/.mitii/
+tools/benchmark/fixtures/**/.next/
+tools/benchmark/fixtures/**/dist/
+tools/benchmark/fixtures/**/node_modules/
+tools/benchmark/fixtures/**/package-lock.json

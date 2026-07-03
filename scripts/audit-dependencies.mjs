@@ -21,10 +21,10 @@ const localBin = process.platform === 'win32'
   ? 'node_modules\\.bin\\depcheck.cmd'
   : 'node_modules/.bin/depcheck';
 
-const command = existsSync(localBin) ? localBin : 'npx';
+const command = existsSync(localBin) ? localBin : 'pnpm';
 const args = existsSync(localBin)
   ? ['--json', `--ignores=${ignores.join(',')}`]
-  : ['--yes', 'depcheck', '--json', `--ignores=${ignores.join(',')}`];
+  : ['dlx', 'depcheck', '--json', `--ignores=${ignores.join(',')}`];
 
 const result = spawnSync(command, args, {
   cwd: process.cwd(),

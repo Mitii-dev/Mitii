@@ -20,7 +20,7 @@ For bugs and feature ideas, open an [issue](https://github.com/codewithshinde/th
 |------|---------|
 | VS Code | 1.85+ (or Cursor, with native rebuild noted below) |
 | Node.js | 20+ |
-| npm | 9+ (ships with Node 20) |
+| pnpm | 10.13+ |
 | git | any recent version |
 
 Optional but useful for full feature coverage:
@@ -36,12 +36,12 @@ Optional but useful for full feature coverage:
 ```bash
 git clone https://github.com/codewithshinde/thunder-ai-agent.git
 cd thunder-ai-agent
-npm install
-npm run rebuild:native   # required for better-sqlite3 in VS Code
-npm run compile
+pnpm install
+pnpm run rebuild:native   # required for better-sqlite3 in VS Code
+pnpm run compile
 ```
 
-Git hooks are installed automatically via `npm install` → `prepare` → `scripts/install-git-hooks.mjs`. The pre-commit hook stages version bumps from `scripts/bump-version.mjs`.
+Git hooks are installed automatically via `pnpm install` -> `prepare` -> `scripts/install-git-hooks.mjs`. The pre-commit hook stages version bumps from `scripts/bump-version.mjs`.
 
 ### Launch the extension
 
@@ -53,7 +53,7 @@ Git hooks are installed automatically via `npm install` → `prepare` → `scrip
 ### Watch mode (day-to-day dev)
 
 ```bash
-npm run watch
+pnpm run watch
 ```
 
 Rebuilds the extension bundle and webview on save. Reload the Extension Development Host window after extension-side changes (`Ctrl/Cmd+R` in the host window, or restart the debug session).
@@ -63,7 +63,7 @@ Rebuilds the extension bundle and webview on save. Reload the Extension Developm
 ## Project layout
 
 ```
-thunder-ai-agent/
+mitii-ai-agent/
 ├── src/
 │   ├── extension.ts              # VS Code entry point
 │   ├── core/                     # Agent logic (editor-agnostic)
@@ -89,7 +89,9 @@ thunder-ai-agent/
 │       └── src/
 ├── test/                         # Vitest tests
 ├── scripts/                      # Build, audit, hook helpers
+├── tools/benchmark/              # @mitii/benchmark — fixtures, enterprise + eval harness
 ├── dist/                         # Compiled output (gitignored)
+├── pnpm-workspace.yaml           # Workspace: tools/*
 └── package.json                  # Extension manifest + settings schema
 ```
 
@@ -100,7 +102,20 @@ thunder-ai-agent/
 
 Scaffolds may exist at `mitii-docs/` and `mitii-website/` in this tree while you split them out. Brand constants: `src/shared/brand.ts` (sync with each repo's `brand.ts`).
 
-**Rule of thumb:** keep VS Code APIs out of `src/core/`. Core should be testable without launching an editor. Put platform glue in `src/vscode/`.
+**Rule of thumb:** keep VS Code APIs out of `src/core/`. Core should be testable without launching an editor. Put platform glue in `src/vscode/`. Keep benchmark and eval in `tools/benchmark/` — they are not extension runtime code.
+
+### Benchmark and eval
+
+```bash
+pnpm run compile:cli
+pnpm run benchmark:smoke
+pnpm run eval:preflight       # before real-runtime eval
+pnpm run eval:generate
+pnpm run eval:standard -- --provider openai-compatible \
+  --base-url http://localhost:11434/v1 --model qwen3-coder:30b --limit 50
+```
+
+See [tools/benchmark/README.md](tools/benchmark/README.md) for sharded runs, Ollama matrix, and Inspect AI.
 
 ---
 
@@ -109,23 +124,23 @@ Scaffolds may exist at `mitii-docs/` and `mitii-website/` in this tree while you
 ### Run tests
 
 ```bash
-npm run rebuild:node   # if better-sqlite3 fails under vitest
-npm test               # full suite
-npm run test:watch     # watch mode
-npm run smoke          # smoke tests only
+pnpm run rebuild:node   # if better-sqlite3 fails under vitest
+pnpm test               # full suite
+pnpm run test:watch     # watch mode
+pnpm run smoke          # smoke tests only
 ```
 
 ### Typecheck
 
 ```bash
-npm run lint           # tsc --noEmit
+pnpm run lint           # tsc --noEmit
 ```
 
 ### Build a VSIX
 
 ```bash
-npm run compile
-npm run package        # outputs thunder-ai-agent-<version>.vsix
+pnpm run compile
+pnpm run package        # outputs thunder-ai-agent-<version>.vsix
 ```
 
 Install locally: **Extensions → ... → Install from VSIX**.
@@ -134,20 +149,20 @@ Install locally: **Extensions → ... → Install from VSIX**.
 
 | Scenario | Command |
 |----------|---------|
-| F5 / VS Code extension host | `npm run rebuild:native` |
-| Cursor extension host | `THUNDER_EDITOR=cursor npm run rebuild:native` |
-| Local vitest | `npm run rebuild:node` |
-| Both | `npm run rebuild:all` |
+| F5 / VS Code extension host | `pnpm run rebuild:native` |
+| Cursor extension host | `THUNDER_EDITOR=cursor pnpm run rebuild:native` |
+| Local vitest | `pnpm run rebuild:node` |
+| Both | `pnpm run rebuild:all` |
 
 If SQLite throws on startup, this is almost always the fix.
 
 ### Audit scripts
 
 ```bash
-npm run audit:dependencies
-npm run audit:dead-code
-npm run check:circular-deps
-npm run audit:engines
+pnpm run audit:dependencies
+pnpm run audit:dead-code
+pnpm run check:circular-deps
+pnpm run audit:engines
 ```
 
 These are useful before large refactors. Not required on every PR, but run them if you touch imports or dependencies.
@@ -174,7 +189,7 @@ The pre-commit hook may stage a version bump in `package.json`. Include that in 
 
 ### Code style
 
-- TypeScript strict mode — `npm run lint` must pass
+- TypeScript strict mode - `pnpm run lint` must pass
 - Match surrounding patterns: no drive-by refactors in unrelated files
 - Logging via `createLogger('ComponentName')` from `src/core/telemetry/Logger.ts`, not raw `console.log`
 - New VS Code settings go in `package.json` contributes **and** `src/core/config/schema.ts` **and** `src/core/config/vscodeSettings.ts`
@@ -200,7 +215,7 @@ The pre-commit hook may stage a version bump in `package.json`. Include that in 
 
 1. Fork and branch from `main`
 2. Make your change; keep the diff focused
-3. Run `npm run lint` and `npm test`
+3. Run `pnpm run lint` and `pnpm test`
 4. Manually smoke-test in the Extension Development Host if you touched agent behavior or UI
 5. Open a PR against `main` with:
    - What changed and why (2–4 sentences is fine)

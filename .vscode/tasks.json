@@ -11,7 +11,7 @@
     {
       "label": "thunder: rebuild native",
       "type": "shell",
-      "command": "npm run rebuild:native",
+      "command": "pnpm run rebuild:native",
       "problemMatcher": [],
       "presentation": { "reveal": "always", "panel": "shared" }
     },

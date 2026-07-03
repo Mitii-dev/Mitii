@@ -10,7 +10,7 @@ Mitii now ships bundled skills inside the VS Code extension and copies them
 into .mitii/skills/ on workspace init. To refresh the committed bundle for
 maintainers, run:
 
-  npm run skills:sync-bundled
+  pnpm run skills:sync-bundled
 
 Or:
 

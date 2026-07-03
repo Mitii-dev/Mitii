@@ -5,10 +5,10 @@ import { fileURLToPath } from 'url';
 import { verifyTask, summarizeVerifications } from './verify.mjs';
 
 const benchmarkDir = dirname(fileURLToPath(import.meta.url));
-const packageRoot = resolve(benchmarkDir, '..');
+const packageRoot = resolve(benchmarkDir, '../..');
 const args = process.argv.slice(2);
-const cwd = resolve(valueOf(args, '--cwd') ?? process.cwd());
-const tasksPath = resolve(valueOf(args, '--tasks') ?? join(benchmarkDir, 'tasks/index.json'));
+const cwd = resolve(valueOf(args, '--cwd') ?? packageRoot);
+const tasksPath = resolve(valueOf(args, '--tasks') ?? join(benchmarkDir, 'tasks/enterprise/index.json'));
 const outputPath = resolve(valueOf(args, '--output') ?? join(cwd, '.mitii/benchmark/report.json'));
 const provider = valueOf(args, '--provider') ?? 'echo';
 const tier = valueOf(args, '--tier') ?? 'smoke';
@@ -17,14 +17,18 @@ const approval = valueOf(args, '--approval') ?? 'auto';
 const enablePuppeteer = args.includes('--enable-puppeteer');
 
 if (!existsSync(join(packageRoot, 'dist/cli.js'))) {
-  const compile = spawnSync('npm', ['run', 'compile:cli'], { cwd: packageRoot, stdio: 'inherit' });
+  const compile = spawnSync(packageManager(), ['run', 'compile:cli'], {
+    cwd: packageRoot,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  });
   if (compile.status) process.exit(compile.status ?? 1);
 }
 
 const cliPath = join(packageRoot, 'dist/cli.js');
 const taskIndex = JSON.parse(readFileSync(tasksPath, 'utf8'));
 const selectedTasks = loadTasks(taskIndex, tier);
-const fixtureRoot = join(packageRoot, 'benchmark/fixtures');
+const fixtureRoot = join(benchmarkDir, 'fixtures');
 
 const results = selectedTasks.map((task) => runTask(task, { cliPath, packageRoot, fixtureRoot }));
 const passed = results.filter((result) => result.passed).length;
@@ -110,6 +114,10 @@ function runTask(task, ctx) {
 function valueOf(argv, name) {
   const idx = argv.indexOf(name);
   return idx >= 0 ? argv[idx + 1] : undefined;
+}
+
+function packageManager() {
+  return process.env.MITII_PACKAGE_MANAGER ?? 'pnpm';
 }
 
 function toMarkdown(report) {

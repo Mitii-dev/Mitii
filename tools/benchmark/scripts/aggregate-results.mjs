@@ -7,7 +7,8 @@ import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 const args = process.argv.slice(2);
-const inputDir = resolve(valueOf(args, '--input') ?? join(dirname(fileURLToPath(import.meta.url)), '../results'));
+const benchmarkDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const inputDir = resolve(valueOf(args, '--input') ?? join(benchmarkDir, 'results'));
 const outputPath = resolve(valueOf(args, '--output') ?? join(inputDir, 'aggregated-report.json'));
 
 if (!existsSync(inputDir)) {

@@ -3,27 +3,26 @@
  * Generates 500–1000 external eval tasks for Mitii (not shipped in VSIX).
  *
  * Usage:
- *   node eval/scripts/generate-tasks.mjs --profile standard
- *   node eval/scripts/generate-tasks.mjs --count 750 --output eval/tasks/generated
+ *   node tools/benchmark/scripts/generate-tasks.mjs --profile standard
+ *   node tools/benchmark/scripts/generate-tasks.mjs --count 750 --output tools/benchmark/tasks/eval/generated
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
-const evalDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const packageRoot = resolve(evalDir, '..');
+const benchmarkDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 
 const profile = valueOf(args, '--profile') ?? 'standard';
 const countArg = valueOf(args, '--count');
-const outputDir = resolve(valueOf(args, '--output') ?? join(evalDir, 'tasks/generated'));
+const outputDir = resolve(valueOf(args, '--output') ?? join(benchmarkDir, 'tasks/eval/generated'));
 const shardSize = Number(valueOf(args, '--shard-size') ?? '100');
 
-const profiles = JSON.parse(readFileSync(join(evalDir, 'config/profiles.json'), 'utf8'));
+const profiles = JSON.parse(readFileSync(join(benchmarkDir, 'config/profiles.json'), 'utf8'));
 const profileConfig = profiles.profiles[profile] ?? profiles.profiles.standard;
 const targetCount = countArg ? Number(countArg) : profileConfig.targetCount;
 
-const fixtureCatalog = JSON.parse(readFileSync(join(evalDir, 'datasets/fixture-catalog.json'), 'utf8'));
+const fixtureCatalog = JSON.parse(readFileSync(join(benchmarkDir, 'datasets/fixture-catalog.json'), 'utf8'));
 const fixtures = fixtureCatalog.fixtures;
 
 const tasks = [];
@@ -393,7 +392,7 @@ function generateGaiaStyle() {
 
 function includeBaseBenchmark() {
   if (!profileConfig.includeBaseBenchmark) return;
-  const indexPath = join(packageRoot, 'benchmark/tasks/index.json');
+  const indexPath = join(benchmarkDir, 'tasks/enterprise/index.json');
   if (!existsSync(indexPath)) return;
   const index = JSON.parse(readFileSync(indexPath, 'utf8'));
   const baseDir = dirname(indexPath);

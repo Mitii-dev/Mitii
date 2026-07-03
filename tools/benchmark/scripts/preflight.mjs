@@ -7,7 +7,8 @@ import { createRequire } from 'module';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
-const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const benchmarkDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const packageRoot = resolve(benchmarkDir, '../..');
 const require = createRequire(import.meta.url);
 
 export function checkSqliteLoad() {
@@ -21,8 +22,8 @@ export function checkSqliteLoad() {
 }
 
 export function rebuildSqliteForNode(packageDir = packageRoot) {
-  console.log('Rebuilding better-sqlite3 for current Node (eval CLI requires Node ABI, not Electron)…');
-  const result = spawnSync('npm', ['rebuild', 'better-sqlite3'], {
+  console.log('Rebuilding better-sqlite3 for current Node (eval CLI requires Node ABI, not Electron)...');
+  const result = spawnSync(packageManager(), ['rebuild', 'better-sqlite3'], {
     cwd: packageDir,
     stdio: 'inherit',
     shell: process.platform === 'win32',
@@ -54,17 +55,21 @@ export function runEvalPreflight(options = {}) {
       'Eval preflight failed: better-sqlite3 cannot load for the current Node runtime.',
       check.message ?? '',
       '',
-      'The VS Code extension uses Electron (npm run rebuild:native).',
-      'Headless CLI eval uses system Node (npm run rebuild:node).',
+      'The VS Code extension uses Electron (pnpm run rebuild:native).',
+      'Headless CLI eval uses system Node (pnpm run rebuild:node).',
       '',
       'Fix:',
-      '  npm run rebuild:node',
-      '  npm run compile:cli',
+      '  pnpm run rebuild:node',
+      '  pnpm run compile:cli',
       '',
       'If you need both extension F5 and CLI eval:',
-      '  npm run rebuild:all',
+      '  pnpm run rebuild:all',
     ].join('\n'),
   };
+}
+
+function packageManager() {
+  return process.env.MITII_PACKAGE_MANAGER ?? 'pnpm';
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {

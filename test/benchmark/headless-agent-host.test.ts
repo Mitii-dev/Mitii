@@ -29,7 +29,7 @@ describe('HeadlessAgentHost', () => {
   });
 
   it('initializes real runtime on fixture workspace', async () => {
-    const cwd = join(process.cwd(), 'benchmark/fixtures/node-express');
+    const cwd = join(process.cwd(), 'tools/benchmark/fixtures/node-express');
     const host = new HeadlessAgentHost({
       cwd,
       packageRoot: process.cwd(),

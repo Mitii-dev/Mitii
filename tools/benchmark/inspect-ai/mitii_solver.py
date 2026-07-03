@@ -3,10 +3,10 @@ Inspect AI solver adapter for Mitii CLI.
 
 Install:
   pip install inspect-ai
-  cd mitii-ai-agent && npm run compile:cli
+  cd mitii-ai-agent && pnpm run compile:cli
 
 Run (example):
-  inspect eval eval/inspect-ai/eval_tasks.py --model openai/gpt-4o-mini
+  inspect eval tools/benchmark/inspect-ai/eval_tasks.py --model openai/gpt-4o-mini
 
 Set MITII_PACKAGE_ROOT to the mitii-ai-agent directory if not cwd.
 """
@@ -22,16 +22,17 @@ from inspect_ai.dataset import Sample
 from inspect_ai.scorer import Score, Scorer, Target, scorer, accuracy, mean
 from inspect_ai.solver import Generate, Solver, TaskState, solver
 
-PACKAGE_ROOT = Path(os.environ.get("MITII_PACKAGE_ROOT", Path(__file__).resolve().parents[2]))
+PACKAGE_ROOT = Path(os.environ.get("MITII_PACKAGE_ROOT", Path(__file__).resolve().parents[3]))
+BENCHMARK_ROOT = Path(os.environ.get("MITII_BENCHMARK_ROOT", PACKAGE_ROOT / "tools" / "benchmark"))
 CLI = PACKAGE_ROOT / "dist" / "cli.js"
-FIXTURE_ROOT = PACKAGE_ROOT / "benchmark" / "fixtures"
-GENERATED_INDEX = PACKAGE_ROOT / "eval" / "tasks" / "generated" / "index.json"
+FIXTURE_ROOT = BENCHMARK_ROOT / "fixtures"
+GENERATED_INDEX = BENCHMARK_ROOT / "tasks" / "eval" / "generated" / "index.json"
 
 
 def _load_eval_samples(limit: int | None = 50) -> list[Sample]:
     if not GENERATED_INDEX.exists():
         subprocess.run(
-            ["node", str(PACKAGE_ROOT / "eval/scripts/generate-tasks.mjs"), "--profile", "smoke"],
+            ["node", str(BENCHMARK_ROOT / "scripts/generate-tasks.mjs"), "--profile", "smoke"],
             check=True,
             cwd=PACKAGE_ROOT,
         )

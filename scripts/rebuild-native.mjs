@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
  * Rebuild native modules (better-sqlite3) for VS Code / Cursor Electron.
- * System `npm install` compiles for Node.js — the extension host uses Electron's ABI.
+ * A normal install compiles for Node.js; the extension host uses Electron's ABI.
  *
- * Override: THUNDER_ELECTRON_VERSION=42.2.0 npm run rebuild:native
- * Override editor: THUNDER_EDITOR=cursor npm run rebuild:native
+ * Override: THUNDER_ELECTRON_VERSION=42.2.0 pnpm run rebuild:native
+ * Override editor: THUNDER_EDITOR=cursor pnpm run rebuild:native
  */
 import { execSync, spawnSync } from 'child_process';
 import { existsSync } from 'fs';
@@ -60,9 +60,10 @@ function main() {
   console.log(`Rebuilding native modules for Electron ${electronVersion}…`);
 
   const result = spawnSync(
-    'npx',
+    'pnpm',
     [
-      '@electron/rebuild',
+      'exec',
+      'electron-rebuild',
       '-f',
       '-v',
       electronVersion,
@@ -76,13 +77,13 @@ function main() {
 
   if (result.status !== 0) {
     console.error('\nRebuild failed. Try:');
-    console.error('  THUNDER_ELECTRON_VERSION=42.2.0 npm run rebuild:native   # VS Code 1.124+');
-    console.error('  THUNDER_ELECTRON_VERSION=39.8.1 npm run rebuild:native   # Cursor');
+    console.error('  THUNDER_ELECTRON_VERSION=42.2.0 pnpm run rebuild:native   # VS Code 1.124+');
+    console.error('  THUNDER_ELECTRON_VERSION=39.8.1 pnpm run rebuild:native   # Cursor');
     process.exit(result.status ?? 1);
   }
 
   console.log('\nNative rebuild complete. Reload the Extension Development Host (F5).');
-  console.log('Note: run "npm run rebuild:node" before "npm test" if tests fail on sqlite.');
+  console.log('Note: run "pnpm run rebuild:node" before "pnpm test" if tests fail on sqlite.');
 }
 
 main();

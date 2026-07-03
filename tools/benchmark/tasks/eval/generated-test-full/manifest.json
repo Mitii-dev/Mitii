@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-03T03:55:22.995Z",
+  "generatedAt": "2026-07-03T07:02:35.183Z",
   "profile": "full",
   "targetCount": 1000,
   "actualCount": 1000,
@@ -52,6 +52,6 @@
     "retrieval-react": 15,
     "tool-calling": 132
   },
-  "outputDir": "/Users/karthikshinde/Applications/ai-agent/mitii/mitii-ai-agent/eval/tasks/generated-test-full",
+  "outputDir": "/Users/karthikshinde/Applications/ai-agent/mitii/mitii-ai-agent/tools/benchmark/tasks/eval/generated-test-full",
   "note": "External eval tasks — not packaged in VSIX extension"
 }

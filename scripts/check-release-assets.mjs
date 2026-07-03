@@ -18,7 +18,7 @@ if (missingAssets.length > 0) {
 const version = String(pkg.version);
 if (!readme.includes(`alt="Version ${version}"`) || !readme.includes(`badge/version-${version}-111111`)) {
   console.error(`README version badge is out of sync with package.json (${pkg.version}).`);
-  console.error('Run: npm run readme:sync-version');
+  console.error('Run: pnpm run readme:sync-version');
   process.exit(1);
 }
 

@@ -12,17 +12,17 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npm run compile
-      - run: npx vsce package
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run compile
+      - run: pnpm exec vsce package
       - name: Generate release notes
         run: node dist/cli.js changelog > release-notes.md
       - uses: softprops/action-gh-release@v2
         with:
           body_path: release-notes.md
           files: '*.vsix'
-

@@ -402,15 +402,15 @@ This is why Mitii focuses on visible plans, local logs, checkpoints, and verific
 |---|---|
 | VS Code | 1.85+ |
 | Node.js | 20+ |
-| npm | 9+ |
+| pnpm | 10.13+ |
 
 ```bash
 git clone https://github.com/codewithshinde/mitii-ai-agent.git
 cd mitii-ai-agent
-npm run setup
+pnpm run setup
 ```
 
-`npm run setup` installs dependencies, compiles the extension and webview, rebuilds native modules for VS Code on macOS, and rebuilds local Node native modules for tests. Press **F5** in VS Code to launch the Extension Development Host. Open a folder, wait for the indexing status in the Mitii sidebar, then start chatting.
+`pnpm run setup` installs dependencies, compiles the extension and webview, rebuilds native modules for VS Code on macOS, and rebuilds local Node native modules for tests. Press **F5** in VS Code to launch the Extension Development Host. Open a folder, wait for the indexing status in the Mitii sidebar, then start chatting.
 
 ### Connect A Model
 
@@ -553,15 +553,45 @@ Mitii does not send your data to a Mitii server. If you use a cloud model provid
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, project layout, testing, and pull request guidelines.
 
+### Repository layout
+
+```text
+mitii-ai-agent/                 # VS Code extension (ships as .vsix)
+├── src/                        # Extension + core agent runtime
+├── scripts/                    # Build, release, and audit helpers
+├── test/                       # Vitest suite
+├── tools/benchmark/            # @mitii/benchmark — benchmark + eval (not in VSIX)
+│   ├── fixtures/               # Pinned sample repos
+│   ├── tasks/enterprise/       # ~26 fixed benchmark tasks
+│   └── tasks/eval/             # Generated 500–1000 task shards
+├── pnpm-workspace.yaml         # tools/* workspace packages
+└── package.json
+```
+
+Benchmark and eval live in `tools/benchmark/` as a private pnpm workspace package. They call the compiled CLI (`dist/cli.js`) and are excluded from the published extension. See [tools/benchmark/README.md](tools/benchmark/README.md) for full run instructions.
+
 ```bash
-npm run watch              # extension + webview hot rebuild
-npm run setup              # one-click local dev setup
-npm run setup:cursor       # setup using Cursor Electron runtime on macOS
-npm run test               # unit tests
-npm run lint               # typecheck
-npm run smoke              # smoke tests
-npm run package            # build .vsix
-npm run package:preflight  # lint, rebuild, test, package
+pnpm run watch              # extension + webview hot rebuild
+pnpm run setup              # one-click local dev setup
+pnpm run setup:cursor       # setup using Cursor Electron runtime on macOS
+pnpm run test               # unit tests
+pnpm run lint               # typecheck
+pnpm run smoke              # smoke tests only
+pnpm run package            # build .vsix
+pnpm run package:preflight  # lint, rebuild, test, package
+```
+
+### Benchmark and eval
+
+```bash
+pnpm run compile:cli
+pnpm run benchmark:smoke      # enterprise benchmark (3 tasks, echo/stub)
+pnpm run benchmark:all        # all enterprise tasks, real runtime
+pnpm run eval:preflight       # rebuild better-sqlite3 for Node CLI eval
+pnpm run eval:generate        # generate 500 standard eval tasks
+pnpm run eval:smoke           # eval wiring check (CI)
+pnpm run eval:standard -- --provider openai-compatible \
+  --base-url http://localhost:11434/v1 --model qwen3-coder:30b --limit 50
 ```
 
 ### Native Rebuilds
@@ -570,15 +600,15 @@ VS Code and Cursor ship their own Electron runtime, so native modules may need a
 
 | Scenario | Command |
 |---|---|
-| VS Code Extension Development Host | `npm run rebuild:native` |
-| Cursor Extension Development Host | `THUNDER_EDITOR=cursor npm run rebuild:native` |
-| Local Vitest runs | `npm run rebuild:node` |
-| Everything | `npm run rebuild:all` |
+| VS Code Extension Development Host | `pnpm run rebuild:native` |
+| Cursor Extension Development Host | `THUNDER_EDITOR=cursor pnpm run rebuild:native` |
+| Local Vitest runs | `pnpm run rebuild:node` |
+| Everything | `pnpm run rebuild:all` |
 
 On Linux and Windows, Electron version auto-detection is not available. Set the version explicitly:
 
 ```bash
-THUNDER_ELECTRON_VERSION=<electron-version> npm run rebuild:native
+THUNDER_ELECTRON_VERSION=<electron-version> pnpm run rebuild:native
 ```
 
 For example, use the Electron version shipped by your VS Code or Cursor build.
@@ -586,14 +616,14 @@ For example, use the Electron version shipped by your VS Code or Cursor build.
 ### Useful Audit Scripts
 
 ```bash
-npm run audit:dependencies
-npm run audit:dead-code
-npm run check:circular-deps
-npm run audit:engines
-npm run find:console
-npm run find:inline-styles
-npm run check:missing-types
-npm run env:sync
+pnpm run audit:dependencies
+pnpm run audit:dead-code
+pnpm run check:circular-deps
+pnpm run audit:engines
+pnpm run find:console
+pnpm run find:inline-styles
+pnpm run check:missing-types
+pnpm run env:sync
 ```
 
 Bundled skills orchestrate these scripts instead of replacing them. `audit-cleanup` runs dependency/dead-code/cycle/engine audits, `code-smells-and-tech-debt` covers console logs, inline styles, missing types, and targeted lint checks, and `environment-and-secrets` compares env templates without exposing secret values.
@@ -604,7 +634,7 @@ Bundled skills orchestrate these scripts instead of replacing them. `audit-clean
 
 | Problem | Fix |
 |---|---|
-| `better-sqlite3` fails to load | Run `npm run rebuild:native` for VS Code or `THUNDER_EDITOR=cursor npm run rebuild:native` for Cursor |
+| `better-sqlite3` fails to load | Run `pnpm run rebuild:native` for VS Code or `THUNDER_EDITOR=cursor pnpm run rebuild:native` for Cursor |
 | Provider errors | Check base URL, model name, and API key. Try Echo provider to isolate UI issues |
 | Indexing feels empty | Check `.gitignore`, `.mitiiignore`, workspace write access, then run `Mitii: Index Workspace` |
 | Context feels thin | Wait for indexing, enable vectors, check context warnings, and mention important files directly |
@@ -670,8 +700,8 @@ Contributions are welcome. Good first areas include docs, tests, provider polish
 Before a pull request:
 
 ```bash
-npm run lint
-npm test
+pnpm run lint
+pnpm test
 ```
 
 For bigger agent or UI changes, also smoke-test in the Extension Development Host with **F5**.

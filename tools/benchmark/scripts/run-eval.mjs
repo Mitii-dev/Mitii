@@ -1,22 +1,21 @@
 #!/usr/bin/env node
 /**
  * External eval runner — parallel, sharded execution of 500–1000 tasks.
- * Reuses benchmark/verify.mjs; tasks live in eval/tasks/generated (not in VSIX).
+ * Reuses tools/benchmark/verify.mjs; generated tasks live under tools/benchmark/tasks/eval.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { spawn, spawnSync } from 'child_process';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { verifyTask, summarizeVerifications } from '../../benchmark/verify.mjs';
+import { verifyTask, summarizeVerifications } from '../verify.mjs';
 import { runEvalPreflight } from './preflight.mjs';
 
-const evalDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const packageRoot = resolve(evalDir, '..');
-const benchmarkDir = join(packageRoot, 'benchmark');
+const benchmarkDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const packageRoot = resolve(benchmarkDir, '../..');
 const args = process.argv.slice(2);
 
-const tasksPath = resolve(valueOf(args, '--tasks') ?? join(evalDir, 'tasks/generated/index.json'));
-const outputPath = resolve(valueOf(args, '--output') ?? join(process.cwd(), '.mitii/eval/report.json'));
+const tasksPath = resolve(valueOf(args, '--tasks') ?? join(benchmarkDir, 'tasks/eval/generated/index.json'));
+const outputPath = resolve(valueOf(args, '--output') ?? join(packageRoot, '.mitii/eval/report.json'));
 const provider = valueOf(args, '--provider') ?? 'echo';
 const tier = valueOf(args, '--tier') ?? 'eval';
 const runtime = valueOf(args, '--runtime') ?? (provider === 'echo' ? 'stub' : 'real');
@@ -47,7 +46,7 @@ if (runtime === 'real' && !dryRun) {
 
 const cliPath = join(packageRoot, 'dist/cli.js');
 const fixtureRoot = join(benchmarkDir, 'fixtures');
-const cwd = resolve(valueOf(args, '--cwd') ?? process.cwd());
+const cwd = resolve(valueOf(args, '--cwd') ?? packageRoot);
 
 let selectedTasks = loadTasks(tasksPath, tier);
 if (shardSpec) {
@@ -232,7 +231,11 @@ function toMarkdown(report) {
 
 function compileCli() {
   return new Promise((resolveCompile, reject) => {
-    const child = spawn('npm', ['run', 'compile:cli'], { cwd: packageRoot, stdio: 'inherit' });
+    const child = spawn(packageManager(), ['run', 'compile:cli'], {
+      cwd: packageRoot,
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    });
     child.on('close', (code) => (code ? reject(new Error('compile:cli failed')) : resolveCompile()));
   });
 }
@@ -258,12 +261,16 @@ function ensureEvalTasks(indexPath) {
 
   if (!needsGenerate) return;
 
-  const gen = spawnSync('node', ['eval/scripts/generate-tasks.mjs', '--profile', 'standard'], {
+  const gen = spawnSync('node', [join(benchmarkDir, 'scripts/generate-tasks.mjs'), '--profile', 'standard'], {
     cwd: packageRoot,
     stdio: 'inherit',
   });
   if (gen.status !== 0) {
-    console.error('Failed to generate standard eval tasks. Run: npm run eval:generate');
+    console.error('Failed to generate standard eval tasks. Run: pnpm run eval:generate');
     process.exit(gen.status ?? 1);
   }
+}
+
+function packageManager() {
+  return process.env.MITII_PACKAGE_MANAGER ?? 'pnpm';
 }

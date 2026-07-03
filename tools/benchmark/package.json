@@ -1,0 +1,19 @@
+{
+  "name": "@mitii/benchmark",
+  "private": true,
+  "type": "module",
+  "description": "Mitii benchmark and eval harnesses",
+  "scripts": {
+    "benchmark": "node run.mjs",
+    "benchmark:smoke": "node run.mjs --tier smoke",
+    "benchmark:all": "node run.mjs --tier all --runtime real",
+    "benchmark:integration": "node run.mjs --tier integration --runtime real",
+    "eval:generate": "node scripts/generate-tasks.mjs --profile standard",
+    "eval:generate:full": "node scripts/generate-tasks.mjs --profile full",
+    "eval:preflight": "node scripts/preflight.mjs",
+    "eval:smoke": "node scripts/generate-tasks.mjs --profile smoke --output tasks/eval/generated-smoke && node scripts/run-eval.mjs --provider echo --runtime stub --tier all --no-ensure-ready --tasks tasks/eval/generated-smoke/index.json",
+    "eval:standard": "node scripts/run-eval.mjs --tier eval --runtime real --ensure-ready",
+    "eval:aggregate": "node scripts/aggregate-results.mjs",
+    "eval:matrix": "bash scripts/ollama-matrix.sh"
+  }
+}

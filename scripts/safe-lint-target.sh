@@ -19,7 +19,7 @@ fi
 if [[ -x node_modules/.bin/eslint ]]; then
   ESLINT=(node_modules/.bin/eslint)
 else
-  ESLINT=(npx --yes eslint)
+  ESLINT=(pnpm exec eslint)
 fi
 
 "${ESLINT[@]}" --no-eslintrc --no-error-on-unmatched-pattern "$TARGET"
