@@ -109,6 +109,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
     });
 
     webviewView.onDidDispose(() => {
+      this.archiveCurrentThread();
       this.view = undefined;
     });
   }
@@ -213,6 +214,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
           this.postMessage({ type: 'state', payload: this.state });
           break;
         }
+        const restoredPlan = this.controller.restoreChatSession(message.payload.id, { mode: this.state.mode });
         this.state = {
           ...this.state,
           tab: 'chat',
@@ -221,6 +223,9 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
           currentSessionId: message.payload.id,
           messages: thread.messages,
           chatHistory: this.historySummaries(),
+          plan: restoredPlan,
+          agentActivity: [],
+          agentLiveStatus: null,
         };
         this.postMessage({ type: 'state', payload: this.state });
         break;

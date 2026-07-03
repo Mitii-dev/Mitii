@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { AGENT_NAME, brandMessage } from '../../shared/brand';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
-import { ThunderSession } from '../session/ThunderSession';
+import { ThunderSession, type ThunderMode } from '../session/ThunderSession';
 import { ConfigService } from '../config/ConfigService';
 import { LlmProviderRegistry } from '../llm/LlmProviderRegistry';
 import { IndexService } from '../indexing/IndexService';
@@ -1236,6 +1236,43 @@ export class ThunderController {
   }
 
   getSession(): ThunderSession | undefined { return this.session; }
+  restoreChatSession(sessionId: string, options: { mode?: ThunderMode } = {}): PlanView | null {
+    const restoredId = sessionId.trim();
+    if (!restoredId) return this.currentPlan;
+
+    const workspace = this.resolveWorkspacePath();
+    const mode = options.mode ?? this.session?.mode ?? 'plan';
+    const shouldReplace =
+      !this.session ||
+      this.session.id !== restoredId ||
+      this.session.workspace !== workspace;
+
+    const activeSession = shouldReplace
+      ? new ThunderSession(workspace, mode, { id: restoredId })
+      : this.session;
+    if (!activeSession) return this.currentPlan;
+    this.session = activeSession;
+    activeSession.setMode(mode);
+
+    this.sessionService?.ensureSession(activeSession);
+    if (workspace) {
+      this.configureSessionLogging(activeSession, workspace);
+    }
+
+    this.currentPlan = toPlanView(this.planPersistence?.getActive(restoredId)?.plan);
+    this.agentLiveStatus = null;
+    this.agentActivity = [];
+    this.lastSubagentSnapshot.clear();
+    this.notifyUi({
+      currentSessionId: restoredId,
+      mode: activeSession.mode,
+      plan: this.currentPlan,
+      agentActivity: [],
+      agentLiveStatus: null,
+      subagents: [],
+    });
+    return this.currentPlan;
+  }
   getConfigService(): ConfigService { return this.configService; }
   getProviderRegistry(): LlmProviderRegistry { return this.providerRegistry; }
   getIndexingStatus(): IndexingStatus { return this.indexingStatus; }
@@ -1694,6 +1731,7 @@ export class ThunderController {
   }
 
   async reloadWorkspace(options: { autoIndex?: boolean } = { autoIndex: true }): Promise<void> {
+    const preservedBase = this.getPreservedUiBase();
     const vscodeFolder = this.getPrimaryVscodeFolder();
     const override = this.configService.getWorkspaceOverride();
     if (vscodeFolder && override) {
@@ -1715,7 +1753,22 @@ export class ThunderController {
         : 'none';
     this.logWorkspaceResolution(workspace, source);
 
-    this.session = new ThunderSession(workspace);
+    const previousWorkspace = this.session?.workspace;
+    const preservedSessionId = typeof preservedBase.currentSessionId === 'string'
+      ? preservedBase.currentSessionId.trim()
+      : '';
+    const canRestoreSessionId = Boolean(
+      preservedSessionId &&
+      (!previousWorkspace || previousWorkspace === workspace)
+    );
+    this.session = new ThunderSession(
+      workspace,
+      preservedBase.mode ?? this.session?.mode ?? 'plan',
+      canRestoreSessionId ? { id: preservedSessionId } : undefined
+    );
+    const restoredUiBase = canRestoreSessionId
+      ? preservedBase
+      : { ...preservedBase, currentSessionId: this.session.id, messages: [] };
     if (workspace) {
       this.configureSessionLogging(this.session, workspace);
     }
@@ -1743,8 +1796,10 @@ export class ThunderController {
         this.initMinimalChat(workspace);
       }
     }
+    this.sessionService?.ensureSession(this.session);
+    this.currentPlan = toPlanView(this.planPersistence?.getActive(this.session.id)?.plan);
 
-    this.notifyUi(await this.buildUiState(this.getPreservedUiBase()));
+    this.notifyUi(await this.buildUiState(restoredUiBase));
     log.info('Workspace reloaded', { workspace });
     if (workspace && options.autoIndex !== false) {
       void this.maybeAutoIndex();
@@ -2729,6 +2784,24 @@ export function toApprovalView(r: import('../safety/ApprovalQueue').ApprovalRequ
     kind: r.kind,
     question: r.question,
     options: r.options,
+  };
+}
+
+function toPlanView(plan: import('../plans/PlanActEngine').ThunderPlan | null | undefined): PlanView | null {
+  if (!plan) return null;
+  const stepStatus = new Map(plan.steps.map((step) => [step.id, step.status]));
+  return {
+    ...plan,
+    steps: plan.steps.map((step) => ({ ...step })),
+    phases: plan.phases?.map((phase) => ({
+      id: phase.id,
+      title: phase.title,
+      phase: phase.phase,
+      steps: phase.steps.map((step) => ({
+        ...step,
+        status: stepStatus.get(step.id) ?? 'pending',
+      })),
+    })),
   };
 }
 
