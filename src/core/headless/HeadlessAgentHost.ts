@@ -50,6 +50,7 @@ import { MemoryExtractor } from '../runtime/MemoryExtractor';
 import { SubagentTracker } from '../runtime/SubagentTracker';
 import { PassiveMemoryInjector } from '../memory/PassiveMemoryInjector';
 import { MemoryHookService } from '../memory/MemoryHookService';
+import { AutoMemoryContextSource, AutoMemoryFileWriter } from '../memory/AutoMemoryFileWriter';
 import { PostEditValidator } from '../apply/PostEditValidator';
 import { McpManager } from '../mcp/McpManager';
 import { ProjectRulesContextSource, ProjectRulesService } from '../rules/ProjectRulesService';
@@ -69,6 +70,8 @@ import { headlessDiscoverFiles } from './headlessDiscoverFiles';
 import { defaultMcpToggles } from '../mcp/mcpToggles';
 import type { ThunderConfig } from '../config/schema';
 import { chunkContent } from '../llm/streamChunks';
+import { chunkReasoning } from '../llm/streamChunks';
+import { eventFromSessionLog, type MitiiApprovalDecision, type MitiiEvent } from './events';
 
 const log = createLogger('HeadlessAgentHost');
 
@@ -108,6 +111,7 @@ export class HeadlessAgentHost {
   private toolExecutor?: ToolExecutor;
   private chatOrchestrator?: ChatOrchestrator;
   private memoryExtractor?: MemoryExtractor;
+  private autoMemoryWriter?: AutoMemoryFileWriter;
   private mcpManager = new McpManager();
   private sessionLog = new SessionLogService();
   private subagentTracker = new SubagentTracker();
@@ -127,6 +131,11 @@ export class HeadlessAgentHost {
       apiKey: options.apiKey ?? resolveApiKey(options.providerType ?? this.config.provider.type),
       approval: options.approval ?? 'manual',
     });
+    if (options.onEvent) {
+      this.sessionLog.onEvent((event) => {
+        options.onEvent?.(eventFromSessionLog(event, this.options.cwd, this.session?.mode));
+      });
+    }
   }
 
   get isRealRuntime(): boolean {
@@ -188,6 +197,10 @@ export class HeadlessAgentHost {
       maxItems: this.config.memory.maxItems,
       hybridSearchEnabled: this.config.memory.hybridSearchEnabled,
     });
+    this.autoMemoryWriter = new AutoMemoryFileWriter(workspace, {
+      enabled: this.config.memory.autoMemoryEnabled,
+      scope: this.config.memory.autoMemoryScope,
+    });
 
     this.sessionService = new SessionService(db);
     this.planPersistence = new PlanPersistence(db);
@@ -229,12 +242,14 @@ export class HeadlessAgentHost {
     const mcpToggles = {
       ...defaultMcpToggles(),
       puppeteer: this.config.mcp.builtinServers.puppeteer ?? false,
+      agentmemory: this.config.mcp.builtinServers.agentmemory ?? false,
     };
     await this.mcpManager.reload(this.config.mcp, workspace, this.toolRuntime, mcpToggles);
 
     this.memoryExtractor = new MemoryExtractor(
       this.memoryService,
-      this.config.memory.summarizeAfterTask
+      this.config.memory.summarizeAfterTask,
+      this.autoMemoryWriter
     );
 
     if (this.config.indexing.autoIndexOnOpen) {
@@ -262,23 +277,53 @@ export class HeadlessAgentHost {
     }
   }
 
-  async *agent(prompt: string): AsyncIterable<{ type: string; message?: string; plan?: HeadlessPlan; content?: string }> {
+  async *agent(prompt: string): AsyncIterable<MitiiEvent> {
     await this.initialize();
     if (!this.isRealRuntime) {
-      yield* this.stubRunner.agent(prompt);
+      for await (const event of this.stubRunner.agent(prompt)) {
+        yield event as MitiiEvent;
+      }
       return;
     }
 
-    yield { type: 'start', message: 'headless agent started' };
+    const started = Date.now();
     let content = '';
-    for await (const chunk of this.streamMode('agent', prompt)) {
-      const text = chunkContent(chunk);
-      if (text) {
-        content += text;
-        yield { type: 'assistant_delta', content: text };
+    const pendingLogEvents: MitiiEvent[] = [];
+    const unsubscribe = this.sessionLog.onEvent((event) => {
+      pendingLogEvents.push(eventFromSessionLog(event, this.options.cwd, this.session?.mode));
+    });
+    const drain = function* (): Iterable<MitiiEvent> {
+      while (pendingLogEvents.length > 0) {
+        const event = pendingLogEvents.shift();
+        if (event) yield event;
       }
+    };
+
+    try {
+      for await (const chunk of this.streamMode('agent', prompt)) {
+        yield* drain();
+        const text = chunkContent(chunk);
+        const reasoning = chunkReasoning(chunk);
+        if (reasoning) {
+          const event: MitiiEvent = { type: 'reasoning_delta', content: reasoning };
+          this.options.onEvent?.(event);
+          yield event;
+        }
+        if (text) {
+          content += text;
+          const event: MitiiEvent = { type: 'assistant_delta', content: text };
+          this.options.onEvent?.(event);
+          yield event;
+        }
+      }
+      yield* drain();
+    } finally {
+      unsubscribe();
     }
-    yield { type: 'end', message: 'headless agent completed', content };
+    const metrics = this.buildMetrics(started, []);
+    const done: MitiiEvent = { type: 'done', content, metrics };
+    this.options.onEvent?.(done);
+    yield done;
   }
 
   async runWithMetrics(mode: ThunderMode, prompt: string): Promise<{ output: string; metrics: HeadlessRunMetrics }> {
@@ -294,7 +339,7 @@ export class HeadlessAgentHost {
       } else {
         const parts: string[] = [];
         for await (const event of this.agent(prompt)) {
-          if (event.content) parts.push(event.content);
+          if (event.type === 'assistant_delta') parts.push(event.content);
         }
         output = parts.join('');
       }
@@ -318,6 +363,13 @@ export class HeadlessAgentHost {
   dispose(): void {
     this.indexService?.dispose();
     this.initialized = false;
+  }
+
+  resolveApproval(id: string, decision: MitiiApprovalDecision): boolean {
+    if (!this.approvalQueue) return false;
+    this.approvalQueue.resolve(id, decision);
+    this.sessionLog.append('approval_decision', `${decision}: ${id}`, { id, decision });
+    return true;
   }
 
   private configureOrchestrator(workspace: string): void {
@@ -429,6 +481,7 @@ export class HeadlessAgentHost {
     if (this.gitService) sources.push(new GitDiffContextSource(this.gitService));
     sources.push(new HeadlessDiagnosticsContextSource(this.diagnosticsService));
     if (this.memoryService) sources.push(new MemoryContextSource(this.memoryService));
+    if (this.autoMemoryWriter) sources.push(new AutoMemoryContextSource(this.autoMemoryWriter));
 
     const reranker = createContextReranker(undefined, false);
     return new HybridRetriever(sources, reranker, {
@@ -479,7 +532,17 @@ export class HeadlessAgentHost {
     }
 
     this.session = new ThunderSession(this.options.cwd, mode);
+    if (this.options.sessionId) {
+      this.session = new ThunderSession(this.options.cwd, mode, { id: this.options.sessionId });
+    }
     this.sessionLog.configure(this.options.cwd, this.session.id, true, this.config.telemetry.debugMetrics);
+    this.sessionLog.writeSessionHeader({
+      mode,
+      workspace: this.options.cwd,
+      provider: this.config.provider.type,
+      model: this.config.provider.model,
+      runtime: this.options.runtime ?? 'real',
+    });
     this.toolRuntime.clearAuditLog();
     this.agentTaskState.reset();
     this.agentTaskState.setLimits({
@@ -494,6 +557,17 @@ export class HeadlessAgentHost {
 
     this.sessionService?.ensureSession(this.session, prompt.slice(0, 64));
     yield* this.chatOrchestrator.send(this.session, this.provider, prompt, []);
+  }
+
+  private buildMetrics(started: number, errors: string[]): HeadlessRunMetrics {
+    const audit = this.getToolAudit();
+    return {
+      durationMs: Date.now() - started,
+      toolCalls: audit.length,
+      errors,
+      sessionLogPath: this.sessionLog.getLogPath() || undefined,
+      auditTools: audit.map((entry) => entry.toolName),
+    };
   }
 
   private autoResolvePendingApprovals(): void {

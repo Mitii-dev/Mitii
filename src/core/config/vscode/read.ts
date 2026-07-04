@@ -57,6 +57,8 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       maxItems: config.get<number>('memory.maxItems'),
       summarizeAfterTask: config.get<boolean>('memory.summarizeAfterTask'),
       hybridSearchEnabled: config.get<boolean>('memory.hybridSearchEnabled'),
+      autoMemoryEnabled: config.get<boolean>('memory.autoMemoryEnabled'),
+      autoMemoryScope: config.get<string>('memory.autoMemoryScope'),
     },
     agent: {
       subagentsEnabled: config.get<boolean>('agent.subagentsEnabled'),

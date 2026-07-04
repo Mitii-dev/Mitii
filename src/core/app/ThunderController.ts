@@ -58,6 +58,7 @@ import { MemoryExtractor } from '../runtime/MemoryExtractor';
 import { SubagentTracker } from '../runtime/SubagentTracker';
 import { PassiveMemoryInjector } from '../memory/PassiveMemoryInjector';
 import { MemoryHookService } from '../memory/MemoryHookService';
+import { AutoMemoryContextSource, AutoMemoryFileWriter } from '../memory/AutoMemoryFileWriter';
 import { PostEditValidator } from '../apply/PostEditValidator';
 import { VectorContextSource } from '../context/sources/VectorContextSource';
 import { VectorIndexService } from '../indexing/VectorIndex';
@@ -140,6 +141,7 @@ export class ThunderController {
   private gitService: GitService | undefined;
   private diagnosticsService = new DiagnosticsService();
   private memoryService: MemoryService | undefined;
+  private autoMemoryWriter: AutoMemoryFileWriter | undefined;
   private checkpointService: CheckpointService | undefined;
   private sessionService: SessionService | undefined;
   private planPersistence: PlanPersistence | undefined;
@@ -516,6 +518,10 @@ export class ThunderController {
       maxItems: config.memory.maxItems,
       hybridSearchEnabled: config.memory.hybridSearchEnabled,
     });
+    this.autoMemoryWriter = new AutoMemoryFileWriter(workspace, {
+      enabled: config.memory.autoMemoryEnabled,
+      scope: config.memory.autoMemoryScope,
+    });
     if (config.indexing.vectorsEnabled) {
       this.memoryService.setEmbedder(this.embeddingProvider);
     }
@@ -659,7 +665,8 @@ export class ThunderController {
 
     this.memoryExtractor = new MemoryExtractor(
       this.memoryService,
-      config.memory.summarizeAfterTask
+      config.memory.summarizeAfterTask,
+      this.autoMemoryWriter
     );
 
     this.setupFileWatcher(workspace);
@@ -825,6 +832,7 @@ export class ThunderController {
     if (this.contextToggles.gitDiff && this.gitService) sources.push(new GitDiffContextSource(this.gitService));
     if (this.contextToggles.diagnostics) sources.push(new DiagnosticsContextSource(this.diagnosticsService));
     if (this.contextToggles.memory) sources.push(new MemoryContextSource(this.memoryService));
+    if (this.contextToggles.memory && this.autoMemoryWriter) sources.push(new AutoMemoryContextSource(this.autoMemoryWriter));
     if (this.contextToggles.vectors && this.vectorIndexService) {
       sources.push(new VectorContextSource(this.vectorIndexService, workspace));
     }
@@ -995,6 +1003,9 @@ export class ThunderController {
         requireApprovalWrites: config.safety.requireApprovalForWrites,
         requireApprovalShell: config.safety.requireApprovalForShell,
         memoryEnabled: config.memory.enabled,
+        summarizeAfterTask: config.memory.summarizeAfterTask,
+        autoMemoryEnabled: config.memory.autoMemoryEnabled,
+        autoMemoryScope: config.memory.autoMemoryScope,
         subagentsEnabled: config.agent.subagentsEnabled,
         agentMaxSteps: config.agent.maxSteps,
         askDepth: config.agent.askDepth,
@@ -2433,12 +2444,19 @@ export class ThunderController {
     try {
     const beforeConfig = this.configService.getConfig();
     const normalized = normalizeThunderSettings(settings, beforeConfig.provider.contextWindow, this.mcpToggles);
+    const normalizedMemory = normalized.memory ?? {
+      summarizeAfterTask: true,
+      autoMemoryEnabled: true,
+      autoMemoryScope: 'user' as const,
+    };
 
     const vectorConfigChanged =
       beforeConfig.indexing.vectorsEnabled !== normalized.indexing.vectorsEnabled ||
       beforeConfig.indexing.embeddingProvider !== normalized.indexing.embeddingProvider ||
       beforeConfig.indexing.vectorBackend !== normalized.indexing.vectorBackend ||
-      beforeConfig.memory.hybridSearchEnabled !== normalized.indexing.hybridMemorySearch;
+      beforeConfig.memory.hybridSearchEnabled !== normalized.indexing.hybridMemorySearch ||
+      beforeConfig.memory.autoMemoryEnabled !== normalizedMemory.autoMemoryEnabled ||
+      beforeConfig.memory.autoMemoryScope !== normalizedMemory.autoMemoryScope;
 
     await this.configService.updateAllSettings(normalized);
 
@@ -2586,6 +2604,7 @@ export class ThunderController {
       memory: builtin.memory,
       sequentialThinking: builtin.sequentialThinking,
       puppeteer: builtin.puppeteer ?? false,
+      agentmemory: builtin.agentmemory ?? false,
     };
   }
 

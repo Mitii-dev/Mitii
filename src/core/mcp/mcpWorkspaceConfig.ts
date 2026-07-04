@@ -75,6 +75,25 @@ export function saveCustomMcpServers(
   return payload;
 }
 
+export function connectAgentMemoryMcp(workspace: string): Record<string, McpServerConfig> {
+  const servers = loadWorkspaceMcpServers(workspace);
+  const next: Record<string, McpServerConfig> = {
+    ...servers,
+    agentmemory: {
+      disabled: false,
+      type: 'streamable-http',
+      command: '',
+      args: [],
+      env: {},
+      url: 'http://localhost:3111/mcp',
+      headers: {},
+      timeoutMs: 30_000,
+    },
+  };
+  writeWorkspaceMcpServers(workspace, next);
+  return next;
+}
+
 export function loadWorkspaceMcpServers(workspace: string): Record<string, McpServerConfig> {
   if (!workspace.trim()) return {};
   const merged: Record<string, McpServerConfig> = {};

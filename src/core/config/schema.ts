@@ -81,6 +81,8 @@ export const MemoryConfigSchema = z.object({
   maxItems: z.number().int().positive().default(500),
   summarizeAfterTask: z.boolean().default(true),
   hybridSearchEnabled: z.boolean().default(true),
+  autoMemoryEnabled: z.boolean().default(true),
+  autoMemoryScope: z.enum(['user', 'workspace', 'both']).default('user'),
 });
 
 export const AgentConfigSchema = z.object({
@@ -141,6 +143,7 @@ export const BuiltinMcpTogglesSchema = z.object({
   memory: z.boolean().default(true),
   sequentialThinking: z.boolean().default(true),
   puppeteer: z.boolean().default(false),
+  agentmemory: z.boolean().default(false),
 });
 
 export const McpConfigSchema = z.object({

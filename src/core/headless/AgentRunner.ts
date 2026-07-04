@@ -75,7 +75,6 @@ export class HeadlessAgentRunner {
   }
 
   async *agent(prompt: string): AsyncIterable<{ type: string; message?: string; plan?: HeadlessPlan; content?: string }> {
-    yield { type: 'start', message: 'headless agent started' };
     const plan = this.plan(prompt);
     yield { type: 'plan', plan };
     const content = await this.ask([
@@ -84,7 +83,7 @@ export class HeadlessAgentRunner {
       'Headless agent mode has no filesystem write tools in this runtime. Provide the best implementation guidance and verification checklist.',
     ].join('\n'));
     yield { type: 'assistant_delta', content };
-    yield { type: 'end', message: 'headless agent completed' };
+    yield { type: 'done', content };
   }
 
   private async complete(messages: Array<{ role: 'system' | 'user'; content: string }>): Promise<string> {

@@ -41,7 +41,7 @@ describe('benchmark verify rules', () => {
     }).passed).toBe(true);
 
     expect(verifyTask('jsonl_event:end', {
-      stdout: ['{"type":"start"}', '{"type":"end"}'].join('\n'),
+      stdout: '{"type":"done"}',
       stderr: '',
       exitCode: 0,
       cwd: process.cwd(),

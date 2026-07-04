@@ -56,6 +56,7 @@ export class SessionLogService {
   private logPath = '';
   private logStartedAt = 0;
   private webhookEmitter = new WebhookEmitter();
+  private listeners = new Set<(event: SessionLogEvent) => void>();
 
   configure(workspace: string, sessionId: string, enabled = true, debugMetrics = false): void {
     const sessionChanged = this.sessionId !== sessionId;
@@ -99,6 +100,11 @@ export class SessionLogService {
     this.writeEvent(type, message, data);
   }
 
+  onEvent(listener: (event: SessionLogEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
   /** Verbose diagnostics — only written when `telemetry.debugMetrics` is enabled. */
   appendDebug(type: SessionLogEventType, message: string, data?: Record<string, unknown>): void {
     if (!this.isEnabled() || !this.debugMetrics) return;
@@ -135,6 +141,7 @@ export class SessionLogService {
     try {
       appendFileSync(this.logPath, `${JSON.stringify(event)}\n`, 'utf-8');
       this.webhookEmitter.emit(event);
+      this.notifyListeners(event);
     } catch (error) {
       log.warn('Failed to append session log', {
         error: error instanceof Error ? error.message : String(error),
@@ -177,10 +184,30 @@ export class SessionLogService {
         message: 'Session started',
         data: sanitizeLogData(header),
       });
+      this.notifyListeners({
+        ts,
+        time: formatTimestampForLog(ts),
+        sessionId: this.sessionId,
+        type: 'session_start',
+        message: 'Session started',
+        data: sanitizeLogData(header),
+      });
     } catch (error) {
       log.warn('Failed to write session log header', {
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  private notifyListeners(event: SessionLogEvent): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        log.warn('Session log listener failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   }
 

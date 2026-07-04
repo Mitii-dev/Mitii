@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.7.29" src="https://img.shields.io/badge/version-2.7.29-111111">
+  <img alt="Version 2.7.30" src="https://img.shields.io/badge/version-2.7.30-111111">
   <a href="https://mitii.dev"><img alt="Website" src="https://img.shields.io/badge/website-mitii.dev-000000"></a>
   <a href="https://docs.mitii.dev"><img alt="Docs" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
@@ -196,13 +196,14 @@ Mitii stores useful state locally so every serious task does not start from zero
 
 | System | What it stores |
 |---|---|
-| Memory | Decisions, facts, observations, touched files |
+| Memory | Decisions, facts, observations, touched files in SQLite |
+| Markdown auto-memory | Human-readable summaries in `~/.mitii/projects/<project-hash>/memory/` or `.mitii/auto-memory/` |
 | Session history | `agent_sessions` and `agent_turns` in SQLite |
 | Plans | `task_plans` in SQLite and `.mitii/tasks/` files |
 | Logs | JSONL session logs in `.mitii/logs/` |
 | Checkpoints | File-copy, git-stash, or shadow-git strategies before writes |
 
-Post-task memory extraction can capture useful observations after completed work, so future sessions can reuse decisions without asking you to repeat context.
+Post-task memory extraction can capture useful observations after completed work, so future sessions can reuse decisions without asking you to repeat context. Markdown auto-memory is optional, secret-filtered, and controlled by `thunder.memory.autoMemoryEnabled` plus `thunder.memory.autoMemoryScope`.
 
 Audit review is available through `Mitii: Export Audit Pack`. The zip contains sanitized `session.jsonl`, `summary.md`, `manifest.json`, `tool-audit.json`, `approvals.json`, `redaction-report.json`, and `signature.json` with SHA-256 hashes for tamper detection. Set `MITII_AUDIT_SIGNING_KEY` to add HMAC signing, then verify archives with `mitii verify-audit <zip>`.
 
@@ -241,8 +242,10 @@ Mitii can preload keyless MCP servers:
 | `filesystem` | Scoped file access for the open workspace |
 | `memory` | Cross-session knowledge graph |
 | `sequential-thinking` | Structured reasoning helper |
+| `puppeteer` | Optional browser automation |
+| `agentmemory` | Optional enterprise memory backend at `http://localhost:3111/mcp` |
 
-You can add custom servers with `thunder.mcp.servers`, `.mitii/mcp.json`, or `.mcp.json`. MCP tools appear as `mcp__server__tool` and still pass through the same approval policy.
+You can add custom servers with `thunder.mcp.servers`, `.mitii/mcp.json`, or `.mcp.json`. MCP tools appear as `mcp__server__tool` and still pass through the same approval policy. See [docs/integrations/agentmemory.md](docs/integrations/agentmemory.md) for the optional agentmemory setup.
 
 ### 9. Developer UI
 
@@ -472,6 +475,9 @@ Use the Echo provider for UI testing without an LLM. API keys are stored through
   "thunder.indexing.vectorBackend": "sqlite",
   "thunder.context.rerankerEnabled": true,
   "thunder.memory.enabled": true,
+  "thunder.memory.summarizeAfterTask": true,
+  "thunder.memory.autoMemoryEnabled": true,
+  "thunder.memory.autoMemoryScope": "user",
   "thunder.mcp.enabled": true,
   "thunder.github.issueFetchEnabled": true,
   "thunder.github.issueCommentLimit": 8,
@@ -493,19 +499,29 @@ Mitii automatically picks up common project instruction files:
 
 | File or folder | Purpose |
 |---|---|
-| `AGENTS.md` | Agent instructions |
-| `CLAUDE.md` | Claude-style project guidance |
-| `WARP.md` | Warp-style workflow guidance |
-| `.cursorrules` | Cursor rules |
-| `.cursor/rules` | Cursor rule directory |
-| `.clinerules` | Cline rules |
-| `.continue/rules` | Continue rules |
-| `.mitii/rules` | Mitii project rules |
-| `.mitii/agents` | Agent-specific instructions |
-| `.mitii/checks` | Verification guidance |
-| `.mitii/prompts` | Reusable prompts |
+| `~/.mitii/MITTII.md` | Personal global instructions |
+| `MITII.md` | Shared workspace instructions |
+| `AGENTS.md` | Compatibility instructions |
+| `CLAUDE.md` | Compatibility instructions |
+| `.mitii/rules/**/*.md` | Shared Mitii rule directory |
+| `.cursor/rules/**/*.md` | Cursor rule compatibility |
+| `.mitii/MITTII.local.md` | Personal workspace override, loaded last |
 
-Commit these files to your repo when you want every Mitii session to start with the same engineering conventions.
+Commit shared files to your repo when you want every Mitii session to start with the same engineering conventions. `@path/to/file` references inside rule files are resolved relative to the rule file and inlined within the rules budget.
+
+## SDK And CLI
+
+The publishable SDK lives in `packages/sdk` and exposes `createClient()` plus `query()` for Node 20+ projects:
+
+```ts
+import { query } from '@mitii/sdk';
+
+for await (const event of query({ cwd: process.cwd(), prompt: 'Summarize the repo', mode: 'agent' })) {
+  if (event.type === 'assistant_delta') process.stdout.write(event.content);
+}
+```
+
+The CLI uses the same SDK contract for one-shot commands. `mitii agent "..." --json` emits one typed event per line. Running `mitii` with no args opens an interactive terminal session; `mitii init` creates a starter `MITII.md`; `mitii auth` stores headless provider credentials in `~/.mitii/credentials.json`; `mitii memory connect agentmemory` wires the optional agentmemory MCP entry.
 
 ---
 
@@ -564,7 +580,8 @@ mitii-ai-agent/                 # VS Code extension (ships as .vsix)
 │   ├── fixtures/               # Pinned sample repos
 │   ├── tasks/enterprise/       # ~26 fixed benchmark tasks
 │   └── tasks/eval/             # Generated 500–1000 task shards
-├── pnpm-workspace.yaml         # tools/* workspace packages
+├── packages/sdk/               # @mitii/sdk headless runtime package
+├── pnpm-workspace.yaml         # tools/* and packages/* workspace packages
 └── package.json
 ```
 

@@ -5,6 +5,7 @@ export interface McpToggles {
   memory: boolean;
   sequentialThinking: boolean;
   puppeteer: boolean;
+  agentmemory?: boolean;
 }
 
 export const defaultMcpToggles = (): McpToggles => ({
@@ -12,6 +13,7 @@ export const defaultMcpToggles = (): McpToggles => ({
   memory: true,
   sequentialThinking: true,
   puppeteer: false,
+  agentmemory: false,
 });
 
 export function mcpToggleKeyToServerName(key: keyof McpToggles): string {
@@ -24,6 +26,7 @@ export function mcpServerNameToToggleKey(name: string): keyof McpToggles | undef
   if (name === 'memory') return 'memory';
   if (name === 'sequential-thinking') return 'sequentialThinking';
   if (name === 'puppeteer') return 'puppeteer';
+  if (name === 'agentmemory') return 'agentmemory';
   return undefined;
 }
 

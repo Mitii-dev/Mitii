@@ -54,9 +54,10 @@ function verifyRule(rule, ctx) {
   }
   if (rule.startsWith('jsonl_event:')) {
     const type = rule.slice('jsonl_event:'.length);
+    const acceptedTypes = type === 'end' ? new Set(['end', 'done']) : new Set([type]);
     const found = ctx.stdout.split(/\r?\n/).some((line) => {
       try {
-        return JSON.parse(line).type === type;
+        return acceptedTypes.has(JSON.parse(line).type);
       } catch {
         return false;
       }

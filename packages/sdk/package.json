@@ -1,0 +1,42 @@
+{
+  "name": "@mitii/sdk",
+  "version": "2.7.30",
+  "description": "Node SDK for running Mitii headless ask, plan, and agent sessions.",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./types": "./dist/types.d.ts"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm --packages=external --alias:vscode=../../src/node/vscode-shim.ts && cp src/index.d.ts dist/index.d.ts && cp src/types.d.ts dist/types.d.ts",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "better-sqlite3": ">=12",
+    "@xenova/transformers": ">=2"
+  },
+  "peerDependenciesMeta": {
+    "@xenova/transformers": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.5",
+    "typescript": "^5.5.2",
+    "vitest": "^1.6.0"
+  }
+}

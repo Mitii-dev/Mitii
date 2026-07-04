@@ -551,18 +551,19 @@ describe('Builtin MCP servers', () => {
     const { buildBuiltinMcpServers } = await import('../src/core/mcp/builtinServers');
     const servers = buildBuiltinMcpServers('/tmp/my-project');
 
-    expect(Object.keys(servers).sort()).toEqual(['filesystem', 'memory', 'puppeteer', 'sequential-thinking']);
+    expect(Object.keys(servers).sort()).toEqual(['agentmemory', 'filesystem', 'memory', 'puppeteer', 'sequential-thinking']);
     expect(servers.filesystem.command).toBe(process.platform === 'win32' ? 'cmd' : 'npx');
     expect(servers.filesystem.args).toContain('@modelcontextprotocol/server-filesystem');
     expect(servers.filesystem.args.at(-1)).toBe(resolve('/tmp/my-project'));
     expect(servers.memory.args).toContain('@modelcontextprotocol/server-memory');
     expect(servers['sequential-thinking'].args).toContain('@modelcontextprotocol/server-sequential-thinking');
+    expect(servers.agentmemory).toMatchObject({ type: 'streamable-http', url: 'http://localhost:3111/mcp' });
   });
 
   it('omits filesystem when workspace is empty', async () => {
     const { buildBuiltinMcpServers } = await import('../src/core/mcp/builtinServers');
     const servers = buildBuiltinMcpServers('');
-    expect(Object.keys(servers).sort()).toEqual(['memory', 'puppeteer', 'sequential-thinking']);
+    expect(Object.keys(servers).sort()).toEqual(['agentmemory', 'memory', 'puppeteer', 'sequential-thinking']);
   });
 
   it('lets user settings override built-in servers', async () => {
@@ -606,6 +607,7 @@ describe('Builtin MCP servers', () => {
       memory: false,
       sequentialThinking: true,
       puppeteer: false,
+      agentmemory: false,
     });
     expect(servers.memory.disabled).toBe(true);
     expect(servers.filesystem.disabled).toBe(false);
@@ -617,6 +619,7 @@ describe('Builtin MCP servers', () => {
       memory: true,
       sequentialThinking: true,
       puppeteer: false,
+      agentmemory: false,
     });
   });
 });
@@ -626,20 +629,22 @@ describe('ProjectRulesService', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-rules-test-'));
     try {
       writeFileSync(join(tempDir, 'MITII.md'), 'mitii instructions');
-      writeFileSync(join(tempDir, 'AGENTS.md'), 'ignored agent instructions');
+      writeFileSync(join(tempDir, 'AGENTS.md'), 'agent instructions');
 
       const rules = new ProjectRulesService(tempDir).load();
-      expect(rules.map((rule) => rule.relPath)).toEqual(['MITII.md']);
+      expect(rules.map((rule) => rule.relPath)).toEqual(['MITII.md', 'AGENTS.md']);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
 
-  it('returns empty when MITII.md is missing', () => {
+  it('loads compatibility files when MITII.md is missing', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-rules-test-'));
     try {
-      writeFileSync(join(tempDir, 'AGENTS.md'), 'ignored');
-      expect(new ProjectRulesService(tempDir).load()).toEqual([]);
+      writeFileSync(join(tempDir, 'AGENTS.md'), 'agent instructions');
+      expect(new ProjectRulesService(tempDir).load()).toEqual([
+        { relPath: 'AGENTS.md', content: 'agent instructions' },
+      ]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

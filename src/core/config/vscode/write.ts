@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type {
   AgentSettingsPayload,
   IndexingSettingsPayload,
+  MemorySettingsPayload,
   ProviderSettingsPayload,
   SafetySettingsPayload,
   TelemetrySettingsPayload,
@@ -97,11 +98,22 @@ export async function updateTelemetrySettings(settings: TelemetrySettingsPayload
   }
 }
 
+export async function updateMemorySettings(settings: MemorySettingsPayload): Promise<void> {
+  const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
+  const target = vscode.ConfigurationTarget.Global;
+  await config.update('memory.summarizeAfterTask', settings.summarizeAfterTask, target);
+  await config.update('memory.autoMemoryEnabled', settings.autoMemoryEnabled, target);
+  await config.update('memory.autoMemoryScope', settings.autoMemoryScope, target);
+}
+
 export async function updateAllSettings(settings: ThunderSettingsPayload): Promise<void> {
   await updateProviderSettings(settings.provider);
   await updateAgentSettings(settings.agent);
   await updateSafetySettings(settings.safety);
   await updateMcpSettings(settings.mcp);
   await updateIndexingSettings(settings.indexing);
+  if (settings.memory) {
+    await updateMemorySettings(settings.memory);
+  }
   await updateTelemetrySettings(settings.telemetry);
 }

@@ -112,6 +112,11 @@ export function normalizeThunderSettings(
       builtinServers: builtinMcpToggles,
     },
     indexing: settings.indexing,
+    memory: settings.memory ?? {
+      summarizeAfterTask: true,
+      autoMemoryEnabled: true,
+      autoMemoryScope: 'user',
+    },
     telemetry: {
       sessionLogging: settings.telemetry.sessionLogging,
       debugMetrics: settings.telemetry.debugMetrics,

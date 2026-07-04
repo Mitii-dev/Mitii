@@ -45,6 +45,16 @@ Example:
 - \`logs/\` — session logs (when enabled)
 - \`tasks/\` — saved plans
 - \`skills/\` — bundled workspace skill playbooks (copied from the extension on first init)
+- \`MITTII.local.md\` — optional personal project instructions; copy from \`MITTII.local.md.example\`
+`;
+
+const LOCAL_RULES_EXAMPLE = `# Local Mitii Instructions
+
+Personal notes for this workspace. This file is intentionally not meant for git.
+
+- Preferred verification command:
+- Local services or ports:
+- Project-specific cautions:
 `;
 
 export interface ScaffoldMitiiWorkspaceOptions {
@@ -68,6 +78,11 @@ export function scaffoldMitiiWorkspace(
   const readmePath = join(dir, 'README.md');
   if (!existsSync(readmePath)) {
     writeFileSync(readmePath, README, 'utf-8');
+  }
+
+  const localRulesExamplePath = join(dir, 'MITTII.local.md.example');
+  if (!existsSync(localRulesExamplePath)) {
+    writeFileSync(localRulesExamplePath, LOCAL_RULES_EXAMPLE, 'utf-8');
   }
 
   if (options.extensionRoot?.trim()) {

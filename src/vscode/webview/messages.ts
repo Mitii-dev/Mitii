@@ -15,6 +15,7 @@ export type {
   AgentDepthView,
   ApprovalMode,
   IndexingSettingsPayload,
+  MemorySettingsPayload,
   McpCustomServerView,
   McpSettingsPayload,
   McpToggles,
@@ -271,6 +272,9 @@ export interface SettingsView {
   requireApprovalWrites: boolean;
   requireApprovalShell: boolean;
   memoryEnabled: boolean;
+  summarizeAfterTask: boolean;
+  autoMemoryEnabled: boolean;
+  autoMemoryScope: 'user' | 'workspace' | 'both';
   subagentsEnabled: boolean;
   agentMaxSteps: number;
   askDepth: AgentDepthView;
@@ -462,6 +466,7 @@ export const defaultMcpToggles = (): McpToggles => ({
   memory: true,
   sequentialThinking: true,
   puppeteer: false,
+  agentmemory: false,
 });
 
 export const defaultContextToggles = (): ContextToggles => ({
@@ -486,6 +491,9 @@ export const defaultSettingsView = (): SettingsView => ({
   requireApprovalWrites: true,
   requireApprovalShell: true,
   memoryEnabled: true,
+  summarizeAfterTask: true,
+  autoMemoryEnabled: true,
+  autoMemoryScope: 'user',
   subagentsEnabled: true,
   agentMaxSteps: 15,
   askDepth: 'auto',

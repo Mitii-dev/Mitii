@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow",
-  "version": "2.7.30",
+  "version": "2.7.31",
   "publisher": "mitii",
   "icon": "media/mitii-short-logo.png",
   "license": "AGPL-3.0-or-later",
@@ -388,6 +388,26 @@
           "default": true,
           "description": "Use FTS5 + optional vector hybrid search for observations"
         },
+        "thunder.memory.summarizeAfterTask": {
+          "type": "boolean",
+          "default": true,
+          "description": "Summarize completed tasks into durable local memory."
+        },
+        "thunder.memory.autoMemoryEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Write post-task memories to human-readable markdown files in addition to SQLite observations."
+        },
+        "thunder.memory.autoMemoryScope": {
+          "type": "string",
+          "enum": [
+            "user",
+            "workspace",
+            "both"
+          ],
+          "default": "user",
+          "description": "Where markdown auto-memory files are written: user profile, workspace .mitii/auto-memory, or both."
+        },
         "thunder.scm.commitMessageEnabled": {
           "type": "boolean",
           "default": true,
@@ -582,7 +602,8 @@
           "default": {
             "filesystem": true,
             "memory": true,
-            "sequentialThinking": true
+            "sequentialThinking": true,
+            "agentmemory": false
           },
           "description": "Default on/off state for built-in MCP servers. Per-session toggles are available in the Mitii Integrations settings tab."
         },
@@ -617,6 +638,8 @@
     "postinstall": "node -e \"console.log('Run pnpm run rebuild:native before F5 if better-sqlite3 fails to load')\"",
     "prepare": "node scripts/install-git-hooks.mjs",
     "version:bump": "node scripts/bump-version.mjs",
+    "sdk:sync-version": "node scripts/sync-sdk-version.mjs",
+    "sdk:build": "pnpm --filter @mitii/sdk build",
     "readme:sync-version": "node scripts/sync-readme-version.mjs",
     "release:check-assets": "node scripts/check-release-assets.mjs",
     "release:prepare": "pnpm run compile:cli && node dist/cli.js prepare-release",

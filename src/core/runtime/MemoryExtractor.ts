@@ -2,6 +2,7 @@ import type { LlmProvider } from '../llm/types';
 import type { MemoryService, ObservationType } from '../memory/MemoryService';
 import type { ToolCallAudit } from '../tools/types';
 import { PostTaskMemoryWorker } from '../memory/PostTaskMemoryWorker';
+import type { AutoMemoryFileWriter } from '../memory/AutoMemoryFileWriter';
 import { createLogger } from '../telemetry/Logger';
 
 const log = createLogger('MemoryExtractor');
@@ -11,7 +12,8 @@ export class MemoryExtractor {
 
   constructor(
     private readonly memoryService: MemoryService,
-    private readonly summarizeAfterTask: boolean
+    private readonly summarizeAfterTask: boolean,
+    private readonly autoMemoryWriter?: AutoMemoryFileWriter
   ) {}
 
   /** Queue post-task extraction asynchronously — does not block the UI. */
@@ -41,18 +43,20 @@ export class MemoryExtractor {
     }
 
     if (filesTouched.size > 0) {
-      this.memoryService.write(
+      const observation = this.memoryService.write(
         sessionId,
         'file_fact',
         `Modified files: ${[...filesTouched].join(', ')}`,
         [...filesTouched]
       );
+      if (observation) this.autoMemoryWriter?.writeObservation(observation);
     }
 
     const type = inferObservationType(userMessage, assistantResponse);
     const heuristic = buildHeuristicSummary(userMessage, assistantResponse, toolAudit);
     if (heuristic) {
-      this.memoryService.write(sessionId, type, heuristic, [...filesTouched]);
+      const observation = this.memoryService.write(sessionId, type, heuristic, [...filesTouched]);
+      if (observation) this.autoMemoryWriter?.writeObservation(observation);
     }
 
     if (this.summarizeAfterTask && provider) {
@@ -91,7 +95,8 @@ export class MemoryExtractor {
         if (delta.content) summary += delta.content;
       }
       if (summary.trim()) {
-        this.memoryService.write(sessionId, 'decision', summary.trim(), files);
+        const observation = this.memoryService.write(sessionId, 'decision', summary.trim(), files);
+        if (observation) this.autoMemoryWriter?.writeObservation(observation);
       }
     } catch {
       // Non-fatal
