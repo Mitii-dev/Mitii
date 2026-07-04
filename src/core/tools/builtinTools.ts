@@ -19,12 +19,9 @@ import { validateMdxContent } from '../apply/mdxValidation';
 import { isDangerousCommand } from '../safety/ToolPolicyEngine';
 import { isReadOnlyCommand, stripLeadingCd } from '../plans/PlanActEngine';
 import { normalizeWorkspaceRoot, resolveWorkspaceRelPath, formatPathNotFoundHint } from '../util/paths';
-import { ResearchAgent } from '../runtime/ResearchAgent';
+import { BaseSubagent, createDefaultSubagentRegistry, loadWorkspaceAgents, type SubagentRuntime } from '../subagents';
 import { isAuditSubagentBlocked, buildScriptFirstAuditMessage } from '../runtime/auditRouting';
 import type { SubagentTracker } from '../runtime/SubagentTracker';
-import type { LlmProvider } from '../llm/types';
-import type { ToolDefinition } from '../llm/toolTypes';
-import type { ToolExecutor } from '../safety/ToolExecutor';
 import type { SkillCatalogService } from '../skills/SkillCatalogService';
 import { createLogger } from '../telemetry/Logger';
 import { analyzeChangeImpact, discoverProjectCatalog, formatProjectCatalog, saveProjectCatalog } from '../modes/ask';
@@ -34,27 +31,22 @@ const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 const log = createLogger('BuiltinTools');
 
-export interface ResearchAgentRuntime {
-  toolExecutor: ToolExecutor;
-  getProvider: () => LlmProvider | undefined;
-  getTools: () => ToolDefinition[];
-  maxSteps?: number;
-  timeoutMs?: number;
-}
+export type ResearchAgentRuntime = SubagentRuntime;
 
-let researchAgentRuntime: ResearchAgentRuntime | undefined;
-let researchAgent: ResearchAgent | undefined;
+let subagentRuntime: SubagentRuntime | undefined;
 let subagentTracker: SubagentTracker | undefined;
+let activeSubagents = 0;
 
 export function setSubagentTracker(tracker: SubagentTracker | undefined): void {
   subagentTracker = tracker;
 }
 
 export function setResearchAgentRuntime(runtime: ResearchAgentRuntime | undefined): void {
-  researchAgentRuntime = runtime;
-  researchAgent = runtime
-    ? new ResearchAgent(runtime.toolExecutor, runtime.maxSteps ?? 6, runtime.timeoutMs ?? 90_000)
-    : undefined;
+  setSubagentRuntime(runtime);
+}
+
+export function setSubagentRuntime(runtime: SubagentRuntime | undefined): void {
+  subagentRuntime = runtime;
 }
 
 function blockedPath(relPath: string, ignoreService: IgnoreService, forRead = false): boolean {
@@ -991,62 +983,143 @@ export function createSpawnResearchAgentTool(): Tool<{
       persona_instructions: z.string().optional(),
     }),
     async execute(input): Promise<ToolResult> {
-      const combinedTask = [input.task, input.focus, input.persona_instructions].filter(Boolean).join('\n');
-      if (isAuditSubagentBlocked(combinedTask)) {
-        log.warn('Blocked audit subagent', { task: input.task.slice(0, 120) });
-        return { success: true, output: buildScriptFirstAuditMessage(input.task) };
-      }
-
-      if (!researchAgentRuntime || !researchAgent) {
-        return { success: false, output: '', error: 'Research agent not configured' };
-      }
-
-      const provider = researchAgentRuntime.getProvider();
-      if (!provider) {
-        return { success: false, output: '', error: 'No LLM provider available' };
-      }
-      const runId = subagentTracker?.start(input.task, input.focus);
-      try {
-        const targetFiles = input.targetFiles ?? [];
-        let report: string;
-        if (targetFiles.length > 10) {
-          const chunkSize = input.chunkSize ?? 8;
-          const chunks = chunkArray(targetFiles, chunkSize);
-          const reports = await Promise.all(
-            chunks.map((chunk, index) =>
-              researchAgent!.run(
-                provider,
-                `${input.task}\n\nTarget file chunk ${index + 1}/${chunks.length}:\n${chunk.join('\n')}`,
-                input.focus,
-                researchAgentRuntime!.getTools(),
-                undefined,
-                input.persona_instructions
-              )
-            )
-          );
-          report = reports.map((r, i) => `## Chunk ${i + 1}\n${r}`).join('\n\n');
-        } else {
-          const task = targetFiles.length
-            ? `${input.task}\n\nTarget files:\n${targetFiles.join('\n')}`
-            : input.task;
-          report = await researchAgent.run(
-            provider,
-            task,
-            input.focus,
-            researchAgentRuntime.getTools(),
-            undefined,
-            input.persona_instructions
-          );
-        }
-        if (runId) subagentTracker?.finish(runId, report);
-        return { success: true, output: report };
-      } catch (e) {
-        const err = String(e);
-        if (runId) subagentTracker?.fail(runId, err);
-        return { success: false, output: '', error: err };
-      }
+      return runSubagentTool({
+        type: 'research',
+        task: input.task,
+        focus: input.focus,
+        targetFiles: input.targetFiles,
+        chunkSize: input.chunkSize,
+        personaInstructions: input.persona_instructions,
+      });
     },
   };
+}
+
+export function createSpawnSubagentTool(): Tool<{
+  type: string;
+  task: string;
+  focus?: string;
+  targetFiles?: string[];
+  scopeRoot?: string;
+  commands?: string[];
+  chunkSize?: number;
+  persona_instructions?: string;
+}> {
+  return {
+    name: 'spawn_subagent',
+    description:
+      'Delegate scoped work to a typed subagent: research, implementer, reviewer, verifier, or a workspace custom agent from .mitii/agents. Implementer requires targetFiles or scopeRoot.',
+    risk: 'medium',
+    inputSchema: z.object({
+      type: z.string(),
+      task: z.string(),
+      focus: z.string().optional(),
+      targetFiles: z.array(z.string()).optional(),
+      scopeRoot: z.string().optional(),
+      commands: z.array(z.string()).optional(),
+      chunkSize: z.number().int().min(1).max(10).optional(),
+      persona_instructions: z.string().optional(),
+    }),
+    async execute(input): Promise<ToolResult> {
+      return runSubagentTool({
+        type: input.type,
+        task: input.task,
+        focus: input.focus,
+        targetFiles: input.targetFiles,
+        scopeRoot: input.scopeRoot,
+        commands: input.commands,
+        chunkSize: input.chunkSize,
+        personaInstructions: input.persona_instructions,
+      });
+    },
+  };
+}
+
+async function runSubagentTool(input: {
+  type: string;
+  task: string;
+  focus?: string;
+  targetFiles?: string[];
+  scopeRoot?: string;
+  commands?: string[];
+  chunkSize?: number;
+  personaInstructions?: string;
+}): Promise<ToolResult> {
+  const combinedTask = [input.task, input.focus, input.personaInstructions].filter(Boolean).join('\n');
+  if ((input.type === 'research' || input.type === 'reviewer') && isAuditSubagentBlocked(combinedTask)) {
+    log.warn('Blocked audit subagent', { task: input.task.slice(0, 120), type: input.type });
+    return { success: true, output: buildScriptFirstAuditMessage(input.task) };
+  }
+
+  if (!subagentRuntime) {
+    return { success: false, output: '', error: 'Subagent runtime not configured' };
+  }
+  const enabled = new Set(subagentRuntime.enabledTypes ?? ['research']);
+  if (!enabled.has(input.type)) {
+    return { success: false, output: '', error: `Subagent type ${input.type} is disabled by policy` };
+  }
+  const maxConcurrent = Math.max(1, subagentRuntime.maxConcurrent ?? 2);
+  if (activeSubagents >= maxConcurrent) {
+    return { success: false, output: '', error: `Subagent concurrency limit reached (${maxConcurrent})` };
+  }
+  const provider = subagentRuntime.getProvider();
+  if (!provider) {
+    return { success: false, output: '', error: 'No LLM provider available' };
+  }
+
+  const registry = createDefaultSubagentRegistry(
+    subagentRuntime.workspace ? loadWorkspaceAgents(subagentRuntime.workspace).agents : []
+  );
+  const definition = registry.get(input.type);
+  if (!definition) {
+    return { success: false, output: '', error: `Unknown subagent type: ${input.type}` };
+  }
+  const effectiveDefinition = {
+    ...definition,
+    maxSteps: input.type === 'research' && subagentRuntime.maxSteps ? subagentRuntime.maxSteps : definition.maxSteps,
+    timeoutMs: input.type === 'research' && subagentRuntime.timeoutMs ? subagentRuntime.timeoutMs : definition.timeoutMs,
+  };
+
+  const runId = subagentTracker?.start(input.task, input.focus, {
+    type: input.type,
+    scope: input.scopeRoot ?? input.targetFiles?.slice(0, 6).join(', '),
+  });
+  activeSubagents += 1;
+  try {
+    const subagent = new BaseSubagent(effectiveDefinition, subagentRuntime.toolExecutor);
+    const targetFiles = input.targetFiles ?? [];
+    let report: string;
+    if (input.type === 'research' && targetFiles.length > 10) {
+      const chunkSize = input.chunkSize ?? 8;
+      const chunks = chunkArray(targetFiles, chunkSize);
+      const reports = await Promise.all(chunks.map((chunk, index) =>
+        subagent.run(provider, {
+          task: `${input.task}\n\nTarget file chunk ${index + 1}/${chunks.length}`,
+          focus: input.focus,
+          targetFiles: chunk,
+          personaInstructions: input.personaInstructions,
+        }, subagentRuntime!.getTools())
+      ));
+      report = reports.map((r, i) => `## Chunk ${i + 1}\n${r}`).join('\n\n');
+    } else {
+      report = await subagent.run(provider, {
+        task: input.task,
+        focus: input.focus,
+        targetFiles,
+        scopeRoot: input.scopeRoot,
+        commands: input.commands,
+        personaInstructions: input.personaInstructions,
+      }, subagentRuntime.getTools());
+    }
+    if (runId) subagentTracker?.finish(runId, report, { progress: 100 });
+    return { success: true, output: report };
+  } catch (e) {
+    const err = String(e);
+    if (runId) subagentTracker?.fail(runId, err);
+    return { success: false, output: '', error: err };
+  } finally {
+    activeSubagents -= 1;
+  }
 }
 
 function chunkArray<T>(items: T[], size: number): T[][] {

@@ -33,6 +33,29 @@ Mitii is built for developers who want an AI agent that understands the repo bef
 
 Use it with Ollama, LM Studio, OpenAI-compatible endpoints, native OpenRouter, Azure OpenAI, AWS Bedrock, OpenAI, Anthropic, Gemini, DeepSeek, Cursor-compatible APIs, Codex-compatible APIs, or the Echo provider for UI testing.
 
+## Phase 2 Runtime
+
+Mitii can run as a shared HTTP/SSE daemon:
+
+```bash
+mitii serve --cwd /path/to/project
+curl http://127.0.0.1:4310/health
+```
+
+External clients can use `@mitii/sdk/daemon` to create sessions, stream events with replay, respond to approvals, and cancel turns.
+
+Phase 2 also adds typed subagents through `spawn_subagent` while preserving `spawn_research_agent` as a compatibility alias. Built-ins are `research`, `implementer`, `reviewer`, and `verifier`; workspace agents can be added under `.mitii/agents/`.
+
+Parallel worktree tasks are available from the CLI:
+
+```bash
+mitii task add "Implement feature" --prompt "Implement the scoped feature and verify it"
+mitii task run --parallel 2
+mitii task worktrees
+```
+
+See `docs/users/mitii-serve.md`, `docs/developers/mitii-serve-protocol.md`, and `docs/users/parallel-agents.md`.
+
 **Docs:** [docs.mitii.dev](https://docs.mitii.dev)  
 **Website:** [mitii.dev](https://mitii.dev)  
 **Discord:** [discord.gg/sa8rubf6HH](https://discord.gg/sa8rubf6HH)  

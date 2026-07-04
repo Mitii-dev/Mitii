@@ -24,6 +24,7 @@ export const PLANNING_DISCOVERY_TOOLS = new Set([
   'run_command',
   'execute_workspace_script',
   'spawn_research_agent',
+  'spawn_subagent',
   'fetch_web',
   'ask_question',
 ]);

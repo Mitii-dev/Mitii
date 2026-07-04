@@ -20,6 +20,7 @@ export const ASK_ALLOWED_TOOLS = new Set([
   'fetch_web',
   'ask_question',
   'spawn_research_agent',
+  'spawn_subagent',
   'project_catalog',
   'analyze_change_impact',
 ]);
@@ -36,6 +37,7 @@ const GROUNDING_TOOLS = new Set([
   'diagnostics',
   'execute_workspace_script',
   'spawn_research_agent',
+  'spawn_subagent',
   'project_catalog',
   'analyze_change_impact',
 ]);

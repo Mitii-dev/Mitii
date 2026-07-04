@@ -16,7 +16,7 @@ const DANGEROUS_COMMANDS = [
 
 const READ_ONLY_TOOLS = new Set([
   'read_file', 'read_files', 'list_files', 'search', 'search_batch', 'repo_map',
-  'retrieve_context', 'git_diff', 'diagnostics', 'memory_search', 'spawn_research_agent',
+  'retrieve_context', 'git_diff', 'diagnostics', 'memory_search', 'spawn_research_agent', 'spawn_subagent',
   'save_task_state', 'search_script_catalog', 'execute_workspace_script', 'use_skill',
   'fetch_web', 'ask_question', 'mark_step_complete', 'propose_plan_mutation',
 ]);

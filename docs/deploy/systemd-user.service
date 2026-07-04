@@ -1,0 +1,11 @@
+[Unit]
+Description=Mitii daemon
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.mitii-serve-env
+ExecStart=/usr/bin/env mitii serve --cwd %h/project --hostname 127.0.0.1 --port 4310
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

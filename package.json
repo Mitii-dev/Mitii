@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow",
-  "version": "2.7.31",
+  "version": "2.7.32",
   "publisher": "mitii",
   "icon": "media/mitii-short-logo.png",
   "license": "AGPL-3.0-or-later",
@@ -206,6 +206,30 @@
           "type": "boolean",
           "default": false,
           "description": "Export a sanitized audit pack automatically to .mitii/audit/ when an agent turn completes."
+        },
+        "thunder.runtime.mode": {
+          "type": "string",
+          "enum": [
+            "embedded",
+            "daemon"
+          ],
+          "default": "embedded",
+          "description": "Run the VS Code chat in-process or attach to a running mitii serve daemon."
+        },
+        "thunder.runtime.daemonUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:4310",
+          "description": "Mitii daemon URL used when thunder.runtime.mode is daemon."
+        },
+        "thunder.runtime.daemonToken": {
+          "type": "string",
+          "default": "",
+          "description": "Optional bearer token for mitii serve. Prefer SecretStorage or managed settings for enterprise use."
+        },
+        "thunder.runtime.autoStartDaemon": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically start mitii serve when a workspace opens and daemon runtime mode is selected."
         },
         "thunder.provider.type": {
           "type": "string",
@@ -433,7 +457,35 @@
         "thunder.agent.subagentsEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable the spawn_research_agent tool for parallel read-only research."
+          "description": "Enable subagent tools for typed delegation."
+        },
+        "thunder.agent.subagentTypesEnabled": {
+          "type": "array",
+          "default": [
+            "research"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Allowed subagent types. Built-ins are research, implementer, reviewer, and verifier; custom .mitii/agents ids may also be listed."
+        },
+        "thunder.agent.maxConcurrentSubagents": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Maximum subagents allowed to run concurrently in one session."
+        },
+        "thunder.agent.implementerRequiresScope": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require implementer subagents to receive targetFiles or scopeRoot before write tools are available."
+        },
+        "thunder.agent.subagentDailyBudget": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "Maximum subagent invocations per session day. 0 means unlimited."
         },
         "thunder.agent.maxSteps": {
           "type": "number",
@@ -663,6 +715,8 @@
     "watch:extension": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --packages=external --platform=node --format=cjs --sourcemap --watch",
     "watch:webview": "vite build --watch",
     "test": "vitest run",
+    "test:daemon": "vitest run test/daemon.test.ts",
+    "test:parallel": "vitest run test/parallel-agents.test.ts",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
     "scripts:search": "node scripts/search-script-catalog.mjs",

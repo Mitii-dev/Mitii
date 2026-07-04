@@ -151,8 +151,11 @@ export interface AgentLiveStatusView {
 
 export interface SubagentStatusView {
   id: string;
+  type?: string;
   task: string;
   focus?: string;
+  scope?: string;
+  progress?: number;
   status: 'queued' | 'running' | 'done' | 'error';
   startedAt: number;
   finishedAt?: number;

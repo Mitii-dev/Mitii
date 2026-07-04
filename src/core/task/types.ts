@@ -16,3 +16,19 @@ export interface EnrichedTask {
   contextBlocks: string[];
   signals: TaskSignals;
 }
+export type MitiiTaskStatus = 'backlog' | 'running' | 'review' | 'done' | 'failed' | 'cancelled';
+
+export interface MitiiTask {
+  id: string;
+  title: string;
+  prompt: string;
+  status: MitiiTaskStatus;
+  worktreeId?: string;
+  sessionId?: string;
+  branch?: string;
+  dependsOn?: string[];
+  createdAt: number;
+  updatedAt: number;
+  result?: { summary: string; filesChanged: string[] };
+  error?: string;
+}

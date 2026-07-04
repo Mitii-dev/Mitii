@@ -29,7 +29,7 @@ import { ChatOrchestrator } from '../orchestration/ChatOrchestrator';
 import { ToolRuntime } from '../tools/ToolRuntime';
 import {
   createReadFileTool, createReadFilesTool, createListFilesTool, createSearchTool,
-  createSearchBatchTool, createSearchScriptCatalogTool, createSpawnResearchAgentTool,
+  createSearchBatchTool, createSearchScriptCatalogTool, createSpawnResearchAgentTool, createSpawnSubagentTool,
   createExecuteWorkspaceScriptTool, createUseSkillTool,
   createRepoMapTool, createRetrieveContextTool, createGitDiffTool,
   createDiagnosticsTool, createWriteFileTool, createApplyPatchTool, createRunCommandTool,
@@ -557,8 +557,11 @@ export class ThunderController {
       this.notifyUi({
         subagents: runs.map((r) => ({
           id: r.id,
+          type: r.type,
           task: r.task,
           focus: r.focus,
+          scope: r.scope,
+          progress: r.progress,
           status: r.status,
           startedAt: r.startedAt,
           finishedAt: r.finishedAt,
@@ -626,6 +629,7 @@ export class ThunderController {
     this.toolRuntime.register(createSearchScriptCatalogTool(workspace, this.context.extensionPath));
     this.toolRuntime.register(createExecuteWorkspaceScriptTool(workspace, this.context.extensionPath, this.ignoreService));
     this.toolRuntime.register(createUseSkillTool(this.skillCatalogService));
+    this.toolRuntime.register(createSpawnSubagentTool());
     this.toolRuntime.register(createSpawnResearchAgentTool());
     this.toolRuntime.register(createRepoMapTool(repoMap));
     this.toolRuntime.register(createRetrieveContextTool(retriever, budgeter));
@@ -948,8 +952,11 @@ export class ThunderController {
       agentLiveStatus: base.agentLiveStatus ?? this.agentLiveStatus,
       subagents: base.subagents ?? this.subagentTracker.getRuns().map((r) => ({
         id: r.id,
+        type: r.type,
         task: r.task,
         focus: r.focus,
+        scope: r.scope,
+        progress: r.progress,
         status: r.status,
         startedAt: r.startedAt,
         finishedAt: r.finishedAt,

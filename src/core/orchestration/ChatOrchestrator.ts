@@ -52,7 +52,7 @@ import {
   isMdxRepairTask,
   suggestDocsVerifyCommands,
 } from '../runtime/mdxRepairRouting';
-import { setResearchAgentRuntime } from '../tools/builtinTools';
+import { setSubagentRuntime } from '../tools/builtinTools';
 import type { SessionService } from '../session/SessionService';
 import type { PlanPersistence } from '../plans/PlanPersistence';
 import type { MemoryExtractor } from '../runtime/MemoryExtractor';
@@ -551,7 +551,7 @@ export class ChatOrchestrator {
           : (actPlan?.route.shouldUseSubagents ?? taskAnalysis.shouldUseSubagents));
     let tools = toolsEnabled
       ? toolsToDefinitions(this.deps.toolRuntime!.list()).filter((tool) =>
-          subagentsEnabled || tool.function.name !== 'spawn_research_agent'
+          subagentsEnabled || !['spawn_research_agent', 'spawn_subagent'].includes(tool.function.name)
         )
       : [];
     if (isAskMode) {
@@ -561,15 +561,18 @@ export class ChatOrchestrator {
     }
 
     if (toolsEnabled && this.deps.toolExecutor) {
-      setResearchAgentRuntime({
+      setSubagentRuntime({
         toolExecutor: this.deps.toolExecutor,
         getProvider: () => this.deps.researchAgentProvider ?? provider,
         getTools: () => tools,
         maxSteps: agentConfig?.researchAgentMaxSteps,
         timeoutMs: agentConfig?.researchAgentTimeoutMs,
+        enabledTypes: agentConfig?.subagentTypesEnabled,
+        maxConcurrent: agentConfig?.maxConcurrentSubagents,
+        workspace: this.deps.workspace,
       });
     } else {
-      setResearchAgentRuntime(undefined);
+      setSubagentRuntime(undefined);
     }
 
     if (auditMode) {
@@ -1653,10 +1656,11 @@ function describeToolActivity(
     case 'apply_patch':
       return { kind: 'apply', liveLabel: 'Applying patch', message: `Patching ${path ?? 'file'}`, detail: path };
     case 'spawn_research_agent':
+    case 'spawn_subagent':
       return {
         kind: 'tool',
         liveLabel: 'Starting subagent',
-        message: 'Starting research subagent',
+        message: name === 'spawn_subagent' ? `Starting ${String(input.type ?? 'typed')} subagent` : 'Starting research subagent',
         detail: typeof input.task === 'string' ? input.task.slice(0, 180) : undefined,
       };
     case 'retrieve_context':

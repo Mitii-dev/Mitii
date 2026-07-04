@@ -12,7 +12,12 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./types": "./dist/types.d.ts"
+    "./types": "./dist/types.d.ts",
+    "./daemon": {
+      "types": "./dist/daemon.d.ts",
+      "import": "./dist/daemon.js",
+      "default": "./dist/daemon.js"
+    }
   },
   "files": [
     "dist",
@@ -22,7 +27,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm --packages=external --alias:vscode=../../src/node/vscode-shim.ts && cp src/index.d.ts dist/index.d.ts && cp src/types.d.ts dist/types.d.ts",
+    "build": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm --packages=external --alias:vscode=../../src/node/vscode-shim.ts && esbuild src/daemon.ts --bundle --outfile=dist/daemon.js --platform=node --format=esm --packages=external && cp src/index.d.ts dist/index.d.ts && cp src/types.d.ts dist/types.d.ts && cp src/daemon.d.ts dist/daemon.d.ts",
     "test": "vitest run"
   },
   "peerDependencies": {

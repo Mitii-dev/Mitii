@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { execFile } from 'child_process';
 import { createInterface } from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
 import { homedir } from 'os';
@@ -8,10 +9,17 @@ import { AuditPackBuilder, verifyAuditPack } from '../core/audit';
 import { generateHeadlessChangelog, prepareHeadlessRelease } from '../core/headless';
 import type { HeadlessRuntime } from '../core/headless/HeadlessConfig';
 import type { ProviderType } from '../core/config/schema';
-import { createClient, query } from '../../packages/sdk/src';
+import { createClient, query, DaemonClient, DaemonSessionClient } from '../../packages/sdk/src';
 import type { MitiiMode, MitiiEvent } from '../../packages/sdk/src';
 import { connectAgentMemoryMcp } from '../core/mcp/mcpWorkspaceConfig';
 import { AutoMemoryFileWriter } from '../core/memory/AutoMemoryFileWriter';
+import { serveCommand } from '../../packages/daemon/src/cli';
+import { startMitiiBoard } from '../../packages/board/src/server';
+import { TaskBoardService, ParallelAgentRunner } from '../core/task';
+import { WorktreeService } from '../core/git';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 async function main(argv: string[]): Promise<number> {
   const [command, ...args] = argv;
@@ -39,6 +47,22 @@ async function main(argv: string[]): Promise<number> {
     const changelog = await generateHeadlessChangelog(cwd, since);
     process.stdout.write(json ? JSON.stringify({ changelog }, null, 2) + '\n' : changelog);
     return 0;
+  }
+
+  if (command === 'serve') {
+    return serveCommand(args, cwd);
+  }
+
+  if (command === 'board') {
+    return boardCommand(cwd, args);
+  }
+
+  if (command === 'task') {
+    return taskCommand(cwd, args, json);
+  }
+
+  if (command === 'agents' && args[0] === 'init') {
+    return initAgentTemplate(cwd, json);
   }
 
   if (command === 'prepare-release') {
@@ -109,6 +133,10 @@ async function main(argv: string[]): Promise<number> {
 }
 
 async function runOneShot(mode: MitiiMode, cwd: string, args: string[], prompt: string, json: boolean): Promise<number> {
+  const daemonUrl = valueOf(args, '--daemon-url');
+  if (daemonUrl) {
+    return runDaemonOneShot(mode, cwd, args, prompt, json, daemonUrl);
+  }
   const clientOptions = clientOptionsFromArgs(cwd, args);
   if (mode === 'ask' && !json) {
     const client = createClient(clientOptions);
@@ -135,6 +163,26 @@ async function runOneShot(mode: MitiiMode, cwd: string, args: string[], prompt: 
     } else {
       renderCliEvent(event);
     }
+  }
+  return 0;
+}
+
+async function runDaemonOneShot(mode: MitiiMode, cwd: string, args: string[], prompt: string, json: boolean, daemonUrl: string): Promise<number> {
+  const client = new DaemonClient({ baseUrl: daemonUrl, token: valueOf(args, '--daemon-token') ?? process.env.MITII_SERVER_TOKEN });
+  const session = await DaemonSessionClient.createOrAttach(client, {
+    cwd,
+    mode,
+    approval: (valueOf(args, '--approval') as 'auto' | 'manual' | undefined) ?? 'manual',
+  });
+  const events = session.events();
+  await session.prompt({ mode, message: prompt });
+  for await (const event of events) {
+    if (json) {
+      process.stdout.write(JSON.stringify(event) + '\n');
+    } else {
+      renderCliEvent(event);
+    }
+    if (event.type === 'done' || event.type === 'error') break;
   }
   return 0;
 }
@@ -296,6 +344,128 @@ function memoryCommand(cwd: string, args: string[], json: boolean): number {
   return 2;
 }
 
+async function taskCommand(cwd: string, args: string[], json: boolean): Promise<number> {
+  const sub = args[0];
+  const board = new TaskBoardService(cwd);
+  if (sub === 'add') {
+    const title = positional(args.slice(1))[0] ?? 'Untitled task';
+    const prompt = valueOf(args, '--prompt') ?? title;
+    const dependsOn = (valueOf(args, '--depends-on') ?? '').split(',').map((item) => item.trim()).filter(Boolean);
+    const task = board.add({ title, prompt, dependsOn });
+    process.stdout.write(json ? JSON.stringify(task, null, 2) + '\n' : `Added ${task.id}: ${task.title}\n`);
+    return 0;
+  }
+  if (sub === 'list' || !sub) {
+    const tasks = board.list();
+    process.stdout.write(json ? JSON.stringify({ tasks }, null, 2) + '\n' : formatTasks(tasks));
+    return 0;
+  }
+  if (sub === 'start') {
+    const id = args[1];
+    if (!id) {
+      process.stderr.write('mitii task start requires a task id.\n');
+      return 2;
+    }
+    const task = board.transition(id, 'running');
+    process.stdout.write(json ? JSON.stringify(task, null, 2) + '\n' : `Started ${task.id}\n`);
+    return 0;
+  }
+  if (sub === 'run') {
+    const runner = new ParallelAgentRunner({
+      workspace: cwd,
+      parallel: Number(valueOf(args, '--parallel') ?? 2),
+      ...clientOptionsFromArgs(cwd, args),
+    });
+    const result = await runner.runRunnable();
+    process.stdout.write(json ? JSON.stringify(result, null, 2) + '\n' : `Started ${result.started.length}, completed ${result.completed.length}, failed ${result.failed.length}\n`);
+    return result.failed.length ? 1 : 0;
+  }
+  if (sub === 'worktrees') {
+    const worktrees = new WorktreeService(cwd).list();
+    process.stdout.write(json ? JSON.stringify({ worktrees }, null, 2) + '\n' : worktrees.map((w) => `${w.taskId}\t${w.status}\t${w.branch}\t${w.path}`).join('\n') + '\n');
+    return 0;
+  }
+  if (sub === 'merge') {
+    const id = args[1];
+    if (!id) {
+      process.stderr.write('mitii task merge requires a task id.\n');
+      return 2;
+    }
+    const result = await mergeTask(cwd, id, {
+      squash: args.includes('--squash'),
+      cleanup: args.includes('--merge-and-cleanup'),
+      forceCleanup: args.includes('--force'),
+    });
+    process.stdout.write(json ? JSON.stringify(result, null, 2) + '\n' : `${result.message}\n`);
+    return 0;
+  }
+  process.stderr.write('Usage: mitii task add|list|start|run|worktrees|merge\n');
+  return 2;
+}
+
+async function mergeTask(cwd: string, id: string, options: { squash: boolean; cleanup: boolean; forceCleanup: boolean }): Promise<{ id: string; branch: string; message: string }> {
+  const board = new TaskBoardService(cwd);
+  const task = board.list().find((item) => item.id === id);
+  if (!task) throw new Error(`Task not found: ${id}`);
+  if (task.status !== 'review' && task.status !== 'done') {
+    throw new Error(`Task ${id} must be in review or done status before merge`);
+  }
+  const worktrees = new WorktreeService(cwd);
+  const entry = worktrees.list().find((item) => item.taskId === id);
+  const branch = task.branch ?? entry?.branch;
+  if (!branch) throw new Error(`Task ${id} has no worktree branch`);
+  await execFileAsync('git', ['merge', '--no-commit', '--no-ff', branch], { cwd });
+  if (options.squash) {
+    await execFileAsync('git', ['merge', '--abort'], { cwd }).catch(() => undefined);
+    await execFileAsync('git', ['merge', '--squash', branch], { cwd });
+  }
+  board.update(id, { status: 'done' });
+  if (options.cleanup) {
+    await worktrees.remove(id, { force: options.forceCleanup });
+  }
+  return { id, branch, message: `Merged ${branch}. Review and commit the staged merge result.` };
+}
+
+async function boardCommand(cwd: string, args: string[]): Promise<number> {
+  const hostname = valueOf(args, '--hostname') ?? '127.0.0.1';
+  const port = Number(valueOf(args, '--port') ?? 4311);
+  const board = await startMitiiBoard({ cwd, hostname, port: Number.isFinite(port) ? port : 4311 });
+  process.stderr.write(`Mitii board listening on ${board.url}\n`);
+  const shutdown = async () => {
+    await board.close();
+    process.exit(0);
+  };
+  process.once('SIGINT', () => void shutdown());
+  process.once('SIGTERM', () => void shutdown());
+  await new Promise(() => undefined);
+  return 0;
+}
+
+function initAgentTemplate(cwd: string, json: boolean): number {
+  const target = join(cwd, '.mitii', 'agents', 'security-reviewer.md');
+  mkdirSync(dirname(target), { recursive: true });
+  if (!existsSync(target)) {
+    writeFileSync(target, [
+      '---',
+      'id: security-reviewer',
+      'type: reviewer',
+      'tools: [read_file, read_files, search, search_batch, git_diff, diagnostics, run_command]',
+      'maxSteps: 10',
+      '---',
+      '',
+      'You are a security-focused reviewer. Check for injection, auth bypass, secret leaks, unsafe file access, and missing validation.',
+      '',
+    ].join('\n'), 'utf-8');
+  }
+  process.stdout.write(json ? JSON.stringify({ path: target }) + '\n' : `Created ${target}\n`);
+  return 0;
+}
+
+function formatTasks(tasks: import('../core/task').MitiiTask[]): string {
+  if (tasks.length === 0) return 'No tasks.\n';
+  return tasks.map((task) => `${task.id}\t${task.status}\t${task.title}`).join('\n') + '\n';
+}
+
 function valueOf(args: string[], name: string): string | undefined {
   const idx = args.indexOf(name);
   return idx >= 0 ? args[idx + 1] : undefined;
@@ -355,6 +525,11 @@ function printHelp(): void {
     '  mitii -i "prompt"                         Start interactive session with an initial prompt',
     '  mitii init [--local] [--force] [--cwd <path>] [--json]',
     '  mitii auth [--provider <id> --base-url <url> --model <id> --apikey <key>]',
+    '  mitii serve [--hostname 127.0.0.1] [--port 4310] [--token <token>] [--max-sessions 5]',
+    '  mitii board [--hostname 127.0.0.1] [--port 4311]',
+    '  mitii agents init [--cwd <path>] [--json]',
+    '  mitii task add "title" --prompt "..." [--depends-on <id,id>] [--json]',
+    '  mitii task list|start <id>|run [--parallel 2]|worktrees [--cwd <path>] [--json]',
     '  mitii auth list',
     '  mitii memory status|prune|connect agentmemory [--cwd <path>] [--json]',
     '  mitii changelog [--since <tag>] [--cwd <path>] [--json]',
@@ -364,6 +539,7 @@ function printHelp(): void {
     '  mitii ask "question" [--runtime real|stub] [--provider echo|openai|...] [--model <id>] [--base-url <url>] [--cwd <path>] [--json]',
     '  mitii plan "goal" [--runtime real|stub] [--provider echo|openai|...] [--model <id>] [--approval auto|manual] [--cwd <path>]',
     '  mitii agent "goal" [--mode ask|plan|agent|review] [--runtime real|stub] [--provider echo|openai|...] [--model <id>] [--approval auto|manual] [--enable-puppeteer] [--allow-network] [--vectors] [--json]',
+    '  Add --daemon-url http://127.0.0.1:4310 to ask/plan/agent to attach to mitii serve.',
     '',
   ].join('\n'));
 }

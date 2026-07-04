@@ -20,7 +20,7 @@ import { ChatOrchestrator } from '../orchestration/ChatOrchestrator';
 import { ToolRuntime } from '../tools/ToolRuntime';
 import {
   createReadFileTool, createReadFilesTool, createListFilesTool, createSearchTool,
-  createSearchBatchTool, createSearchScriptCatalogTool, createSpawnResearchAgentTool,
+  createSearchBatchTool, createSearchScriptCatalogTool, createSpawnResearchAgentTool, createSpawnSubagentTool,
   createExecuteWorkspaceScriptTool, createUseSkillTool,
   createRepoMapTool, createRetrieveContextTool, createGitDiffTool,
   createDiagnosticsTool, createWriteFileTool, createApplyPatchTool, createRunCommandTool,
@@ -277,10 +277,11 @@ export class HeadlessAgentHost {
     }
   }
 
-  async *agent(prompt: string): AsyncIterable<MitiiEvent> {
+  async *agent(prompt: string, signal?: AbortSignal): AsyncIterable<MitiiEvent> {
     await this.initialize();
     if (!this.isRealRuntime) {
       for await (const event of this.stubRunner.agent(prompt)) {
+        if (signal?.aborted) break;
         yield event as MitiiEvent;
       }
       return;
@@ -300,7 +301,11 @@ export class HeadlessAgentHost {
     };
 
     try {
+      if (signal) {
+        signal.addEventListener('abort', () => this.cancel(), { once: true });
+      }
       for await (const chunk of this.streamMode('agent', prompt)) {
+        if (signal?.aborted) break;
         yield* drain();
         const text = chunkContent(chunk);
         const reasoning = chunkReasoning(chunk);
@@ -361,8 +366,13 @@ export class HeadlessAgentHost {
   }
 
   dispose(): void {
+    this.cancel();
     this.indexService?.dispose();
     this.initialized = false;
+  }
+
+  cancel(): void {
+    this.chatOrchestrator?.stop();
   }
 
   resolveApproval(id: string, decision: MitiiApprovalDecision): boolean {
@@ -424,6 +434,7 @@ export class HeadlessAgentHost {
     this.toolRuntime.register(createSearchScriptCatalogTool(workspace, this.packageRoot));
     this.toolRuntime.register(createExecuteWorkspaceScriptTool(workspace, this.packageRoot, this.ignoreService));
     this.toolRuntime.register(createUseSkillTool(this.skillCatalogService!));
+    this.toolRuntime.register(createSpawnSubagentTool());
     this.toolRuntime.register(createSpawnResearchAgentTool());
     this.toolRuntime.register(createRepoMapTool(repoMap));
     this.toolRuntime.register(createRetrieveContextTool(retriever, budgeter));

@@ -87,6 +87,10 @@ export const MemoryConfigSchema = z.object({
 
 export const AgentConfigSchema = z.object({
   subagentsEnabled: z.boolean().default(true),
+  subagentTypesEnabled: z.array(z.string()).default(['research']),
+  maxConcurrentSubagents: z.number().int().min(1).max(10).default(2),
+  implementerRequiresScope: z.boolean().default(true),
+  subagentDailyBudget: z.number().int().min(0).default(0),
   maxSteps: z.number().int().min(1).max(100).default(15),
   askMaxSteps: z.number().int().min(1).max(50).default(18),
   askDepth: AgentDepthSchema.default('auto'),
