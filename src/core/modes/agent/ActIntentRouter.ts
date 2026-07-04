@@ -1,7 +1,7 @@
 import type { ThunderMode } from '../../session/ThunderSession';
 import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import { isApprovalContinuationMessage } from '../../runtime/taskMessage';
-import type { ActRoute } from './actTypes';
+import type { ActDepth, ActRoute } from './actTypes';
 
 export interface ActRouteOptions {
   mode?: ThunderMode;
@@ -10,6 +10,7 @@ export interface ActRouteOptions {
   auditMode?: boolean;
   mdxRepairMode?: boolean;
   githubIssueMode?: boolean;
+  actDepth?: ActDepth;
 }
 
 const DOCS_HINT = /\b(docs?|documentation|docusaurus|mdx?|examples?)\b/i;
@@ -19,6 +20,21 @@ const BUGFIX_HINT = /\b(fix|debug|repair|failing|failed|error|bug|regression|bro
 const ACTIVE_PLAN_NEW_TASK =
   /\b(?:new|different|separate|another)\s+task\b|\b(?:ignore|discard|cancel|drop|replace)\b[\s\S]{0,80}\b(?:the|this|that|saved|current|existing)?\s*plan\b|\b(?:do not|don't)\b[\s\S]{0,80}\b(?:use|resume|execute|follow)\b[\s\S]{0,80}\bplan\b/i;
 
+const DIRECT_ROUTE_OVERRIDE =
+  /(?:^|\s)\/(?:fast|direct|no-?plan)\b|\b(?:no plan|without planning|skip (?:the )?(?:plan|planner|planning)|do not plan|don't plan|directly without (?:a )?plan|direct mode|fast mode)\b/i;
+
+const EXPLICIT_PLAN_HANDOFF =
+  /\b(?:execute|implement|run|follow|resume|continue with)\b[\s\S]{0,40}\b(?:the|this|saved|current|active)?\s*plan\b|\bplan looks good\b|\bexecute the plan\b/i;
+
+const CONTINUATION_HANDOFF =
+  /^(?:please\s+)?(?:go ahead|continue|proceed|do it|yes|yep|yeah|ok(?:ay)?|approved|looks good|sounds good|ship it)(?:\s+please)?[.!]*$/i;
+
+const REFERENTIAL_HANDOFF =
+  /^(?:please\s+)?(?:fix|implement|apply|do|run|execute|continue|resume)\s+(?:it|that|this)(?:\s+please)?[.!]*$/i;
+
+const PLANNED_WORK_REFERENCE =
+  /\b(?:we planned|planned work|from the plan|per the plan|according to the plan|as planned)\b/i;
+
 export function routeActIntent(userMessage: string, analysis: TaskAnalysis, options: ActRouteOptions = {}): ActRoute {
   const mode = options.mode ?? 'agent';
   const auditMode = Boolean(options.auditMode || analysis.kind === 'audit');
@@ -26,6 +42,7 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
   const githubIssueMode = Boolean(options.githubIssueMode);
   const hasActivePlan = Boolean(options.hasActivePlan);
   const orchestrationEnabled = options.orchestrationEnabled ?? true;
+  const actDepth = options.actDepth ?? 'auto';
 
   if (mode !== 'agent') {
     return {
@@ -39,7 +56,7 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
     };
   }
 
-  if (!isApprovalContinuationMessage(userMessage) && shouldResumeSavedPlan(userMessage, hasActivePlan)) {
+  if (!isApprovalContinuationMessage(userMessage) && shouldResumeSavedPlan(userMessage, hasActivePlan, { actDepth })) {
     return {
       intent: 'resume_plan',
       executionPath: 'resume_saved_plan',
@@ -75,7 +92,9 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
     };
   }
 
-  const shouldUsePlanner = shouldUsePlannerForAct(analysis, orchestrationEnabled, auditMode);
+  const shouldUsePlanner = shouldUsePlannerForAct(analysis, orchestrationEnabled, auditMode, actDepth, {
+    directOverride: hasDirectRouteOverride(userMessage),
+  });
   if (githubIssueMode) {
     return {
       intent: 'bugfix',
@@ -105,23 +124,45 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
   };
 }
 
-export function shouldResumeSavedPlan(userMessage: string, hasActivePlan: boolean): boolean {
+export function shouldResumeSavedPlan(
+  userMessage: string,
+  hasActivePlan: boolean,
+  options: { actDepth?: ActDepth } = {}
+): boolean {
   if (!hasActivePlan) return false;
   const text = userMessage.trim();
   if (!text) return false;
+  if (hasDirectRouteOverride(text)) return false;
   if (ACTIVE_PLAN_NEW_TASK.test(text)) return false;
-  return true;
+  if (options.actDepth === 'quick') {
+    return EXPLICIT_PLAN_HANDOFF.test(text);
+  }
+  return (
+    EXPLICIT_PLAN_HANDOFF.test(text) ||
+    CONTINUATION_HANDOFF.test(text) ||
+    REFERENTIAL_HANDOFF.test(text) ||
+    PLANNED_WORK_REFERENCE.test(text)
+  );
 }
 
 export function shouldUsePlannerForAct(
   analysis: TaskAnalysis,
   orchestrationEnabled: boolean,
-  auditMode = false
+  auditMode = false,
+  actDepth: ActDepth = 'auto',
+  options: { directOverride?: boolean } = {}
 ): boolean {
+  if (analysis.kind === 'simple_edit' || analysis.kind === 'question') return false;
+  if (options.directOverride) return false;
+  if (actDepth === 'quick') return false;
   if (!analysis.shouldPlan) return false;
   if (!orchestrationEnabled) return false;
   if (auditMode) return false;
   return true;
+}
+
+export function hasDirectRouteOverride(userMessage: string): boolean {
+  return DIRECT_ROUTE_OVERRIDE.test(userMessage);
 }
 
 function inferActIntent(userMessage: string, analysis: TaskAnalysis): ActRoute['intent'] {

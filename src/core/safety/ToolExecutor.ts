@@ -159,13 +159,15 @@ export class ToolExecutor {
       }
     }
 
-    const result = await this.toolRuntime.execute(resolvedName, input);
+    const result: ToolExecutionResult = await this.toolRuntime.execute(resolvedName, input);
     log.info('Tool executed via executor', { tool: resolvedName, success: result.success });
     if (result.success) {
       if (['write_file', 'apply_patch'].includes(resolvedName)) {
         this.phaseLockWriteBlocks = 0;
       }
       this.getTaskState?.()?.recordToolSuccess(resolvedName, input, result.output);
+    } else if (!result.pendingApproval && !result.skipped) {
+      this.getTaskState?.()?.recordToolFailure(resolvedName, input);
     }
     return result;
   }

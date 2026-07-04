@@ -632,7 +632,11 @@ describe('ProjectRulesService', () => {
       writeFileSync(join(tempDir, 'AGENTS.md'), 'agent instructions');
 
       const rules = new ProjectRulesService(tempDir).load();
-      expect(rules.map((rule) => rule.relPath)).toEqual(['MITII.md', 'AGENTS.md']);
+      expect(rules.map((rule) => rule.relPath)).toEqual([
+        'mitii:defaults/path-resolution',
+        'MITII.md',
+        'AGENTS.md',
+      ]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -642,8 +646,9 @@ describe('ProjectRulesService', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-rules-test-'));
     try {
       writeFileSync(join(tempDir, 'AGENTS.md'), 'agent instructions');
-      expect(new ProjectRulesService(tempDir).load()).toEqual([
-        { relPath: 'AGENTS.md', content: 'agent instructions' },
+      expect(new ProjectRulesService(tempDir).load().map((rule) => rule.relPath)).toEqual([
+        'mitii:defaults/path-resolution',
+        'AGENTS.md',
       ]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
@@ -1197,6 +1202,26 @@ describe('TaskAnalyzer', () => {
     expect(result.complexity).toBe('medium');
     expect(result.shouldPlan).toBe(true);
     expect(result.shouldVerify).toBe(true);
+  });
+
+  it('routes single-file day/row appends as direct simple edits', async () => {
+    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const result = analyzeTask(
+      'Can you add Day 17 and  18 to Add Java in Oracle Fusion learn plan',
+      'agent'
+    );
+
+    expect(result.kind).toBe('simple_edit');
+    expect(result.shouldPlan).toBe(false);
+    expect(result.shouldVerify).toBe(true);
+  });
+
+  it('does not treat low-complexity "and" lists as full implementation work', async () => {
+    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const result = analyzeTask('rename foo and bar in config.json', 'agent');
+
+    expect(result.kind).toBe('simple_edit');
+    expect(result.shouldPlan).toBe(false);
   });
 });
 
@@ -2081,6 +2106,19 @@ describe('buildPrompt explicit context', () => {
     const user = messages.find((m) => m.role === 'user');
     expect(user?.content.startsWith('<user_explicit_context>')).toBe(true);
     expect(user?.content).toContain('## Codebase Context');
+  });
+});
+
+describe('conversation task message resolution', () => {
+  it('expands terse follow-ups using the latest substantive user turn', async () => {
+    const { resolveConversationTaskMessage } = await import('../src/core/runtime/taskMessage');
+    const resolved = resolveConversationTaskMessage('add them', [
+      { role: 'user', content: 'Can you add Day 17 and 18 to the Oracle Fusion learn plan' },
+      { role: 'assistant', content: 'Planning failed quality gate' },
+    ]);
+
+    expect(resolved).toContain('add them');
+    expect(resolved).toContain('Day 17 and 18');
   });
 });
 

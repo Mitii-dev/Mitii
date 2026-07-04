@@ -3,6 +3,7 @@ import { join } from 'path';
 import { ensureThunderDir } from '../indexing/paths';
 import { AGENT_NAME } from '../../shared/brand';
 import { installBundledSkills } from '../skills/installBundledSkills';
+import { installBundledRules } from '../rules/installBundledRules';
 
 const MCP_TEMPLATE = {
   mcpServers: {},
@@ -45,6 +46,7 @@ Example:
 - \`logs/\` — session logs (when enabled)
 - \`tasks/\` — saved plans
 - \`skills/\` — bundled workspace skill playbooks (copied from the extension on first init)
+- \`rules/\` — bundled workspace methodology rules (copied from the extension on first init)
 - \`MITTII.local.md\` — optional personal project instructions; copy from \`MITTII.local.md.example\`
 `;
 
@@ -87,6 +89,9 @@ export function scaffoldMitiiWorkspace(
 
   if (options.extensionRoot?.trim()) {
     installBundledSkills(workspace, options.extensionRoot, {
+      force: options.forceBundledSkills,
+    });
+    installBundledRules(workspace, options.extensionRoot, {
       force: options.forceBundledSkills,
     });
   }

@@ -11,6 +11,7 @@ const log = createLogger('PlanTools');
 export const PLANNING_DISCOVERY_TOOLS = new Set([
   'read_file',
   'read_files',
+  'resolve_path',
   'list_files',
   'search',
   'search_batch',

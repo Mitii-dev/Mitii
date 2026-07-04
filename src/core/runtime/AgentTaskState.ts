@@ -117,6 +117,13 @@ export class AgentTaskState {
     }
   }
 
+  /** Clear cached reads after a failed write/patch so the next read hits disk. */
+  recordToolFailure(toolName: string, input: Record<string, unknown>): void {
+    if (!['write_file', 'apply_patch'].includes(toolName)) return;
+    const editedPath = typeof input.path === 'string' ? input.path : undefined;
+    if (editedPath) this.invalidateReadsForPath(editedPath);
+  }
+
   /** Returns block reason if this tool call should be rejected. */
   checkBlocked(toolName: string, input: Record<string, unknown>): string | null {
     if (this.getPhase() === 'verify') return null;

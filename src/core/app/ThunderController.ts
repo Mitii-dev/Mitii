@@ -28,7 +28,7 @@ import { debounce } from '../util/debounce';
 import { ChatOrchestrator } from '../orchestration/ChatOrchestrator';
 import { ToolRuntime } from '../tools/ToolRuntime';
 import {
-  createReadFileTool, createReadFilesTool, createListFilesTool, createSearchTool,
+  createReadFileTool, createReadFilesTool, createListFilesTool, createResolvePathTool, createSearchTool,
   createSearchBatchTool, createSearchScriptCatalogTool, createSpawnResearchAgentTool, createSpawnSubagentTool,
   createExecuteWorkspaceScriptTool, createUseSkillTool,
   createRepoMapTool, createRetrieveContextTool, createGitDiffTool,
@@ -621,9 +621,10 @@ export class ThunderController {
     const repoMap = new RepoMapService(db, workspace);
     const fts = new FtsIndex(db);
 
-    this.toolRuntime.register(createReadFileTool(workspace, this.ignoreService));
-    this.toolRuntime.register(createReadFilesTool(workspace, this.ignoreService));
+    this.toolRuntime.register(createReadFileTool(workspace, this.ignoreService, db));
+    this.toolRuntime.register(createReadFilesTool(workspace, this.ignoreService, db));
     this.toolRuntime.register(createListFilesTool(workspace, this.ignoreService));
+    this.toolRuntime.register(createResolvePathTool(workspace, this.ignoreService, db));
     this.toolRuntime.register(createSearchTool(fts, workspace));
     this.toolRuntime.register(createSearchBatchTool(fts, workspace));
     this.toolRuntime.register(createSearchScriptCatalogTool(workspace, this.context.extensionPath));
@@ -1254,6 +1255,21 @@ export class ThunderController {
   }
 
   getSession(): ThunderSession | undefined { return this.session; }
+
+  /** Reset per-turn task routing state when the user switches chat modes mid-thread. */
+  handleModeChange(mode: ThunderMode): void {
+    this.session?.setMode(mode);
+    this.agentTaskState.reset();
+    this.agentTaskState.setLimits({
+      maxSequentialThinkingCalls: this.configService.getConfig().agent.maxSequentialThinkingCallsPerTurn,
+    });
+    this.chatOrchestrator?.clearRoutingState();
+
+    if (mode === 'ask' && this.session?.id) {
+      this.planPersistence?.complete(this.session.id);
+      this.currentPlan = null;
+    }
+  }
   restoreChatSession(sessionId: string, options: { mode?: ThunderMode } = {}): PlanView | null {
     const restoredId = sessionId.trim();
     if (!restoredId) return this.currentPlan;
@@ -2415,9 +2431,14 @@ export class ThunderController {
   }
 
   async saveAgentSettings(settings: AgentSettingsPayload): Promise<void> {
+    const previousDepth = this.configService.getConfig().agent.actDepth;
     await this.configService.updateAgentSettings(normalizeAgentSettings(settings));
 
     const config = this.configService.getConfig();
+    if (settings.actDepth === 'quick' || (previousDepth !== 'quick' && config.agent.actDepth === 'quick')) {
+      this.agentTaskState.reset();
+      this.chatOrchestrator?.clearRoutingState();
+    }
     await this.refreshResearchAgentProvider();
     this.chatOrchestrator?.configure({
       agentConfig: config.agent,

@@ -32,7 +32,7 @@ import { AgentLoop, type ApprovedToolResult, type AgentLoopSuspendState } from '
 import { isSkippedToolOutput } from '../runtime/toolSkip';
 import { PlanExecutor } from '../runtime/PlanExecutor';
 import { analyzeTask, type TaskAnalysis } from '../runtime/TaskAnalyzer';
-import { extractOriginalTaskMessage, isApprovalContinuationMessage } from '../runtime/taskMessage';
+import { extractOriginalTaskMessage, isApprovalContinuationMessage, resolveConversationTaskMessage } from '../runtime/taskMessage';
 import { compactMessagesWithLlm } from '../runtime/ContextCompaction';
 import { getMaxInputTokens } from '../runtime/PromptBudget';
 import { isAuditCleanupTask, AUDIT_AGENT_MAX_STEPS } from '../runtime/taskKind';
@@ -314,7 +314,8 @@ export class ChatOrchestrator {
 
     const agentConfig = this.deps.agentConfig;
     const originalTaskMessage = extractOriginalTaskMessage(userMessage) ?? userMessage;
-    const taskEnrichment = await enrichTask(originalTaskMessage, {
+    const conversationTaskMessage = resolveConversationTaskMessage(originalTaskMessage, recentMessages);
+    const taskEnrichment = await enrichTask(conversationTaskMessage, {
       github: {
         enabled: this.deps.githubIssueFetchEnabled ?? true,
         allowNetwork: Boolean(this.deps.allowNetwork?.()),
@@ -540,7 +541,7 @@ export class ChatOrchestrator {
       this.agentLoop?.clearSuspendState();
     }
     const plannerEnabled = actPlan?.route.shouldUsePlanner
-      ?? shouldUsePlanner(session.mode, taskAnalysis, orchestrationEnabled, auditMode);
+      ?? shouldUsePlanner(session.mode, taskAnalysis, orchestrationEnabled, auditMode, agentConfig?.actDepth);
     const subagentsEnabled =
       (agentConfig?.subagentsEnabled ?? true) &&
       !auditMode &&
@@ -843,6 +844,7 @@ export class ChatOrchestrator {
         const requirementAnalysis =
           requirementAnalysisText.trim() || extractRequirementAnalysis(fullResponse);
 
+        let planQualityIssues: string[] = [];
         const plan = await this.planExecutor.generatePlan(
           provider,
           session.mode,
@@ -856,6 +858,9 @@ export class ChatOrchestrator {
             workspace: this.deps.workspace,
             useIsolatedPlanning: true,
             ...planningSkillOptions,
+            onPlanQualityIssues: (issues) => {
+              planQualityIssues = issues;
+            },
           }
         );
         sessionTiming.end('plan_generation', sessionLog, {
@@ -950,14 +955,26 @@ export class ChatOrchestrator {
           return;
         }
 
-        const failureText =
-          '\n\n⚠️ I could not produce a plan that passed the planning quality gate. No execution was started. Please retry with a little more scope detail, or switch off orchestration for a direct answer.\n';
-        fullResponse += failureText;
-        yield failureText;
-        this.emitActivity('error', 'Planning failed quality gate');
-        await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted);
-        this.setLiveStatus(null);
-        return;
+        if (session.mode === 'plan') {
+          const failureText =
+            '\n\n⚠️ I could not produce a plan that passed the planning quality gate. Please retry with a little more scope detail.\n';
+          fullResponse += failureText;
+          yield failureText;
+          this.emitActivity('error', 'Planning failed quality gate', planQualityIssues.join('; '));
+          await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted);
+          this.setLiveStatus(null);
+          return;
+        }
+
+        const fallbackText =
+          '\n\n⚠️ Structured planning did not pass the quality gate. Continuing with direct Agent execution instead.\n';
+        fullResponse += fallbackText;
+        yield fallbackText;
+        this.emitActivity('info', 'Planning failed — falling back to direct execution', planQualityIssues.join('; '));
+        this.deps.sessionLog?.append('error', 'Planning failed quality gate', {
+          issues: planQualityIssues,
+          fallback: 'direct_agent',
+        });
       }
 
       const isResume = isApprovalContinuationMessage(userMessage);
@@ -1393,6 +1410,11 @@ export class ChatOrchestrator {
     return Boolean(this.agentLoop?.getSuspendState() && this.suspendContext);
   }
 
+  clearRoutingState(): void {
+    this.suspendContext = undefined;
+    this.agentLoop?.clearSuspendState();
+  }
+
   async *resumeAfterApproval(approved: ApprovedToolResult[]): AsyncIterable<AssistantStreamChunk> {
     if (!this.agentLoop || !this.suspendContext || approved.length === 0) return;
 
@@ -1742,11 +1764,12 @@ function shouldUsePlanner(
   mode: ThunderSession['mode'],
   taskAnalysis: ReturnType<typeof analyzeTask>,
   orchestrationEnabled: boolean,
-  auditMode = false
+  auditMode = false,
+  actDepth: import('../config/schema').AgentDepth = 'auto'
 ): boolean {
   // Plan mode always uses the structured planner when the route requires a plan.
   if (mode === 'plan') return taskAnalysis.shouldPlan;
-  if (mode === 'agent') return shouldUsePlannerForAct(taskAnalysis, orchestrationEnabled, auditMode);
+  if (mode === 'agent') return shouldUsePlannerForAct(taskAnalysis, orchestrationEnabled, auditMode, actDepth);
   return false;
 }
 
@@ -1755,9 +1778,10 @@ export { shouldUsePlanner };
 export function shouldExecuteSavedPlan(
   mode: ThunderSession['mode'],
   userMessage: string,
-  hasActivePlan: boolean
+  hasActivePlan: boolean,
+  actDepth: import('../config/schema').AgentDepth = 'auto'
 ): boolean {
-  return mode === 'agent' && shouldResumeSavedPlan(userMessage, hasActivePlan);
+  return mode === 'agent' && shouldResumeSavedPlan(userMessage, hasActivePlan, { actDepth });
 }
 
 function getTouchedFilesFromAudit(toolRuntime?: ToolRuntime): string[] {

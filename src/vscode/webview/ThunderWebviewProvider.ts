@@ -233,7 +233,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
 
       case 'setMode': {
         this.state = { ...this.state, mode: message.payload };
-        this.controller.getSession()?.setMode(message.payload);
+        this.controller.handleModeChange(message.payload);
         if (message.payload === 'review') {
           await this.controller.refreshReviewDiff();
         }

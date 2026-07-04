@@ -19,7 +19,7 @@ import { setVerifyCommandPatterns } from '../plans/PlanActEngine';
 import { ChatOrchestrator } from '../orchestration/ChatOrchestrator';
 import { ToolRuntime } from '../tools/ToolRuntime';
 import {
-  createReadFileTool, createReadFilesTool, createListFilesTool, createSearchTool,
+  createReadFileTool, createReadFilesTool, createListFilesTool, createResolvePathTool, createSearchTool,
   createSearchBatchTool, createSearchScriptCatalogTool, createSpawnResearchAgentTool, createSpawnSubagentTool,
   createExecuteWorkspaceScriptTool, createUseSkillTool,
   createRepoMapTool, createRetrieveContextTool, createGitDiffTool,
@@ -237,7 +237,7 @@ export class HeadlessAgentHost {
 
     const repoMap = new RepoMapService(db, workspace);
     const fts = new FtsIndex(db);
-    this.registerTools(workspace, repoMap, fts, retriever, budgeter);
+    this.registerTools(workspace, db, repoMap, fts, retriever, budgeter);
 
     const mcpToggles = {
       ...defaultMcpToggles(),
@@ -421,14 +421,16 @@ export class HeadlessAgentHost {
 
   private registerTools(
     workspace: string,
+    db: import('../indexing/ThunderDb').ThunderDb,
     repoMap: RepoMapService,
     fts: FtsIndex,
     retriever: HybridRetriever,
     budgeter: ContextBudgeter
   ): void {
-    this.toolRuntime.register(createReadFileTool(workspace, this.ignoreService));
-    this.toolRuntime.register(createReadFilesTool(workspace, this.ignoreService));
+    this.toolRuntime.register(createReadFileTool(workspace, this.ignoreService, db));
+    this.toolRuntime.register(createReadFilesTool(workspace, this.ignoreService, db));
     this.toolRuntime.register(createListFilesTool(workspace, this.ignoreService));
+    this.toolRuntime.register(createResolvePathTool(workspace, this.ignoreService, db));
     this.toolRuntime.register(createSearchTool(fts, workspace));
     this.toolRuntime.register(createSearchBatchTool(fts, workspace));
     this.toolRuntime.register(createSearchScriptCatalogTool(workspace, this.packageRoot));

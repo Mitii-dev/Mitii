@@ -5,6 +5,7 @@ import { routeAskIntent } from '../modes/ask/AskIntentRouter';
 export const ASK_ALLOWED_TOOLS = new Set([
   'read_file',
   'read_files',
+  'resolve_path',
   'list_files',
   'search',
   'search_batch',
@@ -28,6 +29,7 @@ export const ASK_ALLOWED_TOOLS = new Set([
 const GROUNDING_TOOLS = new Set([
   'read_file',
   'read_files',
+  'resolve_path',
   'search',
   'search_batch',
   'retrieve_context',
@@ -100,6 +102,7 @@ Provide your complete final answer NOW in plain text:
 export const NO_TOOLS_ASK_NUDGE = `You answered without reading or searching the codebase. For Ask mode you MUST ground factual claims in tools first.
 
 In this turn, call at least one of:
+- resolve_path — confirm an exact file path before reading
 - read_file / read_files — inspect specific files
 - search / search_batch — find symbols, routes, or patterns
 - retrieve_context — widen context for the question

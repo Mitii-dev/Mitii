@@ -49,6 +49,7 @@ export interface PlanExecutorOptions {
   planMaxAutoContinues?: number;
   skillPlaybookContext?: string;
   onRequirementAnalysisDelta?: (text: string) => void;
+  onPlanQualityIssues?: (issues: string[]) => void;
 }
 
 export interface StepExecutionResult {
@@ -171,6 +172,7 @@ export class PlanExecutor {
 
       repairNotes = issues.map((issue) => `- ${issue}`).join('\n');
       relaxedFallback = { plan, issues };
+      options?.onPlanQualityIssues?.(issues);
       log.warn('Generated plan failed quality gate', { attempt: attempt + 1, issues });
     }
 

@@ -39,6 +39,7 @@ export class ActOrchestrator {
       auditMode: options.auditMode,
       mdxRepairMode: options.mdxRepairMode,
       githubIssueMode: options.githubIssueMode,
+      actDepth: options.actDepth,
     });
     const catalog = options.catalog ?? (options.workspaceRoot ? loadProjectCatalog(options.workspaceRoot) : undefined);
     const scope = resolvePlanScope(userMessage, catalog);

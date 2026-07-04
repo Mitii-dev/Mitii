@@ -3,6 +3,7 @@ import type { SubagentDefinition } from './types';
 const READ_TOOLS = [
   'read_file',
   'read_files',
+  'resolve_path',
   'list_files',
   'search',
   'search_batch',

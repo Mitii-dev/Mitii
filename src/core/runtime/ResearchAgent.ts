@@ -7,7 +7,7 @@ import { createLogger } from '../telemetry/Logger';
 const log = createLogger('ResearchAgent');
 
 const DEFAULT_RESEARCH_SYSTEM = `You are a read-only research subagent. Investigate ONLY the assigned task.
-Use read_file, read_files, list_files, search, search_batch, repo_map, and read-only run_command.
+Use read_file, read_files, resolve_path, list_files, search, search_batch, repo_map, and read-only run_command.
 
 Rules:
 - Complete in ≤4 tool rounds. Be fast and focused.
@@ -22,6 +22,7 @@ If your task is to check unused dependencies, refuse and tell the main agent to 
 const READ_ONLY_TOOL_NAMES = new Set([
   'read_file',
   'read_files',
+  'resolve_path',
   'list_files',
   'search',
   'search_batch',

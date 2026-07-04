@@ -4,7 +4,11 @@ import { dirname, join, relative, resolve } from 'path';
 import type { ContextItem, ContextQuery, ContextSource } from '../context/types';
 import { createLogger } from '../telemetry/Logger';
 
+import { BUNDLED_DEFAULT_RULES } from './bundledDefaultRules';
+
 const log = createLogger('ProjectRulesService');
+
+const BUNDLED_RULES_REL_PATH = 'mitii:defaults/path-resolution';
 
 const MAX_RULE_FILE_BYTES = 256_000;
 const DEFAULT_TOTAL_CHARS = 20_000;
@@ -32,6 +36,12 @@ export class ProjectRulesService {
     if (!this.workspace) return [];
     const files: ProjectRuleFile[] = [];
     const budget = { remaining: Math.max(0, maxTotalChars) };
+
+    const bundled = BUNDLED_DEFAULT_RULES.slice(0, Math.min(maxCharsPerFile, budget.remaining)).trim();
+    if (bundled) {
+      files.push({ relPath: BUNDLED_RULES_REL_PATH, content: bundled });
+      budget.remaining -= bundled.length;
+    }
 
     this.tryAddAbsFile(files, join(homedir(), '.mitii', 'MITTII.md'), '~/.mitii/MITTII.md', maxCharsPerFile, budget);
     for (const layer of RULE_LAYERS) {

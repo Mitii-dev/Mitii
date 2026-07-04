@@ -41,6 +41,12 @@ const FILE_PATH_IN_TEXT =
 const SIMPLE_EDIT =
   /\b(fix typo|rename|change (?:the )?(?:name|text|label)|update import|add comment|format)\b/i;
 
+const SIMPLE_CONTENT_APPEND =
+  /\b(add|append|insert|extend|update)\b[\s\S]{0,100}\b(?:day|days|row|rows|line|lines|entry|entries|section|sections|module|modules)\b/i;
+
+const SIMPLE_FILE_TARGET =
+  /\b(?:to|in|into|at (?:the )?end of)\b[\s\S]{0,80}\b[\w./-]+\.(txt|md|csv|json|yaml|yml)\b|\b(?:plan|roadmap|curriculum|schedule)\b/i;
+
 const AUDIT_CLEANUP =
   /\b(unus[a-z]*|dead code|orphan|cleanup|clean up|remove\s+(?:all\s+)?(?:the\s+)?(?:(?:uns[a-z]*|unused)\s+)?(?:imports?|files?|dependenc(?:y|ies)?)|depcheck|dependencies audit|dependency audit|find unused|list unused|reduce bundle|tree[- ]shake)\b/i;
 
@@ -184,6 +190,21 @@ function classifyTask(text: string): TaskAnalysis {
     };
   }
 
+  if (
+    SIMPLE_CONTENT_APPEND.test(text) &&
+    (SIMPLE_FILE_TARGET.test(text) || text.length < 180) &&
+    !/\b(refactor|migrate|implement|build|across|entire|whole codebase)\b/i.test(text)
+  ) {
+    return {
+      kind: 'simple_edit',
+      complexity: 'low',
+      shouldPlan: false,
+      shouldVerify: true,
+      shouldUseSubagents: false,
+      summary: 'Single-file content append — read the target file and patch directly.',
+    };
+  }
+
   if (DOCS_IMPLEMENTATION.test(text)) {
     const docsComplexity = estimateComplexity(text) === 'low' ? 'medium' : estimateComplexity(text);
     return {
@@ -204,11 +225,14 @@ function classifyTask(text: string): TaskAnalysis {
   const hasImplementationHint = IMPLEMENTATION_HINTS.test(text);
   const isUiPolishTask = (ACTION_VERBS.test(text) || hasImplementationHint) && UI_POLISH_SCOPE.test(text);
 
+  const connectorImpliesMultiStep =
+    connectorCount >= 1 && (text.length > 140 || complexity !== 'low' || fileMentions >= 2);
+
   const isImplementation =
     isUiPolishTask ||
     (actionCount >= 1 &&
       (hasImplementationHint ||
-        connectorCount >= 1 ||
+        connectorImpliesMultiStep ||
         fileMentions >= 2 ||
         text.length > 140 ||
         complexity !== 'low'));

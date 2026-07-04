@@ -19,6 +19,8 @@ import { validateMdxContent } from '../apply/mdxValidation';
 import { isDangerousCommand } from '../safety/ToolPolicyEngine';
 import { isReadOnlyCommand, stripLeadingCd } from '../plans/PlanActEngine';
 import { normalizeWorkspaceRoot, resolveWorkspaceRelPath, formatPathNotFoundHint } from '../util/paths';
+import type { ThunderDb } from '../indexing/ThunderDb';
+import { createWorkspacePathResolver } from '../paths/WorkspacePathResolver';
 import { BaseSubagent, createDefaultSubagentRegistry, loadWorkspaceAgents, type SubagentRuntime } from '../subagents';
 import { isAuditSubagentBlocked, buildScriptFirstAuditMessage } from '../runtime/auditRouting';
 import type { SubagentTracker } from '../runtime/SubagentTracker';
@@ -128,22 +130,32 @@ function validateWriteFileContent(relPath: string, content: string): string | un
   return undefined;
 }
 
-export function createReadFileTool(workspace: string, ignoreService: IgnoreService): Tool<{ path: string }> {
+export function createReadFileTool(
+  workspace: string,
+  ignoreService: IgnoreService,
+  db?: ThunderDb
+): Tool<{ path: string }> {
   return {
     name: 'read_file',
-    description: 'Read one workspace file. For multiple files, prefer read_files in a single call.',
+    description:
+      'Read one workspace file. Missing paths are auto-resolved via the workspace index when confidence is high. For multiple files, prefer read_files. Use resolve_path when unsure.',
     risk: 'low',
     inputSchema: z.object({ path: z.string() }),
     async execute(input): Promise<ToolResult> {
-      return readSingleFile(workspace, input.path, ignoreService);
+      return readSingleFile(workspace, input.path, ignoreService, db);
     },
   };
 }
 
-export function createReadFilesTool(workspace: string, ignoreService: IgnoreService): Tool<{ paths: string[] }> {
+export function createReadFilesTool(
+  workspace: string,
+  ignoreService: IgnoreService,
+  db?: ThunderDb
+): Tool<{ paths: string[] }> {
   return {
     name: 'read_files',
-    description: 'Read multiple workspace files in one call. Max 12 paths per call; prefer 8-10. If you need more, split into another read_files call.',
+    description:
+      'Read multiple workspace files in one call. Max 12 paths per call; prefer 8-10. Missing paths are auto-resolved when confidence is high. Use resolve_path for uncertain paths.',
     risk: 'low',
     inputSchema: z.object({ paths: z.array(z.string()).min(1) }),
     parametersJsonSchema: {
@@ -171,7 +183,7 @@ export function createReadFilesTool(workspace: string, ignoreService: IgnoreServ
       }
       const results = await Promise.all(paths.map(async (path) => ({
         path,
-        result: await readSingleFile(workspace, path, ignoreService),
+        result: await readSingleFile(workspace, path, ignoreService, db),
       })));
       for (const { path, result } of results) {
         parts.push(result.success
@@ -183,25 +195,16 @@ export function createReadFilesTool(workspace: string, ignoreService: IgnoreServ
   };
 }
 
-async function readSingleFile(
+async function readWorkspaceFileContent(
   workspace: string,
-  rawPath: string,
-  ignoreService: IgnoreService
-): Promise<ToolResult> {
-  const relPath = resolveWorkspaceRelPath(workspace, rawPath);
-  if (relPath === null) {
-    return { success: false, output: '', error: 'Invalid path — use workspace-relative paths like apps/docs/docusaurus.config.ts' };
-  }
-  if (ignoreService.isIgnored(relPath, { forRead: true })) {
-    return {
-      success: false,
-      output: '',
-      error: `Path is ignored: ${rawPath}. For built package exports read packages/*/src/index.ts instead of dist/.`,
-    };
-  }
+  relPath: string
+): Promise<{ success: true; output: string } | { success: false; error: string }> {
   try {
     const fullPath = join(workspace, relPath);
     const st = statSync(fullPath);
+    if (!st.isFile()) {
+      return { success: false, error: `Not a file: ${relPath}` };
+    }
     const cached = getReadFileCache(workspace).get(relPath);
     if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
       return { success: true, output: cached.content };
@@ -214,16 +217,114 @@ async function readSingleFile(
     });
     return { success: true, output: content.slice(0, READ_FILE_MAX_CHARS) };
   } catch (e) {
-    const err = String(e);
-    if (err.includes('ENOENT')) {
+    return { success: false, error: String(e) };
+  }
+}
+
+async function readSingleFile(
+  workspace: string,
+  rawPath: string,
+  ignoreService: IgnoreService,
+  db?: ThunderDb
+): Promise<ToolResult> {
+  const relPath = resolveWorkspaceRelPath(workspace, rawPath);
+  if (relPath === null) {
+    return { success: false, output: '', error: 'Invalid path — use workspace-relative paths like apps/docs/docusaurus.config.ts' };
+  }
+  if (ignoreService.isIgnored(relPath, { forRead: true })) {
+    return {
+      success: false,
+      output: '',
+      error: `Path is ignored: ${rawPath}. For built package exports read packages/*/src/index.ts instead of dist/.`,
+    };
+  }
+
+  const direct = await readWorkspaceFileContent(workspace, relPath);
+  if (direct.success) {
+    return { success: true, output: direct.output };
+  }
+
+  const resolver = createWorkspacePathResolver({ workspace, db, ignoreService });
+  const resolution = resolver.resolve(rawPath);
+
+  if (resolution.autoResolved && resolution.resolvedPath && resolution.resolvedPath !== relPath) {
+    if (ignoreService.isIgnored(resolution.resolvedPath, { forRead: true })) {
       return {
         success: false,
         output: '',
-        error: formatPathNotFoundHint(workspace, rawPath, relPath),
+        error: `Resolved path is ignored: ${resolution.resolvedPath}`,
       };
     }
-    return { success: false, output: '', error: err };
+    const resolvedRead = await readWorkspaceFileContent(workspace, resolution.resolvedPath);
+    if (resolvedRead.success) {
+      const candidate = resolution.candidates.find((c) => c.relPath === resolution.resolvedPath)
+        ?? resolution.candidates[0];
+      const prefix = candidate
+        ? `${resolver.formatAutoResolvedNote(rawPath, resolution.resolvedPath, candidate)}\n`
+        : `[Path auto-resolved] ${rawPath} → ${resolution.resolvedPath}\n---\n`;
+      updateReadFileCache(workspace, resolution.resolvedPath, resolvedRead.output);
+      return { success: true, output: `${prefix}${resolvedRead.output}` };
+    }
   }
+
+  if (resolution.candidates.length > 0) {
+    return {
+      success: false,
+      output: '',
+      error: resolver.formatUnresolvedMessage(rawPath, resolution),
+    };
+  }
+
+  return {
+    success: false,
+    output: '',
+    error: `File not found: ${rawPath}. Use resolve_path, search, or list_files before reading.`,
+  };
+}
+
+export function createResolvePathTool(
+  workspace: string,
+  ignoreService: IgnoreService,
+  db?: ThunderDb
+): Tool<{ path: string; scopeRoot?: string }> {
+  return {
+    name: 'resolve_path',
+    description:
+      'Resolve a workspace file path using the SQLite index, layout heuristics, and filesystem search. Returns ranked candidates and auto-resolution when confidence is high. Use before read_file when the exact path is uncertain.',
+    risk: 'low',
+    inputSchema: z.object({
+      path: z.string(),
+      scopeRoot: z.string().optional(),
+    }),
+    async execute(input): Promise<ToolResult> {
+      const resolver = createWorkspacePathResolver({
+        workspace,
+        db,
+        ignoreService,
+        scopeRoot: input.scopeRoot,
+      });
+      const result = resolver.resolve(input.path);
+      const lines = [
+        `Requested: ${input.path}`,
+        `Normalized: ${result.normalizedRequest || '(invalid)'}`,
+        `Confidence: ${result.confidence}`,
+      ];
+      if (result.autoResolved && result.resolvedPath) {
+        lines.push(`Auto-resolved: ${result.resolvedPath}`);
+      }
+      if (result.candidates.length === 0) {
+        lines.push('No indexed or filesystem matches. Try search or list_files on the parent directory.');
+      } else {
+        lines.push('Candidates:');
+        for (const [index, candidate] of result.candidates.entries()) {
+          lines.push(
+            `${index + 1}. ${candidate.relPath} (score ${candidate.score}, ${candidate.source}) — ${candidate.reason}`
+          );
+        }
+      }
+      return { success: true, output: lines.join('\n') };
+    },
+  };
 }
 
 export function createListFilesTool(
@@ -333,7 +434,7 @@ async function ripgrepSearch(workspace: string, query: string, limit: number, sc
 export function createSearchTool(fts: FtsIndex, workspace?: string): Tool<{ query: string; limit?: number; scopeRoot?: string }> {
   return {
     name: 'search',
-    description: 'Search code (FTS + ripgrep). For multiple patterns, use search_batch in one call. Use scopeRoot to limit to one project/package.',
+    description: 'Search code (FTS index + ripgrep, merged). For multiple patterns, use search_batch in one call. Use scopeRoot to limit to one project/package. Copy rel_path values exactly into read_file.',
     risk: 'low',
     inputSchema: z.object({ query: z.string(), limit: z.number().optional(), scopeRoot: z.string().optional() }),
     async execute(input): Promise<ToolResult> {
@@ -577,15 +678,31 @@ async function runSearch(
   scopeRoot?: string
 ): Promise<string> {
   const ftsResults = filterItemsToScope(fts.search(query, limit), scopeRoot);
-  let output = ftsResults.map((r) => `${r.relPath}: ${r.snippet}`).join('\n');
+  const ftsLines = ftsResults.map((r) => `${r.relPath}: ${r.snippet}`);
+  const seenPaths = new Set(ftsResults.map((r) => r.relPath));
 
-  if ((!output || ftsResults.length < 3) && workspace) {
+  const rgLines: string[] = [];
+  if (workspace) {
     const rgOut = await ripgrepSearch(workspace, query, limit, scopeRoot);
     if (rgOut) {
-      output = output ? `${output}\n--- ripgrep ---\n${rgOut}` : rgOut;
+      for (const line of rgOut.split('\n')) {
+        const relPath = line.split(':')[0]?.trim();
+        if (relPath && !seenPaths.has(relPath)) {
+          seenPaths.add(relPath);
+        }
+        rgLines.push(line);
+      }
     }
   }
-  return output;
+
+  const sections: string[] = [];
+  if (ftsLines.length > 0) {
+    sections.push(ftsLines.join('\n'));
+  }
+  if (rgLines.length > 0) {
+    sections.push(`--- ripgrep ---\n${rgLines.join('\n')}`);
+  }
+  return sections.join('\n');
 }
 
 export function createRepoMapTool(repoMap: RepoMapService): Tool<{ query?: string }> {
