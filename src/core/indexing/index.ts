@@ -12,6 +12,8 @@ export * from './SymbolExtractor';
 export * from './languageRegistry';
 export * from './TreeSitterService';
 export * from './IndexQueue';
+export * from './IndexMaintenanceService';
+export * from './IndexWorkerService';
 export * from './hash';
 export * from './embeddingFactory';
 export * from './vectorIndexFactory';

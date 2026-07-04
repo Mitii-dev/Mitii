@@ -1,12 +1,14 @@
 import { createServer, type Server } from 'http';
 import { resolve } from 'path';
-import { TaskBoardService, ParallelAgentRunner } from '../../../src/core/task';
+import { TaskBoardService, ParallelAgentRunner, type ParallelAgentRunnerOptions } from '../../../src/core/task';
+import type { HeadlessRuntime } from '../../../src/core/headless/HeadlessConfig';
 import { writeJson } from '../../daemon/src/authMiddleware';
 
 export interface BoardServerOptions {
   cwd: string;
   hostname?: string;
   port?: number;
+  token?: string;
 }
 
 export async function startMitiiBoard(options: BoardServerOptions): Promise<{ server: Server; url: string; close(): Promise<void> }> {
@@ -14,8 +16,13 @@ export async function startMitiiBoard(options: BoardServerOptions): Promise<{ se
   const board = new TaskBoardService(cwd);
   const hostname = options.hostname ?? '127.0.0.1';
   const port = options.port ?? 4311;
+  const token = options.token ?? process.env.MITII_BOARD_TOKEN;
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? '127.0.0.1'}`);
+    if (token && req.headers.authorization !== `Bearer ${token}`) {
+      writeJson(res, 401, { error: { code: 'unauthorized', message: 'Bearer token required' } });
+      return;
+    }
     if (req.method === 'GET' && url.pathname === '/') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       res.end(renderBoard(board.list()));
@@ -38,7 +45,14 @@ export async function startMitiiBoard(options: BoardServerOptions): Promise<{ se
       return;
     }
     if (req.method === 'POST' && url.pathname === '/tasks/run') {
-      const runner = new ParallelAgentRunner({ workspace: cwd, parallel: Number(url.searchParams.get('parallel') ?? 2), runtime: 'stub' });
+      const runtime = (url.searchParams.get('runtime') as HeadlessRuntime | null) ?? 'real';
+      const providerType = url.searchParams.get('provider') ?? undefined;
+      const runner = new ParallelAgentRunner({
+        workspace: cwd,
+        parallel: Number(url.searchParams.get('parallel') ?? 2),
+        runtime,
+        providerType: providerType as ParallelAgentRunnerOptions['providerType'],
+      });
       writeJson(res, 202, await runner.runRunnable());
       return;
     }

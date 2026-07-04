@@ -391,7 +391,7 @@ export class ThunderController {
     this.chatOrchestrator?.configure({ researchAgentProvider: this.researchAgentProvider });
 
     this.configDisposable = vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('thunder.workspace') || e.affectsConfiguration('thunder')) {
+      if (e.affectsConfiguration('mitii.workspace') || e.affectsConfiguration('mitii') || e.affectsConfiguration('thunder.workspace') || e.affectsConfiguration('thunder')) {
         void this.reloadWorkspace();
       }
     });

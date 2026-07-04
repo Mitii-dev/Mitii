@@ -4,15 +4,15 @@ Mitii is local-first. Workspace indexes, memory, plans, checkpoints, and JSONL s
 
 ## What Leaves The Machine
 
-Only prompt data sent to the configured LLM provider leaves the machine. The provider boundary is controlled by `thunder.provider.*`. Enterprises can enable `thunder.enterprise.localProvidersOnly` to require Echo or a localhost OpenAI-compatible endpoint.
+Only prompt data sent to the configured LLM provider leaves the machine. The provider boundary is controlled by `mitii.provider.*`. Enterprises can enable `mitii.enterprise.localProvidersOnly` to require Echo or a localhost OpenAI-compatible endpoint.
 
 ## Secrets
 
-API keys are stored in VS Code SecretStorage. Logs and audit packs redact keys named like API keys, tokens, passwords, and secrets. Audit packs can additionally strip tool output and file content with `thunder.enterprise.stripFileContentsFromAuditPacks`.
+API keys are stored in VS Code SecretStorage. Logs and audit packs redact keys named like API keys, tokens, passwords, and secrets. Audit packs can additionally strip tool output and file content with `mitii.enterprise.stripFileContentsFromAuditPacks`.
 
 ## MCP Risk Model
 
-MCP tools are routed through Mitii tool policy. File writes and mutating shell commands require approval according to `thunder.safety.approvalMode` and `thunder.safety.requireApprovalForWrites`.
+MCP tools are routed through Mitii tool policy. File writes and mutating shell commands require approval according to `mitii.safety.approvalMode` and `mitii.safety.requireApprovalForWrites`.
 
 ## Auditability
 

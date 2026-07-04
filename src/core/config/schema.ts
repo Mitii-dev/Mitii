@@ -20,7 +20,7 @@ export const ProviderConfigSchema = z.object({
   model: z.string().default('qwen3-coder:30b'),
   apiVersion: z.string().default('2024-10-21'),
   region: z.string().default('us-east-1'),
-  apiKeyRef: z.string().default('thunder.apiKey'),
+  apiKeyRef: z.string().default('mitii.apiKey'),
   contextWindow: z.number().int().positive().default(8192),
   supportsStreaming: z.boolean().default(true),
   supportsTools: z.boolean().default(true),
@@ -44,6 +44,8 @@ export const IndexingConfigSchema = z.object({
   vectorsEnabled: z.boolean().default(true),
   embeddingProvider: EmbeddingProviderSchema,
   vectorBackend: VectorBackendSchema,
+  watchDebounceMs: z.number().int().min(100).max(10_000).default(500),
+  priorityPaths: z.array(z.string()).default([]),
 });
 
 export const ContextConfigSchema = z.object({
@@ -62,6 +64,8 @@ export const EnterpriseConfigSchema = z.object({
   localProvidersOnly: z.boolean().default(false),
   stripFileContentsFromAuditPacks: z.boolean().default(false),
   autoExportAuditPackOnSessionEnd: z.boolean().default(false),
+  channelsDisabled: z.boolean().default(false),
+  maxParallel: z.number().int().min(1).max(100).default(10),
 });
 
 export const AgentDepthSchema = z.enum(['auto', 'quick', 'standard', 'deep', 'pilot', 'enterprise']);
@@ -87,6 +91,7 @@ export const MemoryConfigSchema = z.object({
 
 export const AgentConfigSchema = z.object({
   subagentsEnabled: z.boolean().default(true),
+  teamsEnabled: z.boolean().default(false),
   subagentTypesEnabled: z.array(z.string()).default(['research']),
   maxConcurrentSubagents: z.number().int().min(1).max(10).default(2),
   implementerRequiresScope: z.boolean().default(true),
@@ -169,7 +174,10 @@ export const ScmConfigSchema = z.object({
 export const GitHubConfigSchema = z.object({
   issueFetchEnabled: z.boolean().default(true),
   issueCommentLimit: z.number().int().min(0).max(25).default(8),
-  tokenRef: z.string().default('thunder.github.token'),
+  tokenRef: z.string().default('mitii.github.token'),
+  autoPrEnabled: z.boolean().default(false),
+  defaultBaseBranch: z.string().default(''),
+  webhookSecret: z.string().default(''),
 });
 
 export const TelemetryConfigSchema = z.object({

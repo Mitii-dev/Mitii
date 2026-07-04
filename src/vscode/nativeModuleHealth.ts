@@ -43,9 +43,9 @@ export async function notifyNativeModuleHealth(result = checkBetterSqliteHealth(
 }
 
 export function detectEditorRebuildCommand(env: NodeJS.ProcessEnv = process.env): string {
-  const editor = (env.THUNDER_EDITOR || env.VSCODE_PID || '').toString().toLowerCase();
+  const editor = (env.MITII_EDITOR || env.THUNDER_EDITOR || env.VSCODE_PID || '').toString().toLowerCase();
   if (editor.includes('cursor') || env.CURSOR_TRACE_ID || env.CURSOR_APP_NAME) {
-    return 'THUNDER_EDITOR=cursor npm run rebuild:native';
+    return 'MITII_EDITOR=cursor npm run rebuild:native';
   }
   return 'npm run rebuild:native';
 }

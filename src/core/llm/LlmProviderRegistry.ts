@@ -42,7 +42,7 @@ export class LlmProviderRegistry {
       model: options.model ?? '',
       apiVersion: options.apiVersion ?? '2024-10-21',
       region: options.region ?? 'us-east-1',
-      apiKeyRef: 'thunder.apiKey',
+      apiKeyRef: 'mitii.apiKey',
       contextWindow: options.contextWindow ?? 8192,
       supportsStreaming: options.supportsStreaming ?? true,
       supportsTools: options.supportsTools ?? true,

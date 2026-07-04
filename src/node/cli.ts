@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { execFile } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
 import { createInterface } from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
 import { homedir } from 'os';
@@ -17,6 +17,10 @@ import { serveCommand } from '../../packages/daemon/src/cli';
 import { startMitiiBoard } from '../../packages/board/src/server';
 import { TaskBoardService, ParallelAgentRunner } from '../core/task';
 import { WorktreeService } from '../core/git';
+import { IndexWorkerService } from '../core/indexing/IndexWorkerService';
+import { GitHubPullRequestService, inferGitHubRepo } from '../core/integrations/github';
+import { JobQueueService, type MitiiJob } from '../core/jobs';
+import { TeamService } from '../core/teams';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
@@ -59,6 +63,30 @@ async function main(argv: string[]): Promise<number> {
 
   if (command === 'task') {
     return taskCommand(cwd, args, json);
+  }
+
+  if (command === 'index') {
+    return indexCommand(cwd, args, json);
+  }
+
+  if (command === 'pr') {
+    return prCommand(cwd, args, json);
+  }
+
+  if (command === 'job') {
+    return jobCommand(cwd, args, json);
+  }
+
+  if (command === 'worker') {
+    return workerCommand(cwd, args, json);
+  }
+
+  if (command === 'team') {
+    return teamCommand(cwd, args, json);
+  }
+
+  if (command === 'connect') {
+    return connectCommand(cwd, args);
   }
 
   if (command === 'agents' && args[0] === 'init') {
@@ -403,6 +431,229 @@ async function taskCommand(cwd: string, args: string[], json: boolean): Promise<
   return 2;
 }
 
+async function indexCommand(cwd: string, args: string[], json: boolean): Promise<number> {
+  const sub = args[0] ?? 'status';
+  const worker = new IndexWorkerService({ workspace: cwd });
+  await worker.initialize();
+  try {
+    if (sub === 'status') {
+      const status = worker.status();
+      process.stdout.write(json ? JSON.stringify(status, null, 2) + '\n' : formatIndexStatus(status));
+      return 0;
+    }
+    if (sub === 'repair') {
+      const repair = worker.repair();
+      process.stdout.write(json ? JSON.stringify(repair, null, 2) + '\n' : `Removed ${repair.removedFiles} missing files, rebuilt ${repair.rebuiltFtsChunks} FTS chunks, vacuumed: ${repair.vacuumed}\n`);
+      return repair.health.ok ? 0 : 1;
+    }
+    if (sub === 'enqueue' || sub === 'watch') {
+      const paths = positional(args.slice(1));
+      const result = await worker.enqueue(paths.length ? paths : undefined);
+      process.stdout.write(json ? JSON.stringify(result, null, 2) + '\n' : `Queued ${result.queued} files (${result.added} added, ${result.changed} changed, ${result.deleted} deleted).\n`);
+      if (sub === 'watch') {
+        process.stderr.write('Initial enqueue complete. Keep `mitii serve` running for continuous index worker API access.\n');
+      }
+      return 0;
+    }
+    process.stderr.write('Usage: mitii index status|repair|enqueue|watch [paths...] [--cwd <path>] [--json]\n');
+    return 2;
+  } finally {
+    worker.dispose();
+  }
+}
+
+async function prCommand(cwd: string, args: string[], json: boolean): Promise<number> {
+  const sub = args[0];
+  if (sub !== 'create') {
+    process.stderr.write('Usage: mitii pr create --title "..." [--body "..."] [--body-file file] [--head branch] [--base main] [--draft false] [--repo owner/name]\n');
+    return 2;
+  }
+  const repoArg = valueOf(args, '--repo');
+  const inferred = repoArg
+    ? parseOwnerRepo(repoArg)
+    : inferGitHubRepo(cwd);
+  if (!inferred) {
+    process.stderr.write('Could not infer GitHub repo. Pass --repo owner/name.\n');
+    return 2;
+  }
+  const title = valueOf(args, '--title');
+  if (!title) {
+    process.stderr.write('mitii pr create requires --title.\n');
+    return 2;
+  }
+  const body = valueOf(args, '--body')
+    ?? readBodyFile(cwd, valueOf(args, '--body-file'))
+    ?? 'Created by Mitii.';
+  const head = valueOf(args, '--head') ?? currentGitBranch(cwd);
+  const base = valueOf(args, '--base') ?? 'main';
+  const token = valueOf(args, '--token') ?? process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  if (!head) {
+    process.stderr.write('Could not infer current git branch. Pass --head.\n');
+    return 2;
+  }
+  const result = await new GitHubPullRequestService().createPullRequest({
+    ...inferred,
+    head,
+    base,
+    title,
+    body,
+    draft: valueOf(args, '--draft') !== 'false',
+  }, token ?? '');
+  process.stdout.write(json ? JSON.stringify(result, null, 2) + '\n' : `${result.htmlUrl}\n`);
+  return 0;
+}
+
+async function jobCommand(cwd: string, args: string[], json: boolean): Promise<number> {
+  const sub = args[0] ?? 'list';
+  const queue = new JobQueueService(cwd);
+  if (sub === 'enqueue') {
+    const prompt = positional(args.slice(1)).join(' ') || valueOf(args, '--prompt');
+    if (!prompt) {
+      process.stderr.write('mitii job enqueue requires a prompt.\n');
+      return 2;
+    }
+    const job = queue.enqueue({
+      prompt,
+      cwd,
+      mode: (valueOf(args, '--mode') as MitiiJob['mode'] | undefined) ?? 'agent',
+    });
+    process.stdout.write(json ? JSON.stringify(job, null, 2) + '\n' : `Enqueued ${job.id}\n`);
+    return 0;
+  }
+  if (sub === 'list' || sub === 'status') {
+    const jobs = queue.list();
+    process.stdout.write(json ? JSON.stringify({ jobs }, null, 2) + '\n' : formatJobs(jobs));
+    return 0;
+  }
+  process.stderr.write('Usage: mitii job enqueue "prompt" [--mode ask|plan|agent|review] | mitii job list\n');
+  return 2;
+}
+
+async function workerCommand(cwd: string, args: string[], json: boolean): Promise<number> {
+  const once = args.includes('--once');
+  const intervalMs = Number(valueOf(args, '--interval-ms') ?? 5000);
+  const queue = new JobQueueService(cwd);
+  const workerId = `worker-${process.pid}`;
+  do {
+    const job = queue.lease(workerId);
+    if (job) {
+      try {
+        const output = await runQueuedJob(job, args, json);
+        queue.complete(job.id, output);
+        process.stderr.write(`Completed job ${job.id}\n`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        queue.fail(job.id, message);
+        process.stderr.write(`Failed job ${job.id}: ${message}\n`);
+      }
+    } else if (once) {
+      process.stderr.write('No queued jobs.\n');
+    }
+    if (once) break;
+    await sleep(Number.isFinite(intervalMs) ? intervalMs : 5000);
+  } while (true);
+  return 0;
+}
+
+async function teamCommand(cwd: string, args: string[], json: boolean): Promise<number> {
+  const sub = args[0];
+  const name = valueOf(args, '--team-name') ?? args[1];
+  const teams = new TeamService();
+  if (sub === 'create') {
+    if (!name) {
+      process.stderr.write('mitii team create requires a name.\n');
+      return 2;
+    }
+    const manifest = teams.create(name, { workspace: cwd });
+    process.stdout.write(json ? JSON.stringify(manifest, null, 2) + '\n' : `Created team ${manifest.name}\n`);
+    return 0;
+  }
+  if (sub === 'status') {
+    if (!name) {
+      process.stderr.write('mitii team status requires a name.\n');
+      return 2;
+    }
+    const status = teams.status(name);
+    if (!status) {
+      process.stderr.write(`Team not found: ${name}\n`);
+      return 1;
+    }
+    process.stdout.write(json ? JSON.stringify(status, null, 2) + '\n' : formatTeamStatus(status));
+    return 0;
+  }
+  if (sub === 'task') {
+    const teamName = valueOf(args, '--team-name');
+    const title = positional(args.slice(1))[0];
+    if (!teamName || !title) {
+      process.stderr.write('Usage: mitii team task "title" --team-name <name> [--prompt "..."] [--role implementer]\n');
+      return 2;
+    }
+    const task = teams.addTask(teamName, {
+      title,
+      prompt: valueOf(args, '--prompt') ?? title,
+      assigneeRole: valueOf(args, '--role'),
+    });
+    process.stdout.write(json ? JSON.stringify(task, null, 2) + '\n' : `Added team task ${task.id}\n`);
+    return 0;
+  }
+  if (sub === 'send') {
+    const teamName = valueOf(args, '--team-name');
+    const text = positional(args.slice(1)).join(' ');
+    if (!teamName || !text) {
+      process.stderr.write('Usage: mitii team send "message" --team-name <name> [--from lead] [--to implementer]\n');
+      return 2;
+    }
+    const message = teams.sendMessage(teamName, {
+      from: valueOf(args, '--from') ?? 'lead',
+      to: valueOf(args, '--to') ?? 'team',
+      text,
+    });
+    process.stdout.write(json ? JSON.stringify(message, null, 2) + '\n' : `Sent message ${message.id}\n`);
+    return 0;
+  }
+  process.stderr.write('Usage: mitii team create <name> | status <name> | task "title" --team-name <name> | send "message" --team-name <name>\n');
+  return 2;
+}
+
+async function connectCommand(cwd: string, args: string[]): Promise<number> {
+  const connector = args[0];
+  if (connector === 'telegram') {
+    const token = valueOf(args, '--token') ?? process.env.TELEGRAM_BOT_TOKEN;
+    if (!token) {
+      process.stderr.write('mitii connect telegram requires --token or TELEGRAM_BOT_TOKEN.\n');
+      return 2;
+    }
+    const { TelegramConnector } = await import('../../packages/channels/src/telegram');
+    process.stderr.write('Mitii Telegram connector polling. Press Ctrl+C to stop.\n');
+    await new TelegramConnector({
+      token,
+      daemonUrl: valueOf(args, '--daemon-url') ?? 'http://127.0.0.1:4310',
+      daemonToken: valueOf(args, '--daemon-token') ?? process.env.MITII_SERVER_TOKEN,
+      cwd,
+    }).start();
+    return 0;
+  }
+  process.stderr.write('Usage: mitii connect telegram --token <bot-token> [--daemon-url http://127.0.0.1:4310]\n');
+  return 2;
+}
+
+async function runQueuedJob(job: MitiiJob, args: string[], json: boolean): Promise<string> {
+  let output = '';
+  for await (const event of query({
+    ...clientOptionsFromArgs(job.cwd, args),
+    cwd: job.cwd,
+    mode: job.mode,
+    prompt: job.prompt,
+    sessionId: job.id,
+  })) {
+    if (json) process.stdout.write(JSON.stringify(event) + '\n');
+    if (event.type === 'assistant_delta') output += event.content;
+    if (event.type === 'done') break;
+    if (event.type === 'error') throw new Error(event.message);
+  }
+  return output.trim() || 'Completed without assistant output.';
+}
+
 async function mergeTask(cwd: string, id: string, options: { squash: boolean; cleanup: boolean; forceCleanup: boolean }): Promise<{ id: string; branch: string; message: string }> {
   const board = new TaskBoardService(cwd);
   const task = board.list().find((item) => item.id === id);
@@ -429,7 +680,7 @@ async function mergeTask(cwd: string, id: string, options: { squash: boolean; cl
 async function boardCommand(cwd: string, args: string[]): Promise<number> {
   const hostname = valueOf(args, '--hostname') ?? '127.0.0.1';
   const port = Number(valueOf(args, '--port') ?? 4311);
-  const board = await startMitiiBoard({ cwd, hostname, port: Number.isFinite(port) ? port : 4311 });
+  const board = await startMitiiBoard({ cwd, hostname, port: Number.isFinite(port) ? port : 4311, token: valueOf(args, '--token') });
   process.stderr.write(`Mitii board listening on ${board.url}\n`);
   const shutdown = async () => {
     await board.close();
@@ -464,6 +715,52 @@ function initAgentTemplate(cwd: string, json: boolean): number {
 function formatTasks(tasks: import('../core/task').MitiiTask[]): string {
   if (tasks.length === 0) return 'No tasks.\n';
   return tasks.map((task) => `${task.id}\t${task.status}\t${task.title}`).join('\n') + '\n';
+}
+
+function formatIndexStatus(status: import('../core/indexing/IndexMaintenanceService').IndexStatusReport): string {
+  return [
+    `Workspace: ${status.workspace}`,
+    `Files: ${status.filesIndexed}/${status.filesTotal} indexed`,
+    `Chunks: ${status.chunks}`,
+    `Symbols: ${status.symbols}`,
+    `Queue: ${status.queued} queued, running: ${status.running}, failed: ${status.failed}`,
+    `Database: ${status.dbPath ?? 'unknown'}${status.dbSizeBytes !== undefined ? ` (${status.dbSizeBytes} bytes)` : ''}`,
+    `Health: ${status.health.ok ? 'ok' : `issues (${status.health.errors.join('; ') || status.health.missingTables.join(', ')})`}`,
+    '',
+  ].join('\n');
+}
+
+function formatJobs(jobs: MitiiJob[]): string {
+  if (jobs.length === 0) return 'No jobs.\n';
+  return jobs.map((job) => `${job.id}\t${job.status}\t${job.mode}\t${job.prompt.slice(0, 80)}`).join('\n') + '\n';
+}
+
+function formatTeamStatus(status: NonNullable<ReturnType<TeamService['status']>>): string {
+  return [
+    `${status.manifest.name} (${status.manifest.id})`,
+    `Roles: ${status.manifest.roles.join(', ')}`,
+    `Tasks: ${status.tasks.length}`,
+    `Unread messages: ${status.messages.filter((message) => !message.read).length}`,
+    '',
+  ].join('\n');
+}
+
+function parseOwnerRepo(value: string): { owner: string; repo: string } | undefined {
+  const [owner, repo] = value.split('/');
+  return owner && repo ? { owner, repo } : undefined;
+}
+
+function readBodyFile(cwd: string, path: string | undefined): string | undefined {
+  if (!path) return undefined;
+  return readFileSync(resolve(cwd, path), 'utf8');
+}
+
+function currentGitBranch(cwd: string): string | undefined {
+  try {
+    return execFileSync('git', ['branch', '--show-current'], { cwd, encoding: 'utf8' }).trim() || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function valueOf(args: string[], name: string): string | undefined {
@@ -530,6 +827,12 @@ function printHelp(): void {
     '  mitii agents init [--cwd <path>] [--json]',
     '  mitii task add "title" --prompt "..." [--depends-on <id,id>] [--json]',
     '  mitii task list|start <id>|run [--parallel 2]|worktrees [--cwd <path>] [--json]',
+    '  mitii index status|repair|enqueue|watch [paths...] [--cwd <path>] [--json]',
+    '  mitii pr create --title "..." [--body-file .mitii/pr-body.md] [--repo owner/name] [--head branch] [--base main]',
+    '  mitii job enqueue "prompt" [--mode agent] | mitii job list [--json]',
+    '  mitii worker [--once] [--interval-ms 5000] [--runtime real|stub] [--provider echo|openai|...]',
+    '  mitii team create <name> | status <name> | task "title" --team-name <name> | send "message" --team-name <name>',
+    '  mitii connect telegram --token <bot-token> [--daemon-url http://127.0.0.1:4310]',
     '  mitii auth list',
     '  mitii memory status|prune|connect agentmemory [--cwd <path>] [--json]',
     '  mitii changelog [--since <tag>] [--cwd <path>] [--json]',
@@ -583,6 +886,10 @@ function compact<T extends Record<string, unknown>>(value: T): Partial<T> {
 function maskSecret(value: string): string {
   if (value.length <= 8) return '********';
   return `${value.slice(0, 4)}...${value.slice(-4)}`;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 }
 
 function formatAuditVerification(result: ReturnType<typeof verifyAuditPack>): string {

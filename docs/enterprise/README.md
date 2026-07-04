@@ -7,5 +7,5 @@ This folder is the reviewer-facing security, compliance, and procurement packet 
 - [Procurement FAQ](PROCUREMENT_FAQ.md)
 - [Enterprise overview](MITII_ENTERPRISE_OVERVIEW.md)
 
-Key controls are implemented as VS Code settings under `thunder.telemetry.*`, `thunder.safety.*`, `thunder.enterprise.*`, and the `Mitii: Export Audit Pack` command.
+Key controls are implemented as VS Code settings under `mitii.telemetry.*`, `mitii.safety.*`, `mitii.enterprise.*`, and the `Mitii: Export Audit Pack` command.
 

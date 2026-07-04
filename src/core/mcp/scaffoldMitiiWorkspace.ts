@@ -14,7 +14,7 @@ This folder stores ${AGENT_NAME} runtime data for this workspace.
 
 ## MCP servers
 
-Built-in servers load automatically when \`thunder.mcp.preloadBuiltin\` is enabled (default):
+Built-in servers load automatically when \`mitii.mcp.preloadBuiltin\` is enabled (default):
 
 | Server | Package |
 |--------|---------|
@@ -22,7 +22,7 @@ Built-in servers load automatically when \`thunder.mcp.preloadBuiltin\` is enabl
 | memory | @modelcontextprotocol/server-memory |
 | sequential-thinking | @modelcontextprotocol/server-sequential-thinking |
 
-To add custom MCP servers, edit \`mcp.json\` in this folder or set \`thunder.mcp.servers\` in VS Code settings.
+To add custom MCP servers, edit \`mcp.json\` in this folder or set \`mitii.mcp.servers\` in VS Code settings.
 Workspace \`mcp.json\` entries override built-ins with the same name.
 
 Example:

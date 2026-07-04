@@ -15,7 +15,7 @@ Use this skill when validating UI behavior, screenshots, or client-side flows in
 
 ## MCP setup
 
-Mitii preloads `@modelcontextprotocol/server-puppeteer` when `thunder.mcp.builtinServers.puppeteer` is enabled.
+Mitii preloads `@modelcontextprotocol/server-puppeteer` when `mitii.mcp.builtinServers.puppeteer` is enabled.
 
 Headless CLI:
 

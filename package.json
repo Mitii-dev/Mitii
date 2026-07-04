@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow",
-  "version": "2.7.32",
+  "version": "2.7.33",
   "publisher": "mitii",
   "icon": "media/mitii-short-logo.png",
   "license": "AGPL-3.0-or-later",
@@ -48,7 +48,15 @@
     "onCommand:thunder.generateCommitMessage",
     "onCommand:thunder.generateChangelog",
     "onCommand:thunder.prepareRelease",
-    "onCommand:thunder.exportAuditPack"
+    "onCommand:thunder.exportAuditPack",
+    "onCommand:mitii.openChat",
+    "onCommand:mitii.indexWorkspace",
+    "onCommand:mitii.showSettings",
+    "onCommand:mitii.generateCommitMessage",
+    "onCommand:mitii.generateChangelog",
+    "onCommand:mitii.prepareRelease",
+    "onCommand:mitii.exportAuditPack",
+    "onCommand:mitii.migrateThunderSettings"
   ],
   "main": "./dist/extension.js",
   "bin": {
@@ -116,12 +124,83 @@
         "command": "thunder.prepareRelease",
         "title": "Mitii: Prepare Release",
         "category": "Mitii"
+      },
+      {
+        "command": "mitii.openChat",
+        "title": "Mitii: Open Chat",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.indexWorkspace",
+        "title": "Mitii: Index Workspace",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.showSettings",
+        "title": "Mitii: Show Settings",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.exportSessionLog",
+        "title": "Mitii: Export Session Log",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.exportAuditPack",
+        "title": "Mitii: Export Audit Pack",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.openSessionLog",
+        "title": "Mitii: Open Session Log File",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.acceptInlineDiff",
+        "title": "Mitii: Accept Inline Diff",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.rejectInlineDiff",
+        "title": "Mitii: Reject Inline Diff",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.showInlineDiff",
+        "title": "Mitii: Show Inline Diff",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.generateCommitMessage",
+        "title": "Mitii: Generate Commit Message",
+        "category": "Mitii",
+        "icon": "media/mitii-activitybar.svg"
+      },
+      {
+        "command": "mitii.generateChangelog",
+        "title": "Mitii: Generate Changelog Entry",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.prepareRelease",
+        "title": "Mitii: Prepare Release",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.migrateThunderSettings",
+        "title": "Mitii: Migrate Settings from thunder.* to mitii.*",
+        "category": "Mitii"
       }
     ],
     "menus": {
       "scm/title": [
         {
           "command": "thunder.generateCommitMessage",
+          "when": "scmProvider == git && gitOpenRepositoryCount != 0",
+          "group": "navigation"
+        },
+        {
+          "command": "mitii.generateCommitMessage",
           "when": "scmProvider == git && gitOpenRepositoryCount != 0",
           "group": "navigation"
         }
@@ -151,61 +230,72 @@
         "thunder.debug": {
           "type": "boolean",
           "default": false,
-          "description": "Enable debug logging and show stack traces in UI"
+          "description": "Enable debug logging and show stack traces in UI",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.telemetry.sessionLogging": {
           "type": "boolean",
           "default": true,
-          "description": "Write structured JSONL session logs to .mitii/logs/ for debugging and analysis."
+          "description": "Write structured JSONL session logs to .mitii/logs/ for debugging and analysis.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.telemetry.debugMetrics": {
           "type": "boolean",
           "default": false,
-          "description": "Capture extra session diagnostics (tool inputs, context sources, LLM step metadata). Process timing is always logged when session logging is on."
+          "description": "Capture extra session diagnostics (tool inputs, context sources, LLM step metadata). Process timing is always logged when session logging is on.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.telemetry.webhookUrl": {
           "type": "string",
           "default": "",
-          "description": "Optional SIEM/webhook endpoint. When set, sanitized session events are POSTed as JSON."
+          "description": "Optional SIEM/webhook endpoint. When set, sanitized session events are POSTed as JSON.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.telemetry.webhookSecret": {
           "type": "string",
           "default": "",
-          "description": "Optional HMAC signing secret for webhook events. Prefer workspace or managed settings for enterprise deployments."
+          "description": "Optional HMAC signing secret for webhook events. Prefer workspace or managed settings for enterprise deployments.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.telemetry.webhookTimeoutMs": {
           "type": "number",
           "default": 5000,
           "minimum": 1000,
           "maximum": 60000,
-          "description": "Timeout in milliseconds for telemetry webhook delivery attempts."
+          "description": "Timeout in milliseconds for telemetry webhook delivery attempts.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.ui.showReasoning": {
           "type": "boolean",
           "default": true,
-          "description": "Show streamed model reasoning when the provider returns reasoning deltas."
+          "description": "Show streamed model reasoning when the provider returns reasoning deltas.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.ui.reasoningPreviewMaxChars": {
           "type": "number",
           "default": 8000,
           "minimum": 0,
           "maximum": 100000,
-          "description": "Maximum reasoning characters shown inline. Set 0 to show all reasoning."
+          "description": "Maximum reasoning characters shown inline. Set 0 to show all reasoning.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.enterprise.localProvidersOnly": {
           "type": "boolean",
           "default": false,
-          "description": "Enterprise policy flag documenting that only local providers should be used for this workspace."
+          "description": "Enterprise policy flag documenting that only local providers should be used for this workspace.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.enterprise.stripFileContentsFromAuditPacks": {
           "type": "boolean",
           "default": false,
-          "description": "Strip file contents and large tool outputs from exported audit packs while preserving metadata."
+          "description": "Strip file contents and large tool outputs from exported audit packs while preserving metadata.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.enterprise.autoExportAuditPackOnSessionEnd": {
           "type": "boolean",
           "default": false,
-          "description": "Export a sanitized audit pack automatically to .mitii/audit/ when an agent turn completes."
+          "description": "Export a sanitized audit pack automatically to .mitii/audit/ when an agent turn completes.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.runtime.mode": {
           "type": "string",
@@ -214,22 +304,26 @@
             "daemon"
           ],
           "default": "embedded",
-          "description": "Run the VS Code chat in-process or attach to a running mitii serve daemon."
+          "description": "Run the VS Code chat in-process or attach to a running mitii serve daemon.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.runtime.daemonUrl": {
           "type": "string",
           "default": "http://127.0.0.1:4310",
-          "description": "Mitii daemon URL used when thunder.runtime.mode is daemon."
+          "description": "Mitii daemon URL used when thunder.runtime.mode is daemon.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.runtime.daemonToken": {
           "type": "string",
           "default": "",
-          "description": "Optional bearer token for mitii serve. Prefer SecretStorage or managed settings for enterprise use."
+          "description": "Optional bearer token for mitii serve. Prefer SecretStorage or managed settings for enterprise use.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.runtime.autoStartDaemon": {
           "type": "boolean",
           "default": false,
-          "description": "Automatically start mitii serve when a workspace opens and daemon runtime mode is selected."
+          "description": "Automatically start mitii serve when a workspace opens and daemon runtime mode is selected.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.provider.type": {
           "type": "string",
@@ -247,77 +341,92 @@
             "echo"
           ],
           "default": "echo",
-          "description": "LLM provider type"
+          "description": "LLM provider type",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.provider.baseUrl": {
           "type": "string",
           "default": "http://localhost:11434/v1",
-          "description": "OpenAI-compatible API base URL"
+          "description": "OpenAI-compatible API base URL",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.provider.model": {
           "type": "string",
           "default": "qwen3-coder:30b",
-          "description": "Model name"
+          "description": "Model name",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.provider.apiVersion": {
           "type": "string",
           "default": "2024-10-21",
-          "description": "Provider API version. Used by Azure OpenAI when building deployment chat completion URLs."
+          "description": "Provider API version. Used by Azure OpenAI when building deployment chat completion URLs.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.provider.region": {
           "type": "string",
           "default": "us-east-1",
-          "description": "Cloud provider region. Used by AWS Bedrock."
+          "description": "Cloud provider region. Used by AWS Bedrock.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.provider.contextWindow": {
           "type": "number",
           "default": 8192,
-          "description": "Model context window size. Thunder trims prompts automatically to stay within this limit."
+          "description": "Model context window size. Thunder trims prompts automatically to stay within this limit.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.provider.supportsVision": {
           "type": "boolean",
-          "description": "Optional override for model vision support. Leave unset to use automatic provider/model detection."
+          "description": "Optional override for model vision support. Leave unset to use automatic provider/model detection.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.provider.supportsReasoning": {
           "type": "boolean",
-          "description": "Optional override for streamed reasoning support. Leave unset to use automatic provider/model detection."
+          "description": "Optional override for streamed reasoning support. Leave unset to use automatic provider/model detection.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.indexing.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable workspace indexing"
+          "description": "Enable workspace indexing",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.indexing.autoIndexOnOpen": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically index the workspace when a folder is opened or switched."
+          "description": "Automatically index the workspace when a folder is opened or switched.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.indexing.maxFileSizeBytes": {
           "type": "number",
           "default": 512000,
-          "description": "Max file size for full indexing in bytes. Larger files get signature-only indexing."
+          "description": "Max file size for full indexing in bytes. Larger files get signature-only indexing.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.indexing.hardSkipSizeBytes": {
           "type": "number",
           "default": 2000000,
-          "description": "Skip files larger than this size entirely (e.g. lockfiles)."
+          "description": "Skip files larger than this size entirely (e.g. lockfiles).",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.indexing.maxConcurrency": {
           "type": "number",
           "default": 2,
           "minimum": 1,
           "maximum": 8,
-          "description": "Number of files to index in parallel."
+          "description": "Number of files to index in parallel.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.indexing.vectorsEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable semantic vector search. Uses MiniLM when @xenova/transformers is available, hash fallback otherwise."
+          "description": "Enable semantic vector search. Uses MiniLM when @xenova/transformers is available, hash fallback otherwise.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.indexing.treeSitterEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Use tree-sitter WASM for symbol extraction (regex fallback when unavailable)"
+          "description": "Use tree-sitter WASM for symbol extraction (regex fallback when unavailable)",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.indexing.embeddingProvider": {
           "type": "string",
@@ -326,7 +435,8 @@
             "minilm"
           ],
           "default": "minilm",
-          "description": "Embedding provider when vectors are enabled. minilm uses local @xenova/transformers (all-MiniLM-L6-v2); falls back to hash if unavailable."
+          "description": "Embedding provider when vectors are enabled. minilm uses local @xenova/transformers (all-MiniLM-L6-v2); falls back to hash if unavailable.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.indexing.vectorBackend": {
           "type": "string",
@@ -335,41 +445,48 @@
             "lancedb"
           ],
           "default": "sqlite",
-          "description": "Vector index storage: sqlite (.mitii/mitii.sqlite) or lancedb (.mitii/lance/) via @lancedb/lancedb"
+          "description": "Vector index storage: sqlite (.mitii/mitii.sqlite) or lancedb (.mitii/lance/) via @lancedb/lancedb",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.context.rerankerEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Rerank top retrieval candidates for better context quality (top-20 → top-8)"
+          "description": "Rerank top retrieval candidates for better context quality (top-20 → top-8)",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.context.rerankerCandidatePool": {
           "type": "number",
           "default": 20,
           "minimum": 5,
           "maximum": 50,
-          "description": "Number of candidates to pass to the reranker"
+          "description": "Number of candidates to pass to the reranker",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.context.rerankerTopK": {
           "type": "number",
           "default": 8,
           "minimum": 3,
           "maximum": 30,
-          "description": "Number of items to keep after reranking"
+          "description": "Number of items to keep after reranking",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.context.microTaskRoutingEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Route narrow chat requests such as commit messages, changelog entries, and release notes through minimal Git context instead of the full agent loop."
+          "description": "Route narrow chat requests such as commit messages, changelog entries, and release notes through minimal Git context instead of the full agent loop.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.safety.requireApprovalForWrites": {
           "type": "boolean",
           "default": true,
-          "description": "Require approval for file writes"
+          "description": "Require approval for file writes",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.safety.requireApprovalForShell": {
           "type": "boolean",
           "default": true,
-          "description": "Require approval for shell commands"
+          "description": "Require approval for shell commands",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.safety.approvalMode": {
           "type": "string",
@@ -388,7 +505,8 @@
             "Auto-approve allowed tools and commands. Dangerous commands are still blocked."
           ],
           "default": "review_all",
-          "description": "Approval mode for agent operations"
+          "description": "Approval mode for agent operations",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.safety.autonomyPreset": {
           "type": "string",
@@ -400,27 +518,32 @@
             "enterprise"
           ],
           "default": "guided",
-          "description": "Autonomy preset"
+          "description": "Autonomy preset",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.memory.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable local memory"
+          "description": "Enable local memory",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.memory.hybridSearchEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Use FTS5 + optional vector hybrid search for observations"
+          "description": "Use FTS5 + optional vector hybrid search for observations",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.memory.summarizeAfterTask": {
           "type": "boolean",
           "default": true,
-          "description": "Summarize completed tasks into durable local memory."
+          "description": "Summarize completed tasks into durable local memory.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.memory.autoMemoryEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Write post-task memories to human-readable markdown files in addition to SQLite observations."
+          "description": "Write post-task memories to human-readable markdown files in addition to SQLite observations.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.memory.autoMemoryScope": {
           "type": "string",
@@ -430,34 +553,40 @@
             "both"
           ],
           "default": "user",
-          "description": "Where markdown auto-memory files are written: user profile, workspace .mitii/auto-memory, or both."
+          "description": "Where markdown auto-memory files are written: user profile, workspace .mitii/auto-memory, or both.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.scm.commitMessageEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Show Mitii commit-message generation in VS Code Source Control."
+          "description": "Show Mitii commit-message generation in VS Code Source Control.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.github.issueFetchEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Fetch structured GitHub issue context when a chat message contains a github.com owner/repo/issues URL and network access is allowed."
+          "description": "Fetch structured GitHub issue context when a chat message contains a github.com owner/repo/issues URL and network access is allowed.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.github.issueCommentLimit": {
           "type": "number",
           "default": 8,
           "minimum": 0,
           "maximum": 25,
-          "description": "Maximum number of GitHub issue comments to include in injected issue context."
+          "description": "Maximum number of GitHub issue comments to include in injected issue context.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.github.tokenRef": {
           "type": "string",
           "default": "thunder.github.token",
-          "description": "VS Code SecretStorage key for an optional GitHub token used to fetch private issues. The token itself is not stored in settings."
+          "description": "VS Code SecretStorage key for an optional GitHub token used to fetch private issues. The token itself is not stored in settings.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.subagentsEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable subagent tools for typed delegation."
+          "description": "Enable subagent tools for typed delegation.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.subagentTypesEnabled": {
           "type": "array",
@@ -467,39 +596,45 @@
           "items": {
             "type": "string"
           },
-          "description": "Allowed subagent types. Built-ins are research, implementer, reviewer, and verifier; custom .mitii/agents ids may also be listed."
+          "description": "Allowed subagent types. Built-ins are research, implementer, reviewer, and verifier; custom .mitii/agents ids may also be listed.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.maxConcurrentSubagents": {
           "type": "number",
           "default": 2,
           "minimum": 1,
           "maximum": 10,
-          "description": "Maximum subagents allowed to run concurrently in one session."
+          "description": "Maximum subagents allowed to run concurrently in one session.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.implementerRequiresScope": {
           "type": "boolean",
           "default": true,
-          "description": "Require implementer subagents to receive targetFiles or scopeRoot before write tools are available."
+          "description": "Require implementer subagents to receive targetFiles or scopeRoot before write tools are available.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.subagentDailyBudget": {
           "type": "number",
           "default": 0,
           "minimum": 0,
-          "description": "Maximum subagent invocations per session day. 0 means unlimited."
+          "description": "Maximum subagent invocations per session day. 0 means unlimited.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.maxSteps": {
           "type": "number",
           "default": 15,
           "minimum": 1,
           "maximum": 100,
-          "description": "Maximum tool-use steps before the main agent stops or auto-continues."
+          "description": "Maximum tool-use steps before the main agent stops or auto-continues.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.askMaxSteps": {
           "type": "number",
           "default": 18,
           "minimum": 1,
           "maximum": 50,
-          "description": "Maximum tool-use steps per Ask-mode turn (read-only exploration). Use 16-20 for deep codebase explanations."
+          "description": "Maximum tool-use steps per Ask-mode turn (read-only exploration). Use 16-20 for deep codebase explanations.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.askDepth": {
           "type": "string",
@@ -512,7 +647,8 @@
             "enterprise"
           ],
           "default": "auto",
-          "description": "Ask-mode exploration depth. Auto chooses by intent; quick is concise; deep explores more before answering."
+          "description": "Ask-mode exploration depth. Auto chooses by intent; quick is concise; deep explores more before answering.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.planDepth": {
           "type": "string",
@@ -525,7 +661,8 @@
             "enterprise"
           ],
           "default": "auto",
-          "description": "Plan-mode discovery depth before structured plan compilation. Auto chooses by intent; deep explores more of the codebase."
+          "description": "Plan-mode discovery depth before structured plan compilation. Auto chooses by intent; deep explores more of the codebase.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.actDepth": {
           "type": "string",
@@ -538,58 +675,68 @@
             "enterprise"
           ],
           "default": "auto",
-          "description": "Agent/Act execution depth. Auto chooses by task route; quick caps direct work, deep allows up to 16 tool steps."
+          "description": "Agent/Act execution depth. Auto chooses by task route; quick caps direct work, deep allows up to 16 tool steps.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.askAutoContinue": {
           "type": "boolean",
           "default": true,
-          "description": "Allow Ask mode to continue when deep exploration reaches its per-round limit."
+          "description": "Allow Ask mode to continue when deep exploration reaches its per-round limit.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.askMaxAutoContinues": {
           "type": "number",
           "default": 1,
           "minimum": 0,
           "maximum": 10,
-          "description": "Maximum automatic continuation rounds for Ask mode."
+          "description": "Maximum automatic continuation rounds for Ask mode.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.autoContinue": {
           "type": "boolean",
           "default": true,
-          "description": "Allow the agent to keep working after it reaches the per-round step limit."
+          "description": "Allow the agent to keep working after it reaches the per-round step limit.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.maxAutoContinues": {
           "type": "number",
           "default": 2,
           "minimum": 0,
           "maximum": 10,
-          "description": "Maximum number of automatic continuation rounds after the main step limit."
+          "description": "Maximum number of automatic continuation rounds after the main step limit.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.researchAgentMaxSteps": {
           "type": "number",
           "default": 10,
           "minimum": 1,
           "maximum": 50,
-          "description": "Maximum tool-use steps for each read-only research subagent."
+          "description": "Maximum tool-use steps for each read-only research subagent.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.researchAgentModel": {
           "type": "string",
           "default": "",
-          "description": "Optional faster model for read-only research subagents. Empty uses the main provider model."
+          "description": "Optional faster model for read-only research subagents. Empty uses the main provider model.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.researchAgentBaseUrl": {
           "type": "string",
           "default": "",
-          "description": "Optional OpenAI-compatible base URL for the research subagent model. Empty uses thunder.provider.baseUrl."
+          "description": "Optional OpenAI-compatible base URL for the research subagent model. Empty uses thunder.provider.baseUrl.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.orchestrationEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable the multi-step planner in Plan mode. Act mode uses a faster direct agent path by default."
+          "description": "Enable the multi-step planner in Plan mode. Act mode uses a faster direct agent path by default.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.showDiffPreview": {
           "type": "boolean",
           "default": false,
-          "description": "Open VS Code diff preview tabs before write_file/apply_patch tool calls. Disabled by default to avoid editor focus changes."
+          "description": "Open VS Code diff preview tabs before write_file/apply_patch tool calls. Disabled by default to avoid editor focus changes.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.verifyCommands": {
           "type": "array",
@@ -597,32 +744,38 @@
           "items": {
             "type": "string"
           },
-          "description": "Optional shell commands to run after Act-mode completes. Leave empty to auto-discover from package.json scripts (typecheck, lint, test, build) based on touched files."
+          "description": "Optional shell commands to run after Act-mode completes. Leave empty to auto-discover from package.json scripts (typecheck, lint, test, build) based on touched files.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.verifyOnActComplete": {
           "type": "boolean",
           "default": true,
-          "description": "After Act-mode runs, discover and run project-appropriate verification (package.json scripts). Uses verifyCommands when set; otherwise auto-discovers."
+          "description": "After Act-mode runs, discover and run project-appropriate verification (package.json scripts). Uses verifyCommands when set; otherwise auto-discovers.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.planModel": {
           "type": "string",
           "default": "",
-          "description": "Optional model override for Plan mode. Empty uses thunder.provider.model."
+          "description": "Optional model override for Plan mode. Empty uses thunder.provider.model.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.planBaseUrl": {
           "type": "string",
           "default": "",
-          "description": "Optional base URL override for Plan mode."
+          "description": "Optional base URL override for Plan mode.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.actModel": {
           "type": "string",
           "default": "",
-          "description": "Optional model override for Agent (Act) mode. Empty uses thunder.provider.model."
+          "description": "Optional model override for Agent (Act) mode. Empty uses thunder.provider.model.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.actBaseUrl": {
           "type": "string",
           "default": "",
-          "description": "Optional base URL override for Agent (Act) mode."
+          "description": "Optional base URL override for Agent (Act) mode.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.checkpointStrategy": {
           "type": "string",
@@ -632,22 +785,26 @@
             "shadow-git"
           ],
           "default": "git-stash",
-          "description": "Checkpoint strategy before file writes. Git stash when repo available, else file copy."
+          "description": "Checkpoint strategy before file writes. Git stash when repo available, else file copy.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.safety.allowUntrustedWorkspace": {
           "type": "boolean",
           "default": false,
-          "description": "Allow writes and shell in untrusted workspaces (not recommended)."
+          "description": "Allow writes and shell in untrusted workspaces (not recommended).",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.mcp.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable Model Context Protocol servers. Built-in free servers start automatically unless thunder.mcp.preloadBuiltin is false."
+          "description": "Enable Model Context Protocol servers. Built-in free servers start automatically unless thunder.mcp.preloadBuiltin is false.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.mcp.preloadBuiltin": {
           "type": "boolean",
           "default": true,
-          "description": "Preload official free MCP servers (filesystem, memory, sequential-thinking) on extension startup. Toggle individual servers in the Mitii settings UI."
+          "description": "Preload official free MCP servers (filesystem, memory, sequential-thinking) on extension startup. Toggle individual servers in the Mitii settings UI.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.mcp.builtinServers": {
           "type": "object",
@@ -657,24 +814,658 @@
             "sequentialThinking": true,
             "agentmemory": false
           },
-          "description": "Default on/off state for built-in MCP servers. Per-session toggles are available in the Mitii Integrations settings tab."
+          "description": "Default on/off state for built-in MCP servers. Per-session toggles are available in the Mitii Integrations settings tab.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.mcp.maxConcurrentStartup": {
           "type": "number",
           "default": 4,
           "minimum": 1,
           "maximum": 20,
-          "description": "Maximum MCP stdio servers Mitii starts at the same time."
+          "description": "Maximum MCP stdio servers Mitii starts at the same time.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.mcp.servers": {
           "type": "object",
           "default": {},
-          "description": "MCP server definitions keyed by server name. Supports stdio servers: { \"my-server\": { \"command\": \"npx\", \"args\": [\"-y\", \"@modelcontextprotocol/server-filesystem\", \".\"] } }"
+          "description": "MCP server definitions keyed by server name. Supports stdio servers: { \"my-server\": { \"command\": \"npx\", \"args\": [\"-y\", \"@modelcontextprotocol/server-filesystem\", \".\"] } }",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.workspace.rootPathOverride": {
           "type": "string",
           "default": "",
+          "description": "Fallback workspace root when no VS Code folder is open. When a folder is open, Mitii always uses that folder and ignores this setting.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
+        "mitii.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable debug logging and show stack traces in UI"
+        },
+        "mitii.telemetry.sessionLogging": {
+          "type": "boolean",
+          "default": true,
+          "description": "Write structured JSONL session logs to .mitii/logs/ for debugging and analysis."
+        },
+        "mitii.telemetry.debugMetrics": {
+          "type": "boolean",
+          "default": false,
+          "description": "Capture extra session diagnostics (tool inputs, context sources, LLM step metadata). Process timing is always logged when session logging is on."
+        },
+        "mitii.telemetry.webhookUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional SIEM/webhook endpoint. When set, sanitized session events are POSTed as JSON."
+        },
+        "mitii.telemetry.webhookSecret": {
+          "type": "string",
+          "default": "",
+          "description": "Optional HMAC signing secret for webhook events. Prefer workspace or managed settings for enterprise deployments."
+        },
+        "mitii.telemetry.webhookTimeoutMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "maximum": 60000,
+          "description": "Timeout in milliseconds for telemetry webhook delivery attempts."
+        },
+        "mitii.ui.showReasoning": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show streamed model reasoning when the provider returns reasoning deltas."
+        },
+        "mitii.ui.reasoningPreviewMaxChars": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 0,
+          "maximum": 100000,
+          "description": "Maximum reasoning characters shown inline. Set 0 to show all reasoning."
+        },
+        "mitii.enterprise.localProvidersOnly": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enterprise policy flag documenting that only local providers should be used for this workspace."
+        },
+        "mitii.enterprise.stripFileContentsFromAuditPacks": {
+          "type": "boolean",
+          "default": false,
+          "description": "Strip file contents and large tool outputs from exported audit packs while preserving metadata."
+        },
+        "mitii.enterprise.autoExportAuditPackOnSessionEnd": {
+          "type": "boolean",
+          "default": false,
+          "description": "Export a sanitized audit pack automatically to .mitii/audit/ when an agent turn completes."
+        },
+        "mitii.runtime.mode": {
+          "type": "string",
+          "enum": [
+            "embedded",
+            "daemon"
+          ],
+          "default": "embedded",
+          "description": "Run the VS Code chat in-process or attach to a running mitii serve daemon."
+        },
+        "mitii.runtime.daemonUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:4310",
+          "description": "Mitii daemon URL used when mitii.runtime.mode is daemon."
+        },
+        "mitii.runtime.daemonToken": {
+          "type": "string",
+          "default": "",
+          "description": "Optional bearer token for mitii serve. Prefer SecretStorage or managed settings for enterprise use."
+        },
+        "mitii.runtime.autoStartDaemon": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically start mitii serve when a workspace opens and daemon runtime mode is selected."
+        },
+        "mitii.provider.type": {
+          "type": "string",
+          "enum": [
+            "openai-compatible",
+            "openrouter",
+            "openai",
+            "azure-openai",
+            "bedrock",
+            "anthropic",
+            "gemini",
+            "deepseek",
+            "cursor",
+            "codex",
+            "echo"
+          ],
+          "default": "echo",
+          "description": "LLM provider type"
+        },
+        "mitii.provider.baseUrl": {
+          "type": "string",
+          "default": "http://localhost:11434/v1",
+          "description": "OpenAI-compatible API base URL"
+        },
+        "mitii.provider.model": {
+          "type": "string",
+          "default": "qwen3-coder:30b",
+          "description": "Model name"
+        },
+        "mitii.provider.apiVersion": {
+          "type": "string",
+          "default": "2024-10-21",
+          "description": "Provider API version. Used by Azure OpenAI when building deployment chat completion URLs."
+        },
+        "mitii.provider.region": {
+          "type": "string",
+          "default": "us-east-1",
+          "description": "Cloud provider region. Used by AWS Bedrock."
+        },
+        "mitii.provider.contextWindow": {
+          "type": "number",
+          "default": 8192,
+          "description": "Model context window size. Mitii trims prompts automatically to stay within this limit."
+        },
+        "mitii.provider.supportsVision": {
+          "type": "boolean",
+          "description": "Optional override for model vision support. Leave unset to use automatic provider/model detection."
+        },
+        "mitii.provider.supportsReasoning": {
+          "type": "boolean",
+          "description": "Optional override for streamed reasoning support. Leave unset to use automatic provider/model detection."
+        },
+        "mitii.indexing.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable workspace indexing"
+        },
+        "mitii.indexing.autoIndexOnOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically index the workspace when a folder is opened or switched."
+        },
+        "mitii.indexing.maxFileSizeBytes": {
+          "type": "number",
+          "default": 512000,
+          "description": "Max file size for full indexing in bytes. Larger files get signature-only indexing."
+        },
+        "mitii.indexing.hardSkipSizeBytes": {
+          "type": "number",
+          "default": 2000000,
+          "description": "Skip files larger than this size entirely (e.g. lockfiles)."
+        },
+        "mitii.indexing.maxConcurrency": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 8,
+          "description": "Number of files to index in parallel."
+        },
+        "mitii.indexing.vectorsEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable semantic vector search. Uses MiniLM when @xenova/transformers is available, hash fallback otherwise."
+        },
+        "mitii.indexing.treeSitterEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use tree-sitter WASM for symbol extraction (regex fallback when unavailable)"
+        },
+        "mitii.indexing.embeddingProvider": {
+          "type": "string",
+          "enum": [
+            "hash",
+            "minilm"
+          ],
+          "default": "minilm",
+          "description": "Embedding provider when vectors are enabled. minilm uses local @xenova/transformers (all-MiniLM-L6-v2); falls back to hash if unavailable."
+        },
+        "mitii.indexing.vectorBackend": {
+          "type": "string",
+          "enum": [
+            "sqlite",
+            "lancedb"
+          ],
+          "default": "sqlite",
+          "description": "Vector index storage: sqlite (.mitii/mitii.sqlite) or lancedb (.mitii/lance/) via @lancedb/lancedb"
+        },
+        "mitii.context.rerankerEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Rerank top retrieval candidates for better context quality (top-20 → top-8)"
+        },
+        "mitii.context.rerankerCandidatePool": {
+          "type": "number",
+          "default": 20,
+          "minimum": 5,
+          "maximum": 50,
+          "description": "Number of candidates to pass to the reranker"
+        },
+        "mitii.context.rerankerTopK": {
+          "type": "number",
+          "default": 8,
+          "minimum": 3,
+          "maximum": 30,
+          "description": "Number of items to keep after reranking"
+        },
+        "mitii.context.microTaskRoutingEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Route narrow chat requests such as commit messages, changelog entries, and release notes through minimal Git context instead of the full agent loop."
+        },
+        "mitii.safety.requireApprovalForWrites": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require approval for file writes"
+        },
+        "mitii.safety.requireApprovalForShell": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require approval for shell commands"
+        },
+        "mitii.safety.approvalMode": {
+          "type": "string",
+          "enum": [
+            "review_all",
+            "ask_edits",
+            "ask_deletes",
+            "ask_commands",
+            "auto"
+          ],
+          "enumDescriptions": [
+            "Ask before file edits and mutating shell commands.",
+            "Ask before file edits and delete-like shell commands; allow other mutating shell commands.",
+            "Ask only before delete-like shell commands; allow file edits and other commands.",
+            "Ask before mutating shell commands; allow file edits.",
+            "Auto-approve allowed tools and commands. Dangerous commands are still blocked."
+          ],
+          "default": "review_all",
+          "description": "Approval mode for agent operations"
+        },
+        "mitii.safety.autonomyPreset": {
+          "type": "string",
+          "enum": [
+            "safe",
+            "guided",
+            "builder",
+            "pilot",
+            "enterprise"
+          ],
+          "default": "guided",
+          "description": "Autonomy preset"
+        },
+        "mitii.memory.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable local memory"
+        },
+        "mitii.memory.hybridSearchEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use FTS5 + optional vector hybrid search for observations"
+        },
+        "mitii.memory.summarizeAfterTask": {
+          "type": "boolean",
+          "default": true,
+          "description": "Summarize completed tasks into durable local memory."
+        },
+        "mitii.memory.autoMemoryEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Write post-task memories to human-readable markdown files in addition to SQLite observations."
+        },
+        "mitii.memory.autoMemoryScope": {
+          "type": "string",
+          "enum": [
+            "user",
+            "workspace",
+            "both"
+          ],
+          "default": "user",
+          "description": "Where markdown auto-memory files are written: user profile, workspace .mitii/auto-memory, or both."
+        },
+        "mitii.scm.commitMessageEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Mitii commit-message generation in VS Code Source Control."
+        },
+        "mitii.github.issueFetchEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Fetch structured GitHub issue context when a chat message contains a github.com owner/repo/issues URL and network access is allowed."
+        },
+        "mitii.github.issueCommentLimit": {
+          "type": "number",
+          "default": 8,
+          "minimum": 0,
+          "maximum": 25,
+          "description": "Maximum number of GitHub issue comments to include in injected issue context."
+        },
+        "mitii.github.tokenRef": {
+          "type": "string",
+          "default": "mitii.github.token",
+          "description": "VS Code SecretStorage key for an optional GitHub token used to fetch private issues. The token itself is not stored in settings."
+        },
+        "mitii.agent.subagentsEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable subagent tools for typed delegation."
+        },
+        "mitii.agent.subagentTypesEnabled": {
+          "type": "array",
+          "default": [
+            "research"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Allowed subagent types. Built-ins are research, implementer, reviewer, and verifier; custom .mitii/agents ids may also be listed."
+        },
+        "mitii.agent.maxConcurrentSubagents": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Maximum subagents allowed to run concurrently in one session."
+        },
+        "mitii.agent.implementerRequiresScope": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require implementer subagents to receive targetFiles or scopeRoot before write tools are available."
+        },
+        "mitii.agent.subagentDailyBudget": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "Maximum subagent invocations per session day. 0 means unlimited."
+        },
+        "mitii.agent.maxSteps": {
+          "type": "number",
+          "default": 15,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum tool-use steps before the main agent stops or auto-continues."
+        },
+        "mitii.agent.askMaxSteps": {
+          "type": "number",
+          "default": 18,
+          "minimum": 1,
+          "maximum": 50,
+          "description": "Maximum tool-use steps per Ask-mode turn (read-only exploration). Use 16-20 for deep codebase explanations."
+        },
+        "mitii.agent.askDepth": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "quick",
+            "standard",
+            "deep",
+            "pilot",
+            "enterprise"
+          ],
+          "default": "auto",
+          "description": "Ask-mode exploration depth. Auto chooses by intent; quick is concise; deep explores more before answering."
+        },
+        "mitii.agent.planDepth": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "quick",
+            "standard",
+            "deep",
+            "pilot",
+            "enterprise"
+          ],
+          "default": "auto",
+          "description": "Plan-mode discovery depth before structured plan compilation. Auto chooses by intent; deep explores more of the codebase."
+        },
+        "mitii.agent.actDepth": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "quick",
+            "standard",
+            "deep",
+            "pilot",
+            "enterprise"
+          ],
+          "default": "auto",
+          "description": "Agent/Act execution depth. Auto chooses by task route; quick caps direct work, deep allows up to 16 tool steps."
+        },
+        "mitii.agent.askAutoContinue": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow Ask mode to continue when deep exploration reaches its per-round limit."
+        },
+        "mitii.agent.askMaxAutoContinues": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Maximum automatic continuation rounds for Ask mode."
+        },
+        "mitii.agent.autoContinue": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow the agent to keep working after it reaches the per-round step limit."
+        },
+        "mitii.agent.maxAutoContinues": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Maximum number of automatic continuation rounds after the main step limit."
+        },
+        "mitii.agent.researchAgentMaxSteps": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 50,
+          "description": "Maximum tool-use steps for each read-only research subagent."
+        },
+        "mitii.agent.researchAgentModel": {
+          "type": "string",
+          "default": "",
+          "description": "Optional faster model for read-only research subagents. Empty uses the main provider model."
+        },
+        "mitii.agent.researchAgentBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional OpenAI-compatible base URL for the research subagent model. Empty uses mitii.provider.baseUrl."
+        },
+        "mitii.agent.orchestrationEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the multi-step planner in Plan mode. Act mode uses a faster direct agent path by default."
+        },
+        "mitii.agent.showDiffPreview": {
+          "type": "boolean",
+          "default": false,
+          "description": "Open VS Code diff preview tabs before write_file/apply_patch tool calls. Disabled by default to avoid editor focus changes."
+        },
+        "mitii.agent.verifyCommands": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional shell commands to run after Act-mode completes. Leave empty to auto-discover from package.json scripts (typecheck, lint, test, build) based on touched files."
+        },
+        "mitii.agent.verifyOnActComplete": {
+          "type": "boolean",
+          "default": true,
+          "description": "After Act-mode runs, discover and run project-appropriate verification (package.json scripts). Uses verifyCommands when set; otherwise auto-discovers."
+        },
+        "mitii.agent.planModel": {
+          "type": "string",
+          "default": "",
+          "description": "Optional model override for Plan mode. Empty uses mitii.provider.model."
+        },
+        "mitii.agent.planBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional base URL override for Plan mode."
+        },
+        "mitii.agent.actModel": {
+          "type": "string",
+          "default": "",
+          "description": "Optional model override for Agent (Act) mode. Empty uses mitii.provider.model."
+        },
+        "mitii.agent.actBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional base URL override for Agent (Act) mode."
+        },
+        "mitii.agent.checkpointStrategy": {
+          "type": "string",
+          "enum": [
+            "file-copy",
+            "git-stash",
+            "shadow-git"
+          ],
+          "default": "git-stash",
+          "description": "Checkpoint strategy before file writes. Git stash when repo available, else file copy."
+        },
+        "mitii.safety.allowUntrustedWorkspace": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow writes and shell in untrusted workspaces (not recommended)."
+        },
+        "mitii.mcp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Model Context Protocol servers. Built-in free servers start automatically unless mitii.mcp.preloadBuiltin is false."
+        },
+        "mitii.mcp.preloadBuiltin": {
+          "type": "boolean",
+          "default": true,
+          "description": "Preload official free MCP servers (filesystem, memory, sequential-thinking) on extension startup. Toggle individual servers in the Mitii settings UI."
+        },
+        "mitii.mcp.builtinServers": {
+          "type": "object",
+          "default": {
+            "filesystem": true,
+            "memory": true,
+            "sequentialThinking": true,
+            "agentmemory": false
+          },
+          "description": "Default on/off state for built-in MCP servers. Per-session toggles are available in the Mitii Integrations settings tab."
+        },
+        "mitii.mcp.maxConcurrentStartup": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Maximum MCP stdio servers Mitii starts at the same time."
+        },
+        "mitii.mcp.servers": {
+          "type": "object",
+          "default": {},
+          "description": "MCP server definitions keyed by server name. Supports stdio servers: { \"my-server\": { \"command\": \"npx\", \"args\": [\"-y\", \"@modelcontextprotocol/server-filesystem\", \".\"] } }"
+        },
+        "mitii.workspace.rootPathOverride": {
+          "type": "string",
+          "default": "",
           "description": "Fallback workspace root when no VS Code folder is open. When a folder is open, Mitii always uses that folder and ignores this setting."
+        },
+        "mitii.indexing.watchDebounceMs": {
+          "type": "number",
+          "default": 500,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Debounce in milliseconds for single-file indexing updates."
+        },
+        "mitii.indexing.priorityPaths": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Relative paths that should be indexed before background backlog work."
+        },
+        "mitii.github.autoPrEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow Mitii workflows to create GitHub pull requests when explicitly requested."
+        },
+        "mitii.github.defaultBaseBranch": {
+          "type": "string",
+          "default": "",
+          "description": "Default target branch for Mitii-created pull requests. Empty uses CLI defaults."
+        },
+        "mitii.github.webhookSecret": {
+          "type": "string",
+          "default": "",
+          "description": "Shared secret used to verify GitHub webhook requests before enqueueing async jobs."
+        },
+        "mitii.agent.teamsEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable persistent team coordination features when a team name is selected."
+        },
+        "mitii.enterprise.channelsDisabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Disable Slack, Telegram, Discord, and other channel connectors by policy."
+        },
+        "mitii.enterprise.maxParallel": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum parallel Mitii sessions or teammates allowed by managed enterprise policy."
+        },
+        "thunder.indexing.watchDebounceMs": {
+          "type": "number",
+          "default": 500,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Debounce in milliseconds for single-file indexing updates.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
+        "thunder.indexing.priorityPaths": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Relative paths that should be indexed before background backlog work.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
+        "thunder.github.autoPrEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow Mitii workflows to create GitHub pull requests when explicitly requested.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
+        "thunder.github.defaultBaseBranch": {
+          "type": "string",
+          "default": "",
+          "description": "Default target branch for Mitii-created pull requests. Empty uses CLI defaults.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
+        "thunder.github.webhookSecret": {
+          "type": "string",
+          "default": "",
+          "description": "Shared secret used to verify GitHub webhook requests before enqueueing async jobs.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
+        "thunder.agent.teamsEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable persistent team coordination features when a team name is selected.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
+        "thunder.enterprise.channelsDisabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Disable Slack, Telegram, Discord, and other channel connectors by policy.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
+        "thunder.enterprise.maxParallel": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum parallel Mitii sessions or teammates allowed by managed enterprise policy.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         }
       }
     }
@@ -683,7 +1474,7 @@
     "vscode:prepublish": "pnpm run compile",
     "compile": "pnpm run compile:extension && pnpm run compile:webview && pnpm run compile:cli",
     "setup": "bash scripts/dev-setup.sh",
-    "setup:cursor": "THUNDER_EDITOR=cursor bash scripts/dev-setup.sh",
+    "setup:cursor": "MITII_EDITOR=cursor bash scripts/dev-setup.sh",
     "rebuild:native": "node scripts/rebuild-native.mjs",
     "rebuild:node": "node scripts/rebuild-node.mjs",
     "rebuild:all": "pnpm run rebuild:native && pnpm run rebuild:node",
@@ -745,7 +1536,10 @@
     "publish:patch": "pnpm run version:patch && pnpm run publish:vsce",
     "publish:minor": "pnpm run version:minor && pnpm run publish:vsce",
     "publish:major": "pnpm run version:major && pnpm run publish:vsce",
-    "smoke": "vitest run test/smoke"
+    "smoke": "vitest run test/smoke",
+    "publish:ovsx": "pnpm dlx ovsx publish",
+    "release:all": "pnpm test && pnpm run package && pnpm run publish:ovsx",
+    "sync:versions": "node scripts/sync-versions.mjs"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.2",

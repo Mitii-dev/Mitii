@@ -38,7 +38,7 @@ describe('provider setup validation', () => {
 describe('native module health helpers', () => {
   it('uses a Cursor-specific rebuild command when Cursor env is present', () => {
     expect(detectEditorRebuildCommand({ CURSOR_TRACE_ID: '1' } as NodeJS.ProcessEnv)).toBe(
-      'THUNDER_EDITOR=cursor npm run rebuild:native'
+      'MITII_EDITOR=cursor npm run rebuild:native'
     );
   });
 });

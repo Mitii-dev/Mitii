@@ -7,6 +7,7 @@ import { SessionConflictError, SessionLimitError, SessionManager, SessionNotFoun
 import { SseHub } from './sseHub';
 import { isLoopbackHost, validateWorkspace } from './workspaceBinding';
 import type { MitiiApprovalDecision, MitiiMode } from '../../../src/core/headless/events';
+import { IndexWorkerService } from '../../../src/core/indexing/IndexWorkerService';
 
 export interface MitiiDaemonServerOptions {
   cwd: string;
@@ -43,6 +44,8 @@ export async function startMitiiDaemon(options: MitiiDaemonServerOptions): Promi
     packageRoot: options.packageRoot,
     sseHub,
   });
+  const indexWorker = new IndexWorkerService({ workspace: resolve(options.cwd) });
+  await indexWorker.initialize();
 
   const server = createServer(async (req, res) => {
     try {
@@ -56,7 +59,7 @@ export async function startMitiiDaemon(options: MitiiDaemonServerOptions): Promi
         writeUnauthorized(res);
         return;
       }
-      await route(req, res, sessions, sseHub, options);
+      await route(req, res, sessions, sseHub, indexWorker, options);
     } catch (error) {
       const status = statusForError(error);
       writeJson(res, status, { error: { code: codeForStatus(status), message: error instanceof Error ? error.message : String(error) } });
@@ -69,6 +72,7 @@ export async function startMitiiDaemon(options: MitiiDaemonServerOptions): Promi
   });
 
   const close = async () => {
+    indexWorker.dispose();
     await sessions.dispose();
     await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
   };
@@ -81,6 +85,7 @@ async function route(
   res: ServerResponse,
   sessions: SessionManager,
   sseHub: SseHub,
+  indexWorker: IndexWorkerService,
   options: MitiiDaemonServerOptions
 ): Promise<void> {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? '127.0.0.1'}`);
@@ -99,13 +104,43 @@ async function route(
 
   if (req.method === 'GET' && url.pathname === '/capabilities') {
     writeJson(res, 200, {
-      features: ['sessions', 'sse', 'permissions', 'cancel', 'subagents', 'worktrees'],
+      features: ['sessions', 'sse', 'permissions', 'cancel', 'subagents', 'worktrees', 'index-worker'],
       maxSessions: options.maxSessions ?? 5,
       supportedModes: ['ask', 'plan', 'agent', 'review'],
       eventReplay: true,
       auth: Boolean(options.token ?? process.env.MITII_SERVER_TOKEN),
     });
     return;
+  }
+
+  if (parts[0] === 'index') {
+    if (req.method === 'GET' && parts[1] === 'status') {
+      writeJson(res, 200, { index: indexWorker.status() });
+      return;
+    }
+    if (req.method === 'POST' && parts[1] === 'enqueue') {
+      const body = await readJson(req);
+      const result = await indexWorker.enqueue(
+        Array.isArray(body.paths) ? body.paths.filter((path): path is string => typeof path === 'string') : undefined,
+        { priorityPaths: Array.isArray(body.priorityPaths) ? body.priorityPaths.filter((path): path is string => typeof path === 'string') : undefined }
+      );
+      writeJson(res, 202, result);
+      return;
+    }
+    if (req.method === 'POST' && parts[1] === 'delete') {
+      const body = await readJson(req);
+      const relPath = stringValue(body.path);
+      if (!relPath) {
+        writeJson(res, 400, { error: { code: 'bad_request', message: 'path is required' } });
+        return;
+      }
+      writeJson(res, 200, { removed: indexWorker.delete(relPath) });
+      return;
+    }
+    if (req.method === 'POST' && parts[1] === 'repair') {
+      writeJson(res, 200, { repair: indexWorker.repair() });
+      return;
+    }
   }
 
   if (req.method === 'GET' && url.pathname === '/sessions') {
