@@ -31,13 +31,17 @@ export class ThunderSession {
   readonly createdAt: number;
   updatedAt: number;
 
-  constructor(workspace: string, mode: ThunderMode = 'plan') {
-    this.id = randomUUID();
+  constructor(
+    workspace: string,
+    mode: ThunderMode = 'plan',
+    restored?: { id?: string; title?: string | null; createdAt?: number; updatedAt?: number }
+  ) {
+    this.id = restored?.id?.trim() || randomUUID();
     this.workspace = workspace;
     this.mode = normalizeThunderMode(mode);
-    this.title = null;
-    this.createdAt = Date.now();
-    this.updatedAt = this.createdAt;
+    this.title = restored?.title ?? null;
+    this.createdAt = restored?.createdAt ?? Date.now();
+    this.updatedAt = restored?.updatedAt ?? this.createdAt;
   }
 
   touch(): void {

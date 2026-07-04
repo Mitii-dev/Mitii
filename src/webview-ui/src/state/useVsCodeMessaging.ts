@@ -73,6 +73,9 @@ export function useVsCodeMessaging() {
         case 'setTokenUsage':
           dispatch({ type: 'SET_TOKEN_USAGE', payload: message.payload });
           break;
+        case 'setReviewDiff':
+          dispatch({ type: 'SET_REVIEW_DIFF', payload: message.payload });
+          break;
         case 'setContextPaths':
           if (message.payload.requestId === pathSearchRequestIdRef.current) {
             setPathSuggestions(message.payload.paths);

@@ -1,0 +1,28 @@
+{
+  "fixtures": {
+    "node-express": {
+      "category": "node",
+      "stack": "Express",
+      "entryFiles": ["src/index.js", "src/routes/users.js", "package.json"],
+      "symbols": ["express", "router", "users", "GET /users"]
+    },
+    "react-vite": {
+      "category": "react",
+      "stack": "React + Vite",
+      "entryFiles": ["src/App.tsx", "src/components/Button.tsx", "package.json"],
+      "symbols": ["Button", "variant", "React", "props"]
+    },
+    "nest-api": {
+      "category": "nestjs",
+      "stack": "NestJS",
+      "entryFiles": ["src/main.ts", "src/app.module.ts", "src/app.controller.ts", "src/app.service.ts"],
+      "symbols": ["AppModule", "AppController", "Injectable", "NestFactory"]
+    },
+    "next-app": {
+      "category": "nextjs",
+      "stack": "Next.js App Router",
+      "entryFiles": ["app/page.tsx", "app/layout.tsx", "package.json"],
+      "symbols": ["layout", "page", "metadata", "Next.js"]
+    }
+  }
+}

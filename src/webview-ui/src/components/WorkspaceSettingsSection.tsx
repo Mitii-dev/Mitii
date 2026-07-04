@@ -1,16 +1,14 @@
 import { useState, useEffect } from 'react';
-import { AGENT_NAME } from '../../../shared/brand';
-import type { IndexingStatusView, WorkspaceNoticeView } from '../../../vscode/webview/messages';
-import { SettingNote } from './SettingNote';
+import type { IndexingStatusView, VectorIndexStatusView, WorkspaceNoticeView } from '../../../vscode/webview/messages';
 
 interface WorkspaceSettingsSectionProps {
   workspaceOpen: boolean;
   workspacePath: string;
-  vscodeWorkspaceFolders: string[];
   workspaceOverride: string;
   usingWorkspaceOverride: boolean;
   indexDbPath: string;
   indexing: IndexingStatusView;
+  vectorIndex: VectorIndexStatusView;
   workspaceNotice: WorkspaceNoticeView | null;
   onPickFolder: () => void;
   onSetOverride: (path: string) => void;
@@ -21,11 +19,11 @@ interface WorkspaceSettingsSectionProps {
 export function WorkspaceSettingsSection({
   workspaceOpen,
   workspacePath,
-  vscodeWorkspaceFolders,
   workspaceOverride,
   usingWorkspaceOverride,
   indexDbPath,
   indexing,
+  vectorIndex,
   workspaceNotice,
   onPickFolder,
   onSetOverride,
@@ -35,94 +33,62 @@ export function WorkspaceSettingsSection({
   const [overrideInput, setOverrideInput] = useState(workspaceOverride);
   const runTotal = indexing.runTotal ?? 0;
   const processed = Math.min(indexing.processed ?? 0, runTotal);
-  const activeWorkers = indexing.activeWorkers ?? 0;
   const progressPct = runTotal > 0 ? Math.round((processed / runTotal) * 100) : 0;
-  const progressLabel = indexing.running
-    ? `${processed}/${runTotal} files · ${indexing.queued} queued${activeWorkers > 0 ? ` · ${activeWorkers} active` : ''}`
-    : indexing.failed > 0
-      ? `${indexing.indexed}${indexing.total > 0 ? `/${indexing.total}` : ''} indexed · ${indexing.failed} failed`
-      : `${indexing.indexed}${indexing.total > 0 ? `/${indexing.total}` : ''} indexed`;
+  const indexLabel = indexing.running
+    ? `${processed}/${runTotal} files`
+    : `${indexing.indexed}${indexing.total > 0 ? ` / ${indexing.total}` : ''} indexed`;
 
   useEffect(() => {
     setOverrideInput(workspaceOverride);
   }, [workspaceOverride]);
 
   return (
-    <section className="settings-section">
-      <h3>Workspace</h3>
-
-      <SettingNote title="Why this matters">
-        {AGENT_NAME} needs a <strong>project root</strong> to index files, run tools, and build context.
-        When you debug with F5, the Extension Host may open the <em>monorepo</em> folder — not your app.
-        Use <strong>Browse</strong> or paste the absolute path to the project you want the agent to work on
-        (e.g. your Kitchen KOT app), then <strong>Save &amp; apply</strong> and <strong>Index</strong>.
-      </SettingNote>
-
+    <section className="settings-section workspace-settings">
       {workspaceNotice && (
-        <p
-          className={`workspace-notice workspace-notice--${workspaceNotice.kind}`}
-          role="status"
-        >
+        <p className={`workspace-notice workspace-notice--${workspaceNotice.kind}`} role="status">
           {workspaceNotice.message}
         </p>
       )}
 
-      <div className="settings-status-grid">
-        <div className="settings-status-item">
-          <span className="settings-label">Effective path</span>
-          <strong className="settings-path" title={workspacePath}>
-            {workspaceOpen ? workspacePath : 'Not set'}
+      <div className="workspace-stats">
+        <div className="workspace-stat">
+          <span className="workspace-stat__label">Indexed files</span>
+          <strong className="workspace-stat__value">{indexLabel}</strong>
+          {indexing.failed > 0 && !indexing.running && (
+            <span className="workspace-stat__meta">{indexing.failed} failed</span>
+          )}
+        </div>
+        <div className="workspace-stat">
+          <span className="workspace-stat__label">Queued</span>
+          <strong className="workspace-stat__value">{indexing.queued}</strong>
+        </div>
+        <div className="workspace-stat">
+          <span className="workspace-stat__label">Embedded chunks</span>
+          <strong className="workspace-stat__value">{vectorIndex.embeddedChunks.toLocaleString()}</strong>
+        </div>
+        <div className="workspace-stat">
+          <span className="workspace-stat__label">Source</span>
+          <strong className="workspace-stat__value">
+            {usingWorkspaceOverride ? 'Override' : 'VS Code folder'}
           </strong>
-        </div>
-        <div className="settings-status-item">
-          <span className="settings-label">Source</span>
-          <strong>{usingWorkspaceOverride ? 'Saved override' : 'VS Code open folder'}</strong>
-        </div>
-        <div className="settings-status-item">
-          <span className="settings-label">Indexed files</span>
-          <strong>{progressLabel}</strong>
         </div>
       </div>
 
-      {indexDbPath && (
-        <p className="settings-hint settings-path" title={indexDbPath}>
-          Index database: {indexDbPath}
-        </p>
-      )}
-
-      <div className="settings-divider" />
-
-      <p className="settings-label">VS Code open folders (this window)</p>
-      {vscodeWorkspaceFolders.length === 0 ? (
-        <SettingNote variant="warn" title="F5 / Extension Development Host">
-          No folder is open in this window. That is normal when debugging {AGENT_NAME} itself.
-          Set a <strong>workspace path override</strong> below — it is saved even without an open folder.
-          Launch config tip: use <em>Run Extension (parent monorepo)</em> or open your target project folder.
-        </SettingNote>
-      ) : (
-        <ul className="settings-folder-list">
-          {vscodeWorkspaceFolders.map((folder) => (
-            <li key={folder} className="settings-path" title={folder}>
-              {folder}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <label className="settings-field">
-        <span className="settings-label">Workspace path override</span>
+      <label className="settings-field workspace-path-field">
+        <span className="settings-label">Workspace path</span>
         <input
           type="text"
-          className="settings-input"
+          className="settings-input settings-input--path"
           value={overrideInput}
           onChange={(e) => setOverrideInput(e.target.value)}
-          placeholder="/absolute/path/to/your/project"
-          aria-label="Workspace path override"
+          placeholder={workspaceOpen ? workspacePath : '/absolute/path/to/your/project'}
+          aria-label="Workspace path"
         />
-        <span className="settings-hint">
-          Absolute path to the repo {AGENT_NAME} should use. Persisted locally (works without an open VS Code folder).
-          Leave empty to use the folder open in VS Code.
-        </span>
+        {indexDbPath && (
+          <span className="settings-hint settings-path" title={indexDbPath}>
+            Index DB: {indexDbPath}
+          </span>
+        )}
       </label>
 
       <div className="settings-button-row">
@@ -142,23 +108,15 @@ export function WorkspaceSettingsSection({
             Use VS Code folder
           </button>
         )}
+        <button
+          type="button"
+          className="btn btn--secondary btn--small"
+          onClick={onIndex}
+          disabled={!workspaceOpen || indexing.running}
+        >
+          {indexing.running ? 'Indexing…' : 'Reindex'}
+        </button>
       </div>
-
-      <div className="settings-divider" />
-
-      <SettingNote title="Indexing">
-        Indexing scans your project into a local SQLite database for fast search, repo map, and context.
-        Run this after changing the workspace path. Large projects may take a minute.
-      </SettingNote>
-
-      <button
-        type="button"
-        className="btn btn--secondary"
-        onClick={onIndex}
-        disabled={!workspaceOpen || indexing.running}
-      >
-        {indexing.running ? 'Indexing…' : 'Reindex workspace'}
-      </button>
 
       <div
         className={`settings-index-progress${indexing.running ? ' settings-index-progress--active' : ''}`}
@@ -171,12 +129,12 @@ export function WorkspaceSettingsSection({
         <div className="settings-index-progress__track">
           <div
             className="settings-index-progress__bar"
-            style={{ width: `${indexing.running && runTotal > 0 ? progressPct : 100}%` }}
+            style={{ width: `${indexing.running && runTotal > 0 ? progressPct : indexing.indexed > 0 ? 100 : 0}%` }}
           />
         </div>
         <div className="settings-index-progress__meta">
-          <span>{indexing.running ? `Indexing ${progressPct}%` : 'Ready'}</span>
-          <span>{progressLabel}</span>
+          <span>{indexing.running ? `Indexing ${progressPct}%` : workspaceOpen ? 'Ready' : 'No workspace'}</span>
+          <span>{indexLabel}</span>
         </div>
       </div>
     </section>

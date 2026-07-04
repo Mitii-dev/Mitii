@@ -14,11 +14,15 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       type: config.get<string>('provider.type'),
       baseUrl: config.get<string>('provider.baseUrl'),
       model: config.get<string>('provider.model'),
+      apiVersion: config.get<string>('provider.apiVersion'),
+      region: config.get<string>('provider.region'),
       apiKeyRef: config.get<string>('provider.apiKeyRef'),
       contextWindow: config.get<number>('provider.contextWindow'),
       supportsStreaming: config.get<boolean>('provider.supportsStreaming'),
       supportsTools: config.get<boolean>('provider.supportsTools'),
       supportsEmbeddings: config.get<boolean>('provider.supportsEmbeddings'),
+      supportsVision: config.get<boolean>('provider.supportsVision'),
+      supportsReasoning: config.get<boolean>('provider.supportsReasoning'),
     },
     indexing: {
       enabled: config.get<boolean>('indexing.enabled'),
@@ -37,6 +41,7 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       rerankerEnabled: config.get<boolean>('context.rerankerEnabled'),
       rerankerCandidatePool: config.get<number>('context.rerankerCandidatePool'),
       rerankerTopK: config.get<number>('context.rerankerTopK'),
+      microTaskRoutingEnabled: config.get<boolean>('context.microTaskRoutingEnabled'),
     },
     safety: {
       requireApprovalForWrites: config.get<boolean>('safety.requireApprovalForWrites'),
@@ -103,6 +108,18 @@ export function readThunderConfigFromSettings(): ThunderConfig {
     telemetry: {
       sessionLogging: config.get<boolean>('telemetry.sessionLogging'),
       debugMetrics: config.get<boolean>('telemetry.debugMetrics'),
+      webhookUrl: config.get<string>('telemetry.webhookUrl'),
+      webhookSecret: config.get<string>('telemetry.webhookSecret'),
+      webhookTimeoutMs: config.get<number>('telemetry.webhookTimeoutMs'),
+    },
+    ui: {
+      showReasoning: config.get<boolean>('ui.showReasoning'),
+      reasoningPreviewMaxChars: config.get<number>('ui.reasoningPreviewMaxChars'),
+    },
+    enterprise: {
+      localProvidersOnly: config.get<boolean>('enterprise.localProvidersOnly'),
+      stripFileContentsFromAuditPacks: config.get<boolean>('enterprise.stripFileContentsFromAuditPacks'),
+      autoExportAuditPackOnSessionEnd: config.get<boolean>('enterprise.autoExportAuditPackOnSessionEnd'),
     },
   };
 

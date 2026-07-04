@@ -2,7 +2,10 @@ import { z } from 'zod';
 
 export const ProviderTypeSchema = z.enum([
   'openai-compatible',
+  'openrouter',
   'openai',
+  'azure-openai',
+  'bedrock',
   'anthropic',
   'gemini',
   'deepseek',
@@ -15,11 +18,15 @@ export const ProviderConfigSchema = z.object({
   type: ProviderTypeSchema.default('echo'),
   baseUrl: z.string().url().default('http://localhost:11434/v1'),
   model: z.string().default('qwen3-coder:30b'),
+  apiVersion: z.string().default('2024-10-21'),
+  region: z.string().default('us-east-1'),
   apiKeyRef: z.string().default('thunder.apiKey'),
   contextWindow: z.number().int().positive().default(8192),
   supportsStreaming: z.boolean().default(true),
   supportsTools: z.boolean().default(true),
   supportsEmbeddings: z.boolean().default(false),
+  supportsVision: z.boolean().optional(),
+  supportsReasoning: z.boolean().optional(),
 });
 
 export const EmbeddingProviderSchema = z.enum(['hash', 'minilm']).default('minilm');
@@ -43,6 +50,18 @@ export const ContextConfigSchema = z.object({
   rerankerEnabled: z.boolean().default(true),
   rerankerCandidatePool: z.number().int().min(5).max(50).default(20),
   rerankerTopK: z.number().int().min(3).max(30).default(8),
+  microTaskRoutingEnabled: z.boolean().default(true),
+});
+
+export const UiConfigSchema = z.object({
+  showReasoning: z.boolean().default(true),
+  reasoningPreviewMaxChars: z.number().int().min(0).max(100_000).default(8000),
+});
+
+export const EnterpriseConfigSchema = z.object({
+  localProvidersOnly: z.boolean().default(false),
+  stripFileContentsFromAuditPacks: z.boolean().default(false),
+  autoExportAuditPackOnSessionEnd: z.boolean().default(false),
 });
 
 export const AgentDepthSchema = z.enum(['auto', 'quick', 'standard', 'deep', 'pilot', 'enterprise']);
@@ -121,6 +140,7 @@ export const BuiltinMcpTogglesSchema = z.object({
   filesystem: z.boolean().default(true),
   memory: z.boolean().default(true),
   sequentialThinking: z.boolean().default(true),
+  puppeteer: z.boolean().default(false),
 });
 
 export const McpConfigSchema = z.object({
@@ -149,6 +169,9 @@ export const TelemetryConfigSchema = z.object({
   sessionLogging: z.boolean().default(true),
   /** Extra diagnostics: tool inputs, context sources, LLM step metadata. Off by default for speed. */
   debugMetrics: z.boolean().default(false),
+  webhookUrl: z.string().default(''),
+  webhookSecret: z.string().default(''),
+  webhookTimeoutMs: z.number().int().min(1000).max(60_000).default(5000),
 });
 
 export const ThunderConfigSchema = z.object({
@@ -164,6 +187,8 @@ export const ThunderConfigSchema = z.object({
   scm: ScmConfigSchema.default({}),
   github: GitHubConfigSchema.default({}),
   telemetry: TelemetryConfigSchema.default({}),
+  ui: UiConfigSchema.default({}),
+  enterprise: EnterpriseConfigSchema.default({}),
 });
 
 export type ProviderType = z.infer<typeof ProviderTypeSchema>;
@@ -172,6 +197,8 @@ export type EmbeddingProviderKind = z.infer<typeof EmbeddingProviderSchema>;
 export type VectorBackendKind = z.infer<typeof VectorBackendSchema>;
 export type IndexingConfig = z.infer<typeof IndexingConfigSchema>;
 export type ContextConfig = z.infer<typeof ContextConfigSchema>;
+export type UiConfig = z.infer<typeof UiConfigSchema>;
+export type EnterpriseConfig = z.infer<typeof EnterpriseConfigSchema>;
 export type SafetyConfig = z.infer<typeof SafetyConfigSchema>;
 export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
 export type AgentDepth = z.infer<typeof AgentDepthSchema>;

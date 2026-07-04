@@ -7,6 +7,8 @@ import { ContextPanel } from './components/ContextPanel';
 import { ContextWarningBanner } from './components/ContextWarningBanner';
 import { ErrorBanner } from './components/ErrorBanner';
 import { SettingsPanel } from './components/SettingsPanel';
+import { OnboardingPanel } from './components/OnboardingPanel';
+import { ReviewPanel } from './components/ReviewPanel';
 import { ApprovalCards } from './components/ApprovalCards';
 import { IndexingStatusBar } from './components/IndexingStatusBar';
 import { WorkspaceBanner } from './components/WorkspaceBanner';
@@ -16,7 +18,7 @@ import { DevPanels } from './components/DevPanels';
 import { IconButton } from './components/IconButton';
 import { IconChat, IconHistory, IconPlus, IconSettings } from './components/Icons';
 import { deriveSafetySettings } from './utils/approvalMode';
-import type { AgentDepthView, AgentSettingsPayload, SettingsView } from '../../vscode/webview/messages';
+import type { AgentDepthView, AgentSettingsPayload, ApprovalMode, SettingsView } from '../../vscode/webview/messages';
 import type { ThunderMode } from '../../core/session/ThunderSession';
 
 function activeDepthForMode(settings: SettingsView, mode: ThunderMode): AgentDepthView {
@@ -152,7 +154,29 @@ export function App() {
         }
       />
 
-      {state.tab === 'chat' ? (
+      {state.onboarding.shouldShow ? (
+        <main className="thunder-main onboarding-view">
+          <OnboardingPanel
+            settings={state.settings}
+            workspaceIndexed={state.onboarding.workspaceIndexed}
+            onSaveProviderSettings={(payload) => postMessage({ type: 'saveProviderSettings', payload })}
+            onSaveApiKey={(key) => postMessage({ type: 'saveApiKey', payload: { key } })}
+            onTestConnection={(payload) => postMessage({ type: 'testProviderConnection', payload })}
+            onIndexWorkspace={() => postMessage({ type: 'indexWorkspace' })}
+            onComplete={() => postMessage({ type: 'completeOnboarding' })}
+          />
+        </main>
+      ) : state.tab === 'chat' && state.mode === 'review' ? (
+        <ReviewPanel
+          diff={state.reviewDiff}
+          onRefresh={() => postMessage({ type: 'refreshReviewDiff' })}
+          onFeedback={(content) => {
+            postMessage({ type: 'setMode', payload: 'ask' });
+            postMessage({ type: 'sendMessage', payload: { content } });
+          }}
+          onExit={() => postMessage({ type: 'setMode', payload: 'plan' })}
+        />
+      ) : state.tab === 'chat' ? (
         <div className={`chat-shell ${state.mode === 'plan' ? 'chat-shell--plan-mode' : ''}`}>
           <PlanPanel
             plan={state.plan}
@@ -179,6 +203,8 @@ export function App() {
               agentActivity={state.agentActivity}
               agentLiveStatus={state.agentLiveStatus}
               approvals={state.approvals}
+              showReasoning={state.settings.showReasoning}
+              reasoningPreviewMaxChars={state.settings.reasoningPreviewMaxChars}
             />
           </div>
           <footer className="chat-footer">
@@ -190,12 +216,12 @@ export function App() {
               tokenUsage={state.tokenUsage}
               pinnedContext={state.pinnedContext}
               canRetry={canRetry}
-              onSend={(content, pinnedContext) =>
-                postMessage({ type: 'sendMessage', payload: { content, pinnedContext } })
+              onSend={(content, pinnedContext, attachments) =>
+                postMessage({ type: 'sendMessage', payload: { content, pinnedContext, attachments } })
               }
               onStop={() => postMessage({ type: 'stopGeneration' })}
               onModeChange={(mode) => postMessage({ type: 'setMode', payload: mode })}
-              onApprovalModeChange={(approvalMode) =>
+              onApprovalModeChange={(approvalMode: ApprovalMode) =>
                 postMessage({
                   type: 'saveSafetySettings',
                   payload: deriveSafetySettings(approvalMode),
@@ -239,7 +265,6 @@ export function App() {
             settings={state.settings}
             workspaceOpen={state.workspaceOpen}
             workspacePath={state.workspacePath}
-            vscodeWorkspaceFolders={state.vscodeWorkspaceFolders}
             workspaceOverride={state.workspaceOverride}
             usingWorkspaceOverride={state.usingWorkspaceOverride}
             indexDbPath={state.indexDbPath}
@@ -272,6 +297,17 @@ export function App() {
             onDeleteMemory={(id) => postMessage({ type: 'deleteMemory', payload: { id } })}
             onClearMemory={() => postMessage({ type: 'clearMemory' })}
             onRestoreCheckpoint={(id) => postMessage({ type: 'restoreCheckpoint', payload: { id } })}
+            settingsSaving={state.settingsSaving}
+            testingConnection={state.testingConnection}
+            onSaveProviderProfile={(payload) =>
+              postMessage({ type: 'saveProviderProfile', payload })
+            }
+            onSelectProviderProfile={(id) =>
+              postMessage({ type: 'selectProviderProfile', payload: { id } })
+            }
+            onDeleteProviderProfile={(id) =>
+              postMessage({ type: 'deleteProviderProfile', payload: { id } })
+            }
           />
         </main>
       )}

@@ -4,22 +4,26 @@ export interface McpToggles {
   filesystem: boolean;
   memory: boolean;
   sequentialThinking: boolean;
+  puppeteer: boolean;
 }
 
 export const defaultMcpToggles = (): McpToggles => ({
   filesystem: true,
   memory: true,
   sequentialThinking: true,
+  puppeteer: false,
 });
 
 export function mcpToggleKeyToServerName(key: keyof McpToggles): string {
-  return key === 'sequentialThinking' ? 'sequential-thinking' : key;
+  if (key === 'sequentialThinking') return 'sequential-thinking';
+  return key;
 }
 
 export function mcpServerNameToToggleKey(name: string): keyof McpToggles | undefined {
   if (name === 'filesystem') return 'filesystem';
   if (name === 'memory') return 'memory';
   if (name === 'sequential-thinking') return 'sequentialThinking';
+  if (name === 'puppeteer') return 'puppeteer';
   return undefined;
 }
 

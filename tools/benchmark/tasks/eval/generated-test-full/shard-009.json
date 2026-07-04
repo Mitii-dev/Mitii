@@ -1,0 +1,1102 @@
+[
+  {
+    "id": "eval-tool-create_plan-p2-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking create_plan?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p2-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking create_plan?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p2-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking create_plan?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p3-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when create_plan is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p3-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when create_plan is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p3-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when create_plan is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p3-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when create_plan is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p3-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when create_plan is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p0-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the git_status tool? Give an example with args {}.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p0-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the git_status tool? Give an example with args {}.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p0-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the git_status tool? Give an example with args {}.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p0-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the git_status tool? Give an example with args {}.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p0-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the git_status tool? Give an example with args {}.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p1-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for git_status: {}",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p1-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for git_status: {}",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p1-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for git_status: {}",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p1-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for git_status: {}",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p1-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for git_status: {}",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p2-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking git_status?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p2-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking git_status?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p2-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking git_status?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p2-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking git_status?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p2-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking git_status?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p3-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when git_status is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p3-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when git_status is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p3-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when git_status is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p3-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when git_status is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-git_status-p3-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when git_status is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p0-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the list_directory tool? Give an example with args { \"path\": \"src\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p0-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the list_directory tool? Give an example with args { \"path\": \"src\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p0-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the list_directory tool? Give an example with args { \"path\": \"src\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p0-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the list_directory tool? Give an example with args { \"path\": \"src\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p0-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the list_directory tool? Give an example with args { \"path\": \"src\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p1-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for list_directory: { \"path\": \"src\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p1-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for list_directory: { \"path\": \"src\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p1-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for list_directory: { \"path\": \"src\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p1-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for list_directory: { \"path\": \"src\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p1-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for list_directory: { \"path\": \"src\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p2-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking list_directory?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p2-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking list_directory?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p2-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking list_directory?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p2-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking list_directory?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p2-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking list_directory?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p3-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when list_directory is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p3-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when list_directory is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p3-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when list_directory is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p3-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when list_directory is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-list_directory-p3-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when list_directory is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p0-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the read_file tool? Give an example with args { \"path\": \"src/index.js\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p0-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the read_file tool? Give an example with args { \"path\": \"src/index.js\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p0-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the read_file tool? Give an example with args { \"path\": \"src/index.js\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p0-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the read_file tool? Give an example with args { \"path\": \"src/index.js\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p0-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the read_file tool? Give an example with args { \"path\": \"src/index.js\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p1-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for read_file: { \"path\": \"src/index.js\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p1-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for read_file: { \"path\": \"src/index.js\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p1-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for read_file: { \"path\": \"src/index.js\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p1-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for read_file: { \"path\": \"src/index.js\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p1-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for read_file: { \"path\": \"src/index.js\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p2-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking read_file?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p2-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking read_file?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p2-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking read_file?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p2-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking read_file?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p2-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking read_file?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p3-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when read_file is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p3-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when read_file is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p3-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when read_file is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p3-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when read_file is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-read_file-p3-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when read_file is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p0-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the run_terminal tool? Give an example with args { \"command\": \"npm test\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p0-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the run_terminal tool? Give an example with args { \"command\": \"npm test\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p0-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the run_terminal tool? Give an example with args { \"command\": \"npm test\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p0-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the run_terminal tool? Give an example with args { \"command\": \"npm test\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p0-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the run_terminal tool? Give an example with args { \"command\": \"npm test\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p1-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for run_terminal: { \"command\": \"npm test\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p1-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for run_terminal: { \"command\": \"npm test\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p1-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for run_terminal: { \"command\": \"npm test\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p1-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for run_terminal: { \"command\": \"npm test\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p1-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for run_terminal: { \"command\": \"npm test\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p2-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking run_terminal?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p2-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking run_terminal?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p2-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking run_terminal?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p2-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking run_terminal?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p2-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking run_terminal?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p3-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when run_terminal is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p3-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when run_terminal is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p3-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when run_terminal is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p3-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when run_terminal is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-run_terminal-p3-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when run_terminal is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-search_codebase-p0-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the search_codebase tool? Give an example with args { \"query\": \"router.get\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-search_codebase-p0-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the search_codebase tool? Give an example with args { \"query\": \"router.get\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-search_codebase-p0-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the search_codebase tool? Give an example with args { \"query\": \"router.get\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-search_codebase-p0-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the search_codebase tool? Give an example with args { \"query\": \"router.get\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-search_codebase-p0-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the search_codebase tool? Give an example with args { \"query\": \"router.get\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-search_codebase-p1-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for search_codebase: { \"query\": \"router.get\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-search_codebase-p1-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for search_codebase: { \"query\": \"router.get\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-search_codebase-p1-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for search_codebase: { \"query\": \"router.get\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-search_codebase-p1-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for search_codebase: { \"query\": \"router.get\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-search_codebase-p1-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for search_codebase: { \"query\": \"router.get\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-search_codebase-p2-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking search_codebase?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-search_codebase-p2-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking search_codebase?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  }
+]

@@ -83,6 +83,16 @@ export function IconMarkdown(props: IconProps) {
   );
 }
 
+export function IconImage(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <rect x="2.5" y="3" width="11" height="10" rx="1.5" />
+      <circle cx="6" cy="6.25" r="1" />
+      <path d="M4 11l2.5-2.75 1.8 1.9 1.2-1.25L12 11" />
+    </svg>
+  );
+}
+
 export function IconContext(props: IconProps) {
   return (
     <svg {...defaults} {...props}>
@@ -123,6 +133,34 @@ export function IconTokens(props: IconProps) {
       <ellipse cx="8" cy="5.5" rx="5" ry="2" />
       <path d="M3 5.5v5c0 1.1 2.24 2 5 2s5-.9 5-2v-5" />
       <path d="M3 8c0 1.1 2.24 2 5 2s5-.9 5-2" />
+    </svg>
+  );
+}
+
+export function IconAsk(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M5.5 5.25a2.5 2.5 0 1 1 3.25 2.38c-.48.16-.75.56-.75 1.12v.25" />
+      <path d="M8 12.25h.01" />
+      <circle cx="8" cy="8" r="6" />
+    </svg>
+  );
+}
+
+export function IconPlan(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M3.5 3.5h9v9h-9z" />
+      <path d="M5.5 6h5M5.5 8h5M5.5 10h3" />
+    </svg>
+  );
+}
+
+export function IconAgent(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <rect x="3" y="5" width="10" height="7.5" rx="2" />
+      <path d="M8 2.5V5M5.75 8.25h.01M10.25 8.25h.01M6.25 10.5h3.5" />
     </svg>
   );
 }

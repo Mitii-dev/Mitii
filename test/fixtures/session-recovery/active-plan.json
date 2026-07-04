@@ -1,0 +1,31 @@
+{
+  "goal": "Add Ollama local agent support",
+  "assumptions": [
+    "The workspace should keep the saved implementation plan across sidebar and workspace reloads."
+  ],
+  "steps": [
+    {
+      "id": "step-1",
+      "title": "Create Ollama configuration",
+      "status": "done",
+      "phase": "diagnostics",
+      "objective": "Document local Ollama provider settings",
+      "tools": ["write_file"],
+      "successCriteria": ["Example config exists"],
+      "files": ["config/ollama-config.example.yml"],
+      "risk": "low"
+    },
+    {
+      "id": "step-2",
+      "title": "Implement Ollama provider",
+      "status": "running",
+      "phase": "execute",
+      "objective": "Add an OpenAI-compatible local provider path",
+      "tools": ["apply_patch"],
+      "successCriteria": ["Provider streams responses from localhost Ollama"],
+      "files": ["lib/ollama-provider.mjs"],
+      "risk": "medium"
+    }
+  ],
+  "requiredApprovals": []
+}

@@ -551,7 +551,7 @@ describe('Builtin MCP servers', () => {
     const { buildBuiltinMcpServers } = await import('../src/core/mcp/builtinServers');
     const servers = buildBuiltinMcpServers('/tmp/my-project');
 
-    expect(Object.keys(servers).sort()).toEqual(['filesystem', 'memory', 'sequential-thinking']);
+    expect(Object.keys(servers).sort()).toEqual(['filesystem', 'memory', 'puppeteer', 'sequential-thinking']);
     expect(servers.filesystem.command).toBe(process.platform === 'win32' ? 'cmd' : 'npx');
     expect(servers.filesystem.args).toContain('@modelcontextprotocol/server-filesystem');
     expect(servers.filesystem.args.at(-1)).toBe(resolve('/tmp/my-project'));
@@ -562,7 +562,7 @@ describe('Builtin MCP servers', () => {
   it('omits filesystem when workspace is empty', async () => {
     const { buildBuiltinMcpServers } = await import('../src/core/mcp/builtinServers');
     const servers = buildBuiltinMcpServers('');
-    expect(Object.keys(servers).sort()).toEqual(['memory', 'sequential-thinking']);
+    expect(Object.keys(servers).sort()).toEqual(['memory', 'puppeteer', 'sequential-thinking']);
   });
 
   it('lets user settings override built-in servers', async () => {
@@ -605,6 +605,7 @@ describe('Builtin MCP servers', () => {
       filesystem: true,
       memory: false,
       sequentialThinking: true,
+      puppeteer: false,
     });
     expect(servers.memory.disabled).toBe(true);
     expect(servers.filesystem.disabled).toBe(false);
@@ -615,46 +616,30 @@ describe('Builtin MCP servers', () => {
       filesystem: true,
       memory: true,
       sequentialThinking: true,
+      puppeteer: false,
     });
   });
 });
 
 describe('ProjectRulesService', () => {
-  it('loads common root-level agent rule files', () => {
+  it('loads MITII.md from workspace root', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-rules-test-'));
     try {
-      writeFileSync(join(tempDir, 'AGENTS.md'), 'agent instructions');
-      writeFileSync(join(tempDir, 'CLAUDE.md'), 'claude instructions');
-      writeFileSync(join(tempDir, '.cursorrules'), 'cursor instructions');
-      writeFileSync(join(tempDir, '.clinerules'), 'cline instructions');
+      writeFileSync(join(tempDir, 'MITII.md'), 'mitii instructions');
+      writeFileSync(join(tempDir, 'AGENTS.md'), 'ignored agent instructions');
 
       const rules = new ProjectRulesService(tempDir).load();
-      expect(rules.map((rule) => rule.relPath)).toEqual([
-        'AGENTS.md',
-        'CLAUDE.md',
-        '.cursorrules',
-        '.clinerules',
-      ]);
+      expect(rules.map((rule) => rule.relPath)).toEqual(['MITII.md']);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
 
-  it('loads markdown files from Mitii rule, agent, check, and prompt folders', () => {
+  it('returns empty when MITII.md is missing', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-rules-test-'));
     try {
-      for (const relDir of ['.mitii/rules', '.mitii/agents', '.mitii/checks', '.mitii/prompts']) {
-        mkdirSync(join(tempDir, relDir), { recursive: true });
-        writeFileSync(join(tempDir, relDir, 'methodology.md'), `${relDir} instructions`);
-      }
-
-      const rules = new ProjectRulesService(tempDir).load();
-      expect(rules.map((rule) => rule.relPath)).toEqual([
-        '.mitii/rules/methodology.md',
-        '.mitii/agents/methodology.md',
-        '.mitii/checks/methodology.md',
-        '.mitii/prompts/methodology.md',
-      ]);
+      writeFileSync(join(tempDir, 'AGENTS.md'), 'ignored');
+      expect(new ProjectRulesService(tempDir).load()).toEqual([]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -764,6 +749,23 @@ describe('ThunderMode normalization', () => {
     expect(normalizeThunderMode('act')).toBe('agent');
     expect(normalizeThunderMode('ask')).toBe('ask');
     expect(normalizeThunderMode('unknown')).toBe('plan');
+  });
+});
+
+describe('ChatOrchestrator response handling', () => {
+  it('turns empty model output into an explicit assistant message', async () => {
+    const { EMPTY_ASSISTANT_RESPONSE_MESSAGE, normalizeAssistantResponse } =
+      await import('../src/core/orchestration/ChatOrchestrator');
+
+    expect(normalizeAssistantResponse('')).toEqual({
+      content: EMPTY_ASSISTANT_RESPONSE_MESSAGE,
+      wasEmpty: true,
+    });
+    expect(normalizeAssistantResponse('   ')).toEqual({
+      content: EMPTY_ASSISTANT_RESPONSE_MESSAGE,
+      wasEmpty: true,
+    });
+    expect(normalizeAssistantResponse('ok')).toEqual({ content: 'ok', wasEmpty: false });
   });
 });
 
@@ -995,6 +997,27 @@ describe('fuzzyFileMatch', () => {
 });
 
 describe('ApprovalQueue', () => {
+  it('maps clarifying questions with options for persisted UI state', async () => {
+    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
+    const { toApprovalView } = await import('../src/core/app/ThunderController');
+    const queue = new ApprovalQueue();
+    const req = queue.createRequest('s1', 'ask_question', {
+      question: 'Which project should I inspect?',
+      options: ['agent', 'docs'],
+    }, {
+      decision: 'require_approval',
+      reason: 'Clarifying question requires user response',
+    });
+
+    expect(toApprovalView(req)).toMatchObject({
+      id: req.id,
+      toolName: 'ask_question',
+      kind: 'question',
+      question: 'Which project should I inspect?',
+      options: ['agent', 'docs'],
+    });
+  });
+
   it('stores full input for large write_file payloads', async () => {
     const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
     const queue = new ApprovalQueue();
@@ -2243,6 +2266,10 @@ describe('Ask v2 routing, scope, and impact', () => {
     expect(routeAskIntent('What is recursion?')).toMatchObject({
       intent: 'general_knowledge',
       groundingRequired: false,
+    });
+    expect(routeAskIntent('Need commit message for the changes in stage @mitii-ai-agent')).toMatchObject({
+      intent: 'explain_code',
+      groundingRequired: true,
     });
   });
 

@@ -18,6 +18,7 @@ scripts/**
 .gitignore
 .vscodeignore
 package-lock.json
+pnpm-lock.yaml
 tsconfig.json
 vite.config.ts
 vitest.config.ts
@@ -26,4 +27,5 @@ vitest.config.ts
 
 !dist/**
 !media/**
-!bundled-skills/**
+
+tools/benchmark/**

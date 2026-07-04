@@ -8,6 +8,8 @@ export class EchoProvider implements LlmProvider {
     supportsStreaming: true,
     supportsTools: false,
     supportsEmbeddings: false,
+    supportsVision: false,
+    supportsReasoning: false,
   };
 
   async *complete(request: ChatRequest): AsyncIterable<ChatDelta> {

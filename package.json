@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow",
-  "version": "2.7.15",
+  "version": "2.7.30",
   "publisher": "mitii",
   "icon": "media/mitii-short-logo.png",
   "license": "AGPL-3.0-or-later",
@@ -45,9 +45,15 @@
     "onCommand:thunder.openChat",
     "onCommand:thunder.indexWorkspace",
     "onCommand:thunder.showSettings",
-    "onCommand:thunder.generateCommitMessage"
+    "onCommand:thunder.generateCommitMessage",
+    "onCommand:thunder.generateChangelog",
+    "onCommand:thunder.prepareRelease",
+    "onCommand:thunder.exportAuditPack"
   ],
   "main": "./dist/extension.js",
+  "bin": {
+    "mitii": "./bin/mitii.js"
+  },
   "contributes": {
     "commands": [
       {
@@ -68,6 +74,11 @@
       {
         "command": "thunder.exportSessionLog",
         "title": "Mitii: Export Session Log",
+        "category": "Mitii"
+      },
+      {
+        "command": "thunder.exportAuditPack",
+        "title": "Mitii: Export Audit Pack",
         "category": "Mitii"
       },
       {
@@ -95,6 +106,16 @@
         "title": "Mitii: Generate Commit Message",
         "category": "Mitii",
         "icon": "media/mitii-activitybar.svg"
+      },
+      {
+        "command": "thunder.generateChangelog",
+        "title": "Mitii: Generate Changelog Entry",
+        "category": "Mitii"
+      },
+      {
+        "command": "thunder.prepareRelease",
+        "title": "Mitii: Prepare Release",
+        "category": "Mitii"
       }
     ],
     "menus": {
@@ -142,11 +163,58 @@
           "default": false,
           "description": "Capture extra session diagnostics (tool inputs, context sources, LLM step metadata). Process timing is always logged when session logging is on."
         },
+        "thunder.telemetry.webhookUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional SIEM/webhook endpoint. When set, sanitized session events are POSTed as JSON."
+        },
+        "thunder.telemetry.webhookSecret": {
+          "type": "string",
+          "default": "",
+          "description": "Optional HMAC signing secret for webhook events. Prefer workspace or managed settings for enterprise deployments."
+        },
+        "thunder.telemetry.webhookTimeoutMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "maximum": 60000,
+          "description": "Timeout in milliseconds for telemetry webhook delivery attempts."
+        },
+        "thunder.ui.showReasoning": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show streamed model reasoning when the provider returns reasoning deltas."
+        },
+        "thunder.ui.reasoningPreviewMaxChars": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 0,
+          "maximum": 100000,
+          "description": "Maximum reasoning characters shown inline. Set 0 to show all reasoning."
+        },
+        "thunder.enterprise.localProvidersOnly": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enterprise policy flag documenting that only local providers should be used for this workspace."
+        },
+        "thunder.enterprise.stripFileContentsFromAuditPacks": {
+          "type": "boolean",
+          "default": false,
+          "description": "Strip file contents and large tool outputs from exported audit packs while preserving metadata."
+        },
+        "thunder.enterprise.autoExportAuditPackOnSessionEnd": {
+          "type": "boolean",
+          "default": false,
+          "description": "Export a sanitized audit pack automatically to .mitii/audit/ when an agent turn completes."
+        },
         "thunder.provider.type": {
           "type": "string",
           "enum": [
             "openai-compatible",
+            "openrouter",
             "openai",
+            "azure-openai",
+            "bedrock",
             "anthropic",
             "gemini",
             "deepseek",
@@ -167,10 +235,28 @@
           "default": "qwen3-coder:30b",
           "description": "Model name"
         },
+        "thunder.provider.apiVersion": {
+          "type": "string",
+          "default": "2024-10-21",
+          "description": "Provider API version. Used by Azure OpenAI when building deployment chat completion URLs."
+        },
+        "thunder.provider.region": {
+          "type": "string",
+          "default": "us-east-1",
+          "description": "Cloud provider region. Used by AWS Bedrock."
+        },
         "thunder.provider.contextWindow": {
           "type": "number",
           "default": 8192,
           "description": "Model context window size. Thunder trims prompts automatically to stay within this limit."
+        },
+        "thunder.provider.supportsVision": {
+          "type": "boolean",
+          "description": "Optional override for model vision support. Leave unset to use automatic provider/model detection."
+        },
+        "thunder.provider.supportsReasoning": {
+          "type": "boolean",
+          "description": "Optional override for streamed reasoning support. Leave unset to use automatic provider/model detection."
         },
         "thunder.indexing.enabled": {
           "type": "boolean",
@@ -245,6 +331,11 @@
           "minimum": 3,
           "maximum": 30,
           "description": "Number of items to keep after reranking"
+        },
+        "thunder.context.microTaskRoutingEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Route narrow chat requests such as commit messages, changelog entries, and release notes through minimal Git context instead of the full agent loop."
         },
         "thunder.safety.requireApprovalForWrites": {
           "type": "boolean",
@@ -516,17 +607,36 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "npm run compile:extension && npm run compile:webview",
+    "vscode:prepublish": "pnpm run compile",
+    "compile": "pnpm run compile:extension && pnpm run compile:webview && pnpm run compile:cli",
+    "setup": "bash scripts/dev-setup.sh",
+    "setup:cursor": "THUNDER_EDITOR=cursor bash scripts/dev-setup.sh",
     "rebuild:native": "node scripts/rebuild-native.mjs",
-    "rebuild:node": "npm rebuild better-sqlite3",
-    "rebuild:all": "npm run rebuild:native && npm run rebuild:node",
-    "postinstall": "node -e \"console.log('Run npm run rebuild:native before F5 if better-sqlite3 fails to load')\"",
+    "rebuild:node": "node scripts/rebuild-node.mjs",
+    "rebuild:all": "pnpm run rebuild:native && pnpm run rebuild:node",
+    "postinstall": "node -e \"console.log('Run pnpm run rebuild:native before F5 if better-sqlite3 fails to load')\"",
     "prepare": "node scripts/install-git-hooks.mjs",
     "version:bump": "node scripts/bump-version.mjs",
+    "readme:sync-version": "node scripts/sync-readme-version.mjs",
+    "release:check-assets": "node scripts/check-release-assets.mjs",
+    "release:prepare": "pnpm run compile:cli && node dist/cli.js prepare-release",
+    "benchmark": "pnpm --filter @mitii/benchmark benchmark",
+    "benchmark:smoke": "pnpm --filter @mitii/benchmark benchmark:smoke",
+    "benchmark:all": "pnpm --filter @mitii/benchmark benchmark:all",
+    "benchmark:integration": "pnpm --filter @mitii/benchmark benchmark:integration",
+    "eval:generate": "pnpm --filter @mitii/benchmark eval:generate",
+    "eval:generate:full": "pnpm --filter @mitii/benchmark eval:generate:full",
+    "eval:preflight": "node tools/benchmark/scripts/preflight.mjs",
+    "eval:smoke": "pnpm --filter @mitii/benchmark eval:smoke",
+    "eval:standard": "node tools/benchmark/scripts/run-eval.mjs --tier eval --runtime real --ensure-ready",
+    "eval:aggregate": "node tools/benchmark/scripts/aggregate-results.mjs",
+    "eval:matrix": "pnpm --filter @mitii/benchmark eval:matrix",
+    "eval:reset-fixtures": "node tools/benchmark/scripts/reset-fixtures.mjs",
     "compile:extension": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --packages=external --platform=node --format=cjs --sourcemap",
     "compile:webview": "vite build",
-    "watch": "concurrently \"npm run watch:extension\" \"npm run watch:webview\"",
+    "compile:skills": "node scripts/copy-bundled-skills.mjs",
+    "compile:cli": "pnpm run compile:skills && esbuild src/node/cli.ts --bundle --outfile=dist/cli.js --platform=node --format=cjs --packages=external --alias:vscode=./src/node/vscode-shim.ts",
+    "watch": "concurrently \"pnpm run watch:extension\" \"pnpm run watch:webview\"",
     "watch:extension": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --packages=external --platform=node --format=cjs --sourcemap --watch",
     "watch:webview": "vite build --watch",
     "test": "vitest run",
@@ -547,17 +657,17 @@
     "checkpoint:read": "bash scripts/read-checkpoint.sh",
     "lint:safe-target": "bash scripts/safe-lint-target.sh",
     "env:sync": "node scripts/sync-env-files.mjs",
-    "preflight": "npm run lint && npm run rebuild:node && npm test && npm run rebuild:native",
+    "preflight": "pnpm run release:check-assets && pnpm run lint && pnpm run rebuild:node && pnpm test && pnpm run rebuild:native",
     "clean:vsce-deps": "node -e \"const fs=require('fs'); for (const p of ['node_modules/@emnapi','node_modules/@napi-rs','node_modules/@tybys']) fs.rmSync(p,{recursive:true,force:true});\"",
-    "package": "npm run clean:vsce-deps && vsce package",
-    "package:preflight": "npm run preflight && npm run package",
-    "publish:vsce": "npm run preflight && npm run clean:vsce-deps && vsce publish",
-    "version:patch": "npm version patch --no-git-tag-version --force",
-    "version:minor": "npm version minor --no-git-tag-version --force",
-    "version:major": "npm version major --no-git-tag-version --force",
-    "publish:patch": "npm run version:patch && npm run publish:vsce",
-    "publish:minor": "npm run version:minor && npm run publish:vsce",
-    "publish:major": "npm run version:major && npm run publish:vsce",
+    "package": "pnpm run clean:vsce-deps && pnpm exec vsce package",
+    "package:preflight": "pnpm run preflight && pnpm run package",
+    "publish:vsce": "pnpm run preflight && pnpm run clean:vsce-deps && pnpm exec vsce publish",
+    "version:patch": "pnpm version patch --no-git-tag-version --force && pnpm run readme:sync-version",
+    "version:minor": "pnpm version minor --no-git-tag-version --force && pnpm run readme:sync-version",
+    "version:major": "pnpm version major --no-git-tag-version --force && pnpm run readme:sync-version",
+    "publish:patch": "pnpm run version:patch && pnpm run publish:vsce",
+    "publish:minor": "pnpm run version:minor && pnpm run publish:vsce",
+    "publish:major": "pnpm run version:major && pnpm run publish:vsce",
     "smoke": "vitest run test/smoke"
   },
   "devDependencies": {
@@ -579,6 +689,7 @@
     "vitest": "^1.6.0"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1078.0",
     "@lancedb/lancedb": "^0.30.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@vscode/ripgrep": "^1.15.9",

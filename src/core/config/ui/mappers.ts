@@ -23,7 +23,7 @@ export function normalizeProviderSettings(
   previousContextWindow: number
 ): ProviderSettingsPayload {
   const model = settings.model.trim();
-  return {
+  const normalized: ProviderSettingsPayload = {
     providerType: settings.providerType,
     baseUrl: settings.baseUrl.trim(),
     model,
@@ -34,6 +34,53 @@ export function normalizeProviderSettings(
       previousContextWindow
     ),
   };
+  if (settings.apiVersion !== undefined) {
+    normalized.apiVersion = settings.apiVersion.trim();
+  }
+  if (settings.region !== undefined) {
+    normalized.region = settings.region.trim();
+  }
+  return normalized;
+}
+
+export interface ProviderValidationResult {
+  ok: boolean;
+  errors: string[];
+}
+
+export function validateProviderSettings(settings: ProviderSettingsPayload): ProviderValidationResult {
+  const errors: string[] = [];
+  const providerType = settings.providerType;
+  const baseUrl = settings.baseUrl.trim();
+  const model = settings.model.trim();
+
+  if (providerType !== 'echo' && !baseUrl) {
+    errors.push('API base URL is required.');
+  }
+  if (providerType !== 'echo' && baseUrl) {
+    try {
+      const url = new URL(baseUrl);
+      if (!['http:', 'https:'].includes(url.protocol)) {
+        errors.push('API base URL must use http or https.');
+      }
+    } catch {
+      errors.push('API base URL must be a valid URL.');
+    }
+  }
+  if (!model) {
+    errors.push(providerType === 'azure-openai' ? 'Azure deployment name is required.' : 'Model is required.');
+  }
+  if (providerType === 'azure-openai' && !settings.apiVersion?.trim()) {
+    errors.push('Azure API version is required.');
+  }
+  if (providerType === 'bedrock' && !settings.region?.trim()) {
+    errors.push('AWS region is required.');
+  }
+  if (!Number.isFinite(settings.contextWindow) || settings.contextWindow < 1024) {
+    errors.push('Context window must be at least 1024 tokens.');
+  }
+
+  return { ok: errors.length === 0, errors };
 }
 
 export function normalizeAgentSettings(settings: AgentSettingsPayload): AgentSettingsPayload {

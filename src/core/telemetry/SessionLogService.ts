@@ -2,6 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { join } from 'path';
 import { AGENT_NAME } from '../../shared/brand';
 import { createLogger } from './Logger';
+import { WebhookEmitter, type WebhookEmitterConfig } from './WebhookEmitter';
 
 const log = createLogger('SessionLogService');
 
@@ -29,7 +30,9 @@ export type SessionLogEventType =
   | 'index_start'
   | 'index_complete'
   | 'turn_complete'
-  | 'ui_trace';
+  | 'ui_trace'
+  | 'microtask_context'
+  | 'audit_export';
 
 export interface SessionLogEvent {
   ts: number;
@@ -52,6 +55,7 @@ export class SessionLogService {
   private sessionId = '';
   private logPath = '';
   private logStartedAt = 0;
+  private webhookEmitter = new WebhookEmitter();
 
   configure(workspace: string, sessionId: string, enabled = true, debugMetrics = false): void {
     const sessionChanged = this.sessionId !== sessionId;
@@ -80,6 +84,10 @@ export class SessionLogService {
 
   isDebugMetricsEnabled(): boolean {
     return this.debugMetrics;
+  }
+
+  configureWebhook(config: WebhookEmitterConfig): void {
+    this.webhookEmitter.configure(config);
   }
 
   getLogPath(): string {
@@ -126,6 +134,7 @@ export class SessionLogService {
 
     try {
       appendFileSync(this.logPath, `${JSON.stringify(event)}\n`, 'utf-8');
+      this.webhookEmitter.emit(event);
     } catch (error) {
       log.warn('Failed to append session log', {
         error: error instanceof Error ? error.message : String(error),
@@ -160,6 +169,14 @@ export class SessionLogService {
         message: 'Session started',
         data: header,
       })}\n`, 'utf-8');
+      this.webhookEmitter.emit({
+        ts,
+        time: formatTimestampForLog(ts),
+        sessionId: this.sessionId,
+        type: 'session_start',
+        message: 'Session started',
+        data: sanitizeLogData(header),
+      });
     } catch (error) {
       log.warn('Failed to write session log header', {
         error: error instanceof Error ? error.message : String(error),

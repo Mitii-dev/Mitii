@@ -4,7 +4,10 @@ export type AgentDepthView = 'auto' | 'quick' | 'standard' | 'deep' | 'pilot' | 
 export type ProviderTypeView =
   | 'echo'
   | 'openai-compatible'
+  | 'openrouter'
   | 'openai'
+  | 'azure-openai'
+  | 'bedrock'
   | 'anthropic'
   | 'gemini'
   | 'deepseek'
@@ -15,6 +18,8 @@ export interface ProviderSettingsPayload {
   providerType: ProviderTypeView;
   baseUrl: string;
   model: string;
+  apiVersion?: string;
+  region?: string;
   contextWindow: number;
 }
 
@@ -49,6 +54,7 @@ export interface McpToggles {
   filesystem: boolean;
   memory: boolean;
   sequentialThinking: boolean;
+  puppeteer: boolean;
 }
 
 export interface McpCustomServerView {
@@ -73,6 +79,9 @@ export interface McpSettingsPayload {
 export interface TelemetrySettingsPayload {
   sessionLogging: boolean;
   debugMetrics: boolean;
+  webhookUrl?: string;
+  webhookSecret?: string;
+  webhookTimeoutMs?: number;
 }
 
 export interface IndexingSettingsPayload {

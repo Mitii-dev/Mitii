@@ -27,10 +27,20 @@ export type {
 
 export type WebviewTab = 'chat' | 'history' | 'settings';
 
+export interface ChatImageAttachment {
+  kind: 'image';
+  mimeType: string;
+  data: string;
+  name?: string;
+  size?: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  attachments?: ChatImageAttachment[];
+  reasoningContent?: string;
   timestamp: number;
   streaming?: boolean;
 }
@@ -221,11 +231,40 @@ export interface CheckpointView {
   strategy?: string;
 }
 
+export interface ReviewDiffFileView {
+  path: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  diff: string;
+}
+
+export interface ReviewDiffView {
+  branch: string | null;
+  files: ReviewDiffFileView[];
+  summary: {
+    fileCount: number;
+    additions: number;
+    deletions: number;
+  };
+  truncated: boolean;
+  updatedAt: number;
+}
+
+export interface OnboardingView {
+  shouldShow: boolean;
+  completed: boolean;
+  providerConfigured: boolean;
+  workspaceIndexed: boolean;
+}
+
 export interface SettingsView {
   appVersion: string;
   providerType: string;
   baseUrl: string;
   model: string;
+  apiVersion: string;
+  region: string;
   contextWindow: number;
   indexingEnabled: boolean;
   approvalMode: ApprovalMode;
@@ -269,6 +308,22 @@ export interface SettingsView {
   actModel: string;
   actBaseUrl: string;
   checkpointStrategy: 'file-copy' | 'git-stash' | 'shadow-git';
+  showReasoning: boolean;
+  reasoningPreviewMaxChars: number;
+  providerProfiles: ProviderProfileView[];
+  activeProviderProfileId: string | null;
+}
+
+export interface ProviderProfileView {
+  id: string;
+  name: string;
+  providerType: string;
+  baseUrl: string;
+  model: string;
+  apiVersion: string;
+  region: string;
+  contextWindow: number;
+  hasApiKey: boolean;
 }
 
 export interface McpServerStatusView {
@@ -309,6 +364,8 @@ export interface WebviewState {
   indexing: IndexingStatusView;
   memories: MemoryItemView[];
   checkpoints: CheckpointView[];
+  reviewDiff: ReviewDiffView | null;
+  onboarding: OnboardingView;
   settings: SettingsView;
   contextToggles: ContextToggles;
   mcpToggles: McpToggles;
@@ -324,6 +381,8 @@ export interface WebviewState {
   workspaceNotice: WorkspaceNoticeView | null;
   tokenUsage: TokenUsageView;
   workspaceTrusted: boolean;
+  settingsSaving: boolean;
+  testingConnection: boolean;
 }
 
 export type WorkspaceNoticeView = {
@@ -335,7 +394,7 @@ export type WorkspaceNoticeView = {
 export type ExtensionToWebviewMessage =
   | { type: 'state'; payload: WebviewState }
   | { type: 'appendMessage'; payload: ChatMessage }
-  | { type: 'updateLastAssistant'; payload: { content: string; streaming: boolean } }
+  | { type: 'updateLastAssistant'; payload: { content: string; reasoningContent?: string; streaming: boolean } }
   | { type: 'setError'; payload: string | null }
   | { type: 'setLoading'; payload: boolean }
   | { type: 'setMode'; payload: ThunderMode }
@@ -348,12 +407,13 @@ export type ExtensionToWebviewMessage =
   | { type: 'setAgentLiveStatus'; payload: AgentLiveStatusView | null }
   | { type: 'setSubagents'; payload: SubagentStatusView[] }
   | { type: 'setTokenUsage'; payload: TokenUsageView }
+  | { type: 'setReviewDiff'; payload: ReviewDiffView | null }
   | { type: 'setContextPaths'; payload: { requestId: string; paths: ContextPathSuggestion[] } };
 
 // Webview -> Extension messages
 export type WebviewToExtensionMessage =
   | { type: 'ready' }
-  | { type: 'sendMessage'; payload: { content: string; pinnedContext?: PinnedContextView[] } }
+  | { type: 'sendMessage'; payload: { content: string; pinnedContext?: PinnedContextView[]; attachments?: ChatImageAttachment[] } }
   | { type: 'retryLastMessage' }
   | { type: 'newChat' }
   | { type: 'openChatThread'; payload: { id: string } }
@@ -371,6 +431,9 @@ export type WebviewToExtensionMessage =
   | { type: 'saveMcpSettings'; payload: McpSettingsPayload }
   | { type: 'saveAllSettings'; payload: ThunderSettingsPayload }
   | { type: 'testProviderConnection'; payload?: ProviderSettingsPayload }
+  | { type: 'saveProviderProfile'; payload: { id?: string; name?: string; settings: ProviderSettingsPayload; apiKey?: string } }
+  | { type: 'selectProviderProfile'; payload: { id: string } }
+  | { type: 'deleteProviderProfile'; payload: { id: string } }
   | { type: 'pickWorkspaceFolder' }
   | { type: 'setWorkspaceOverride'; payload: { path: string } }
   | { type: 'clearWorkspaceOverride' }
@@ -390,12 +453,15 @@ export type WebviewToExtensionMessage =
   | { type: 'clearPinnedContext' }
   | { type: 'searchContextPaths'; payload: { query: string; requestId: string } }
   | { type: 'pickContextPath' }
+  | { type: 'refreshReviewDiff' }
+  | { type: 'completeOnboarding' }
   | { type: 'refreshPanels' };
 
 export const defaultMcpToggles = (): McpToggles => ({
   filesystem: true,
   memory: true,
   sequentialThinking: true,
+  puppeteer: false,
 });
 
 export const defaultContextToggles = (): ContextToggles => ({
@@ -412,6 +478,8 @@ export const defaultSettingsView = (): SettingsView => ({
   providerType: 'echo',
   baseUrl: 'http://localhost:11434/v1',
   model: 'qwen3-coder:30b',
+  apiVersion: '2024-10-21',
+  region: 'us-east-1',
   contextWindow: 8192,
   indexingEnabled: true,
   approvalMode: 'review_all',
@@ -453,6 +521,10 @@ export const defaultSettingsView = (): SettingsView => ({
   actModel: '',
   actBaseUrl: '',
   checkpointStrategy: 'git-stash',
+  showReasoning: true,
+  reasoningPreviewMaxChars: 8000,
+  providerProfiles: [],
+  activeProviderProfileId: null,
 });
 
 export const initialWebviewState = (): WebviewState => ({
@@ -476,6 +548,13 @@ export const initialWebviewState = (): WebviewState => ({
   indexing: { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0, processed: 0, runTotal: 0 },
   memories: [],
   checkpoints: [],
+  reviewDiff: null,
+  onboarding: {
+    shouldShow: false,
+    completed: false,
+    providerConfigured: false,
+    workspaceIndexed: false,
+  },
   settings: defaultSettingsView(),
   contextToggles: defaultContextToggles(),
   mcpToggles: defaultMcpToggles(),
@@ -510,4 +589,6 @@ export const initialWebviewState = (): WebviewState => ({
     breakdown: [],
   },
   workspaceTrusted: true,
+  settingsSaving: false,
+  testingConnection: false,
 });

@@ -1,0 +1,34 @@
+{
+  "profiles": {
+    "smoke": {
+      "description": "Fast wiring check — 3 base smoke tasks (echo/stub compatible)",
+      "targetCount": 3,
+      "includeBaseBenchmark": true,
+      "baseTier": "smoke"
+    },
+    "standard": {
+      "description": "Balanced eval — 500 tasks across all categories",
+      "targetCount": 500,
+      "includeBaseBenchmark": true,
+      "baseTier": "all"
+    },
+    "full": {
+      "description": "Full potential assessment — 1000 tasks",
+      "targetCount": 1000,
+      "includeBaseBenchmark": true,
+      "baseTier": "all"
+    },
+    "coding": {
+      "description": "JS coding + reasoning only (no fixtures)",
+      "targetCount": 300,
+      "includeBaseBenchmark": false,
+      "categories": ["coding-js", "reasoning", "tool-calling"]
+    },
+    "fixtures": {
+      "description": "Fixture-heavy agent eval",
+      "targetCount": 400,
+      "includeBaseBenchmark": true,
+      "categories": ["fixture-ask", "fixture-plan", "fixture-agent", "retrieval"]
+    }
+  }
+}

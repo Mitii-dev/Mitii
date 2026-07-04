@@ -1,0 +1,1194 @@
+[
+  {
+    "id": "eval-coding-algo-92",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #92 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-93",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #93 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-94",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #94 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-95",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #95 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-96",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #96 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-97",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #97 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-98",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #98 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-99",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #99 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-anagram-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Determine if two strings are anagrams. Compare sorting vs counting.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:anagram"
+    ]
+  },
+  {
+    "id": "eval-coding-anagram-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Determine if two strings are anagrams. Compare sorting vs counting. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:anagram"
+    ]
+  },
+  {
+    "id": "eval-coding-anagram-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Determine if two strings are anagrams. Compare sorting vs counting. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:anagram"
+    ]
+  },
+  {
+    "id": "eval-coding-anagram-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Determine if two strings are anagrams. Compare sorting vs counting. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:anagram"
+    ]
+  },
+  {
+    "id": "eval-coding-anagram-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Determine if two strings are anagrams. Compare sorting vs counting. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:anagram"
+    ]
+  },
+  {
+    "id": "eval-coding-binary-search-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement binary search on a sorted array. When does it fail?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:mid"
+    ]
+  },
+  {
+    "id": "eval-coding-binary-search-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement binary search on a sorted array. When does it fail? Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:mid"
+    ]
+  },
+  {
+    "id": "eval-coding-binary-search-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement binary search on a sorted array. When does it fail? Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:mid"
+    ]
+  },
+  {
+    "id": "eval-coding-binary-search-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement binary search on a sorted array. When does it fail? Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:mid"
+    ]
+  },
+  {
+    "id": "eval-coding-binary-search-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement binary search on a sorted array. When does it fail? Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:mid"
+    ]
+  },
+  {
+    "id": "eval-coding-curry-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement curry for a function with fixed arity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:curry"
+    ]
+  },
+  {
+    "id": "eval-coding-curry-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement curry for a function with fixed arity. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:curry"
+    ]
+  },
+  {
+    "id": "eval-coding-curry-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement curry for a function with fixed arity. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:curry"
+    ]
+  },
+  {
+    "id": "eval-coding-curry-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement curry for a function with fixed arity. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:curry"
+    ]
+  },
+  {
+    "id": "eval-coding-curry-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement curry for a function with fixed arity. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:curry"
+    ]
+  },
+  {
+    "id": "eval-coding-debounce-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement a debounce(fn, wait) utility in JavaScript.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:debounce"
+    ]
+  },
+  {
+    "id": "eval-coding-debounce-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement a debounce(fn, wait) utility in JavaScript. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:debounce"
+    ]
+  },
+  {
+    "id": "eval-coding-debounce-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement a debounce(fn, wait) utility in JavaScript. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:debounce"
+    ]
+  },
+  {
+    "id": "eval-coding-debounce-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement a debounce(fn, wait) utility in JavaScript. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:debounce"
+    ]
+  },
+  {
+    "id": "eval-coding-debounce-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement a debounce(fn, wait) utility in JavaScript. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:debounce"
+    ]
+  },
+  {
+    "id": "eval-coding-deep-clone-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Outline a deepClone for plain objects (no cycles). Mention limitations.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:clone"
+    ]
+  },
+  {
+    "id": "eval-coding-deep-clone-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Outline a deepClone for plain objects (no cycles). Mention limitations. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:clone"
+    ]
+  },
+  {
+    "id": "eval-coding-deep-clone-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Outline a deepClone for plain objects (no cycles). Mention limitations. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:clone"
+    ]
+  },
+  {
+    "id": "eval-coding-deep-clone-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Outline a deepClone for plain objects (no cycles). Mention limitations. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:clone"
+    ]
+  },
+  {
+    "id": "eval-coding-deep-clone-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Outline a deepClone for plain objects (no cycles). Mention limitations. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:clone"
+    ]
+  },
+  {
+    "id": "eval-coding-event-emitter-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Sketch EventEmitter with on, off, emit.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:emit"
+    ]
+  },
+  {
+    "id": "eval-coding-event-emitter-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Sketch EventEmitter with on, off, emit. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:emit"
+    ]
+  },
+  {
+    "id": "eval-coding-event-emitter-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Sketch EventEmitter with on, off, emit. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:emit"
+    ]
+  },
+  {
+    "id": "eval-coding-event-emitter-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Sketch EventEmitter with on, off, emit. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:emit"
+    ]
+  },
+  {
+    "id": "eval-coding-event-emitter-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Sketch EventEmitter with on, off, emit. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:emit"
+    ]
+  },
+  {
+    "id": "eval-coding-fibonacci-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement fib(n) iteratively. What is time and space complexity?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-fibonacci-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement fib(n) iteratively. What is time and space complexity? Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-fibonacci-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement fib(n) iteratively. What is time and space complexity? Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-fibonacci-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement fib(n) iteratively. What is time and space complexity? Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-fibonacci-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement fib(n) iteratively. What is time and space complexity? Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-fizzbuzz-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Describe FizzBuzz implementation for 1..n. Mention extensibility.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:FizzBuzz"
+    ]
+  },
+  {
+    "id": "eval-coding-fizzbuzz-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Describe FizzBuzz implementation for 1..n. Mention extensibility. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:FizzBuzz"
+    ]
+  },
+  {
+    "id": "eval-coding-fizzbuzz-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Describe FizzBuzz implementation for 1..n. Mention extensibility. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:FizzBuzz"
+    ]
+  },
+  {
+    "id": "eval-coding-fizzbuzz-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Describe FizzBuzz implementation for 1..n. Mention extensibility. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:FizzBuzz"
+    ]
+  },
+  {
+    "id": "eval-coding-fizzbuzz-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Describe FizzBuzz implementation for 1..n. Mention extensibility. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:FizzBuzz"
+    ]
+  },
+  {
+    "id": "eval-coding-flatten-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Flatten a nested array to arbitrary depth.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:flat"
+    ]
+  },
+  {
+    "id": "eval-coding-flatten-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Flatten a nested array to arbitrary depth. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:flat"
+    ]
+  },
+  {
+    "id": "eval-coding-flatten-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Flatten a nested array to arbitrary depth. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:flat"
+    ]
+  },
+  {
+    "id": "eval-coding-flatten-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Flatten a nested array to arbitrary depth. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:flat"
+    ]
+  },
+  {
+    "id": "eval-coding-flatten-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Flatten a nested array to arbitrary depth. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:flat"
+    ]
+  },
+  {
+    "id": "eval-coding-json-parse-safe-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write safeJsonParse that never throws.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:JSON"
+    ]
+  },
+  {
+    "id": "eval-coding-json-parse-safe-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write safeJsonParse that never throws. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:JSON"
+    ]
+  },
+  {
+    "id": "eval-coding-json-parse-safe-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write safeJsonParse that never throws. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:JSON"
+    ]
+  },
+  {
+    "id": "eval-coding-json-parse-safe-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write safeJsonParse that never throws. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:JSON"
+    ]
+  },
+  {
+    "id": "eval-coding-json-parse-safe-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write safeJsonParse that never throws. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:JSON"
+    ]
+  },
+  {
+    "id": "eval-coding-lru-cache-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Design an LRU cache API (get/put). Describe data structures.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:LRU"
+    ]
+  },
+  {
+    "id": "eval-coding-lru-cache-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Design an LRU cache API (get/put). Describe data structures. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:LRU"
+    ]
+  },
+  {
+    "id": "eval-coding-lru-cache-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Design an LRU cache API (get/put). Describe data structures. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:LRU"
+    ]
+  },
+  {
+    "id": "eval-coding-lru-cache-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Design an LRU cache API (get/put). Describe data structures. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:LRU"
+    ]
+  },
+  {
+    "id": "eval-coding-lru-cache-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Design an LRU cache API (get/put). Describe data structures. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:LRU"
+    ]
+  },
+  {
+    "id": "eval-coding-max-subarray-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Explain Kadane's algorithm for maximum subarray sum.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:subarray"
+    ]
+  },
+  {
+    "id": "eval-coding-max-subarray-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Explain Kadane's algorithm for maximum subarray sum. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:subarray"
+    ]
+  },
+  {
+    "id": "eval-coding-max-subarray-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Explain Kadane's algorithm for maximum subarray sum. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:subarray"
+    ]
+  },
+  {
+    "id": "eval-coding-max-subarray-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Explain Kadane's algorithm for maximum subarray sum. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:subarray"
+    ]
+  },
+  {
+    "id": "eval-coding-max-subarray-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Explain Kadane's algorithm for maximum subarray sum. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:subarray"
+    ]
+  },
+  {
+    "id": "eval-coding-memoize-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Add memoization to an expensive pure function.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:cache"
+    ]
+  },
+  {
+    "id": "eval-coding-memoize-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Add memoization to an expensive pure function. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:cache"
+    ]
+  },
+  {
+    "id": "eval-coding-memoize-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Add memoization to an expensive pure function. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:cache"
+    ]
+  },
+  {
+    "id": "eval-coding-memoize-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Add memoization to an expensive pure function. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:cache"
+    ]
+  },
+  {
+    "id": "eval-coding-memoize-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Add memoization to an expensive pure function. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:cache"
+    ]
+  },
+  {
+    "id": "eval-coding-merge-sorted-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Merge two sorted arrays into one sorted array. Describe algorithm.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:merge"
+    ]
+  },
+  {
+    "id": "eval-coding-merge-sorted-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Merge two sorted arrays into one sorted array. Describe algorithm. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:merge"
+    ]
+  },
+  {
+    "id": "eval-coding-merge-sorted-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Merge two sorted arrays into one sorted array. Describe algorithm. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:merge"
+    ]
+  },
+  {
+    "id": "eval-coding-merge-sorted-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Merge two sorted arrays into one sorted array. Describe algorithm. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:merge"
+    ]
+  },
+  {
+    "id": "eval-coding-merge-sorted-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Merge two sorted arrays into one sorted array. Describe algorithm. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:merge"
+    ]
+  },
+  {
+    "id": "eval-coding-palindrome-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Check if a string is a palindrome ignoring case and non-alphanumeric.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:palindrome"
+    ]
+  },
+  {
+    "id": "eval-coding-palindrome-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Check if a string is a palindrome ignoring case and non-alphanumeric. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:palindrome"
+    ]
+  },
+  {
+    "id": "eval-coding-palindrome-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Check if a string is a palindrome ignoring case and non-alphanumeric. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:palindrome"
+    ]
+  },
+  {
+    "id": "eval-coding-palindrome-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Check if a string is a palindrome ignoring case and non-alphanumeric. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:palindrome"
+    ]
+  },
+  {
+    "id": "eval-coding-palindrome-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Check if a string is a palindrome ignoring case and non-alphanumeric. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:palindrome"
+    ]
+  },
+  {
+    "id": "eval-coding-promise-all-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement promiseAll(iterable) like Promise.all.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Promise"
+    ]
+  },
+  {
+    "id": "eval-coding-promise-all-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement promiseAll(iterable) like Promise.all. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Promise"
+    ]
+  },
+  {
+    "id": "eval-coding-promise-all-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement promiseAll(iterable) like Promise.all. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Promise"
+    ]
+  },
+  {
+    "id": "eval-coding-promise-all-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement promiseAll(iterable) like Promise.all. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Promise"
+    ]
+  },
+  {
+    "id": "eval-coding-promise-all-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement promiseAll(iterable) like Promise.all. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Promise"
+    ]
+  },
+  {
+    "id": "eval-coding-reverse-string-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write a function reverseString(s) for a string array in-place. Explain complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-reverse-string-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write a function reverseString(s) for a string array in-place. Explain complexity. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-reverse-string-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write a function reverseString(s) for a string array in-place. Explain complexity. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-reverse-string-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write a function reverseString(s) for a string array in-place. Explain complexity. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-reverse-string-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write a function reverseString(s) for a string array in-place. Explain complexity. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-throttle-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement throttle(fn, limit) and contrast with debounce.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:throttle"
+    ]
+  },
+  {
+    "id": "eval-coding-throttle-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement throttle(fn, limit) and contrast with debounce. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:throttle"
+    ]
+  },
+  {
+    "id": "eval-coding-throttle-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement throttle(fn, limit) and contrast with debounce. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:throttle"
+    ]
+  },
+  {
+    "id": "eval-coding-throttle-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement throttle(fn, limit) and contrast with debounce. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:throttle"
+    ]
+  },
+  {
+    "id": "eval-coding-throttle-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement throttle(fn, limit) and contrast with debounce. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:throttle"
+    ]
+  },
+  {
+    "id": "eval-coding-two-sum-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement twoSum(nums, target) returning indices. Explain approach briefly.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:map"
+    ]
+  },
+  {
+    "id": "eval-coding-two-sum-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement twoSum(nums, target) returning indices. Explain approach briefly. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:map"
+    ]
+  }
+]

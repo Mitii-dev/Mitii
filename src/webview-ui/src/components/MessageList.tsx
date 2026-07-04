@@ -3,6 +3,7 @@ import type { AgentActivityEntry, AgentLiveStatusView, ApprovalRequestView, Chat
 import { AGENT_NAME } from '../../../shared/brand';
 import { MarkdownMessage } from './MarkdownMessage';
 import { AgentActivityPanel } from './AgentActivityPanel';
+import { ThinkingRow } from './ThinkingRow';
 import { useStreamReveal } from '../hooks/useStreamReveal';
 
 interface MessageListProps {
@@ -11,14 +12,46 @@ interface MessageListProps {
   agentActivity?: AgentActivityEntry[];
   agentLiveStatus?: AgentLiveStatusView | null;
   approvals?: ApprovalRequestView[];
+  showReasoning?: boolean;
+  reasoningPreviewMaxChars?: number;
 }
 
-function AssistantMessage({ content, streaming }: { content: string; streaming?: boolean }) {
+function AssistantMessage({
+  content,
+  reasoningContent,
+  streaming,
+  showReasoning,
+  reasoningPreviewMaxChars,
+}: {
+  content: string;
+  reasoningContent?: string;
+  streaming?: boolean;
+  showReasoning?: boolean;
+  reasoningPreviewMaxChars?: number;
+}) {
   const revealed = useStreamReveal(content, Boolean(streaming));
-  return <MarkdownMessage content={revealed} streaming={streaming} />;
+  return (
+    <>
+      <ThinkingRow
+        content={reasoningContent ?? ''}
+        streaming={streaming}
+        visible={showReasoning}
+        maxChars={reasoningPreviewMaxChars}
+      />
+      <MarkdownMessage content={revealed} streaming={streaming} />
+    </>
+  );
 }
 
-export function MessageList({ messages, loading, agentActivity = [], agentLiveStatus = null, approvals = [] }: MessageListProps) {
+export function MessageList({
+  messages,
+  loading,
+  agentActivity = [],
+  agentLiveStatus = null,
+  approvals = [],
+  showReasoning = true,
+  reasoningPreviewMaxChars = 8000,
+}: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,11 +74,32 @@ export function MessageList({ messages, loading, agentActivity = [], agentLiveSt
           <div className="message-content">
             {msg.role === 'assistant' ? (
               msg.content ? (
-                <AssistantMessage content={msg.content} streaming={msg.streaming} />
+                <AssistantMessage
+                  content={msg.content}
+                  reasoningContent={msg.reasoningContent}
+                  streaming={msg.streaming}
+                  showReasoning={showReasoning}
+                  reasoningPreviewMaxChars={reasoningPreviewMaxChars}
+                />
+              ) : msg.reasoningContent ? (
+                <>
+                  <ThinkingRow
+                    content={msg.reasoningContent}
+                    streaming={msg.streaming}
+                    visible={showReasoning}
+                    maxChars={reasoningPreviewMaxChars}
+                  />
+                  {msg.streaming && (
+                    <p className="message-working">
+                      <span className="message-working__pulse" aria-hidden="true" />
+                      Thinking...
+                    </p>
+                  )}
+                </>
               ) : msg.streaming ? (
                 <p className="message-working">
                   <span className="message-working__pulse" aria-hidden="true" />
-                  Thinking…
+                  Thinking...
                 </p>
               ) : (
                 <p className="message-working message-working--muted">No response text</p>

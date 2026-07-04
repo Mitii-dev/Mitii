@@ -3,6 +3,7 @@ import type { ToolDefinition } from './toolTypes';
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  attachments?: ChatImageAttachment[];
   name?: string;
   tool_call_id?: string;
   tool_calls?: Array<{
@@ -10,6 +11,13 @@ export interface ChatMessage {
     type: 'function';
     function: { name: string; arguments: string };
   }>;
+}
+
+export interface ChatImageAttachment {
+  kind: 'image';
+  mimeType: string;
+  data: string;
+  name?: string;
 }
 
 export interface ChatRequest {
@@ -20,6 +28,8 @@ export interface ChatRequest {
   stream?: boolean;
   tools?: ToolDefinition[];
   toolChoice?: 'auto' | 'none' | 'required';
+  reasoningEffort?: 'low' | 'medium' | 'high';
+  includeReasoning?: boolean;
 }
 
 export interface ToolCallDelta {
@@ -33,17 +43,27 @@ export interface ToolCallDelta {
 
 export interface ChatDelta {
   content?: string;
+  reasoning?: string;
   done?: boolean;
   error?: string;
   tool_calls?: ToolCallDelta[];
   finish_reason?: string;
 }
 
+export interface AssistantStreamDelta {
+  content?: string;
+  reasoning?: string;
+}
+
+export type AssistantStreamChunk = string | AssistantStreamDelta;
+
 export interface ModelCapabilities {
   contextWindow: number;
   supportsStreaming: boolean;
   supportsTools: boolean;
   supportsEmbeddings: boolean;
+  supportsVision?: boolean;
+  supportsReasoning?: boolean;
 }
 
 export interface LlmProvider {

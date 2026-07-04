@@ -7,6 +7,7 @@ export const BUILTIN_MCP_SERVER_NAMES = [
   'filesystem',
   'memory',
   'sequential-thinking',
+  'puppeteer',
 ] as const;
 
 export type BuiltinMcpServerName = (typeof BUILTIN_MCP_SERVER_NAMES)[number];
@@ -38,6 +39,15 @@ export function buildBuiltinMcpServers(workspace: string): Record<string, McpSer
 
   const sequentialThinking = npxMcpServer('@modelcontextprotocol/server-sequential-thinking');
   servers['sequential-thinking'] = { ...DEFAULT_SERVER_FIELDS, ...sequentialThinking };
+
+  const puppeteer = npxMcpServer('@modelcontextprotocol/server-puppeteer');
+  servers.puppeteer = {
+    ...DEFAULT_SERVER_FIELDS,
+    ...puppeteer,
+    env: {
+      PUPPETEER_LAUNCH_OPTIONS: JSON.stringify({ headless: true, args: ['--no-sandbox'] }),
+    },
+  };
 
   return servers;
 }

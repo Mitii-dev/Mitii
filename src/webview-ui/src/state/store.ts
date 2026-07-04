@@ -11,13 +11,14 @@ import type {
   AgentLiveStatusView,
   SubagentStatusView,
   TokenUsageView,
+  ReviewDiffView,
 } from '../../../vscode/webview/messages';
 import { initialWebviewState } from '../../../vscode/webview/messages';
 
 export type WebviewAction =
   | { type: 'SET_STATE'; payload: WebviewState }
   | { type: 'APPEND_MESSAGE'; payload: ChatMessage }
-  | { type: 'UPDATE_LAST_ASSISTANT'; payload: { content: string; streaming: boolean } }
+  | { type: 'UPDATE_LAST_ASSISTANT'; payload: { content: string; reasoningContent?: string; streaming: boolean } }
   | { type: 'SET_ERROR'; payload: string | null }
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SET_MODE'; payload: ThunderMode }
@@ -29,7 +30,8 @@ export type WebviewAction =
   | { type: 'SET_AGENT_ACTIVITY'; payload: AgentActivityEntry[] }
   | { type: 'SET_AGENT_LIVE_STATUS'; payload: AgentLiveStatusView | null }
   | { type: 'SET_SUBAGENTS'; payload: SubagentStatusView[] }
-  | { type: 'SET_TOKEN_USAGE'; payload: TokenUsageView };
+  | { type: 'SET_TOKEN_USAGE'; payload: TokenUsageView }
+  | { type: 'SET_REVIEW_DIFF'; payload: ReviewDiffView | null };
 
 export const initialState: WebviewState = initialWebviewState();
 
@@ -51,6 +53,7 @@ export function webviewReducer(state: WebviewState, action: WebviewAction): Webv
           messages[messages.length - 1] = {
             ...nextLast,
             content: prevLast.content,
+            reasoningContent: prevLast.reasoningContent ?? nextLast.reasoningContent,
             streaming: true,
           };
           return { ...incoming, messages };
@@ -69,6 +72,7 @@ export function webviewReducer(state: WebviewState, action: WebviewAction): Webv
         messages[lastIdx] = {
           ...messages[lastIdx],
           content: action.payload.content,
+          reasoningContent: action.payload.reasoningContent ?? messages[lastIdx].reasoningContent,
           streaming: action.payload.streaming,
         };
       } else {
@@ -76,6 +80,7 @@ export function webviewReducer(state: WebviewState, action: WebviewAction): Webv
           id: `stream-${Date.now()}`,
           role: 'assistant',
           content: action.payload.content,
+          reasoningContent: action.payload.reasoningContent,
           timestamp: Date.now(),
           streaming: action.payload.streaming,
         });
@@ -123,6 +128,9 @@ export function webviewReducer(state: WebviewState, action: WebviewAction): Webv
 
     case 'SET_TOKEN_USAGE':
       return { ...state, tokenUsage: action.payload };
+
+    case 'SET_REVIEW_DIFF':
+      return { ...state, reviewDiff: action.payload };
 
     default:
       return state;

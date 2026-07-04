@@ -20,6 +20,8 @@ export class GeminiProvider implements LlmProvider {
       supportsStreaming: config.capabilities?.supportsStreaming ?? true,
       supportsTools: config.capabilities?.supportsTools ?? true,
       supportsEmbeddings: false,
+      supportsVision: config.capabilities?.supportsVision ?? true,
+      supportsReasoning: config.capabilities?.supportsReasoning ?? false,
     };
   }
 
@@ -173,6 +175,24 @@ function toGeminiContents(messages: ChatMessage[]): Array<Record<string, unknown
         parts.push({ functionCall: { name: tc.function.name, args } });
       }
       out.push({ role: 'model', parts });
+      continue;
+    }
+    if (msg.attachments?.length && (msg.role === 'user' || msg.role === 'assistant')) {
+      const parts: Array<Record<string, unknown>> = [];
+      if (msg.content) parts.push({ text: msg.content });
+      for (const attachment of msg.attachments) {
+        if (attachment.kind !== 'image') continue;
+        parts.push({
+          inlineData: {
+            mimeType: attachment.mimeType,
+            data: attachment.data,
+          },
+        });
+      }
+      out.push({
+        role: msg.role === 'assistant' ? 'model' : 'user',
+        parts,
+      });
       continue;
     }
     out.push({

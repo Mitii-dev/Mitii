@@ -1,12 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AGENT_NAME } from '../../../shared/brand';
 import { LOCAL_MODEL_PRESETS, findLocalModelPreset } from '../../../shared/modelPresets';
 import type {
-  ApprovalMode,
   ContextToggles,
   McpToggles,
   ProviderSettingsPayload,
-  SafetySettingsPayload,
   SettingsView,
   IndexingStatusView,
   MemoryItemView,
@@ -23,13 +21,12 @@ import { SettingStepper } from './SettingStepper';
 import { MemoryPanel } from './MemoryPanel';
 import { CheckpointPanel } from './CheckpointPanel';
 import { getProviderPreset } from '../../../core/llm/providerPresets';
+import { validateProviderSettings } from '../../../core/config/ui/mappers';
 import {
-  APPROVAL_MODE_OPTIONS,
-  approvalModeDescription,
-  deriveSafetySettings,
-} from '../utils/approvalMode';
+  deriveSafetyFromAutonomyPreset,
+} from '../utils/autonomyPreset';
 
-type SettingsTab = 'workspace' | 'model' | 'agent' | 'context' | 'integrations' | 'safety' | 'debug';
+type SettingsTab = 'workspace' | 'model' | 'agent' | 'context' | 'integrations' | 'debug';
 
 const TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'workspace', label: 'Workspace' },
@@ -37,14 +34,16 @@ const TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'agent', label: 'Agent' },
   { id: 'context', label: 'Context' },
   { id: 'integrations', label: 'Integrations' },
-  { id: 'safety', label: 'Safety' },
   { id: 'debug', label: 'Debug' },
 ];
 
 const PROVIDER_OPTIONS: Array<{ id: ProviderSettingsPayload['providerType']; label: string }> = [
   { id: 'echo', label: 'Echo (test / no LLM)' },
   { id: 'openai-compatible', label: 'OpenAI-compatible (Ollama, LM Studio)' },
+  { id: 'openrouter', label: 'OpenRouter' },
   { id: 'openai', label: 'OpenAI' },
+  { id: 'azure-openai', label: 'Azure OpenAI' },
+  { id: 'bedrock', label: 'AWS Bedrock' },
   { id: 'anthropic', label: 'Anthropic (Claude)' },
   { id: 'gemini', label: 'Google Gemini' },
   { id: 'deepseek', label: 'DeepSeek' },
@@ -77,18 +76,6 @@ const ACT_DEPTH_OPTIONS: Array<{ id: SettingsView['actDepth']; label: string }> 
   { id: 'deep', label: 'Deep execution' },
   { id: 'pilot', label: 'Pilot execution' },
   { id: 'enterprise', label: 'Enterprise execution' },
-];
-
-const AUTONOMY_PRESETS: Array<{
-  id: SafetySettingsPayload['autonomyPreset'];
-  label: string;
-  description: string;
-}> = [
-  { id: 'safe', label: 'Safe', description: 'Strictest — all edits/commands need approval, no network.' },
-  { id: 'guided', label: 'Guided', description: 'Balanced — asks before edits; read-only shell and web fetch allowed.' },
-  { id: 'builder', label: 'Builder', description: 'Fast — auto-approves writes; mutating shell still reviewed.' },
-  { id: 'pilot', label: 'Pilot', description: 'High autonomy — auto-approves writes, reviews shell.' },
-  { id: 'enterprise', label: 'Enterprise', description: 'Locked down — no network, all operations reviewed.' },
 ];
 
 const CONTEXT_TOGGLES: Array<{
@@ -148,13 +135,17 @@ const MCP_BUILTIN_TOGGLES: Array<{
     label: 'Sequential thinking',
     description: 'Structured reasoning helper for multi-step problems.',
   },
+  {
+    key: 'puppeteer',
+    label: 'Puppeteer browser',
+    description: 'Browser automation via @modelcontextprotocol/server-puppeteer for UI verification.',
+  },
 ];
 
 interface SettingsPanelProps {
   settings: SettingsView;
   workspaceOpen: boolean;
   workspacePath: string;
-  vscodeWorkspaceFolders: string[];
   workspaceOverride: string;
   usingWorkspaceOverride: boolean;
   indexDbPath: string;
@@ -179,13 +170,22 @@ interface SettingsPanelProps {
   onDeleteMemory: (id: number) => void;
   onClearMemory: () => void;
   onRestoreCheckpoint: (id: string) => void;
+  settingsSaving: boolean;
+  testingConnection: boolean;
+  onSaveProviderProfile: (payload: {
+    id?: string;
+    name?: string;
+    settings: ProviderSettingsPayload;
+    apiKey?: string;
+  }) => void;
+  onSelectProviderProfile: (id: string) => void;
+  onDeleteProviderProfile: (id: string) => void;
 }
 
 export function SettingsPanel({
   settings,
   workspaceOpen,
   workspacePath,
-  vscodeWorkspaceFolders,
   workspaceOverride,
   usingWorkspaceOverride,
   indexDbPath,
@@ -197,6 +197,7 @@ export function SettingsPanel({
   memories,
   checkpoints,
   onSaveApiKey,
+  onSaveGitHubToken,
   onSaveAllSettings,
   onTestConnection,
   onPickWorkspaceFolder,
@@ -209,18 +210,30 @@ export function SettingsPanel({
   onDeleteMemory,
   onClearMemory,
   onRestoreCheckpoint,
+  settingsSaving,
+  testingConnection,
+  onSaveProviderProfile,
+  onSelectProviderProfile,
+  onDeleteProviderProfile,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('workspace');
   const [apiKey, setApiKey] = useState('');
   const [githubToken, setGithubToken] = useState('');
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [profileName, setProfileName] = useState('');
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
+    settings.activeProviderProfileId
+  );
+  const wasSavingRef = useRef(false);
 
   const [providerType, setProviderType] = useState<ProviderSettingsPayload['providerType']>(
     settings.providerType as ProviderSettingsPayload['providerType']
   );
   const [baseUrl, setBaseUrl] = useState(settings.baseUrl);
   const [model, setModel] = useState(settings.model);
+  const [apiVersion, setApiVersion] = useState(settings.apiVersion);
+  const [region, setRegion] = useState(settings.region);
   const [contextWindow, setContextWindow] = useState(settings.contextWindow);
 
   const [subagentsEnabled, setSubagentsEnabled] = useState(settings.subagentsEnabled);
@@ -241,10 +254,6 @@ export function SettingsPanel({
   const [actBaseUrl, setActBaseUrl] = useState(settings.actBaseUrl);
   const [checkpointStrategy, setCheckpointStrategy] = useState(settings.checkpointStrategy);
 
-  const [approvalMode, setApprovalMode] = useState<ApprovalMode>(settings.approvalMode);
-  const [autonomyPreset, setAutonomyPreset] = useState<SafetySettingsPayload['autonomyPreset']>(
-    settings.autonomyPreset
-  );
   const [mcpEnabled, setMcpEnabled] = useState(settings.mcpEnabled);
   const [sessionLogging, setSessionLogging] = useState(settings.sessionLogging);
   const [debugMetrics, setDebugMetrics] = useState(settings.debugMetrics);
@@ -254,9 +263,12 @@ export function SettingsPanel({
   const [hybridMemorySearch, setHybridMemorySearch] = useState(settings.hybridMemorySearch);
 
   useEffect(() => {
+    if (dirty && !settingsSaving) return;
     setProviderType(settings.providerType as ProviderSettingsPayload['providerType']);
     setBaseUrl(settings.baseUrl);
     setModel(settings.model);
+    setApiVersion(settings.apiVersion);
+    setRegion(settings.region);
     setContextWindow(settings.contextWindow);
     setSubagentsEnabled(settings.subagentsEnabled);
     setAgentMaxSteps(settings.agentMaxSteps);
@@ -275,8 +287,6 @@ export function SettingsPanel({
     setActModel(settings.actModel);
     setActBaseUrl(settings.actBaseUrl);
     setCheckpointStrategy(settings.checkpointStrategy);
-    setApprovalMode(settings.approvalMode);
-    setAutonomyPreset(settings.autonomyPreset);
     setMcpEnabled(settings.mcpEnabled);
     setSessionLogging(settings.sessionLogging);
     setDebugMetrics(settings.debugMetrics);
@@ -284,8 +294,14 @@ export function SettingsPanel({
     setEmbeddingProvider(settings.embeddingProvider);
     setVectorBackend(settings.vectorBackend);
     setHybridMemorySearch(settings.hybridMemorySearch);
-    setDirty(false);
-  }, [settings]);
+    setSelectedProfileId(settings.activeProviderProfileId);
+    if (wasSavingRef.current && !settingsSaving) {
+      setDirty(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    }
+    wasSavingRef.current = settingsSaving;
+  }, [settings, settingsSaving, dirty]);
 
   const markDirty = useCallback(() => setDirty(true), []);
 
@@ -309,6 +325,8 @@ export function SettingsPanel({
         providerType,
         baseUrl: baseUrl.trim(),
         model: model.trim(),
+        apiVersion: apiVersion.trim(),
+        region: region.trim(),
         contextWindow: normalizedContextWindow,
       },
       agent: {
@@ -330,7 +348,7 @@ export function SettingsPanel({
         actBaseUrl: actBaseUrl.trim(),
         checkpointStrategy,
       },
-      safety: deriveSafetySettings(approvalMode),
+      safety: deriveSafetyFromAutonomyPreset(settings.autonomyPreset),
       mcp: { enabled: mcpEnabled, builtinServers: mcpToggles },
       indexing: {
         vectorsEnabled,
@@ -362,12 +380,40 @@ export function SettingsPanel({
     setTimeout(() => setSaved(false), 2500);
   };
 
+  const handleSaveProviderProfile = () => {
+    if (!workspaceOpen) return;
+    onSaveProviderProfile({
+      id: selectedProfileId ?? undefined,
+      name: profileName.trim() || undefined,
+      settings: currentProviderSettings(),
+      apiKey: apiKey.trim() || undefined,
+    });
+    if (apiKey.trim()) setApiKey('');
+  };
+
+  const loadProviderProfile = (id: string) => {
+    const profile = settings.providerProfiles.find((item) => item.id === id);
+    if (!profile) return;
+    setSelectedProfileId(id);
+    setProviderType(profile.providerType as ProviderSettingsPayload['providerType']);
+    setBaseUrl(profile.baseUrl);
+    setModel(profile.model);
+    setApiVersion(profile.apiVersion);
+    setRegion(profile.region);
+    setContextWindow(profile.contextWindow);
+    setProfileName(profile.name);
+    markDirty();
+  };
+
   const currentProviderSettings = (): ProviderSettingsPayload => ({
     providerType,
     baseUrl: baseUrl.trim(),
     model: model.trim(),
+    apiVersion: apiVersion.trim(),
+    region: region.trim(),
     contextWindow: clampContextWindow(contextWindow),
   });
+  const providerValidation = validateProviderSettings(currentProviderSettings());
 
   const activeLocalPreset = providerType === 'openai-compatible' ? findLocalModelPreset(model) : undefined;
   const hasPresetContextMismatch = Boolean(
@@ -438,11 +484,11 @@ export function SettingsPanel({
           <WorkspaceSettingsSection
             workspaceOpen={workspaceOpen}
             workspacePath={workspacePath}
-            vscodeWorkspaceFolders={vscodeWorkspaceFolders}
             workspaceOverride={workspaceOverride}
             usingWorkspaceOverride={usingWorkspaceOverride}
             indexDbPath={indexDbPath}
             indexing={indexing}
+            vectorIndex={vectorIndex}
             workspaceNotice={workspaceNotice}
             onPickFolder={onPickWorkspaceFolder}
             onSetOverride={onSetWorkspaceOverride}
@@ -453,6 +499,67 @@ export function SettingsPanel({
 
         {activeTab === 'model' && (
           <>
+            <SettingsCard
+              title="Saved providers"
+              description="Store multiple provider configs in .mitii/providers. API keys are hashed before saving; secrets stay in VS Code SecretStorage."
+            >
+              {settings.providerProfiles.length > 0 ? (
+                <label className="settings-field">
+                  <span className="settings-label">Active provider</span>
+                  <select
+                    className="settings-input settings-select"
+                    value={selectedProfileId ?? ''}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      if (!id) return;
+                      onSelectProviderProfile(id);
+                      loadProviderProfile(id);
+                    }}
+                  >
+                    {settings.providerProfiles.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.name} ({profile.providerType} / {profile.model})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <p className="settings-inline-note">No saved providers yet. Configure below and click Save provider.</p>
+              )}
+
+              <label className="settings-field">
+                <span className="settings-label">Profile name</span>
+                <input
+                  type="text"
+                  className="settings-input"
+                  value={profileName}
+                  onChange={(e) => setProfileName(e.target.value)}
+                  placeholder="My Ollama setup"
+                />
+              </label>
+
+              <div className="settings-button-row">
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--small"
+                  onClick={handleSaveProviderProfile}
+                  disabled={!workspaceOpen || !providerValidation.ok || settingsSaving}
+                >
+                  Save provider
+                </button>
+                {selectedProfileId && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--small"
+                    onClick={() => onDeleteProviderProfile(selectedProfileId)}
+                    disabled={settingsSaving}
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+            </SettingsCard>
+
             <SettingsCard
               title="Provider"
               description={`Endpoint ${AGENT_NAME} calls for chat completions and tool loops.`}
@@ -469,6 +576,8 @@ export function SettingsPanel({
                     if (preset) {
                       setBaseUrl(preset.baseUrl);
                       setModel(preset.model);
+                      setApiVersion(next === 'azure-openai' ? '2024-10-21' : apiVersion);
+                      setRegion(next === 'bedrock' ? 'us-east-1' : region);
                       setContextWindow(preset.contextWindow);
                     }
                     markDirty();
@@ -519,9 +628,47 @@ export function SettingsPanel({
                       ))}
                     </datalist>
                     <span className="settings-hint">
-                      Pick a local Ollama model or type any OpenAI-compatible model name.
+                      Pick a local Ollama model, cloud model ID, or Azure deployment name.
                     </span>
                   </label>
+
+                  {providerType === 'azure-openai' && (
+                    <label className="settings-field">
+                      <span className="settings-label">Azure API version</span>
+                      <input
+                        type="text"
+                        className="settings-input"
+                        value={apiVersion}
+                        onChange={(e) => {
+                          setApiVersion(e.target.value);
+                          markDirty();
+                        }}
+                        placeholder="2024-10-21"
+                      />
+                      <span className="settings-hint">
+                        The model field is your Azure deployment name.
+                      </span>
+                    </label>
+                  )}
+
+                  {providerType === 'bedrock' && (
+                    <label className="settings-field">
+                      <span className="settings-label">AWS region</span>
+                      <input
+                        type="text"
+                        className="settings-input"
+                        value={region}
+                        onChange={(e) => {
+                          setRegion(e.target.value);
+                          markDirty();
+                        }}
+                        placeholder="us-east-1"
+                      />
+                      <span className="settings-hint">
+                        Uses AWS default credentials from your environment, profile, SSO, or instance role.
+                      </span>
+                    </label>
+                  )}
 
                   {contextWindowField}
                   {hasPresetContextMismatch && activeLocalPreset?.contextWindow && (
@@ -548,8 +695,9 @@ export function SettingsPanel({
                   type="button"
                   className="btn btn--ghost"
                   onClick={() => onTestConnection(currentProviderSettings())}
+                  disabled={!providerValidation.ok || testingConnection}
                 >
-                  Test connection
+                  {testingConnection ? 'Testing…' : 'Test connection'}
                 </button>
                 {settings.connectionStatus && (
                   <span
@@ -560,6 +708,11 @@ export function SettingsPanel({
                   </span>
                 )}
               </div>
+              {!providerValidation.ok && (
+                <p className="settings-inline-note settings-inline-note--error" role="alert">
+                  {providerValidation.errors.join(' ')}
+                </p>
+              )}
             </SettingsCard>
 
             <SettingsCard title="API key" description="Optional for local Ollama. Stored in VS Code SecretStorage.">
@@ -951,7 +1104,10 @@ export function SettingsPanel({
                   className="settings-input"
                   placeholder={settings.hasGithubToken ? 'Token saved - enter to replace' : 'Enter GitHub token...'}
                   value={githubToken}
-                  onChange={(e) => setGithubToken(e.target.value)}
+                  onChange={(e) => {
+                    setGithubToken(e.target.value);
+                    markDirty();
+                  }}
                 />
               </div>
               <p className="settings-inline-note">
@@ -1043,78 +1199,13 @@ export function SettingsPanel({
 
             <SettingsCard title="Project rules" description="Automatically loaded from your workspace.">
               <p className="settings-inline-note">
-                {AGENT_NAME} reads <code>AGENTS.md</code>, <code>CLAUDE.md</code>, <code>.mitii/rules</code>,{' '}
-                <code>.clinerules</code>, and Continue/Cursor rule folders into context.
+                {AGENT_NAME} reads <code>MITII.md</code> from the workspace root into context.
               </p>
               <p className="settings-inline-note">
                 Active rule files: <strong>{settings.projectRules}</strong>
               </p>
             </SettingsCard>
           </>
-        )}
-
-        {activeTab === 'safety' && (
-          <SettingsCard
-            title="Approval policy"
-            description={`When ${AGENT_NAME} pauses for review before edits or shell commands.`}
-          >
-            <label className="settings-field">
-              <span className="settings-label">Autonomy preset</span>
-              <select
-                className="settings-input settings-select"
-                value={autonomyPreset}
-                onChange={(e) => {
-                  const preset = e.target.value as SafetySettingsPayload['autonomyPreset'];
-                  setAutonomyPreset(preset);
-                  if (preset === 'safe' || preset === 'enterprise') {
-                    setApprovalMode('review_all');
-                  } else if (preset === 'guided') {
-                    setApprovalMode('ask_edits');
-                  } else if (preset === 'builder') {
-                    setApprovalMode('ask_commands');
-                  } else if (preset === 'pilot') {
-                    setApprovalMode('auto');
-                  }
-                  markDirty();
-                }}
-              >
-                {AUTONOMY_PRESETS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <span className="settings-hint">
-                {AUTONOMY_PRESETS.find((p) => p.id === autonomyPreset)?.description}
-              </span>
-            </label>
-
-            <label className="settings-field">
-              <span className="settings-label">Approval mode</span>
-              <select
-                className="settings-input settings-select"
-                value={approvalMode}
-                onChange={(e) => {
-                  const mode = e.target.value as ApprovalMode;
-                  setApprovalMode(mode);
-                  setAutonomyPreset(deriveSafetySettings(mode).autonomyPreset);
-                  markDirty();
-                }}
-              >
-                {APPROVAL_MODE_OPTIONS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <span className="settings-hint">{approvalModeDescription(approvalMode)}</span>
-            </label>
-
-            <div className="settings-policy-summary">
-              <span>{settings.requireApprovalWrites ? 'Edits: ask' : 'Edits: auto'}</span>
-              <span>{settings.requireApprovalShell ? 'Commands: ask' : 'Commands: auto'}</span>
-            </div>
-          </SettingsCard>
         )}
 
         {activeTab === 'debug' && settings.localDebugAvailable && (
@@ -1155,17 +1246,33 @@ export function SettingsPanel({
       {showSaveBar && (
         <footer className="settings-save-bar">
           <span className="settings-save-bar__hint">
-            {dirty ? 'Unsaved changes' : saved ? 'All changes saved' : 'No pending changes'}
+            {settingsSaving
+              ? 'Saving…'
+              : dirty
+                ? 'Unsaved changes'
+                : saved
+                  ? 'All changes saved'
+                  : 'No pending changes'}
           </span>
           <button
             type="button"
             className="btn btn--primary"
             onClick={handleSaveAll}
-            disabled={!dirty && !apiKey.trim() && !githubToken.trim()}
+            disabled={
+              settingsSaving ||
+              ((!dirty && !apiKey.trim() && !githubToken.trim()) || (dirty && !providerValidation.ok))
+            }
           >
-            {saved ? 'Saved' : 'Save changes'}
+            {settingsSaving ? 'Saving…' : saved ? 'Saved' : 'Save changes'}
           </button>
         </footer>
+      )}
+
+      {(settingsSaving || testingConnection) && (
+        <div className="settings-loading-overlay" role="status" aria-live="polite">
+          <span className="settings-loading-spinner" aria-hidden="true" />
+          <span>{settingsSaving ? 'Saving settings…' : 'Testing connection…'}</span>
+        </div>
       )}
     </div>
   );

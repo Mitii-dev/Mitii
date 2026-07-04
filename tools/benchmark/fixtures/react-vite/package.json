@@ -1,0 +1,20 @@
+{
+  "name": "benchmark-react-vite",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "node -e \"console.log('vitest placeholder')\"",
+    "lint": "node -e \"console.log('lint ok')\""
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.2",
+    "vite": "^5.3.1"
+  }
+}

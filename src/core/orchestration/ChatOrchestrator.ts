@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { randomUUID } from 'crypto';
 import type { ThunderDb } from '../indexing/ThunderDb';
-import type { LlmProvider, ChatMessage } from '../llm/types';
+import type { AssistantStreamChunk, LlmProvider, ChatMessage } from '../llm/types';
+import { chunkContent, toAssistantStreamChunk } from '../llm/streamChunks';
 import type { ThunderSession } from '../session/ThunderSession';
 import type { ContextItem, ContextPack } from '../context/types';
 import type {
@@ -69,8 +70,17 @@ import { estimateChatRequestTokens } from '../llm/UsageTrackingProvider';
 import { resolveMaxContextItems } from '../context/resolveMaxContextItems';
 import { enrichTask } from '../task';
 import type { GitHubIssueFetcher } from '../integrations/github';
+import { detectMicroTask, type MicroTaskExecutor } from '../microtasks';
 
 const log = createLogger('ChatOrchestrator');
+
+export const EMPTY_ASSISTANT_RESPONSE_MESSAGE =
+  'I did not receive any response from the model for this turn. Please try again, or switch models if it keeps happening.';
+
+export function normalizeAssistantResponse(fullResponse: string): { content: string; wasEmpty: boolean } {
+  if (fullResponse.trim()) return { content: fullResponse, wasEmpty: false };
+  return { content: EMPTY_ASSISTANT_RESPONSE_MESSAGE, wasEmpty: true };
+}
 
 export type ContextPackCallback = (pack: ContextPack, views: ContextItemView[], budget: ContextBudgetView) => void;
 export type PlanCallback = (plan: PlanView | null) => void;
@@ -109,6 +119,8 @@ export interface ChatOrchestratorDeps {
   githubTokenProvider?: () => Promise<string | undefined>;
   githubIssueFetchEnabled?: boolean;
   githubIssueCommentLimit?: number;
+  microTaskExecutorFactory?: (provider: LlmProvider) => MicroTaskExecutor;
+  microTaskRoutingEnabled?: boolean;
 }
 
 export class ChatOrchestrator {
@@ -197,6 +209,14 @@ export class ChatOrchestrator {
     });
   }
 
+  private emitEmptyResponse(providerId: string): void {
+    this.emitActivity('error', 'Model returned an empty response', providerId);
+    this.deps.sessionLog?.append('error', 'Model returned an empty response', {
+      provider: providerId,
+      fallbackMessage: EMPTY_ASSISTANT_RESPONSE_MESSAGE,
+    });
+  }
+
   private setLiveStatus(
     label: string | null,
     detail?: string,
@@ -215,8 +235,8 @@ export class ChatOrchestrator {
     provider: LlmProvider,
     userMessage: string,
     recentMessages: ChatMessage[] = [],
-    options?: { pinnedContext?: PinnedContextEntry[] }
-  ): AsyncIterable<string> {
+    options?: { pinnedContext?: PinnedContextEntry[]; attachments?: ChatMessage['attachments'] }
+  ): AsyncIterable<AssistantStreamChunk> {
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
     const sessionLog = this.deps.sessionLog;
@@ -232,6 +252,40 @@ export class ChatOrchestrator {
       messageLength: userMessage.length,
       auditMode: isAuditCleanupTask(userMessage),
     });
+
+    const microTaskId = this.deps.microTaskRoutingEnabled === false || isApprovalContinuationMessage(userMessage)
+      ? null
+      : detectMicroTask(userMessage);
+    if (microTaskId && this.deps.microTaskExecutorFactory) {
+      this.setLiveStatus('Running micro-task', microTaskId.replace(/_/g, ' '));
+      this.emitActivity('info', `Micro-task route: ${microTaskId}`, 'Using minimal Git/release context and no tools.');
+      sessionTiming.start('microtask');
+      const result = await this.deps.microTaskExecutorFactory(provider).execute(microTaskId, userMessage);
+      sessionTiming.end('microtask', sessionLog, result.metadata);
+      const normalizedResult = normalizeAssistantResponse(result.content);
+      const content = normalizedResult.content;
+      if (normalizedResult.wasEmpty) {
+        this.emitEmptyResponse(provider.id);
+      }
+      this.saveTurn(session.id, 'user', userMessage);
+      const emptyPack = emptyContextPack();
+      await this.finishTurn(
+        session,
+        provider,
+        userMessage,
+        content,
+        emptyPack,
+        [],
+        Math.ceil(content.length / 4),
+        [
+          { role: 'system', content: `Mitii micro-task: ${microTaskId}` },
+          { role: 'user', content: userMessage },
+        ]
+      );
+      yield content;
+      this.setLiveStatus(null);
+      return;
+    }
 
     const ws = this.deps.workspace ?? '';
     const editor = vscode.window.activeTextEditor;
@@ -615,7 +669,7 @@ export class ChatOrchestrator {
           sharedPlanOptions
         )) {
           if (signal.aborted) break;
-          fullResponse += chunk;
+          fullResponse += chunkContent(chunk);
           yield chunk;
         }
         sessionTiming.end('plan_execution', sessionLog, { resumed: true, stepCount: plan.steps.length });
@@ -773,7 +827,7 @@ export class ChatOrchestrator {
         )) {
           if (signal.aborted) break;
           if (session.mode !== 'plan') {
-            fullResponse += chunk;
+            fullResponse += chunkContent(chunk);
             yield chunk;
           }
         }
@@ -853,7 +907,7 @@ export class ChatOrchestrator {
               sharedPlanOptions
             )) {
               if (signal.aborted) break;
-              fullResponse += chunk;
+              fullResponse += chunkContent(chunk);
               yield chunk;
             }
             sessionTiming.end('plan_execution', sessionLog, {
@@ -905,7 +959,7 @@ export class ChatOrchestrator {
 
       const isResume = isApprovalContinuationMessage(userMessage);
       const taskStateBlock = this.deps.taskState?.buildPromptBlock();
-      const messages = buildPrompt(
+      const messages = attachImagesToLastUser(buildPrompt(
         session.mode,
         pack,
         userMessage,
@@ -923,7 +977,7 @@ export class ChatOrchestrator {
           actPlan?.promptContext,
           ...taskEnrichment.contextBlocks
         )
-      );
+      ), options?.attachments);
       const promptTokens = estimateChatRequestTokens({
         messages,
         tools: tools.length > 0 ? tools : undefined,
@@ -974,7 +1028,7 @@ export class ChatOrchestrator {
           }
         )) {
           if (signal.aborted) break;
-          fullResponse += chunk;
+          fullResponse += chunkContent(chunk);
           emitLiveTokenUsage();
           yield chunk;
         }
@@ -1051,7 +1105,7 @@ export class ChatOrchestrator {
               }
             )) {
               if (signal.aborted) break;
-              fullResponse += chunk;
+              fullResponse += chunkContent(chunk);
               emitLiveTokenUsage();
               yield chunk;
             }
@@ -1065,10 +1119,18 @@ export class ChatOrchestrator {
           if (delta.content) {
             fullResponse += delta.content;
             emitLiveTokenUsage();
-            yield delta.content;
           }
+          const chunk = toAssistantStreamChunk(delta.content, delta.reasoning);
+          if (chunk) yield chunk;
           if (delta.error) throw new Error(delta.error);
         }
+      }
+
+      const normalizedResponse = normalizeAssistantResponse(fullResponse);
+      if (normalizedResponse.wasEmpty) {
+        fullResponse = normalizedResponse.content;
+        this.emitEmptyResponse(provider.id);
+        yield fullResponse;
       }
 
       await this.finishTurn(
@@ -1109,7 +1171,11 @@ export class ChatOrchestrator {
     const tokens = promptTokens || estimateChatRequestTokens({ messages: usageMessages });
     this.emitTurnTokenUsage(tokens, pack, fullResponse, usageMessages, compacted);
 
-    if (!fullResponse) return;
+    const normalizedResponse = normalizeAssistantResponse(fullResponse);
+    fullResponse = normalizedResponse.content;
+    if (normalizedResponse.wasEmpty) {
+      this.emitEmptyResponse(provider.id);
+    }
 
     this.saveTurn(session.id, 'assistant', fullResponse);
     this.deps.sessionLog?.append('assistant_message', fullResponse.slice(0, 200), {
@@ -1324,7 +1390,7 @@ export class ChatOrchestrator {
     return Boolean(this.agentLoop?.getSuspendState() && this.suspendContext);
   }
 
-  async *resumeAfterApproval(approved: ApprovedToolResult[]): AsyncIterable<string> {
+  async *resumeAfterApproval(approved: ApprovedToolResult[]): AsyncIterable<AssistantStreamChunk> {
     if (!this.agentLoop || !this.suspendContext || approved.length === 0) return;
 
     const baseState = this.agentLoop.getSuspendState();
@@ -1377,7 +1443,7 @@ export class ChatOrchestrator {
         sharedLoopCallbacks
       )) {
         if (signal.aborted) break;
-        fullResponse += chunk;
+        fullResponse += chunkContent(chunk);
         yield chunk;
       }
 
@@ -1714,6 +1780,36 @@ function mergePromptContexts(...blocks: Array<string | undefined>): string | und
     .filter((block): block is string => Boolean(block));
   if (merged.length === 0) return undefined;
   return [...new Set(merged)].join('\n\n---\n\n');
+}
+
+function attachImagesToLastUser(
+  messages: ChatMessage[],
+  attachments: ChatMessage['attachments'] | undefined
+): ChatMessage[] {
+  const images = attachments?.filter((attachment) => attachment.kind === 'image') ?? [];
+  if (images.length === 0) return messages;
+  const next = [...messages];
+  for (let index = next.length - 1; index >= 0; index -= 1) {
+    if (next[index].role !== 'user') continue;
+    next[index] = {
+      ...next[index],
+      attachments: [...(next[index].attachments ?? []), ...images],
+    };
+    return next;
+  }
+  return [...next, { role: 'user', content: 'Attached image context.', attachments: images }];
+}
+
+function emptyContextPack(): ContextPack {
+  return {
+    items: [],
+    totalTokens: 0,
+    formatted: '',
+    retrievedCount: 0,
+    budgetLimit: 0,
+    dropped: [],
+    truncatedCount: 0,
+  };
 }
 
 export function contextPackToBudgetView(pack: ContextPack): ContextBudgetView {

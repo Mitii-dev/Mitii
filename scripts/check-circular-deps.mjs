@@ -5,10 +5,10 @@ import { spawnSync } from 'child_process';
 
 const root = process.argv[2] ? resolve(process.argv[2]) : process.cwd();
 const localMadge = resolve(root, 'node_modules/.bin/madge');
-const command = existsSync(localMadge) ? localMadge : 'npx';
+const command = existsSync(localMadge) ? localMadge : 'pnpm';
 const args = existsSync(localMadge)
   ? ['.', '--circular', '--json', '--extensions', 'ts,tsx,js,jsx,mjs,cjs', '--exclude', 'node_modules|dist|out|coverage|\\.git']
-  : ['--yes', 'madge', '.', '--circular', '--json', '--extensions', 'ts,tsx,js,jsx,mjs,cjs', '--exclude', 'node_modules|dist|out|coverage|\\.git'];
+  : ['dlx', 'madge', '.', '--circular', '--json', '--extensions', 'ts,tsx,js,jsx,mjs,cjs', '--exclude', 'node_modules|dist|out|coverage|\\.git'];
 
 const result = spawnSync(command, args, {
   cwd: root,

@@ -1,6 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'fs';
 import { basename, join } from 'path';
 import { createLogger } from '../telemetry/Logger';
+import { resolveBundledSkillsRoot } from './resolveBundledSkillsRoot';
 
 const log = createLogger('BundledSkills');
 
@@ -17,14 +18,14 @@ export function installBundledSkills(
   extensionRoot: string,
   options: { force?: boolean } = {}
 ): InstallBundledSkillsResult {
-  const bundledRoot = join(extensionRoot, 'bundled-skills');
+  const bundledRoot = resolveBundledSkillsRoot(extensionRoot);
   const destinationRoot = join(workspace, '.mitii', 'skills');
   const installed: string[] = [];
   const skipped: string[] = [];
 
-  if (!existsSync(bundledRoot)) {
-    log.warn('Bundled skills directory missing', { bundledRoot });
-    return { installed, skipped, bundledRoot, destinationRoot };
+  if (!bundledRoot || !existsSync(bundledRoot)) {
+    log.warn('Bundled skills directory missing', { extensionRoot });
+    return { installed, skipped, bundledRoot: bundledRoot ?? '', destinationRoot };
   }
 
   mkdirSync(destinationRoot, { recursive: true });
@@ -71,14 +72,14 @@ export function installBundledSkills(
 }
 
 export function listBundledSkillNames(extensionRoot: string): string[] {
-  const bundledRoot = join(extensionRoot, 'bundled-skills');
-  if (!existsSync(bundledRoot)) return [];
+  const bundledRoot = resolveBundledSkillsRoot(extensionRoot);
+  if (!bundledRoot || !existsSync(bundledRoot)) return [];
   return listBundledSkillDirs(bundledRoot).map((dir) => basename(dir)).sort();
 }
 
 export function readBundledSkillManifest(extensionRoot: string): Array<{ name: string; description: string }> {
-  const bundledRoot = join(extensionRoot, 'bundled-skills');
-  if (!existsSync(bundledRoot)) return [];
+  const bundledRoot = resolveBundledSkillsRoot(extensionRoot);
+  if (!bundledRoot || !existsSync(bundledRoot)) return [];
 
   return listBundledSkillDirs(bundledRoot).map((dir) => {
     const content = readFileSync(join(dir, 'SKILL.md'), 'utf8');

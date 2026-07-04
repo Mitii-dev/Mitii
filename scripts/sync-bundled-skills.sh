@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Maintainer utility: refresh bundled-skills/ from a local checkout (no runtime git pull in the extension).
+# Maintainer utility: refresh src/core/skills/bundled/ from a local checkout (no runtime git pull in the extension).
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-DEST_DIR="${MITII_BUNDLED_SKILLS_DIR:-$ROOT_DIR/bundled-skills}"
+DEST_DIR="${MITII_BUNDLED_SKILLS_DIR:-$ROOT_DIR/src/core/skills/bundled}"
 SOURCE_DIR="${AGENT_SKILLS_SOURCE_DIR:-}"
 
 usage() {
@@ -14,8 +14,8 @@ Usage:
   AGENT_SKILLS_SOURCE_DIR=/path/to/agent-skills/skills bash scripts/sync-bundled-skills.sh
   bash scripts/sync-bundled-skills.sh /path/to/agent-skills/skills
 
-Copies the seven Tier-1 SKILL.md folders from addyosmani/agent-skills into bundled-skills/.
-Mitii-owned skills (e.g. audit-cleanup) live in bundled-skills/ and are not overwritten.
+Copies the seven Tier-1 SKILL.md folders from addyosmani/agent-skills into src/core/skills/bundled/.
+Mitii-owned skills (e.g. audit-cleanup) live in src/core/skills/bundled/ and are not overwritten.
 Does not run at extension runtime — commit the result and ship it in the VSIX.
 EOF
 }
@@ -58,4 +58,4 @@ for skill in "${SKILLS[@]}"; do
   echo "Synced $skill"
 done
 
-echo "Done. bundled-skills now contains $(find "$DEST_DIR" -name SKILL.md | wc -l | tr -d ' ') skill(s)."
+echo "Done. src/core/skills/bundled now contains $(find "$DEST_DIR" -name SKILL.md | wc -l | tr -d ' ') skill(s)."

@@ -1,0 +1,41 @@
+{
+  "generatedAt": "2026-07-03T21:02:42.220Z",
+  "profile": "standard",
+  "targetCount": 500,
+  "actualCount": 500,
+  "shardSize": 100,
+  "shards": [
+    "shard-000.json",
+    "shard-001.json",
+    "shard-002.json",
+    "shard-003.json",
+    "shard-004.json"
+  ],
+  "categories": {
+    "browser": 1,
+    "nestjs": 3,
+    "nextjs": 3,
+    "node": 4,
+    "react": 3,
+    "ask": 1,
+    "mcp": 2,
+    "orchestrator": 1,
+    "microtasks": 1,
+    "agent-loop": 1,
+    "skills": 1,
+    "verify": 1,
+    "paths": 1,
+    "infrastructure": 3,
+    "fixture-agent-nestjs": 15,
+    "fixture-agent-nextjs": 15,
+    "fixture-agent-node": 16,
+    "fixture-agent-react": 15,
+    "fixture-ask-nestjs": 64,
+    "fixture-ask-nextjs": 49,
+    "fixture-ask-node": 49,
+    "fixture-ask-react": 49,
+    "coding-js": 202
+  },
+  "outputDir": "/Users/karthikshinde/Applications/ai-agent/mitii/mitii-ai-agent/tools/benchmark/tasks/eval/generated-test",
+  "note": "External eval tasks — not packaged in VSIX extension"
+}

@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.7.7" src="https://img.shields.io/badge/version-2.7.7-111111">
+  <img alt="Version 2.7.29" src="https://img.shields.io/badge/version-2.7.29-111111">
   <a href="https://mitii.dev"><img alt="Website" src="https://img.shields.io/badge/website-mitii.dev-000000"></a>
   <a href="https://docs.mitii.dev"><img alt="Docs" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
@@ -31,7 +31,7 @@
 
 Mitii is built for developers who want an AI agent that understands the repo before changing it. It runs inside VS Code, indexes your workspace locally, plans work before execution, asks for approval when risk is involved, and keeps a useful trail of memory, checkpoints, logs, and task plans.
 
-Use it with Ollama, LM Studio, OpenAI-compatible endpoints, OpenAI, Anthropic, Gemini, DeepSeek, Cursor-compatible APIs, Codex-compatible APIs, or the Echo provider for UI testing.
+Use it with Ollama, LM Studio, OpenAI-compatible endpoints, native OpenRouter, Azure OpenAI, AWS Bedrock, OpenAI, Anthropic, Gemini, DeepSeek, Cursor-compatible APIs, Codex-compatible APIs, or the Echo provider for UI testing.
 
 **Docs:** [docs.mitii.dev](https://docs.mitii.dev)  
 **Website:** [mitii.dev](https://mitii.dev)  
@@ -54,6 +54,7 @@ Most coding agents are powerful, but they often make one of these tradeoffs:
 | Tool limits | External tools are hard to connect or audit | Supports MCP servers while still routing tools through Mitii safety policy |
 | Repeated workflows | Teams paste the same instructions into every chat | Supports project rules and workspace skills through `SKILL.md` files |
 | Issue-to-fix handoff | Bug reports live in GitHub while the code lives in the editor | Detects GitHub issue URLs, fetches structured issue context, and routes Agent mode through the verified bugfix path |
+| Procurement evidence | Security reviewers need logs, approvals, and data-flow answers | Exports an audit pack zip and ships enterprise security/compliance docs |
 
 Mitii is not just a chat panel. It is a workspace-aware agent runtime for real engineering work.
 
@@ -73,6 +74,7 @@ The strongest thing Mitii provides is a practical balance: **deep local context 
 | GitHub issue ingestion | Paste a GitHub issue URL and Mitii turns title, body, labels, and comments into structured task context |
 | Built for long tasks | Auto-continue, persisted task state, context compaction, and session history reduce restart pain |
 | Model freedom | Use local models for privacy, cloud models for capability, or different models for Plan, Act, and research |
+| Diff-first micro-tasks | Commit messages, changelog entries, and release notes use minimal Git context instead of full agent routing |
 
 ---
 
@@ -148,9 +150,9 @@ Paste a GitHub issue URL in Agent mode, for example:
 Fix https://github.com/owner/repo/issues/123
 ```
 
-Mitii detects `github.com/{owner}/{repo}/issues/{number}`, fetches the issue through the GitHub REST API when network access is allowed, and injects a structured context block containing the title, body, state, labels, assignees, milestone, and recent comments. The Act router treats the issue signal as a verified bugfix workflow, so the agent investigates the open workspace, makes scoped edits, and runs relevant verification.
+Mitii detects `github.com/{owner}/{repo}/issues/{number}`, fetches the issue through the GitHub REST API when network access is allowed, and injects a structured context block containing the title, body, state, labels, assignees, milestone, and newest comments. When the fetch succeeds, the Act router treats the issue signal as a verified bugfix workflow, so the agent investigates the open workspace, makes scoped edits, and runs relevant verification.
 
-If the active safety preset disables network access, Mitii still injects a lightweight reference block with the repository and issue number instead of scraping GitHub HTML. Private repository support uses a GitHub token stored in VS Code SecretStorage under `thunder.github.token` by default; the setting stores only the secret key name, not the token value.
+If the active safety preset disables network access or GitHub cannot be reached, Mitii still injects a lightweight reference block with the repository and issue number instead of scraping GitHub HTML. Private repository support uses a GitHub token stored in VS Code SecretStorage under `thunder.github.token` by default; enter or replace the token from **Settings → Integrations → GitHub issues**. The VS Code setting stores only the secret key name, not the token value.
 
 ### 4. Safer Tool Execution
 
@@ -202,6 +204,21 @@ Mitii stores useful state locally so every serious task does not start from zero
 
 Post-task memory extraction can capture useful observations after completed work, so future sessions can reuse decisions without asking you to repeat context.
 
+Audit review is available through `Mitii: Export Audit Pack`. The zip contains sanitized `session.jsonl`, `summary.md`, `manifest.json`, `tool-audit.json`, `approvals.json`, `redaction-report.json`, and `signature.json` with SHA-256 hashes for tamper detection. Set `MITII_AUDIT_SIGNING_KEY` to add HMAC signing, then verify archives with `mitii verify-audit <zip>`.
+
+### Release Automation
+
+Mitii includes release hygiene commands:
+
+| Command | Output |
+|---|---|
+| `Mitii: Generate Changelog Entry` | Preview a Keep a Changelog-style entry from Conventional Commits |
+| `Mitii: Prepare Release` | Update `CHANGELOG.md` and write `.mitii/release-notes.md` |
+| `mitii changelog` | Headless changelog entry for CI/scripts |
+| `mitii prepare-release` | Headless changelog + release-notes generation |
+| `mitii export-audit` | Headless audit pack export from JSONL logs |
+| `mitii verify-audit` | Verify audit pack signatures and file hashes |
+
 ### 7. Skills And Project Playbooks
 
 Mitii can load reusable workflow instructions from `SKILL.md` files. Bundled skills are copied into each workspace under `.mitii/skills/` on first init, and teams can add their own skills for code review, planning, debugging, testing, performance work, release flow, and cleanup.
@@ -243,6 +260,26 @@ The sidebar is a React webview with:
 | Token meter | Understand context usage |
 | Indexing status | Know when the workspace brain is ready |
 | Context warnings | See when context may be thin or over budget |
+
+Reasoning deltas from supported providers stream live in the chat UI. Use `thunder.ui.showReasoning` and `thunder.ui.reasoningPreviewMaxChars` to control visibility and inline preview size.
+
+Mitii also detects common model capabilities from the provider/model name, including vision and reasoning support. Enterprise teams can override detection with `thunder.provider.supportsVision` and `thunder.provider.supportsReasoning` when routing through private or custom OpenAI-compatible gateways.
+
+## Enterprise Readiness
+
+Enterprise review materials live in [docs/enterprise](docs/enterprise/README.md). The pack covers data flow, provider boundaries, procurement FAQs, compliance mapping, Windows support, and auditability.
+
+| Control | Setting or command |
+|---|---|
+| Route narrow Git/release tasks through minimal context | `thunder.context.microTaskRoutingEnabled` |
+| Require local model providers | `thunder.enterprise.localProvidersOnly` |
+| Strip file contents from exported audit packs | `thunder.enterprise.stripFileContentsFromAuditPacks` |
+| Auto-export audit packs after agent turns | `thunder.enterprise.autoExportAuditPackOnSessionEnd` |
+| Verify audit pack integrity | `mitii verify-audit <zip>` |
+| Disable session logging | `thunder.telemetry.sessionLogging` |
+| Stream sanitized SIEM events | `thunder.telemetry.webhookUrl` and optional `thunder.telemetry.webhookSecret` |
+| Export audit evidence | `Mitii: Export Audit Pack` |
+| Windows smoke checklist | [docs/qa/WINDOWS_SMOKE.md](docs/qa/WINDOWS_SMOKE.md) |
 
 ---
 
@@ -323,6 +360,7 @@ This section is written carefully. Models and products change fast. Mitii does n
 | Long-running tasks | Auto-continue, task-state persistence, session history, and wake-up checkpoints |
 | Teams that need guardrails | Approval modes, autonomy presets, untrusted workspace blocking, dangerous-command blocking |
 | Local model setups | Ollama and OpenAI-compatible providers are first-class |
+| Cloud routing | Native OpenRouter headers/reasoning, Azure OpenAI deployment URLs, and AWS Bedrock Converse support are built in |
 | Custom internal tools | MCP support without skipping Mitii's policy layer |
 | VS Code users | No need to move to a separate AI editor |
 
@@ -364,21 +402,20 @@ This is why Mitii focuses on visible plans, local logs, checkpoints, and verific
 |---|---|
 | VS Code | 1.85+ |
 | Node.js | 20+ |
-| npm | 9+ |
+| pnpm | 10.13+ |
 
 ```bash
-git clone https://github.com/codewithshinde/thunder-ai-agent.git
-cd thunder-ai-agent
-npm install
-npm run compile
+git clone https://github.com/codewithshinde/mitii-ai-agent.git
+cd mitii-ai-agent
+pnpm run setup
 ```
 
-Press **F5** in VS Code to launch the Extension Development Host. Open a folder, wait for the indexing status in the Mitii sidebar, then start chatting.
+`pnpm run setup` installs dependencies, compiles the extension and webview, rebuilds native modules for VS Code on macOS, and rebuilds local Node native modules for tests. Press **F5** in VS Code to launch the Extension Development Host. Open a folder, wait for the indexing status in the Mitii sidebar, then start chatting.
 
 ### Connect A Model
 
 1. Open **Settings** in the Mitii sidebar, or VS Code settings under `Mitii AI Agent`.
-2. Set `thunder.provider.type` to `openai-compatible`.
+2. Set `thunder.provider.type` to `openai-compatible`, `openrouter`, `azure-openai`, or another supported provider.
 3. Point `thunder.provider.baseUrl` at your endpoint. The default is `http://localhost:11434/v1` for Ollama.
 4. Set `thunder.provider.model`. The default is `qwen3-coder:30b`.
 
@@ -389,7 +426,10 @@ Use the Echo provider for UI testing without an LLM. API keys are stored through
 | Provider | Default model | Notes |
 |---|---|---|
 | OpenAI-compatible | `qwen3-coder:30b` | Ollama, LM Studio, vLLM, local gateways |
+| OpenRouter | `anthropic/claude-sonnet-4` | Native headers and reasoning deltas |
 | OpenAI | `gpt-4.1` | API key required |
+| Azure OpenAI | `your-deployment-name` | API key required; model field is the deployment name; uses `thunder.provider.apiVersion` |
+| AWS Bedrock | `anthropic.claude-3-5-sonnet-20240620-v1:0` | Uses AWS default credential chain and `thunder.provider.region`; tool calls disabled by default |
 | Anthropic | `claude-sonnet-4-20250514` | API key required |
 | Gemini | `gemini-2.0-flash` | API key required |
 | DeepSeek | `deepseek-chat` | API key required |
@@ -422,6 +462,8 @@ Use the Echo provider for UI testing without an LLM. API keys are stored through
   "thunder.provider.type": "openai-compatible",
   "thunder.provider.baseUrl": "http://localhost:11434/v1",
   "thunder.provider.model": "qwen3-coder:30b",
+  "thunder.provider.apiVersion": "2024-10-21",
+  "thunder.provider.region": "us-east-1",
   "thunder.provider.contextWindow": 8192,
   "thunder.safety.autonomyPreset": "guided",
   "thunder.safety.approvalMode": "review_all",
@@ -435,7 +477,9 @@ Use the Echo provider for UI testing without an LLM. API keys are stored through
   "thunder.github.issueCommentLimit": 8,
   "thunder.github.tokenRef": "thunder.github.token",
   "thunder.agent.verifyCommands": ["npm run lint", "npm test"],
-  "thunder.telemetry.sessionLogging": true
+  "thunder.telemetry.sessionLogging": true,
+  "thunder.telemetry.webhookUrl": "",
+  "thunder.enterprise.autoExportAuditPackOnSessionEnd": false
 }
 ```
 
@@ -509,13 +553,45 @@ Mitii does not send your data to a Mitii server. If you use a cloud model provid
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, project layout, testing, and pull request guidelines.
 
+### Repository layout
+
+```text
+mitii-ai-agent/                 # VS Code extension (ships as .vsix)
+├── src/                        # Extension + core agent runtime
+├── scripts/                    # Build, release, and audit helpers
+├── test/                       # Vitest suite
+├── tools/benchmark/            # @mitii/benchmark — benchmark + eval (not in VSIX)
+│   ├── fixtures/               # Pinned sample repos
+│   ├── tasks/enterprise/       # ~26 fixed benchmark tasks
+│   └── tasks/eval/             # Generated 500–1000 task shards
+├── pnpm-workspace.yaml         # tools/* workspace packages
+└── package.json
+```
+
+Benchmark and eval live in `tools/benchmark/` as a private pnpm workspace package. They call the compiled CLI (`dist/cli.js`) and are excluded from the published extension. See [tools/benchmark/README.md](tools/benchmark/README.md) for full run instructions.
+
 ```bash
-npm run watch              # extension + webview hot rebuild
-npm run test               # unit tests
-npm run lint               # typecheck
-npm run smoke              # smoke tests
-npm run package            # build .vsix
-npm run package:preflight  # lint, rebuild, test, package
+pnpm run watch              # extension + webview hot rebuild
+pnpm run setup              # one-click local dev setup
+pnpm run setup:cursor       # setup using Cursor Electron runtime on macOS
+pnpm run test               # unit tests
+pnpm run lint               # typecheck
+pnpm run smoke              # smoke tests only
+pnpm run package            # build .vsix
+pnpm run package:preflight  # lint, rebuild, test, package
+```
+
+### Benchmark and eval
+
+```bash
+pnpm run compile:cli
+pnpm run benchmark:smoke      # enterprise benchmark (3 tasks, echo/stub)
+pnpm run benchmark:all        # all enterprise tasks, real runtime
+pnpm run eval:preflight       # verifies better-sqlite3 for Node (run rebuild:node first)
+pnpm run eval:generate        # generate 500 standard eval tasks
+pnpm run eval:smoke           # eval wiring check (CI)
+pnpm run eval:standard -- --provider openai-compatible \
+  --base-url http://localhost:11434/v1 --model qwen3-coder:30b --limit 50
 ```
 
 ### Native Rebuilds
@@ -524,21 +600,33 @@ VS Code and Cursor ship their own Electron runtime, so native modules may need a
 
 | Scenario | Command |
 |---|---|
-| VS Code Extension Development Host | `npm run rebuild:native` |
-| Cursor Extension Development Host | `THUNDER_EDITOR=cursor npm run rebuild:native` |
-| Local Vitest runs | `npm run rebuild:node` |
-| Everything | `npm run rebuild:all` |
+| VS Code Extension Development Host | `pnpm run rebuild:native` |
+| Cursor Extension Development Host | `THUNDER_EDITOR=cursor pnpm run rebuild:native` |
+| Local Vitest runs | `pnpm run rebuild:node` |
+| Everything | `pnpm run rebuild:all` |
+
+On Linux and Windows, Electron version auto-detection is not available. Set the version explicitly:
+
+```bash
+THUNDER_ELECTRON_VERSION=<electron-version> pnpm run rebuild:native
+```
+
+For example, use the Electron version shipped by your VS Code or Cursor build.
 
 ### Useful Audit Scripts
 
 ```bash
-npm run audit:dependencies
-npm run audit:dead-code
-npm run check:circular-deps
-npm run audit:engines
-npm run find:console
-npm run find:inline-styles
+pnpm run audit:dependencies
+pnpm run audit:dead-code
+pnpm run check:circular-deps
+pnpm run audit:engines
+pnpm run find:console
+pnpm run find:inline-styles
+pnpm run check:missing-types
+pnpm run env:sync
 ```
+
+Bundled skills orchestrate these scripts instead of replacing them. `audit-cleanup` runs dependency/dead-code/cycle/engine audits, `code-smells-and-tech-debt` covers console logs, inline styles, missing types, and targeted lint checks, and `environment-and-secrets` compares env templates without exposing secret values.
 
 ---
 
@@ -546,7 +634,7 @@ npm run find:inline-styles
 
 | Problem | Fix |
 |---|---|
-| `better-sqlite3` fails to load | Run `npm run rebuild:native` for VS Code or `THUNDER_EDITOR=cursor npm run rebuild:native` for Cursor |
+| `better-sqlite3` fails to load | Run `pnpm run rebuild:native` for VS Code or `THUNDER_EDITOR=cursor pnpm run rebuild:native` for Cursor |
 | Provider errors | Check base URL, model name, and API key. Try Echo provider to isolate UI issues |
 | Indexing feels empty | Check `.gitignore`, `.mitiiignore`, workspace write access, then run `Mitii: Index Workspace` |
 | Context feels thin | Wait for indexing, enable vectors, check context warnings, and mention important files directly |
@@ -612,8 +700,8 @@ Contributions are welcome. Good first areas include docs, tests, provider polish
 Before a pull request:
 
 ```bash
-npm run lint
-npm test
+pnpm run lint
+pnpm test
 ```
 
 For bigger agent or UI changes, also smoke-test in the Extension Development Host with **F5**.

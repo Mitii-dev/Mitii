@@ -4,7 +4,7 @@ import { spawnSync } from 'child_process';
 const ROOT_MAJOR = 2;
 const shouldStage = process.argv.includes('--stage');
 const packagePath = 'package.json';
-const lockPath = 'package-lock.json';
+const lockPath = 'pnpm-lock.yaml';
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
@@ -33,17 +33,9 @@ const version = nextVersion(pkg.version);
 pkg.version = version;
 writeJson(packagePath, pkg);
 
-if (existsSync(lockPath)) {
-  const lock = readJson(lockPath);
-  lock.version = version;
-  if (lock.packages?.['']) {
-    lock.packages[''].version = version;
-  }
-  writeJson(lockPath, lock);
-}
-
 if (shouldStage) {
-  const result = spawnSync('git', ['add', packagePath, lockPath], { stdio: 'inherit' });
+  const paths = [packagePath, ...(existsSync(lockPath) ? [lockPath] : [])];
+  const result = spawnSync('git', ['add', ...paths], { stdio: 'inherit' });
   if (result.status) process.exit(result.status);
 }
 

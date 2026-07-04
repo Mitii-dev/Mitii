@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ThunderController } from '../../core/app/ThunderController';
 import { createLogger } from '../../core/telemetry/Logger';
 import { normalizeError, formatUserError } from '../../core/telemetry/errors';
+import { chunkContent, chunkReasoning } from '../../core/llm/streamChunks';
 import { AGENT_FULL_NAME, AGENT_NAME, brandMessage } from '../../shared/brand';
 import {
   type ExtensionToWebviewMessage,
@@ -73,6 +74,14 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
 
       this.postMessage({ type: 'state', payload: this.state });
     });
+    this.controller.setPreservedUiGetter(() => ({
+      tab: this.state.tab,
+      mode: this.state.mode,
+      messages: this.state.messages,
+      currentSessionId: this.state.currentSessionId,
+      chatHistory: this.state.chatHistory,
+      loading: this.state.loading,
+    }));
     this.controller.setAutoFixCallback(async (message) => {
       await this.runChatCompletion(message, true);
     });
@@ -100,6 +109,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
     });
 
     webviewView.onDidDispose(() => {
+      this.archiveCurrentThread();
       this.view = undefined;
     });
   }
@@ -158,7 +168,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       case 'sendMessage': {
         const content = message.payload.content.trim();
         const pinnedContext = message.payload.pinnedContext ?? this.state.pinnedContext;
-        await this.runChatCompletion(content, true, pinnedContext);
+        await this.runChatCompletion(content, true, pinnedContext, message.payload.attachments ?? []);
         break;
       }
 
@@ -204,6 +214,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
           this.postMessage({ type: 'state', payload: this.state });
           break;
         }
+        const restoredPlan = this.controller.restoreChatSession(message.payload.id, { mode: this.state.mode });
         this.state = {
           ...this.state,
           tab: 'chat',
@@ -212,6 +223,9 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
           currentSessionId: message.payload.id,
           messages: thread.messages,
           chatHistory: this.historySummaries(),
+          plan: restoredPlan,
+          agentActivity: [],
+          agentLiveStatus: null,
         };
         this.postMessage({ type: 'state', payload: this.state });
         break;
@@ -220,6 +234,9 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       case 'setMode': {
         this.state = { ...this.state, mode: message.payload };
         this.controller.getSession()?.setMode(message.payload);
+        if (message.payload === 'review') {
+          await this.controller.refreshReviewDiff();
+        }
         this.postMessage({ type: 'setMode', payload: message.payload });
         break;
       }
@@ -316,6 +333,21 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
 
       case 'testProviderConnection':
         await this.controller.testProviderConnection(message.payload);
+        break;
+
+      case 'saveProviderProfile':
+        await this.controller.saveProviderProfile(message.payload);
+        await this.syncState();
+        break;
+
+      case 'selectProviderProfile':
+        await this.controller.selectProviderProfile(message.payload.id);
+        await this.syncState();
+        break;
+
+      case 'deleteProviderProfile':
+        await this.controller.deleteProviderProfile(message.payload.id);
+        await this.syncState();
         break;
 
       case 'pickWorkspaceFolder':
@@ -436,13 +468,23 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         this.postMessage({ type: 'state', payload: this.state });
         break;
       }
+
+      case 'refreshReviewDiff':
+        await this.controller.refreshReviewDiff();
+        break;
+
+      case 'completeOnboarding':
+        await this.controller.completeOnboarding();
+        await this.syncState();
+        break;
     }
   }
 
   private async runChatCompletion(
     content: string,
     appendUser: boolean,
-    pinnedContext = this.state.pinnedContext
+    pinnedContext = this.state.pinnedContext,
+    attachments: ChatMessage['attachments'] = []
   ): Promise<void> {
     if (!content || this.state.loading) return;
 
@@ -450,6 +492,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       id: `msg-${Date.now()}`,
       role: 'user',
       content,
+      attachments,
       timestamp: Date.now(),
     };
 
@@ -469,11 +512,12 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       const recentMessages = messages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .slice(0, -1)
-        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content, attachments: m.attachments }));
 
-      const stream = await this.controller.sendMessage(content, recentMessages, { pinnedContext });
+      const stream = await this.controller.sendMessage(content, recentMessages, { pinnedContext, attachments });
       let rawContent = '';
       let fullContent = '';
+      let reasoningContent = '';
 
       this.state = {
         ...this.state,
@@ -485,17 +529,18 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       this.postMessage({ type: 'state', payload: this.state });
 
       for await (const chunk of stream) {
-        rawContent += chunk;
+        rawContent += chunkContent(chunk);
+        reasoningContent += chunkReasoning(chunk);
         fullContent = stripLeakedChannelMarkers(rawContent);
         this.state = {
           ...this.state,
           messages: this.state.messages.map((m) =>
-            m.id === assistantId ? { ...m, content: fullContent, streaming: true } : m
+            m.id === assistantId ? { ...m, content: fullContent, reasoningContent, streaming: true } : m
           ),
         };
         this.postMessage({
           type: 'updateLastAssistant',
-          payload: { content: fullContent, streaming: true },
+          payload: { content: fullContent, reasoningContent, streaming: true },
         });
       }
 
@@ -505,7 +550,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         ...this.state,
         loading: false,
         messages: this.state.messages.map((m) =>
-          m.id === assistantId ? { ...m, content: fullContent, streaming: false } : m
+          m.id === assistantId ? { ...m, content: fullContent, reasoningContent, streaming: false } : m
         ),
         approvals: pendingApprovals.map((r) => ({
           id: r.id,
@@ -514,6 +559,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
           files: r.files,
           risk: r.risk,
           reason: r.reason,
+          contentLength: r.contentLength,
           kind: r.kind,
           question: r.question,
           options: r.options,
@@ -599,21 +645,23 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
     const assistantId = lastAssistant.id;
     let rawContent = lastAssistant.content;
     let fullContent = stripLeakedChannelMarkers(rawContent);
+    let reasoningContent = lastAssistant.reasoningContent ?? '';
 
     try {
       const stream = this.controller.resumeAfterApproval();
       for await (const chunk of stream) {
-        rawContent += chunk;
+        rawContent += chunkContent(chunk);
+        reasoningContent += chunkReasoning(chunk);
         fullContent = stripLeakedChannelMarkers(rawContent);
         this.state = {
           ...this.state,
           messages: this.state.messages.map((m) =>
-            m.id === assistantId ? { ...m, content: fullContent, streaming: true } : m
+            m.id === assistantId ? { ...m, content: fullContent, reasoningContent, streaming: true } : m
           ),
         };
         this.postMessage({
           type: 'updateLastAssistant',
-          payload: { content: fullContent, streaming: true },
+          payload: { content: fullContent, reasoningContent, streaming: true },
         });
       }
 
@@ -623,7 +671,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         ...this.state,
         loading: false,
         messages: this.state.messages.map((m) =>
-          m.id === assistantId ? { ...m, content: fullContent, streaming: false } : m
+          m.id === assistantId ? { ...m, content: fullContent, reasoningContent, streaming: false } : m
         ),
         approvals: pendingApprovals.map((r) => ({
           id: r.id,
@@ -632,6 +680,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
           files: r.files,
           risk: r.risk,
           reason: r.reason,
+          contentLength: r.contentLength,
           kind: r.kind,
           question: r.question,
           options: r.options,

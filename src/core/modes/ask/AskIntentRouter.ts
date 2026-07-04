@@ -7,7 +7,9 @@ const IMPLEMENT_RE = /\b(how (?:do|would|should) i (?:add|implement|build|create
 const DEBUG_RE = /\b(why .+(?:fail|failing|broken|error)|build failing|test failing|root cause|diagnos|debug)\b/i;
 const CROSS_PROJECT_RE = /\b(across projects?|between projects?|cross[- ]project|relate to|flow from|agent\s*(?:->|to)\s*docs|docs\s*(?:->|to)\s*agent|extension\s*(?:->|to)\s*website|monorepo)\b/i;
 const GENERAL_KNOWLEDGE_RE = /^(what is|what are|define|explain the concept|difference between)\b/i;
-const CODEBASE_RE = /\b(codebase|repo|repository|workspace|project|this app|this extension|this code|our code|src\/|\.tsx?|\.jsx?|\.py|\.go|\.rs|\.mdx?|package\.json)\b/i;
+const CODEBASE_RE = /\b(codebase|repo|repository|workspace|project|this app|this extension|this code|our code|src\/|\.tsx?|\.jsx?|\.py|\.go|\.rs|\.mdx?|package\.json)\b|@[\w./-]+/i;
+const SCM_CONTEXT_RE =
+  /\b(commit message|commit msg|git commit|git diff|working tree|staged changes?|changes? in (?:stage|staging))\b|\b(?:commit|message|subject|summary)\b[\s\S]{0,80}\b(?:staged|stage|cached)\b|\b(?:staged|stage|cached)\b[\s\S]{0,80}\b(?:commit|message|subject|summary)\b/i;
 
 export function routeAskIntent(userMessage: string): AskRoute {
   const text = userMessage.trim();
@@ -36,6 +38,7 @@ function classifyAskIntent(text: string): AskIntent {
   if (COMPARE_RE.test(text)) return 'compare';
   if (ARCHITECTURE_RE.test(text)) return 'architecture';
   if (LOCATE_RE.test(text)) return 'locate';
+  if (SCM_CONTEXT_RE.test(text)) return 'explain_code';
   if (GENERAL_KNOWLEDGE_RE.test(text) && !CODEBASE_RE.test(text)) return 'general_knowledge';
   if (CODEBASE_RE.test(text)) return 'explain_code';
   return text.includes('?') ? 'explain_code' : 'general_knowledge';

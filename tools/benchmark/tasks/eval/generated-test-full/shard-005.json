@@ -1,0 +1,1150 @@
+[
+  {
+    "id": "eval-coding-two-sum-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement twoSum(nums, target) returning indices. Explain approach briefly. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:map"
+    ]
+  },
+  {
+    "id": "eval-coding-two-sum-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement twoSum(nums, target) returning indices. Explain approach briefly. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:map"
+    ]
+  },
+  {
+    "id": "eval-coding-two-sum-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement twoSum(nums, target) returning indices. Explain approach briefly. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:map"
+    ]
+  },
+  {
+    "id": "eval-coding-valid-parens-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write isValid(s) for bracket matching. What edge cases matter?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:stack"
+    ]
+  },
+  {
+    "id": "eval-coding-valid-parens-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write isValid(s) for bracket matching. What edge cases matter? Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:stack"
+    ]
+  },
+  {
+    "id": "eval-coding-valid-parens-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write isValid(s) for bracket matching. What edge cases matter? Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:stack"
+    ]
+  },
+  {
+    "id": "eval-coding-valid-parens-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write isValid(s) for bracket matching. What edge cases matter? Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:stack"
+    ]
+  },
+  {
+    "id": "eval-coding-valid-parens-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write isValid(s) for bracket matching. What edge cases matter? Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:stack"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-0-v0",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What is the capital of France? Answer with one word.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Paris"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-0-v1",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What is the capital of France? Answer with one word.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Paris"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-0-v2",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What is the capital of France? Answer with one word.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Paris"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-0-v3",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What is the capital of France? Answer with one word.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Paris"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-1-v0",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "How many days are in a leap year? Answer with a number only.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:366"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-1-v1",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "How many days are in a leap year? Answer with a number only.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:366"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-1-v2",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "How many days are in a leap year? Answer with a number only.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:366"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-1-v3",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "How many days are in a leap year? Answer with a number only.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:366"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-2-v0",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What year did the first Node.js release occur? Answer with the year.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:2009"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-2-v1",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What year did the first Node.js release occur? Answer with the year.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:2009"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-2-v2",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What year did the first Node.js release occur? Answer with the year.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:2009"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-2-v3",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What year did the first Node.js release occur? Answer with the year.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:2009"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-3-v0",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What does HTTP stand for? Give the expansion.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Hypertext"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-3-v1",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What does HTTP stand for? Give the expansion.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Hypertext"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-3-v2",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What does HTTP stand for? Give the expansion.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Hypertext"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-3-v3",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What does HTTP stand for? Give the expansion.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Hypertext"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-4-v0",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What is 17 * 23? Show the result.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:391"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-4-v1",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What is 17 * 23? Show the result.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:391"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-4-v2",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What is 17 * 23? Show the result.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:391"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-4-v3",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What is 17 * 23? Show the result.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:391"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-5-v0",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Name the default package manager for Node.js.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:npm"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-5-v1",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Name the default package manager for Node.js.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:npm"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-5-v2",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Name the default package manager for Node.js.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:npm"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-5-v3",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Name the default package manager for Node.js.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:npm"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-6-v0",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What file extension does TypeScript use?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:ts"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-6-v1",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What file extension does TypeScript use?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:ts"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-6-v2",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What file extension does TypeScript use?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:ts"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-6-v3",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What file extension does TypeScript use?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:ts"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-7-v0",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What command lists git commits?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:git log"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-7-v1",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What command lists git commits?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:git log"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-7-v2",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What command lists git commits?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:git log"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-7-v3",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What command lists git commits?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:git log"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-8-v0",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What port does Ollama default API use?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:11434"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-8-v1",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What port does Ollama default API use?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:11434"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-8-v2",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What port does Ollama default API use?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:11434"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-8-v3",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What port does Ollama default API use?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:11434"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-9-v0",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What is JSON short for?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:JavaScript"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-9-v1",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What is JSON short for?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:JavaScript"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-9-v2",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What is JSON short for?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:JavaScript"
+    ]
+  },
+  {
+    "id": "eval-gaia-fact-9-v3",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "What is JSON short for?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:JavaScript"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-0-v0",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Find package.json in a Node project and explain how to run tests — describe steps without executing. (variant 1)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-0-v1",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Find package.json in a Node project and explain how to run tests — describe steps without executing. (variant 2)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-0-v2",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Find package.json in a Node project and explain how to run tests — describe steps without executing. (variant 3)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-0-v3",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Find package.json in a Node project and explain how to run tests — describe steps without executing. (variant 4)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-0-v4",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Find package.json in a Node project and explain how to run tests — describe steps without executing. (variant 5)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-0-v5",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Find package.json in a Node project and explain how to run tests — describe steps without executing. (variant 6)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-0-v6",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Find package.json in a Node project and explain how to run tests — describe steps without executing. (variant 7)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-0-v7",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Find package.json in a Node project and explain how to run tests — describe steps without executing. (variant 8)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-1-v0",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Outline how to verify a React component renders using browser devtools. (variant 1)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-1-v1",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Outline how to verify a React component renders using browser devtools. (variant 2)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-1-v2",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Outline how to verify a React component renders using browser devtools. (variant 3)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-1-v3",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Outline how to verify a React component renders using browser devtools. (variant 4)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-1-v4",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Outline how to verify a React component renders using browser devtools. (variant 5)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-1-v5",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Outline how to verify a React component renders using browser devtools. (variant 6)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-1-v6",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Outline how to verify a React component renders using browser devtools. (variant 7)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-1-v7",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Outline how to verify a React component renders using browser devtools. (variant 8)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-2-v0",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Describe how to add a health endpoint to an Express app and verify with curl. (variant 1)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-2-v1",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Describe how to add a health endpoint to an Express app and verify with curl. (variant 2)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-2-v2",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Describe how to add a health endpoint to an Express app and verify with curl. (variant 3)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-2-v3",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Describe how to add a health endpoint to an Express app and verify with curl. (variant 4)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-2-v4",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Describe how to add a health endpoint to an Express app and verify with curl. (variant 5)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-2-v5",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Describe how to add a health endpoint to an Express app and verify with curl. (variant 6)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-2-v6",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Describe how to add a health endpoint to an Express app and verify with curl. (variant 7)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-2-v7",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Describe how to add a health endpoint to an Express app and verify with curl. (variant 8)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-3-v0",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Plan reading CHANGELOG, package.json, and src/ to assess release readiness. (variant 1)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-3-v1",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Plan reading CHANGELOG, package.json, and src/ to assess release readiness. (variant 2)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-3-v2",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Plan reading CHANGELOG, package.json, and src/ to assess release readiness. (variant 3)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-3-v3",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Plan reading CHANGELOG, package.json, and src/ to assess release readiness. (variant 4)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-3-v4",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Plan reading CHANGELOG, package.json, and src/ to assess release readiness. (variant 5)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-3-v5",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Plan reading CHANGELOG, package.json, and src/ to assess release readiness. (variant 6)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-3-v6",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Plan reading CHANGELOG, package.json, and src/ to assess release readiness. (variant 7)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-3-v7",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Plan reading CHANGELOG, package.json, and src/ to assess release readiness. (variant 8)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-4-v0",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Explain how to use session logs in .mitii/logs for debugging agent runs. (variant 1)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-4-v1",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Explain how to use session logs in .mitii/logs for debugging agent runs. (variant 2)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-4-v2",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Explain how to use session logs in .mitii/logs for debugging agent runs. (variant 3)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-4-v3",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Explain how to use session logs in .mitii/logs for debugging agent runs. (variant 4)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-4-v4",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Explain how to use session logs in .mitii/logs for debugging agent runs. (variant 5)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-4-v5",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Explain how to use session logs in .mitii/logs for debugging agent runs. (variant 6)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-4-v6",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Explain how to use session logs in .mitii/logs for debugging agent runs. (variant 7)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-multistep-4-v7",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "plan",
+    "prompt": "Explain how to use session logs in .mitii/logs for debugging agent runs. (variant 8)",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-gaia-research-1",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Research-style question #1: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-gaia-research-10",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Research-style question #10: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-gaia-research-11",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Research-style question #11: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-gaia-research-12",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Research-style question #12: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-gaia-research-13",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Research-style question #13: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-gaia-research-14",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Research-style question #14: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-gaia-research-15",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Research-style question #15: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-gaia-research-16",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Research-style question #16: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-gaia-research-17",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Research-style question #17: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-gaia-research-18",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Research-style question #18: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-gaia-research-19",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Research-style question #19: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-gaia-research-2",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Research-style question #2: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  }
+]

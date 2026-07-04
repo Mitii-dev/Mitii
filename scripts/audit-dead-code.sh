@@ -13,4 +13,4 @@ if [[ -x node_modules/.bin/knip ]]; then
   exec node_modules/.bin/knip --reporter json --no-progress
 fi
 
-exec npx --yes knip --reporter json --no-progress
+exec pnpm exec knip --reporter json --no-progress
