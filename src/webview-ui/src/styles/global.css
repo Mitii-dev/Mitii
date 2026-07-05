@@ -198,6 +198,8 @@ body,
 .token-chip {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
+  row-gap: 2px;
   gap: 4px;
   padding: 2px 6px;
   border: none;
@@ -207,6 +209,14 @@ body,
   font-family: inherit;
   color: var(--thunder-muted);
   cursor: pointer;
+  max-width: 100%;
+}
+
+.token-chip__io {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
 }
 
 .token-chip:hover,
