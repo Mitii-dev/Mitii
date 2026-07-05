@@ -105,14 +105,8 @@ describe('AgentLoop E2E', () => {
     )).toBe(true);
   });
 
-  it('nudges away from repeated phase-blocked run_command calls', async () => {
+  it('nudges agent edit tasks when the model stops before writing', async () => {
     const executor = createMockExecutor();
-    (executor.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
-      success: false,
-      output: '',
-      error: 'Phase 4 (Verify) allows diagnostics, lint, tests, builds, and targeted file fixes, not arbitrary shell commands.',
-    });
-
     const seenMessages: Array<Array<{ role: string; content: string }>> = [];
     let call = 0;
     const provider = {
@@ -120,6 +114,211 @@ describe('AgentLoop E2E', () => {
       capabilities: { supportsTools: true, supportsStreaming: true, contextWindow: 8192, supportsEmbeddings: false },
       async *complete(request: { messages: Array<{ role: string; content: string }> }) {
         seenMessages.push(request.messages);
+        call += 1;
+        if (call === 1) {
+          yield {
+            tool_calls: [{
+              index: 0,
+              id: 'call_read',
+              function: { name: 'read_file', arguments: '{"path":"README.md"}' },
+            }],
+          };
+        } else if (call === 2) {
+          yield { content: 'I found the README and it already mentions the feature.' };
+        } else if (call === 3) {
+          yield {
+            tool_calls: [{
+              index: 0,
+              id: 'call_write',
+              function: { name: 'write_file', arguments: '{"path":"README.md","content":"updated"}' },
+            }],
+          };
+        } else {
+          yield { content: 'Updated README.md.' };
+        }
+        yield { done: true };
+      },
+    } as LlmProvider;
+
+    const loop = new AgentLoop(executor, 5);
+    for await (const _chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Update the README' }],
+      [
+        { type: 'function', function: { name: 'read_file', description: 'read', parameters: {} } },
+        { type: 'function', function: { name: 'write_file', description: 'write', parameters: {} } },
+      ],
+      undefined,
+      undefined,
+      { maxSteps: 4, requiresWrite: true }
+    )) {
+      // consume
+    }
+
+    expect(executedTools).toEqual(['read_file', 'write_file']);
+    expect(seenMessages[2].some(
+      (m) => m.role === 'user' && m.content.includes('no file edit has been made yet')
+    )).toBe(true);
+  });
+
+  it('nudges agent edit tasks that keep using read-only tools before writing', async () => {
+    const executor = createMockExecutor();
+    const seenMessages: Array<Array<{ role: string; content: string }>> = [];
+    let call = 0;
+    const provider = {
+      id: 'mock',
+      capabilities: { supportsTools: true, supportsStreaming: true, contextWindow: 8192, supportsEmbeddings: false },
+      async *complete(request: { messages: Array<{ role: string; content: string }> }) {
+        seenMessages.push(request.messages);
+        call += 1;
+        if (call <= 2) {
+          yield {
+            tool_calls: [{
+              index: 0,
+              id: `call_read_${call}`,
+              function: { name: 'read_file', arguments: '{"path":"README.md"}' },
+            }],
+          };
+        } else if (call === 3) {
+          yield {
+            tool_calls: [{
+              index: 0,
+              id: 'call_write',
+              function: { name: 'write_file', arguments: '{"path":"README.md","content":"updated"}' },
+            }],
+          };
+        } else {
+          yield { content: 'Updated README.md.' };
+        }
+        yield { done: true };
+      },
+    } as LlmProvider;
+
+    const loop = new AgentLoop(executor, 5);
+    for await (const _chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Update the README' }],
+      [
+        { type: 'function', function: { name: 'read_file', description: 'read', parameters: {} } },
+        { type: 'function', function: { name: 'write_file', description: 'write', parameters: {} } },
+      ],
+      undefined,
+      undefined,
+      { maxSteps: 5, requiresWrite: true }
+    )) {
+      // consume
+    }
+
+    expect(executedTools).toEqual(['read_file', 'read_file', 'write_file']);
+    expect(seenMessages[2].some(
+      (m) => m.role === 'user' && m.content.includes('stuck in read-only exploration')
+    )).toBe(true);
+  });
+
+  it('stops edit tasks that ignore the write-required nudge', async () => {
+    const executor = createMockExecutor();
+    const provider = {
+      id: 'mock',
+      capabilities: { supportsTools: true, supportsStreaming: true, contextWindow: 8192, supportsEmbeddings: false },
+      async *complete() {
+        yield {
+          tool_calls: [{
+            index: 0,
+            id: `call_read_${Math.random()}`,
+            function: { name: 'read_file', arguments: '{"path":"README.md"}' },
+          }],
+        };
+        yield { done: true };
+      },
+    } as LlmProvider;
+
+    const loop = new AgentLoop(executor, 12);
+    const chunks: string[] = [];
+    for await (const chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Update the README' }],
+      [
+        { type: 'function', function: { name: 'read_file', description: 'read', parameters: {} } },
+        { type: 'function', function: { name: 'write_file', description: 'write', parameters: {} } },
+      ],
+      undefined,
+      undefined,
+      { maxSteps: 12, requiresWrite: true }
+    )) {
+      chunks.push(chunkContent(chunk));
+    }
+
+    expect(executor.execute).toHaveBeenCalledTimes(4);
+    expect(chunks.join('')).toContain('kept using read-only tools');
+  });
+
+  it('stops when an edit task summarizes again after the no-write nudge', async () => {
+    const executor = createMockExecutor();
+    let call = 0;
+    const provider = {
+      id: 'mock',
+      capabilities: { supportsTools: true, supportsStreaming: true, contextWindow: 8192, supportsEmbeddings: false },
+      async *complete() {
+        call += 1;
+        if (call === 1) {
+          yield {
+            tool_calls: [{
+              index: 0,
+              id: 'call_read',
+              function: { name: 'read_file', arguments: '{"path":"README.md"}' },
+            }],
+          };
+        } else if (call === 2) {
+          yield { content: 'I found the Ollama config details.' };
+        } else if (call === 3) {
+          yield {
+            tool_calls: [{
+              index: 0,
+              id: 'call_search',
+              function: { name: 'search', arguments: '{"query":"Ollama","limit":10}' },
+            }],
+          };
+        } else {
+          yield { content: 'Here is what the README should say.' };
+        }
+        yield { done: true };
+      },
+    } as LlmProvider;
+
+    const loop = new AgentLoop(executor, 8);
+    const chunks: string[] = [];
+    for await (const chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Update the README with Ollama config details' }],
+      [
+        { type: 'function', function: { name: 'read_file', description: 'read', parameters: {} } },
+        { type: 'function', function: { name: 'search', description: 'search', parameters: {} } },
+        { type: 'function', function: { name: 'write_file', description: 'write', parameters: {} } },
+      ],
+      undefined,
+      undefined,
+      { maxSteps: 8, requiresWrite: true }
+    )) {
+      chunks.push(chunkContent(chunk));
+    }
+
+    expect(executedTools).toEqual(['read_file', 'search']);
+    expect(chunks.join('')).toContain('tried to finish an Agent-mode edit task without calling apply_patch or write_file');
+  });
+
+  it('hard-stops after repeated phase-blocked run_command calls', async () => {
+    const executor = createMockExecutor();
+    (executor.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: false,
+      output: '',
+      error: 'Phase 4 (Verify) allows diagnostics, lint, tests, builds, and targeted file fixes, not arbitrary shell commands.',
+    });
+
+    let call = 0;
+    const provider = {
+      id: 'mock',
+      capabilities: { supportsTools: true, supportsStreaming: true, contextWindow: 8192, supportsEmbeddings: false },
+      async *complete() {
         call += 1;
         if (call <= 2) {
           yield {
@@ -149,10 +348,53 @@ describe('AgentLoop E2E', () => {
       chunks.push(chunkContent(chunk));
     }
 
-    expect(chunks.join('')).toContain('Recovered');
-    expect(seenMessages[2].some(
-      (m) => m.role === 'user' && m.content.includes('previous run_command calls were blocked')
-    )).toBe(true);
+    expect(chunks.join('')).toContain('Stopped: run_command was blocked by the current plan phase');
+    expect(chunks.join('')).not.toContain('Recovered');
+    expect(call).toBe(2);
+  });
+
+  it('hard-stops instead of looping when the model keeps retrying a phase-blocked write', async () => {
+    const executor = createMockExecutor();
+    (executor.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: false,
+      output: '',
+      error: 'Phase 1 (Diagnostics) is read-only; file writes are locked until Phase 3 (Execute). If analysis is complete, stop retrying writes — the orchestrator advances steps automatically.',
+    });
+
+    let call = 0;
+    const provider = {
+      id: 'mock',
+      capabilities: { supportsTools: true, supportsStreaming: true, contextWindow: 8192, supportsEmbeddings: false },
+      async *complete() {
+        call += 1;
+        // A weak model that never recovers — keeps calling write_file every turn.
+        yield {
+          tool_calls: [{
+            index: 0,
+            id: `call_${call}`,
+            function: { name: 'write_file', arguments: '{"path":"docs/FEATURES.md","content":"x"}' },
+          }],
+        };
+        yield { done: true };
+      },
+    } as LlmProvider;
+
+    const loop = new AgentLoop(executor, 10);
+    const chunks: string[] = [];
+    for await (const chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Catalog features (read-only step)' }],
+      [{ type: 'function', function: { name: 'write_file', description: 'write', parameters: {} } }],
+      undefined,
+      undefined,
+      { maxSteps: 10, phaseLock: 'diagnostics' }
+    )) {
+      chunks.push(chunkContent(chunk));
+    }
+
+    // Should stop well before exhausting maxSteps — after one nudge plus one more failed retry.
+    expect(call).toBeLessThanOrEqual(3);
+    expect(chunks.join('')).toContain('Stopped: file writes were blocked');
   });
 
   it('stops after repeated invalid tool arguments', async () => {
@@ -229,6 +471,34 @@ describe('AgentLoop E2E', () => {
 });
 
 describe('Plan tools E2E', () => {
+  it('resolves missing mark_step_complete stepId to the running step', async () => {
+    const { createMarkStepCompleteTool } = await import('../src/core/tools/planTools');
+    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
+    const plan: ThunderPlan = {
+      goal: 'test',
+      assumptions: [],
+      requiredApprovals: [],
+      steps: [
+        { id: 'step_1', title: 'Current step', status: 'running', risk: 'low' },
+        { id: 'step_2', title: 'Next step', status: 'pending', risk: 'low' },
+      ],
+    };
+    const runtime = new ToolRuntime();
+    runtime.register(createMarkStepCompleteTool({
+      getPlan: () => plan,
+      setPlan: (updated) => {
+        plan.steps = updated.steps;
+      },
+      getSessionId: () => 'session-1',
+    }));
+
+    const result = await runtime.execute('mark_step_complete', {});
+
+    expect(result.success).toBe(true);
+    expect(result.output).toContain('Step step_1 marked complete');
+    expect(plan.steps[0].status).toBe('done');
+  });
+
   it('applyDependencyLocks blocks steps until deps complete', async () => {
     const { applyDependencyLocks, getNextExecutableStep } = await import('../src/core/tools/planTools');
     type StepStatus = 'pending' | 'running' | 'done' | 'blocked' | 'failed' | 'blocked_by_dependency';

@@ -5,6 +5,7 @@ import { MarkdownMessage } from './MarkdownMessage';
 import { AgentActivityPanel } from './AgentActivityPanel';
 import { ThinkingRow } from './ThinkingRow';
 import { useStreamReveal } from '../hooks/useStreamReveal';
+import type { ThunderMode } from '../../../core/session/ThunderSession';
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -14,6 +15,7 @@ interface MessageListProps {
   approvals?: ApprovalRequestView[];
   showReasoning?: boolean;
   reasoningPreviewMaxChars?: number;
+  mode?: ThunderMode;
 }
 
 function AssistantMessage({
@@ -22,24 +24,56 @@ function AssistantMessage({
   streaming,
   showReasoning,
   reasoningPreviewMaxChars,
+  mode,
+  agentActivity = [],
+  agentLiveStatus = null,
+  loading = false,
+  approvals = [],
 }: {
   content: string;
   reasoningContent?: string;
   streaming?: boolean;
   showReasoning?: boolean;
   reasoningPreviewMaxChars?: number;
+  mode: ThunderMode;
+  agentActivity?: AgentActivityEntry[];
+  agentLiveStatus?: AgentLiveStatusView | null;
+  loading?: boolean;
+  approvals?: ApprovalRequestView[];
 }) {
   const revealed = useStreamReveal(content, Boolean(streaming));
+  const label = mode === 'agent' ? 'Agent' : mode === 'plan' ? 'Plan' : 'Answer';
+  const showActivity = loading || agentActivity.length > 0 || approvals.length > 0;
+
   return (
-    <>
+    <div className="assistant-turn">
+      <div className="assistant-turn__header">
+        <span>{label}</span>
+        {(streaming || loading) && <span className="assistant-turn__status">Working</span>}
+      </div>
+      {showActivity && (
+        <AgentActivityPanel
+          entries={agentActivity}
+          loading={Boolean(loading)}
+          liveStatus={agentLiveStatus}
+          waitingForApproval={!loading && approvals.length > 0}
+        />
+      )}
       <ThinkingRow
         content={reasoningContent ?? ''}
         streaming={streaming}
         visible={showReasoning}
         maxChars={reasoningPreviewMaxChars}
       />
-      <MarkdownMessage content={revealed} streaming={streaming} />
-    </>
+      {revealed.trim() ? (
+        <MarkdownMessage content={revealed} streaming={streaming} />
+      ) : streaming || loading ? (
+        <p className="assistant-turn__pending">Preparing answer</p>
+      ) : null}
+      {streaming && revealed.trim() && !revealed.includes('```') && (
+        <span className="streaming-cursor streaming-cursor--pulse" aria-hidden="true">▋</span>
+      )}
+    </div>
   );
 }
 
@@ -51,8 +85,22 @@ export function MessageList({
   approvals = [],
   showReasoning = true,
   reasoningPreviewMaxChars = 8000,
+  mode = 'ask',
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const lastUserIndex = (() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].role === 'user') return index;
+    }
+    return -1;
+  })();
+  const lastAssistantIndex = (() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].role === 'assistant') return index;
+    }
+    return -1;
+  })();
+  const activeAssistantIndex = lastAssistantIndex > lastUserIndex ? lastAssistantIndex : -1;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -69,7 +117,7 @@ export function MessageList({
 
   return (
     <div className="message-list" role="log" aria-live="polite">
-      {messages.map((msg) => (
+      {messages.map((msg, index) => (
         <article key={msg.id} className={`message message--${msg.role}`}>
           <div className="message-content">
             {msg.role === 'assistant' ? (
@@ -80,47 +128,64 @@ export function MessageList({
                   streaming={msg.streaming}
                   showReasoning={showReasoning}
                   reasoningPreviewMaxChars={reasoningPreviewMaxChars}
+                  mode={mode}
+                  agentActivity={index === activeAssistantIndex ? agentActivity : []}
+                  agentLiveStatus={index === activeAssistantIndex ? agentLiveStatus : null}
+                  loading={index === activeAssistantIndex ? Boolean(loading) : false}
+                  approvals={index === activeAssistantIndex ? approvals : []}
                 />
               ) : msg.reasoningContent ? (
-                <>
-                  <ThinkingRow
-                    content={msg.reasoningContent}
-                    streaming={msg.streaming}
-                    visible={showReasoning}
-                    maxChars={reasoningPreviewMaxChars}
-                  />
-                  {msg.streaming && (
-                    <p className="message-working">
-                      <span className="message-working__pulse" aria-hidden="true" />
-                      Thinking...
-                    </p>
-                  )}
-                </>
+                <AssistantMessage
+                  content=""
+                  reasoningContent={msg.reasoningContent}
+                  streaming={msg.streaming}
+                  showReasoning={showReasoning}
+                  reasoningPreviewMaxChars={reasoningPreviewMaxChars}
+                  mode={mode}
+                  agentActivity={index === activeAssistantIndex ? agentActivity : []}
+                  agentLiveStatus={index === activeAssistantIndex ? agentLiveStatus : null}
+                  loading={index === activeAssistantIndex ? Boolean(loading) : false}
+                  approvals={index === activeAssistantIndex ? approvals : []}
+                />
               ) : msg.streaming ? (
-                <p className="message-working">
-                  <span className="message-working__pulse" aria-hidden="true" />
-                  Thinking...
-                </p>
+                <AssistantMessage
+                  content=""
+                  streaming={msg.streaming}
+                  showReasoning={showReasoning}
+                  reasoningPreviewMaxChars={reasoningPreviewMaxChars}
+                  mode={mode}
+                  agentActivity={index === activeAssistantIndex ? agentActivity : []}
+                  agentLiveStatus={index === activeAssistantIndex ? agentLiveStatus : null}
+                  loading={index === activeAssistantIndex ? Boolean(loading) : false}
+                  approvals={index === activeAssistantIndex ? approvals : []}
+                />
               ) : (
-                <p className="message-working message-working--muted">No response text</p>
+                <div className="assistant-turn">
+                  <div className="assistant-turn__header">
+                    <span>{mode === 'agent' ? 'Agent' : mode === 'plan' ? 'Plan' : 'Answer'}</span>
+                  </div>
+                  <p className="message-working message-working--muted">No response text</p>
+                </div>
               )
             ) : (
               msg.content
             )}
-            {msg.streaming && msg.content && !msg.content.includes('```') && (
-              <span className="streaming-cursor streaming-cursor--pulse" aria-hidden="true">▋</span>
-            )}
           </div>
         </article>
       ))}
-      {(loading || agentActivity.length > 0 || approvals.length > 0) && (
-        <article className="message message--assistant message--activity">
+      {activeAssistantIndex === -1 && (loading || agentActivity.length > 0 || approvals.length > 0) && (
+        <article className="message message--assistant">
           <div className="message-content">
-            <AgentActivityPanel
-              entries={agentActivity}
+            <AssistantMessage
+              content=""
+              streaming={Boolean(loading)}
+              showReasoning={showReasoning}
+              reasoningPreviewMaxChars={reasoningPreviewMaxChars}
+              mode={mode}
+              agentActivity={agentActivity}
+              agentLiveStatus={agentLiveStatus}
               loading={Boolean(loading)}
-              liveStatus={agentLiveStatus}
-              waitingForApproval={!loading && approvals.length > 0}
+              approvals={approvals}
             />
           </div>
         </article>

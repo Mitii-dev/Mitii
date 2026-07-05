@@ -53,6 +53,7 @@ export class ToolRuntime {
         output: '',
         error: `Unknown tool: ${name}${resolvedName !== name ? ` (alias for ${resolvedName} not registered)` : ''}`,
       };
+      this.auditLog.push({ toolName: resolvedName, input: normalized, result, timestamp: Date.now() });
       this.logToolEnd(resolvedName, normalized, result, startedAt, toolCallId);
       return result;
     }
@@ -60,6 +61,7 @@ export class ToolRuntime {
     const parsed = tool.inputSchema.safeParse(normalized);
     if (!parsed.success) {
       const result = { success: false, output: '', error: `Invalid input: ${parsed.error.message}` };
+      this.auditLog.push({ toolName: resolvedName, input: normalized, result, timestamp: Date.now() });
       this.logToolEnd(resolvedName, normalized, result, startedAt, toolCallId);
       return result;
     }

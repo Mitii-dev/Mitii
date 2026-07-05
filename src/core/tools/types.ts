@@ -6,6 +6,8 @@ export interface ToolResult {
   success: boolean;
   output: string;
   error?: string;
+  /** Intentional dedup / non-fatal helper warning. */
+  skipped?: boolean;
 }
 
 export interface Tool<TInput = unknown> {

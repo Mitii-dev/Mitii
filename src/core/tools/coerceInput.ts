@@ -64,6 +64,9 @@ export function normalizeToolInput(toolName: string, input: unknown): unknown {
       obj.stepId = obj.id;
       delete obj.id;
     }
+    if (!obj.stepId) {
+      obj.stepId = 'current';
+    }
   }
 
   if (toolName === 'search' && typeof obj.query !== 'string' && typeof obj.pattern === 'string') {

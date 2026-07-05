@@ -258,6 +258,7 @@ export class PlanExecutor {
     this.stepSummaries = [];
     this.touchedFiles.clear();
     const maxRetries = options?.stepMaxRetries ?? 2;
+    let hasSuccessfulVerification = false;
 
     this.planPersistence.save(session.id, plan, 'running');
     onPlanUpdate?.(plan);
@@ -364,6 +365,9 @@ export class PlanExecutor {
           if (['write_file', 'apply_patch'].includes(explicitToolCall.name)) {
             successfulWrites += 1;
           }
+          if (isVerifyStep && isVerificationTool(explicitToolCall.name)) {
+            hasSuccessfulVerification = true;
+          }
         } else {
           for await (const chunk of this.agentLoop.run(
             provider,
@@ -376,6 +380,9 @@ export class PlanExecutor {
                 loopCallbacks?.onToolEnd?.(name, success, output);
                 if (success && ['write_file', 'apply_patch'].includes(name)) {
                   successfulWrites += 1;
+                }
+                if (isVerifyStep && success && isVerificationTool(name)) {
+                  hasSuccessfulVerification = true;
                 }
                 if (
                   isVerifyStep &&
@@ -488,7 +495,7 @@ export class PlanExecutor {
     const blocked = plan.steps.some((s) => s.status === 'blocked');
     const allDone = plan.steps.every((s) => s.status === 'done');
 
-    if (allDone && !blocked && options?.finalValidationEnabled !== false) {
+    if (allDone && !blocked && !hasSuccessfulVerification && options?.finalValidationEnabled !== false) {
       yield '\n\n### Final validation\n\n';
       for await (const chunk of this.runFinalValidation(
         session,
@@ -795,6 +802,10 @@ function summarizeToolExecution(toolName: string, result: ToolExecutionResult): 
   const trimmed = body.trim();
   const capped = trimmed.length > 4000 ? trimmed.slice(-4000) : trimmed;
   return `\n\n${toolName} ${result.success ? 'succeeded' : 'failed'}${capped ? `:\n${capped}\n` : '.\n'}`;
+}
+
+function isVerificationTool(toolName: string): boolean {
+  return ['run_command', 'diagnostics', 'execute_workspace_script'].includes(toolName);
 }
 
 function summarizeStepOutput(output: string, title: string): string {

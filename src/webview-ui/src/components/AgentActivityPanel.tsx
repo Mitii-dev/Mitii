@@ -12,16 +12,16 @@ interface AgentActivityPanelProps {
 }
 
 const KIND_LABEL: Record<AgentActivityEntry['kind'], string> = {
-  context: 'Context',
-  read: 'Read',
-  budget: 'Budget',
-  apply: 'Write',
-  info: 'Info',
-  approval: 'Approval',
-  error: 'Error',
-  tool: 'Tool',
-  success: 'Done',
-  skipped: 'Skipped',
+  context: '$',
+  read: '$',
+  budget: '$',
+  apply: '$',
+  info: '$',
+  approval: '$',
+  error: '!',
+  tool: '$',
+  success: 'ok',
+  skipped: '!',
 };
 
 function resolvePhase(loading: boolean, waitingForApproval: boolean, entries: AgentActivityEntry[]): ActivityPhase {
@@ -35,7 +35,7 @@ function resolvePhase(loading: boolean, waitingForApproval: boolean, entries: Ag
 export function AgentActivityPanel({ entries, loading, liveStatus, waitingForApproval = false }: AgentActivityPanelProps) {
   const [snapshot, send] = useMachine(agentActivityMachine);
   const phase = snapshot.value as ActivityPhase;
-  const visible = entries.slice(-12);
+  const visible = entries.slice(-10);
   const latest = entries[entries.length - 1];
   const completionEntry = [...entries].reverse().find((entry) => entry.kind === 'success' || entry.kind === 'error');
   const statusLabel = loading
@@ -53,6 +53,11 @@ export function AgentActivityPanel({ entries, loading, liveStatus, waitingForApp
     : latest?.detail
       ? summarizeDetail(latest.detail)
       : liveStatus?.detail;
+  const syntheticLine = loading && visible.length === 0
+    ? liveStatus?.detail ?? 'Preparing response'
+    : waitingForApproval && visible.length === 0
+      ? 'Waiting for approval'
+      : '';
 
   useEffect(() => {
     const next = resolvePhase(loading, waitingForApproval, entries);
@@ -67,47 +72,38 @@ export function AgentActivityPanel({ entries, loading, liveStatus, waitingForApp
   if (entries.length === 0 && !loading && !waitingForApproval) return null;
 
   return (
-    <motion.details
+    <motion.section
       className={`assistant-thinking assistant-thinking--${phase}`}
-      open={phase === 'complete' || phase === 'error'}
       aria-label="Agent activity"
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
     >
-      <summary className="assistant-thinking__summary">
-        <motion.span
-          className={`message-working__pulse message-working__pulse--${phase}`}
-          aria-hidden="true"
-          animate={phase === 'working' ? { scale: [1, 1.15, 1] } : { scale: 1 }}
-          transition={phase === 'working' ? { repeat: Infinity, duration: 1.2 } : { duration: 0.2 }}
-        />
+      <div className="assistant-thinking__summary">
         <span className="assistant-thinking__summary-main">
           <span className="assistant-thinking__status-line">
-            {statusLabel}
-            {progressLabel ? ` · ${progressLabel}` : ''}
+            Brainstorming
           </span>
           <span className="assistant-thinking__latest">
-            {phase === 'complete' || phase === 'error'
-              ? completionEntry?.message ?? latest?.message ?? 'Turn finished'
-              : latest
-                ? latest.message
-                : liveStatus?.detail ?? 'Preparing activity'}
-            {summaryDetail && phase !== 'working' ? ` · ${summarizeDetail(summaryDetail)}` : ''}
-            {summaryDetail && phase === 'working' && latest?.detail ? ` · ${summarizeDetail(latest.detail)}` : ''}
-            {!summaryDetail && phase === 'working' && liveStatus?.detail ? ` · ${liveStatus.detail}` : ''}
+            {[progressLabel ? `${statusLabel} · ${progressLabel}` : statusLabel, summaryDetail ? summarizeDetail(summaryDetail) : '']
+              .filter(Boolean)
+              .join(' · ')}
           </span>
         </span>
         {entries.length > 1 && <span className="assistant-thinking__count">{entries.length}</span>}
-      </summary>
-      {phase === 'complete' && completionEntry?.detail && (
-        <div className="assistant-thinking__summary-block" role="status">
-          {completionEntry.detail.split('\n').map((line, index) => (
-            <p key={index}>{line}</p>
-          ))}
-        </div>
-      )}
+      </div>
       <ol className="assistant-thinking__list">
+        {syntheticLine && (
+          <motion.li
+            className="assistant-thinking__item assistant-thinking__item--active"
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.18 }}
+          >
+            <span className="assistant-thinking__kind">$</span>
+            <span className="assistant-thinking__message">{summarizeDetail(syntheticLine)}</span>
+          </motion.li>
+        )}
         {visible.map((entry, index) => {
           const isLatest = index === visible.length - 1;
           return (
@@ -121,7 +117,7 @@ export function AgentActivityPanel({ entries, loading, liveStatus, waitingForApp
               transition={{ duration: 0.18, delay: index * 0.03 }}
             >
               <span className="assistant-thinking__kind">{KIND_LABEL[entry.kind]}</span>
-              <span className="assistant-thinking__message">{entry.message}</span>
+              <span className="assistant-thinking__message">{formatCommand(entry)}</span>
               {entry.detail && entry.kind !== 'success' && (
                 <span className="assistant-thinking__detail">{summarizeDetail(entry.detail)}</span>
               )}
@@ -129,11 +125,23 @@ export function AgentActivityPanel({ entries, loading, liveStatus, waitingForApp
           );
         })}
       </ol>
-    </motion.details>
+    </motion.section>
   );
 }
 
 function summarizeDetail(detail: string): string {
   const firstLine = detail.split('\n').find(Boolean) ?? detail;
   return firstLine.length > 140 ? `${firstLine.slice(0, 140)}...` : firstLine;
+}
+
+function formatCommand(entry: AgentActivityEntry): string {
+  const message = summarizeDetail(entry.message);
+  const lower = message.toLowerCase();
+  if (entry.kind === 'read' && !lower.startsWith('read ')) return `read ${message}`;
+  if (entry.kind === 'context' && !lower.startsWith('context ')) return `context ${message}`;
+  if (entry.kind === 'tool' && !lower.startsWith('run ')) return `run ${message}`;
+  if (entry.kind === 'apply' && !lower.startsWith('edit ')) return `edit ${message}`;
+  if (entry.kind === 'budget' && !lower.startsWith('budget ')) return `budget ${message}`;
+  if (entry.kind === 'approval' && !lower.startsWith('approval ')) return `approval ${message}`;
+  return message;
 }

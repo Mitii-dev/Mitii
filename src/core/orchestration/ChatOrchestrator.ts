@@ -542,6 +542,7 @@ export class ChatOrchestrator {
     }
     const plannerEnabled = actPlan?.route.shouldUsePlanner
       ?? shouldUsePlanner(session.mode, taskAnalysis, orchestrationEnabled, auditMode, agentConfig?.actDepth);
+    const requiresAgentWrite = shouldRequireAgentWrite(session.mode, taskAnalysis.kind, auditMode);
     const subagentsEnabled =
       (agentConfig?.subagentsEnabled ?? true) &&
       !auditMode &&
@@ -610,6 +611,7 @@ export class ChatOrchestrator {
       auditMode,
       mdxRepairMode,
       toolsEnabled,
+      requiresAgentWrite,
     });
 
     this.saveTurn(session.id, 'user', userMessage);
@@ -1045,6 +1047,7 @@ export class ChatOrchestrator {
               : isPlanMode
                 ? (planPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues)
                 : (actPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues),
+            requiresWrite: requiresAgentWrite,
           }
         )) {
           if (signal.aborted) break;
@@ -1075,9 +1078,18 @@ export class ChatOrchestrator {
           this.setLiveStatus('Waiting for approval', 'Review and approve below');
           this.emitActivity('approval', 'Paused — waiting for your approval', this.deps.taskState?.getPauseSummary());
         } else if (!this.agentLoop.hadPendingApproval() && !signal.aborted) {
+          const directTouchedFiles = getTouchedFilesFromAudit(this.deps.toolRuntime);
+          if (requiresAgentWrite && directTouchedFiles.length === 0) {
+            const noWriteBlock =
+              '\n\nStopped because the model did not change any files for this Agent-mode edit task. No files were changed.\n';
+            fullResponse += noWriteBlock;
+            yield noWriteBlock;
+            this.emitActivity('error', 'Agent stopped without edits', taskAnalysis.summary);
+          }
           if (
             session.mode === 'agent' &&
-            agentConfig?.verifyOnActComplete
+            agentConfig?.verifyOnActComplete &&
+            directTouchedFiles.length > 0
           ) {
             this.setLiveStatus('Running verify hooks');
             this.emitActivity('info', 'Discovering and running project verification…');
@@ -1096,9 +1108,9 @@ export class ChatOrchestrator {
             taskAnalysis.shouldVerify &&
             session.mode === 'agent' &&
             this.planExecutor &&
-            shouldRunDirectFinalValidation(taskAnalysis.kind, getTouchedFilesFromAudit(this.deps.toolRuntime))
+            directTouchedFiles.length > 0 &&
+            shouldRunDirectFinalValidation(taskAnalysis.kind, directTouchedFiles)
           ) {
-            const directTouchedFiles = getTouchedFilesFromAudit(this.deps.toolRuntime);
             this.setLiveStatus('Final validation');
             this.emitActivity('info', 'Running post-task validation…');
             yield '\n\n### Post-task validation\n\n';
@@ -1198,8 +1210,9 @@ export class ChatOrchestrator {
     }
 
     this.saveTurn(session.id, 'assistant', fullResponse);
-    this.deps.sessionLog?.append('assistant_message', fullResponse.slice(0, 200), {
+    this.deps.sessionLog?.append('assistant_message', fullResponse, {
       responseLength: fullResponse.length,
+      preview: fullResponse.slice(0, 200),
     });
 
     const parsed = parsePlanFromText(fullResponse);
@@ -1511,8 +1524,9 @@ export class ChatOrchestrator {
 
       if (fullResponse) {
         this.saveTurn(session.id, 'assistant', fullResponse);
-        this.deps.sessionLog?.append('assistant_message', fullResponse.slice(0, 200), {
+        this.deps.sessionLog?.append('assistant_message', fullResponse, {
           responseLength: fullResponse.length,
+          preview: fullResponse.slice(0, 200),
         });
       }
     } finally {
@@ -1795,10 +1809,18 @@ function getTouchedFilesFromAudit(toolRuntime?: ToolRuntime): string[] {
   return [...files];
 }
 
+function shouldRequireAgentWrite(
+  mode: ThunderSession['mode'],
+  taskKind: ReturnType<typeof analyzeTask>['kind'],
+  auditMode: boolean
+): boolean {
+  return mode === 'agent' && !auditMode && (taskKind === 'simple_edit' || taskKind === 'implementation');
+}
+
 function touchesDocs(files: string[]): boolean {
   return files.some((file) =>
     /(?:^|\/)(?:apps\/docs|docs)\/.+\.(?:mdx?|tsx?|jsx?)$/i.test(file) ||
-    /\.(?:mdx?)$/i.test(file)
+    /\.(?:mdx)$/i.test(file)
   );
 }
 

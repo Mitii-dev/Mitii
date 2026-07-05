@@ -1850,9 +1850,11 @@ export class ThunderController {
 
     const audit = this.toolRuntime.getAuditLog();
     const summary = this.buildTurnSummary(audit);
-    const hadActivityErrors = this.agentActivity.some((entry) => entry.kind === 'error');
-    const hadToolFailures = audit.some((entry) => !entry.result.success);
-    const hadError = options?.hadError || hadActivityErrors || hadToolFailures;
+    const fatalToolFailures = findFatalToolFailures(audit);
+    const hadActivityErrors = this.agentActivity.some(
+      (entry) => entry.kind === 'error' && !isRecoveredToolActivity(entry.message, audit, fatalToolFailures)
+    );
+    const hadError = options?.hadError || hadActivityErrors || fatalToolFailures.length > 0;
 
     const entry: import('../../vscode/webview/messages').AgentActivityEntry = {
       id: `act-complete-${Date.now()}`,
@@ -2872,6 +2874,55 @@ function normalizePromptBreakdown(
       color: '#38bdf8',
     },
   ];
+}
+
+function findFatalToolFailures(
+  audit: import('../tools/types').ToolCallAudit[]
+): import('../tools/types').ToolCallAudit[] {
+  return audit.filter((entry, index) => isFatalToolFailure(entry, index, audit));
+}
+
+function isFatalToolFailure(
+  entry: import('../tools/types').ToolCallAudit,
+  index: number,
+  audit: import('../tools/types').ToolCallAudit[]
+): boolean {
+  if (entry.result.success || entry.result.skipped) return false;
+
+  const later = audit.slice(index + 1);
+  if (isExplorationTool(entry.toolName)) {
+    return !later.some((candidate) => candidate.result.success && isExplorationTool(candidate.toolName));
+  }
+
+  const key = recoveryKey(entry);
+  return !later.some((candidate) =>
+    candidate.result.success &&
+    candidate.toolName === entry.toolName &&
+    recoveryKey(candidate) === key
+  );
+}
+
+function isRecoveredToolActivity(
+  message: string,
+  audit: import('../tools/types').ToolCallAudit[],
+  fatalToolFailures: import('../tools/types').ToolCallAudit[]
+): boolean {
+  if (!/\bfailed\b/i.test(message)) return false;
+  if (fatalToolFailures.length > 0) return false;
+  return audit.some((entry) => !entry.result.success || entry.result.skipped);
+}
+
+function isExplorationTool(toolName: string): boolean {
+  return ['read_file', 'read_files', 'list_files', 'search', 'search_batch', 'resolve_path', 'repo_map'].includes(toolName);
+}
+
+function recoveryKey(entry: import('../tools/types').ToolCallAudit): string {
+  const input = entry.input as Record<string, unknown>;
+  if (typeof input.path === 'string') return `path:${input.path}`;
+  if (typeof input.command === 'string') return `command:${input.command}`;
+  if (typeof input.stepId === 'string') return `step:${input.stepId}`;
+  if (typeof input.script === 'string') return `script:${input.script}`;
+  return entry.toolName;
 }
 
 function readPackageVersion(workspace: string): string {

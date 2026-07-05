@@ -576,6 +576,14 @@ export function createExecuteWorkspaceScriptTool(
         if (entry.readOnly && (err.code === 1 || output.length > 0)) {
           return { success: true, output: output || '(no findings)' };
         }
+        if (entry.name === 'write-checkpoint.sh') {
+          return {
+            success: false,
+            skipped: true,
+            output: output || err.message || 'Checkpoint helper failed',
+            error: 'Non-fatal checkpoint helper failure',
+          };
+        }
         return { success: false, output, error: err.message ?? 'Script failed' };
       }
     },

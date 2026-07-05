@@ -101,6 +101,10 @@ export class PatchApplyService {
       }
     }
 
+    if (!/\.(?:tsx?|jsx?|mjs|cjs)$/i.test(path)) {
+      return { success: true, proposedContent: content };
+    }
+
     const balances = countCodeDelimiters(content);
     const jsxBalance = path.endsWith('.tsx') ? countJsxTagBalance(content) : 0;
 

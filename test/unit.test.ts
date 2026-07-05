@@ -1356,6 +1356,7 @@ describe('shouldUsePlanner', () => {
       'apply_patch',
     ]);
     expect(shouldRunDirectFinalValidation('simple_edit')).toBe(false);
+    expect(shouldRunDirectFinalValidation('simple_edit', ['README.md'])).toBe(false);
     expect(shouldRunDirectFinalValidation('simple_edit', ['apps/docs/docs/ffb-mui/example.mdx'])).toBe(true);
     expect(shouldRunDirectFinalValidation('implementation')).toBe(true);
   });
@@ -1521,6 +1522,9 @@ describe('PlanActEngine read-only shell', () => {
     expect(isReadOnlyCommand('cd apps/docs && npm run build 2>&1 | head -50')).toBe(true);
     expect(isReadOnlyCommand('npx vitest run')).toBe(true);
     expect(isReadOnlyCommand('npx vitest')).toBe(false);
+    expect(isReadOnlyCommand('npm run verify')).toBe(true);
+    expect(isReadOnlyCommand('npm run doctor')).toBe(true);
+    expect(isReadOnlyCommand('pnpm validate')).toBe(true);
     expect(stripLeadingCd('cd /home/user && npm ls')).toBe('npm ls');
     expect(isShellAllowed('plan', 'npx depcheck')).toBe(true);
     expect(isShellAllowed('ask', 'npx depcheck')).toBe(true);
@@ -1796,6 +1800,62 @@ describe('PatchApplyService validateSyntax', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('raw TypeScript generic');
+  });
+
+  it('does not run source-code bracket balance checks on plain Markdown', async () => {
+    const { PatchApplyService } = await import('../src/core/apply/PatchApplyService');
+    const svc = new PatchApplyService('/tmp');
+    const result = svc.validateSyntax(
+      'README.md',
+      [
+        '## Ollama Configuration',
+        '',
+        'Install [Ollama](https://ollama.ai) and run:',
+        '',
+        '```bash',
+        'ollama pull llama3.1  # or qwen2.5, mistral-large, command-r-plus',
+        '```',
+      ].join('\n')
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it('allows apply_patch to remove a Markdown section with links and fenced code', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-patch-markdown-test-'));
+
+    try {
+      const { createApplyPatchTool } = await import('../src/core/tools/builtinTools');
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      const readmePath = join(tempDir, 'README.md');
+      const ollamaSection = [
+        '## Ollama Configuration',
+        '',
+        'Career-Ops supports **Ollama** as a local provider.',
+        '',
+        '```bash',
+        'ollama pull llama3.1  # or qwen2.5, mistral-large, command-r-plus',
+        '```',
+        '',
+        '> **Tip:** See [`modes/_shared.md`](modes/_shared.md) -> "Provider Options".',
+        '',
+      ].join('\n');
+      writeFileSync(readmePath, `# Project\n\n${ollamaSection}## Usage\n\nRun it.\n`);
+
+      const result = await createApplyPatchTool(tempDir, ig).execute({
+        path: 'README.md',
+        oldText: ollamaSection,
+        newText: '',
+      });
+
+      expect(result.success).toBe(true);
+      const updated = readFileSync(readmePath, 'utf8');
+      expect(updated).not.toContain('Ollama Configuration');
+      expect(updated).toContain('## Usage');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it('allows targeted TSX patches when the final file has many self-closing components', async () => {

@@ -14,7 +14,6 @@ import { IndexingStatusBar } from './components/IndexingStatusBar';
 import { WorkspaceBanner } from './components/WorkspaceBanner';
 import { HistoryPanel } from './components/HistoryPanel';
 import { PlanPanel } from './components/PlanPanel';
-import { DevPanels } from './components/DevPanels';
 import { IconButton } from './components/IconButton';
 import { IconChat, IconHistory, IconPlus, IconSettings } from './components/Icons';
 import { deriveSafetySettings } from './utils/approvalMode';
@@ -55,6 +54,12 @@ export function App() {
   const canRetry = state.messages.some((m) => m.role === 'user');
   const [contextWarningsDismissed, setContextWarningsDismissed] = useState(false);
   const activeDepth = activeDepthForMode(state.settings, state.mode);
+  const questionApprovals = state.approvals.filter(
+    (req) => req.kind === 'question' || req.toolName === 'ask_question'
+  );
+  const actionApprovals = state.approvals.filter(
+    (req) => req.kind !== 'question' && req.toolName !== 'ask_question'
+  );
 
   useEffect(() => {
     setContextWarningsDismissed(false);
@@ -144,11 +149,15 @@ export function App() {
       )}
 
       <ApprovalCards
-        approvals={state.approvals}
+        approvals={actionApprovals}
         onResolve={(id, decision, selectedOption, scope) =>
           postMessage({ type: 'resolveApproval', payload: { id, decision, selectedOption, scope } })
         }
-        onApproveAll={() => postMessage({ type: 'approveAllPending' })}
+        onApproveAll={() => {
+          actionApprovals.forEach((approval) => {
+            postMessage({ type: 'resolveApproval', payload: { id: approval.id, decision: 'approved' } });
+          });
+        }}
         onShowInlineDiff={(approvalId) =>
           postMessage({ type: 'showInlineDiff', payload: { approvalId } })
         }
@@ -184,18 +193,6 @@ export function App() {
             loading={state.loading}
             liveStatus={state.agentLiveStatus}
           />
-          <ContextPanel
-            items={state.pinnedContext}
-            onRemove={(path) => postMessage({ type: 'removePinnedContext', payload: { path } })}
-            onClear={() => postMessage({ type: 'clearPinnedContext' })}
-            onPick={() => postMessage({ type: 'pickContextPath' })}
-          />
-          <DevPanels
-            contextBudget={state.contextBudget}
-            contextPreview={state.contextPreview}
-            contextTokenEstimate={state.contextTokenEstimate}
-            tokenUsage={state.tokenUsage}
-          />
           <div className="chat-body">
             <MessageList
               messages={state.messages}
@@ -205,6 +202,7 @@ export function App() {
               approvals={state.approvals}
               showReasoning={state.settings.showReasoning}
               reasoningPreviewMaxChars={state.settings.reasoningPreviewMaxChars}
+              mode={state.mode}
             />
           </div>
           <footer className="chat-footer">
@@ -251,6 +249,22 @@ export function App() {
               }}
               pathSuggestions={pathSuggestions}
               pathSearchRequestId={pathSearchRequestId}
+            />
+            <ApprovalCards
+              approvals={questionApprovals}
+              onResolve={(id, decision, selectedOption, scope) =>
+                postMessage({ type: 'resolveApproval', payload: { id, decision, selectedOption, scope } })
+              }
+              onApproveAll={() => postMessage({ type: 'approveAllPending' })}
+              onShowInlineDiff={(approvalId) =>
+                postMessage({ type: 'showInlineDiff', payload: { approvalId } })
+              }
+            />
+            <ContextPanel
+              items={state.pinnedContext}
+              onRemove={(path) => postMessage({ type: 'removePinnedContext', payload: { path } })}
+              onClear={() => postMessage({ type: 'clearPinnedContext' })}
+              onPick={() => postMessage({ type: 'pickContextPath' })}
             />
           </footer>
         </div>
