@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { HeadlessAgentHost } from '../../src/core/headless/HeadlessAgentHost';
+import { defaultThunderConfig } from '../../src/core/config/defaults';
 import { recallAtK, ndcgAtK, reciprocalRank, mean } from '../../tools/benchmark/scripts/retrievalMetrics';
 import retrievalDataset from '../../tools/benchmark/datasets/retrieval-eval.json';
 
@@ -124,6 +125,7 @@ describe('Retrieval eval (HybridRetriever baseline recall/nDCG)', () => {
           providerType: 'echo',
           approval: 'auto',
           indexWorkspace: true,
+          configOverrides: { indexing: { ...defaultThunderConfig().indexing, vectorsEnabled: true } },
         });
 
         try {

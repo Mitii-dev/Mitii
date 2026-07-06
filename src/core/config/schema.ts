@@ -30,7 +30,7 @@ export const ProviderConfigSchema = z.object({
 });
 
 export const EmbeddingProviderSchema = z.enum(['hash', 'minilm']).default('minilm');
-export const VectorBackendSchema = z.enum(['sqlite', 'lancedb']).default('sqlite');
+export const VectorBackendSchema = z.enum(['sqlite', 'lancedb']).default('lancedb');
 
 export const IndexingConfigSchema = z.object({
   enabled: z.boolean().default(true),

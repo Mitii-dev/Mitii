@@ -1,5 +1,6 @@
 import { createLogger } from '../telemetry/Logger';
 import type { EmbeddingProvider } from './EmbeddingProvider';
+import { summarizeHealthDetail, type ComponentHealth } from './ComponentHealth';
 
 const log = createLogger('TransformersEmbedding');
 
@@ -9,6 +10,7 @@ type FeatureExtractor = (
 ) => Promise<{ tolist(): number[][] }>;
 
 let pipelinePromise: Promise<FeatureExtractor | null> | null = null;
+let health: ComponentHealth = { status: 'unknown' };
 
 async function loadPipeline(): Promise<FeatureExtractor | null> {
   if (pipelinePromise) return pipelinePromise;
@@ -20,11 +22,12 @@ async function loadPipeline(): Promise<FeatureExtractor | null> {
       env.allowLocalModels = true;
       env.allowRemoteModels = true;
       const extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+      health = { status: 'ready' };
       return extractor as FeatureExtractor;
     } catch (error) {
-      log.warn('MiniLM embeddings unavailable', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const fullDetail = error instanceof Error ? error.message : String(error);
+      health = { status: 'degraded', detail: summarizeHealthDetail(error) };
+      log.warn('MiniLM embeddings unavailable, falling back to empty vectors for this session', { error: fullDetail });
       return null;
     }
   })();
@@ -41,6 +44,7 @@ export class TransformersEmbeddingProvider implements EmbeddingProvider {
 
     const extractor = await loadPipeline();
     if (!extractor) {
+      log.debug('embed:skipped, pipeline unavailable', { textCount: texts.length, detail: health.detail });
       return texts.map(() => []);
     }
 
@@ -54,13 +58,17 @@ export class TransformersEmbeddingProvider implements EmbeddingProvider {
         // Yield to event loop so the extension host stays responsive.
         await new Promise((resolve) => setTimeout(resolve, 5));
       } catch (error) {
-        log.warn('MiniLM embed failed', {
-          error: error instanceof Error ? error.message : String(error),
-        });
+        const fullDetail = error instanceof Error ? error.message : String(error);
+        health = { status: 'degraded', detail: summarizeHealthDetail(error) };
+        log.warn('MiniLM embed failed', { error: fullDetail });
         outputs.push([]);
       }
     }
     return outputs;
+  }
+
+  getHealth(): ComponentHealth {
+    return health;
   }
 }
 

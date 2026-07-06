@@ -2,6 +2,7 @@ import type { ThunderDb } from './ThunderDb';
 import { cosineSimilarity, type EmbeddingProvider } from './EmbeddingProvider';
 import type { LanceDbVectorIndex } from './LanceDbVectorIndex';
 import { createLogger } from '../telemetry/Logger';
+import type { ComponentHealth } from './ComponentHealth';
 
 const log = createLogger('VectorIndex');
 
@@ -17,6 +18,8 @@ export interface VectorIndex {
   upsertChunk(workspace: string, chunkId: number, relPath: string, embedding: number[]): void;
   deleteFileChunks(fileId: number): void;
   count(workspace: string): number;
+  /** Runtime health (e.g. did the LanceDB native table actually open?). Omit if always healthy. */
+  getHealth?(): ComponentHealth;
 }
 
 /** SQLite-backed vector store. LanceDB can replace this when enabled later. */
@@ -117,5 +120,13 @@ export class VectorIndexService {
 
   count(workspace: string): number {
     return this.index.count(workspace);
+  }
+
+  /** Runtime health of the embedder and the vector backend, for UI/status surfacing. */
+  getHealth(): { embedder: ComponentHealth; backend: ComponentHealth } {
+    return {
+      embedder: this.embedder.getHealth?.() ?? { status: 'unknown' },
+      backend: this.index.getHealth?.() ?? { status: 'unknown' },
+    };
   }
 }

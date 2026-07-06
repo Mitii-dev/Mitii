@@ -1,6 +1,10 @@
+import type { ComponentHealth } from './ComponentHealth';
+
 export interface EmbeddingProvider {
   readonly id: string;
   embed(texts: string[]): Promise<number[][]>;
+  /** Runtime health (has the model actually loaded?). Providers that can't degrade may omit this. */
+  getHealth?(): ComponentHealth;
 }
 
 export class NoOpEmbeddingProvider implements EmbeddingProvider {

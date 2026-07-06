@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow",
-  "version": "2.7.38",
+  "version": "2.7.39",
   "publisher": "mitii",
   "icon": "media/mitii-short-logo.png",
   "license": "AGPL-3.0-or-later",
@@ -444,7 +444,7 @@
             "sqlite",
             "lancedb"
           ],
-          "default": "sqlite",
+          "default": "lancedb",
           "description": "Vector index storage: sqlite (.mitii/mitii.sqlite) or lancedb (.mitii/lance/) via @lancedb/lancedb",
           "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
@@ -1023,7 +1023,7 @@
             "sqlite",
             "lancedb"
           ],
-          "default": "sqlite",
+          "default": "lancedb",
           "description": "Vector index storage: sqlite (.mitii/mitii.sqlite) or lancedb (.mitii/lance/) via @lancedb/lancedb"
         },
         "mitii.context.rerankerEnabled": {

@@ -5,6 +5,7 @@ import { cosineSimilarity } from './EmbeddingProvider';
 import { createLogger } from '../telemetry/Logger';
 import type { VectorIndex, VectorSearchResult } from './VectorIndex';
 import { resolveThunderDir } from './paths';
+import { summarizeHealthDetail, type ComponentHealth } from './ComponentHealth';
 
 const log = createLogger('LanceDbVectorIndex');
 
@@ -31,7 +32,11 @@ type LanceRow = {
 const TABLE_NAME = 'chunk_embeddings';
 
 export class LanceDbVectorIndex implements VectorIndex {
-  private tablePromise: Promise<LanceTable | null> | null = null;
+  private connectionPromise: Promise<LanceDb | null> | null = null;
+  private creatingPromise: Promise<LanceTable | null> | null = null;
+  private creatingChunkId: number | null = null;
+  private table: LanceTable | null = null;
+  private health: ComponentHealth = { status: 'unknown' };
 
   constructor(
     private readonly sqliteDb: ThunderDb,
@@ -44,35 +49,88 @@ export class LanceDbVectorIndex implements VectorIndex {
     return base;
   }
 
-  private async getTable(): Promise<LanceTable | null> {
-    if (!this.tablePromise) {
-      this.tablePromise = this.openTable();
+  private async getConnection(): Promise<LanceDb | null> {
+    if (!this.connectionPromise) {
+      this.connectionPromise = this.connect();
     }
-    return this.tablePromise;
+    return this.connectionPromise;
   }
 
-  private async openTable(): Promise<LanceTable | null> {
+  private async connect(): Promise<LanceDb | null> {
     try {
       const lancedb = await import('@lancedb/lancedb');
       const connect = (lancedb as unknown as { connect: (uri: string) => Promise<LanceDb> }).connect;
       const db = await connect(this.lanceDir());
-      try {
-        return await db.openTable(TABLE_NAME);
-      } catch {
-        return await db.createTable(TABLE_NAME, []);
-      }
+      this.health = { status: 'ready' };
+      return db;
     } catch (error) {
-      log.warn('LanceDB unavailable, falling back to SQLite vectors', {
+      const fullDetail = error instanceof Error ? error.message : String(error);
+      this.health = { status: 'degraded', detail: summarizeHealthDetail(error) };
+      log.warn('LanceDB unavailable, falling back to SQLite vector scan for this session', { error: fullDetail });
+      return null;
+    }
+  }
+
+  /** Read-only lookup: returns null if the table hasn't been created yet (no chunks embedded so
+   * far) — that's a normal, non-degraded state, not an error. Creation happens lazily in
+   * upsertLanceRow() once we have a real row to infer the schema from (LanceDB's `createTable`
+   * needs a non-empty seed row or an explicit Arrow schema; it can't create a table from `[]`). */
+  private async getTable(): Promise<LanceTable | null> {
+    if (this.table) return this.table;
+    const db = await this.getConnection();
+    if (!db) return null;
+
+    try {
+      this.table = await db.openTable(TABLE_NAME);
+      return this.table;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Returns the table plus whether `seedRow` was the one used to create it (in which case it's
+   * already inserted — no separate add() needed) or another concurrent caller's row won the race
+   * to create the table first (in which case the caller still needs to add its own row). */
+  private async getOrCreateTable(seedRow: LanceRow): Promise<{ table: LanceTable; seeded: boolean } | null> {
+    const existing = await this.getTable();
+    if (existing) return { table: existing, seeded: false };
+
+    // Guard against concurrent first-inserts racing to create the table twice — only one
+    // creation attempt runs; concurrent callers await and share its result.
+    if (!this.creatingPromise) {
+      this.creatingChunkId = seedRow.chunk_id;
+      this.creatingPromise = this.createTableWithSeed(seedRow);
+    }
+    const table = await this.creatingPromise;
+    if (!table) return null;
+    return { table, seeded: this.creatingChunkId === seedRow.chunk_id };
+  }
+
+  private async createTableWithSeed(seedRow: LanceRow): Promise<LanceTable | null> {
+    const db = await this.getConnection();
+    if (!db) return null;
+
+    try {
+      this.table = await db.createTable(TABLE_NAME, [seedRow]);
+      return this.table;
+    } catch (error) {
+      log.warn('LanceDB table creation failed', {
         error: error instanceof Error ? error.message : String(error),
       });
       return null;
     }
   }
 
+  getHealth(): ComponentHealth {
+    return this.health;
+  }
+
+  /** Brute-force SQLite fallback: used only when the LanceDB native table failed to open
+   * (see getHealth()) or its own ANN search threw. Not the normal path when LanceDB is healthy. */
   search(workspace: string, queryEmbedding: number[], limit = 10): VectorSearchResult[] {
     if (queryEmbedding.length === 0) return [];
+    log.debug('sqlite-fallback:search', { workspace, backendHealth: this.health.status });
 
-    // LanceDB search is async; run synchronously via sqlite mirror for HybridRetriever sync callers.
     const rows = this.sqliteDb.raw.prepare(`
       SELECT ve.chunk_id, c.content, f.rel_path, ve.embedding_json
       FROM chunk_embeddings ve
@@ -108,17 +166,22 @@ export class LanceDbVectorIndex implements VectorIndex {
     if (!table) return this.search(workspace, queryEmbedding, limit);
 
     try {
+      // Over-fetch because LanceDB's ANN search isn't filtered by workspace server-side —
+      // we filter client-side below, so we need extra candidates to still hit `limit` after that.
+      // Once filtered, we trust LanceDB's own nearest-neighbor order (that's the whole point of
+      // using its native index) rather than recomputing cosine similarity and re-sorting in JS.
       const rows = await table.search(queryEmbedding).limit(limit * 3).toArray();
-      return rows
+      const results = rows
         .filter((row) => row.workspace === workspace)
+        .slice(0, limit)
         .map((row) => ({
           chunkId: row.chunk_id,
           relPath: row.rel_path,
           content: row.content,
           score: cosineSimilarity(queryEmbedding, row.vector),
-        }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, limit);
+        }));
+      log.debug('lancedb:search', { workspace, candidateCount: rows.length, resultCount: results.length });
+      return results;
     } catch (error) {
       log.warn('LanceDB search failed', {
         error: error instanceof Error ? error.message : String(error),
@@ -145,22 +208,33 @@ export class LanceDbVectorIndex implements VectorIndex {
     relPath: string,
     embedding: number[]
   ): Promise<void> {
-    const table = await this.getTable();
-    if (!table) return;
-
     try {
       const contentRow = this.sqliteDb.raw
         .prepare('SELECT content FROM chunks WHERE id = ?')
         .get(chunkId) as { content: string } | undefined;
 
-      await table.delete(`chunk_id = ${chunkId}`);
-      await table.add([{
+      const row: LanceRow = {
         chunk_id: chunkId,
         workspace,
         rel_path: relPath,
         content: contentRow?.content ?? '',
         vector: embedding,
-      }]);
+      };
+
+      const existing = await this.getTable();
+      if (existing) {
+        await existing.delete(`chunk_id = ${chunkId}`);
+        await existing.add([row]);
+        return;
+      }
+
+      // No table yet: this row seeds it (createTable() inserts it directly, no separate add()) —
+      // unless a concurrent upsert's row won the race to create the table first, in which case
+      // this row still needs to be added.
+      const result = await this.getOrCreateTable(row);
+      if (result && !result.seeded) {
+        await result.table.add([row]);
+      }
     } catch (error) {
       log.warn('LanceDB upsert failed', {
         chunkId,
