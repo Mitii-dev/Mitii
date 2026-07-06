@@ -2,25 +2,42 @@
 // hand-labeled set of expected relPaths. Binary relevance (a file either is
 // or isn't one of the expected files for a query) — no graded relevance.
 
+/** Collapses retrievedPaths to each path's first (best-ranked) occurrence. */
+function dedupeByFirstOccurrence(paths: string[]): string[] {
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  for (const p of paths) {
+    if (!seen.has(p)) {
+      seen.add(p);
+      deduped.push(p);
+    }
+  }
+  return deduped;
+}
+
 /** Fraction of expected files that appear anywhere in the top-K retrieved paths. */
 export function recallAtK(retrievedPaths: string[], expectedPaths: string[], k: number): number {
   if (expectedPaths.length === 0) return 1;
-  const topK = new Set(retrievedPaths.slice(0, k));
+  const topK = new Set(dedupeByFirstOccurrence(retrievedPaths).slice(0, k));
   const hits = expectedPaths.filter((p) => topK.has(p)).length;
   return hits / expectedPaths.length;
 }
 
 /**
  * Normalized Discounted Cumulative Gain over the top-K retrieved paths, with
- * binary relevance (1 if the path is expected, 0 otherwise).
+ * binary relevance (1 if the path is expected, 0 otherwise). Retrieved paths
+ * are deduped by first occurrence first, since a file returned as multiple
+ * chunks would otherwise be credited as relevant more than once and inflate
+ * dcg past idcg (which assumes each expected file is counted at most once).
  */
 export function ndcgAtK(retrievedPaths: string[], expectedPaths: string[], k: number): number {
   if (expectedPaths.length === 0) return 1;
   const expectedSet = new Set(expectedPaths);
+  const deduped = dedupeByFirstOccurrence(retrievedPaths);
 
   let dcg = 0;
-  for (let i = 0; i < Math.min(k, retrievedPaths.length); i++) {
-    const relevance = expectedSet.has(retrievedPaths[i]) ? 1 : 0;
+  for (let i = 0; i < Math.min(k, deduped.length); i++) {
+    const relevance = expectedSet.has(deduped[i]) ? 1 : 0;
     dcg += relevance / Math.log2(i + 2);
   }
 
