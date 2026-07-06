@@ -1,0 +1,14 @@
+{
+  "name": "saas-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Synthetic modular SaaS API fixture used for retrieval benchmarking",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

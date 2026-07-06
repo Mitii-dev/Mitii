@@ -23,6 +23,12 @@
       "stack": "Next.js App Router",
       "entryFiles": ["app/page.tsx", "app/layout.tsx", "package.json"],
       "symbols": ["layout", "page", "metadata", "Next.js"]
+    },
+    "saas-api": {
+      "category": "modular-api",
+      "stack": "TypeScript (synthetic, ~112 files, 17 domain modules)",
+      "entryFiles": ["src/app.module.ts", "src/main.ts", "package.json"],
+      "symbols": ["AppModule", "PaymentsService", "OrdersService", "WebhooksService", "retryPayment", "convertCartToOrder"]
     }
   }
 }

@@ -19,6 +19,7 @@ function tokenize(query: string): string[] {
 export class LexicalContextReranker implements ContextReranker {
   async rerank(query: string, items: ContextItem[], limit: number): Promise<ContextItem[]> {
     const terms = tokenize(query);
+    log.debug('lexical:rerank', { termCount: terms.length, itemCount: items.length, limit });
     if (terms.length === 0) return items.slice(0, limit);
 
     return items
@@ -50,6 +51,7 @@ export class EmbeddingContextReranker implements ContextReranker {
         return new LexicalContextReranker().rerank(query, items, limit);
       }
 
+      log.debug('embedding:rerank', { itemCount: items.length, limit });
       return items
         .map((item, idx) => {
           const vec = vectors[idx + 1];

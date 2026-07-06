@@ -49,6 +49,13 @@ export class HybridRetriever {
   ) {}
 
   async retrieve(query: ContextQuery): Promise<ContextItem[]> {
+    log.debug('retrieve:start', {
+      queryText: query.text,
+      sourceCount: this.sources.length,
+      maxItems: query.maxItems,
+      scopeRoot: query.scopeRoot,
+    });
+
     const sourceById = new Map(this.sources.map((s) => [s.id, s]));
     const orderedSources: ContextSource[] = [];
     const seen = new Set<string>();
@@ -82,6 +89,12 @@ export class HybridRetriever {
         if (result.status === 'fulfilled') {
           this.onTiming?.(result.value.timing);
           allItems.push(...result.value.items);
+          log.debug('source:complete', {
+            source: result.value.timing.source,
+            tier: result.value.timing.tier,
+            durationMs: result.value.timing.durationMs,
+            itemCount: result.value.timing.itemCount,
+          });
         } else {
           const reason = result.reason as { durationMs?: unknown; error?: unknown };
           const durationMs = typeof reason.durationMs === 'number' ? reason.durationMs : 0;
@@ -103,9 +116,11 @@ export class HybridRetriever {
     }
 
     const deduped = deduplicateItems(allItems).sort((a, b) => b.score - a.score);
+    log.debug('dedup', { before: allItems.length, after: deduped.length });
 
     if (this.reranker && this.rerankerConfig?.enabled) {
       const pool = deduped.slice(0, this.rerankerConfig.candidatePool);
+      log.debug('rerank:start', { candidatePoolSize: pool.length, topK: this.rerankerConfig.topK });
       const startedAt = Date.now();
       try {
         const reranked = await this.reranker.rerank(
@@ -121,6 +136,7 @@ export class HybridRetriever {
           candidateCount: pool.length,
           resultCount: sliced.length,
         });
+        log.debug('rerank:done', { durationMs: Date.now() - startedAt, resultCount: sliced.length });
         return sliced;
       } catch (error) {
         this.onTiming?.({
@@ -135,7 +151,9 @@ export class HybridRetriever {
       }
     }
 
-    return deduped.slice(0, query.maxItems ?? 30);
+    const result = deduped.slice(0, query.maxItems ?? 30);
+    log.debug('retrieve:done', { returned: result.length });
+    return result;
   }
 }
 

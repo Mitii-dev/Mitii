@@ -6,6 +6,7 @@ import { WorkspaceScanner } from '../indexing/WorkspaceScanner';
 import { IndexQueue } from '../indexing/IndexQueue';
 import { FtsIndex } from '../indexing/FtsIndex';
 import { HybridRetriever } from '../context/HybridRetriever';
+import type { ContextItem, ContextQuery } from '../context/types';
 import { createContextReranker } from '../context/ContextReranker';
 import { ContextBudgeter } from '../context/ContextBudgeter';
 import { CurrentEditorContextSource, OpenFilesContextSource } from '../context/sources/editorSources';
@@ -110,6 +111,7 @@ export class HeadlessAgentHost {
   private toolRuntime = new ToolRuntime();
   private toolExecutor?: ToolExecutor;
   private chatOrchestrator?: ChatOrchestrator;
+  private retriever?: HybridRetriever;
   private memoryExtractor?: MemoryExtractor;
   private autoMemoryWriter?: AutoMemoryFileWriter;
   private mcpManager = new McpManager();
@@ -231,6 +233,7 @@ export class HeadlessAgentHost {
     );
 
     const retriever = this.buildRetriever(db, workspace);
+    this.retriever = retriever;
     const budgeter = new ContextBudgeter();
     this.chatOrchestrator = new ChatOrchestrator(retriever, budgeter, db);
     this.configureOrchestrator(workspace);
@@ -264,6 +267,13 @@ export class HeadlessAgentHost {
     await this.initialize();
     if (!this.isRealRuntime) return this.stubRunner.ask(prompt);
     return this.runMode('ask', prompt);
+  }
+
+  /** Raw retrieval results for a query, bypassing the LLM entirely. Used by retrieval evals/diagnostics. */
+  async retrieveContext(query: ContextQuery): Promise<ContextItem[]> {
+    await this.initialize();
+    if (!this.retriever) throw new Error('Retriever unavailable (stub runtime)');
+    return this.retriever.retrieve(query);
   }
 
   async plan(prompt: string): Promise<HeadlessPlan | Record<string, unknown>> {

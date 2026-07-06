@@ -7,6 +7,9 @@ import { RepoMapService } from '../RepoMapService';
 import type { MemoryService } from '../../memory/MemoryService';
 import { isProjectOverviewQuestion } from '../fuzzyFileMatch';
 import { filterItemsToScope } from '../scopeFilter';
+import { createLogger } from '../../telemetry/Logger';
+
+const log = createLogger('ContextSources');
 
 const OVERVIEW_FILES = [
   'README.md',
@@ -71,6 +74,7 @@ export class FtsContextSource implements ContextSource {
 
   async retrieve(query: ContextQuery): Promise<ContextItem[]> {
     const results = this.fts.search(query.text, query.maxItems ?? 10);
+    log.debug('fts:search', { queryText: query.text, matchCount: results.length });
     return filterItemsToScope(results.map((r, i) => ({
       id: `fts-${r.relPath}-${i}`,
       source: this.id,
