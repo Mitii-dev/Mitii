@@ -101,6 +101,18 @@ describe('Act orchestration boundary', () => {
     expect(route.shouldUsePlanner).toBe(false);
   });
 
+  it('routes README updates to the docs intent instead of bugfix', () => {
+    const message = 'can you update readme of mitii ai agent based on all our recent changes';
+    const analysis = analyzeTask(message, 'agent');
+    const route = routeActIntent(message, analysis, {
+      mode: 'agent',
+      hasActivePlan: false,
+      orchestrationEnabled: true,
+    });
+
+    expect(route.intent).toBe('docs');
+  });
+
   it('prepares SDK-aligned Act run plans with skills and saved plan metadata', () => {
     const skillCatalog = {
       get(name: string) {

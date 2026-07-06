@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.7.32" src="https://img.shields.io/badge/version-2.7.32-111111">
+  <img alt="Version 2.7.41" src="https://img.shields.io/badge/version-2.7.41-111111">
   <a href="https://mitii.dev"><img alt="Website" src="https://img.shields.io/badge/website-mitii.dev-000000"></a>
   <a href="https://docs.mitii.dev"><img alt="Docs" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
@@ -131,6 +131,7 @@ flowchart LR
   Context --> Index[SQLite + FTS5 + Symbols]
   Context --> Vectors[MiniLM or Hash Vectors]
   Context --> RepoMap[PageRank Repo Map]
+  Context --> CallGraph[Call Graph]
   Context --> Git[Git Diff + SCM]
   Context --> Issues[GitHub Issues]
   Context --> LSP[Diagnostics]
@@ -157,8 +158,9 @@ Mitii creates a useful working map of your repository before it asks the model t
 | Full-text search | SQLite FTS5 with ripgrep fallback for paths not yet indexed |
 | Symbol extraction | TypeScript, JavaScript, Python, Java, Go; tree-sitter with regex fallback |
 | Repo map | PageRank-style scoring to surface structurally important files |
+| Call graph | `CallGraphContextSource` resolves symbols and callers through the VS Code language service, with unsaved-editor content sync |
 | Vector search | MiniLM embeddings through `@xenova/transformers`, with hash fallback |
-| Vector backend | SQLite by default, LanceDB optional |
+| Vector backend | LanceDB by default, SQLite optional; embedding/vector components report runtime health and surface a "degraded" state in Settings if native modules fail to load |
 | Context reranking | Trims noisy candidates, for example top 20 down to top 8 |
 | Token budgeting | Keeps context useful without blindly flooding the model |
 
@@ -306,6 +308,7 @@ The sidebar is a React webview with:
 | Token meter | Understand context usage |
 | Indexing status | Know when the workspace brain is ready |
 | Context warnings | See when context may be thin or over budget |
+| Code block copy | One-click clipboard copy on rendered code blocks in chat |
 
 Reasoning deltas from supported providers stream live in the chat UI. Use `mitii.ui.showReasoning` and `mitii.ui.reasoningPreviewMaxChars` to control visibility and inline preview size.
 
@@ -549,7 +552,7 @@ mitii team status sprint
   "mitii.safety.approvalMode": "review_all",
   "mitii.indexing.autoIndexOnOpen": true,
   "mitii.indexing.vectorsEnabled": true,
-  "mitii.indexing.vectorBackend": "sqlite",
+  "mitii.indexing.vectorBackend": "lancedb",
   "mitii.indexing.watchDebounceMs": 500,
   "mitii.indexing.priorityPaths": [],
   "mitii.context.rerankerEnabled": true,
@@ -693,7 +696,10 @@ pnpm run eval:generate        # generate 500 standard eval tasks
 pnpm run eval:smoke           # eval wiring check (CI)
 pnpm run eval:standard -- --provider openai-compatible \
   --base-url http://localhost:11434/v1 --model qwen3-coder:30b --limit 50
+pnpm run eval:retrieval        # Recall@5/10, nDCG@10, MRR for HybridRetriever against a hand-labeled query set
 ```
+
+`eval:retrieval` runs `test/benchmark/retrieval-eval.test.ts` against the `saas-api` fixture (112 files, 17 domain modules) and 68 hand-labeled queries in `tools/benchmark/datasets/retrieval-eval.json`, writing `.mitii/benchmark/retrieval-report.{json,md}`. It is additive instrumentation only — HybridRetriever's actual ranking logic is unchanged.
 
 ### Native Rebuilds
 
