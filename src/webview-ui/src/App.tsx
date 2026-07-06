@@ -80,9 +80,7 @@ export function App() {
           ) : (
             <span className="thunder-logo thunder-logo--fallback" aria-hidden="true">◆</span>
           )}
-          <span className="toolbar-provider" title={state.providerLabel}>
-            {state.providerLabel}
-          </span>
+          <span className="toolbar-brand__name">{AGENT_NAME}</span>
         </div>
         <nav className="toolbar-nav" role="tablist" aria-label="Main navigation">
           {state.tab === 'chat' && (
@@ -212,6 +210,7 @@ export function App() {
               approvalMode={state.settings.approvalMode}
               activeDepth={activeDepth}
               tokenUsage={state.tokenUsage}
+              modelLabel={state.providerLabel.split(' / ').pop() || state.providerLabel}
               pinnedContext={state.pinnedContext}
               canRetry={canRetry}
               onSend={(content, pinnedContext, attachments) =>

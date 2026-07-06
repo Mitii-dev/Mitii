@@ -127,6 +127,8 @@ function isReadOnlyCommandSegment(cmd: string, extraPatterns: string[] = []): bo
   if (/^git\s+(status|diff|log|ls-files)\b/i.test(cmd)) return true;
   if (/^\d+>&\d+$/.test(cmd.trim())) return true;
   if (/^true$|^false$/.test(cmd.trim())) return true;
+  if (/^node\s+(--check|-c)\b/i.test(cmd)) return true;
+  if (/^(bash|sh)\s+-n\b/i.test(cmd)) return true;
   return false;
 }
 

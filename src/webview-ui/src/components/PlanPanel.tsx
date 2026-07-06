@@ -166,9 +166,22 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
         ? 'Plan ready'
         : 'Planner';
 
+  const stepStats = liveStatus?.stepCurrent && liveStatus.stepTotal
+    ? `${liveStatus.stepCurrent}/${liveStatus.stepTotal}`
+    : undefined;
+
+  const progressPct = hasSteps
+    ? Math.round((done / plan.steps.length) * 100)
+    : liveStatus?.stepCurrent && liveStatus.stepTotal
+      ? Math.round((liveStatus.stepCurrent / liveStatus.stepTotal) * 100)
+      : undefined;
+  const showProgressBar = isPlanningSession
+    ? progressPct !== undefined
+    : hasSteps && !isPlanComplete;
+
   return (
     <section
-      className={`plan-panel ${isPlanningSession ? 'plan-panel--planning' : ''} ${isPlanComplete ? 'plan-panel--done' : ''} ${mode === 'plan' ? 'plan-panel--plan-mode' : ''}`}
+      className={`plan-panel ${isPlanningSession ? 'plan-panel--planning' : ''} ${isPlanComplete ? 'plan-panel--done' : ''} ${mode === 'plan' ? 'plan-panel--plan-mode' : ''} ${collapsed ? 'plan-panel--collapsed' : ''}`}
       aria-label="Planner"
       aria-busy={isPlanningSession}
     >
@@ -184,24 +197,30 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
           {collapsed ? '▸' : '▾'}
         </span>
         <div className="plan-panel__header">
-          <div>
+          <div className="plan-panel__headline">
             <p className="plan-panel__eyebrow">
               {plannerState}
             </p>
             <h2>{plan.goal}</h2>
-            {!collapsed && isPlanningSession && (
+            {isPlanningSession && (
               <p className="plan-panel__running" role="status">
                 <span className="plan-panel__spinner plan-panel__spinner--inline" aria-hidden="true" />
-                {planningLabel}
-                {liveStatus?.detail ? ` — ${liveStatus.detail}` : ''}
+                <span className="plan-panel__running-text">
+                  {planningLabel}
+                  {liveStatus?.detail ? ` — ${liveStatus.detail}` : ''}
+                </span>
+                {stepStats && <span className="plan-panel__running-stat">{stepStats}</span>}
               </p>
             )}
-            {!collapsed && running && loading && !isPlanningSession && (
+            {running && loading && !isPlanningSession && (
               <p className="plan-panel__running">
-                Running step {runningIndex + 1}/{plan.steps.length}: {running.title}
+                <span className="plan-panel__spinner plan-panel__spinner--inline" aria-hidden="true" />
+                <span className="plan-panel__running-text">
+                  Step {runningIndex + 1}/{plan.steps.length}: {running.title}
+                </span>
               </p>
             )}
-            {!collapsed && isPlanComplete && (
+            {isPlanComplete && (
               <p className="plan-panel__running plan-panel__running--done">All plan steps done.</p>
             )}
           </div>
@@ -213,6 +232,11 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
           </span>
         </div>
       </button>
+      {showProgressBar && (
+        <div className="plan-panel__progress-track" aria-hidden="true">
+          <div className="plan-panel__progress-fill" style={{ width: `${Math.min(100, Math.max(4, progressPct ?? 0))}%` }} />
+        </div>
+      )}
 
       {!collapsed && (
         <>
