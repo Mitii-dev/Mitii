@@ -168,6 +168,11 @@ export interface VectorIndexStatusView {
   embeddedChunks: number;
   provider: string;
   backend?: string;
+  /** True when the embedder or vector backend silently degraded at runtime (e.g. MiniLM
+   * model failed to load, or LanceDB's native table failed to open) — distinct from `provider`/
+   * `backend`, which only describe config + package availability, not live health. */
+  degraded?: boolean;
+  degradedDetail?: string;
 }
 
 export interface AgentActivityEntry {
@@ -348,6 +353,7 @@ export interface ContextToggles {
   diagnostics: boolean;
   memory: boolean;
   vectors: boolean;
+  callGraph: boolean;
 }
 
 export interface WebviewState {
@@ -479,6 +485,7 @@ export const defaultContextToggles = (): ContextToggles => ({
   diagnostics: false,
   memory: true,
   vectors: true,
+  callGraph: true,
 });
 
 export const defaultSettingsView = (): SettingsView => ({
@@ -554,7 +561,7 @@ export const initialWebviewState = (): WebviewState => ({
   agentActivity: [],
   agentLiveStatus: null,
   subagents: [],
-  vectorIndex: { enabled: false, embeddedChunks: 0, provider: 'none', backend: 'none' },
+  vectorIndex: { enabled: false, embeddedChunks: 0, provider: 'none', backend: 'none', degraded: false },
   plan: null,
   indexing: { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0, processed: 0, runTotal: 0 },
   memories: [],

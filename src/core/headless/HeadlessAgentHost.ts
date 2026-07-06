@@ -16,6 +16,14 @@ import { MentionedFileContextSource } from '../context/sources/mentionedFileSour
 import { GitService } from '../context/GitService';
 import { GitDiffContextSource } from '../context/DiagnosticsService';
 import { RepoMapService } from '../context/RepoMapService';
+import { VectorContextSource } from '../context/sources/VectorContextSource';
+import { CallGraphContextSource } from '../context/sources/callGraphSource';
+import { VectorIndexService } from '../indexing/VectorIndex';
+import { createVectorIndex } from '../indexing/vectorIndexFactory';
+import { createEmbeddingProvider } from '../indexing/embeddingFactory';
+import { getOrCreateLanguageService, disposeLanguageService } from '../indexing/languageServiceFactory';
+import type { WorkspaceLanguageService } from '../indexing/WorkspaceLanguageService';
+import type { EmbeddingProvider } from '../indexing/EmbeddingProvider';
 import { setVerifyCommandPatterns } from '../plans/PlanActEngine';
 import { ChatOrchestrator } from '../orchestration/ChatOrchestrator';
 import { ToolRuntime } from '../tools/ToolRuntime';
@@ -97,6 +105,7 @@ export class HeadlessAgentHost {
 
   private indexService?: IndexService;
   private ignoreService = new IgnoreService();
+  private languageService?: WorkspaceLanguageService;
   private scanner?: WorkspaceScanner;
   private indexQueue?: IndexQueue;
   private gitService?: GitService;
@@ -112,6 +121,8 @@ export class HeadlessAgentHost {
   private toolExecutor?: ToolExecutor;
   private chatOrchestrator?: ChatOrchestrator;
   private retriever?: HybridRetriever;
+  private embeddingProvider?: EmbeddingProvider;
+  private vectorIndexService?: VectorIndexService;
   private memoryExtractor?: MemoryExtractor;
   private autoMemoryWriter?: AutoMemoryFileWriter;
   private mcpManager = new McpManager();
@@ -179,12 +190,19 @@ export class HeadlessAgentHost {
       respectGitignore: this.config.indexing.respectGitignore,
       respectThunderignore: this.config.indexing.respectThunderignore,
     });
+    this.languageService = getOrCreateLanguageService(workspace, this.ignoreService, this.config.indexing);
 
     this.scanner = new WorkspaceScanner(db, workspace);
+    this.embeddingProvider = createEmbeddingProvider(this.config.indexing);
+    this.vectorIndexService = new VectorIndexService(
+      createVectorIndex(db, workspace, this.config.indexing),
+      this.embeddingProvider
+    );
     this.indexQueue = new IndexQueue(db, {
       maxConcurrency: this.config.indexing.maxConcurrency,
       maxFileSizeBytes: this.config.indexing.maxFileSizeBytes,
     });
+    this.indexQueue.setVectorService(workspace, this.vectorIndexService);
 
     this.gitService = new GitService(workspace);
     await this.gitService.initialize();
@@ -378,6 +396,8 @@ export class HeadlessAgentHost {
   dispose(): void {
     this.cancel();
     this.indexService?.dispose();
+    disposeLanguageService(this.options.cwd);
+    this.languageService = undefined;
     this.initialized = false;
   }
 
@@ -505,8 +525,17 @@ export class HeadlessAgentHost {
     sources.push(new HeadlessDiagnosticsContextSource(this.diagnosticsService));
     if (this.memoryService) sources.push(new MemoryContextSource(this.memoryService));
     if (this.autoMemoryWriter) sources.push(new AutoMemoryContextSource(this.autoMemoryWriter));
+    if (this.config.indexing.vectorsEnabled && this.vectorIndexService) {
+      sources.push(new VectorContextSource(this.vectorIndexService, workspace));
+    }
+    if (this.languageService) {
+      sources.push(new CallGraphContextSource(db, workspace, this.languageService));
+    }
 
-    const reranker = createContextReranker(undefined, false);
+    const reranker = createContextReranker(
+      this.embeddingProvider,
+      this.config.indexing.vectorsEnabled && this.config.indexing.embeddingProvider === 'minilm'
+    );
     return new HybridRetriever(sources, reranker, {
       enabled: this.config.context.rerankerEnabled,
       candidatePool: this.config.context.rerankerCandidatePool,

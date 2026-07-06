@@ -61,8 +61,11 @@ import { MemoryHookService } from '../memory/MemoryHookService';
 import { AutoMemoryContextSource, AutoMemoryFileWriter } from '../memory/AutoMemoryFileWriter';
 import { PostEditValidator } from '../apply/PostEditValidator';
 import { VectorContextSource } from '../context/sources/VectorContextSource';
+import { CallGraphContextSource } from '../context/sources/callGraphSource';
 import { VectorIndexService } from '../indexing/VectorIndex';
 import { createEmbeddingProvider, describeEmbeddingProvider } from '../indexing/embeddingFactory';
+import { getOrCreateLanguageService, disposeLanguageService } from '../indexing/languageServiceFactory';
+import { isTsLikeFile, type WorkspaceLanguageService } from '../indexing/WorkspaceLanguageService';
 import { createVectorIndex, describeVectorBackend } from '../indexing/vectorIndexFactory';
 import { isLanceDbAvailable, isMinilmAvailable } from '../indexing/vectorAvailability';
 import type { EmbeddingProvider } from '../indexing/EmbeddingProvider';
@@ -152,6 +155,9 @@ export class ThunderController {
   private postEditValidator: PostEditValidator | undefined;
   private vectorIndexService: VectorIndexService | undefined;
   private embeddingProvider: EmbeddingProvider | undefined;
+  private languageService: WorkspaceLanguageService | undefined;
+  private languageServiceSyncDisposable: vscode.Disposable | undefined;
+  private languageServiceUpdateDebouncers = new Map<string, () => void>();
   private mcpManager = new McpManager();
   private projectRulesService: ProjectRulesService | undefined;
   private providerProfilesService: ProviderProfilesService | undefined;
@@ -480,6 +486,7 @@ export class ThunderController {
       respectGitignore: config.indexing.respectGitignore,
       respectThunderignore: config.indexing.respectThunderignore,
     });
+    this.languageService = getOrCreateLanguageService(workspace, this.ignoreService, config.indexing);
 
     this.scanner = new WorkspaceScanner(db, workspace);
     setTreeSitterEnabled(config.indexing.treeSitterEnabled);
@@ -675,6 +682,38 @@ export class ThunderController {
     );
 
     this.setupFileWatcher(workspace);
+    this.setupLanguageServiceSync(workspace);
+  }
+
+  /** Keeps the persistent language service's in-memory AST synchronized with unsaved editor
+   * buffers. Debounced per-file — a single shared debounce would drop updates when the user
+   * edits two files close together in time. */
+  private setupLanguageServiceSync(workspace: string): void {
+    this.languageServiceSyncDisposable?.dispose();
+    this.languageServiceUpdateDebouncers.clear();
+
+    const config = this.configService.getConfig();
+    const pendingContent = new Map<string, string>();
+    this.languageServiceSyncDisposable = vscode.workspace.onDidChangeTextDocument((e) => {
+      if (!isTsLikeFile(e.document.fileName)) return;
+      const relPath = toWorkspaceRelPath(e.document.uri, workspace);
+      if (!relPath || this.ignoreService.isIgnored(relPath)) return;
+
+      // Always capture the latest text synchronously; only the *flush* is debounced, so a
+      // debounced closure created on an earlier keystroke never applies stale content.
+      pendingContent.set(relPath, e.document.getText());
+
+      let scheduled = this.languageServiceUpdateDebouncers.get(relPath);
+      if (!scheduled) {
+        scheduled = debounce(() => {
+          const content = pendingContent.get(relPath);
+          if (content !== undefined) this.languageService?.updateFile(relPath, content);
+        }, config.indexing.watchDebounceMs);
+        this.languageServiceUpdateDebouncers.set(relPath, scheduled);
+      }
+      scheduled();
+    });
+    this.context.subscriptions.push(this.languageServiceSyncDisposable);
   }
 
   private createChatOrchestrator(
@@ -841,6 +880,9 @@ export class ThunderController {
     if (this.contextToggles.vectors && this.vectorIndexService) {
       sources.push(new VectorContextSource(this.vectorIndexService, workspace));
     }
+    if (this.contextToggles.callGraph && this.languageService) {
+      sources.push(new CallGraphContextSource(db, workspace, this.languageService));
+    }
 
     const config = this.configService.getConfig();
     const reranker = createContextReranker(
@@ -877,10 +919,11 @@ export class ThunderController {
       );
 
       const enqueue = (uri: vscode.Uri) => {
-        if (!this.indexQueue || !this.scanner) return;
         if (!this.isWorkspaceTrusted()) return;
         const relPath = toWorkspaceRelPath(uri, workspace);
         if (!relPath || this.ignoreService.isIgnored(relPath)) return;
+        if (isTsLikeFile(relPath)) this.languageService?.syncFileFromDisk(relPath);
+        if (!this.indexQueue || !this.scanner) return;
         const fileId = this.scanner.getFileId(relPath);
         if (fileId) {
           this.pendingWatchJobs.set(relPath, {
@@ -900,6 +943,13 @@ export class ThunderController {
 
       watcher.onDidChange(enqueue);
       watcher.onDidCreate(enqueue);
+      watcher.onDidDelete((uri) => {
+        if (!this.isWorkspaceTrusted()) return;
+        const relPath = toWorkspaceRelPath(uri, workspace);
+        if (relPath && isTsLikeFile(relPath) && !this.ignoreService.isIgnored(relPath)) {
+          this.languageService?.syncFileFromDisk(relPath);
+        }
+      });
       this.context.subscriptions.push(watcher);
 
       const refreshSkills = () => {
@@ -964,12 +1014,7 @@ export class ThunderController {
         summary: r.summary,
         error: r.error,
       })),
-      vectorIndex: {
-        enabled: config.indexing.vectorsEnabled,
-        embeddedChunks: this.vectorIndexService?.count(workspacePath) ?? 0,
-        provider: describeEmbeddingProvider(config.indexing),
-        backend: describeVectorBackend(config.indexing),
-      },
+      vectorIndex: buildVectorIndexStatusView(config.indexing, workspacePath, this.vectorIndexService),
       tokenUsage: base.tokenUsage ?? {
         ...this.tokenUsage,
         contextWindow: config.provider.contextWindow,
@@ -1809,6 +1854,8 @@ export class ThunderController {
     this.chatOrchestrator = undefined;
     this.indexService?.dispose();
     this.indexService = undefined;
+    if (previousWorkspace) disposeLanguageService(previousWorkspace);
+    this.languageService = undefined;
     this.scanner = undefined;
     this.indexQueue = undefined;
     this.projectRulesService = undefined;
@@ -2816,6 +2863,9 @@ export class ThunderController {
     void this.mcpManager.closeAll();
     this.indexService?.dispose();
     this.indexQueue?.cancel();
+    this.languageServiceSyncDisposable?.dispose();
+    if (this.session?.workspace) disposeLanguageService(this.session.workspace);
+    this.languageService = undefined;
     this.session = undefined;
     log.info('ThunderController disposed');
   }
@@ -2833,6 +2883,30 @@ export function toApprovalView(r: import('../safety/ApprovalQueue').ApprovalRequ
     kind: r.kind,
     question: r.question,
     options: r.options,
+  };
+}
+
+function buildVectorIndexStatusView(
+  indexingConfig: import('../config/schema').IndexingConfig,
+  workspace: string,
+  vectorIndexService: VectorIndexService | undefined
+): import('../../vscode/webview/messages').VectorIndexStatusView {
+  const health = vectorIndexService?.getHealth();
+  const degradedParts: string[] = [];
+  if (health?.embedder.status === 'degraded') {
+    degradedParts.push(`embeddings: ${health.embedder.detail ?? 'unavailable'}`);
+  }
+  if (health?.backend.status === 'degraded') {
+    degradedParts.push(`vector backend: ${health.backend.detail ?? 'unavailable'}`);
+  }
+
+  return {
+    enabled: indexingConfig.vectorsEnabled,
+    embeddedChunks: vectorIndexService?.count(workspace) ?? 0,
+    provider: describeEmbeddingProvider(indexingConfig),
+    backend: describeVectorBackend(indexingConfig),
+    degraded: degradedParts.length > 0,
+    degradedDetail: degradedParts.length > 0 ? degradedParts.join('; ') : undefined,
   };
 }
 

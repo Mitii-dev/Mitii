@@ -12,6 +12,7 @@ const TOGGLE_LABELS: Record<keyof ContextToggles, string> = {
   diagnostics: 'Diagnostics',
   memory: 'Memory',
   vectors: 'Semantic vectors',
+  callGraph: 'Call graph',
 };
 
 export function ContextTogglesPanel({ toggles, onToggle }: ContextTogglesPanelProps) {

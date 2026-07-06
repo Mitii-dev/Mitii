@@ -18,6 +18,7 @@ import { WorkspaceSettingsSection } from './WorkspaceSettingsSection';
 import { SettingsCard } from './SettingsCard';
 import { SettingSwitch } from './SettingSwitch';
 import { SettingStepper } from './SettingStepper';
+import { SettingNote } from './SettingNote';
 import { MemoryPanel } from './MemoryPanel';
 import { CheckpointPanel } from './CheckpointPanel';
 import { getProviderPreset } from '../../../core/llm/providerPresets';
@@ -112,6 +113,11 @@ const CONTEXT_TOGGLES: Array<{
     key: 'vectors',
     label: 'Semantic vectors',
     description: 'Conceptual code search — finds related files even when wording differs.',
+  },
+  {
+    key: 'callGraph',
+    label: 'Precise call graph',
+    description: 'Compiler-resolved definitions and callers for symbols mentioned in your question, bypassing name-only matching.',
   },
 ];
 
@@ -1077,6 +1083,13 @@ export function SettingsPanel({
                   <span className="settings-stat__label">Backend</span>
                 </div>
               </div>
+
+              {vectorIndex.degraded && (
+                <SettingNote title="Semantic search is degraded" variant="warn">
+                  {vectorIndex.degradedDetail ?? 'The embedding model or vector backend fell back silently.'}
+                  {' '}Retrieval is still working via keyword search, just without semantic matches.
+                </SettingNote>
+              )}
 
               <p className="settings-inline-note">
                 Save settings after changing vector options. Vector changes reload the index and rebuild embeddings.
