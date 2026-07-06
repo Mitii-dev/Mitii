@@ -52,7 +52,7 @@
     "verify": [
       "exit_0",
       "jsonl_event:end",
-      "file_contains:src/routes/users.js:success"
+      "file_not_contains:src/routes/users.js:status: 'ok'"
     ],
     "sourceTier": "agent"
   },
@@ -907,7 +907,7 @@
     "verify": [
       "exit_0",
       "jsonl_event:end",
-      "file_contains:src/routes/users.js:success"
+      "file_not_contains:src/routes/users.js:status: 'ok'"
     ]
   },
   {

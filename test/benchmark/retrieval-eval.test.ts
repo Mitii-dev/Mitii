@@ -108,6 +108,13 @@ function writeReport(results: QueryResult[], skippedFixtures: string[]): void {
   console.log(`\n${md}`);
 }
 
+// vitest buffers console.log per-test and only flushes it once the test finishes,
+// which makes a multi-minute eval look hung. process.stdout.write bypasses that
+// buffering so progress shows up live in the terminal.
+function progress(line: string): void {
+  process.stdout.write(`${line}\n`);
+}
+
 describe('Retrieval eval (HybridRetriever baseline recall/nDCG)', () => {
   it(
     'measures Recall@5, Recall@10, and nDCG@10 against the hand-labeled query set',
@@ -115,9 +122,15 @@ describe('Retrieval eval (HybridRetriever baseline recall/nDCG)', () => {
       const byFixture = groupByFixture(dataset);
       const results: QueryResult[] = [];
       const skippedFixtures: string[] = [];
+      const totalQueries = dataset.length;
+      let queriesDone = 0;
+
+      progress(`\n▶ Retrieval eval: ${totalQueries} queries across ${byFixture.size} fixture(s)\n`);
 
       for (const [fixture, queries] of byFixture) {
         const cwd = join(REPO_ROOT, 'tools/benchmark/fixtures', fixture);
+        progress(`▶ Indexing fixture "${fixture}" (${queries.length} queries)...`);
+        const indexStarted = Date.now();
         const host = new HeadlessAgentHost({
           cwd,
           packageRoot: REPO_ROOT,
@@ -133,15 +146,22 @@ describe('Retrieval eval (HybridRetriever baseline recall/nDCG)', () => {
         } catch (error) {
           if (isAbiMismatch(error)) {
             skippedFixtures.push(fixture);
+            progress(`  ⚠ skipped "${fixture}" — native module (better-sqlite3) unavailable for this Node ABI`);
             host.dispose();
             continue;
           }
           throw error;
         }
+        progress(`  ✓ indexed "${fixture}" (${Date.now() - indexStarted}ms)`);
 
         for (const q of queries) {
+          const started = Date.now();
           const items = await host.retrieveContext({ text: q.query, maxItems: 30 });
           const retrievedPaths = items.map((item) => item.relPath).filter((p): p is string => Boolean(p));
+
+          const recallAt5 = recallAtK(retrievedPaths, q.expectedFiles, 5);
+          const recallAt10 = recallAtK(retrievedPaths, q.expectedFiles, 10);
+          const ndcgAt10 = ndcgAtK(retrievedPaths, q.expectedFiles, 10);
 
           results.push({
             id: q.id,
@@ -149,11 +169,16 @@ describe('Retrieval eval (HybridRetriever baseline recall/nDCG)', () => {
             query: q.query,
             sourceType: q.sourceType,
             retrievedPaths,
-            recallAt5: recallAtK(retrievedPaths, q.expectedFiles, 5),
-            recallAt10: recallAtK(retrievedPaths, q.expectedFiles, 10),
-            ndcgAt10: ndcgAtK(retrievedPaths, q.expectedFiles, 10),
+            recallAt5,
+            recallAt10,
+            ndcgAt10,
             reciprocalRank: reciprocalRank(retrievedPaths, q.expectedFiles),
           });
+
+          queriesDone += 1;
+          progress(
+            `  [${queriesDone}/${totalQueries}] ${q.id} — recall@5=${recallAt5.toFixed(2)} recall@10=${recallAt10.toFixed(2)} ndcg@10=${ndcgAt10.toFixed(2)} (${Date.now() - started}ms)`
+          );
         }
 
         host.dispose();

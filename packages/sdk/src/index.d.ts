@@ -20,7 +20,7 @@ export declare class MitiiClient {
   query(options: Omit<MitiiQueryOptions, keyof MitiiClientOptions | 'prompt'> & { prompt: string }): AsyncIterable<MitiiEvent>;
   run(options: Omit<MitiiQueryOptions, keyof MitiiClientOptions | 'prompt'> & { prompt: string }): Promise<MitiiResult>;
   resolveApproval(id: string, decision: MitiiApprovalDecision): boolean;
-  dispose(): void;
+  dispose(): Promise<void>;
 }
 
 export declare function createClient(options: MitiiClientOptions): MitiiClient;

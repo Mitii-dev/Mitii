@@ -75,6 +75,13 @@ function verifyRule(rule, ctx) {
     if (!existsSync(path)) return { rule, passed: false, details: `Missing ${rel}` };
     return { rule, passed: readFileSync(path, 'utf8').includes(needle) };
   }
+  if (rule.startsWith('file_not_contains:')) {
+    const [rel, ...needleParts] = rule.slice('file_not_contains:'.length).split(':');
+    const needle = needleParts.join(':');
+    const path = join(ctx.cwd, rel);
+    if (!existsSync(path)) return { rule, passed: false, details: `Missing ${rel}` };
+    return { rule, passed: !readFileSync(path, 'utf8').includes(needle) };
+  }
   if (rule.startsWith('dir_has_files:')) {
     const rel = rule.slice('dir_has_files:'.length);
     const path = join(ctx.cwd, rel);

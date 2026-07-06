@@ -7,6 +7,9 @@ import { resolvePlanScope } from './PlanScopeResolver';
 import { buildPlanPromptContext } from './planPrompts';
 import { loadPlanningSkillPlaybooks, resolvePlanningSkillNames } from './planSkillRouting';
 import type { PlanDepth, PlanRunPlan } from './planTypes';
+import { createLogger } from '../../telemetry/Logger';
+
+const log = createLogger('PlanOrchestrator');
 
 export interface PlanPrepareOptions {
   workspaceRoot?: string;
@@ -21,9 +24,19 @@ export interface PlanPrepareOptions {
 
 export class PlanOrchestrator {
   static prepare(userMessage: string, options: PlanPrepareOptions = {}): PlanRunPlan {
+    log.debug('Preparing plan', {
+      messageLength: userMessage.length,
+      workspaceRoot: options.workspaceRoot,
+      planDepth: options.planDepth,
+    });
+
     const route = routePlanIntent(userMessage, options.taskAnalysis);
+    log.debug('Plan route resolved', { route });
+
     const catalog = options.catalog ?? (options.workspaceRoot ? loadProjectCatalog(options.workspaceRoot) : undefined);
     const scope = resolvePlanScope(userMessage, catalog);
+    log.debug('Plan scope resolved', { status: scope.status, reason: scope.reason, projectCount: scope.projects.length });
+
     const discoveryMaxSteps = resolvePlanDiscoveryMaxSteps(
       route.complexity,
       route.intent,
@@ -36,6 +49,17 @@ export class PlanOrchestrator {
       suggestedSkills
     );
 
+    const autoContinue = Boolean(options.planAutoContinue ?? (route.groundingRequired && route.complexity === 'high'));
+    const maxAutoContinues = resolvePlanMaxAutoContinues(route.complexity, route.intent, options.planMaxAutoContinues);
+
+    log.debug('Plan prepared', {
+      discoveryMaxSteps,
+      autoContinue,
+      maxAutoContinues,
+      suggestedSkills,
+      appliedSkills,
+    });
+
     return {
       route,
       catalog,
@@ -45,8 +69,8 @@ export class PlanOrchestrator {
         appliedSkills,
       }),
       discoveryMaxSteps,
-      autoContinue: Boolean(options.planAutoContinue ?? (route.groundingRequired && route.complexity === 'high')),
-      maxAutoContinues: resolvePlanMaxAutoContinues(route.complexity, route.intent, options.planMaxAutoContinues),
+      autoContinue,
+      maxAutoContinues,
       suggestedSkills,
       skillPlaybookContext,
       appliedSkills,

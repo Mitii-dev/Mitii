@@ -85,8 +85,8 @@ export class MitiiClient {
     return this.host?.resolveApproval(id, decision) ?? false;
   }
 
-  dispose(): void {
-    this.host?.dispose();
+  async dispose(): Promise<void> {
+    await this.host?.dispose();
     this.host = undefined;
     this.initialized = false;
   }
@@ -101,7 +101,7 @@ export async function* query(options: MitiiQueryOptions): AsyncIterable<MitiiEve
   try {
     yield* client.query(options);
   } finally {
-    client.dispose();
+    await client.dispose();
   }
 }
 

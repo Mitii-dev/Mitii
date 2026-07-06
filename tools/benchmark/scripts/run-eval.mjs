@@ -26,6 +26,7 @@ const shardSpec = valueOf(args, '--shard'); // e.g. "1/4" = shard 1 of 4
 const timeoutMs = Number(valueOf(args, '--timeout-ms') ?? '120000');
 const enablePuppeteer = args.includes('--enable-puppeteer');
 const dryRun = args.includes('--dry-run');
+const verbose = args.includes('--verbose') || args.includes('-v');
 const ensureReady = args.includes('--ensure-ready') || (!args.includes('--no-ensure-ready') && runtime === 'real');
 
 if (!existsSync(join(packageRoot, 'dist/cli.js'))) {
@@ -64,7 +65,13 @@ if (dryRun) {
   process.exit(0);
 }
 
+console.log(
+  `\nRunning ${selectedTasks.length} eval task(s) — tier=${tier}, provider=${provider}, runtime=${runtime}, concurrency=${concurrency}\n`
+);
+
 const startedAt = new Date().toISOString();
+let completedCount = 0;
+let passedCount = 0;
 const results = await runPool(selectedTasks, concurrency);
 const passed = results.filter((r) => r.passed).length;
 
@@ -117,7 +124,7 @@ async function runPool(tasks, poolSize) {
   async function worker() {
     while (next < tasks.length) {
       const i = next++;
-      results[i] = await runTaskAsync(tasks[i]);
+      results[i] = await runTaskAsync(tasks[i], i, tasks.length);
     }
   }
 
@@ -125,8 +132,10 @@ async function runPool(tasks, poolSize) {
   return results;
 }
 
-function runTaskAsync(task) {
+function runTaskAsync(task, index, total) {
   return new Promise((resolvePromise) => {
+    const label = `[${index + 1}/${total}]`;
+    console.log(`${label} ▶ ${task.id} (${task.mode}${task.fixture ? `, ${task.fixture}` : ''})`);
     const fixtureCwd = task.fixture ? join(fixtureRoot, task.fixture) : cwd;
     const extraArgs = [
       '--cwd', fixtureCwd,
@@ -153,8 +162,14 @@ function runTaskAsync(task) {
       child.kill('SIGTERM');
     }, timeoutMs);
 
-    child.stdout?.on('data', (chunk) => { stdout += chunk; });
-    child.stderr?.on('data', (chunk) => { stderr += chunk; });
+    child.stdout?.on('data', (chunk) => {
+      stdout += chunk;
+      if (verbose) process.stdout.write(`${label}   ${chunk}`);
+    });
+    child.stderr?.on('data', (chunk) => {
+      stderr += chunk;
+      if (verbose) process.stderr.write(`${label}   ${chunk}`);
+    });
 
     child.on('close', (code) => {
       clearTimeout(timer);
@@ -169,6 +184,16 @@ function runTaskAsync(task) {
         mode: task.mode,
       }));
       const passed = exitCode === 0 && verifications.every((v) => v.passed);
+
+      completedCount += 1;
+      if (passed) passedCount += 1;
+      const status = timedOut ? '⏱ TIMEOUT' : passed ? '✓ pass' : '✗ FAIL';
+      console.log(
+        `${label} ${status} — ${task.id} (${durationMs}ms) — running total: ${passedCount}/${completedCount} passed`
+      );
+      if (!passed && !verbose && stderr.trim()) {
+        console.log(`${label}   stderr: ${stderr.trim().slice(0, 500)}`);
+      }
 
       resolvePromise({
         id: task.id,

@@ -356,6 +356,9 @@ export class ChatOrchestrator {
           askMaxAutoContinues: agentConfig?.askMaxAutoContinues,
         })
       : undefined;
+    if (isPlanMode) {
+      log.debug('Entering plan mode', { sessionId: session.id, taskKind: taskAnalysis.kind, complexity: taskAnalysis.complexity });
+    }
     const planPlan = isPlanMode
       ? PlanOrchestrator.prepare(taskForClassification, {
           workspaceRoot: this.deps.workspace,
@@ -779,6 +782,7 @@ export class ChatOrchestrator {
         }
 
         if (session.mode === 'plan' && this.agentLoop?.hadPendingApproval()) {
+          log.debug('Plan paused for clarification', { sessionId: session.id });
           this.suspendContext = {
             session,
             provider,
@@ -882,6 +886,13 @@ export class ChatOrchestrator {
             steps: plan.steps.map((s) => ({ id: s.id, title: s.title, risk: s.risk, phase: s.phase })),
             appliedSkills: skillContext.appliedSkills,
           });
+          log.info('Plan ready', {
+            sessionId: session.id,
+            mode: session.mode,
+            goal: plan.goal,
+            steps: plan.steps.length,
+            qualityIssues: planQualityIssues,
+          });
 
           if (session.mode === 'agent') {
             this.setLiveStatus('Executing plan', plan.goal, 1, plan.steps.length);
@@ -958,6 +969,7 @@ export class ChatOrchestrator {
         }
 
         if (session.mode === 'plan') {
+          log.warn('Plan mode failed to produce a plan', { sessionId: session.id, issues: planQualityIssues });
           const failureText =
             '\n\n⚠️ I could not produce a plan that passed the planning quality gate. Please retry with a little more scope detail.\n';
           fullResponse += failureText;

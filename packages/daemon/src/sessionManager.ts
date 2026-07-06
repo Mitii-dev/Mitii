@@ -140,7 +140,7 @@ export class SessionManager {
     const session = this.sessions.get(id);
     if (!session) return false;
     session.abortController?.abort();
-    session.host.dispose();
+    void session.host.dispose();
     session.info.closed = true;
     session.info.running = false;
     this.sessions.delete(id);

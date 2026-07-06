@@ -77,7 +77,7 @@ export class ParallelAgentRunner {
         result: { summary, filesChanged: [] },
       });
     } finally {
-      host.dispose();
+      await host.dispose();
     }
   }
 }

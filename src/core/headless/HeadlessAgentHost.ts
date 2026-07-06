@@ -393,12 +393,13 @@ export class HeadlessAgentHost {
     };
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
     this.cancel();
     this.indexService?.dispose();
     disposeLanguageService(this.options.cwd);
     this.languageService = undefined;
     this.initialized = false;
+    await this.mcpManager.closeAll();
   }
 
   cancel(): void {

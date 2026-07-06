@@ -1,6 +1,9 @@
 import { routeAskIntent } from '../ask/AskIntentRouter';
 import type { TaskAnalysis, TaskComplexity } from '../../runtime/TaskAnalyzer';
 import type { PlanIntent, PlanRoute } from './planTypes';
+import { createLogger } from '../../telemetry/Logger';
+
+const log = createLogger('PlanIntentRouter');
 
 const GREETING_RE = /^(hi|hello|hey|thanks|thank you|ok|okay)\b/i;
 const DOCS_RE = /\b(docs?|documentation|docusaurus|mdx?|examples?)\b/i;
@@ -24,7 +27,7 @@ export function routePlanIntent(userMessage: string, taskAnalysis?: TaskAnalysis
         intent === 'audit' ||
         intent === 'spike'));
 
-  return {
+  const route: PlanRoute = {
     intent,
     complexity,
     forcePlan,
@@ -33,6 +36,9 @@ export function routePlanIntent(userMessage: string, taskAnalysis?: TaskAnalysis
     qualityProfile: complexity === 'high' || intent === 'audit' ? 'strict' : intent === 'question' ? 'relaxed' : 'standard',
     summary: summarizeRoute(intent, complexity, forcePlan),
   };
+
+  log.debug('Routed plan intent', { intent, complexity, forcePlan, groundingRequired, shouldUseSubagents });
+  return route;
 }
 
 function inferPlanIntent(text: string, taskAnalysis?: TaskAnalysis): PlanIntent {

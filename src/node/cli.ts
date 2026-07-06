@@ -172,7 +172,7 @@ async function runOneShot(mode: MitiiMode, cwd: string, args: string[], prompt: 
       process.stdout.write(`${await client.ask(prompt)}\n`);
       return 0;
     } finally {
-      client.dispose();
+      await client.dispose();
     }
   }
   if (mode === 'plan' && !json) {
@@ -181,7 +181,7 @@ async function runOneShot(mode: MitiiMode, cwd: string, args: string[], prompt: 
       process.stdout.write(`${JSON.stringify(await client.plan(prompt), null, 2)}\n`);
       return 0;
     } finally {
-      client.dispose();
+      await client.dispose();
     }
   }
 

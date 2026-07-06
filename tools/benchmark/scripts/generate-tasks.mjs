@@ -150,7 +150,7 @@ function generateFixtureAgent() {
     mode: 'agent',
     fixture: 'node-express',
     prompt: 'Fix the bug in src/routes/users.js where GET /users returns the wrong status message. Apply the fix.',
-    verify: ['exit_0', 'jsonl_event:end', 'file_contains:src/routes/users.js:success'],
+    verify: ['exit_0', 'jsonl_event:end', "file_not_contains:src/routes/users.js:status: 'ok'"],
   };
   addTask(nodeExpressFix);
 
