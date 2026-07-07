@@ -22,6 +22,9 @@ const args = process.argv.slice(2);
 const provider = valueOf(args, '--provider') ?? 'echo';
 const runtime = valueOf(args, '--runtime') ?? (provider === 'echo' ? 'stub' : 'real');
 const approval = valueOf(args, '--approval') ?? 'auto';
+const baseUrl = valueOf(args, '--base-url');
+const model = valueOf(args, '--model');
+const apiKey = valueOf(args, '--api-key');
 const concurrency = Math.max(1, Number(valueOf(args, '--concurrency') ?? '1'));
 const limit = valueOf(args, '--limit') ? Number(valueOf(args, '--limit')) : undefined;
 const timeoutMs = Number(valueOf(args, '--timeout-ms') ?? '120000');
@@ -180,7 +183,10 @@ function runTask(task, index, total) {
       '--json', // always JSON so metrics + tokens are capturable for every mode
     ];
     if (enablePuppeteer || task.enablePuppeteer) cliArgs.push('--enable-puppeteer');
-    if (task.model) cliArgs.push('--model', task.model);
+    if (baseUrl) cliArgs.push('--base-url', baseUrl);
+    if (apiKey) cliArgs.push('--api-key', apiKey);
+    const taskModel = task.model ?? model;
+    if (taskModel) cliArgs.push('--model', taskModel);
 
     console.log(`[${index + 1}/${total}] ▶ ${task.id} (${task.mode}/${task.severity}${task.fixture ? `, ${task.fixture}` : ''})`);
 
