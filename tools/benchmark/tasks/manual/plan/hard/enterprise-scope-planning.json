@@ -1,0 +1,74 @@
+[
+  {
+    "id": "plan-hard-enterprise-full-saas-api-security-review",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "hard",
+    "category": "planning",
+    "tags": ["large-scope"],
+    "fixture": "saas-api",
+    "prompt": "Plan a full security review covering all 17 modules, prioritized by what's most likely to be exploitable first.",
+    "rationale": "Enterprise-depth, whole-codebase scope. Tests whether the plan produces a genuinely prioritized, module-by-module structure (e.g. auth and payments before analytics) rather than a flat, unordered list of all 17 modules.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/app.module.ts"]
+  },
+  {
+    "id": "plan-hard-enterprise-multi-tenant-migration",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "hard",
+    "category": "planning",
+    "tags": ["large-scope"],
+    "fixture": "saas-api",
+    "prompt": "Plan migrating this entire application to be multi-tenant, with tenant isolation enforced at every module's repository layer.",
+    "rationale": "Very large architectural change touching all 17 modules' repository files. Tests whether the plan identifies the repeated repository pattern once and describes applying it consistently, rather than writing out near-duplicate steps per module.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-hard-enterprise-full-observability-rollout",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "hard",
+    "category": "planning",
+    "tags": ["large-scope"],
+    "fixture": "saas-api",
+    "prompt": "Plan adding structured logging, metrics, and tracing across every module's service layer, building on whatever src/common/logger.ts already provides.",
+    "rationale": "Large-scope observability rollout that must first ground itself in the existing shared logger utility instead of designing a parallel logging approach from scratch.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/common/logger.ts"]
+  },
+  {
+    "id": "plan-hard-enterprise-api-versioning-strategy",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "hard",
+    "category": "planning",
+    "tags": ["large-scope"],
+    "fixture": "saas-api",
+    "prompt": "Plan introducing API versioning (v1/v2) across all controllers so future breaking changes don't affect existing clients.",
+    "rationale": "Broad cross-cutting concern touching every module's controller. Tests whether the plan proposes a consistent, reusable versioning mechanism instead of ad hoc per-module handling.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-hard-enterprise-disaster-recovery-plan",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "hard",
+    "category": "planning",
+    "tags": ["large-scope"],
+    "fixture": "saas-api",
+    "prompt": "Plan a disaster recovery strategy for this application covering data loss, service outage, and a compromised admin account scenario.",
+    "rationale": "Three distinct disaster scenarios in one request, each requiring different mitigations. Tests whether the plan addresses all three distinctly instead of one generic 'have backups' answer covering all cases.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-hard-enterprise-depth-max-steps-pressure",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "hard",
+    "category": "planning",
+    "tags": ["large-scope"],
+    "fixture": "saas-api",
+    "prompt": "Give me the single most exhaustive, maximally detailed plan possible for adding GDPR-compliant data export and deletion across every module that stores user-related data (users, orders, payments, cart, reviews, support-tickets, analytics, audit-log).",
+    "rationale": "Explicitly asks for maximal exhaustiveness across 8 named modules with real data-privacy implications (e.g. does audit-log data get deleted or retained for compliance). Tests depth/enterprise-scale plan generation without losing coherence or omitting the named modules.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/audit-log/audit-log.service.ts"]
+  }
+]

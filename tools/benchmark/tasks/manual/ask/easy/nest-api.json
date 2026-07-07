@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ask-easy-nest-api-module-structure",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "What controllers and providers are registered in AppModule?",
+    "rationale": "Simple decorator-metadata lookup in src/app.module.ts (AppController, AppService).",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:AppController", "file_exists:src/app.module.ts"]
+  },
+  {
+    "id": "ask-easy-nest-api-create-user-validation",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "What validation rules apply to the fields on CreateUserDto?",
+    "rationale": "Tests reading class-validator decorators (@IsString/@IsNotEmpty on name, @IsEmail/@IsNotEmpty on email).",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:email"]
+  },
+  {
+    "id": "ask-easy-nest-api-post-users-route",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "Which HTTP method and path creates a new user, and which controller method handles it?",
+    "rationale": "Tests reading @Post('users') on AppController.createUser.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:createUser"]
+  },
+  {
+    "id": "ask-easy-nest-api-test-command",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "tooling",
+    "tags": ["verify-command"],
+    "fixture": "nest-api",
+    "prompt": "How do I run this project's tests, and is the test script a real Jest run or a placeholder?",
+    "rationale": "package.json's test script is a placeholder echo, not real Jest — tests the model doesn't assume standard NestJS tooling without reading the actual script.",
+    "verify": ["exit_0", "stdout_not_empty", "file_contains:package.json:jest placeholder"]
+  },
+  {
+    "id": "ask-easy-nest-api-spec-files",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "Which files in this project contain unit tests, and what do they cover?",
+    "rationale": "Should find app.controller.spec.ts and app.service.spec.ts, distinguishing them from the placeholder npm test script.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:spec"]
+  }
+]

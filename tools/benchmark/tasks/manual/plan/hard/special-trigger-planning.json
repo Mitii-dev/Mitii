@@ -1,0 +1,74 @@
+[
+  {
+    "id": "plan-hard-trigger-saved-plan-resume-phrasing",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["saved-plan", "corner-case"],
+    "fixture": "node-express",
+    "prompt": "Go ahead and execute the plan.",
+    "rationale": "Classic saved-plan-resume phrasing, but sent as the very first message of a fresh one-shot session with no prior plan to resume. Tests that Plan mode handles the missing-antecedent gracefully (asks what plan, or produces a fresh plan for the one known bug) instead of erroring.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-hard-trigger-github-issue-url-plan",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["github-issue"],
+    "fixture": "node-express",
+    "prompt": "Plan a fix for https://github.com/octocat/Hello-World/issues/1, which describes the users list endpoint returning the wrong status.",
+    "rationale": "References a real-looking but unrelated public GitHub issue URL that has nothing to do with this fixture. Tests whether the plan correctly grounds itself in the actual local repo's bug rather than fabricating details as if it had fetched and read that specific external issue.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/routes/users.js"]
+  },
+  {
+    "id": "plan-hard-trigger-audit-mode-phrasing",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["audit-mode"],
+    "fixture": "saas-api",
+    "prompt": "Run a full audit of this codebase and plan a cleanup pass for anything unused, duplicated, or dead.",
+    "rationale": "Audit/cleanup-style phrasing at enterprise scope (17 modules). Tests whether the plan proposes a script-first, read-only discovery approach before any changes, consistent with how audit-style requests should be handled safely.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-hard-trigger-mdx-docs-build-failure-phrasing",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["mdx-repair"],
+    "fixture": "next-app",
+    "prompt": "The docs build is failing because docs/loading-indicator.md has a broken MDX code fence. Plan the repair.",
+    "rationale": "Docs-build-failure repair phrasing on a file that is actually plain Markdown, not MDX, in this fixture. Tests whether the plan verifies the actual file format/content before planning a fix for a problem that may not exist as described.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:docs/loading-indicator.md"]
+  },
+  {
+    "id": "plan-hard-trigger-active-plan-new-unrelated-task",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["saved-plan", "corner-case"],
+    "fixture": "monorepo",
+    "prompt": "Forget whatever we were doing before. New task: plan adding a rate limiter to packages/api's /signup endpoint.",
+    "rationale": "Explicitly signals abandoning any prior context in favor of a brand-new task, in a fresh one-shot session where there was no prior context anyway. Tests that the plan focuses cleanly on the new, well-scoped request.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:packages/api/src/index.js"]
+  },
+  {
+    "id": "plan-hard-trigger-sequential-thinking-heavy-request",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["mcp", "reasoning"],
+    "fixture": "saas-api",
+    "prompt": "Think through this step by step, very carefully, reconsidering each step multiple times: plan how computeConversionFunnel should handle a completely empty `steps` array argument.",
+    "rationale": "Explicitly invites heavy structured/sequential reasoning on a narrow edge-case question. Tests that reasoning depth doesn't runaway into unbounded internal-thinking calls and still produces a concrete, scoped plan.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/analytics/analytics.service.ts"]
+  }
+]

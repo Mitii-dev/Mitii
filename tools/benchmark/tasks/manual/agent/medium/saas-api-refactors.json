@@ -1,0 +1,122 @@
+[
+  {
+    "id": "agent-medium-saas-api-extract-retry-helper",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "refactor",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Extract retryPayment's backoff-attempt calculation into a small reusable helper function within the same file, without changing its externally observable behavior.",
+    "rationale": "Behavior-preserving refactor; tests the agent keeps MAX_RETRY_ATTEMPTS semantics identical while restructuring.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/modules/payments/payments.service.ts:MAX_RETRY_ATTEMPTS"]
+  },
+  {
+    "id": "agent-medium-saas-api-users-deactivate-merge-shared-logic",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "refactor",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Refactor UsersService so deactivateUser and mergeDuplicateAccounts share a common internal update helper instead of duplicating repository update calls.",
+    "rationale": "Requires understanding both methods well enough to safely consolidate shared logic without altering behavior.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/users/users.service.ts"]
+  },
+  {
+    "id": "agent-medium-saas-api-common-error-types",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "refactor",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "Refactor PaymentsService and OrdersService's 'not found' errors to use a shared NotFoundError class from src/common/errors.ts instead of plain Error.",
+    "rationale": "Cross-module refactor requiring the agent to reuse an existing shared utility rather than inventing a new error type.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/common/errors.ts"]
+  },
+  {
+    "id": "agent-medium-saas-api-repository-interface-extraction",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "refactor",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Extract a shared Repository<T> interface that PaymentsRepository and OrdersRepository can both implement, based on their common CRUD-like methods.",
+    "rationale": "Requires comparing two real repository files to find their common shape before extracting an interface.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/payments/payments.repository.ts"]
+  },
+  {
+    "id": "agent-medium-saas-api-notifications-channel-strategy",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "refactor",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Refactor sendEmail and sendPush to go through a shared internal dispatch method that both channels call, without changing either method's public signature.",
+    "rationale": "Behavior-preserving internal refactor with an explicit public-API stability constraint.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/modules/notifications/notifications.service.ts:sendEmail"]
+  },
+  {
+    "id": "agent-medium-saas-api-shipping-rate-calculation-extraction",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "refactor",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Refactor calculateShippingRate to separate the base-rate lookup from the weight-based surcharge calculation into two distinct private methods.",
+    "rationale": "Single-file structural refactor requiring behavior preservation.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/shipping/shipping.service.ts"]
+  },
+  {
+    "id": "agent-medium-saas-api-pagination-consistency-refactor",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "refactor",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "Refactor ProductsService.list and ReviewsService.list to both use the shared pagination utility in src/common/pagination.ts consistently.",
+    "rationale": "Cross-module consistency refactor requiring the agent to check both modules' current list() implementations.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/common/pagination.ts"]
+  },
+  {
+    "id": "agent-medium-saas-api-audit-log-purge-safety",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "refactor",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Refactor purgeOldEntries to require an explicit confirm: true argument before it deletes anything, defaulting to a dry-run count otherwise.",
+    "rationale": "Safety-oriented refactor of a genuinely destructive method; tests the agent adds a real safeguard, not just a comment.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/modules/audit-log/audit-log.service.ts:confirm"]
+  },
+  {
+    "id": "agent-medium-saas-api-search-query-normalization",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "refactor",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Refactor search() to normalize (trim and lowercase) the query string before searching, sharing the normalization logic with rebuildSearchIndex if applicable.",
+    "rationale": "Tests the agent checks whether rebuildSearchIndex needs the same normalization or is a genuinely separate concern before reusing logic.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/search/search.service.ts"]
+  },
+  {
+    "id": "agent-medium-saas-api-inventory-reserve-release-symmetry",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "refactor",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Refactor reserveStock and releaseStock so they share a common internal quantity-adjustment helper instead of duplicating repository update logic.",
+    "rationale": "Requires understanding the inverse relationship between the two methods to safely share logic.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/inventory/inventory.service.ts"]
+  }
+]

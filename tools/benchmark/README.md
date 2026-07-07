@@ -12,16 +12,19 @@ tools/benchmark/
   fixtures/                   # Pinned sample repos (optional node_modules per fixture)
   tasks/
     enterprise/               # Smoke, ask, plan, agent, regression tasks
+    manual/                   # Hand-written ask/plan/agent x easy/medium/hard suite (500 target)
     eval/
       generated/              # Standard/full eval shards (gitignored, generated locally)
       generated-smoke/        # CI smoke shards (gitignored)
   scripts/
     generate-tasks.mjs
     run-eval.mjs
+    run-manual.mjs
+    validate-manual-tasks.mjs
     aggregate-results.mjs
     preflight.mjs
     ollama-matrix.sh
-  results/                    # Aggregated eval reports (gitignored)
+  results/                    # Aggregated eval + manual-suite reports (gitignored)
   inspect-ai/                 # Optional Python Inspect AI adapter
 ```
 
@@ -228,6 +231,9 @@ Override with env vars: `PROFILE`, `SHARDS`, `CONCURRENCY`, `OLLAMA_BASE_URL`, `
 | `nest-api` | NestJS modules/controllers |
 | `next-app` | Next.js App Router |
 | `saas-api` | Synthetic modular TypeScript API (~112 files, 17 modules) — see [Retrieval Eval](#retrieval-eval-recallndcg-baseline) |
+| `monorepo` | pnpm workspace, 3 packages (`shared`/`api`/`web`) — cross-package refactor corner cases |
+| `broken-repo` | Small Express API that's intentionally broken on disk (missing module + failing test) |
+| `legacy-commonjs` | Old-style callback CommonJS, no TS, no test runner, no lint config |
 
 Browser / Puppeteer tasks:
 
@@ -309,6 +315,104 @@ MITII_DEBUG=1 pnpm run eval:retrieval
 ### Reading the baseline
 
 The first baseline run showed a counter-intuitive result: the large `saas-api` fixture scored *higher* (Recall@5 ≈ 0.85) than the small hand-built fixtures (nest-api ≈ 0.08, next-app ≈ 0.21). With `MITII_DEBUG=1` this traces back to the reranker: on small repos the pre-rerank candidate pool is already tiny (10-20 items), and `LexicalContextReranker` truncates to `rerankerConfig.topK` (8 by default) using a lexical-overlap-heavy blend — so a relevant file with a bare symbol match (e.g. "AppModule") can get crowded out by higher-lexical-overlap items like bundled rules or config files. That's a real signal for follow-up work on the reranker/topK tuning; this eval harness only measures and reports it.
+
+## Manual Benchmark Suite (hand-written, 500 target)
+
+Hand-authored (never generated) test cases covering Ask, Plan, and Agent modes, tagged by
+difficulty, living under `tasks/manual/`:
+
+```text
+tools/benchmark/tasks/manual/
+  ask/   {easy,medium,hard}/*.json
+  plan/  {easy,medium,hard}/*.json
+  agent/ {easy,medium,hard}/*.json
+```
+
+Each `*.json` is an array of task objects. There is no index to hand-maintain — every file
+under `tasks/manual/**/*.json` is discovered automatically. **To add a new test case, drop a
+JSON file (or append to an existing array) in the right `<mode>/<severity>/` folder.**
+
+### Task schema
+
+```json
+{
+  "id": "agent-hard-monorepo-cross-package-rename-001",
+  "tier": "manual",
+  "mode": "agent",
+  "severity": "hard",
+  "category": "refactor",
+  "tags": ["monorepo", "cross-package", "corner-case"],
+  "fixture": "monorepo",
+  "prompt": "Rename validateEmail to isValidEmail in packages/shared and update every caller.",
+  "rationale": "Cross-package rename requires finding every consumer across workspace boundaries.",
+  "verify": ["exit_0", "jsonl_event:end", "file_not_contains:packages/shared/src/index.js:validateEmail"],
+  "timeoutMs": 180000
+}
+```
+
+- `mode` and `severity` must match the folder the file lives in (checked by the validator).
+- `rationale` is a one-line note on why the case exists / what bug or edge it targets — not
+  read by the runner, but keeps the suite auditable as it grows.
+- `timeoutMs` is an optional per-task override (hard/nuke cases may need more than the 120s
+  default).
+- `verify` uses the same rule DSL as the rest of this package (see
+  [Verification Rules](#verification-rules)), plus `stdout_not_contains:<text>`.
+
+Difficulty rubric applied while authoring:
+
+| Severity | Shape |
+|---|---|
+| `easy` | Single file, unambiguous goal, small fixture, few tool calls expected. |
+| `medium` | Multi-file coordination, some inference required, `saas-api` or multi-module work. |
+| `hard` | Monorepo cross-package work, broken-repo diagnosis, destructive/nuke prompts, prompt injection embedded in file content, malformed/contradictory instructions, saved-plan resume ambiguity, GitHub-issue/mdx-repair/audit-mode trigger phrasing. |
+
+### Running
+
+```bash
+# Validate only (fast, no model calls)
+pnpm run benchmark:manual:validate
+
+# Run everything (validates first, then executes)
+pnpm run benchmark:manual
+
+# Filter by mode / severity / tag / fixture / id substring
+node tools/benchmark/scripts/run-manual.mjs -- --mode agent --severity hard
+node tools/benchmark/scripts/run-manual.mjs -- --tag corner-case
+node tools/benchmark/scripts/run-manual.mjs -- --fixture broken-repo
+
+# Real model, e.g. Ollama
+node tools/benchmark/scripts/run-manual.mjs -- \
+  --provider openai-compatible --base-url http://localhost:11434/v1 --model qwen3-coder:30b
+```
+
+Every task always runs with `--json` (even `ask`), so a `metrics` event
+(`durationMs`, `toolCalls`, `sessionLogPath`) and the session log's `token_usage` events are
+captured uniformly across all three modes — no separate instrumentation needed.
+
+### Reports
+
+| Output | Path |
+|---|---|
+| Dated run (JSON) | `results/manual/<YYYY-MM-DD>/report-<HHMMSS>.json` |
+| Dated run (Markdown) | `results/manual/<YYYY-MM-DD>/report-<HHMMSS>.md` |
+| Latest run | `results/manual/latest.{json,md}` |
+| Trend history | `results/manual/history.md` (one row appended per run) |
+
+Each report includes, per test case: pass/fail, duration, token usage (input/output/total,
+summed per LLM turn), tool-call count, and a clickable relative link to that run's session log
+file — plus a mode × severity matrix and a category breakdown. Token counts are Mitii's own
+prompt-assembly/response-length *estimates* (`ChatOrchestrator`'s per-turn `token_usage` event),
+not provider-billed usage — the headless CLI path doesn't wire up real per-call accounting
+(that only exists on the VS Code extension's `ThunderController`). All of this reuses telemetry
+(`SessionLogService`) already emitted by the CLI; nothing new was
+instrumented.
+
+### Extending the suite
+
+New test cases just need a JSON file under the right `tasks/manual/<mode>/<severity>/`
+folder. Run `pnpm run benchmark:manual:validate` before executing — it checks for duplicate
+IDs, invalid `mode`/`severity` values, unknown `fixture` references, and unrecognized `verify`
+rules, so a malformed new case fails fast instead of silently not running.
 
 ## Inspect AI (optional)
 

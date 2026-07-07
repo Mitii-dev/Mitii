@@ -1,0 +1,86 @@
+[
+  {
+    "id": "plan-easy-saas-api-payments-list-endpoint",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Plan adding pagination to PaymentsService.list() using the shared pagination utility in src/common.",
+    "rationale": "Tests the plan references the existing src/common/pagination.ts utility rather than inventing a new pagination approach.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/common/pagination.ts"]
+  },
+  {
+    "id": "plan-easy-saas-api-orders-cancel-validation",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Plan adding a check so cancelOrder rejects orders that are already in 'cancelled' status.",
+    "rationale": "Well-scoped single-method guard clause addition.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/orders/orders.service.ts"]
+  },
+  {
+    "id": "plan-easy-saas-api-reviews-rating-bounds",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Plan validating that a review's rating is between 1 and 5 before it's created.",
+    "rationale": "Single-module validation addition with a clear, testable boundary.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/reviews/reviews.service.ts"]
+  },
+  {
+    "id": "plan-easy-saas-api-shipping-rate-rounding",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Plan rounding calculateShippingRate's output to the nearest cent.",
+    "rationale": "Small, precisely-scoped numeric-correctness planning task.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/shipping/shipping.service.ts"]
+  },
+  {
+    "id": "plan-easy-saas-api-http-exception-filter-docs",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["saas-api", "docs"],
+    "fixture": "saas-api",
+    "prompt": "Plan adding doc comments to src/common/http-exception.filter.ts explaining its error-shape contract.",
+    "rationale": "Docs-only planning task on a shared utility file.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/common/http-exception.filter.ts"]
+  },
+  {
+    "id": "plan-easy-saas-api-notifications-retry",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Plan adding a retry on sendEmail if it fails once, before giving up.",
+    "rationale": "Well-scoped single-method resilience addition.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/notifications/notifications.service.ts"]
+  },
+  {
+    "id": "plan-easy-saas-api-search-empty-query",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Plan making search() return an empty array immediately for an empty query string instead of hitting the index.",
+    "rationale": "Small, well-defined optimization/edge-case planning task.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/search/search.service.ts"]
+  }
+]

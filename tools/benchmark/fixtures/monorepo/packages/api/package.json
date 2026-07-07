@@ -1,0 +1,9 @@
+{
+  "name": "@mono/api",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "dependencies": {
+    "@mono/shared": "workspace:*",
+    "express": "^4.19.2"
+  }
+}

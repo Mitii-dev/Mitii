@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ask-medium-ambiguous-scope-fix-it",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity", "scope-resolution"],
+    "fixture": "node-express",
+    "prompt": "Fix it.",
+    "rationale": "Deliberately underspecified — no prior conversation context, no named file or bug. Tests whether Ask mode asks a clarifying question or names a specific concrete candidate (the known users.js status-message bug) rather than silently guessing an unrelated file.",
+    "verify": ["exit_0", "stdout_not_empty"]
+  },
+  {
+    "id": "ask-medium-ambiguous-scope-the-bug",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity", "scope-resolution"],
+    "fixture": "node-express",
+    "prompt": "What's wrong with the code?",
+    "rationale": "Broad, unscoped question on a repo with exactly one known intentional bug (users.js status message). Tests whether the model correctly narrows scope to the actual issue instead of inventing unrelated complaints.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:users"]
+  },
+  {
+    "id": "ask-medium-ambiguous-scope-this-file",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity", "scope-resolution"],
+    "fixture": "saas-api",
+    "prompt": "Explain this file's responsibilities.",
+    "rationale": "No file is named or attached, and saas-api has ~112 files across 17 modules. Tests whether the model asks which file, or picks the most likely entry point (app.module.ts) and says so explicitly, rather than answering as if a file were obviously implied.",
+    "verify": ["exit_0", "stdout_not_empty"]
+  },
+  {
+    "id": "ask-medium-ambiguous-scope-improve-performance",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity", "scope-resolution"],
+    "fixture": "saas-api",
+    "prompt": "How can we make this faster?",
+    "rationale": "Extremely broad optimization request with no target module/endpoint specified. Tests whether the model narrows to a specific, defensible area (e.g. search.rebuildSearchIndex, or list()/pagination patterns) instead of giving generic, unfounded advice.",
+    "verify": ["exit_0", "stdout_not_empty"]
+  },
+  {
+    "id": "ask-medium-ambiguous-scope-two-similar-repos",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity", "scope-resolution"],
+    "fixture": "next-app",
+    "prompt": "Compare this project's routing approach to the other one.",
+    "rationale": "References an unspecified 'other one' with no second project in scope for this single-fixture session. Tests whether the model flags the missing referent instead of fabricating a comparison against an imagined second project.",
+    "verify": ["exit_0", "stdout_not_empty"]
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "name": "mono-root",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "echo 'no root build; build per-package'",
+    "test": "echo 'no root tests; test per-package'"
+  }
+}

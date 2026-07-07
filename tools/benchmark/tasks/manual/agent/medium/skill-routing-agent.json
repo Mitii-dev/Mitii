@@ -1,0 +1,122 @@
+[
+  {
+    "id": "agent-medium-skill-tdd-routing",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "skills",
+    "tags": ["skill-routing"],
+    "fixture": "react-vite",
+    "prompt": "Follow a test-driven approach to add a new 'ghost' variant to the Button component.",
+    "rationale": "Explicit TDD phrasing should route through the test-driven-development skill playbook.",
+    "verify": ["exit_0", "jsonl_event:end", "skills_installed:10"]
+  },
+  {
+    "id": "agent-medium-skill-debugging-routing",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "skills",
+    "tags": ["skill-routing"],
+    "fixture": "broken-repo",
+    "prompt": "Debug why `npm start` crashes in this repo and fix the root cause.",
+    "rationale": "Explicit debugging phrasing on a genuinely crashing repo should route through debugging-and-error-recovery.",
+    "verify": ["exit_0", "jsonl_event:end", "skills_installed:10", "file_exists:src/db.js"]
+  },
+  {
+    "id": "agent-medium-skill-performance-routing",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "skills",
+    "tags": ["skill-routing"],
+    "fixture": "saas-api",
+    "prompt": "Optimize rebuildSearchIndex for better performance on large datasets.",
+    "rationale": "Explicit performance phrasing should route through performance-optimization.",
+    "verify": ["exit_0", "jsonl_event:end", "skills_installed:10", "file_exists:src/modules/search/search.service.ts"]
+  },
+  {
+    "id": "agent-medium-skill-code-review-routing",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "skills",
+    "tags": ["skill-routing"],
+    "fixture": "nest-api",
+    "prompt": "Review AppController and AppService for code quality issues and fix anything you find.",
+    "rationale": "Explicit review phrasing should route through code-review-and-quality.",
+    "verify": ["exit_0", "jsonl_event:end", "skills_installed:10"]
+  },
+  {
+    "id": "agent-medium-skill-audit-cleanup-routing",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "skills",
+    "tags": ["skill-routing", "audit-mode"],
+    "fixture": "saas-api",
+    "prompt": "Do a cleanup audit of the admin module and remove anything unused or dead.",
+    "rationale": "Explicit audit/cleanup phrasing should route through audit-cleanup with a script-first, read-only discovery approach.",
+    "verify": ["exit_0", "jsonl_event:end", "skills_installed:10", "file_exists:src/modules/admin/admin.service.ts"]
+  },
+  {
+    "id": "agent-medium-skill-git-workflow-routing",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "skills",
+    "tags": ["skill-routing"],
+    "fixture": "node-express",
+    "prompt": "Fix the users.js bug and prepare it as a properly formatted commit with a good commit message.",
+    "rationale": "Explicit commit/versioning phrasing should route through git-workflow-and-versioning alongside the actual fix.",
+    "verify": ["exit_0", "jsonl_event:end", "skills_installed:10", "file_not_contains:src/routes/users.js:status: 'ok'"]
+  },
+  {
+    "id": "agent-medium-skill-environment-secrets-routing",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "skills",
+    "tags": ["skill-routing", "security"],
+    "fixture": "saas-api",
+    "prompt": "Set up environment variable configuration for the webhook signing secret instead of any hardcoded value.",
+    "rationale": "Explicit environment/secrets phrasing should route through environment-and-secrets.",
+    "verify": ["exit_0", "jsonl_event:end", "skills_installed:10"]
+  },
+  {
+    "id": "agent-medium-skill-code-smells-routing",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "skills",
+    "tags": ["skill-routing"],
+    "fixture": "legacy-commonjs",
+    "prompt": "Identify and fix code smells and tech debt in lib/utils.js's callback style.",
+    "rationale": "Explicit tech-debt phrasing should route through code-smells-and-tech-debt.",
+    "verify": ["exit_0", "jsonl_event:end", "skills_installed:10", "file_exists:lib/utils.js"]
+  },
+  {
+    "id": "agent-medium-skill-planning-breakdown-routing",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "skills",
+    "tags": ["skill-routing"],
+    "fixture": "saas-api",
+    "prompt": "Break this down into small steps and implement a full GDPR data-export feature for the users module.",
+    "rationale": "Explicit task-breakdown phrasing should route through planning-and-task-breakdown before implementation.",
+    "verify": ["exit_0", "jsonl_event:end", "skills_installed:10", "file_exists:src/modules/users/users.service.ts"]
+  },
+  {
+    "id": "agent-medium-skill-browser-testing-routing",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "skills",
+    "tags": ["skill-routing"],
+    "fixture": "react-vite",
+    "prompt": "After adding the danger variant to Button, verify visually in the browser that it renders with distinct styling.",
+    "rationale": "Explicit browser-verification phrasing should route through browser-testing-with-devtools guidance (Puppeteer MCP), even without --enable-puppeteer set.",
+    "verify": ["exit_0", "jsonl_event:end", "skills_installed:10"]
+  }
+]

@@ -1,0 +1,74 @@
+[
+  {
+    "id": "plan-easy-legacy-commonjs-test-runner-setup",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["legacy", "testing"],
+    "fixture": "legacy-commonjs",
+    "prompt": "Plan introducing a test runner and a first test for routes/users.js.",
+    "rationale": "Tests planning from a zero-tooling baseline (no test script exists at all) rather than assuming test infra is already present.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:routes/users.js"]
+  },
+  {
+    "id": "plan-easy-legacy-commonjs-post-users-route",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["legacy"],
+    "fixture": "legacy-commonjs",
+    "prompt": "Plan adding a POST /users route that appends a new user to data/users.json.",
+    "rationale": "Tests planning a write-path addition consistent with the existing raw http + callback style, not introducing Express unasked.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:data/users.json"]
+  },
+  {
+    "id": "plan-easy-legacy-commonjs-promisify-utils",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["legacy", "modernization"],
+    "fixture": "legacy-commonjs",
+    "prompt": "Plan converting lib/utils.js's callback-based functions to return Promises, without breaking existing callers.",
+    "rationale": "Tests planning a style migration that accounts for backward compatibility with routes/users.js's existing callback usage.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:lib/utils.js"]
+  },
+  {
+    "id": "plan-easy-legacy-commonjs-error-handling",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["legacy"],
+    "fixture": "legacy-commonjs",
+    "prompt": "Plan adding proper error responses (500 status) when readJsonFile fails in the /users handler.",
+    "rationale": "Well-scoped error-handling addition to an existing callback chain.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-easy-legacy-commonjs-package-json-metadata",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["legacy", "docs"],
+    "fixture": "legacy-commonjs",
+    "prompt": "Plan adding a description, license, and repository field to package.json.",
+    "rationale": "Minimal, low-risk metadata planning task.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:package.json"]
+  },
+  {
+    "id": "plan-easy-legacy-commonjs-graceful-shutdown",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["legacy"],
+    "fixture": "legacy-commonjs",
+    "prompt": "Plan adding graceful shutdown handling (SIGTERM/SIGINT) to server.js.",
+    "rationale": "Common, well-scoped operational hardening task for a raw http server.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:server.js"]
+  }
+]

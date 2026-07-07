@@ -1,0 +1,26 @@
+[
+  {
+    "id": "ask-easy-smoke-node-summary",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["smoke", "infra"],
+    "fixture": "node-express",
+    "prompt": "Summarize this project's structure and identify the main entry point.",
+    "rationale": "Infra smoke case: proves the manual runner wires ask mode + node-express fixture end to end.",
+    "verify": ["exit_0", "stdout_contains:Echo:"]
+  },
+  {
+    "id": "ask-easy-smoke-legacy-commonjs-summary",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["smoke", "infra", "legacy"],
+    "fixture": "legacy-commonjs",
+    "prompt": "Explain what this server does and how routes are wired.",
+    "rationale": "Infra smoke case: proves the new legacy-commonjs fixture is reachable by the runner.",
+    "verify": ["exit_0", "stdout_contains:Echo:"]
+  }
+]

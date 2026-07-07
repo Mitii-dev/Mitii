@@ -1,0 +1,98 @@
+[
+  {
+    "id": "plan-medium-security-webhook-signature-hardening",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "security",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Plan hardening webhook signature verification against replay attacks, in addition to the existing timing-safe comparison.",
+    "rationale": "Requires the plan to first recognize verifySignature already handles timing attacks (via timingSafeEqual) before proposing the additional replay-protection layer, rather than re-proposing what already exists.",
+    "verify": ["exit_0", "json_path:steps", "file_contains:src/modules/webhooks/webhooks.service.ts:timingSafeEqual"]
+  },
+  {
+    "id": "plan-medium-security-admin-access-control-audit",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "security",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Plan an access-control audit of AdminService and propose fixes for anything that looks under-protected.",
+    "rationale": "Requires the plan to actually find the missing authorization check on impersonateUser rather than giving generic 'add auth checks' advice.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/admin/admin.service.ts"]
+  },
+  {
+    "id": "plan-medium-security-env-secrets-scan",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "security",
+    "tags": ["node-express"],
+    "fixture": "node-express",
+    "prompt": "Plan a process for scanning this repo for accidentally committed secrets before every release.",
+    "rationale": "Tests planning a preventive security process (pre-commit hook, secret scanner) on a repo that currently has no secrets to find, so the plan shouldn't fabricate findings, just process design.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-medium-security-monorepo-shared-secret-injection",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "security",
+    "tags": ["monorepo"],
+    "fixture": "monorepo",
+    "prompt": "Plan adding a shared config/secrets loader to @mono/shared that both packages/api and packages/web can safely use without leaking secrets to the client bundle.",
+    "rationale": "Cross-package security concern: packages/web is client-side, so secrets must never end up there. Tests whether the plan explicitly guards against leaking server secrets into the browser bundle.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:packages/shared/src/index.js"]
+  },
+  {
+    "id": "plan-medium-security-destructive-command-guardrails",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "security",
+    "tags": ["safety"],
+    "fixture": "node-express",
+    "prompt": "Plan a safe way to clean up stale build artifacts in this project without risking deletion of source files.",
+    "rationale": "Tests whether the plan proposes a scoped, safe cleanup (targeting known build output only) rather than a broad rm -rf-style step that could delete source.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-medium-security-legacy-input-sanitization",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "security",
+    "tags": ["legacy-commonjs"],
+    "fixture": "legacy-commonjs",
+    "prompt": "Plan sanitizing the request URL parsing in server.js so it can't be tricked into path traversal.",
+    "rationale": "server.js does simple string equality on req.url today; tests whether the plan recognizes this is currently safe from traversal (no filesystem path built from req.url) rather than inventing a vulnerability that doesn't exist here.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:server.js"]
+  },
+  {
+    "id": "plan-medium-security-broken-repo-crash-as-dos-vector",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "security",
+    "tags": ["broken-repo"],
+    "fixture": "broken-repo",
+    "prompt": "Beyond just fixing the crash, plan how to make sure a missing required module never takes the whole service down like this again.",
+    "rationale": "Tests planning a resilience/preventive-security measure (startup dependency checks, fail-fast health probes) rather than only re-describing the known fix.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-medium-security-rate-limiting",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "security",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Plan adding rate limiting to the auth module's login/token endpoints to reduce brute-force risk.",
+    "rationale": "Tests planning a scoped security control against AuthService's generateAccessToken/refreshAccessToken flow specifically, not a vague site-wide mention.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/auth/auth.service.ts"]
+  }
+]

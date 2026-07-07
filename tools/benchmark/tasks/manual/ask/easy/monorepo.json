@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ask-easy-monorepo-package-list",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["monorepo"],
+    "fixture": "monorepo",
+    "prompt": "What packages exist in this workspace, and what does each one do at a high level?",
+    "rationale": "Tests enumerating packages/shared, packages/api, packages/web from the workspace layout.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:shared", "stdout_contains:api", "stdout_contains:web"]
+  },
+  {
+    "id": "ask-easy-monorepo-shared-exports",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["monorepo"],
+    "fixture": "monorepo",
+    "prompt": "What functions or classes does @mono/shared export?",
+    "rationale": "Single-package lookup: validateEmail function and Logger class from packages/shared/src/index.js.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:validateEmail", "file_exists:packages/shared/src/index.js"]
+  },
+  {
+    "id": "ask-easy-monorepo-workspace-manager",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "tooling",
+    "tags": ["monorepo"],
+    "fixture": "monorepo",
+    "prompt": "What package manager and workspace mechanism does this repo use to link its packages together?",
+    "rationale": "Tests reading pnpm-workspace.yaml and the workspace:* dependency protocol in packages/api and packages/web.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:workspace", "file_exists:pnpm-workspace.yaml"]
+  },
+  {
+    "id": "ask-easy-monorepo-api-validation",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["monorepo"],
+    "fixture": "monorepo",
+    "prompt": "How does the /signup endpoint in packages/api validate the submitted email?",
+    "rationale": "Tests tracing packages/api/src/index.js's call into @mono/shared's validateEmail, i.e. cross-package retrieval within one easy question.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:validateEmail"]
+  },
+  {
+    "id": "ask-easy-monorepo-no-root-build",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "corner-case",
+    "tags": ["monorepo"],
+    "fixture": "monorepo",
+    "prompt": "Does running the root package.json's build script actually build anything?",
+    "rationale": "Corner case: the root build script is a no-op echo placeholder telling you to build per-package. Tests the model reads the actual script text instead of assuming a root build exists.",
+    "verify": ["exit_0", "stdout_not_empty", "file_contains:package.json:no root build"]
+  }
+]

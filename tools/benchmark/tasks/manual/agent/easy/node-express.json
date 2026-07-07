@@ -1,0 +1,122 @@
+[
+  {
+    "id": "agent-easy-node-express-fix-status-message",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "bugfix",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "Fix the bug in src/routes/users.js where the list endpoint returns the wrong status message. Return just the array of users instead.",
+    "rationale": "Canonical single-file bugfix with an unambiguous, verifiable outcome.",
+    "verify": ["exit_0", "jsonl_event:end", "file_not_contains:src/routes/users.js:status: 'ok'"]
+  },
+  {
+    "id": "agent-easy-node-express-add-timestamp-health",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "Add a timestamp field to the /health endpoint's JSON response.",
+    "rationale": "Small, well-scoped feature addition to a single route handler.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/index.js:timestamp"]
+  },
+  {
+    "id": "agent-easy-node-express-404-handler",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "Add a catch-all JSON 404 handler for unmatched routes in src/index.js.",
+    "rationale": "Common Express addition with a clear, checkable outcome.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/index.js"]
+  },
+  {
+    "id": "agent-easy-node-express-user-id-validation",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "Add validation to GET /users/:id so a non-numeric id returns a 400 error instead of a fake user.",
+    "rationale": "Scoped validation addition to one existing route handler.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/routes/users.js:400"]
+  },
+  {
+    "id": "agent-easy-node-express-add-test",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "testing",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "Add a test verifying GET /users returns an empty array, using the existing node:test setup.",
+    "rationale": "Tests the agent uses the project's actual test runner (node --test) rather than introducing jest/mocha.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:test/users.test.js"]
+  },
+  {
+    "id": "agent-easy-node-express-request-logging",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "Add basic request logging middleware that logs the method and path for every incoming request.",
+    "rationale": "Well-scoped Express middleware addition.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/index.js"]
+  },
+  {
+    "id": "agent-easy-node-express-json-body-limit",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "Configure express.json() with a 100kb request body size limit.",
+    "rationale": "Small, precise configuration change with a clear, testable outcome.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/index.js:express.json"]
+  },
+  {
+    "id": "agent-easy-node-express-port-env-fallback-fix",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "refactor",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "Make the port configurable via a PORT_NUMBER environment variable in addition to the existing PORT variable, preferring PORT_NUMBER if both are set.",
+    "rationale": "Small refactor with precise, checkable precedence behavior.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/index.js:PORT_NUMBER"]
+  },
+  {
+    "id": "agent-easy-node-express-users-route-doc-comment",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "docs",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "Add a short doc comment above each route in src/routes/users.js explaining what it returns.",
+    "rationale": "Docs-only change routed correctly instead of being misclassified as a bugfix (mirrors the real README-vs-bugfix regression fixed in ActIntentRouter).",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/routes/users.js"]
+  },
+  {
+    "id": "agent-easy-node-express-readme-create",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "docs",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "Create a README.md documenting how to install, run, and test this project.",
+    "rationale": "Docs-creation task; tests the agent references the real npm scripts (start, test, lint) rather than generic boilerplate.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:README.md", "file_contains:README.md:node --test"]
+  }
+]

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ask-easy-legacy-commonjs-server-routing",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["legacy", "single-file"],
+    "fixture": "legacy-commonjs",
+    "prompt": "How does server.js decide which handler to call for an incoming request?",
+    "rationale": "Tests reading a raw http.createServer callback with manual req.url/req.method checks, no framework/router abstraction.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:/users", "file_exists:server.js"]
+  },
+  {
+    "id": "ask-easy-legacy-commonjs-callback-style",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["legacy"],
+    "fixture": "legacy-commonjs",
+    "prompt": "Does routes/users.js use promises/async-await or callbacks to read user data? Show where.",
+    "rationale": "Tests correctly identifying old-style callback code (utils.readJsonFile(path, callback)) instead of assuming modern async/await.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:callback"]
+  },
+  {
+    "id": "ask-easy-legacy-commonjs-data-source",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["legacy"],
+    "fixture": "legacy-commonjs",
+    "prompt": "Where does the GET /users endpoint get its list of users from?",
+    "rationale": "Tests tracing routes/users.js -> lib/utils.js readJsonFile -> data/users.json.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:users.json", "file_exists:data/users.json"]
+  },
+  {
+    "id": "ask-easy-legacy-commonjs-no-test-script",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "tooling",
+    "tags": ["verify-command", "corner-case"],
+    "fixture": "legacy-commonjs",
+    "prompt": "What command should I run to execute this project's automated tests?",
+    "rationale": "Corner case: package.json has no test script at all. The model must say so honestly instead of inventing a plausible-sounding `npm test`.",
+    "verify": ["exit_0", "stdout_not_empty", "file_not_contains:package.json:\"test\":"]
+  },
+  {
+    "id": "ask-easy-legacy-commonjs-module-format",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["legacy"],
+    "fixture": "legacy-commonjs",
+    "prompt": "Does this project use ES modules or CommonJS? How can you tell?",
+    "rationale": "Tests recognizing require()/module.exports usage and absence of a \"type\": \"module\" field.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:CommonJS"]
+  }
+]

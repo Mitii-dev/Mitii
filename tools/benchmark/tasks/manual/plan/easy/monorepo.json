@@ -1,0 +1,74 @@
+[
+  {
+    "id": "plan-easy-monorepo-shared-utility-addition",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["monorepo"],
+    "fixture": "monorepo",
+    "prompt": "Plan adding a formatPhoneNumber utility function to @mono/shared.",
+    "rationale": "Single-package addition; tests the plan correctly scopes work to packages/shared only.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:packages/shared/src/index.js"]
+  },
+  {
+    "id": "plan-easy-monorepo-api-test-setup",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["monorepo", "testing"],
+    "fixture": "monorepo",
+    "prompt": "Plan adding a test script and first test for packages/api, since it currently has none.",
+    "rationale": "Tests noticing packages/api/package.json has no test script, unlike packages/shared which does.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:packages/api/package.json"]
+  },
+  {
+    "id": "plan-easy-monorepo-web-error-message",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["monorepo"],
+    "fixture": "monorepo",
+    "prompt": "Plan improving the email validation error message shown in packages/web's App component.",
+    "rationale": "Single-package UI change scoped to packages/web only.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:packages/web/src/App.tsx"]
+  },
+  {
+    "id": "plan-easy-monorepo-shared-package-tests",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["monorepo", "testing"],
+    "fixture": "monorepo",
+    "prompt": "Plan adding unit tests for validateEmail and Logger in @mono/shared.",
+    "rationale": "Tests planning against the existing node --test runner already configured for packages/shared.",
+    "verify": ["exit_0", "json_path:steps", "file_contains:packages/shared/package.json:node --test"]
+  },
+  {
+    "id": "plan-easy-monorepo-root-readme",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["monorepo", "docs"],
+    "fixture": "monorepo",
+    "prompt": "Plan writing a root README explaining the three packages and how they relate.",
+    "rationale": "Docs-only planning task scoped to the whole workspace, but read-only in nature.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-easy-monorepo-signup-status-code",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["monorepo"],
+    "fixture": "monorepo",
+    "prompt": "Plan changing the /signup endpoint in packages/api to return 422 instead of 400 for invalid emails.",
+    "rationale": "Single-package, single-line-level change with a clear success criterion.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:packages/api/src/index.js"]
+  }
+]

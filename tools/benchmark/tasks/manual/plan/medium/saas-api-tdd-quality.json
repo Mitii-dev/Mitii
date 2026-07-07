@@ -1,0 +1,98 @@
+[
+  {
+    "id": "plan-medium-saas-api-tdd-payments-retry",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["saas-api", "tdd"],
+    "fixture": "saas-api",
+    "prompt": "Plan a test-driven development pass for retryPayment: write failing tests first, then make them pass.",
+    "rationale": "Tests whether the plan's phase ordering genuinely puts test-writing before implementation, matching a real TDD workflow rather than listing tests as an afterthought.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/payments/payments.service.ts"]
+  },
+  {
+    "id": "plan-medium-saas-api-tdd-inventory-reservation",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["saas-api", "tdd"],
+    "fixture": "saas-api",
+    "prompt": "Plan a TDD pass covering the reserveStock/releaseStock pair, including a test for the case where release is called without a prior reserve.",
+    "rationale": "Tests the plan calls out an explicit edge case (release-without-reserve) rather than only covering the happy path.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/inventory/inventory.service.ts"]
+  },
+  {
+    "id": "plan-medium-saas-api-quality-gate-vague-criteria",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["saas-api", "quality-gate"],
+    "fixture": "saas-api",
+    "prompt": "Plan making the payments module 'more robust'.",
+    "rationale": "Deliberately vague success criteria. Tests whether the plan translates 'more robust' into concrete, checkable success criteria (specific error cases, retry limits, tests) instead of restating the vague goal as a step.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-medium-saas-api-quality-gate-conflicting-priorities",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["saas-api", "quality-gate"],
+    "fixture": "saas-api",
+    "prompt": "Plan a fast, minimal patch for the shipping rate rounding bug, but also make sure it's fully tested with 100% coverage of edge cases.",
+    "rationale": "The two goals ('fast, minimal' vs '100% coverage of edge cases') are in tension. Tests whether the plan acknowledges the tradeoff explicitly rather than silently picking one and ignoring the other.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/shipping/shipping.service.ts"]
+  },
+  {
+    "id": "plan-medium-saas-api-regression-test-suite-gap",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["saas-api", "testing"],
+    "fixture": "saas-api",
+    "prompt": "Plan a regression test suite for the reviews module covering flagReview and computeAverageRating together.",
+    "rationale": "Tests whether the plan considers the interaction between the two methods (does a flagged review still count toward the average) as part of the test design, not just two isolated unit tests.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/reviews/reviews.service.ts"]
+  },
+  {
+    "id": "plan-medium-saas-api-search-index-consistency-tests",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["saas-api", "testing"],
+    "fixture": "saas-api",
+    "prompt": "Plan tests verifying rebuildSearchIndex produces consistent results when called twice in a row.",
+    "rationale": "Tests planning an idempotency check, a less obvious test dimension than a basic happy-path assertion.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/search/search.service.ts"]
+  },
+  {
+    "id": "plan-medium-saas-api-quality-gate-undefined-done",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["saas-api", "quality-gate"],
+    "fixture": "saas-api",
+    "prompt": "Plan improving analytics performance. Let me know when it's done.",
+    "rationale": "No baseline, no target metric, no scope. Tests whether the plan defines what 'done' concretely means (e.g. specific method, specific latency target) instead of producing steps with no verifiable completion criteria.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-medium-saas-api-e2e-checkout-test-plan",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["saas-api", "testing", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "Plan an end-to-end test covering the full path from adding an item to a cart through checkoutCart to a created order.",
+    "rationale": "Requires the plan to sequence a realistic cross-module (cart -> orders) end-to-end scenario, not just isolated unit tests.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/cart/cart.service.ts"]
+  }
+]

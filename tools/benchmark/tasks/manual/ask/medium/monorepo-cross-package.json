@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ask-medium-monorepo-shared-consumers",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "retrieval",
+    "tags": ["monorepo", "cross-package"],
+    "fixture": "monorepo",
+    "prompt": "Which packages depend on @mono/shared and what does each one use from it?",
+    "rationale": "Requires checking both packages/api and packages/web's package.json + source imports, not just one consumer.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:validateEmail", "stdout_contains:api", "stdout_contains:web"]
+  },
+  {
+    "id": "ask-medium-monorepo-logger-usage",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "retrieval",
+    "tags": ["monorepo", "cross-package"],
+    "fixture": "monorepo",
+    "prompt": "@mono/shared exports a Logger class. Is it actually used anywhere in packages/api or packages/web, or just defined and unused?",
+    "rationale": "Logger is used in packages/api/src/index.js but never imported in packages/web/src/App.tsx — tests precise per-package verification instead of a blanket 'yes it's used'.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:Logger"]
+  },
+  {
+    "id": "ask-medium-monorepo-web-server-side-validation-gap",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "reasoning",
+    "tags": ["monorepo", "cross-package"],
+    "fixture": "monorepo",
+    "prompt": "packages/web validates email client-side before submitting. Does packages/api independently validate it again server-side, or does it trust the client?",
+    "rationale": "Both packages/web/src/App.tsx and packages/api/src/index.js call validateEmail independently — tests whether the model verifies both sides rather than assuming trust-the-client from only reading one file.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:validateEmail", "file_exists:packages/api/src/index.js"]
+  },
+  {
+    "id": "ask-medium-monorepo-package-manager-scope",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "tooling",
+    "tags": ["monorepo"],
+    "fixture": "monorepo",
+    "prompt": "If I only want to run tests for @mono/shared without touching the other packages, what should I check for first?",
+    "rationale": "Tests recognizing that only packages/shared/package.json defines a test script (node --test test/); api and web have none.",
+    "verify": ["exit_0", "stdout_not_empty", "file_contains:packages/shared/package.json:test"]
+  },
+  {
+    "id": "ask-medium-monorepo-express-dependency-scope",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "retrieval",
+    "tags": ["monorepo", "cross-package"],
+    "fixture": "monorepo",
+    "prompt": "Which package in this workspace depends on express, and is that dependency declared at the root or inside that package?",
+    "rationale": "express is a dependency of packages/api specifically, not the workspace root — tests correct dependency scoping in a monorepo rather than assuming a single flat node_modules answer.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:express", "file_exists:packages/api/package.json"]
+  }
+]

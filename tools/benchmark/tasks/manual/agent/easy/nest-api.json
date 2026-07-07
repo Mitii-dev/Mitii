@@ -1,0 +1,122 @@
+[
+  {
+    "id": "agent-easy-nest-api-health-endpoint",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "Add a GET /health endpoint to AppController returning { status: 'ok' }.",
+    "rationale": "Well-scoped NestJS controller addition with an unambiguous outcome.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/app.controller.ts:health"]
+  },
+  {
+    "id": "agent-easy-nest-api-get-users-endpoint",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "Add a GET /users endpoint returning an in-memory array of created users from AppService.",
+    "rationale": "Extends existing AppService/AppController with a matching read-side endpoint.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/app.controller.ts:GET", "file_exists:src/app.service.ts"]
+  },
+  {
+    "id": "agent-easy-nest-api-validation-pipe",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "bugfix",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "Wire a global ValidationPipe in main.ts so CreateUserDto's class-validator decorators are actually enforced.",
+    "rationale": "Fixes a real gap: decorators alone don't validate without a ValidationPipe in Nest.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/main.ts:ValidationPipe"]
+  },
+  {
+    "id": "agent-easy-nest-api-exception-filter",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "Add a global exception filter returning a consistent JSON error shape { statusCode, message }.",
+    "rationale": "Standard NestJS pattern, well-scoped to one new filter file plus main.ts wiring.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-easy-nest-api-dto-optional-field",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "Add an optional phoneNumber field to CreateUserDto, validated as a string when present.",
+    "rationale": "Small, precise DTO field addition with clear validation semantics.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/create-user.dto.ts:phoneNumber"]
+  },
+  {
+    "id": "agent-easy-nest-api-service-unit-test",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "testing",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "Add a test in app.service.spec.ts covering createUser's returned message format.",
+    "rationale": "Extends an existing real spec file rather than the placeholder npm test script.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/app.service.spec.ts"]
+  },
+  {
+    "id": "agent-easy-nest-api-module-doc-comment",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "docs",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "Add a doc comment above AppModule explaining what it composes.",
+    "rationale": "Docs-only, low-risk change correctly routed away from bugfix/refactor classification.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/app.module.ts"]
+  },
+  {
+    "id": "agent-easy-nest-api-hello-message-config",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "refactor",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "Make AppService.getHello's greeting message configurable via a constructor parameter with the current text as the default.",
+    "rationale": "Small, precise refactor with a clear default-preserving requirement.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/app.service.ts"]
+  },
+  {
+    "id": "agent-easy-nest-api-package-json-description",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "docs",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "Add a description field to package.json summarizing what this API does.",
+    "rationale": "Minimal metadata-only edit.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:package.json:description"]
+  },
+  {
+    "id": "agent-easy-nest-api-cors-enable",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "Enable CORS for this API in main.ts.",
+    "rationale": "Common, well-scoped bootstrap configuration change.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/main.ts:enableCors"]
+  }
+]

@@ -1,0 +1,122 @@
+[
+  {
+    "id": "agent-easy-next-app-seo-metadata",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "next-app",
+    "prompt": "Add an Open Graph title and description to app/layout.tsx's metadata export.",
+    "rationale": "Well-scoped metadata addition to the existing export.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:app/layout.tsx:openGraph"]
+  },
+  {
+    "id": "agent-easy-next-app-error-boundary",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "next-app",
+    "prompt": "Add an error.tsx for the home route following Next.js App Router conventions.",
+    "rationale": "Tests correct App Router file-naming convention alongside the existing loading.tsx.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:app/error.tsx"]
+  },
+  {
+    "id": "agent-easy-next-app-about-page",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "next-app",
+    "prompt": "Add a new /about route with a simple static page saying 'About this benchmark app'.",
+    "rationale": "Common App Router addition with a clear file-path convention.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:app/about/page.tsx"]
+  },
+  {
+    "id": "agent-easy-next-app-home-page-cta",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "next-app",
+    "prompt": "Add a link on the home page pointing to /about.",
+    "rationale": "Small, single-file addition with an unambiguous outcome.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:app/page.tsx:about"]
+  },
+  {
+    "id": "agent-easy-next-app-loading-docs-sync",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "docs",
+    "tags": ["single-file"],
+    "fixture": "next-app",
+    "prompt": "Update docs/loading-indicator.md's embedded code sample if it has drifted from the actual app/loading.tsx source.",
+    "rationale": "Tests the agent diffs the doc's code block against the live source before deciding whether to change anything.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:docs/loading-indicator.md"]
+  },
+  {
+    "id": "agent-easy-next-app-favicon-metadata",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "next-app",
+    "prompt": "Add an icons entry to app/layout.tsx's metadata for a favicon at /favicon.ico.",
+    "rationale": "Small, well-defined metadata addition.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:app/layout.tsx:icons"]
+  },
+  {
+    "id": "agent-easy-next-app-package-json-test-note",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "docs",
+    "tags": ["single-file"],
+    "fixture": "next-app",
+    "prompt": "Add a comment-style note in README.md that the test script is currently a placeholder pending real test setup.",
+    "rationale": "Docs-only note; tests the agent notices the placeholder script accurately.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:README.md"]
+  },
+  {
+    "id": "agent-easy-next-app-loading-spinner-color",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "next-app",
+    "prompt": "Change the loading spinner's border color from blue-500 to green-500 in app/loading.tsx.",
+    "rationale": "Trivial, unambiguous single-file styling change.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:app/loading.tsx:green-500"]
+  },
+  {
+    "id": "agent-easy-next-app-root-lang-attribute",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "bugfix",
+    "tags": ["single-file"],
+    "fixture": "next-app",
+    "prompt": "Verify the html lang attribute in app/layout.tsx is set correctly and fix it if not.",
+    "rationale": "Tests the agent correctly verifies lang='en' is already present rather than assuming a bug exists and making an unnecessary change.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:app/layout.tsx:lang=\"en\""]
+  },
+  {
+    "id": "agent-easy-next-app-metadata-description-length",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "next-app",
+    "prompt": "Expand the metadata description in app/layout.tsx to be a full sentence describing the app's purpose for benchmarking Ask, Plan, and Agent modes.",
+    "rationale": "Small, well-scoped content change with a clear success criterion.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:app/layout.tsx"]
+  }
+]

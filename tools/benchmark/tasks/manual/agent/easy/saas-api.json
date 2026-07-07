@@ -1,0 +1,122 @@
+[
+  {
+    "id": "agent-easy-saas-api-orders-cancel-guard",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "bugfix",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Add a check so cancelOrder throws if the order is already cancelled.",
+    "rationale": "Well-scoped single-method guard clause addition.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/modules/orders/orders.service.ts:cancelled"]
+  },
+  {
+    "id": "agent-easy-saas-api-reviews-rating-bounds",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Validate that a review's rating is between 1 and 5 before it's created, throwing otherwise.",
+    "rationale": "Single-module validation addition with a clear, testable boundary.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/reviews/reviews.service.ts"]
+  },
+  {
+    "id": "agent-easy-saas-api-shipping-rate-rounding",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "bugfix",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Round calculateShippingRate's output to the nearest cent.",
+    "rationale": "Small, precisely-scoped numeric-correctness fix.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/shipping/shipping.service.ts"]
+  },
+  {
+    "id": "agent-easy-saas-api-notifications-retry-once",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Make sendEmail retry once if it fails before giving up.",
+    "rationale": "Well-scoped single-method resilience addition.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/notifications/notifications.service.ts"]
+  },
+  {
+    "id": "agent-easy-saas-api-search-empty-query-shortcut",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Make search() return an empty array immediately for an empty query string instead of hitting the index.",
+    "rationale": "Small, well-defined edge-case optimization.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/search/search.service.ts"]
+  },
+  {
+    "id": "agent-easy-saas-api-http-exception-filter-doc",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "docs",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Add a doc comment to src/common/http-exception.filter.ts explaining its error-shape contract.",
+    "rationale": "Docs-only planning task on a shared utility file.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/common/http-exception.filter.ts"]
+  },
+  {
+    "id": "agent-easy-saas-api-payments-list-pagination",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Add pagination to PaymentsService.list() using the shared pagination utility in src/common.",
+    "rationale": "Tests the agent reuses the existing pagination.ts utility rather than inventing a new approach.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/common/pagination.ts"]
+  },
+  {
+    "id": "agent-easy-saas-api-webhooks-dto-field",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Add an optional description field to RegisterWebhookDto.",
+    "rationale": "Single DTO field addition with a clear, checkable outcome.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/modules/webhooks/dto/register-webhook.dto.ts:description"]
+  },
+  {
+    "id": "agent-easy-saas-api-products-discontinue-reason",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Make discontinueProduct accept and store an optional reason string.",
+    "rationale": "Small, precisely-scoped single-method signature extension.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/products/products.service.ts"]
+  },
+  {
+    "id": "agent-easy-saas-api-analytics-doc-comment",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "docs",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Add a doc comment above computeDailyActiveUsers explaining what rangeDays controls.",
+    "rationale": "Docs-only change; correctly routed away from bugfix/refactor classification.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/analytics/analytics.service.ts"]
+  }
+]

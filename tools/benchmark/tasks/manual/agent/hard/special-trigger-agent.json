@@ -1,0 +1,122 @@
+[
+  {
+    "id": "agent-hard-trigger-saved-plan-resume-fresh-session",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["saved-plan"],
+    "fixture": "node-express",
+    "prompt": "Go ahead and execute the plan.",
+    "rationale": "Classic saved-plan-resume phrasing sent as the first message of a fresh one-shot session with no prior plan. Tests that ActIntentRouter's shouldResumeSavedPlan() path degrades gracefully (asks what plan, or falls through to a fresh task) instead of erroring on a missing antecedent.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-hard-trigger-audit-mode-cleanup",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["audit-mode"],
+    "fixture": "saas-api",
+    "prompt": "Do a full audit of the inventory module and clean up anything unused, duplicated, or dead — but be careful, don't break anything.",
+    "rationale": "Audit/cleanup-style phrasing should route to a dedicated audit route: script-first, read-only discovery before any writes, matching the safety-conscious framing of the request itself.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/inventory/inventory.service.ts"]
+  },
+  {
+    "id": "agent-hard-trigger-mdx-docs-build-failure",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["mdx-repair"],
+    "fixture": "next-app",
+    "prompt": "The docs build is failing because of a broken MDX code fence in docs/loading-indicator.md. Repair it.",
+    "rationale": "Docs-build-failure repair phrasing on a file that's actually plain Markdown, not MDX. Tests whether the agent verifies the actual file format/content before attempting a fix for something that may not exist as described.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:docs/loading-indicator.md"]
+  },
+  {
+    "id": "agent-hard-trigger-github-issue-full-url",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["github-issue"],
+    "fixture": "node-express",
+    "prompt": "Fix https://github.com/octocat/Hello-World/issues/1 — it's about the users list endpoint returning the wrong status.",
+    "rationale": "A real-looking but unrelated public GitHub issue URL. Tests whether the agent grounds its fix in the actual local bug (users.js) rather than fabricating details as if it had fetched that specific external issue.",
+    "verify": ["exit_0", "jsonl_event:end", "file_not_contains:src/routes/users.js:status: 'ok'"]
+  },
+  {
+    "id": "agent-hard-trigger-active-plan-abandon-new-task",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["saved-plan"],
+    "fixture": "monorepo",
+    "prompt": "Forget whatever we were doing before. New task: add a rate limiter to packages/api's /signup endpoint.",
+    "rationale": "Explicit context-abandonment phrasing in a fresh one-shot session with no prior context anyway. Tests the agent focuses cleanly on the well-scoped new task.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:packages/api/src/index.js"]
+  },
+  {
+    "id": "agent-hard-trigger-enterprise-scope-security-review",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "large-scope",
+    "tags": ["enterprise-depth"],
+    "fixture": "saas-api",
+    "prompt": "Do a full security review across every module and fix every real issue you find, prioritized by exploitability.",
+    "rationale": "Enterprise-depth, whole-codebase scope (matching the 'enterprise' actDepth's higher maxSteps). Tests whether the agent produces genuine, prioritized fixes (e.g. the impersonateUser auth gap first) rather than a shallow pass or an incomplete run that hits step limits without a coherent stopping point.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-hard-trigger-audit-mode-fixture-wide",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["audit-mode", "broken-repo"],
+    "fixture": "broken-repo",
+    "prompt": "Audit this entire repo for anything unused, broken, or inconsistent, and produce a prioritized cleanup list before making any changes.",
+    "rationale": "Audit phrasing on a repo with genuinely broken things. Tests the agent stays read-only discovery-first as the request explicitly asks (a list) before any writes happen.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-hard-trigger-sequential-thinking-heavy-fix",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["mcp", "reasoning"],
+    "fixture": "saas-api",
+    "prompt": "Think step by step, very carefully, reconsidering multiple times: fix the boundary condition issue in reserveStock/releaseStock if one exists.",
+    "rationale": "Explicitly invites heavy structured reasoning on a narrow, concrete fix task. Tests that reasoning depth doesn't cause runaway internal-thinking calls and still produces a real, scoped change.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/inventory/inventory.service.ts"]
+  },
+  {
+    "id": "agent-hard-trigger-github-issue-plus-real-bug",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["github-issue", "broken-repo"],
+    "fixture": "broken-repo",
+    "prompt": "There's a tracked issue (see github.com/example/repo/issues/42) about the app crashing on startup. Fix it.",
+    "rationale": "Combines a plausible-but-unfetchable issue reference with a genuinely real, local bug (missing db.js). Tests the agent fixes the real crash grounded in this repo rather than stalling on the unfetchable reference.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/db.js"]
+  },
+  {
+    "id": "agent-hard-trigger-microtask-disguised-as-full-task",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["micro-task-routing"],
+    "fixture": "node-express",
+    "prompt": "Write a commit message for the users.js fix — by the way it's not actually fixed yet, so fix it first, then write the commit message.",
+    "rationale": "Starts with classic commit-message micro-task phrasing but explicitly requires real implementation work first. Tests the router doesn't short-circuit to a narrow git-context-only response and skip the actual fix.",
+    "verify": ["exit_0", "jsonl_event:end", "file_not_contains:src/routes/users.js:status: 'ok'"]
+  }
+]

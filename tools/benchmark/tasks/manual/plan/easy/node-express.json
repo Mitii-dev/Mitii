@@ -1,0 +1,74 @@
+[
+  {
+    "id": "plan-easy-node-express-health-details",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "Plan adding a timestamp field to the /health endpoint's JSON response.",
+    "rationale": "Single-file, low-risk change with a clear success criterion (response includes a timestamp).",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/index.js"]
+  },
+  {
+    "id": "plan-easy-node-express-users-test",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["testing"],
+    "fixture": "node-express",
+    "prompt": "Plan adding a test that verifies GET /users returns an empty array.",
+    "rationale": "Tests planning against the existing node --test runner rather than assuming jest/mocha.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:test/users.test.js"]
+  },
+  {
+    "id": "plan-easy-node-express-404-handler",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "Plan adding a catch-all 404 JSON handler for unmatched routes.",
+    "rationale": "Common, well-scoped Express addition with an unambiguous success criterion.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-easy-node-express-get-user-by-id-validation",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "Plan adding input validation to GET /users/:id so non-numeric ids return a 400 error.",
+    "rationale": "Tests planning a validation change scoped to one existing route handler.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/routes/users.js"]
+  },
+  {
+    "id": "plan-easy-node-express-readme",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["docs"],
+    "fixture": "node-express",
+    "prompt": "Plan writing a README that documents how to install, run, and test this project.",
+    "rationale": "Docs-only planning task; tests that the plan references the real npm scripts (start, test, lint) rather than generic boilerplate.",
+    "verify": ["exit_0", "json_path:steps", "file_contains:package.json:node --test"]
+  },
+  {
+    "id": "plan-easy-node-express-logging-middleware",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "Plan adding basic request logging middleware that logs method and path for every request.",
+    "rationale": "Well-scoped Express middleware addition with a clear, testable outcome.",
+    "verify": ["exit_0", "json_path:steps"]
+  }
+]
