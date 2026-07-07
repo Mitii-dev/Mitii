@@ -14,6 +14,9 @@ const provider = valueOf(args, '--provider') ?? 'echo';
 const tier = valueOf(args, '--tier') ?? 'smoke';
 const runtime = valueOf(args, '--runtime') ?? (tier === 'smoke' && provider === 'echo' ? 'stub' : 'real');
 const approval = valueOf(args, '--approval') ?? 'auto';
+const baseUrl = valueOf(args, '--base-url');
+const model = valueOf(args, '--model');
+const apiKey = valueOf(args, '--api-key');
 const enablePuppeteer = args.includes('--enable-puppeteer');
 const verbose = args.includes('--verbose') || args.includes('-v');
 
@@ -86,7 +89,10 @@ function runTask(task, ctx) {
     '--approval', approval,
   ];
   if (enablePuppeteer || task.enablePuppeteer) extraArgs.push('--enable-puppeteer');
-  if (task.model) extraArgs.push('--model', task.model);
+  if (baseUrl) extraArgs.push('--base-url', baseUrl);
+  if (apiKey) extraArgs.push('--api-key', apiKey);
+  const taskModel = task.model ?? model;
+  if (taskModel) extraArgs.push('--model', taskModel);
   const taskRuntime = task.runtime ?? runtime;
   const runtimeIndex = extraArgs.indexOf('--runtime');
   if (runtimeIndex >= 0) extraArgs[runtimeIndex + 1] = taskRuntime;
