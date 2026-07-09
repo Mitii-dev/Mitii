@@ -15,6 +15,7 @@ export * from './IndexQueue';
 export * from './IndexMaintenanceService';
 export * from './IndexWorkerService';
 export * from './hash';
+export * from './indexingPolicy';
 export * from './embeddingFactory';
 export * from './vectorIndexFactory';
 export * from './vectorAvailability';

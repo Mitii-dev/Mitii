@@ -33,6 +33,8 @@ export interface IndexingStatus {
 export interface IndexQueueOptions {
   maxConcurrency?: number;
   maxFileSizeBytes?: number;
+  deferVectorWrites?: boolean;
+  vectorBackfillBatchSize?: number;
 }
 
 type ProgressCallback = (status: IndexingStatus) => void;
@@ -54,6 +56,10 @@ export class IndexQueue {
   private onComplete?: () => void;
   private vectorService: VectorIndexService | undefined;
   private workspace = '';
+  private readonly pendingVectorWrites = new Set<Promise<void>>();
+  private deferVectorWrites = true;
+  private vectorBackfillBatchSize = 25;
+  private vectorBackfillRunning = false;
 
   constructor(
     private readonly db: ThunderDb,
@@ -66,6 +72,12 @@ export class IndexQueue {
     }
     if (options?.maxFileSizeBytes) {
       this.maxFileSizeBytes = options.maxFileSizeBytes;
+    }
+    if (options?.deferVectorWrites !== undefined) {
+      this.deferVectorWrites = options.deferVectorWrites;
+    }
+    if (options?.vectorBackfillBatchSize) {
+      this.vectorBackfillBatchSize = Math.max(1, options.vectorBackfillBatchSize);
     }
   }
 
@@ -109,6 +121,15 @@ export class IndexQueue {
     this.queue = [];
   }
 
+  /** Waits for embedding writes still in flight — indexFile() kicks these off without awaiting
+   * them (so file scanning isn't bottlenecked on embedding latency), so callers that need
+   * embeddings to be durable before proceeding (e.g. shutdown) must drain this explicitly. */
+  async waitForVectorIndexing(): Promise<void> {
+    while (this.pendingVectorWrites.size > 0) {
+      await Promise.all(this.pendingVectorWrites);
+    }
+  }
+
   getStatus(): IndexingStatus {
     const indexed = (this.db.raw
       .prepare('SELECT COUNT(*) as c FROM files WHERE indexed_at IS NOT NULL')
@@ -140,6 +161,9 @@ export class IndexQueue {
     this.running = false;
     this.onProgress?.(this.getStatus());
     this.onComplete?.();
+    if (this.deferVectorWrites && this.vectorService && this.workspace) {
+      void this.backfillDeferredVectors();
+    }
   }
 
   private async runWorker(): Promise<void> {
@@ -182,7 +206,11 @@ export class IndexQueue {
       : this.chunker.chunkFile(indexContent, job.language);
 
     this.db.transaction(() => {
-      this.vectorService?.deleteFileChunks(job.fileId);
+      if (this.vectorService) {
+        const del = this.vectorService.deleteFileChunks(job.fileId)
+          .finally(() => this.pendingVectorWrites.delete(del));
+        this.pendingVectorWrites.add(del);
+      }
       this.db.raw.prepare('DELETE FROM chunks WHERE file_id = ?').run(job.fileId);
       this.db.raw.prepare('DELETE FROM symbols WHERE file_id = ?').run(job.fileId);
       this.db.raw.prepare('DELETE FROM symbol_refs WHERE file_id = ?').run(job.fileId);
@@ -200,13 +228,14 @@ export class IndexQueue {
           chunk.content, chunk.tokenEstimate, chunk.hash
         );
         this.fts.insertChunk(job.relPath, chunk.content);
-        if (this.vectorService && this.workspace) {
-          void this.vectorService.indexChunk(
+        if (this.vectorService && this.workspace && !this.deferVectorWrites) {
+          const write = this.vectorService.indexChunk(
             this.workspace,
             Number(result.lastInsertRowid),
             job.relPath,
             chunk.content
-          );
+          ).finally(() => this.pendingVectorWrites.delete(write));
+          this.pendingVectorWrites.add(write);
         }
       }
 
@@ -255,5 +284,58 @@ export class IndexQueue {
   private loadKnownSymbols(): void {
     const rows = this.db.raw.prepare('SELECT DISTINCT name FROM symbols').all() as Array<{ name: string }>;
     this.knownSymbols = new Set(rows.map((r) => r.name));
+  }
+
+  private async backfillDeferredVectors(): Promise<void> {
+    if (!this.vectorService || !this.workspace || this.vectorBackfillRunning) return;
+    this.vectorBackfillRunning = true;
+
+    try {
+      await this.waitForVectorIndexing();
+      while (!this.cancelled) {
+        const rows = this.db.raw.prepare(`
+          SELECT c.id as chunk_id, c.content, f.rel_path
+          FROM chunks c
+          JOIN files f ON f.id = c.file_id
+          LEFT JOIN chunk_embeddings ve
+            ON ve.chunk_id = c.id AND ve.workspace = ?
+          WHERE f.workspace = ? AND ve.chunk_id IS NULL
+          ORDER BY
+            CASE
+              WHEN f.rel_path = 'package.json' THEN 0
+              WHEN f.rel_path LIKE '%/package.json' THEN 1
+              WHEN f.rel_path LIKE 'src/%' THEN 2
+              ELSE 3
+            END,
+            f.rel_path,
+            c.chunk_index
+          LIMIT ?
+        `).all(this.workspace, this.workspace, this.vectorBackfillBatchSize) as Array<{
+          chunk_id: number;
+          content: string;
+          rel_path: string;
+        }>;
+
+        if (rows.length === 0) break;
+
+        for (const row of rows) {
+          const write = this.vectorService.indexChunk(
+            this.workspace,
+            row.chunk_id,
+            row.rel_path,
+            row.content
+          ).finally(() => this.pendingVectorWrites.delete(write));
+          this.pendingVectorWrites.add(write);
+          await write;
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+      }
+    } catch (error) {
+      log.warn('Deferred vector backfill failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      this.vectorBackfillRunning = false;
+    }
   }
 }

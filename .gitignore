@@ -7,8 +7,17 @@ dist/
 .thunder/
 .thunder V2/
 .mitii
+.mitii/
+.mitti/
 project-goals/
 mitii-debug-logs/
+vendor/
+tmp/
+logs/
+build/
+coverage/
+*.lock
+*.map
 
 # Benchmark / eval runtime (local generation and reports)
 tools/benchmark/tasks/eval/generated/

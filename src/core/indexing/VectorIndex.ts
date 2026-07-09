@@ -15,8 +15,8 @@ export interface VectorSearchResult {
 
 export interface VectorIndex {
   search(workspace: string, queryEmbedding: number[], limit?: number): VectorSearchResult[];
-  upsertChunk(workspace: string, chunkId: number, relPath: string, embedding: number[]): void;
-  deleteFileChunks(fileId: number): void;
+  upsertChunk(workspace: string, chunkId: number, relPath: string, embedding: number[]): void | Promise<void>;
+  deleteFileChunks(fileId: number): void | Promise<void>;
   count(workspace: string): number;
   /** Runtime health (e.g. did the LanceDB native table actually open?). Omit if always healthy. */
   getHealth?(): ComponentHealth;
@@ -104,7 +104,7 @@ export class VectorIndexService {
     try {
       const [embedding] = await this.embedder.embed([content.slice(0, 2000)]);
       if (embedding.length > 0) {
-        this.index.upsertChunk(workspace, chunkId, relPath, embedding);
+        await this.index.upsertChunk(workspace, chunkId, relPath, embedding);
       }
     } catch (error) {
       log.warn('Chunk embedding failed', {
@@ -114,8 +114,8 @@ export class VectorIndexService {
     }
   }
 
-  deleteFileChunks(fileId: number): void {
-    this.index.deleteFileChunks(fileId);
+  async deleteFileChunks(fileId: number): Promise<void> {
+    await this.index.deleteFileChunks(fileId);
   }
 
   count(workspace: string): number {

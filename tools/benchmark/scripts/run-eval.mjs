@@ -143,6 +143,7 @@ function runTaskAsync(task, index, total) {
       '--runtime', task.runtime ?? runtime,
       '--approval', approval,
     ];
+    extraArgs.push('--vectors');
     if (enablePuppeteer || task.enablePuppeteer) extraArgs.push('--enable-puppeteer');
     if (task.model) extraArgs.push('--model', task.model);
     if (valueOf(args, '--model')) extraArgs.push('--model', valueOf(args, '--model'));

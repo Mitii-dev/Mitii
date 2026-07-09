@@ -10,6 +10,12 @@ import { IgnoreService } from '../indexing/IgnoreService';
 import { FileDiscoveryService } from '../indexing/FileDiscoveryService';
 import { WorkspaceScanner } from '../indexing/WorkspaceScanner';
 import { IndexQueue } from '../indexing/IndexQueue';
+import {
+  AUTO_INDEX_BACKGROUND_DELAY_MS,
+  AUTO_INDEX_INITIAL_FILE_LIMIT,
+  priorityDiscoveryRoots,
+  sortIndexCandidates,
+} from '../indexing/indexingPolicy';
 import { initTreeSitter, preloadCommonLanguages } from '../indexing/TreeSitterService';
 import { setTreeSitterEnabled } from '../indexing/SymbolExtractor';
 import { FtsIndex } from '../indexing/FtsIndex';
@@ -172,6 +178,7 @@ export class ThunderController {
   private mcpToggles: McpToggles = defaultMcpToggles();
   private pendingWatchJobs = new Map<string, import('../indexing/IndexQueue').IndexJob>();
   private watchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+  private backgroundIndexTimer: ReturnType<typeof setTimeout> | undefined;
   private debouncedRebuildRetriever: (() => void) | undefined;
   private currentPlan: PlanView | null = null;
   private currentReviewDiff: WebviewState['reviewDiff'] = null;
@@ -432,7 +439,7 @@ export class ThunderController {
     const config = this.configService.getConfig();
     if (!config.indexing.enabled || !config.indexing.autoIndexOnOpen) return;
     try {
-      await this.indexWorkspace({ force: false });
+      await this.indexWorkspace({ force: false, auto: true });
     } catch (error) {
       log.warn('Auto-index on open failed', {
         error: error instanceof Error ? error.message : String(error),
@@ -498,6 +505,7 @@ export class ThunderController {
     this.indexQueue = new IndexQueue(db, {
       maxConcurrency: config.indexing.maxConcurrency,
       maxFileSizeBytes: config.indexing.maxFileSizeBytes,
+      deferVectorWrites: true,
     });
     this.indexQueue.setVectorService(workspace, this.vectorIndexService);
     this.indexQueue.onIndexingComplete(() => {
@@ -1852,6 +1860,10 @@ export class ThunderController {
       this.configureSessionLogging(this.session, workspace);
     }
     this.chatOrchestrator = undefined;
+    if (this.backgroundIndexTimer) {
+      clearTimeout(this.backgroundIndexTimer);
+      this.backgroundIndexTimer = undefined;
+    }
     this.indexService?.dispose();
     this.indexService = undefined;
     if (previousWorkspace) disposeLanguageService(previousWorkspace);
@@ -2759,7 +2771,7 @@ export class ThunderController {
     await this.showInlineDiffForPendingApprovals(approvalId);
   }
 
-  async indexWorkspace(options: { force?: boolean } = { force: true }): Promise<void> {
+  async indexWorkspace(options: { force?: boolean; auto?: boolean; background?: boolean } = { force: true }): Promise<void> {
     const workspace = this.resolveWorkspacePath();
     if (!workspace) {
       this.setWorkspaceNotice('warn', 'Set a workspace path first (Browse or paste an absolute path).');
@@ -2789,18 +2801,31 @@ export class ThunderController {
       return;
     }
 
-    const discovery = new FileDiscoveryService(workspace, this.ignoreService, config.indexing);
-    const files = discovery.discover();
-
     if (!this.scanner || !this.indexQueue) {
       void vscode.window.showErrorMessage(brandMessage('Index services not initialized.'));
       return;
     }
 
-    const diff = this.scanner.computeDiff(files);
+    const previousStatus = this.indexQueue.getStatus();
+    const firstAutoRun = Boolean(options.auto && !options.background && previousStatus.indexed === 0);
+    const priorityRoots = firstAutoRun ? priorityDiscoveryRoots(workspace) : [];
+    const isPartialDiscovery = firstAutoRun;
+    const discovery = new FileDiscoveryService(workspace, this.ignoreService, config.indexing);
+    const files = sortIndexCandidates(
+      await discovery.discoverAsync({
+        roots: isPartialDiscovery && priorityRoots.length > 0 ? priorityRoots : undefined,
+        limit: isPartialDiscovery ? AUTO_INDEX_INITIAL_FILE_LIMIT : undefined,
+      }),
+      config.indexing.priorityPaths
+    );
+
+    const diff = this.scanner.computeDiff(files, { includeDeleted: !isPartialDiscovery });
     this.scanner.persistScan(diff);
 
-    const filesToIndex = options.force ? files : [...diff.added, ...diff.changed];
+    const filesToIndex = sortIndexCandidates(
+      options.force ? files : [...diff.added, ...diff.changed],
+      config.indexing.priorityPaths
+    );
     const jobs = filesToIndex.map((f) => ({
       fileId: this.scanner!.getFileId(f.relPath)!,
       relPath: f.relPath,
@@ -2813,23 +2838,42 @@ export class ThunderController {
       this.setWorkspaceNotice('ok', 'Index is up to date');
       this.sessionLog.append('index_complete', 'Index up to date', { workspace, jobCount: 0 });
       this.notifyUi({ indexing: this.indexingStatus, workspaceNotice: this.workspaceNotice });
+      if (firstAutoRun) this.scheduleBackgroundIndex(workspace);
       return;
     }
 
     this.indexQueue.enqueue(jobs);
     this.indexingStatus = this.indexQueue.getStatus();
-    this.setWorkspaceNotice('ok', `${options.force ? 'Reindexing' : 'Indexing'} ${jobs.length} files…`);
-    this.sessionLog.append('index_start', `${options.force ? 'Reindexing' : 'Indexing'} ${jobs.length} files`, {
+    const label = options.background
+      ? 'Background indexing'
+      : firstAutoRun
+        ? 'Indexing priority files'
+        : options.force
+          ? 'Reindexing'
+          : 'Indexing';
+    this.setWorkspaceNotice('ok', `${label} ${jobs.length} files…`);
+    this.sessionLog.append('index_start', `${label} ${jobs.length} files`, {
       workspace,
       added: diff.added.length,
       changed: diff.changed.length,
       removed: diff.deleted.length,
       forced: options.force,
+      partial: isPartialDiscovery,
     });
     this.notifyUi({ indexing: this.indexingStatus, workspaceNotice: this.workspaceNotice });
-    log.info('indexWorkspace', { total: jobs.length });
+    log.info('indexWorkspace', { total: jobs.length, partial: isPartialDiscovery, background: options.background });
 
+    if (firstAutoRun) this.scheduleBackgroundIndex(workspace);
     void this.waitForIndexingComplete(workspace, jobs.length);
+  }
+
+  private scheduleBackgroundIndex(workspace: string): void {
+    if (this.backgroundIndexTimer || this.disposed) return;
+    this.backgroundIndexTimer = setTimeout(() => {
+      this.backgroundIndexTimer = undefined;
+      if (this.disposed || this.resolveWorkspacePath() !== workspace) return;
+      void this.indexWorkspace({ force: false, background: true });
+    }, AUTO_INDEX_BACKGROUND_DELAY_MS);
   }
 
   private async waitForIndexingComplete(workspace: string, jobCount: number): Promise<void> {
@@ -2843,6 +2887,7 @@ export class ThunderController {
       await new Promise((resolve) => setTimeout(resolve, 500));
       if (Date.now() - start > 600_000) break;
     }
+    await this.indexQueue.waitForVectorIndexing();
 
     const status = this.indexQueue.getStatus();
     this.sessionLog.append('index_complete', 'Indexing finished', {
@@ -2861,6 +2906,10 @@ export class ThunderController {
     this.disposed = true;
     this.configService.dispose();
     void this.mcpManager.closeAll();
+    if (this.backgroundIndexTimer) clearTimeout(this.backgroundIndexTimer);
+    if (this.watchDebounceTimer) clearTimeout(this.watchDebounceTimer);
+    if (this.indexStatusNotifyTimer) clearTimeout(this.indexStatusNotifyTimer);
+    if (this.tokenUsageNotifyTimer) clearTimeout(this.tokenUsageNotifyTimer);
     this.indexService?.dispose();
     this.indexQueue?.cancel();
     this.languageServiceSyncDisposable?.dispose();

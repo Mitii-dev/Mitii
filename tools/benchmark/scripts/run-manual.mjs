@@ -181,6 +181,7 @@ function runTask(task, index, total) {
       '--runtime', task.runtime ?? runtime,
       '--approval', approval,
       '--json', // always JSON so metrics + tokens are capturable for every mode
+      '--vectors',
     ];
     if (enablePuppeteer || task.enablePuppeteer) cliArgs.push('--enable-puppeteer');
     if (baseUrl) cliArgs.push('--base-url', baseUrl);

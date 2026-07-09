@@ -1,6 +1,7 @@
-import { existsSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { ensureThunderDir } from '../indexing/paths';
+import { DEFAULT_GITIGNORE_PATTERNS, DEFAULT_WORKSPACE_IGNORE_PATTERNS } from '../indexing/indexingPolicy';
 import { AGENT_NAME } from '../../shared/brand';
 import { installBundledSkills } from '../skills/installBundledSkills';
 import { installBundledRules } from '../rules/installBundledRules';
@@ -87,6 +88,9 @@ export function scaffoldMitiiWorkspace(
     writeFileSync(localRulesExamplePath, LOCAL_RULES_EXAMPLE, 'utf-8');
   }
 
+  ensureIgnoreFile(join(workspace, '.mitiiignore'), DEFAULT_WORKSPACE_IGNORE_PATTERNS, '# Mitii workspace indexing ignores');
+  ensureIgnoreFile(join(workspace, '.gitignore'), DEFAULT_GITIGNORE_PATTERNS, '# Mitii local runtime data');
+
   if (options.extensionRoot?.trim()) {
     installBundledSkills(workspace, options.extensionRoot, {
       force: options.forceBundledSkills,
@@ -95,4 +99,21 @@ export function scaffoldMitiiWorkspace(
       force: options.forceBundledSkills,
     });
   }
+}
+
+function ensureIgnoreFile(path: string, patterns: readonly string[], header: string): void {
+  const existing = existsSync(path) ? readFileSync(path, 'utf-8') : '';
+  const existingLines = new Set(
+    existing
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+  );
+  const missing = patterns.filter((pattern) => !existingLines.has(pattern));
+  if (missing.length === 0) return;
+
+  const prefix = existing.trimEnd();
+  const block = [header, ...missing].join('\n');
+  const next = prefix ? `${prefix}\n\n${block}\n` : `${block}\n`;
+  writeFileSync(path, next, 'utf-8');
 }

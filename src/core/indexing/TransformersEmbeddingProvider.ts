@@ -1,5 +1,5 @@
 import { createLogger } from '../telemetry/Logger';
-import type { EmbeddingProvider } from './EmbeddingProvider';
+import { HashEmbeddingProvider, type EmbeddingProvider } from './EmbeddingProvider';
 import { summarizeHealthDetail, type ComponentHealth } from './ComponentHealth';
 
 const log = createLogger('TransformersEmbedding');
@@ -11,6 +11,7 @@ type FeatureExtractor = (
 
 let pipelinePromise: Promise<FeatureExtractor | null> | null = null;
 let health: ComponentHealth = { status: 'unknown' };
+const hashFallback = new HashEmbeddingProvider();
 
 async function loadPipeline(): Promise<FeatureExtractor | null> {
   if (pipelinePromise) return pipelinePromise;
@@ -26,8 +27,8 @@ async function loadPipeline(): Promise<FeatureExtractor | null> {
       return extractor as FeatureExtractor;
     } catch (error) {
       const fullDetail = error instanceof Error ? error.message : String(error);
-      health = { status: 'degraded', detail: summarizeHealthDetail(error) };
-      log.warn('MiniLM embeddings unavailable, falling back to empty vectors for this session', { error: fullDetail });
+      health = { status: 'degraded', detail: `${summarizeHealthDetail(error)}; using hash fallback` };
+      log.warn('MiniLM embeddings unavailable, using hash embeddings for this session', { error: fullDetail });
       return null;
     }
   })();
@@ -44,8 +45,8 @@ export class TransformersEmbeddingProvider implements EmbeddingProvider {
 
     const extractor = await loadPipeline();
     if (!extractor) {
-      log.debug('embed:skipped, pipeline unavailable', { textCount: texts.length, detail: health.detail });
-      return texts.map(() => []);
+      log.debug('embed:fallback, MiniLM pipeline unavailable', { textCount: texts.length, detail: health.detail });
+      return hashFallback.embed(texts);
     }
 
     const outputs: number[][] = [];
@@ -59,9 +60,10 @@ export class TransformersEmbeddingProvider implements EmbeddingProvider {
         await new Promise((resolve) => setTimeout(resolve, 5));
       } catch (error) {
         const fullDetail = error instanceof Error ? error.message : String(error);
-        health = { status: 'degraded', detail: summarizeHealthDetail(error) };
-        log.warn('MiniLM embed failed', { error: fullDetail });
-        outputs.push([]);
+        health = { status: 'degraded', detail: `${summarizeHealthDetail(error)}; using hash fallback` };
+        log.warn('MiniLM embed failed, using hash embedding for this input', { error: fullDetail });
+        const [fallback] = await hashFallback.embed([text]);
+        outputs.push(fallback);
       }
     }
     return outputs;

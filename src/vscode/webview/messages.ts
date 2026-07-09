@@ -529,7 +529,7 @@ export const defaultSettingsView = (): SettingsView => ({
   localDebugAvailable: false,
   vectorsEnabled: true,
   embeddingProvider: 'minilm',
-  vectorBackend: 'sqlite',
+  vectorBackend: 'lancedb',
   hybridMemorySearch: true,
   minilmAvailable: false,
   lancedbAvailable: false,

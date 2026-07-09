@@ -88,6 +88,7 @@ function runTask(task, ctx) {
     '--runtime', runtime,
     '--approval', approval,
   ];
+  extraArgs.push('--vectors');
   if (enablePuppeteer || task.enablePuppeteer) extraArgs.push('--enable-puppeteer');
   if (baseUrl) extraArgs.push('--base-url', baseUrl);
   if (apiKey) extraArgs.push('--api-key', apiKey);

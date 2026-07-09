@@ -201,6 +201,7 @@ export class HeadlessAgentHost {
     this.indexQueue = new IndexQueue(db, {
       maxConcurrency: this.config.indexing.maxConcurrency,
       maxFileSizeBytes: this.config.indexing.maxFileSizeBytes,
+      deferVectorWrites: true,
     });
     this.indexQueue.setVectorService(workspace, this.vectorIndexService);
 
@@ -395,6 +396,7 @@ export class HeadlessAgentHost {
 
   async dispose(): Promise<void> {
     this.cancel();
+    await this.indexQueue?.waitForVectorIndexing();
     this.indexService?.dispose();
     disposeLanguageService(this.options.cwd);
     this.languageService = undefined;
@@ -564,6 +566,7 @@ export class HeadlessAgentHost {
       if (Date.now() > deadline) break;
       await sleep(250);
     }
+    await this.indexQueue.waitForVectorIndexing();
     this.sessionLog.append('index_complete', 'Headless indexing finished', {
       workspace,
       jobCount: jobs.length,

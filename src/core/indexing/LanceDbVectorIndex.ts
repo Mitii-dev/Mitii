@@ -190,7 +190,10 @@ export class LanceDbVectorIndex implements VectorIndex {
     }
   }
 
-  upsertChunk(workspace: string, chunkId: number, relPath: string, embedding: number[]): void {
+  /** Writes SQLite first as a durable safety net (used if LanceDB is unavailable), then awaits
+   * the LanceDB write itself so callers can rely on the embedding actually being searchable via
+   * LanceDB once this resolves, rather than racing a fire-and-forget background write. */
+  async upsertChunk(workspace: string, chunkId: number, relPath: string, embedding: number[]): Promise<void> {
     this.sqliteDb.raw.prepare(`
       INSERT INTO chunk_embeddings (chunk_id, workspace, embedding_json, updated_at)
       VALUES (?, ?, ?, ?)
@@ -199,7 +202,7 @@ export class LanceDbVectorIndex implements VectorIndex {
         updated_at = excluded.updated_at
     `).run(chunkId, workspace, JSON.stringify(embedding), Date.now());
 
-    void this.upsertLanceRow(workspace, chunkId, relPath, embedding);
+    await this.upsertLanceRow(workspace, chunkId, relPath, embedding);
   }
 
   private async upsertLanceRow(
@@ -243,7 +246,7 @@ export class LanceDbVectorIndex implements VectorIndex {
     }
   }
 
-  deleteFileChunks(fileId: number): void {
+  async deleteFileChunks(fileId: number): Promise<void> {
     const chunkIds = this.sqliteDb.raw
       .prepare('SELECT id FROM chunks WHERE file_id = ?')
       .all(fileId) as Array<{ id: number }>;
@@ -253,17 +256,15 @@ export class LanceDbVectorIndex implements VectorIndex {
       WHERE chunk_id IN (SELECT id FROM chunks WHERE file_id = ?)
     `).run(fileId);
 
-    void (async () => {
-      const table = await this.getTable();
-      if (!table) return;
-      for (const row of chunkIds) {
-        try {
-          await table.delete(`chunk_id = ${row.id}`);
-        } catch {
-          // Non-fatal
-        }
+    const table = await this.getTable();
+    if (!table) return;
+    for (const row of chunkIds) {
+      try {
+        await table.delete(`chunk_id = ${row.id}`);
+      } catch {
+        // Non-fatal
       }
-    })();
+    }
   }
 
   count(workspace: string): number {

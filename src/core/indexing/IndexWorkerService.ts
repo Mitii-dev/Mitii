@@ -9,6 +9,7 @@ import { detectLanguage, isBinaryByExtension } from './fileUtils';
 import { defaultThunderConfig } from '../config/defaults';
 import type { IndexingConfig } from '../config/schema';
 import { resolveDbPath } from './paths';
+import { sortIndexCandidates } from './indexingPolicy';
 
 type WorkerDiscoveredFile = {
   absPath: string;
@@ -50,6 +51,7 @@ export class IndexWorkerService {
     this.queue = new IndexQueue(db, {
       maxConcurrency: this.config.maxConcurrency,
       maxFileSizeBytes: this.config.maxFileSizeBytes,
+      deferVectorWrites: true,
     });
     this.queue.setVectorService(this.workspace, undefined);
     this.maintenance = new IndexMaintenanceService(db, this.workspace, resolveDbPath(this.workspace));
@@ -69,9 +71,10 @@ export class IndexWorkerService {
     for (const relPath of diff.deleted) {
       maintenance.removeFile(relPath);
     }
-    const changed = [...diff.added, ...diff.changed];
-    const priority = new Set([...(options?.priorityPaths ?? []), ...this.config.priorityPaths]);
-    changed.sort((a, b) => Number(priority.has(b.relPath)) - Number(priority.has(a.relPath)));
+    const changed = sortIndexCandidates(
+      [...diff.added, ...diff.changed],
+      [...(options?.priorityPaths ?? []), ...this.config.priorityPaths]
+    );
     const jobs: IndexJob[] = changed
       .map((file) => {
         const fileId = scanner.getFileId(file.relPath);
