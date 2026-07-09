@@ -1,5 +1,5 @@
 const FILE_MENTION_PATTERN =
-  /\b[\w./-]+\.(tsx?|jsx?|vue|svelte|py|go|rs|java|kt|swift|md|json|css|scss|html|yaml|yml|toml)\b/gi;
+  /\b[\w./-]+\.(tsx?|jsx?|mjs|cjs|vue|svelte|py|go|rs|java|kt|swift|mdx?|jsonl|json|log|txt|env|sh|sql|xml|ini|toml|yaml|yml|css|scss|html)\b/gi;
 const PACKAGE_LIKE_PATTERN = /\b[a-z][a-z0-9]*(?:-[a-z0-9]+)+\b/gi;
 
 export function extractFileMentions(text: string): string[] {

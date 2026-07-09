@@ -108,7 +108,7 @@ import {
 import { listCustomMcpServers } from '../mcp/mcpWorkspaceConfig';
 import { resolveDbPath } from '../indexing/paths';
 import { searchWorkspacePaths, resolvePickedPaths } from '../context/contextPathSearch';
-import { createWorkspacePattern, isWorkspaceInVscodeFolders, normalizeWorkspaceRoot, toWorkspaceRelPath } from '../util/paths';
+import { createWorkspacePattern, isWorkspaceInVscodeFolders, normalizeWorkspaceRoot, toWorkspaceRelPath, resolveWorkspaceRelPath } from '../util/paths';
 import type { CommitMessageResult } from '../scm';
 import { MicroTaskExecutor } from '../microtasks';
 import { AuditPackBuilder } from '../audit';
@@ -598,7 +598,8 @@ export class ThunderController {
     this.policyEngine = new ToolPolicyEngine(
       effectiveSafety,
       (path) => this.ignoreService.isIgnored(path),
-      () => this.isWorkspaceTrusted()
+      () => this.isWorkspaceTrusted(),
+      (path) => resolveWorkspaceRelPath(workspace, path)
     );
 
     this.toolExecutor = new ToolExecutor(
@@ -2301,14 +2302,19 @@ export class ThunderController {
     const result = await this.toolExecutor.executeApproved(request.toolName, fullInput);
 
     if (result.success) {
+      const isExternalRead = ['read_file', 'read_files'].includes(request.toolName);
       const successMessage = request.toolName === 'run_command'
         ? 'Ran approved command'
-        : `Applied ${path ?? request.toolName}`;
+        : isExternalRead
+          ? `Read ${path ?? 'external file'}`
+          : `Applied ${path ?? request.toolName}`;
       this.pushActivity(request.toolName === 'run_command' ? 'tool' : 'apply', successMessage, result.output);
       if (request.toolName === 'run_command' && typeof fullInput.command === 'string') {
         this.pendingApprovalOutputs.push(
           `### Command\n\`${fullInput.command}\`\n\n### Output\n${result.output.slice(0, 6000)}`
         );
+      } else if (isExternalRead) {
+        this.pendingApprovalOutputs.push(`Read ${request.toolName} for \`${path ?? request.files.join(', ')}\``);
       } else if (path) {
         this.pendingApprovalOutputs.push(`Applied ${request.toolName} to \`${path}\``);
       }
@@ -2322,9 +2328,13 @@ export class ThunderController {
         });
       }
       void vscode.window.showInformationMessage(
-        request.toolName === 'run_command' ? brandMessage('Command completed.') : `${AGENT_NAME}: Updated ${path ?? 'file'}`
+        request.toolName === 'run_command'
+          ? brandMessage('Command completed.')
+          : isExternalRead
+            ? `${AGENT_NAME}: Read ${path ?? 'external file'}`
+            : `${AGENT_NAME}: Updated ${path ?? 'file'}`
       );
-      if (path) {
+      if (path && !isExternalRead) {
         const workspace = this.resolveWorkspacePath();
         if (workspace) {
           void vscode.window.showTextDocument(vscode.Uri.file(join(workspace, path)));

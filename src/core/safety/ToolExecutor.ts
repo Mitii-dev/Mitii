@@ -1,4 +1,5 @@
 import type { ToolRuntime } from '../tools/ToolRuntime';
+import { readApprovedExternalFile, readApprovedExternalFiles } from '../tools/builtinTools';
 import type { ToolPolicyEngine } from './ToolPolicyEngine';
 import type { ApprovalQueue } from './ApprovalQueue';
 import type { AgentTaskState } from '../runtime/AgentTaskState';
@@ -271,6 +272,22 @@ export class ToolExecutor {
   }
 
   async executeApproved(toolName: string, input: Record<string, unknown>): Promise<ToolExecutionResult> {
+    // read_file/read_files only ever land here via approval when the target path is
+    // outside the workspace (see ToolPolicyEngine.findExternalFilePath) — the tools'
+    // own implementations always refuse those paths outright as a defense-in-depth
+    // boundary, so the actual read happens here instead, once approval is granted.
+    if (toolName === 'read_file' && typeof input.path === 'string') {
+      const result = await readApprovedExternalFile(input.path);
+      if (result.success) this.getTaskState?.()?.recordToolSuccess(toolName, input, result.output);
+      return result;
+    }
+    if (toolName === 'read_files' && Array.isArray(input.paths)) {
+      const paths = input.paths.filter((p): p is string => typeof p === 'string');
+      const result = await readApprovedExternalFiles(paths);
+      if (result.success) this.getTaskState?.()?.recordToolSuccess(toolName, input, result.output);
+      return result;
+    }
+
     const result = await this.toolRuntime.execute(toolName, input);
     if (result.success) {
       this.getTaskState?.()?.recordToolSuccess(toolName, input, result.output);

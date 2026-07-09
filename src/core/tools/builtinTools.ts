@@ -221,6 +221,37 @@ async function readWorkspaceFileContent(
   }
 }
 
+/**
+ * Reads a file outside the workspace. Only reachable after the user has explicitly
+ * approved the read_file/read_files call via the approval queue (see ToolExecutor.executeApproved)
+ * — readSingleFile below always refuses external paths outright as a defense-in-depth boundary.
+ */
+export async function readApprovedExternalFile(rawPath: string): Promise<ToolResult> {
+  try {
+    const st = statSync(rawPath);
+    if (!st.isFile()) {
+      return { success: false, output: '', error: `Not a file: ${rawPath}` };
+    }
+    const content = await readFile(rawPath, 'utf-8');
+    return {
+      success: true,
+      output: `[External file outside the workspace — read with user approval]\n${content.slice(0, READ_FILE_MAX_CHARS)}`,
+    };
+  } catch (e) {
+    return { success: false, output: '', error: String(e) };
+  }
+}
+
+export async function readApprovedExternalFiles(rawPaths: string[]): Promise<ToolResult> {
+  const results = await Promise.all(
+    rawPaths.map(async (path) => ({ path, result: await readApprovedExternalFile(path) }))
+  );
+  const parts = results.map(({ path, result }) => (
+    result.success ? `### ${path}\n${result.output}` : `### ${path}\nERROR: ${result.error}`
+  ));
+  return { success: true, output: parts.join('\n\n') };
+}
+
 async function readSingleFile(
   workspace: string,
   rawPath: string,

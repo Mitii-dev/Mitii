@@ -1,4 +1,5 @@
 import { join } from 'path';
+import { resolveWorkspaceRelPath } from '../util/paths';
 import { ThunderSession, type ThunderMode } from '../session/ThunderSession';
 import { IndexService } from '../indexing/IndexService';
 import { IgnoreService } from '../indexing/IgnoreService';
@@ -233,7 +234,8 @@ export class HeadlessAgentHost {
     this.policyEngine = new ToolPolicyEngine(
       effectiveSafety,
       (path) => this.ignoreService.isIgnored(path),
-      () => true
+      () => true,
+      (path) => resolveWorkspaceRelPath(workspace, path)
     );
 
     this.toolRuntime.setSessionLog(this.sessionLog);
