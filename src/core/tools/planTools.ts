@@ -126,7 +126,7 @@ function resolvePlanStepId(
   if (running) return running.id;
 
   const pending = plan.steps.find((s) => s.status === 'pending');
-  if (pending && /^(execute|verify|complete|done|task_complete)$/i.test(rawStepId)) {
+  if (pending && /^(current|active|execute|verify|complete|done|task_complete)$/i.test(rawStepId)) {
     return pending.id;
   }
 

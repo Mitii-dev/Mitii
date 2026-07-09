@@ -3,8 +3,7 @@ import { z } from 'zod';
 import { mkdirSync, readFileSync, readdirSync, writeFileSync, statSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
-import { exec, execFile } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'child_process';
 import type { Tool, ToolResult } from './types';
 import type { IgnoreService } from '../indexing/IgnoreService';
 import type { FtsIndex } from '../indexing/FtsIndex';
@@ -29,9 +28,113 @@ import { createLogger } from '../telemetry/Logger';
 import { analyzeChangeImpact, discoverProjectCatalog, formatProjectCatalog, saveProjectCatalog } from '../modes/ask';
 import { filterItemsToScope, normalizeScopeRoot } from '../context/scopeFilter';
 
-const execAsync = promisify(exec);
-const execFileAsync = promisify(execFile);
 const log = createLogger('BuiltinTools');
+
+interface SpawnCaptureOptions {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  timeout?: number;
+  maxBuffer?: number;
+}
+
+interface SpawnCaptureError extends Error {
+  code?: number;
+  stdout?: string;
+  stderr?: string;
+}
+
+/**
+ * exec/execFile always create a stdin pipe even when nothing is written to it. In some
+ * host environments (e.g. a VS Code extension host with no valid fd 0) creating that pipe
+ * fails with `spawn EBADF`. spawn() lets us set stdin to 'ignore' to avoid it entirely.
+ */
+function spawnCapture(
+  command: string,
+  args: string[],
+  options: SpawnCaptureOptions
+): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const maxBuffer = options.maxBuffer ?? 4 * 1024 * 1024;
+    let stdout = '';
+    let stderr = '';
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let settled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    const finish = (err: SpawnCaptureError | null, result?: { stdout: string; stderr: string }) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      if (err) reject(err);
+      else resolvePromise(result!);
+    };
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      stdoutBytes += chunk.length;
+      if (stdoutBytes <= maxBuffer) stdout += chunk.toString('utf-8');
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderrBytes += chunk.length;
+      if (stderrBytes <= maxBuffer) stderr += chunk.toString('utf-8');
+    });
+
+    child.on('error', (error) => {
+      const err = error as SpawnCaptureError;
+      err.stdout = stdout;
+      err.stderr = stderr;
+      finish(err);
+    });
+
+    child.on('close', (code) => {
+      if (code === 0 || code === null) {
+        finish(null, { stdout, stderr });
+      } else {
+        const err = new Error(`Command failed with exit code ${code}`) as SpawnCaptureError;
+        err.code = code;
+        err.stdout = stdout;
+        err.stderr = stderr;
+        finish(err);
+      }
+    });
+
+    if (options.timeout) {
+      timeoutId = setTimeout(() => {
+        child.kill('SIGTERM');
+        const err = new Error(`Command timed out after ${options.timeout}ms`) as SpawnCaptureError;
+        err.stdout = stdout;
+        err.stderr = stderr;
+        finish(err);
+      }, options.timeout);
+    }
+  });
+}
+
+/** Runs `command` through a shell, mirroring child_process.exec but with safe stdio. */
+function execShellSafe(
+  command: string,
+  options: SpawnCaptureOptions
+): Promise<{ stdout: string; stderr: string }> {
+  const isWindows = process.platform === 'win32';
+  const shell = isWindows ? process.env.ComSpec ?? 'cmd.exe' : '/bin/sh';
+  const shellArgs = isWindows ? ['/d', '/s', '/c', command] : ['-c', command];
+  return spawnCapture(shell, shellArgs, options);
+}
+
+/** Runs `file` directly (no shell), mirroring child_process.execFile but with safe stdio. */
+function execFileSafe(
+  file: string,
+  args: string[],
+  options: SpawnCaptureOptions
+): Promise<{ stdout: string; stderr: string }> {
+  return spawnCapture(file, args, options);
+}
 
 export type ResearchAgentRuntime = SubagentRuntime;
 
@@ -67,6 +170,13 @@ function resolveToolPath(workspace: string, rawPath: string, ignoreService: Igno
 const SOURCE_FILE_PATTERN = /\.(?:tsx?|jsx?|mjs|cjs|css|scss|sass|less|json|ya?ml)$/i;
 const READ_FILE_MAX_CHARS = 50000;
 const READ_FILES_MAX_PATHS = 12;
+
+/** Caps file content for the model and, unlike a silent slice, tells it more was cut off. */
+function truncateFileContent(content: string): string {
+  if (content.length <= READ_FILE_MAX_CHARS) return content;
+  const remaining = content.length - READ_FILE_MAX_CHARS;
+  return `${content.slice(0, READ_FILE_MAX_CHARS)}\n...(truncated, ${remaining} more characters — read a narrower range or a more specific file if you need the rest)`;
+}
 const SHELL_COMMAND_CONTENT_PREFIX =
   /^(?:git\s+(?:checkout|restore|reset|clean|pull|push|commit|merge|rebase|switch)\b|(?:npm|yarn|pnpm|npx)\s+|rm\s+-|mv\s+|cp\s+|sed\s+-i\b|cat\s+>|echo\s+.+>|python(?:3)?\s+|node\s+|bash\s+|sh\s+)/i;
 
@@ -104,7 +214,7 @@ function updateReadFileCache(workspace: string, relPath: string, content: string
   try {
     const st = statSync(join(workspace, relPath));
     getReadFileCache(workspace).set(relPath, {
-      content: content.slice(0, READ_FILE_MAX_CHARS),
+      content: truncateFileContent(content),
       mtimeMs: st.mtimeMs,
       size: st.size,
     });
@@ -210,12 +320,13 @@ async function readWorkspaceFileContent(
       return { success: true, output: cached.content };
     }
     const content = await readFile(fullPath, 'utf-8');
+    const truncated = truncateFileContent(content);
     getReadFileCache(workspace).set(relPath, {
-      content: content.slice(0, READ_FILE_MAX_CHARS),
+      content: truncated,
       mtimeMs: st.mtimeMs,
       size: st.size,
     });
-    return { success: true, output: content.slice(0, READ_FILE_MAX_CHARS) };
+    return { success: true, output: truncated };
   } catch (e) {
     return { success: false, error: String(e) };
   }
@@ -235,7 +346,7 @@ export async function readApprovedExternalFile(rawPath: string): Promise<ToolRes
     const content = await readFile(rawPath, 'utf-8');
     return {
       success: true,
-      output: `[External file outside the workspace — read with user approval]\n${content.slice(0, READ_FILE_MAX_CHARS)}`,
+      output: `[External file outside the workspace — read with user approval]\n${truncateFileContent(content)}`,
     };
   } catch (e) {
     return { success: false, output: '', error: String(e) };
@@ -383,7 +494,7 @@ export function createListFilesTool(
             const entryRel = relPath ? join(listRel, entry).replace(/\\/g, '/') : entry;
             try {
               const stat = statSync(join(base, entry));
-              return !ignoreService.isIgnored(stat.isDirectory() ? `${entryRel}/` : entryRel);
+              return !ignoreService.isIgnored(stat.isDirectory() ? `${entryRel}/` : entryRel, { forRead: true });
             } catch {
               return false;
             }
@@ -452,7 +563,7 @@ async function ripgrepSearch(workspace: string, query: string, limit: number, sc
     const rgPath = rg.rgPath;
     const scope = normalizeScopeRoot(scopeRoot);
     const target = scope ? JSON.stringify(scope) : '.';
-    const { stdout } = await execAsync(
+    const { stdout } = await execShellSafe(
       `"${rgPath}" --no-heading --line-number --max-count ${limit} --regexp ${JSON.stringify(query)} ${target}`,
       { cwd: workspace, maxBuffer: 2 * 1024 * 1024, timeout: 15000 }
     );
@@ -589,7 +700,7 @@ export function createExecuteWorkspaceScriptTool(
 
       const runner = entry.name.endsWith('.mjs') ? process.execPath : 'bash';
       try {
-        const { stdout, stderr } = await execFileAsync(runner, args, {
+        const { stdout, stderr } = await execFileSafe(runner, args, {
           cwd: workspace,
           maxBuffer: 2 * 1024 * 1024,
           timeout: 120000,
@@ -1026,7 +1137,7 @@ export function createRunCommandTool(workspace: string, getMode: () => string): 
         if (normalized.error) {
           return { success: false, output: '', error: normalized.error };
         }
-        const { stdout, stderr } = await execAsync(normalized.command, {
+        const { stdout, stderr } = await execShellSafe(normalized.command, {
           cwd: normalized.cwd,
           maxBuffer: 4 * 1024 * 1024,
           timeout: 120000,

@@ -25,8 +25,8 @@ describe('Act orchestration boundary', () => {
     expect(shouldResumeSavedPlan('new task: fix the login bug', true)).toBe(false);
     expect(shouldResumeSavedPlan('ignore the current plan and fix the login bug', true)).toBe(false);
     expect(shouldResumeSavedPlan('no plan, fix the login bug', true)).toBe(false);
-    expect(shouldResumeSavedPlan('go ahead', true, { actDepth: 'quick' })).toBe(false);
-    expect(shouldResumeSavedPlan('execute the plan', true, { actDepth: 'quick' })).toBe(true);
+    expect(shouldResumeSavedPlan('go ahead', true, false, { actDepth: 'quick' })).toBe(false);
+    expect(shouldResumeSavedPlan('execute the plan', true, false, { actDepth: 'quick' })).toBe(true);
   });
 
   it('routes active-plan handoffs before replanning', () => {

@@ -67,6 +67,37 @@ describe('AgentLoop E2E', () => {
     expect(chunks.join('')).toContain('Done');
   });
 
+  it('rejects a tool call for a tool not offered in this run, without invoking the executor', async () => {
+    const executor = createMockExecutor();
+    const provider = mockProvider([
+      {
+        tool_calls: [{
+          index: 0,
+          id: 'call_1',
+          function: { name: 'mark_step_complete', arguments: '{"stepId":"current"}' },
+        }],
+      },
+      { content: 'Done.' },
+    ]);
+
+    const loop = new AgentLoop(executor, 5);
+    const chunks: string[] = [];
+    for await (const chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Fix the bug' }],
+      // mark_step_complete deliberately excluded — e.g. direct Agent execution with no active plan.
+      [{ type: 'function', function: { name: 'run_command', description: 'run', parameters: {} } }],
+      undefined,
+      undefined,
+      { maxSteps: 5 }
+    )) {
+      chunks.push(chunkContent(chunk));
+    }
+
+    expect(executor.execute).not.toHaveBeenCalled();
+    expect(executedTools).toEqual([]);
+  });
+
   it('executes tool calls and stops on pending approval', async () => {
     const executor = createMockExecutor();
     (executor.execute as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
@@ -397,7 +428,7 @@ describe('AgentLoop E2E', () => {
     expect(chunks.join('')).toContain('Stopped: file writes were blocked');
   });
 
-  it('stops after repeated invalid tool arguments', async () => {
+  it('stops after repeated identical tool failures', async () => {
     const executor = createMockExecutor();
     (executor.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
       success: false,
@@ -437,7 +468,7 @@ describe('AgentLoop E2E', () => {
     }
 
     expect(executor.execute).toHaveBeenCalledTimes(2);
-    expect(chunks.join('')).toContain('Stopped after repeated invalid tool arguments');
+    expect(chunks.join('')).toContain('Stopped after repeated identical tool failure');
     expect(chunks.join('')).not.toContain('Should not get here');
   });
 
@@ -496,6 +527,30 @@ describe('Plan tools E2E', () => {
 
     expect(result.success).toBe(true);
     expect(result.output).toContain('Step step_1 marked complete');
+    expect(plan.steps[0].status).toBe('done');
+  });
+
+  it('resolves stepId "current" to the first pending step when nothing is running', async () => {
+    const { createMarkStepCompleteTool } = await import('../src/core/tools/planTools');
+    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
+    const plan: ThunderPlan = {
+      goal: 'test',
+      assumptions: [],
+      requiredApprovals: [],
+      steps: [{ id: 'step_1', title: 'Only step', status: 'pending', risk: 'low' }],
+    };
+    const runtime = new ToolRuntime();
+    runtime.register(createMarkStepCompleteTool({
+      getPlan: () => plan,
+      setPlan: (updated) => {
+        plan.steps = updated.steps;
+      },
+      getSessionId: () => 'session-1',
+    }));
+
+    const result = await runtime.execute('mark_step_complete', { stepId: 'current' });
+
+    expect(result.success).toBe(true);
     expect(plan.steps[0].status).toBe('done');
   });
 

@@ -38,6 +38,16 @@ describe('IgnoreService', () => {
     expect(ig.isIgnored('./node_modules/pkg/index.js')).toBe(true);
   });
 
+  it('allows reading .mitii/logs/*.jsonl for debugging but keeps them out of the index', () => {
+    const ig = new IgnoreService();
+    ig.load('/tmp');
+    expect(ig.isIgnored('.mitii/logs/2026-07-08_23-10-52-abc.jsonl', { forRead: true })).toBe(false);
+    expect(ig.isIgnored('.mitii/logs', { forRead: true })).toBe(false);
+    expect(ig.isIgnored('.mitii/logs/2026-07-08_23-10-52-abc.jsonl')).toBe(true);
+    expect(ig.isIgnored('.mitii/config.json', { forRead: true })).toBe(true);
+    expect(ig.isIgnored('.mitii/logs/nested/other.jsonl', { forRead: true })).toBe(true);
+  });
+
   it('normalizes absolute workspace paths before ignore checks', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-ignore-absolute-test-'));
     try {

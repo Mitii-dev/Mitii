@@ -1,1099 +1,1168 @@
 [
   {
-    "id": "eval-tool-create_plan-p2-v2",
+    "id": "eval-retrieval-nest-api-q14",
+    "tier": "eval",
+    "category": "retrieval-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "Locate entry point for the build tool configuration.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-nest-api-q2",
+    "tier": "eval",
+    "category": "retrieval-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "Where is the root NestJS module declared?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-nest-api-q3",
+    "tier": "eval",
+    "category": "retrieval-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "Find the Next.js root layout component.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-nest-api-q4",
+    "tier": "eval",
+    "category": "retrieval-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "Which file handles the /users route?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-nest-api-q5",
+    "tier": "eval",
+    "category": "retrieval-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "Where are React component props typed?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-nest-api-q6",
+    "tier": "eval",
+    "category": "retrieval-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "Find the NestJS controller class.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-nest-api-q7",
+    "tier": "eval",
+    "category": "retrieval-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "Locate package.json and summarize its name field.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-nest-api-q8",
+    "tier": "eval",
+    "category": "retrieval-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "Find test files in this repository.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-nest-api-q9",
+    "tier": "eval",
+    "category": "retrieval-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "Which source file has the most imports?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-next-app-q0",
+    "tier": "eval",
+    "category": "retrieval-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Find the file that defines the main HTTP server bootstrap.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-next-app-q1",
+    "tier": "eval",
+    "category": "retrieval-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Locate the primary UI component rendered on the home view.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-next-app-q10",
+    "tier": "eval",
+    "category": "retrieval-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Locate the Express app mount point for routers.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-next-app-q11",
+    "tier": "eval",
+    "category": "retrieval-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Find TypeScript configuration if present.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-next-app-q12",
+    "tier": "eval",
+    "category": "retrieval-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Where is the main page metadata defined?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-next-app-q13",
+    "tier": "eval",
+    "category": "retrieval-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Find service layer business logic.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-next-app-q14",
+    "tier": "eval",
+    "category": "retrieval-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Locate entry point for the build tool configuration.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-next-app-q2",
+    "tier": "eval",
+    "category": "retrieval-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Where is the root NestJS module declared?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-next-app-q3",
+    "tier": "eval",
+    "category": "retrieval-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Find the Next.js root layout component.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-next-app-q4",
+    "tier": "eval",
+    "category": "retrieval-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Which file handles the /users route?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-next-app-q5",
+    "tier": "eval",
+    "category": "retrieval-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Where are React component props typed?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-next-app-q6",
+    "tier": "eval",
+    "category": "retrieval-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Find the NestJS controller class.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-next-app-q7",
+    "tier": "eval",
+    "category": "retrieval-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Locate package.json and summarize its name field.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-next-app-q8",
+    "tier": "eval",
+    "category": "retrieval-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Find test files in this repository.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-next-app-q9",
+    "tier": "eval",
+    "category": "retrieval-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Which source file has the most imports?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-node-express-q0",
+    "tier": "eval",
+    "category": "retrieval-node",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Find the file that defines the main HTTP server bootstrap.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-node-express-q1",
+    "tier": "eval",
+    "category": "retrieval-node",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Locate the primary UI component rendered on the home view.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-node-express-q10",
+    "tier": "eval",
+    "category": "retrieval-node",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Locate the Express app mount point for routers.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-node-express-q11",
+    "tier": "eval",
+    "category": "retrieval-node",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Find TypeScript configuration if present.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-node-express-q12",
+    "tier": "eval",
+    "category": "retrieval-node",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Where is the main page metadata defined?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-node-express-q13",
+    "tier": "eval",
+    "category": "retrieval-node",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Find service layer business logic.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-node-express-q14",
+    "tier": "eval",
+    "category": "retrieval-node",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Locate entry point for the build tool configuration.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-node-express-q2",
+    "tier": "eval",
+    "category": "retrieval-node",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Where is the root NestJS module declared?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-node-express-q3",
+    "tier": "eval",
+    "category": "retrieval-node",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Find the Next.js root layout component.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-node-express-q4",
+    "tier": "eval",
+    "category": "retrieval-node",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Which file handles the /users route?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-node-express-q5",
+    "tier": "eval",
+    "category": "retrieval-node",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Where are React component props typed?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-node-express-q6",
+    "tier": "eval",
+    "category": "retrieval-node",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Find the NestJS controller class.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-node-express-q7",
+    "tier": "eval",
+    "category": "retrieval-node",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Locate package.json and summarize its name field.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-node-express-q8",
+    "tier": "eval",
+    "category": "retrieval-node",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Find test files in this repository.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-node-express-q9",
+    "tier": "eval",
+    "category": "retrieval-node",
+    "mode": "ask",
+    "fixture": "node-express",
+    "prompt": "Which source file has the most imports?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-react-vite-q0",
+    "tier": "eval",
+    "category": "retrieval-react",
+    "mode": "ask",
+    "fixture": "react-vite",
+    "prompt": "Find the file that defines the main HTTP server bootstrap.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-react-vite-q1",
+    "tier": "eval",
+    "category": "retrieval-react",
+    "mode": "ask",
+    "fixture": "react-vite",
+    "prompt": "Locate the primary UI component rendered on the home view.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-react-vite-q10",
+    "tier": "eval",
+    "category": "retrieval-react",
+    "mode": "ask",
+    "fixture": "react-vite",
+    "prompt": "Locate the Express app mount point for routers.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-react-vite-q11",
+    "tier": "eval",
+    "category": "retrieval-react",
+    "mode": "ask",
+    "fixture": "react-vite",
+    "prompt": "Find TypeScript configuration if present.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-react-vite-q12",
+    "tier": "eval",
+    "category": "retrieval-react",
+    "mode": "ask",
+    "fixture": "react-vite",
+    "prompt": "Where is the main page metadata defined?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-react-vite-q13",
+    "tier": "eval",
+    "category": "retrieval-react",
+    "mode": "ask",
+    "fixture": "react-vite",
+    "prompt": "Find service layer business logic.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-react-vite-q14",
+    "tier": "eval",
+    "category": "retrieval-react",
+    "mode": "ask",
+    "fixture": "react-vite",
+    "prompt": "Locate entry point for the build tool configuration.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-react-vite-q2",
+    "tier": "eval",
+    "category": "retrieval-react",
+    "mode": "ask",
+    "fixture": "react-vite",
+    "prompt": "Where is the root NestJS module declared?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-react-vite-q3",
+    "tier": "eval",
+    "category": "retrieval-react",
+    "mode": "ask",
+    "fixture": "react-vite",
+    "prompt": "Find the Next.js root layout component.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-react-vite-q4",
+    "tier": "eval",
+    "category": "retrieval-react",
+    "mode": "ask",
+    "fixture": "react-vite",
+    "prompt": "Which file handles the /users route?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-react-vite-q5",
+    "tier": "eval",
+    "category": "retrieval-react",
+    "mode": "ask",
+    "fixture": "react-vite",
+    "prompt": "Where are React component props typed?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-react-vite-q6",
+    "tier": "eval",
+    "category": "retrieval-react",
+    "mode": "ask",
+    "fixture": "react-vite",
+    "prompt": "Find the NestJS controller class.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-react-vite-q7",
+    "tier": "eval",
+    "category": "retrieval-react",
+    "mode": "ask",
+    "fixture": "react-vite",
+    "prompt": "Locate package.json and summarize its name field.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-react-vite-q8",
+    "tier": "eval",
+    "category": "retrieval-react",
+    "mode": "ask",
+    "fixture": "react-vite",
+    "prompt": "Find test files in this repository.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-react-vite-q9",
+    "tier": "eval",
+    "category": "retrieval-react",
+    "mode": "ask",
+    "fixture": "react-vite",
+    "prompt": "Which source file has the most imports?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-saas-api-q0",
+    "tier": "eval",
+    "category": "retrieval-modular-api",
+    "mode": "ask",
+    "fixture": "saas-api",
+    "prompt": "Find the file that defines the main HTTP server bootstrap.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-saas-api-q1",
+    "tier": "eval",
+    "category": "retrieval-modular-api",
+    "mode": "ask",
+    "fixture": "saas-api",
+    "prompt": "Locate the primary UI component rendered on the home view.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-saas-api-q10",
+    "tier": "eval",
+    "category": "retrieval-modular-api",
+    "mode": "ask",
+    "fixture": "saas-api",
+    "prompt": "Locate the Express app mount point for routers.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-saas-api-q11",
+    "tier": "eval",
+    "category": "retrieval-modular-api",
+    "mode": "ask",
+    "fixture": "saas-api",
+    "prompt": "Find TypeScript configuration if present.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-saas-api-q12",
+    "tier": "eval",
+    "category": "retrieval-modular-api",
+    "mode": "ask",
+    "fixture": "saas-api",
+    "prompt": "Where is the main page metadata defined?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-saas-api-q13",
+    "tier": "eval",
+    "category": "retrieval-modular-api",
+    "mode": "ask",
+    "fixture": "saas-api",
+    "prompt": "Find service layer business logic.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-saas-api-q14",
+    "tier": "eval",
+    "category": "retrieval-modular-api",
+    "mode": "ask",
+    "fixture": "saas-api",
+    "prompt": "Locate entry point for the build tool configuration.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-saas-api-q2",
+    "tier": "eval",
+    "category": "retrieval-modular-api",
+    "mode": "ask",
+    "fixture": "saas-api",
+    "prompt": "Where is the root NestJS module declared?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-saas-api-q3",
+    "tier": "eval",
+    "category": "retrieval-modular-api",
+    "mode": "ask",
+    "fixture": "saas-api",
+    "prompt": "Find the Next.js root layout component.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-saas-api-q4",
+    "tier": "eval",
+    "category": "retrieval-modular-api",
+    "mode": "ask",
+    "fixture": "saas-api",
+    "prompt": "Which file handles the /users route?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-saas-api-q5",
+    "tier": "eval",
+    "category": "retrieval-modular-api",
+    "mode": "ask",
+    "fixture": "saas-api",
+    "prompt": "Where are React component props typed?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-saas-api-q6",
+    "tier": "eval",
+    "category": "retrieval-modular-api",
+    "mode": "ask",
+    "fixture": "saas-api",
+    "prompt": "Find the NestJS controller class.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-saas-api-q7",
+    "tier": "eval",
+    "category": "retrieval-modular-api",
+    "mode": "ask",
+    "fixture": "saas-api",
+    "prompt": "Locate package.json and summarize its name field.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-saas-api-q8",
+    "tier": "eval",
+    "category": "retrieval-modular-api",
+    "mode": "ask",
+    "fixture": "saas-api",
+    "prompt": "Find test files in this repository.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-retrieval-saas-api-q9",
+    "tier": "eval",
+    "category": "retrieval-modular-api",
+    "mode": "ask",
+    "fixture": "saas-api",
+    "prompt": "Which source file has the most imports?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p0-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the browser_navigate tool? Give an example with args { \"url\": \"http://localhost:3000\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p0-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the browser_navigate tool? Give an example with args { \"url\": \"http://localhost:3000\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p0-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the browser_navigate tool? Give an example with args { \"url\": \"http://localhost:3000\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p0-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the browser_navigate tool? Give an example with args { \"url\": \"http://localhost:3000\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p0-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the browser_navigate tool? Give an example with args { \"url\": \"http://localhost:3000\" }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p1-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for browser_navigate: { \"url\": \"http://localhost:3000\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p1-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for browser_navigate: { \"url\": \"http://localhost:3000\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p1-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for browser_navigate: { \"url\": \"http://localhost:3000\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p1-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for browser_navigate: { \"url\": \"http://localhost:3000\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p1-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for browser_navigate: { \"url\": \"http://localhost:3000\" }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p2-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking browser_navigate?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p2-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking browser_navigate?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p2-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking browser_navigate?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p2-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking browser_navigate?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p2-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What preconditions must be true before invoking browser_navigate?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p3-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when browser_navigate is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p3-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when browser_navigate is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p3-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when browser_navigate is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p3-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when browser_navigate is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-browser_navigate-p3-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "What failure modes occur when browser_navigate is misused?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p0-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the create_plan tool? Give an example with args { \"steps\": [] }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p0-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the create_plan tool? Give an example with args { \"steps\": [] }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p0-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the create_plan tool? Give an example with args { \"steps\": [] }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p0-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the create_plan tool? Give an example with args { \"steps\": [] }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p0-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "When should a coding agent call the create_plan tool? Give an example with args { \"steps\": [] }.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p1-v0",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for create_plan: { \"steps\": [] }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p1-v1",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for create_plan: { \"steps\": [] }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p1-v2",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for create_plan: { \"steps\": [] }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p1-v3",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for create_plan: { \"steps\": [] }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p1-v4",
+    "tier": "eval",
+    "category": "tool-calling",
+    "mode": "ask",
+    "prompt": "Describe correct JSON arguments for create_plan: { \"steps\": [] }",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-tool-create_plan-p2-v0",
     "tier": "eval",
     "category": "tool-calling",
     "mode": "ask",
     "prompt": "What preconditions must be true before invoking create_plan?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-create_plan-p2-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking create_plan?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-create_plan-p2-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking create_plan?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-create_plan-p3-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when create_plan is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-create_plan-p3-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when create_plan is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-create_plan-p3-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when create_plan is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-create_plan-p3-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when create_plan is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-create_plan-p3-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when create_plan is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p0-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the git_status tool? Give an example with args {}.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p0-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the git_status tool? Give an example with args {}.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p0-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the git_status tool? Give an example with args {}.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p0-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the git_status tool? Give an example with args {}.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p0-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the git_status tool? Give an example with args {}.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p1-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for git_status: {}",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p1-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for git_status: {}",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p1-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for git_status: {}",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p1-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for git_status: {}",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p1-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for git_status: {}",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p2-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking git_status?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p2-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking git_status?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p2-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking git_status?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p2-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking git_status?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p2-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking git_status?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p3-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when git_status is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p3-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when git_status is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p3-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when git_status is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p3-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when git_status is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-git_status-p3-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when git_status is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p0-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the list_directory tool? Give an example with args { \"path\": \"src\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p0-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the list_directory tool? Give an example with args { \"path\": \"src\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p0-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the list_directory tool? Give an example with args { \"path\": \"src\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p0-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the list_directory tool? Give an example with args { \"path\": \"src\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p0-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the list_directory tool? Give an example with args { \"path\": \"src\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p1-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for list_directory: { \"path\": \"src\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p1-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for list_directory: { \"path\": \"src\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p1-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for list_directory: { \"path\": \"src\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p1-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for list_directory: { \"path\": \"src\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p1-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for list_directory: { \"path\": \"src\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p2-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking list_directory?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p2-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking list_directory?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p2-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking list_directory?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p2-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking list_directory?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p2-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking list_directory?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p3-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when list_directory is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p3-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when list_directory is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p3-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when list_directory is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p3-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when list_directory is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-list_directory-p3-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when list_directory is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p0-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the read_file tool? Give an example with args { \"path\": \"src/index.js\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p0-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the read_file tool? Give an example with args { \"path\": \"src/index.js\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p0-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the read_file tool? Give an example with args { \"path\": \"src/index.js\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p0-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the read_file tool? Give an example with args { \"path\": \"src/index.js\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p0-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the read_file tool? Give an example with args { \"path\": \"src/index.js\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p1-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for read_file: { \"path\": \"src/index.js\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p1-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for read_file: { \"path\": \"src/index.js\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p1-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for read_file: { \"path\": \"src/index.js\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p1-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for read_file: { \"path\": \"src/index.js\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p1-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for read_file: { \"path\": \"src/index.js\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p2-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking read_file?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p2-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking read_file?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p2-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking read_file?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p2-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking read_file?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p2-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking read_file?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p3-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when read_file is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p3-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when read_file is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p3-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when read_file is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p3-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when read_file is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-read_file-p3-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when read_file is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p0-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the run_terminal tool? Give an example with args { \"command\": \"npm test\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p0-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the run_terminal tool? Give an example with args { \"command\": \"npm test\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p0-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the run_terminal tool? Give an example with args { \"command\": \"npm test\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p0-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the run_terminal tool? Give an example with args { \"command\": \"npm test\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p0-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the run_terminal tool? Give an example with args { \"command\": \"npm test\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p1-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for run_terminal: { \"command\": \"npm test\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p1-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for run_terminal: { \"command\": \"npm test\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p1-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for run_terminal: { \"command\": \"npm test\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p1-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for run_terminal: { \"command\": \"npm test\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p1-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for run_terminal: { \"command\": \"npm test\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p2-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking run_terminal?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p2-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking run_terminal?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p2-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking run_terminal?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p2-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking run_terminal?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p2-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking run_terminal?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p3-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when run_terminal is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p3-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when run_terminal is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p3-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when run_terminal is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p3-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when run_terminal is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-run_terminal-p3-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What failure modes occur when run_terminal is misused?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-search_codebase-p0-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the search_codebase tool? Give an example with args { \"query\": \"router.get\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-search_codebase-p0-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the search_codebase tool? Give an example with args { \"query\": \"router.get\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-search_codebase-p0-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the search_codebase tool? Give an example with args { \"query\": \"router.get\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-search_codebase-p0-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the search_codebase tool? Give an example with args { \"query\": \"router.get\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-search_codebase-p0-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "When should a coding agent call the search_codebase tool? Give an example with args { \"query\": \"router.get\" }.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-search_codebase-p1-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for search_codebase: { \"query\": \"router.get\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-search_codebase-p1-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for search_codebase: { \"query\": \"router.get\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-search_codebase-p1-v2",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for search_codebase: { \"query\": \"router.get\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-search_codebase-p1-v3",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for search_codebase: { \"query\": \"router.get\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-search_codebase-p1-v4",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "Describe correct JSON arguments for search_codebase: { \"query\": \"router.get\" }",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-search_codebase-p2-v0",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking search_codebase?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-tool-search_codebase-p2-v1",
-    "tier": "eval",
-    "category": "tool-calling",
-    "mode": "ask",
-    "prompt": "What preconditions must be true before invoking search_codebase?",
     "verify": [
       "exit_0",
       "stdout_not_empty"

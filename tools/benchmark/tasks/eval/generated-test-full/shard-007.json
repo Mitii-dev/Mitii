@@ -1,5 +1,793 @@
 [
   {
+    "id": "eval-gaia-research-6",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Research-style question #6: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-gaia-research-7",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Research-style question #7: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-gaia-research-8",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Research-style question #8: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-gaia-research-9",
+    "tier": "eval",
+    "category": "gaia",
+    "mode": "ask",
+    "prompt": "Research-style question #9: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s0",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Add comprehensive unit tests for the main module in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s1",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Introduce structured logging across the application in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s10",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Add rate limiting for public routes in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s11",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Plan accessibility improvements for UI components in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s12",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Add integration tests with a test database or mock server in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s13",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Plan dependency audit and security hardening in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s14",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Add observability: metrics and tracing hooks in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s15",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Plan refactoring to reduce coupling between modules in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s16",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Add caching layer for frequently accessed data in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s17",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Plan feature flags for gradual rollout in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s18",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Add database migration strategy (if applicable) in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s19",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Plan dark mode support for the UI in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s2",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Add input validation for all public endpoints or components in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s3",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Plan a migration from JavaScript to TypeScript incrementally in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s4",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Add health check and readiness endpoints in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s5",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Improve error messages for API consumers in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s6",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Add API documentation generation (OpenAPI or similar) in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s7",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Plan performance profiling for hot paths in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s8",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Add environment-based configuration with validation in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-nest-api-s9",
+    "tier": "eval",
+    "category": "fixture-plan-nestjs",
+    "mode": "plan",
+    "fixture": "nest-api",
+    "prompt": "Plan CI pipeline steps: lint, test, build in this NestJS project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s0",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Add comprehensive unit tests for the main module in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s1",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Introduce structured logging across the application in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s10",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Add rate limiting for public routes in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s11",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Plan accessibility improvements for UI components in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s12",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Add integration tests with a test database or mock server in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s13",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Plan dependency audit and security hardening in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s14",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Add observability: metrics and tracing hooks in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s15",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Plan refactoring to reduce coupling between modules in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s16",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Add caching layer for frequently accessed data in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s17",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Plan feature flags for gradual rollout in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s18",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Add database migration strategy (if applicable) in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s19",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Plan dark mode support for the UI in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s2",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Add input validation for all public endpoints or components in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s3",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Plan a migration from JavaScript to TypeScript incrementally in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s4",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Add health check and readiness endpoints in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s5",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Improve error messages for API consumers in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s6",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Add API documentation generation (OpenAPI or similar) in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s7",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Plan performance profiling for hot paths in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s8",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Add environment-based configuration with validation in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-next-app-s9",
+    "tier": "eval",
+    "category": "fixture-plan-nextjs",
+    "mode": "plan",
+    "fixture": "next-app",
+    "prompt": "Plan CI pipeline steps: lint, test, build in this Next.js App Router project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s0",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Add comprehensive unit tests for the main module in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s1",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Introduce structured logging across the application in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s10",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Add rate limiting for public routes in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s11",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Plan accessibility improvements for UI components in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s12",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Add integration tests with a test database or mock server in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s13",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Plan dependency audit and security hardening in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s14",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Add observability: metrics and tracing hooks in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s15",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Plan refactoring to reduce coupling between modules in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s16",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Add caching layer for frequently accessed data in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s17",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Plan feature flags for gradual rollout in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s18",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Add database migration strategy (if applicable) in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s19",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Plan dark mode support for the UI in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s2",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Add input validation for all public endpoints or components in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s3",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Plan a migration from JavaScript to TypeScript incrementally in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s4",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Add health check and readiness endpoints in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s5",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Improve error messages for API consumers in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s6",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Add API documentation generation (OpenAPI or similar) in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s7",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Plan performance profiling for hot paths in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s8",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Add environment-based configuration with validation in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-node-express-s9",
+    "tier": "eval",
+    "category": "fixture-plan-node",
+    "mode": "plan",
+    "fixture": "node-express",
+    "prompt": "Plan CI pipeline steps: lint, test, build in this Express project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s0",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Add comprehensive unit tests for the main module in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
+    "id": "eval-plan-react-vite-s1",
+    "tier": "eval",
+    "category": "fixture-plan-react",
+    "mode": "plan",
+    "fixture": "react-vite",
+    "prompt": "Introduce structured logging across the application in this React + Vite project. Break into ordered steps with verification.",
+    "verify": [
+      "exit_0",
+      "json_path:steps"
+    ]
+  },
+  {
     "id": "eval-plan-react-vite-s10",
     "tier": "eval",
     "category": "fixture-plan-react",
@@ -216,905 +1004,195 @@
     ]
   },
   {
-    "id": "eval-reasoning-0-v0",
+    "id": "eval-plan-saas-api-s0",
     "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "If a CI pipeline fails only on Windows, what hypotheses do you test first? (variant 1: be concise and structured).",
+    "category": "fixture-plan-modular-api",
+    "mode": "plan",
+    "fixture": "saas-api",
+    "prompt": "Add comprehensive unit tests for the main module in this TypeScript (synthetic, ~112 files, 17 domain modules) project. Break into ordered steps with verification.",
     "verify": [
       "exit_0",
-      "stdout_not_empty"
+      "json_path:steps"
     ]
   },
   {
-    "id": "eval-reasoning-0-v1",
+    "id": "eval-plan-saas-api-s1",
     "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "If a CI pipeline fails only on Windows, what hypotheses do you test first? (variant 2: be concise and structured).",
+    "category": "fixture-plan-modular-api",
+    "mode": "plan",
+    "fixture": "saas-api",
+    "prompt": "Introduce structured logging across the application in this TypeScript (synthetic, ~112 files, 17 domain modules) project. Break into ordered steps with verification.",
     "verify": [
       "exit_0",
-      "stdout_not_empty"
+      "json_path:steps"
     ]
   },
   {
-    "id": "eval-reasoning-0-v2",
+    "id": "eval-plan-saas-api-s10",
     "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "If a CI pipeline fails only on Windows, what hypotheses do you test first? (variant 3: be concise and structured).",
+    "category": "fixture-plan-modular-api",
+    "mode": "plan",
+    "fixture": "saas-api",
+    "prompt": "Add rate limiting for public routes in this TypeScript (synthetic, ~112 files, 17 domain modules) project. Break into ordered steps with verification.",
     "verify": [
       "exit_0",
-      "stdout_not_empty"
+      "json_path:steps"
     ]
   },
   {
-    "id": "eval-reasoning-0-v3",
+    "id": "eval-plan-saas-api-s11",
     "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "If a CI pipeline fails only on Windows, what hypotheses do you test first? (variant 4: be concise and structured).",
+    "category": "fixture-plan-modular-api",
+    "mode": "plan",
+    "fixture": "saas-api",
+    "prompt": "Plan accessibility improvements for UI components in this TypeScript (synthetic, ~112 files, 17 domain modules) project. Break into ordered steps with verification.",
     "verify": [
       "exit_0",
-      "stdout_not_empty"
+      "json_path:steps"
     ]
   },
   {
-    "id": "eval-reasoning-0-v4",
+    "id": "eval-plan-saas-api-s12",
     "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "If a CI pipeline fails only on Windows, what hypotheses do you test first? (variant 5: be concise and structured).",
+    "category": "fixture-plan-modular-api",
+    "mode": "plan",
+    "fixture": "saas-api",
+    "prompt": "Add integration tests with a test database or mock server in this TypeScript (synthetic, ~112 files, 17 domain modules) project. Break into ordered steps with verification.",
     "verify": [
       "exit_0",
-      "stdout_not_empty"
+      "json_path:steps"
     ]
   },
   {
-    "id": "eval-reasoning-1-v0",
+    "id": "eval-plan-saas-api-s13",
     "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Compare monorepo vs polyrepo for a 10-engineer team shipping JS libraries. (variant 1: be concise and structured).",
+    "category": "fixture-plan-modular-api",
+    "mode": "plan",
+    "fixture": "saas-api",
+    "prompt": "Plan dependency audit and security hardening in this TypeScript (synthetic, ~112 files, 17 domain modules) project. Break into ordered steps with verification.",
     "verify": [
       "exit_0",
-      "stdout_not_empty"
+      "json_path:steps"
     ]
   },
   {
-    "id": "eval-reasoning-1-v1",
+    "id": "eval-plan-saas-api-s14",
     "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Compare monorepo vs polyrepo for a 10-engineer team shipping JS libraries. (variant 2: be concise and structured).",
+    "category": "fixture-plan-modular-api",
+    "mode": "plan",
+    "fixture": "saas-api",
+    "prompt": "Add observability: metrics and tracing hooks in this TypeScript (synthetic, ~112 files, 17 domain modules) project. Break into ordered steps with verification.",
     "verify": [
       "exit_0",
-      "stdout_not_empty"
+      "json_path:steps"
     ]
   },
   {
-    "id": "eval-reasoning-1-v2",
+    "id": "eval-plan-saas-api-s15",
     "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Compare monorepo vs polyrepo for a 10-engineer team shipping JS libraries. (variant 3: be concise and structured).",
+    "category": "fixture-plan-modular-api",
+    "mode": "plan",
+    "fixture": "saas-api",
+    "prompt": "Plan refactoring to reduce coupling between modules in this TypeScript (synthetic, ~112 files, 17 domain modules) project. Break into ordered steps with verification.",
     "verify": [
       "exit_0",
-      "stdout_not_empty"
+      "json_path:steps"
     ]
   },
   {
-    "id": "eval-reasoning-1-v3",
+    "id": "eval-plan-saas-api-s16",
     "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Compare monorepo vs polyrepo for a 10-engineer team shipping JS libraries. (variant 4: be concise and structured).",
+    "category": "fixture-plan-modular-api",
+    "mode": "plan",
+    "fixture": "saas-api",
+    "prompt": "Add caching layer for frequently accessed data in this TypeScript (synthetic, ~112 files, 17 domain modules) project. Break into ordered steps with verification.",
     "verify": [
       "exit_0",
-      "stdout_not_empty"
+      "json_path:steps"
     ]
   },
   {
-    "id": "eval-reasoning-1-v4",
+    "id": "eval-plan-saas-api-s17",
     "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Compare monorepo vs polyrepo for a 10-engineer team shipping JS libraries. (variant 5: be concise and structured).",
+    "category": "fixture-plan-modular-api",
+    "mode": "plan",
+    "fixture": "saas-api",
+    "prompt": "Plan feature flags for gradual rollout in this TypeScript (synthetic, ~112 files, 17 domain modules) project. Break into ordered steps with verification.",
     "verify": [
       "exit_0",
-      "stdout_not_empty"
+      "json_path:steps"
     ]
   },
   {
-    "id": "eval-reasoning-2-v0",
+    "id": "eval-plan-saas-api-s18",
     "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "When should an agent ask for approval before editing package.json? (variant 1: be concise and structured).",
+    "category": "fixture-plan-modular-api",
+    "mode": "plan",
+    "fixture": "saas-api",
+    "prompt": "Add database migration strategy (if applicable) in this TypeScript (synthetic, ~112 files, 17 domain modules) project. Break into ordered steps with verification.",
     "verify": [
       "exit_0",
-      "stdout_not_empty"
+      "json_path:steps"
     ]
   },
   {
-    "id": "eval-reasoning-2-v1",
+    "id": "eval-plan-saas-api-s19",
     "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "When should an agent ask for approval before editing package.json? (variant 2: be concise and structured).",
+    "category": "fixture-plan-modular-api",
+    "mode": "plan",
+    "fixture": "saas-api",
+    "prompt": "Plan dark mode support for the UI in this TypeScript (synthetic, ~112 files, 17 domain modules) project. Break into ordered steps with verification.",
     "verify": [
       "exit_0",
-      "stdout_not_empty"
+      "json_path:steps"
     ]
   },
   {
-    "id": "eval-reasoning-2-v2",
+    "id": "eval-plan-saas-api-s2",
     "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "When should an agent ask for approval before editing package.json? (variant 3: be concise and structured).",
+    "category": "fixture-plan-modular-api",
+    "mode": "plan",
+    "fixture": "saas-api",
+    "prompt": "Add input validation for all public endpoints or components in this TypeScript (synthetic, ~112 files, 17 domain modules) project. Break into ordered steps with verification.",
     "verify": [
       "exit_0",
-      "stdout_not_empty"
+      "json_path:steps"
     ]
   },
   {
-    "id": "eval-reasoning-2-v3",
+    "id": "eval-plan-saas-api-s3",
     "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "When should an agent ask for approval before editing package.json? (variant 4: be concise and structured).",
+    "category": "fixture-plan-modular-api",
+    "mode": "plan",
+    "fixture": "saas-api",
+    "prompt": "Plan a migration from JavaScript to TypeScript incrementally in this TypeScript (synthetic, ~112 files, 17 domain modules) project. Break into ordered steps with verification.",
     "verify": [
       "exit_0",
-      "stdout_not_empty"
+      "json_path:steps"
     ]
   },
   {
-    "id": "eval-reasoning-2-v4",
+    "id": "eval-plan-saas-api-s4",
     "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "When should an agent ask for approval before editing package.json? (variant 5: be concise and structured).",
+    "category": "fixture-plan-modular-api",
+    "mode": "plan",
+    "fixture": "saas-api",
+    "prompt": "Add health check and readiness endpoints in this TypeScript (synthetic, ~112 files, 17 domain modules) project. Break into ordered steps with verification.",
     "verify": [
       "exit_0",
-      "stdout_not_empty"
+      "json_path:steps"
     ]
   },
   {
-    "id": "eval-reasoning-3-v0",
+    "id": "eval-plan-saas-api-s5",
     "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "How do you verify an LLM-generated patch without running full e2e? (variant 1: be concise and structured).",
+    "category": "fixture-plan-modular-api",
+    "mode": "plan",
+    "fixture": "saas-api",
+    "prompt": "Improve error messages for API consumers in this TypeScript (synthetic, ~112 files, 17 domain modules) project. Break into ordered steps with verification.",
     "verify": [
       "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-3-v1",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "How do you verify an LLM-generated patch without running full e2e? (variant 2: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-3-v2",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "How do you verify an LLM-generated patch without running full e2e? (variant 3: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-3-v3",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "How do you verify an LLM-generated patch without running full e2e? (variant 4: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-3-v4",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "How do you verify an LLM-generated patch without running full e2e? (variant 5: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-4-v0",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "What signals indicate index staleness in a coding agent? (variant 1: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-4-v1",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "What signals indicate index staleness in a coding agent? (variant 2: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-4-v2",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "What signals indicate index staleness in a coding agent? (variant 3: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-4-v3",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "What signals indicate index staleness in a coding agent? (variant 4: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-4-v4",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "What signals indicate index staleness in a coding agent? (variant 5: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-5-v0",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Explain tradeoffs: stub runtime vs real runtime in benchmark harnesses. (variant 1: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-5-v1",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Explain tradeoffs: stub runtime vs real runtime in benchmark harnesses. (variant 2: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-5-v2",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Explain tradeoffs: stub runtime vs real runtime in benchmark harnesses. (variant 3: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-5-v3",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Explain tradeoffs: stub runtime vs real runtime in benchmark harnesses. (variant 4: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-5-v4",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Explain tradeoffs: stub runtime vs real runtime in benchmark harnesses. (variant 5: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-6-v0",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "How would you shard 1000 eval tasks across 8 workers fairly? (variant 1: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-6-v1",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "How would you shard 1000 eval tasks across 8 workers fairly? (variant 2: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-6-v2",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "How would you shard 1000 eval tasks across 8 workers fairly? (variant 3: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-6-v3",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "How would you shard 1000 eval tasks across 8 workers fairly? (variant 4: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-6-v4",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "How would you shard 1000 eval tasks across 8 workers fairly? (variant 5: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-7-v0",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "When is retrieval-augmented ask mode preferable to agent mode? (variant 1: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-7-v1",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "When is retrieval-augmented ask mode preferable to agent mode? (variant 2: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-7-v2",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "When is retrieval-augmented ask mode preferable to agent mode? (variant 3: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-7-v3",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "When is retrieval-augmented ask mode preferable to agent mode? (variant 4: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-7-v4",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "When is retrieval-augmented ask mode preferable to agent mode? (variant 5: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-8-v0",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Describe a safe rollback strategy after a bad agent edit. (variant 1: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-8-v1",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Describe a safe rollback strategy after a bad agent edit. (variant 2: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-8-v2",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Describe a safe rollback strategy after a bad agent edit. (variant 3: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-8-v3",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Describe a safe rollback strategy after a bad agent edit. (variant 4: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-8-v4",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Describe a safe rollback strategy after a bad agent edit. (variant 5: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-9-v0",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "How do session JSONL logs help post-hoc eval scoring? (variant 1: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-9-v1",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "How do session JSONL logs help post-hoc eval scoring? (variant 2: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-9-v2",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "How do session JSONL logs help post-hoc eval scoring? (variant 3: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-9-v3",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "How do session JSONL logs help post-hoc eval scoring? (variant 4: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-9-v4",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "How do session JSONL logs help post-hoc eval scoring? (variant 5: be concise and structured).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-1",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 1 where you sum integers from 1 to 11.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-10",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 10 where you sum integers from 1 to 20.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-11",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 11 where you sum integers from 1 to 21.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-12",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 12 where you sum integers from 1 to 22.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-13",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 13 where you sum integers from 1 to 23.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-14",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 14 where you sum integers from 1 to 24.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-15",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 15 where you sum integers from 1 to 25.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-16",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 16 where you sum integers from 1 to 26.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-17",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 17 where you sum integers from 1 to 27.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-18",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 18 where you sum integers from 1 to 28.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-19",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 19 where you sum integers from 1 to 29.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-2",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 2 where you sum integers from 1 to 12.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-20",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 20 where you sum integers from 1 to 30.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-21",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 21 where you sum integers from 1 to 31.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-22",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 22 where you sum integers from 1 to 32.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-23",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 23 where you sum integers from 1 to 33.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-24",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 24 where you sum integers from 1 to 34.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-25",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 25 where you sum integers from 1 to 35.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-26",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 26 where you sum integers from 1 to 36.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-27",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 27 where you sum integers from 1 to 37.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-28",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 28 where you sum integers from 1 to 38.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-29",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 29 where you sum integers from 1 to 39.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-3",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 3 where you sum integers from 1 to 13.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-30",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 30 where you sum integers from 1 to 40.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-31",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 31 where you sum integers from 1 to 41.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-32",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 32 where you sum integers from 1 to 42.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-33",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 33 where you sum integers from 1 to 43.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-34",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 34 where you sum integers from 1 to 44.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-35",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 35 where you sum integers from 1 to 45.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-36",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 36 where you sum integers from 1 to 46.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-37",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 37 where you sum integers from 1 to 47.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-reasoning-math-38",
-    "tier": "eval",
-    "category": "reasoning",
-    "mode": "ask",
-    "prompt": "Without using tools: explain step-by-step how to verify the answer to problem 38 where you sum integers from 1 to 48.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
+      "json_path:steps"
     ]
   }
 ]

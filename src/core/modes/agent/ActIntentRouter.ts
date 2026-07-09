@@ -136,7 +136,7 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
 export function shouldResumeSavedPlan(
   userMessage: string,
   hasActivePlan: boolean,
-  isDirectOverride: boolean, // Accept evaluated boolean
+  isDirectOverride = false,
   options: { actDepth?: ActDepth } = {}
 ): boolean {
   if (!hasActivePlan) return false;
@@ -162,7 +162,7 @@ export function shouldUsePlannerForAct(
   actDepth: ActDepth = 'auto',
   options: { directOverride?: boolean } = {}
 ): boolean {
-  if (analysis.kind === 'simple_edit' || analysis.kind === 'question') return false;
+  if (analysis.kind === 'simple_edit' || analysis.kind === 'question' || analysis.kind === 'debugging') return false;
   if (options.directOverride) return false;
   if (actDepth === 'quick') return false;
   if (!analysis.shouldPlan) return false;
@@ -178,7 +178,8 @@ export function hasDirectRouteOverride(userMessage: string): boolean {
 function inferActIntent(userMessage: string, analysis: TaskAnalysis): ActRoute['intent'] {
   if (analysis.kind === 'audit') return 'audit';
   if (analysis.kind === 'question') return 'question';
-  
+  if (analysis.kind === 'debugging') return 'diagnose';
+
   if (analysis.kind === 'implementation' || analysis.kind === 'explicit_plan') return 'feature';
   
   if (DOCS_HINT.test(userMessage)) return 'docs';

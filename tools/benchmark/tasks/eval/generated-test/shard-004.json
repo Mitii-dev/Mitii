@@ -1,5 +1,731 @@
 [
   {
+    "id": "eval-coding-algo-32",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #32 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-33",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #33 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-34",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #34 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-35",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #35 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-36",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #36 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-37",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #37 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-38",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #38 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-39",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #39 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #4 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-40",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #40 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-41",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #41 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-42",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #42 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-43",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #43 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-44",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #44 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-45",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #45 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-46",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #46 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-47",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #47 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-48",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #48 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-49",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #49 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-5",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #5 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-50",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #50 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-51",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #51 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-52",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #52 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-53",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #53 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-54",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #54 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-55",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #55 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-56",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #56 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-57",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #57 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-58",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #58 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-59",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #59 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-6",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #6 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-60",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #60 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-61",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #61 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-62",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #62 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-63",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #63 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-64",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #64 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-65",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #65 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-66",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #66 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-67",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #67 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-68",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #68 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-69",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #69 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-7",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #7 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-70",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #70 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-71",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #71 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-72",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #72 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-73",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #73 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-74",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #74 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-75",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #75 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-76",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #76 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-77",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #77 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-78",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #78 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-79",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #79 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-8",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #8 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-80",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #80 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-81",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #81 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-82",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #82 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-83",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #83 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-84",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #84 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-85",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #85 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-86",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #86 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-87",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #87 — find the duplicate. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-88",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #88 — find the pair with sum k. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-89",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #89 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-9",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #9 — find the longest increasing subsequence length. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-90",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #90 — find the second largest. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-coding-algo-91",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Solve: Given an array of integers, problem #91 — find the missing number. Explain approach and complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
     "id": "eval-coding-algo-92",
     "tier": "eval",
     "category": "coding-js",
@@ -397,798 +1123,6 @@
       "exit_0",
       "stdout_not_empty",
       "stdout_contains:emit"
-    ]
-  },
-  {
-    "id": "eval-coding-event-emitter-v1",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Sketch EventEmitter with on, off, emit. Use TypeScript types in the explanation.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:emit"
-    ]
-  },
-  {
-    "id": "eval-coding-event-emitter-v2",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Sketch EventEmitter with on, off, emit. Include unit test cases.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:emit"
-    ]
-  },
-  {
-    "id": "eval-coding-event-emitter-v3",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Sketch EventEmitter with on, off, emit. Mention Big-O.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:emit"
-    ]
-  },
-  {
-    "id": "eval-coding-event-emitter-v4",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Sketch EventEmitter with on, off, emit. Show edge case handling.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:emit"
-    ]
-  },
-  {
-    "id": "eval-coding-fibonacci-v0",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Implement fib(n) iteratively. What is time and space complexity?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:O(n)"
-    ]
-  },
-  {
-    "id": "eval-coding-fibonacci-v1",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Implement fib(n) iteratively. What is time and space complexity? Use TypeScript types in the explanation.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:O(n)"
-    ]
-  },
-  {
-    "id": "eval-coding-fibonacci-v2",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Implement fib(n) iteratively. What is time and space complexity? Include unit test cases.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:O(n)"
-    ]
-  },
-  {
-    "id": "eval-coding-fibonacci-v3",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Implement fib(n) iteratively. What is time and space complexity? Mention Big-O.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:O(n)"
-    ]
-  },
-  {
-    "id": "eval-coding-fibonacci-v4",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Implement fib(n) iteratively. What is time and space complexity? Show edge case handling.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:O(n)"
-    ]
-  },
-  {
-    "id": "eval-coding-fizzbuzz-v0",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Describe FizzBuzz implementation for 1..n. Mention extensibility.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:FizzBuzz"
-    ]
-  },
-  {
-    "id": "eval-coding-fizzbuzz-v1",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Describe FizzBuzz implementation for 1..n. Mention extensibility. Use TypeScript types in the explanation.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:FizzBuzz"
-    ]
-  },
-  {
-    "id": "eval-coding-fizzbuzz-v2",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Describe FizzBuzz implementation for 1..n. Mention extensibility. Include unit test cases.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:FizzBuzz"
-    ]
-  },
-  {
-    "id": "eval-coding-fizzbuzz-v3",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Describe FizzBuzz implementation for 1..n. Mention extensibility. Mention Big-O.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:FizzBuzz"
-    ]
-  },
-  {
-    "id": "eval-coding-fizzbuzz-v4",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Describe FizzBuzz implementation for 1..n. Mention extensibility. Show edge case handling.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:FizzBuzz"
-    ]
-  },
-  {
-    "id": "eval-coding-flatten-v0",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Flatten a nested array to arbitrary depth.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:flat"
-    ]
-  },
-  {
-    "id": "eval-coding-flatten-v1",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Flatten a nested array to arbitrary depth. Use TypeScript types in the explanation.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:flat"
-    ]
-  },
-  {
-    "id": "eval-coding-flatten-v2",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Flatten a nested array to arbitrary depth. Include unit test cases.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:flat"
-    ]
-  },
-  {
-    "id": "eval-coding-flatten-v3",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Flatten a nested array to arbitrary depth. Mention Big-O.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:flat"
-    ]
-  },
-  {
-    "id": "eval-coding-flatten-v4",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Flatten a nested array to arbitrary depth. Show edge case handling.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:flat"
-    ]
-  },
-  {
-    "id": "eval-coding-json-parse-safe-v0",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Write safeJsonParse that never throws.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:JSON"
-    ]
-  },
-  {
-    "id": "eval-coding-json-parse-safe-v1",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Write safeJsonParse that never throws. Use TypeScript types in the explanation.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:JSON"
-    ]
-  },
-  {
-    "id": "eval-coding-json-parse-safe-v2",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Write safeJsonParse that never throws. Include unit test cases.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:JSON"
-    ]
-  },
-  {
-    "id": "eval-coding-json-parse-safe-v3",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Write safeJsonParse that never throws. Mention Big-O.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:JSON"
-    ]
-  },
-  {
-    "id": "eval-coding-json-parse-safe-v4",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Write safeJsonParse that never throws. Show edge case handling.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:JSON"
-    ]
-  },
-  {
-    "id": "eval-coding-lru-cache-v0",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Design an LRU cache API (get/put). Describe data structures.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:LRU"
-    ]
-  },
-  {
-    "id": "eval-coding-lru-cache-v1",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Design an LRU cache API (get/put). Describe data structures. Use TypeScript types in the explanation.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:LRU"
-    ]
-  },
-  {
-    "id": "eval-coding-lru-cache-v2",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Design an LRU cache API (get/put). Describe data structures. Include unit test cases.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:LRU"
-    ]
-  },
-  {
-    "id": "eval-coding-lru-cache-v3",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Design an LRU cache API (get/put). Describe data structures. Mention Big-O.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:LRU"
-    ]
-  },
-  {
-    "id": "eval-coding-lru-cache-v4",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Design an LRU cache API (get/put). Describe data structures. Show edge case handling.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:LRU"
-    ]
-  },
-  {
-    "id": "eval-coding-max-subarray-v0",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Explain Kadane's algorithm for maximum subarray sum.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:subarray"
-    ]
-  },
-  {
-    "id": "eval-coding-max-subarray-v1",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Explain Kadane's algorithm for maximum subarray sum. Use TypeScript types in the explanation.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:subarray"
-    ]
-  },
-  {
-    "id": "eval-coding-max-subarray-v2",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Explain Kadane's algorithm for maximum subarray sum. Include unit test cases.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:subarray"
-    ]
-  },
-  {
-    "id": "eval-coding-max-subarray-v3",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Explain Kadane's algorithm for maximum subarray sum. Mention Big-O.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:subarray"
-    ]
-  },
-  {
-    "id": "eval-coding-max-subarray-v4",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Explain Kadane's algorithm for maximum subarray sum. Show edge case handling.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:subarray"
-    ]
-  },
-  {
-    "id": "eval-coding-memoize-v0",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Add memoization to an expensive pure function.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:cache"
-    ]
-  },
-  {
-    "id": "eval-coding-memoize-v1",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Add memoization to an expensive pure function. Use TypeScript types in the explanation.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:cache"
-    ]
-  },
-  {
-    "id": "eval-coding-memoize-v2",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Add memoization to an expensive pure function. Include unit test cases.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:cache"
-    ]
-  },
-  {
-    "id": "eval-coding-memoize-v3",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Add memoization to an expensive pure function. Mention Big-O.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:cache"
-    ]
-  },
-  {
-    "id": "eval-coding-memoize-v4",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Add memoization to an expensive pure function. Show edge case handling.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:cache"
-    ]
-  },
-  {
-    "id": "eval-coding-merge-sorted-v0",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Merge two sorted arrays into one sorted array. Describe algorithm.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:merge"
-    ]
-  },
-  {
-    "id": "eval-coding-merge-sorted-v1",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Merge two sorted arrays into one sorted array. Describe algorithm. Use TypeScript types in the explanation.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:merge"
-    ]
-  },
-  {
-    "id": "eval-coding-merge-sorted-v2",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Merge two sorted arrays into one sorted array. Describe algorithm. Include unit test cases.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:merge"
-    ]
-  },
-  {
-    "id": "eval-coding-merge-sorted-v3",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Merge two sorted arrays into one sorted array. Describe algorithm. Mention Big-O.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:merge"
-    ]
-  },
-  {
-    "id": "eval-coding-merge-sorted-v4",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Merge two sorted arrays into one sorted array. Describe algorithm. Show edge case handling.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:merge"
-    ]
-  },
-  {
-    "id": "eval-coding-palindrome-v0",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Check if a string is a palindrome ignoring case and non-alphanumeric.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:palindrome"
-    ]
-  },
-  {
-    "id": "eval-coding-palindrome-v1",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Check if a string is a palindrome ignoring case and non-alphanumeric. Use TypeScript types in the explanation.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:palindrome"
-    ]
-  },
-  {
-    "id": "eval-coding-palindrome-v2",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Check if a string is a palindrome ignoring case and non-alphanumeric. Include unit test cases.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:palindrome"
-    ]
-  },
-  {
-    "id": "eval-coding-palindrome-v3",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Check if a string is a palindrome ignoring case and non-alphanumeric. Mention Big-O.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:palindrome"
-    ]
-  },
-  {
-    "id": "eval-coding-palindrome-v4",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Check if a string is a palindrome ignoring case and non-alphanumeric. Show edge case handling.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:palindrome"
-    ]
-  },
-  {
-    "id": "eval-coding-promise-all-v0",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Implement promiseAll(iterable) like Promise.all.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:Promise"
-    ]
-  },
-  {
-    "id": "eval-coding-promise-all-v1",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Implement promiseAll(iterable) like Promise.all. Use TypeScript types in the explanation.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:Promise"
-    ]
-  },
-  {
-    "id": "eval-coding-promise-all-v2",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Implement promiseAll(iterable) like Promise.all. Include unit test cases.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:Promise"
-    ]
-  },
-  {
-    "id": "eval-coding-promise-all-v3",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Implement promiseAll(iterable) like Promise.all. Mention Big-O.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:Promise"
-    ]
-  },
-  {
-    "id": "eval-coding-promise-all-v4",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Implement promiseAll(iterable) like Promise.all. Show edge case handling.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:Promise"
-    ]
-  },
-  {
-    "id": "eval-coding-reverse-string-v0",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Write a function reverseString(s) for a string array in-place. Explain complexity.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:O(n)"
-    ]
-  },
-  {
-    "id": "eval-coding-reverse-string-v1",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Write a function reverseString(s) for a string array in-place. Explain complexity. Use TypeScript types in the explanation.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:O(n)"
-    ]
-  },
-  {
-    "id": "eval-coding-reverse-string-v2",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Write a function reverseString(s) for a string array in-place. Explain complexity. Include unit test cases.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:O(n)"
-    ]
-  },
-  {
-    "id": "eval-coding-reverse-string-v3",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Write a function reverseString(s) for a string array in-place. Explain complexity. Mention Big-O.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:O(n)"
-    ]
-  },
-  {
-    "id": "eval-coding-reverse-string-v4",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Write a function reverseString(s) for a string array in-place. Explain complexity. Show edge case handling.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:O(n)"
-    ]
-  },
-  {
-    "id": "eval-coding-throttle-v0",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Implement throttle(fn, limit) and contrast with debounce.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:throttle"
-    ]
-  },
-  {
-    "id": "eval-coding-throttle-v1",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Implement throttle(fn, limit) and contrast with debounce. Use TypeScript types in the explanation.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:throttle"
-    ]
-  },
-  {
-    "id": "eval-coding-throttle-v2",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Implement throttle(fn, limit) and contrast with debounce. Include unit test cases.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:throttle"
-    ]
-  },
-  {
-    "id": "eval-coding-throttle-v3",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Implement throttle(fn, limit) and contrast with debounce. Mention Big-O.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:throttle"
-    ]
-  },
-  {
-    "id": "eval-coding-throttle-v4",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Implement throttle(fn, limit) and contrast with debounce. Show edge case handling.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:throttle"
-    ]
-  },
-  {
-    "id": "eval-coding-two-sum-v0",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Implement twoSum(nums, target) returning indices. Explain approach briefly.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:map"
-    ]
-  },
-  {
-    "id": "eval-coding-two-sum-v1",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Implement twoSum(nums, target) returning indices. Explain approach briefly. Use TypeScript types in the explanation.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:map"
     ]
   }
 ]

@@ -2,7 +2,7 @@ import { extractOriginalTaskMessage, isApprovalContinuationMessage } from './tas
 import { routeAskIntent } from '../modes/ask/AskIntentRouter';
 import { routePlanIntent } from '../modes/plan/PlanIntentRouter';
 
-export type TaskKind = 'question' | 'audit' | 'simple_edit' | 'implementation' | 'explicit_plan';
+export type TaskKind = 'question' | 'audit' | 'simple_edit' | 'implementation' | 'explicit_plan' | 'debugging';
 
 export type TaskComplexity = 'low' | 'medium' | 'high';
 
@@ -34,6 +34,12 @@ const QUESTION =
 
 const DIRECT_ERROR_FIX =
   /\b(syntax error|type error|referenceerror|cannot find module|missing semicolon|unexpected token|unexpected character|parse error|compilation (?:error|failed)|mdx compilation failed|could not parse expression|is not defined|enoent|can'?t resolve|module not found|compiled with problems)\b/i;
+
+const DIAGNOSTIC_REQUEST =
+  /\b(identify (?:the )?(?:issues?|problems?|bugs?|errors?)|find (?:the )?(?:issues?|problems?|bugs?|errors?)|what(?:'s| is) (?:wrong|broken)|why (?:doesn'?t|does ?n'?t|isn'?t|is ?n'?t|won'?t|can'?t|cannot)|diagnose|root cause|investigate why|figure out why|spot (?:the )?(?:issues?|bugs?|problems?)|doesn'?t (?:read|work|load|render|run|start)|does not (?:read|work|load|render|run|start))\b/i;
+
+const DIAGNOSTIC_SCOPE_EXPANDING =
+  /\b(refactor|redesign|rewrite|migrate|implement (?:a|the) new|new feature|entire codebase|whole codebase|across (?:the )?(?:whole|entire)?\s*(?:codebase|project|repo))\b/i;
 
 const FILE_PATH_IN_TEXT =
   /(?:^|\s|['"`])([\w./-]+\.(?:tsx?|jsx?|py|go|rs|json|css|scss|mdx?))\b/i;
@@ -176,6 +182,20 @@ function classifyTask(text: string): TaskAnalysis {
         : fileMatch
           ? `Compiler/runtime error in ${fileMatch[1]} — fix directly without replanning.`
           : 'Error report — fix directly without replanning.',
+    };
+  }
+
+  if (DIAGNOSTIC_REQUEST.test(text) && !DIAGNOSTIC_SCOPE_EXPANDING.test(text)) {
+    const fileMatch = text.match(FILE_PATH_IN_TEXT);
+    return {
+      kind: 'debugging',
+      complexity: 'low',
+      shouldPlan: false,
+      shouldVerify: true,
+      shouldUseSubagents: false,
+      summary: fileMatch
+        ? `Diagnosis request — read ${fileMatch[1]}, identify the root cause, and report or apply a minimal fix without replanning.`
+        : 'Diagnosis request — read the referenced file(s)/logs, identify the root cause, and report or apply a minimal fix without replanning.',
     };
   }
 

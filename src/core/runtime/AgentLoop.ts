@@ -1,7 +1,7 @@
 import type { AssistantStreamChunk, LlmProvider, ChatMessage } from '../llm/types';
 import type { ToolDefinition, ToolCall } from '../llm/toolTypes';
 import { toAssistantStreamChunk } from '../llm/streamChunks';
-import type { ToolExecutor } from '../safety/ToolExecutor';
+import type { ToolExecutor, ToolExecutionResult } from '../safety/ToolExecutor';
 import { formatToolResult } from '../tools/builtinTools';
 import { NO_TOOLS_AUDIT_NUDGE } from './taskKind';
 import { NO_TOOLS_ASK_NUDGE, ASK_SYNTHESIS_NUDGE, isGroundingToolCall } from './askMode';
@@ -28,7 +28,20 @@ const PHASE_LOCK_RUN_COMMAND_HARD_STOP =
 const VALIDATION_BLOCK_MESSAGE =
   'Post-edit validation found errors. Fix all reported issues before marking this step complete or moving on.';
 
-const REPEATED_TOOL_INPUT_FAILURE_PREFIX = 'Stopped after repeated invalid tool arguments';
+const REPEATED_TOOL_INPUT_FAILURE_PREFIX = 'Stopped after repeated identical tool failure';
+
+/**
+ * Tool filtering (e.g. filterActModeTools) only controls what's advertised to the model —
+ * nothing previously stopped the model from calling an excluded tool name anyway (it would
+ * reach ToolExecutor and execute/fail there). This keeps excluded tools truly inert.
+ */
+function notOfferedToolResult(toolName: string): ToolExecutionResult {
+  return {
+    success: false,
+    output: '',
+    error: `Tool "${toolName}" is not available in this mode/phase — do not call it again.`,
+  };
+}
 
 const NO_WRITE_AGENT_NUDGE = `SYSTEM: The user asked Agent mode to modify the workspace, but no file edit has been made yet.
 Do not finish with a summary only. Call apply_patch or write_file now for the required change, then verify.`;
@@ -128,6 +141,7 @@ export class AgentLoop {
     options?: AgentLoopOptions
   ): AsyncIterable<AssistantStreamChunk> {
     const messages: ChatMessage[] = [...initialMessages];
+    const allowedToolNames = new Set(tools.map((t) => t.function.name));
     let pendingApproval = false;
     this.lastPendingApproval = false;
     this.lastSuspendState = undefined;
@@ -289,11 +303,13 @@ export class AgentLoop {
           }
           callbacks?.onToolStart?.(tc.function.name, input);
           const toolStartedAt = Date.now();
-          const execResult = await this.toolExecutor.execute(tc.function.name, input, {
-            toolCallId: tc.id,
-            phaseLock: options?.phaseLock,
-            restrictRunCommandToReadOnly: auditMode || options?.restrictRunCommandToReadOnly,
-          });
+          const execResult = allowedToolNames.has(tc.function.name)
+            ? await this.toolExecutor.execute(tc.function.name, input, {
+                toolCallId: tc.id,
+                phaseLock: options?.phaseLock,
+                restrictRunCommandToReadOnly: auditMode || options?.restrictRunCommandToReadOnly,
+              })
+            : notOfferedToolResult(tc.function.name);
           return { tc, input, execResult, durationMs: Date.now() - toolStartedAt };
         })
       );
@@ -386,9 +402,8 @@ export class AgentLoop {
           content: toolContent,
         });
 
-        const inputFailureKey = !execResult.success
-          ? repeatedToolInputFailureKey(tc.function.name, output)
-          : undefined;
+        const inputFailureKey =
+          !execResult.success && !isSkipped ? repeatedToolFailureKey(tc.function.name, output) : undefined;
         if (inputFailureKey) {
           if (inputFailureKey === lastInputFailureKey) {
             repeatedInputFailureCount += 1;
@@ -403,7 +418,7 @@ export class AgentLoop {
               repeatedInputFailureCount
             );
           }
-        } else if (execResult.success || !isRetriableToolFailure(output)) {
+        } else {
           lastInputFailureKey = '';
           repeatedInputFailureCount = 0;
         }
@@ -539,6 +554,7 @@ export class AgentLoop {
   ): AsyncIterable<AssistantStreamChunk> {
     const messages: ChatMessage[] = state.messages.map((m) => ({ ...m }));
     const tools = state.tools;
+    const allowedToolNames = new Set(tools.map((t) => t.function.name));
     const options = state.options;
     let pendingApproval = false;
     this.lastPendingApproval = false;
@@ -686,11 +702,13 @@ export class AgentLoop {
           }
           callbacks?.onToolStart?.(tc.function.name, input);
           const toolStartedAt = Date.now();
-          const execResult = await this.toolExecutor.execute(tc.function.name, input, {
-            toolCallId: tc.id,
-            phaseLock: options.phaseLock,
-            restrictRunCommandToReadOnly: options.restrictRunCommandToReadOnly,
-          });
+          const execResult = allowedToolNames.has(tc.function.name)
+            ? await this.toolExecutor.execute(tc.function.name, input, {
+                toolCallId: tc.id,
+                phaseLock: options.phaseLock,
+                restrictRunCommandToReadOnly: options.restrictRunCommandToReadOnly,
+              })
+            : notOfferedToolResult(tc.function.name);
           return { tc, input, execResult, durationMs: Date.now() - toolStartedAt };
         })
       );
@@ -817,6 +835,7 @@ export class AgentLoop {
     options?: AgentLoopOptions
   ): Promise<AgentLoopResult> {
     const messages: ChatMessage[] = [...initialMessages];
+    const allowedToolNames = new Set(tools.map((t) => t.function.name));
     let fullContent = '';
     let toolCallsMade = 0;
     let pendingApproval = false;
@@ -856,10 +875,12 @@ export class AgentLoop {
           }
           callbacks?.onToolStart?.(tc.function.name, input);
           const toolStartedAt = Date.now();
-          const execResult = await this.toolExecutor.execute(tc.function.name, input, {
-            phaseLock: options?.phaseLock,
-            restrictRunCommandToReadOnly: options?.restrictRunCommandToReadOnly,
-          });
+          const execResult = allowedToolNames.has(tc.function.name)
+            ? await this.toolExecutor.execute(tc.function.name, input, {
+                phaseLock: options?.phaseLock,
+                restrictRunCommandToReadOnly: options?.restrictRunCommandToReadOnly,
+              })
+            : notOfferedToolResult(tc.function.name);
           toolCallsMade += 1;
           return { tc, execResult, durationMs: Date.now() - toolStartedAt };
         })
@@ -1116,17 +1137,17 @@ function resolveToolOutput(execResult: import('../safety/ToolExecutor').ToolExec
   };
 }
 
-function repeatedToolInputFailureKey(toolName: string, output: string): string | undefined {
-  if (!isToolInputValidationFailure(output)) return undefined;
+/**
+ * Keys a failed tool call by tool name + normalized error text so identical failures can be
+ * counted across steps. Phase-lock failures are excluded — they already have their own
+ * graduated escalation (nudge, then hard stop) and would otherwise get short-circuited here
+ * before that instructional message ever reaches the model.
+ */
+function repeatedToolFailureKey(toolName: string, output: string): string | undefined {
+  if (!output) return undefined;
+  if (['write_file', 'apply_patch'].includes(toolName) && isPhaseLockWriteError(output)) return undefined;
+  if (toolName === 'run_command' && isPhaseLockRunCommandError(output)) return undefined;
   return `${toolName}:${normalizeToolFailure(output)}`;
-}
-
-function isToolInputValidationFailure(output: string): boolean {
-  return /\b(input validation error|invalid input|invalid arguments for tool|expected .* received undefined)\b/i.test(output);
-}
-
-function isRetriableToolFailure(output: string): boolean {
-  return isToolInputValidationFailure(output);
 }
 
 function normalizeToolFailure(output: string): string {
@@ -1138,8 +1159,8 @@ function buildRepeatedToolInputFailureMessage(toolName: string, output: string, 
   return [
     `\n\n### ${REPEATED_TOOL_INPUT_FAILURE_PREFIX}`,
     '',
-    `The agent stopped after ${count} consecutive invalid \`${toolName}\` calls. The tool rejected the arguments before execution: ${detail}`,
+    `The agent stopped after ${count} consecutive \`${toolName}\` calls that failed with the same error: ${detail}`,
     '',
-    'I will not keep retrying the same malformed tool call. The next attempt should use a registered tool with all required arguments, or explain the blocker instead.',
+    'I will not keep retrying the same failing tool call. The next attempt should use a different tool, different arguments, or explain the blocker instead.',
   ].join('\n');
 }

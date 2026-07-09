@@ -68,6 +68,12 @@ export class IgnoreService {
     if (options?.forRead && /^packages\/[^/]+\/dist\//.test(normalized)) {
       return false;
     }
+    // Session logs are written for the agent's own debugging/post-hoc analysis (see
+    // SessionLogService) — reading them back must not be blocked by the blanket .mitii/
+    // and logs/ ignores below, which exist to keep the indexer/search out of internal state.
+    if (options?.forRead && /^\.mitii\/logs(\/[^/]+\.jsonl)?$/.test(normalized)) {
+      return false;
+    }
     return this.ig.ignores(normalized);
   }
 

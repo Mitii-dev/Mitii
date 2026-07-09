@@ -46,7 +46,13 @@ import { PlanOrchestrator } from '../modes/plan/PlanOrchestrator';
 import { filterPlanModeTools, needsPlanGrounding } from '../modes/plan/planMode';
 import { loadPlanningSkillPlaybooks, resolvePlanningSkillNames } from '../modes/plan/planSkillRouting';
 import { routePlanIntent } from '../modes/plan/PlanIntentRouter';
-import { ActOrchestrator, filterActModeTools, shouldResumeSavedPlan, shouldUsePlannerForAct } from '../modes/agent';
+import {
+  ActOrchestrator,
+  filterActModeTools,
+  hasDirectRouteOverride,
+  shouldResumeSavedPlan,
+  shouldUsePlannerForAct,
+} from '../modes/agent';
 import {
   extractMdxErrorFile,
   isMdxRepairTask,
@@ -1807,7 +1813,10 @@ export function shouldExecuteSavedPlan(
   hasActivePlan: boolean,
   actDepth: import('../config/schema').AgentDepth = 'auto'
 ): boolean {
-  return mode === 'agent' && shouldResumeSavedPlan(userMessage, hasActivePlan, { actDepth });
+  return (
+    mode === 'agent' &&
+    shouldResumeSavedPlan(userMessage, hasActivePlan, hasDirectRouteOverride(userMessage), { actDepth })
+  );
 }
 
 function getTouchedFilesFromAudit(toolRuntime?: ToolRuntime): string[] {

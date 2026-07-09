@@ -23,6 +23,7 @@ export function resolveActSkillNames(intent: ActIntent, taskAnalysis?: TaskAnaly
     intent === 'resume_plan' ||
     intent === 'bugfix' ||
     intent === 'mdx_repair' ||
+    intent === 'diagnose' ||
     /\b(error|failing|failed|debug|repair|fix)\b/i.test(taskAnalysis?.summary ?? '')
   ) {
     names.push('debugging-and-error-recovery');

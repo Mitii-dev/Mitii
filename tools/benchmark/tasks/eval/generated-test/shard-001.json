@@ -1,5 +1,198 @@
 [
   {
+    "id": "eval-agent-saas-api-a8",
+    "tier": "eval",
+    "category": "fixture-agent-modular-api",
+    "mode": "agent",
+    "fixture": "saas-api",
+    "prompt": "Draft a verification checklist before making any code changes.",
+    "verify": [
+      "exit_0",
+      "jsonl_event:end"
+    ]
+  },
+  {
+    "id": "eval-agent-saas-api-a9",
+    "tier": "eval",
+    "category": "fixture-agent-modular-api",
+    "mode": "agent",
+    "fixture": "saas-api",
+    "prompt": "Compare this project structure to common best practices for its stack.",
+    "verify": [
+      "exit_0",
+      "jsonl_event:end"
+    ]
+  },
+  {
+    "id": "eval-ask-nest-api-src-app-controller-ts-t0",
+    "tier": "eval",
+    "category": "fixture-ask-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "Explain the purpose of src/app.controller.ts in this NestJS project.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:src/app.controller.ts"
+    ]
+  },
+  {
+    "id": "eval-ask-nest-api-src-app-controller-ts-t1",
+    "tier": "eval",
+    "category": "fixture-ask-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "What does src/app.controller.ts export or define? Summarize without inventing details.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:src/app.controller.ts"
+    ]
+  },
+  {
+    "id": "eval-ask-nest-api-src-app-controller-ts-t10",
+    "tier": "eval",
+    "category": "fixture-ask-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "How is src/app.controller.ts referenced elsewhere in the repository?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:src/app.controller.ts"
+    ]
+  },
+  {
+    "id": "eval-ask-nest-api-src-app-controller-ts-t11",
+    "tier": "eval",
+    "category": "fixture-ask-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "What configuration in package.json affects src/app.controller.ts?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:src/app.controller.ts"
+    ]
+  },
+  {
+    "id": "eval-ask-nest-api-src-app-controller-ts-t12",
+    "tier": "eval",
+    "category": "fixture-ask-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "Give an architecture overview of this NestJS codebase.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:src/app.controller.ts"
+    ]
+  },
+  {
+    "id": "eval-ask-nest-api-src-app-controller-ts-t13",
+    "tier": "eval",
+    "category": "fixture-ask-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "What are the main entry points and request/data flows?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:src/app.controller.ts"
+    ]
+  },
+  {
+    "id": "eval-ask-nest-api-src-app-controller-ts-t14",
+    "tier": "eval",
+    "category": "fixture-ask-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "Which files would you read to onboard a new engineer to this repo?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:src/app.controller.ts"
+    ]
+  },
+  {
+    "id": "eval-ask-nest-api-src-app-controller-ts-t2",
+    "tier": "eval",
+    "category": "fixture-ask-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "How does src/app.controller.ts connect to other modules in this codebase?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:src/app.controller.ts"
+    ]
+  },
+  {
+    "id": "eval-ask-nest-api-src-app-controller-ts-t3",
+    "tier": "eval",
+    "category": "fixture-ask-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "List the key functions, classes, or routes defined in src/app.controller.ts.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:src/app.controller.ts"
+    ]
+  },
+  {
+    "id": "eval-ask-nest-api-src-app-controller-ts-t4",
+    "tier": "eval",
+    "category": "fixture-ask-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "What dependencies or imports does src/app.controller.ts use?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:src/app.controller.ts"
+    ]
+  },
+  {
+    "id": "eval-ask-nest-api-src-app-controller-ts-t5",
+    "tier": "eval",
+    "category": "fixture-ask-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "Describe error handling patterns visible in or around src/app.controller.ts.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:src/app.controller.ts"
+    ]
+  },
+  {
+    "id": "eval-ask-nest-api-src-app-controller-ts-t6",
+    "tier": "eval",
+    "category": "fixture-ask-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "What would you inspect first in src/app.controller.ts when debugging a runtime issue?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:src/app.controller.ts"
+    ]
+  },
+  {
+    "id": "eval-ask-nest-api-src-app-controller-ts-t7",
+    "tier": "eval",
+    "category": "fixture-ask-nestjs",
+    "mode": "ask",
+    "fixture": "nest-api",
+    "prompt": "Summarize the public API surface exposed via src/app.controller.ts.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:src/app.controller.ts"
+    ]
+  },
+  {
     "id": "eval-ask-nest-api-src-app-controller-ts-t8",
     "tier": "eval",
     "category": "fixture-ask-nestjs",
@@ -1098,197 +1291,6 @@
       "exit_0",
       "stdout_not_empty",
       "file_exists:package.json"
-    ]
-  },
-  {
-    "id": "eval-ask-next-app-package-json-t12",
-    "tier": "eval",
-    "category": "fixture-ask-nextjs",
-    "mode": "ask",
-    "fixture": "next-app",
-    "prompt": "Give an architecture overview of this Next.js App Router codebase.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:package.json"
-    ]
-  },
-  {
-    "id": "eval-ask-next-app-package-json-t13",
-    "tier": "eval",
-    "category": "fixture-ask-nextjs",
-    "mode": "ask",
-    "fixture": "next-app",
-    "prompt": "What are the main entry points and request/data flows?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:package.json"
-    ]
-  },
-  {
-    "id": "eval-ask-next-app-package-json-t14",
-    "tier": "eval",
-    "category": "fixture-ask-nextjs",
-    "mode": "ask",
-    "fixture": "next-app",
-    "prompt": "Which files would you read to onboard a new engineer to this repo?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:package.json"
-    ]
-  },
-  {
-    "id": "eval-ask-next-app-package-json-t2",
-    "tier": "eval",
-    "category": "fixture-ask-nextjs",
-    "mode": "ask",
-    "fixture": "next-app",
-    "prompt": "How does package.json connect to other modules in this codebase?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:package.json"
-    ]
-  },
-  {
-    "id": "eval-ask-next-app-package-json-t3",
-    "tier": "eval",
-    "category": "fixture-ask-nextjs",
-    "mode": "ask",
-    "fixture": "next-app",
-    "prompt": "List the key functions, classes, or routes defined in package.json.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:package.json"
-    ]
-  },
-  {
-    "id": "eval-ask-next-app-package-json-t4",
-    "tier": "eval",
-    "category": "fixture-ask-nextjs",
-    "mode": "ask",
-    "fixture": "next-app",
-    "prompt": "What dependencies or imports does package.json use?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:package.json"
-    ]
-  },
-  {
-    "id": "eval-ask-next-app-package-json-t5",
-    "tier": "eval",
-    "category": "fixture-ask-nextjs",
-    "mode": "ask",
-    "fixture": "next-app",
-    "prompt": "Describe error handling patterns visible in or around package.json.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:package.json"
-    ]
-  },
-  {
-    "id": "eval-ask-next-app-package-json-t6",
-    "tier": "eval",
-    "category": "fixture-ask-nextjs",
-    "mode": "ask",
-    "fixture": "next-app",
-    "prompt": "What would you inspect first in package.json when debugging a runtime issue?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:package.json"
-    ]
-  },
-  {
-    "id": "eval-ask-next-app-package-json-t7",
-    "tier": "eval",
-    "category": "fixture-ask-nextjs",
-    "mode": "ask",
-    "fixture": "next-app",
-    "prompt": "Summarize the public API surface exposed via package.json.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:package.json"
-    ]
-  },
-  {
-    "id": "eval-ask-next-app-package-json-t8",
-    "tier": "eval",
-    "category": "fixture-ask-nextjs",
-    "mode": "ask",
-    "fixture": "next-app",
-    "prompt": "Which tests (if any) cover behavior related to package.json?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:package.json"
-    ]
-  },
-  {
-    "id": "eval-ask-next-app-package-json-t9",
-    "tier": "eval",
-    "category": "fixture-ask-nextjs",
-    "mode": "ask",
-    "fixture": "next-app",
-    "prompt": "What refactoring opportunities exist in package.json? Be specific to the file.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:package.json"
-    ]
-  },
-  {
-    "id": "eval-ask-next-app-symbol-layout",
-    "tier": "eval",
-    "category": "fixture-ask-nextjs",
-    "mode": "ask",
-    "fixture": "next-app",
-    "prompt": "Where is \"layout\" defined or used in this codebase? Explain its role.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-ask-next-app-symbol-metadata",
-    "tier": "eval",
-    "category": "fixture-ask-nextjs",
-    "mode": "ask",
-    "fixture": "next-app",
-    "prompt": "Where is \"metadata\" defined or used in this codebase? Explain its role.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-ask-next-app-symbol-next-js",
-    "tier": "eval",
-    "category": "fixture-ask-nextjs",
-    "mode": "ask",
-    "fixture": "next-app",
-    "prompt": "Where is \"Next.js\" defined or used in this codebase? Explain its role.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-ask-next-app-symbol-page",
-    "tier": "eval",
-    "category": "fixture-ask-nextjs",
-    "mode": "ask",
-    "fixture": "next-app",
-    "prompt": "Where is \"page\" defined or used in this codebase? Explain its role.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
     ]
   }
 ]
