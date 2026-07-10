@@ -1,0 +1,26 @@
+[
+  {
+    "id": "plan-medium-smoke-monorepo-rename",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["smoke", "infra", "monorepo"],
+    "fixture": "monorepo",
+    "prompt": "Plan renaming validateEmail to isValidEmail across every package that uses it.",
+    "rationale": "Infra smoke case: proves cross-package planning routes correctly for the new monorepo fixture.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-medium-smoke-saas-api-webhook-retry",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["smoke", "infra"],
+    "fixture": "saas-api",
+    "prompt": "Plan adding retry-with-backoff to the webhook delivery module.",
+    "rationale": "Infra smoke case: exercises multi-phase planning against the larger saas-api fixture.",
+    "verify": ["exit_0", "json_path:steps"]
+  }
+]

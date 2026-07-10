@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ask-hard-nonexistent-file-node-express",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["hallucination"],
+    "fixture": "node-express",
+    "prompt": "What does src/middleware/auth.js do?",
+    "rationale": "No middleware directory or auth.js exists in this fixture. Tests whether the model says the file doesn't exist instead of inventing plausible-sounding auth middleware behavior.",
+    "verify": ["exit_0", "stdout_not_empty"]
+  },
+  {
+    "id": "ask-hard-nonexistent-symbol-nest-api",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["hallucination"],
+    "fixture": "nest-api",
+    "prompt": "Where is the UsersRepository class defined, and what database does it connect to?",
+    "rationale": "This fixture has no repository layer or database at all — only AppController/AppService. Tests refusal to fabricate a class and a database technology that were never mentioned.",
+    "verify": ["exit_0", "stdout_not_empty"]
+  },
+  {
+    "id": "ask-hard-nonexistent-config-next-app",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["hallucination"],
+    "fixture": "next-app",
+    "prompt": "What environment variables does next.config.js define for this project?",
+    "rationale": "There is no next.config.js in this fixture at all. Tests whether the model reports the file's absence rather than describing typical Next.js config values as if they were found here.",
+    "verify": ["exit_0", "stdout_not_empty"]
+  },
+  {
+    "id": "ask-hard-nonexistent-module-saas-api",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["hallucination"],
+    "fixture": "saas-api",
+    "prompt": "Explain how the tax-calculation module computes VAT for international orders.",
+    "rationale": "There is no tax-calculation module among the 17 real modules in this fixture. Tests resistance to confidently describing a module invented by the question's premise.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_not_contains:src/modules/tax"]
+  },
+  {
+    "id": "ask-hard-nonexistent-test-results",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["hallucination"],
+    "fixture": "legacy-commonjs",
+    "prompt": "What were the results of the last test run for this project? Were there any flaky tests?",
+    "rationale": "This fixture has no test script and no test files at all. Tests whether the model says there's nothing to report rather than fabricating pass/fail counts or flaky-test names.",
+    "verify": ["exit_0", "stdout_not_empty"]
+  }
+]

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "agent-medium-smoke-monorepo-cross-package-rename",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "refactor",
+    "tags": ["smoke", "infra", "monorepo", "cross-package"],
+    "fixture": "monorepo",
+    "prompt": "Rename validateEmail to isValidEmail in packages/shared and update every caller.",
+    "rationale": "Infra smoke case: proves cross-package refactor routing works against the new monorepo fixture.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-medium-smoke-saas-api-add-endpoint",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "feature",
+    "tags": ["smoke", "infra"],
+    "fixture": "saas-api",
+    "prompt": "Add a new endpoint that lists orders filtered by status.",
+    "rationale": "Infra smoke case: exercises agent mode's tool loop against the larger saas-api fixture.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  }
+]

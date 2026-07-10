@@ -52,7 +52,9 @@ export class InlineDiffManager implements vscode.Disposable {
 
     this.disposables.push(
       vscode.commands.registerCommand('thunder.acceptInlineDiff', () => this.accept()),
+      vscode.commands.registerCommand('mitii.acceptInlineDiff', () => this.accept()),
       vscode.commands.registerCommand('thunder.rejectInlineDiff', () => this.reject()),
+      vscode.commands.registerCommand('mitii.rejectInlineDiff', () => this.reject()),
       vscode.window.onDidChangeActiveTextEditor(() => this.refreshDecorations())
     );
   }

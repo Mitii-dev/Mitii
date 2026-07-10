@@ -31,6 +31,18 @@ export function buildActPromptContext(
     '- Run project-appropriate verification after implementation (discovered from package.json, not hardcoded).',
   ];
 
+  if (route.intent === 'diagnose') {
+    lines.push(
+      '',
+      '## Diagnosis-first request',
+      '- Read the referenced file(s)/logs and identify the root cause before changing anything.',
+      '- Trace the failure to the code that actually enforces/produces it (e.g. a policy check, validator, or spawn call) — do not assume a file is the cause just because it shares a name or path with the symptom.',
+      '- If the user asked you to fix something, fix it. "Document the limitation" or "explain why this is restricted" is not an acceptable substitute for a fix unless the restriction is truly intentional and the user should be told to change their request instead.',
+      '- Report findings directly; only apply a minimal fix if the cause is obvious and scoped to what was read.',
+      '- Do not expand scope into a broader refactor or feature unless the user asks for one.'
+    );
+  }
+
   if (route.executionPath === 'resume_saved_plan') {
     lines.push(
       '',

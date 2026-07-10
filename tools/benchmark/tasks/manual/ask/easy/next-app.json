@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ask-easy-next-app-home-page",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["single-file"],
+    "fixture": "next-app",
+    "prompt": "What is rendered on the home page of this app?",
+    "rationale": "Simple lookup in app/page.tsx (heading + description text).",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:Home", "file_exists:app/page.tsx"]
+  },
+  {
+    "id": "ask-easy-next-app-root-layout",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["single-file"],
+    "fixture": "next-app",
+    "prompt": "What page title and description are set in the root layout's metadata?",
+    "rationale": "Tests reading the exported `metadata` object in app/layout.tsx.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:Benchmark Next App"]
+  },
+  {
+    "id": "ask-easy-next-app-loading-ui",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["single-file"],
+    "fixture": "next-app",
+    "prompt": "Does this app have a custom loading UI for the home route? If so, where is it defined and what does it look like?",
+    "rationale": "Tests App Router loading.tsx convention awareness (app/loading.tsx, spinner + 'Loading...' text) and cross-checking docs/loading-indicator.md.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:loading", "file_exists:app/loading.tsx"]
+  },
+  {
+    "id": "ask-easy-next-app-framework-version",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "tooling",
+    "tags": ["dependency"],
+    "fixture": "next-app",
+    "prompt": "What version of Next.js does this project depend on, and does it use the App Router or Pages Router?",
+    "rationale": "package.json shows next ^14.2.5; presence of app/ directory (not pages/) confirms App Router.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:14"]
+  },
+  {
+    "id": "ask-easy-next-app-docs-vs-code-consistency",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "corner-case",
+    "tags": ["docs-drift"],
+    "fixture": "next-app",
+    "prompt": "docs/loading-indicator.md documents the loading component. Does its embedded code sample still match the actual app/loading.tsx source?",
+    "rationale": "Tests cross-referencing a doc's embedded code block against the live source file rather than trusting the doc at face value.",
+    "verify": ["exit_0", "stdout_not_empty", "file_exists:docs/loading-indicator.md", "file_exists:app/loading.tsx"]
+  }
+]

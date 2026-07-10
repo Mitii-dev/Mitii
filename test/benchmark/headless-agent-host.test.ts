@@ -24,7 +24,7 @@ describe('HeadlessAgentHost', () => {
     for await (const event of host.agent('review code')) {
       events.push(event.type);
     }
-    expect(events).toContain('end');
+    expect(events).toContain('done');
     host.dispose();
   });
 

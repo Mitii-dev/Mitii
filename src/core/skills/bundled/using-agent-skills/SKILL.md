@@ -1,6 +1,6 @@
 ---
 name: using-agent-skills
-description: Discovers and invokes agent skills. Use when starting a session or when you need to discover which skill applies to the current task. This is the meta-skill that governs how all other skills are discovered and invoked.
+description: Discover and invoke the bundled agent skills at the smallest useful process depth. Use when starting a session or when deciding which skill applies to the current task. This meta-skill governs skill discovery, sequencing, verification, and avoiding both under-planning and over-planning.
 ---
 
 # Using Agent Skills
@@ -16,30 +16,21 @@ When a task arrives, identify the development phase and apply the corresponding 
 ```
 Task arrives
     │
-    ├── Don't know what you want yet? ──────→ interview-me
-    ├── Have a rough concept, need variants? → idea-refine
-    ├── New project/feature/change? ──→ spec-driven-development
     ├── Have a spec, need tasks? ──────→ planning-and-task-breakdown
-    ├── Implementing code? ────────────→ incremental-implementation
-    │   ├── UI work? ─────────────────→ frontend-ui-engineering
-    │   ├── API work? ────────────────→ api-and-interface-design
-    │   ├── Need better context? ─────→ context-engineering
-    │   ├── Need doc-verified code? ───→ source-driven-development
-    │   └── Stakes high / unfamiliar code? ──→ doubt-driven-development
     ├── Writing/running tests? ────────→ test-driven-development
     │   └── Browser-based? ───────────→ browser-testing-with-devtools
     ├── Something broke? ──────────────→ debugging-and-error-recovery
     ├── Reviewing code? ───────────────→ code-review-and-quality
-    │   ├── Too complex? ─────────────→ code-simplification
-    │   ├── Security concerns? ───────→ security-and-hardening
     │   └── Performance concerns? ────→ performance-optimization
-    ├── Committing/branching? ─────────→ git-workflow-and-versioning
-    ├── CI/CD pipeline work? ──────────→ ci-cd-and-automation
-    ├── Deprecating/migrating? ────────→ deprecation-and-migration
-    ├── Writing docs/ADRs? ───────────→ documentation-and-adrs
-    ├── Adding logs/metrics/alerts? ───→ observability-and-instrumentation
-    └── Deploying/launching? ─────────→ shipping-and-launch
+    ├── Dead code / dependency audit? ─→ audit-cleanup
+    ├── Console logs / lint / types? ──→ code-smells-and-tech-debt
+    ├── Env vars / secrets? ───────────→ environment-and-secrets
+    └── Committing/branching? ─────────→ git-workflow-and-versioning
 ```
+
+Only the skills bundled in `.mitii/skills/` are listed above. If a task needs something this set doesn't cover (e.g. spec-writing, UI-specific guidance, CI/CD), fall back to the general operating behaviors below rather than inventing a skill name to invoke.
+
+Use the smallest effective workflow. A one-file fix may need only a short intent and a verification command; a cross-system feature may need a full plan, tests, review, and git hygiene. Skill use should lower risk, not add ceremony.
 
 ## Core Operating Behaviors
 
@@ -110,7 +101,12 @@ Your job is surgical precision, not unsolicited renovation.
 
 Every skill includes a verification step. A task is not complete until verification passes. "Seems right" is never sufficient — there must be evidence (passing tests, build output, runtime data).
 
-Per-skill verification is the local check. The project-wide bar that applies to *every* change, regardless of which skill is active, is the Definition of Done: tests pass, no regressions, behavior verified at runtime, docs updated. See `references/definition-of-done.md`. It complements each task's acceptance criteria rather than replacing them.
+Per-skill verification is the local check. The project-wide bar that applies to *every* change, regardless of which skill is active, is the Definition of Done. It complements each task's acceptance criteria rather than replacing them:
+
+- [ ] Tests pass
+- [ ] No regressions introduced
+- [ ] Behavior verified at runtime, not just type-checked or "looks right"
+- [ ] Docs updated if behavior or interfaces changed
 
 ## Failure Modes to Avoid
 
@@ -126,6 +122,7 @@ These are the subtle errors that look like productivity but create problems:
 8. Removing things you don't fully understand
 9. Building without a spec because "it's obvious"
 10. Skipping verification because "it looks right"
+11. Applying a full workflow to a tiny, reversible task
 
 ## Skill Rules
 
@@ -133,31 +130,24 @@ These are the subtle errors that look like productivity but create problems:
 
 2. **Skills are workflows, not suggestions.** Follow the steps in order. Don't skip verification steps.
 
-3. **Multiple skills can apply.** A feature implementation might involve `idea-refine` → `spec-driven-development` → `planning-and-task-breakdown` → `incremental-implementation` → `test-driven-development` → `code-review-and-quality` → `code-simplification` → `shipping-and-launch` in sequence.
+3. **Multiple skills can apply.** A feature implementation might involve `planning-and-task-breakdown` → `test-driven-development` → `code-review-and-quality` → `git-workflow-and-versioning` in sequence.
 
-4. **When in doubt, start with a spec.** If the task is non-trivial and there's no spec, begin with `spec-driven-development`.
+4. **When in doubt, start with the smallest useful plan.** If the task is non-trivial and there's no task breakdown yet, begin with `planning-and-task-breakdown`. For XS/S tasks, use its micro-plan path and proceed once the change, verification, and risk are clear.
 
 ## Lifecycle Sequence
 
 For a complete feature, the typical skill sequence is:
 
 ```
-1.  interview-me                → Extract what the user actually wants
-2.  idea-refine                 → Refine vague ideas
-3.  spec-driven-development     → Define what we're building
-4.  planning-and-task-breakdown → Break into verifiable chunks
-5.  context-engineering         → Load the right context
-6.  source-driven-development   → Verify against official docs
-7.  incremental-implementation  → Build slice by slice
-8.  observability-and-instrumentation → Instrument as you build (runs parallel with 7-9, not after)
-9.  doubt-driven-development    → Cross-examine non-trivial decisions in-flight
-10. test-driven-development     → Prove each slice works
-11. code-review-and-quality     → Review before merge
-12. code-simplification         → Reduce unnecessary complexity while preserving behavior
-13. git-workflow-and-versioning → Clean commit history
-14. documentation-and-adrs      → Document decisions
-15. deprecation-and-migration   → Retire old systems and move users safely when needed
-16. shipping-and-launch         → Deploy safely
+1. planning-and-task-breakdown  → Break into verifiable chunks
+2. test-driven-development      → Prove each slice works
+   - browser-testing-with-devtools → Runtime verification for browser-based UI
+3. debugging-and-error-recovery → Reproduce → localize → fix → guard, if something breaks
+4. code-review-and-quality      → Review before merge
+   - performance-optimization   → Measure first, optimize only what matters
+5. audit-cleanup / code-smells-and-tech-debt → Dead code, lint, and tech-debt cleanup
+6. environment-and-secrets      → Env/template drift and secret handling
+7. git-workflow-and-versioning  → Clean commit history
 ```
 
 Not every task needs every skill. A bug fix might only need: `debugging-and-error-recovery` → `test-driven-development` → `code-review-and-quality`. A cleanup task might need: `audit-cleanup` → `code-smells-and-tech-debt` → `git-workflow-and-versioning`.
@@ -166,29 +156,13 @@ Not every task needs every skill. A bug fix might only need: `debugging-and-erro
 
 | Phase | Skill | One-Line Summary |
 |-------|-------|-----------------|
-| Define | interview-me | Surface what the user actually wants before any plan, spec, or code exists |
-| Define | idea-refine | Refine ideas through structured divergent and convergent thinking |
-| Define | spec-driven-development | Requirements and acceptance criteria before code |
 | Plan | planning-and-task-breakdown | Decompose into small, verifiable tasks |
-| Build | incremental-implementation | Thin vertical slices, test each before expanding |
-| Build | source-driven-development | Verify against official docs before implementing |
-| Build | doubt-driven-development | Adversarial fresh-context review of every non-trivial decision |
-| Build | context-engineering | Right context at the right time |
-| Build | frontend-ui-engineering | Production-quality UI with accessibility |
-| Build | api-and-interface-design | Stable interfaces with clear contracts |
 | Verify | test-driven-development | Failing test first, then make it pass |
-| Verify | browser-testing-with-devtools | Chrome DevTools MCP for runtime verification |
+| Verify | browser-testing-with-devtools | Puppeteer MCP for browser automation and runtime verification |
 | Verify | debugging-and-error-recovery | Reproduce → localize → fix → guard |
 | Verify | audit-cleanup | Script-first dependency, dead-code, cycle, and engines audit |
 | Verify | code-smells-and-tech-debt | Console logs, inline styles, missing types, and targeted lint cleanup |
 | Review | code-review-and-quality | Five-axis review with quality gates |
-| Review | code-simplification | Preserve behavior while reducing unnecessary complexity |
-| Review | security-and-hardening | OWASP prevention, input validation, least privilege |
 | Review | environment-and-secrets | Env/template drift and secret handling without exposing values |
 | Review | performance-optimization | Measure first, optimize only what matters |
 | Ship | git-workflow-and-versioning | Atomic commits, clean history |
-| Ship | ci-cd-and-automation | Automated quality gates on every change |
-| Ship | deprecation-and-migration | Remove old systems and migrate users safely |
-| Ship | documentation-and-adrs | Document the why, not just the what |
-| Ship | observability-and-instrumentation | Structured logs, RED metrics, traces, symptom-based alerts |
-| Ship | shipping-and-launch | Pre-launch checklist, monitoring, rollback plan |

@@ -1,0 +1,15 @@
+{
+  "name": "@mitii/cli-darwin-x64",
+  "version": "2.7.32",
+  "description": "Mitii native CLI for macOS x64",
+  "license": "AGPL-3.0-or-later",
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin"
+  ]
+}

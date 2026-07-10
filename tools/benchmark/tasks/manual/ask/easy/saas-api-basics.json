@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ask-easy-saas-api-module-count",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "How many domain modules does AppModule compose, and name three of them.",
+    "rationale": "Simple enumeration from src/app.module.ts (17 modules: auth, users, products, orders, payments, etc.).",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:payments", "file_exists:src/app.module.ts"]
+  },
+  {
+    "id": "ask-easy-saas-api-payments-crud",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "What methods does PaymentsService expose?",
+    "rationale": "Single-file lookup in payments.service.ts: create, findById, list, retryPayment, processRefund.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:retryPayment", "file_exists:src/modules/payments/payments.service.ts"]
+  },
+  {
+    "id": "ask-easy-saas-api-module-file-pattern",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "What is the typical file layout inside one of this codebase's domain modules?",
+    "rationale": "Tests recognizing the repeated controller/service/repository/module/dto pattern across modules (e.g. orders/).",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:controller"]
+  },
+  {
+    "id": "ask-easy-saas-api-common-utilities",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "What shared utilities live under src/common, and what is each one for?",
+    "rationale": "Simple directory listing + purpose summary: errors.ts, http-exception.filter.ts, logger.ts, pagination.ts, validation.ts.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:pagination", "dir_has_files:src/common"]
+  },
+  {
+    "id": "ask-easy-saas-api-webhook-dto",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "What fields does RegisterWebhookDto require?",
+    "rationale": "Single DTO lookup under src/modules/webhooks/dto/.",
+    "verify": ["exit_0", "stdout_not_empty", "file_exists:src/modules/webhooks/dto/register-webhook.dto.ts"]
+  }
+]

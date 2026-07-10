@@ -18,6 +18,7 @@ import { WorkspaceSettingsSection } from './WorkspaceSettingsSection';
 import { SettingsCard } from './SettingsCard';
 import { SettingSwitch } from './SettingSwitch';
 import { SettingStepper } from './SettingStepper';
+import { SettingNote } from './SettingNote';
 import { MemoryPanel } from './MemoryPanel';
 import { CheckpointPanel } from './CheckpointPanel';
 import { getProviderPreset } from '../../../core/llm/providerPresets';
@@ -113,6 +114,11 @@ const CONTEXT_TOGGLES: Array<{
     label: 'Semantic vectors',
     description: 'Conceptual code search — finds related files even when wording differs.',
   },
+  {
+    key: 'callGraph',
+    label: 'Precise call graph',
+    description: 'Compiler-resolved definitions and callers for symbols mentioned in your question, bypassing name-only matching.',
+  },
 ];
 
 const MCP_BUILTIN_TOGGLES: Array<{
@@ -139,6 +145,11 @@ const MCP_BUILTIN_TOGGLES: Array<{
     key: 'puppeteer',
     label: 'Puppeteer browser',
     description: 'Browser automation via @modelcontextprotocol/server-puppeteer for UI verification.',
+  },
+  {
+    key: 'agentmemory',
+    label: 'agentmemory',
+    description: 'Optional enterprise memory backend at http://localhost:3111/mcp.',
   },
 ];
 
@@ -261,6 +272,9 @@ export function SettingsPanel({
   const [embeddingProvider, setEmbeddingProvider] = useState<'minilm' | 'hash'>(settings.embeddingProvider);
   const [vectorBackend, setVectorBackend] = useState<'sqlite' | 'lancedb'>(settings.vectorBackend);
   const [hybridMemorySearch, setHybridMemorySearch] = useState(settings.hybridMemorySearch);
+  const [summarizeAfterTask, setSummarizeAfterTask] = useState(settings.summarizeAfterTask);
+  const [autoMemoryEnabled, setAutoMemoryEnabled] = useState(settings.autoMemoryEnabled);
+  const [autoMemoryScope, setAutoMemoryScope] = useState<SettingsView['autoMemoryScope']>(settings.autoMemoryScope);
 
   useEffect(() => {
     if (dirty && !settingsSaving) return;
@@ -294,6 +308,9 @@ export function SettingsPanel({
     setEmbeddingProvider(settings.embeddingProvider);
     setVectorBackend(settings.vectorBackend);
     setHybridMemorySearch(settings.hybridMemorySearch);
+    setSummarizeAfterTask(settings.summarizeAfterTask);
+    setAutoMemoryEnabled(settings.autoMemoryEnabled);
+    setAutoMemoryScope(settings.autoMemoryScope);
     setSelectedProfileId(settings.activeProviderProfileId);
     if (wasSavingRef.current && !settingsSaving) {
       setDirty(false);
@@ -355,6 +372,11 @@ export function SettingsPanel({
         embeddingProvider,
         vectorBackend,
         hybridMemorySearch,
+      },
+      memory: {
+        summarizeAfterTask,
+        autoMemoryEnabled,
+        autoMemoryScope,
       },
       telemetry: {
         sessionLogging,
@@ -1062,6 +1084,13 @@ export function SettingsPanel({
                 </div>
               </div>
 
+              {vectorIndex.degraded && (
+                <SettingNote title="Semantic search is degraded" variant="warn">
+                  {vectorIndex.degradedDetail ?? 'The embedding model or vector backend fell back silently.'}
+                  {' '}Retrieval is still working via keyword search, just without semantic matches.
+                </SettingNote>
+              )}
+
               <p className="settings-inline-note">
                 Save settings after changing vector options. Vector changes reload the index and rebuild embeddings.
               </p>
@@ -1087,6 +1116,40 @@ export function SettingsPanel({
               title={`Memory (${memories.length})`}
               description="Review or clear saved observations that can be recalled in future chats."
             >
+              <SettingSwitch
+                label="Summarize after task"
+                description="Extract durable decisions and outcomes after completed agent work."
+                checked={summarizeAfterTask}
+                onChange={(v) => {
+                  setSummarizeAfterTask(v);
+                  markDirty();
+                }}
+              />
+              <SettingSwitch
+                label="Markdown auto-memory"
+                description="Write post-task memories to readable markdown files."
+                checked={autoMemoryEnabled}
+                onChange={(v) => {
+                  setAutoMemoryEnabled(v);
+                  markDirty();
+                }}
+              />
+              <label className="settings-field">
+                <span className="settings-label">Auto-memory scope</span>
+                <select
+                  className="settings-input settings-select"
+                  value={autoMemoryScope}
+                  disabled={!autoMemoryEnabled}
+                  onChange={(e) => {
+                    setAutoMemoryScope(e.target.value as SettingsView['autoMemoryScope']);
+                    markDirty();
+                  }}
+                >
+                  <option value="user">User profile</option>
+                  <option value="workspace">Workspace .mitii/auto-memory</option>
+                  <option value="both">Both</option>
+                </select>
+              </label>
               <MemoryPanel memories={memories} onDelete={onDeleteMemory} onClear={onClearMemory} />
             </SettingsCard>
           </>

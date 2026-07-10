@@ -3,6 +3,7 @@ import { join } from 'path';
 import type { ProviderType, ThunderConfig } from '../config/schema';
 import { defaultThunderConfig } from '../config/defaults';
 import { resolveEffectiveSafety } from '../safety/autonomyPresets';
+import type { MitiiEvent } from './events';
 
 export type HeadlessRuntime = 'real' | 'stub';
 
@@ -18,6 +19,8 @@ export interface HeadlessAgentOptions {
   allowNetwork?: boolean;
   enablePuppeteer?: boolean;
   indexWorkspace?: boolean;
+  sessionId?: string;
+  onEvent?: (event: MitiiEvent) => void;
   configOverrides?: Partial<ThunderConfig>;
 }
 

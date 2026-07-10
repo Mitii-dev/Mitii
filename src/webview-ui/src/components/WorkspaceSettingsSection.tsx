@@ -65,6 +65,9 @@ export function WorkspaceSettingsSection({
         <div className="workspace-stat">
           <span className="workspace-stat__label">Embedded chunks</span>
           <strong className="workspace-stat__value">{vectorIndex.embeddedChunks.toLocaleString()}</strong>
+          {vectorIndex.degraded && (
+            <span className="workspace-stat__meta" title={vectorIndex.degradedDetail}>degraded — see Settings</span>
+          )}
         </div>
         <div className="workspace-stat">
           <span className="workspace-stat__label">Source</span>

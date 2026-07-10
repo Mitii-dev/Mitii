@@ -1,0 +1,74 @@
+[
+  {
+    "id": "plan-easy-react-vite-button-tests",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["testing"],
+    "fixture": "react-vite",
+    "prompt": "Plan adding unit tests for the Button component covering both variants.",
+    "rationale": "Tests that the plan accounts for react-vite's placeholder test script rather than assuming a real vitest setup already exists.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/components/Button.tsx"]
+  },
+  {
+    "id": "plan-easy-react-vite-danger-variant",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["single-file"],
+    "fixture": "react-vite",
+    "prompt": "Plan adding a 'danger' variant to the Button component, styled distinctly from primary and secondary.",
+    "rationale": "Extends an existing union type (ButtonProps.variant); tests the plan references the actual prop shape.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-easy-react-vite-onclick-prop",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["single-file"],
+    "fixture": "react-vite",
+    "prompt": "Plan adding an optional onClick prop to Button and wiring it through in App.tsx.",
+    "rationale": "Small, well-scoped prop addition spanning exactly two files.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/App.tsx"]
+  },
+  {
+    "id": "plan-easy-react-vite-duplicate-entry-cleanup",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["corner-case"],
+    "fixture": "react-vite",
+    "prompt": "Plan cleaning up the duplicate main.ts/main.tsx entry files so there's only one real entry point.",
+    "rationale": "Tests whether the plan correctly identifies index.html's actual reference (main.ts) before proposing which file to remove.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:index.html"]
+  },
+  {
+    "id": "plan-easy-react-vite-lint-setup",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["tooling"],
+    "fixture": "react-vite",
+    "prompt": "Plan replacing the placeholder lint script with a real ESLint configuration for TypeScript + React.",
+    "rationale": "Tooling-setup plan; tests the plan notices the current lint script is just a placeholder echo.",
+    "verify": ["exit_0", "json_path:steps", "file_contains:package.json:lint ok"]
+  },
+  {
+    "id": "plan-easy-react-vite-loading-state",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["single-file"],
+    "fixture": "react-vite",
+    "prompt": "Plan adding a simple loading spinner shown while the App component mounts.",
+    "rationale": "Common, well-scoped UI addition to a single-component app.",
+    "verify": ["exit_0", "json_path:steps"]
+  }
+]

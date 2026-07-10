@@ -1,0 +1,86 @@
+[
+  {
+    "id": "plan-medium-microtask-boundary-commit-message-only",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["micro-task-routing"],
+    "fixture": "node-express",
+    "prompt": "Write a commit message for the users route fix.",
+    "rationale": "This is really a micro-task even though it's sent in Plan mode. Tests whether Plan mode still produces a sensible structured response (a plan-shaped answer, or a minimal one-step plan) rather than erroring because the request doesn't need real planning.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-medium-microtask-boundary-changelog-only",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["micro-task-routing"],
+    "fixture": "next-app",
+    "prompt": "Draft a changelog entry for the loading indicator feature.",
+    "rationale": "Narrow, low-effort request sent through Plan mode. Tests that the plan doesn't balloon a one-line changelog ask into an unnecessarily large multi-phase plan.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-medium-microtask-boundary-mixed-request",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["micro-task-routing"],
+    "fixture": "broken-repo",
+    "prompt": "Write a commit message, but also plan out the full fix for the reserveStock bug in detail.",
+    "rationale": "Bundles a narrow micro-task with a genuine planning request. Tests that the real planning work isn't skipped just because the message starts with a commit-message ask.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/routes/orders.js"]
+  },
+  {
+    "id": "plan-medium-microtask-boundary-release-notes-scope",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["micro-task-routing"],
+    "fixture": "saas-api",
+    "prompt": "Plan and draft release notes for a version that fixes the cancelOrder inventory-release gap.",
+    "rationale": "Bundles planning (the actual fix) with a documentation micro-task (release notes) in one request. Tests the plan sequences the fix first and drafts notes describing it accurately, not notes for a fix that hasn't been designed yet.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/orders/orders.service.ts"]
+  },
+  {
+    "id": "plan-medium-microtask-boundary-just-a-question",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["micro-task-routing"],
+    "fixture": "nest-api",
+    "prompt": "What testing framework does this project use?",
+    "rationale": "This is a pure question with no planning need at all, sent through Plan mode. Tests whether Plan mode degrades gracefully (a minimal single-step 'plan' that just answers the question) instead of fabricating unnecessary implementation phases.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-medium-microtask-boundary-pr-title-plus-plan",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["micro-task-routing", "monorepo"],
+    "fixture": "monorepo",
+    "prompt": "Give me a PR title for the shared validateEmail rename, and plan the rename itself across all packages.",
+    "rationale": "Bundles a one-line micro-task (PR title) with a genuine cross-package planning task. Tests that both parts get addressed, with the rename plan actually covering all three packages.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:packages/shared/src/index.js"]
+  },
+  {
+    "id": "plan-medium-microtask-boundary-github-issue-mention",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["micro-task-routing", "github-issue"],
+    "fixture": "node-express",
+    "prompt": "There's a bug report describing the users list endpoint returning the wrong status message, similar to issue #142 in our tracker. Plan the fix.",
+    "rationale": "Mentions a GitHub-issue-style reference without an actual fetchable URL. Tests that the plan proceeds using the concrete in-repo bug (users.js) instead of stalling on an unfetchable external reference.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/routes/users.js"]
+  }
+]

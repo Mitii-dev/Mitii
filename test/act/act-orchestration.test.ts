@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ActOrchestrator, filterActModeTools, routeActIntent, shouldResumeSavedPlan } from '../../src/core/modes/agent';
+import {
+  ActOrchestrator,
+  filterActModeTools,
+  hasDirectRouteOverride,
+  routeActIntent,
+  shouldResumeSavedPlan,
+} from '../../src/core/modes/agent';
 import { analyzeTask } from '../../src/core/runtime/TaskAnalyzer';
 import { resolveMaxContextItems } from '../../src/core/context/resolveMaxContextItems';
 import type { ToolDefinition } from '../../src/core/llm/toolTypes';
@@ -14,9 +20,13 @@ describe('Act orchestration boundary', () => {
     expect(shouldResumeSavedPlan('fix it', true)).toBe(true);
     expect(shouldResumeSavedPlan('please fix it', true)).toBe(true);
     expect(shouldResumeSavedPlan('fix the login bug we planned', true)).toBe(true);
+    expect(shouldResumeSavedPlan('fix the login bug', true)).toBe(false);
     expect(shouldResumeSavedPlan('go ahead', false)).toBe(false);
     expect(shouldResumeSavedPlan('new task: fix the login bug', true)).toBe(false);
     expect(shouldResumeSavedPlan('ignore the current plan and fix the login bug', true)).toBe(false);
+    expect(shouldResumeSavedPlan('no plan, fix the login bug', true)).toBe(false);
+    expect(shouldResumeSavedPlan('go ahead', true, false, { actDepth: 'quick' })).toBe(false);
+    expect(shouldResumeSavedPlan('execute the plan', true, false, { actDepth: 'quick' })).toBe(true);
   });
 
   it('routes active-plan handoffs before replanning', () => {
@@ -29,6 +39,21 @@ describe('Act orchestration boundary', () => {
 
     expect(route.intent).toBe('resume_plan');
     expect(route.executionPath).toBe('resume_saved_plan');
+    expect(route.shouldUsePlanner).toBe(false);
+  });
+
+  it('honors direct Agent route overrides before saved-plan resume or replanning', () => {
+    const message = '/fast implement the settings workflow, add tests, and update docs';
+    const analysis = analyzeTask(message, 'agent');
+    const route = routeActIntent(message, analysis, {
+      mode: 'agent',
+      hasActivePlan: true,
+      orchestrationEnabled: true,
+    });
+
+    expect(hasDirectRouteOverride(message)).toBe(true);
+    expect(route.intent).not.toBe('resume_plan');
+    expect(route.executionPath).toBe('direct');
     expect(route.shouldUsePlanner).toBe(false);
   });
 
@@ -58,6 +83,33 @@ describe('Act orchestration boundary', () => {
 
     expect(route.executionPath).toBe('orchestrated');
     expect(route.shouldUsePlanner).toBe(true);
+    expect(route.intent).toBe('docs');
+  });
+
+  it('skips orchestration for quick depth and simple edits', () => {
+    const message = 'Can you add Day 17 and  18 to Add Java in Oracle Fusion learn plan';
+    const analysis = analyzeTask(message, 'agent');
+    const route = routeActIntent(message, analysis, {
+      mode: 'agent',
+      hasActivePlan: false,
+      orchestrationEnabled: true,
+      actDepth: 'quick',
+    });
+
+    expect(analysis.kind).toBe('simple_edit');
+    expect(route.executionPath).toBe('direct');
+    expect(route.shouldUsePlanner).toBe(false);
+  });
+
+  it('routes README updates to the docs intent instead of bugfix', () => {
+    const message = 'can you update readme of mitii ai agent based on all our recent changes';
+    const analysis = analyzeTask(message, 'agent');
+    const route = routeActIntent(message, analysis, {
+      mode: 'agent',
+      hasActivePlan: false,
+      orchestrationEnabled: true,
+    });
+
     expect(route.intent).toBe('docs');
   });
 

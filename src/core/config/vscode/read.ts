@@ -4,10 +4,10 @@ import {
   type ThunderConfig,
 } from '../schema';
 import { defaultThunderConfig } from '../defaults';
-import { CONFIG_SECTION } from '../keys';
+import { CONFIG_SECTION, LEGACY_CONFIG_SECTION } from '../keys';
 
 export function readThunderConfigFromSettings(): ThunderConfig {
-  const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
+  const config = createMitiiConfigReader();
   const raw = {
     debug: config.get<boolean>('debug'),
     provider: {
@@ -36,6 +36,8 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       vectorsEnabled: config.get<boolean>('indexing.vectorsEnabled'),
       embeddingProvider: config.get<string>('indexing.embeddingProvider'),
       vectorBackend: config.get<string>('indexing.vectorBackend'),
+      watchDebounceMs: config.get<number>('indexing.watchDebounceMs'),
+      priorityPaths: config.get<string[]>('indexing.priorityPaths'),
     },
     context: {
       rerankerEnabled: config.get<boolean>('context.rerankerEnabled'),
@@ -57,9 +59,12 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       maxItems: config.get<number>('memory.maxItems'),
       summarizeAfterTask: config.get<boolean>('memory.summarizeAfterTask'),
       hybridSearchEnabled: config.get<boolean>('memory.hybridSearchEnabled'),
+      autoMemoryEnabled: config.get<boolean>('memory.autoMemoryEnabled'),
+      autoMemoryScope: config.get<string>('memory.autoMemoryScope'),
     },
     agent: {
       subagentsEnabled: config.get<boolean>('agent.subagentsEnabled'),
+      teamsEnabled: config.get<boolean>('agent.teamsEnabled'),
       maxSteps: config.get<number>('agent.maxSteps'),
       askMaxSteps: config.get<number>('agent.askMaxSteps'),
       askDepth: config.get<string>('agent.askDepth'),
@@ -104,6 +109,9 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       issueFetchEnabled: config.get<boolean>('github.issueFetchEnabled'),
       issueCommentLimit: config.get<number>('github.issueCommentLimit'),
       tokenRef: config.get<string>('github.tokenRef'),
+      autoPrEnabled: config.get<boolean>('github.autoPrEnabled'),
+      defaultBaseBranch: config.get<string>('github.defaultBaseBranch'),
+      webhookSecret: config.get<string>('github.webhookSecret'),
     },
     telemetry: {
       sessionLogging: config.get<boolean>('telemetry.sessionLogging'),
@@ -120,6 +128,8 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       localProvidersOnly: config.get<boolean>('enterprise.localProvidersOnly'),
       stripFileContentsFromAuditPacks: config.get<boolean>('enterprise.stripFileContentsFromAuditPacks'),
       autoExportAuditPackOnSessionEnd: config.get<boolean>('enterprise.autoExportAuditPackOnSessionEnd'),
+      channelsDisabled: config.get<boolean>('enterprise.channelsDisabled'),
+      maxParallel: config.get<number>('enterprise.maxParallel'),
     },
   };
 
@@ -128,4 +138,33 @@ export function readThunderConfigFromSettings(): ThunderConfig {
     return result.data;
   }
   return defaultThunderConfig();
+}
+
+function createMitiiConfigReader(): { get<T>(path: string): T | undefined } {
+  const current = vscode.workspace.getConfiguration(CONFIG_SECTION);
+  const legacy = vscode.workspace.getConfiguration(LEGACY_CONFIG_SECTION);
+  return {
+    get<T>(path: string): T | undefined {
+      if (hasConfiguredValue(current.inspect<T>(path))) {
+        return current.get<T>(path);
+      }
+      if (hasConfiguredValue(legacy.inspect<T>(path))) {
+        return legacy.get<T>(path);
+      }
+      return current.get<T>(path);
+    },
+  };
+}
+
+function hasConfiguredValue(inspect: ReturnType<vscode.WorkspaceConfiguration['inspect']>): boolean {
+  if (!inspect) return false;
+  return [
+    inspect.globalValue,
+    inspect.workspaceValue,
+    inspect.workspaceFolderValue,
+    inspect.defaultLanguageValue,
+    inspect.globalLanguageValue,
+    inspect.workspaceLanguageValue,
+    inspect.workspaceFolderLanguageValue,
+  ].some((value) => value !== undefined);
 }

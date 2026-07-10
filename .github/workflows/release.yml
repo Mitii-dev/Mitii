@@ -19,7 +19,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run compile
-      - run: pnpm exec vsce package
+      - run: pnpm run package
       - name: Generate release notes
         run: node dist/cli.js changelog > release-notes.md
       - uses: softprops/action-gh-release@v2

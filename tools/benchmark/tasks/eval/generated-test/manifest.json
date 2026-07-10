@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-03T21:02:42.220Z",
+  "generatedAt": "2026-07-09T05:19:09.101Z",
   "profile": "standard",
   "targetCount": 500,
   "actualCount": 500,
@@ -30,11 +30,13 @@
     "fixture-agent-nextjs": 15,
     "fixture-agent-node": 16,
     "fixture-agent-react": 15,
+    "fixture-agent-modular-api": 15,
     "fixture-ask-nestjs": 64,
     "fixture-ask-nextjs": 49,
     "fixture-ask-node": 49,
     "fixture-ask-react": 49,
-    "coding-js": 202
+    "fixture-ask-modular-api": 51,
+    "coding-js": 136
   },
   "outputDir": "/Users/karthikshinde/Applications/ai-agent/mitii/mitii-ai-agent/tools/benchmark/tasks/eval/generated-test",
   "note": "External eval tasks — not packaged in VSIX extension"

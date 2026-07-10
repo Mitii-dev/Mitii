@@ -1,0 +1,20 @@
+{
+  "name": "@mitii/board",
+  "version": "2.7.32",
+  "description": "Minimal task board server for Mitii parallel agents.",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "main": "./dist/server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "types": "./dist/server.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "esbuild src/server.ts --bundle --outfile=dist/server.js --platform=node --format=esm --packages=external"
+  }
+}

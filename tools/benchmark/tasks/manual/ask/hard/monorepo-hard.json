@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ask-hard-monorepo-blast-radius-rename",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "hard",
+    "category": "reasoning",
+    "tags": ["monorepo", "cross-package"],
+    "fixture": "monorepo",
+    "prompt": "If I rename validateEmail to isValidEmail inside packages/shared, list every single call site across the whole workspace that would break, with exact file paths.",
+    "rationale": "Requires an exhaustive cross-package search (packages/api/src/index.js and packages/web/src/App.tsx both call it) with no omissions — a partial answer that misses either package should be treated as a failure by a human reviewer.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:packages/api", "stdout_contains:packages/web"]
+  },
+  {
+    "id": "ask-hard-monorepo-independent-versioning",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "hard",
+    "category": "reasoning",
+    "tags": ["monorepo"],
+    "fixture": "monorepo",
+    "prompt": "If I bump @mono/shared to a breaking 2.0.0, will packages/api and packages/web automatically pick up the new version, or does something need to change in their package.json files?",
+    "rationale": "Tests reasoning about the workspace:* protocol's semantics (always resolves to the local package regardless of version bump) versus a published-registry semver range, which behaves differently.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:workspace"]
+  },
+  {
+    "id": "ask-hard-monorepo-circular-dependency-check",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "hard",
+    "category": "reasoning",
+    "tags": ["monorepo"],
+    "fixture": "monorepo",
+    "prompt": "Is there any circular dependency between the three packages in this workspace?",
+    "rationale": "Requires actually tracing the dependency graph (shared has no workspace deps; api and web both depend only on shared, not on each other) to correctly conclude there is no cycle, rather than assuming monorepos generically have circular dependency risk.",
+    "verify": ["exit_0", "stdout_not_empty"]
+  },
+  {
+    "id": "ask-hard-monorepo-partial-install-failure",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["monorepo"],
+    "fixture": "monorepo",
+    "prompt": "Suppose only packages/web has its node_modules installed but packages/api and packages/shared don't. Would packages/web still work correctly?",
+    "rationale": "Tests reasoning that pnpm workspaces hoist/symlink workspace packages, so packages/web depends on packages/shared being resolvable — a nuanced dependency-graph question, not a simple file lookup.",
+    "verify": ["exit_0", "stdout_not_empty"]
+  },
+  {
+    "id": "ask-hard-monorepo-conflicting-instructions",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["monorepo", "ambiguity"],
+    "fixture": "monorepo",
+    "prompt": "Only look at packages/web. Actually, ignore that — tell me about the whole workspace's dependency graph instead. But keep your answer focused on just packages/web.",
+    "rationale": "Deliberately self-contradictory scope instructions within one message. Tests whether the model asks for clarification or picks a defensible resolution and states its assumption, rather than silently picking one instruction and ignoring the contradiction.",
+    "verify": ["exit_0", "stdout_not_empty"]
+  }
+]

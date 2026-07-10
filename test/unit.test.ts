@@ -38,6 +38,16 @@ describe('IgnoreService', () => {
     expect(ig.isIgnored('./node_modules/pkg/index.js')).toBe(true);
   });
 
+  it('allows reading .mitii/logs/*.jsonl for debugging but keeps them out of the index', () => {
+    const ig = new IgnoreService();
+    ig.load('/tmp');
+    expect(ig.isIgnored('.mitii/logs/2026-07-08_23-10-52-abc.jsonl', { forRead: true })).toBe(false);
+    expect(ig.isIgnored('.mitii/logs', { forRead: true })).toBe(false);
+    expect(ig.isIgnored('.mitii/logs/2026-07-08_23-10-52-abc.jsonl')).toBe(true);
+    expect(ig.isIgnored('.mitii/config.json', { forRead: true })).toBe(true);
+    expect(ig.isIgnored('.mitii/logs/nested/other.jsonl', { forRead: true })).toBe(true);
+  });
+
   it('normalizes absolute workspace paths before ignore checks', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-ignore-absolute-test-'));
     try {
@@ -551,18 +561,19 @@ describe('Builtin MCP servers', () => {
     const { buildBuiltinMcpServers } = await import('../src/core/mcp/builtinServers');
     const servers = buildBuiltinMcpServers('/tmp/my-project');
 
-    expect(Object.keys(servers).sort()).toEqual(['filesystem', 'memory', 'puppeteer', 'sequential-thinking']);
+    expect(Object.keys(servers).sort()).toEqual(['agentmemory', 'filesystem', 'memory', 'puppeteer', 'sequential-thinking']);
     expect(servers.filesystem.command).toBe(process.platform === 'win32' ? 'cmd' : 'npx');
     expect(servers.filesystem.args).toContain('@modelcontextprotocol/server-filesystem');
     expect(servers.filesystem.args.at(-1)).toBe(resolve('/tmp/my-project'));
     expect(servers.memory.args).toContain('@modelcontextprotocol/server-memory');
     expect(servers['sequential-thinking'].args).toContain('@modelcontextprotocol/server-sequential-thinking');
+    expect(servers.agentmemory).toMatchObject({ type: 'streamable-http', url: 'http://localhost:3111/mcp' });
   });
 
   it('omits filesystem when workspace is empty', async () => {
     const { buildBuiltinMcpServers } = await import('../src/core/mcp/builtinServers');
     const servers = buildBuiltinMcpServers('');
-    expect(Object.keys(servers).sort()).toEqual(['memory', 'puppeteer', 'sequential-thinking']);
+    expect(Object.keys(servers).sort()).toEqual(['agentmemory', 'memory', 'puppeteer', 'sequential-thinking']);
   });
 
   it('lets user settings override built-in servers', async () => {
@@ -606,6 +617,7 @@ describe('Builtin MCP servers', () => {
       memory: false,
       sequentialThinking: true,
       puppeteer: false,
+      agentmemory: false,
     });
     expect(servers.memory.disabled).toBe(true);
     expect(servers.filesystem.disabled).toBe(false);
@@ -617,6 +629,7 @@ describe('Builtin MCP servers', () => {
       memory: true,
       sequentialThinking: true,
       puppeteer: false,
+      agentmemory: false,
     });
   });
 });
@@ -626,20 +639,27 @@ describe('ProjectRulesService', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-rules-test-'));
     try {
       writeFileSync(join(tempDir, 'MITII.md'), 'mitii instructions');
-      writeFileSync(join(tempDir, 'AGENTS.md'), 'ignored agent instructions');
+      writeFileSync(join(tempDir, 'AGENTS.md'), 'agent instructions');
 
       const rules = new ProjectRulesService(tempDir).load();
-      expect(rules.map((rule) => rule.relPath)).toEqual(['MITII.md']);
+      expect(rules.map((rule) => rule.relPath)).toEqual([
+        'mitii:defaults/path-resolution',
+        'MITII.md',
+        'AGENTS.md',
+      ]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
 
-  it('returns empty when MITII.md is missing', () => {
+  it('loads compatibility files when MITII.md is missing', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-rules-test-'));
     try {
-      writeFileSync(join(tempDir, 'AGENTS.md'), 'ignored');
-      expect(new ProjectRulesService(tempDir).load()).toEqual([]);
+      writeFileSync(join(tempDir, 'AGENTS.md'), 'agent instructions');
+      expect(new ProjectRulesService(tempDir).load().map((rule) => rule.relPath)).toEqual([
+        'mitii:defaults/path-resolution',
+        'AGENTS.md',
+      ]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -1193,6 +1213,26 @@ describe('TaskAnalyzer', () => {
     expect(result.shouldPlan).toBe(true);
     expect(result.shouldVerify).toBe(true);
   });
+
+  it('routes single-file day/row appends as direct simple edits', async () => {
+    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const result = analyzeTask(
+      'Can you add Day 17 and  18 to Add Java in Oracle Fusion learn plan',
+      'agent'
+    );
+
+    expect(result.kind).toBe('simple_edit');
+    expect(result.shouldPlan).toBe(false);
+    expect(result.shouldVerify).toBe(true);
+  });
+
+  it('does not treat low-complexity "and" lists as full implementation work', async () => {
+    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const result = analyzeTask('rename foo and bar in config.json', 'agent');
+
+    expect(result.kind).toBe('simple_edit');
+    expect(result.shouldPlan).toBe(false);
+  });
 });
 
 describe('contextRelevance', () => {
@@ -1326,6 +1366,7 @@ describe('shouldUsePlanner', () => {
       'apply_patch',
     ]);
     expect(shouldRunDirectFinalValidation('simple_edit')).toBe(false);
+    expect(shouldRunDirectFinalValidation('simple_edit', ['README.md'])).toBe(false);
     expect(shouldRunDirectFinalValidation('simple_edit', ['apps/docs/docs/ffb-mui/example.mdx'])).toBe(true);
     expect(shouldRunDirectFinalValidation('implementation')).toBe(true);
   });
@@ -1491,6 +1532,9 @@ describe('PlanActEngine read-only shell', () => {
     expect(isReadOnlyCommand('cd apps/docs && npm run build 2>&1 | head -50')).toBe(true);
     expect(isReadOnlyCommand('npx vitest run')).toBe(true);
     expect(isReadOnlyCommand('npx vitest')).toBe(false);
+    expect(isReadOnlyCommand('npm run verify')).toBe(true);
+    expect(isReadOnlyCommand('npm run doctor')).toBe(true);
+    expect(isReadOnlyCommand('pnpm validate')).toBe(true);
     expect(stripLeadingCd('cd /home/user && npm ls')).toBe('npm ls');
     expect(isShellAllowed('plan', 'npx depcheck')).toBe(true);
     expect(isShellAllowed('ask', 'npx depcheck')).toBe(true);
@@ -1766,6 +1810,62 @@ describe('PatchApplyService validateSyntax', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('raw TypeScript generic');
+  });
+
+  it('does not run source-code bracket balance checks on plain Markdown', async () => {
+    const { PatchApplyService } = await import('../src/core/apply/PatchApplyService');
+    const svc = new PatchApplyService('/tmp');
+    const result = svc.validateSyntax(
+      'README.md',
+      [
+        '## Ollama Configuration',
+        '',
+        'Install [Ollama](https://ollama.ai) and run:',
+        '',
+        '```bash',
+        'ollama pull llama3.1  # or qwen2.5, mistral-large, command-r-plus',
+        '```',
+      ].join('\n')
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it('allows apply_patch to remove a Markdown section with links and fenced code', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-patch-markdown-test-'));
+
+    try {
+      const { createApplyPatchTool } = await import('../src/core/tools/builtinTools');
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      const readmePath = join(tempDir, 'README.md');
+      const ollamaSection = [
+        '## Ollama Configuration',
+        '',
+        'Career-Ops supports **Ollama** as a local provider.',
+        '',
+        '```bash',
+        'ollama pull llama3.1  # or qwen2.5, mistral-large, command-r-plus',
+        '```',
+        '',
+        '> **Tip:** See [`modes/_shared.md`](modes/_shared.md) -> "Provider Options".',
+        '',
+      ].join('\n');
+      writeFileSync(readmePath, `# Project\n\n${ollamaSection}## Usage\n\nRun it.\n`);
+
+      const result = await createApplyPatchTool(tempDir, ig).execute({
+        path: 'README.md',
+        oldText: ollamaSection,
+        newText: '',
+      });
+
+      expect(result.success).toBe(true);
+      const updated = readFileSync(readmePath, 'utf8');
+      expect(updated).not.toContain('Ollama Configuration');
+      expect(updated).toContain('## Usage');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it('allows targeted TSX patches when the final file has many self-closing components', async () => {
@@ -2076,6 +2176,19 @@ describe('buildPrompt explicit context', () => {
     const user = messages.find((m) => m.role === 'user');
     expect(user?.content.startsWith('<user_explicit_context>')).toBe(true);
     expect(user?.content).toContain('## Codebase Context');
+  });
+});
+
+describe('conversation task message resolution', () => {
+  it('expands terse follow-ups using the latest substantive user turn', async () => {
+    const { resolveConversationTaskMessage } = await import('../src/core/runtime/taskMessage');
+    const resolved = resolveConversationTaskMessage('add them', [
+      { role: 'user', content: 'Can you add Day 17 and 18 to the Oracle Fusion learn plan' },
+      { role: 'assistant', content: 'Planning failed quality gate' },
+    ]);
+
+    expect(resolved).toContain('add them');
+    expect(resolved).toContain('Day 17 and 18');
   });
 });
 

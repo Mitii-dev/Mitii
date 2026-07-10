@@ -1,0 +1,98 @@
+[
+  {
+    "id": "plan-medium-saas-api-webhook-retry-backoff",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["saas-api", "multi-phase"],
+    "fixture": "saas-api",
+    "prompt": "Plan adding proper exponential backoff with jitter to webhook delivery retries, replacing whatever retry logic exists today.",
+    "rationale": "Requires the plan to first discover the existing retryDelivery/MAX_DELIVERY_ATTEMPTS logic in webhooks.service.ts before proposing changes, not just design in a vacuum.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/webhooks/webhooks.service.ts"]
+  },
+  {
+    "id": "plan-medium-saas-api-order-cancellation-inventory-release",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "Plan making cancelOrder automatically release any reserved inventory back to stock.",
+    "rationale": "Cross-module change spanning orders.service.ts and inventory.service.ts's releaseStock — tests the plan correctly identifies both sides of the integration gap.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/inventory/inventory.service.ts"]
+  },
+  {
+    "id": "plan-medium-saas-api-price-change-audit-logging",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "Plan making adjustPrice record an audit-log entry every time a product's price changes.",
+    "rationale": "Requires connecting products.service.ts's adjustPrice to audit-log.service.ts's recordAuditEntry — a genuine cross-module integration plan.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/audit-log/audit-log.service.ts"]
+  },
+  {
+    "id": "plan-medium-saas-api-admin-impersonation-guardrails",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["saas-api", "security"],
+    "fixture": "saas-api",
+    "prompt": "Plan adding an authorization check and an audit-log entry to impersonateUser so impersonation is both gated and traceable.",
+    "rationale": "Multi-phase security-hardening plan spanning admin.service.ts and audit-log.service.ts.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/admin/admin.service.ts"]
+  },
+  {
+    "id": "plan-medium-saas-api-subscription-cancellation-flow",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["saas-api", "multi-phase"],
+    "fixture": "saas-api",
+    "prompt": "Plan a full subscription cancellation flow: mark the subscription cancelled, stop future renewals, and notify the user.",
+    "rationale": "Requires touching subscriptions.service.ts and notifications.service.ts across multiple discrete phases.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/subscriptions/subscriptions.service.ts"]
+  },
+  {
+    "id": "plan-medium-saas-api-cart-to-order-error-handling",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "Plan making convertCartToOrder roll back cleanly if inventory reservation fails partway through.",
+    "rationale": "Requires reasoning about a partial-failure scenario across cart.service.ts, orders.service.ts, and inventory.service.ts together.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/orders/orders.service.ts"]
+  },
+  {
+    "id": "plan-medium-saas-api-support-ticket-sla-escalation",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["saas-api", "multi-phase"],
+    "fixture": "saas-api",
+    "prompt": "Plan adding an SLA timer that automatically calls escalateTicket if a support ticket hasn't been closed within 48 hours.",
+    "rationale": "Requires a multi-phase plan: a scheduling mechanism, plus wiring into the existing escalateTicket/closeTicket lifecycle.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/support-tickets/support-tickets.service.ts"]
+  },
+  {
+    "id": "plan-medium-saas-api-analytics-conversion-funnel-dashboard",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["saas-api", "multi-phase"],
+    "fixture": "saas-api",
+    "prompt": "Plan exposing computeConversionFunnel results through a new admin-facing endpoint, including access control so only admins can call it.",
+    "rationale": "Spans analytics.service.ts and admin-level access control, requiring the plan to sequence discovery, design, and access-control phases.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/analytics/analytics.service.ts"]
+  }
+]

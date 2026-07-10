@@ -30,6 +30,7 @@ export class ContextBudgeter {
       { source: 'diagnostics', budget: maxTokens * BUDGET_SPLITS.openDiff * 0.2 },
       { source: 'memory', budget: maxTokens * BUDGET_SPLITS.memory },
       { source: 'vector', budget: maxTokens * 0.08 },
+      { source: 'call-graph', budget: maxTokens * 0.10 },
     ];
 
     const includedIds = new Set<string>();

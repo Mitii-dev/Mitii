@@ -44,19 +44,40 @@ function verifyRule(rule, ctx) {
   if (rule.startsWith('stdout_not_empty')) {
     return { rule, passed: ctx.stdout.trim().length > 0 };
   }
+  if (rule.startsWith('stdout_not_contains:')) {
+    const text = rule.slice('stdout_not_contains:'.length);
+    return { rule, passed: !ctx.stdout.includes(text) };
+  }
   if (rule.startsWith('json_path:')) {
     const key = rule.slice('json_path:'.length);
     try {
       return { rule, passed: Boolean(JSON.parse(ctx.stdout)[key]) };
     } catch {
-      return { rule, passed: false, details: 'Invalid JSON stdout' };
+      // stdout from `--json` runs is JSONL (one MitiiEvent per line), not a single JSON
+      // blob — e.g. plan mode's steps live inside a `{ type: 'plan', plan: { steps } }`
+      // event. Fall back to scanning lines instead of failing outright.
+      const found = ctx.stdout.split(/\r?\n/).some((line) => {
+        if (!line.trim()) return false;
+        try {
+          const event = JSON.parse(line);
+          if (event && typeof event === 'object' && Boolean(event[key])) return true;
+          if (event?.type === 'plan' && event.plan && typeof event.plan === 'object') {
+            return Boolean(event.plan[key]);
+          }
+          return false;
+        } catch {
+          return false;
+        }
+      });
+      return { rule, passed: found, details: found ? undefined : 'Invalid JSON stdout' };
     }
   }
   if (rule.startsWith('jsonl_event:')) {
     const type = rule.slice('jsonl_event:'.length);
+    const acceptedTypes = type === 'end' ? new Set(['end', 'done']) : new Set([type]);
     const found = ctx.stdout.split(/\r?\n/).some((line) => {
       try {
-        return JSON.parse(line).type === type;
+        return acceptedTypes.has(JSON.parse(line).type);
       } catch {
         return false;
       }
@@ -73,6 +94,13 @@ function verifyRule(rule, ctx) {
     const path = join(ctx.cwd, rel);
     if (!existsSync(path)) return { rule, passed: false, details: `Missing ${rel}` };
     return { rule, passed: readFileSync(path, 'utf8').includes(needle) };
+  }
+  if (rule.startsWith('file_not_contains:')) {
+    const [rel, ...needleParts] = rule.slice('file_not_contains:'.length).split(':');
+    const needle = needleParts.join(':');
+    const path = join(ctx.cwd, rel);
+    if (!existsSync(path)) return { rule, passed: false, details: `Missing ${rel}` };
+    return { rule, passed: !readFileSync(path, 'utf8').includes(needle) };
   }
   if (rule.startsWith('dir_has_files:')) {
     const rel = rule.slice('dir_has_files:'.length);

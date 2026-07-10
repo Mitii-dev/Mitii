@@ -11,7 +11,8 @@ export type ActIntent =
   | 'audit'
   | 'mdx_repair'
   | 'direct'
-  | 'question';
+  | 'question'
+  | 'diagnose';
 
 export type ActExecutionPath =
   | 'resume_saved_plan'

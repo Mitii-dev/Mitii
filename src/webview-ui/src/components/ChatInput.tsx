@@ -30,6 +30,7 @@ interface ChatInputProps {
   approvalMode: ApprovalMode;
   activeDepth: AgentDepthView;
   tokenUsage: TokenUsageView;
+  modelLabel?: string;
   pinnedContext: PinnedContextView[];
   canRetry: boolean;
   onSend: (content: string, pinnedContext: PinnedContextView[], attachments: ChatImageAttachment[]) => void;
@@ -111,6 +112,7 @@ export function ChatInput({
   approvalMode,
   activeDepth,
   tokenUsage,
+  modelLabel,
   pinnedContext,
   canRetry,
   onSend,
@@ -444,6 +446,11 @@ export function ChatInput({
               onChange: (nextDepth) => onDepthChange(nextDepth),
             })}
             <TokenMeter usage={tokenUsage} compact placement="above" />
+            {modelLabel && (
+              <span className="model-chip" title={modelLabel}>
+                {modelLabel}
+              </span>
+            )}
           </div>
           <div className="composer__actions">
             <input

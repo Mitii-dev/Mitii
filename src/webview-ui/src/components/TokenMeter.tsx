@@ -18,9 +18,9 @@ function formatCompact(n: number): string {
 export function TokenMeter({ usage, compact = false, placement = 'below' }: TokenMeterProps) {
   const [open, setOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
-  const sessionTotal = usage.sessionTotal ?? inputTotal + outputTotal;
   const inputTotal = usage.inputTokensTotal ?? 0;
   const outputTotal = usage.outputTokensTotal ?? 0;
+  const sessionTotal = usage.sessionTotal ?? inputTotal + outputTotal;
   const currentTurnTotal = usage.currentTurnTotal ?? 0;
   const currentTurnInput = usage.currentTurnInputTokens ?? 0;
   const currentTurnOutput = usage.currentTurnOutputTokens ?? 0;
@@ -79,6 +79,13 @@ export function TokenMeter({ usage, compact = false, placement = 'below' }: Toke
         >
           <IconTokens width={13} height={13} />
           <span>{formatCompact(sessionTotal)}</span>
+          <span className="token-chip__sep">·</span>
+          <span className="token-chip__io" aria-label={`Input ${inputTotal.toLocaleString()} tokens, output ${outputTotal.toLocaleString()} tokens`}>
+            <span aria-hidden="true">↑</span>
+            <span>{formatCompact(inputTotal)}</span>
+            <span aria-hidden="true">↓</span>
+            <span>{formatCompact(outputTotal)}</span>
+          </span>
           <span className="token-chip__sep">·</span>
           <span>{formatCompact(usage.contextWindow)} window</span>
         </button>

@@ -1,3 +1,4 @@
+import { IconChevronDown, IconContext } from './Icons';
 import type { ContextBudgetView, ContextItemView } from '../../../vscode/webview/messages';
 
 interface ContextDebuggerPanelProps {
@@ -29,40 +30,46 @@ export function ContextDebuggerPanel({
   const requestPct = requestLimit > 0
     ? Math.min(100, Math.round((requestTokens / requestLimit) * 100))
     : 0;
+  const count = budget?.includedCount ?? items.length;
 
   return (
-    <section className="context-debugger" aria-label="Retrieved context debugger">
-      <button type="button" className="context-debugger__toggle" onClick={onToggle}>
-        <span>Retrieved context</span>
-        <span className="context-debugger__meta">
-          {used.toLocaleString()} / {limit.toLocaleString()} retrieved ({pct}%)
-          {requestTokens > 0 && requestTokens !== used && (
-            <> · {requestTokens.toLocaleString()} / {requestLimit.toLocaleString()} request ({requestPct}%)</>
-          )}
-        </span>
-        <span className="context-debugger__chevron" aria-hidden="true">
-          {expanded ? '▾' : '▸'}
-        </span>
+    <section className={`context-debugger${expanded ? ' context-debugger--expanded' : ''}`} aria-label="Context diagnostics">
+      <button
+        type="button"
+        className="context-debugger__toggle"
+        aria-expanded={expanded}
+        aria-label={`${expanded ? 'Collapse' : 'Expand'} context diagnostics: ${count} snippets, ${used.toLocaleString()} of ${limit.toLocaleString()} tokens`}
+        title={`Context diagnostics: ${count} snippets`}
+        onClick={onToggle}
+      >
+        <IconContext className="context-debugger__icon" width={14} height={14} aria-hidden />
+        <span className="context-debugger__count">{count}</span>
+        <IconChevronDown className="context-debugger__chevron" width={14} height={14} aria-hidden />
       </button>
-
-      <div className="context-debugger__meter" role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} title="Retrieved context budget">
-        <div className="context-debugger__meter-fill" style={{ width: `${pct}%` }} />
-      </div>
-      {requestTokens > 0 && requestLimit > 0 && (
-        <div
-          className="context-debugger__meter context-debugger__meter--request"
-          role="meter"
-          aria-valuenow={requestPct}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          title="Latest model request size"
-        >
-          <div className="context-debugger__meter-fill context-debugger__meter-fill--request" style={{ width: `${requestPct}%` }} />
-        </div>
-      )}
 
       {expanded && (
         <div className="context-debugger__body">
+          <div className="context-debugger__summary">
+            {used.toLocaleString()} / {limit.toLocaleString()} retrieved ({pct}%)
+            {requestTokens > 0 && requestTokens !== used && (
+              <> · {requestTokens.toLocaleString()} / {requestLimit.toLocaleString()} request ({requestPct}%)</>
+            )}
+          </div>
+          <div className="context-debugger__meter" role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} title="Context budget">
+            <div className="context-debugger__meter-fill" style={{ width: `${pct}%` }} />
+          </div>
+          {requestTokens > 0 && requestLimit > 0 && (
+            <div
+              className="context-debugger__meter context-debugger__meter--request"
+              role="meter"
+              aria-valuenow={requestPct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              title="Latest model request size"
+            >
+              <div className="context-debugger__meter-fill context-debugger__meter-fill--request" style={{ width: `${requestPct}%` }} />
+            </div>
+          )}
           {budget && (
             <div className="context-debugger__stats">
               <span>Retrieved {budget.retrievedCount}</span>

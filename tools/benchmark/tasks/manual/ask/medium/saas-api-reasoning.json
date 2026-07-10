@@ -1,0 +1,86 @@
+[
+  {
+    "id": "ask-medium-saas-api-order-cancellation-side-effects",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "reasoning",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "When an order is cancelled via cancelOrder, does inventory get released automatically, or would that need to happen separately?",
+    "rationale": "orders.service.ts's cancelOrder only updates status/cancellationReason and does not call inventory's releaseStock — tests whether the model correctly reports the gap instead of assuming full integration.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:cancelOrder"]
+  },
+  {
+    "id": "ask-medium-saas-api-user-deactivation-vs-merge",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "reasoning",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "What is the difference between deactivateUser and mergeDuplicateAccounts in UsersService, and when would you use each?",
+    "rationale": "Tests distinguishing two similarly-scoped account-management operations rather than conflating them.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:deactivateUser", "stdout_contains:mergeDuplicateAccounts"]
+  },
+  {
+    "id": "ask-medium-saas-api-price-change-audit-trail",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "reasoning",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "If ProductsService.adjustPrice is called, is there any evidence in this codebase that the price change gets logged for audit purposes?",
+    "rationale": "products.service.ts's adjustPrice does not call into audit-log at all — a good-faith honesty check that the model doesn't fabricate an audit hook that isn't there.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:adjustPrice"]
+  },
+  {
+    "id": "ask-medium-saas-api-auth-token-lifecycle",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "reasoning",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Walk through how a user's access token is issued and later refreshed, based on AuthService.",
+    "rationale": "Tests connecting generateAccessToken and refreshAccessToken into a coherent lifecycle explanation, not just listing them.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:generateAccessToken", "stdout_contains:refreshAccessToken"]
+  },
+  {
+    "id": "ask-medium-saas-api-notification-channels",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "reasoning",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "What notification channels does this codebase support, and which module would you extend to add SMS notifications?",
+    "rationale": "Tests recognizing sendEmail/sendPush as the existing pattern in notifications.service.ts and reasoning about where a hypothetical addition would go.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:sendEmail", "stdout_contains:sendPush"]
+  },
+  {
+    "id": "ask-medium-saas-api-analytics-vs-audit-log-purpose",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "reasoning",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "This codebase has both an analytics module and an audit-log module. What is each one actually for, and how do their purposes differ?",
+    "rationale": "Tests distinguishing computeDailyActiveUsers/computeConversionFunnel (product analytics) from recordAuditEntry/purgeOldEntries (compliance trail) rather than treating them as interchangeable logging.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:analytics", "stdout_contains:audit"]
+  },
+  {
+    "id": "ask-medium-saas-api-review-flagging-workflow",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "reasoning",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "If a review gets flagged, does it still count toward a product's average rating?",
+    "rationale": "Requires reading flagReview and computeAverageRating in reviews.service.ts together and reasoning about whether flagging affects the rating calculation, since the two methods don't obviously reference each other.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:flagReview", "stdout_contains:computeAverageRating"]
+  }
+]

@@ -10,6 +10,12 @@ import { IgnoreService } from '../indexing/IgnoreService';
 import { FileDiscoveryService } from '../indexing/FileDiscoveryService';
 import { WorkspaceScanner } from '../indexing/WorkspaceScanner';
 import { IndexQueue } from '../indexing/IndexQueue';
+import {
+  AUTO_INDEX_BACKGROUND_DELAY_MS,
+  AUTO_INDEX_INITIAL_FILE_LIMIT,
+  priorityDiscoveryRoots,
+  sortIndexCandidates,
+} from '../indexing/indexingPolicy';
 import { initTreeSitter, preloadCommonLanguages } from '../indexing/TreeSitterService';
 import { setTreeSitterEnabled } from '../indexing/SymbolExtractor';
 import { FtsIndex } from '../indexing/FtsIndex';
@@ -28,8 +34,8 @@ import { debounce } from '../util/debounce';
 import { ChatOrchestrator } from '../orchestration/ChatOrchestrator';
 import { ToolRuntime } from '../tools/ToolRuntime';
 import {
-  createReadFileTool, createReadFilesTool, createListFilesTool, createSearchTool,
-  createSearchBatchTool, createSearchScriptCatalogTool, createSpawnResearchAgentTool,
+  createReadFileTool, createReadFilesTool, createListFilesTool, createResolvePathTool, createSearchTool,
+  createSearchBatchTool, createSearchScriptCatalogTool, createSpawnResearchAgentTool, createSpawnSubagentTool,
   createExecuteWorkspaceScriptTool, createUseSkillTool,
   createRepoMapTool, createRetrieveContextTool, createGitDiffTool,
   createDiagnosticsTool, createWriteFileTool, createApplyPatchTool, createRunCommandTool,
@@ -58,10 +64,14 @@ import { MemoryExtractor } from '../runtime/MemoryExtractor';
 import { SubagentTracker } from '../runtime/SubagentTracker';
 import { PassiveMemoryInjector } from '../memory/PassiveMemoryInjector';
 import { MemoryHookService } from '../memory/MemoryHookService';
+import { AutoMemoryContextSource, AutoMemoryFileWriter } from '../memory/AutoMemoryFileWriter';
 import { PostEditValidator } from '../apply/PostEditValidator';
 import { VectorContextSource } from '../context/sources/VectorContextSource';
+import { CallGraphContextSource } from '../context/sources/callGraphSource';
 import { VectorIndexService } from '../indexing/VectorIndex';
 import { createEmbeddingProvider, describeEmbeddingProvider } from '../indexing/embeddingFactory';
+import { getOrCreateLanguageService, disposeLanguageService } from '../indexing/languageServiceFactory';
+import { isTsLikeFile, type WorkspaceLanguageService } from '../indexing/WorkspaceLanguageService';
 import { createVectorIndex, describeVectorBackend } from '../indexing/vectorIndexFactory';
 import { isLanceDbAvailable, isMinilmAvailable } from '../indexing/vectorAvailability';
 import type { EmbeddingProvider } from '../indexing/EmbeddingProvider';
@@ -98,7 +108,7 @@ import {
 import { listCustomMcpServers } from '../mcp/mcpWorkspaceConfig';
 import { resolveDbPath } from '../indexing/paths';
 import { searchWorkspacePaths, resolvePickedPaths } from '../context/contextPathSearch';
-import { createWorkspacePattern, isWorkspaceInVscodeFolders, normalizeWorkspaceRoot, toWorkspaceRelPath } from '../util/paths';
+import { createWorkspacePattern, isWorkspaceInVscodeFolders, normalizeWorkspaceRoot, toWorkspaceRelPath, resolveWorkspaceRelPath } from '../util/paths';
 import type { CommitMessageResult } from '../scm';
 import { MicroTaskExecutor } from '../microtasks';
 import { AuditPackBuilder } from '../audit';
@@ -140,6 +150,7 @@ export class ThunderController {
   private gitService: GitService | undefined;
   private diagnosticsService = new DiagnosticsService();
   private memoryService: MemoryService | undefined;
+  private autoMemoryWriter: AutoMemoryFileWriter | undefined;
   private checkpointService: CheckpointService | undefined;
   private sessionService: SessionService | undefined;
   private planPersistence: PlanPersistence | undefined;
@@ -150,6 +161,9 @@ export class ThunderController {
   private postEditValidator: PostEditValidator | undefined;
   private vectorIndexService: VectorIndexService | undefined;
   private embeddingProvider: EmbeddingProvider | undefined;
+  private languageService: WorkspaceLanguageService | undefined;
+  private languageServiceSyncDisposable: vscode.Disposable | undefined;
+  private languageServiceUpdateDebouncers = new Map<string, () => void>();
   private mcpManager = new McpManager();
   private projectRulesService: ProjectRulesService | undefined;
   private providerProfilesService: ProviderProfilesService | undefined;
@@ -164,6 +178,7 @@ export class ThunderController {
   private mcpToggles: McpToggles = defaultMcpToggles();
   private pendingWatchJobs = new Map<string, import('../indexing/IndexQueue').IndexJob>();
   private watchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+  private backgroundIndexTimer: ReturnType<typeof setTimeout> | undefined;
   private debouncedRebuildRetriever: (() => void) | undefined;
   private currentPlan: PlanView | null = null;
   private currentReviewDiff: WebviewState['reviewDiff'] = null;
@@ -389,7 +404,7 @@ export class ThunderController {
     this.chatOrchestrator?.configure({ researchAgentProvider: this.researchAgentProvider });
 
     this.configDisposable = vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('thunder.workspace') || e.affectsConfiguration('thunder')) {
+      if (e.affectsConfiguration('mitii.workspace') || e.affectsConfiguration('mitii') || e.affectsConfiguration('thunder.workspace') || e.affectsConfiguration('thunder')) {
         void this.reloadWorkspace();
       }
     });
@@ -424,7 +439,7 @@ export class ThunderController {
     const config = this.configService.getConfig();
     if (!config.indexing.enabled || !config.indexing.autoIndexOnOpen) return;
     try {
-      await this.indexWorkspace({ force: false });
+      await this.indexWorkspace({ force: false, auto: true });
     } catch (error) {
       log.warn('Auto-index on open failed', {
         error: error instanceof Error ? error.message : String(error),
@@ -478,6 +493,7 @@ export class ThunderController {
       respectGitignore: config.indexing.respectGitignore,
       respectThunderignore: config.indexing.respectThunderignore,
     });
+    this.languageService = getOrCreateLanguageService(workspace, this.ignoreService, config.indexing);
 
     this.scanner = new WorkspaceScanner(db, workspace);
     setTreeSitterEnabled(config.indexing.treeSitterEnabled);
@@ -489,6 +505,7 @@ export class ThunderController {
     this.indexQueue = new IndexQueue(db, {
       maxConcurrency: config.indexing.maxConcurrency,
       maxFileSizeBytes: config.indexing.maxFileSizeBytes,
+      deferVectorWrites: true,
     });
     this.indexQueue.setVectorService(workspace, this.vectorIndexService);
     this.indexQueue.onIndexingComplete(() => {
@@ -515,6 +532,10 @@ export class ThunderController {
     this.memoryService = new MemoryService(db, workspace, {
       maxItems: config.memory.maxItems,
       hybridSearchEnabled: config.memory.hybridSearchEnabled,
+    });
+    this.autoMemoryWriter = new AutoMemoryFileWriter(workspace, {
+      enabled: config.memory.autoMemoryEnabled,
+      scope: config.memory.autoMemoryScope,
     });
     if (config.indexing.vectorsEnabled) {
       this.memoryService.setEmbedder(this.embeddingProvider);
@@ -551,8 +572,11 @@ export class ThunderController {
       this.notifyUi({
         subagents: runs.map((r) => ({
           id: r.id,
+          type: r.type,
           task: r.task,
           focus: r.focus,
+          scope: r.scope,
+          progress: r.progress,
           status: r.status,
           startedAt: r.startedAt,
           finishedAt: r.finishedAt,
@@ -574,7 +598,8 @@ export class ThunderController {
     this.policyEngine = new ToolPolicyEngine(
       effectiveSafety,
       (path) => this.ignoreService.isIgnored(path),
-      () => this.isWorkspaceTrusted()
+      () => this.isWorkspaceTrusted(),
+      (path) => resolveWorkspaceRelPath(workspace, path)
     );
 
     this.toolExecutor = new ToolExecutor(
@@ -612,14 +637,16 @@ export class ThunderController {
     const repoMap = new RepoMapService(db, workspace);
     const fts = new FtsIndex(db);
 
-    this.toolRuntime.register(createReadFileTool(workspace, this.ignoreService));
-    this.toolRuntime.register(createReadFilesTool(workspace, this.ignoreService));
+    this.toolRuntime.register(createReadFileTool(workspace, this.ignoreService, db));
+    this.toolRuntime.register(createReadFilesTool(workspace, this.ignoreService, db));
     this.toolRuntime.register(createListFilesTool(workspace, this.ignoreService));
+    this.toolRuntime.register(createResolvePathTool(workspace, this.ignoreService, db));
     this.toolRuntime.register(createSearchTool(fts, workspace));
     this.toolRuntime.register(createSearchBatchTool(fts, workspace));
     this.toolRuntime.register(createSearchScriptCatalogTool(workspace, this.context.extensionPath));
     this.toolRuntime.register(createExecuteWorkspaceScriptTool(workspace, this.context.extensionPath, this.ignoreService));
     this.toolRuntime.register(createUseSkillTool(this.skillCatalogService));
+    this.toolRuntime.register(createSpawnSubagentTool());
     this.toolRuntime.register(createSpawnResearchAgentTool());
     this.toolRuntime.register(createRepoMapTool(repoMap));
     this.toolRuntime.register(createRetrieveContextTool(retriever, budgeter));
@@ -659,10 +686,43 @@ export class ThunderController {
 
     this.memoryExtractor = new MemoryExtractor(
       this.memoryService,
-      config.memory.summarizeAfterTask
+      config.memory.summarizeAfterTask,
+      this.autoMemoryWriter
     );
 
     this.setupFileWatcher(workspace);
+    this.setupLanguageServiceSync(workspace);
+  }
+
+  /** Keeps the persistent language service's in-memory AST synchronized with unsaved editor
+   * buffers. Debounced per-file — a single shared debounce would drop updates when the user
+   * edits two files close together in time. */
+  private setupLanguageServiceSync(workspace: string): void {
+    this.languageServiceSyncDisposable?.dispose();
+    this.languageServiceUpdateDebouncers.clear();
+
+    const config = this.configService.getConfig();
+    const pendingContent = new Map<string, string>();
+    this.languageServiceSyncDisposable = vscode.workspace.onDidChangeTextDocument((e) => {
+      if (!isTsLikeFile(e.document.fileName)) return;
+      const relPath = toWorkspaceRelPath(e.document.uri, workspace);
+      if (!relPath || this.ignoreService.isIgnored(relPath)) return;
+
+      // Always capture the latest text synchronously; only the *flush* is debounced, so a
+      // debounced closure created on an earlier keystroke never applies stale content.
+      pendingContent.set(relPath, e.document.getText());
+
+      let scheduled = this.languageServiceUpdateDebouncers.get(relPath);
+      if (!scheduled) {
+        scheduled = debounce(() => {
+          const content = pendingContent.get(relPath);
+          if (content !== undefined) this.languageService?.updateFile(relPath, content);
+        }, config.indexing.watchDebounceMs);
+        this.languageServiceUpdateDebouncers.set(relPath, scheduled);
+      }
+      scheduled();
+    });
+    this.context.subscriptions.push(this.languageServiceSyncDisposable);
   }
 
   private createChatOrchestrator(
@@ -825,8 +885,12 @@ export class ThunderController {
     if (this.contextToggles.gitDiff && this.gitService) sources.push(new GitDiffContextSource(this.gitService));
     if (this.contextToggles.diagnostics) sources.push(new DiagnosticsContextSource(this.diagnosticsService));
     if (this.contextToggles.memory) sources.push(new MemoryContextSource(this.memoryService));
+    if (this.contextToggles.memory && this.autoMemoryWriter) sources.push(new AutoMemoryContextSource(this.autoMemoryWriter));
     if (this.contextToggles.vectors && this.vectorIndexService) {
       sources.push(new VectorContextSource(this.vectorIndexService, workspace));
+    }
+    if (this.contextToggles.callGraph && this.languageService) {
+      sources.push(new CallGraphContextSource(db, workspace, this.languageService));
     }
 
     const config = this.configService.getConfig();
@@ -864,10 +928,11 @@ export class ThunderController {
       );
 
       const enqueue = (uri: vscode.Uri) => {
-        if (!this.indexQueue || !this.scanner) return;
         if (!this.isWorkspaceTrusted()) return;
         const relPath = toWorkspaceRelPath(uri, workspace);
         if (!relPath || this.ignoreService.isIgnored(relPath)) return;
+        if (isTsLikeFile(relPath)) this.languageService?.syncFileFromDisk(relPath);
+        if (!this.indexQueue || !this.scanner) return;
         const fileId = this.scanner.getFileId(relPath);
         if (fileId) {
           this.pendingWatchJobs.set(relPath, {
@@ -887,6 +952,13 @@ export class ThunderController {
 
       watcher.onDidChange(enqueue);
       watcher.onDidCreate(enqueue);
+      watcher.onDidDelete((uri) => {
+        if (!this.isWorkspaceTrusted()) return;
+        const relPath = toWorkspaceRelPath(uri, workspace);
+        if (relPath && isTsLikeFile(relPath) && !this.ignoreService.isIgnored(relPath)) {
+          this.languageService?.syncFileFromDisk(relPath);
+        }
+      });
       this.context.subscriptions.push(watcher);
 
       const refreshSkills = () => {
@@ -940,20 +1012,18 @@ export class ThunderController {
       agentLiveStatus: base.agentLiveStatus ?? this.agentLiveStatus,
       subagents: base.subagents ?? this.subagentTracker.getRuns().map((r) => ({
         id: r.id,
+        type: r.type,
         task: r.task,
         focus: r.focus,
+        scope: r.scope,
+        progress: r.progress,
         status: r.status,
         startedAt: r.startedAt,
         finishedAt: r.finishedAt,
         summary: r.summary,
         error: r.error,
       })),
-      vectorIndex: {
-        enabled: config.indexing.vectorsEnabled,
-        embeddedChunks: this.vectorIndexService?.count(workspacePath) ?? 0,
-        provider: describeEmbeddingProvider(config.indexing),
-        backend: describeVectorBackend(config.indexing),
-      },
+      vectorIndex: buildVectorIndexStatusView(config.indexing, workspacePath, this.vectorIndexService),
       tokenUsage: base.tokenUsage ?? {
         ...this.tokenUsage,
         contextWindow: config.provider.contextWindow,
@@ -995,6 +1065,9 @@ export class ThunderController {
         requireApprovalWrites: config.safety.requireApprovalForWrites,
         requireApprovalShell: config.safety.requireApprovalForShell,
         memoryEnabled: config.memory.enabled,
+        summarizeAfterTask: config.memory.summarizeAfterTask,
+        autoMemoryEnabled: config.memory.autoMemoryEnabled,
+        autoMemoryScope: config.memory.autoMemoryScope,
         subagentsEnabled: config.agent.subagentsEnabled,
         agentMaxSteps: config.agent.maxSteps,
         askDepth: config.agent.askDepth,
@@ -1236,6 +1309,21 @@ export class ThunderController {
   }
 
   getSession(): ThunderSession | undefined { return this.session; }
+
+  /** Reset per-turn task routing state when the user switches chat modes mid-thread. */
+  handleModeChange(mode: ThunderMode): void {
+    this.session?.setMode(mode);
+    this.agentTaskState.reset();
+    this.agentTaskState.setLimits({
+      maxSequentialThinkingCalls: this.configService.getConfig().agent.maxSequentialThinkingCallsPerTurn,
+    });
+    this.chatOrchestrator?.clearRoutingState();
+
+    if (mode === 'ask' && this.session?.id) {
+      this.planPersistence?.complete(this.session.id);
+      this.currentPlan = null;
+    }
+  }
   restoreChatSession(sessionId: string, options: { mode?: ThunderMode } = {}): PlanView | null {
     const restoredId = sessionId.trim();
     if (!restoredId) return this.currentPlan;
@@ -1773,8 +1861,14 @@ export class ThunderController {
       this.configureSessionLogging(this.session, workspace);
     }
     this.chatOrchestrator = undefined;
+    if (this.backgroundIndexTimer) {
+      clearTimeout(this.backgroundIndexTimer);
+      this.backgroundIndexTimer = undefined;
+    }
     this.indexService?.dispose();
     this.indexService = undefined;
+    if (previousWorkspace) disposeLanguageService(previousWorkspace);
+    this.languageService = undefined;
     this.scanner = undefined;
     this.indexQueue = undefined;
     this.projectRulesService = undefined;
@@ -1816,9 +1910,11 @@ export class ThunderController {
 
     const audit = this.toolRuntime.getAuditLog();
     const summary = this.buildTurnSummary(audit);
-    const hadActivityErrors = this.agentActivity.some((entry) => entry.kind === 'error');
-    const hadToolFailures = audit.some((entry) => !entry.result.success);
-    const hadError = options?.hadError || hadActivityErrors || hadToolFailures;
+    const fatalToolFailures = findFatalToolFailures(audit);
+    const hadActivityErrors = this.agentActivity.some(
+      (entry) => entry.kind === 'error' && !isRecoveredToolActivity(entry.message, audit, fatalToolFailures)
+    );
+    const hadError = options?.hadError || hadActivityErrors || fatalToolFailures.length > 0;
 
     const entry: import('../../vscode/webview/messages').AgentActivityEntry = {
       id: `act-complete-${Date.now()}`,
@@ -2206,14 +2302,19 @@ export class ThunderController {
     const result = await this.toolExecutor.executeApproved(request.toolName, fullInput);
 
     if (result.success) {
+      const isExternalRead = ['read_file', 'read_files'].includes(request.toolName);
       const successMessage = request.toolName === 'run_command'
         ? 'Ran approved command'
-        : `Applied ${path ?? request.toolName}`;
+        : isExternalRead
+          ? `Read ${path ?? 'external file'}`
+          : `Applied ${path ?? request.toolName}`;
       this.pushActivity(request.toolName === 'run_command' ? 'tool' : 'apply', successMessage, result.output);
       if (request.toolName === 'run_command' && typeof fullInput.command === 'string') {
         this.pendingApprovalOutputs.push(
           `### Command\n\`${fullInput.command}\`\n\n### Output\n${result.output.slice(0, 6000)}`
         );
+      } else if (isExternalRead) {
+        this.pendingApprovalOutputs.push(`Read ${request.toolName} for \`${path ?? request.files.join(', ')}\``);
       } else if (path) {
         this.pendingApprovalOutputs.push(`Applied ${request.toolName} to \`${path}\``);
       }
@@ -2227,9 +2328,13 @@ export class ThunderController {
         });
       }
       void vscode.window.showInformationMessage(
-        request.toolName === 'run_command' ? brandMessage('Command completed.') : `${AGENT_NAME}: Updated ${path ?? 'file'}`
+        request.toolName === 'run_command'
+          ? brandMessage('Command completed.')
+          : isExternalRead
+            ? `${AGENT_NAME}: Read ${path ?? 'external file'}`
+            : `${AGENT_NAME}: Updated ${path ?? 'file'}`
       );
-      if (path) {
+      if (path && !isExternalRead) {
         const workspace = this.resolveWorkspacePath();
         if (workspace) {
           void vscode.window.showTextDocument(vscode.Uri.file(join(workspace, path)));
@@ -2397,9 +2502,14 @@ export class ThunderController {
   }
 
   async saveAgentSettings(settings: AgentSettingsPayload): Promise<void> {
+    const previousDepth = this.configService.getConfig().agent.actDepth;
     await this.configService.updateAgentSettings(normalizeAgentSettings(settings));
 
     const config = this.configService.getConfig();
+    if (settings.actDepth === 'quick' || (previousDepth !== 'quick' && config.agent.actDepth === 'quick')) {
+      this.agentTaskState.reset();
+      this.chatOrchestrator?.clearRoutingState();
+    }
     await this.refreshResearchAgentProvider();
     this.chatOrchestrator?.configure({
       agentConfig: config.agent,
@@ -2433,12 +2543,19 @@ export class ThunderController {
     try {
     const beforeConfig = this.configService.getConfig();
     const normalized = normalizeThunderSettings(settings, beforeConfig.provider.contextWindow, this.mcpToggles);
+    const normalizedMemory = normalized.memory ?? {
+      summarizeAfterTask: true,
+      autoMemoryEnabled: true,
+      autoMemoryScope: 'user' as const,
+    };
 
     const vectorConfigChanged =
       beforeConfig.indexing.vectorsEnabled !== normalized.indexing.vectorsEnabled ||
       beforeConfig.indexing.embeddingProvider !== normalized.indexing.embeddingProvider ||
       beforeConfig.indexing.vectorBackend !== normalized.indexing.vectorBackend ||
-      beforeConfig.memory.hybridSearchEnabled !== normalized.indexing.hybridMemorySearch;
+      beforeConfig.memory.hybridSearchEnabled !== normalized.indexing.hybridMemorySearch ||
+      beforeConfig.memory.autoMemoryEnabled !== normalizedMemory.autoMemoryEnabled ||
+      beforeConfig.memory.autoMemoryScope !== normalizedMemory.autoMemoryScope;
 
     await this.configService.updateAllSettings(normalized);
 
@@ -2586,6 +2703,7 @@ export class ThunderController {
       memory: builtin.memory,
       sequentialThinking: builtin.sequentialThinking,
       puppeteer: builtin.puppeteer ?? false,
+      agentmemory: builtin.agentmemory ?? false,
     };
   }
 
@@ -2663,7 +2781,7 @@ export class ThunderController {
     await this.showInlineDiffForPendingApprovals(approvalId);
   }
 
-  async indexWorkspace(options: { force?: boolean } = { force: true }): Promise<void> {
+  async indexWorkspace(options: { force?: boolean; auto?: boolean; background?: boolean } = { force: true }): Promise<void> {
     const workspace = this.resolveWorkspacePath();
     if (!workspace) {
       this.setWorkspaceNotice('warn', 'Set a workspace path first (Browse or paste an absolute path).');
@@ -2693,18 +2811,31 @@ export class ThunderController {
       return;
     }
 
-    const discovery = new FileDiscoveryService(workspace, this.ignoreService, config.indexing);
-    const files = discovery.discover();
-
     if (!this.scanner || !this.indexQueue) {
       void vscode.window.showErrorMessage(brandMessage('Index services not initialized.'));
       return;
     }
 
-    const diff = this.scanner.computeDiff(files);
+    const previousStatus = this.indexQueue.getStatus();
+    const firstAutoRun = Boolean(options.auto && !options.background && previousStatus.indexed === 0);
+    const priorityRoots = firstAutoRun ? priorityDiscoveryRoots(workspace) : [];
+    const isPartialDiscovery = firstAutoRun;
+    const discovery = new FileDiscoveryService(workspace, this.ignoreService, config.indexing);
+    const files = sortIndexCandidates(
+      await discovery.discoverAsync({
+        roots: isPartialDiscovery && priorityRoots.length > 0 ? priorityRoots : undefined,
+        limit: isPartialDiscovery ? AUTO_INDEX_INITIAL_FILE_LIMIT : undefined,
+      }),
+      config.indexing.priorityPaths
+    );
+
+    const diff = this.scanner.computeDiff(files, { includeDeleted: !isPartialDiscovery });
     this.scanner.persistScan(diff);
 
-    const filesToIndex = options.force ? files : [...diff.added, ...diff.changed];
+    const filesToIndex = sortIndexCandidates(
+      options.force ? files : [...diff.added, ...diff.changed],
+      config.indexing.priorityPaths
+    );
     const jobs = filesToIndex.map((f) => ({
       fileId: this.scanner!.getFileId(f.relPath)!,
       relPath: f.relPath,
@@ -2717,23 +2848,42 @@ export class ThunderController {
       this.setWorkspaceNotice('ok', 'Index is up to date');
       this.sessionLog.append('index_complete', 'Index up to date', { workspace, jobCount: 0 });
       this.notifyUi({ indexing: this.indexingStatus, workspaceNotice: this.workspaceNotice });
+      if (firstAutoRun) this.scheduleBackgroundIndex(workspace);
       return;
     }
 
     this.indexQueue.enqueue(jobs);
     this.indexingStatus = this.indexQueue.getStatus();
-    this.setWorkspaceNotice('ok', `${options.force ? 'Reindexing' : 'Indexing'} ${jobs.length} files…`);
-    this.sessionLog.append('index_start', `${options.force ? 'Reindexing' : 'Indexing'} ${jobs.length} files`, {
+    const label = options.background
+      ? 'Background indexing'
+      : firstAutoRun
+        ? 'Indexing priority files'
+        : options.force
+          ? 'Reindexing'
+          : 'Indexing';
+    this.setWorkspaceNotice('ok', `${label} ${jobs.length} files…`);
+    this.sessionLog.append('index_start', `${label} ${jobs.length} files`, {
       workspace,
       added: diff.added.length,
       changed: diff.changed.length,
       removed: diff.deleted.length,
       forced: options.force,
+      partial: isPartialDiscovery,
     });
     this.notifyUi({ indexing: this.indexingStatus, workspaceNotice: this.workspaceNotice });
-    log.info('indexWorkspace', { total: jobs.length });
+    log.info('indexWorkspace', { total: jobs.length, partial: isPartialDiscovery, background: options.background });
 
+    if (firstAutoRun) this.scheduleBackgroundIndex(workspace);
     void this.waitForIndexingComplete(workspace, jobs.length);
+  }
+
+  private scheduleBackgroundIndex(workspace: string): void {
+    if (this.backgroundIndexTimer || this.disposed) return;
+    this.backgroundIndexTimer = setTimeout(() => {
+      this.backgroundIndexTimer = undefined;
+      if (this.disposed || this.resolveWorkspacePath() !== workspace) return;
+      void this.indexWorkspace({ force: false, background: true });
+    }, AUTO_INDEX_BACKGROUND_DELAY_MS);
   }
 
   private async waitForIndexingComplete(workspace: string, jobCount: number): Promise<void> {
@@ -2747,6 +2897,7 @@ export class ThunderController {
       await new Promise((resolve) => setTimeout(resolve, 500));
       if (Date.now() - start > 600_000) break;
     }
+    await this.indexQueue.waitForVectorIndexing();
 
     const status = this.indexQueue.getStatus();
     this.sessionLog.append('index_complete', 'Indexing finished', {
@@ -2765,8 +2916,15 @@ export class ThunderController {
     this.disposed = true;
     this.configService.dispose();
     void this.mcpManager.closeAll();
+    if (this.backgroundIndexTimer) clearTimeout(this.backgroundIndexTimer);
+    if (this.watchDebounceTimer) clearTimeout(this.watchDebounceTimer);
+    if (this.indexStatusNotifyTimer) clearTimeout(this.indexStatusNotifyTimer);
+    if (this.tokenUsageNotifyTimer) clearTimeout(this.tokenUsageNotifyTimer);
     this.indexService?.dispose();
     this.indexQueue?.cancel();
+    this.languageServiceSyncDisposable?.dispose();
+    if (this.session?.workspace) disposeLanguageService(this.session.workspace);
+    this.languageService = undefined;
     this.session = undefined;
     log.info('ThunderController disposed');
   }
@@ -2784,6 +2942,30 @@ export function toApprovalView(r: import('../safety/ApprovalQueue').ApprovalRequ
     kind: r.kind,
     question: r.question,
     options: r.options,
+  };
+}
+
+function buildVectorIndexStatusView(
+  indexingConfig: import('../config/schema').IndexingConfig,
+  workspace: string,
+  vectorIndexService: VectorIndexService | undefined
+): import('../../vscode/webview/messages').VectorIndexStatusView {
+  const health = vectorIndexService?.getHealth();
+  const degradedParts: string[] = [];
+  if (health?.embedder.status === 'degraded') {
+    degradedParts.push(`embeddings: ${health.embedder.detail ?? 'unavailable'}`);
+  }
+  if (health?.backend.status === 'degraded') {
+    degradedParts.push(`vector backend: ${health.backend.detail ?? 'unavailable'}`);
+  }
+
+  return {
+    enabled: indexingConfig.vectorsEnabled,
+    embeddedChunks: vectorIndexService?.count(workspace) ?? 0,
+    provider: describeEmbeddingProvider(indexingConfig),
+    backend: describeVectorBackend(indexingConfig),
+    degraded: degradedParts.length > 0,
+    degradedDetail: degradedParts.length > 0 ? degradedParts.join('; ') : undefined,
   };
 }
 
@@ -2825,6 +3007,55 @@ function normalizePromptBreakdown(
       color: '#38bdf8',
     },
   ];
+}
+
+function findFatalToolFailures(
+  audit: import('../tools/types').ToolCallAudit[]
+): import('../tools/types').ToolCallAudit[] {
+  return audit.filter((entry, index) => isFatalToolFailure(entry, index, audit));
+}
+
+function isFatalToolFailure(
+  entry: import('../tools/types').ToolCallAudit,
+  index: number,
+  audit: import('../tools/types').ToolCallAudit[]
+): boolean {
+  if (entry.result.success || entry.result.skipped) return false;
+
+  const later = audit.slice(index + 1);
+  if (isExplorationTool(entry.toolName)) {
+    return !later.some((candidate) => candidate.result.success && isExplorationTool(candidate.toolName));
+  }
+
+  const key = recoveryKey(entry);
+  return !later.some((candidate) =>
+    candidate.result.success &&
+    candidate.toolName === entry.toolName &&
+    recoveryKey(candidate) === key
+  );
+}
+
+function isRecoveredToolActivity(
+  message: string,
+  audit: import('../tools/types').ToolCallAudit[],
+  fatalToolFailures: import('../tools/types').ToolCallAudit[]
+): boolean {
+  if (!/\bfailed\b/i.test(message)) return false;
+  if (fatalToolFailures.length > 0) return false;
+  return audit.some((entry) => !entry.result.success || entry.result.skipped);
+}
+
+function isExplorationTool(toolName: string): boolean {
+  return ['read_file', 'read_files', 'list_files', 'search', 'search_batch', 'resolve_path', 'repo_map'].includes(toolName);
+}
+
+function recoveryKey(entry: import('../tools/types').ToolCallAudit): string {
+  const input = entry.input as Record<string, unknown>;
+  if (typeof input.path === 'string') return `path:${input.path}`;
+  if (typeof input.command === 'string') return `command:${input.command}`;
+  if (typeof input.stepId === 'string') return `step:${input.stepId}`;
+  if (typeof input.script === 'string') return `script:${input.script}`;
+  return entry.toolName;
 }
 
 function readPackageVersion(workspace: string): string {

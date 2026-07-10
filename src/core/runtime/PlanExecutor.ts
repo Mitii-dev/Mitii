@@ -49,6 +49,7 @@ export interface PlanExecutorOptions {
   planMaxAutoContinues?: number;
   skillPlaybookContext?: string;
   onRequirementAnalysisDelta?: (text: string) => void;
+  onPlanQualityIssues?: (issues: string[]) => void;
 }
 
 export interface StepExecutionResult {
@@ -78,6 +79,7 @@ export class PlanExecutor {
     skillPlaybookContext?: string,
     onDelta?: (text: string) => void
   ): AsyncIterable<string> {
+    log.debug('Analyzing requirements', { taskKind: analysis.kind, complexity: analysis.complexity });
     const messages = buildRequirementAnalysisPrompt(pack, userMessage, analysis, skillPlaybookContext);
     let response = '';
 
@@ -91,8 +93,10 @@ export class PlanExecutor {
     }
 
     if (!response.trim()) {
+      log.debug('Requirement analysis was empty, falling back to task summary');
       yield analysis.summary;
     }
+    log.debug('Requirement analysis finished', { responseChars: response.length });
   }
 
   async analyzeRequirements(
@@ -122,7 +126,16 @@ export class PlanExecutor {
     let repairNotes = '';
     let relaxedFallback: { plan: ThunderPlan; issues: string[] } | null = null;
 
+    log.debug('Generating plan', {
+      mode,
+      sessionId,
+      useIsolatedPlanning: Boolean(options?.useIsolatedPlanning),
+      hasDiscovery: Boolean(planningDiscovery),
+      taskKind: taskAnalysis?.kind,
+    });
+
     for (let attempt = 0; attempt < 2; attempt++) {
+      log.debug('Plan generation attempt', { attempt: attempt + 1 });
       const effectiveAnalysis = repairNotes
         ? `${requirementAnalysis ?? ''}\n\n## Previous plan was rejected\n${repairNotes}\nRegenerate a valid, more specific plan.`
         : requirementAnalysis;
@@ -155,6 +168,7 @@ export class PlanExecutor {
 
       const plan = parseGeneratedPlan(response, mode);
       if (!plan) {
+        log.warn('Plan response did not contain valid plan JSON', { attempt: attempt + 1, responseChars: response.length });
         repairNotes = '- Response did not contain valid plan JSON with goal and steps/phases.';
         continue;
       }
@@ -166,11 +180,13 @@ export class PlanExecutor {
           const fileStore = new PlanFileStore(options.workspace, sessionId);
           fileStore.save(plan, 'planning');
         }
+        log.info('Plan generated successfully', { attempt: attempt + 1, goal: plan.goal, steps: plan.steps.length });
         return plan;
       }
 
       repairNotes = issues.map((issue) => `- ${issue}`).join('\n');
       relaxedFallback = { plan, issues };
+      options?.onPlanQualityIssues?.(issues);
       log.warn('Generated plan failed quality gate', { attempt: attempt + 1, issues });
     }
 
@@ -192,6 +208,7 @@ export class PlanExecutor {
       return plan;
     }
 
+    log.warn('Plan generation failed after all attempts', { mode, hadRelaxedFallback: Boolean(relaxedFallback) });
     return null;
   }
 
@@ -216,6 +233,13 @@ export class PlanExecutor {
     const readOnlyTools = tools.filter((tool) => PLANNING_DISCOVERY_TOOLS.has(tool.function.name));
     let output = '';
 
+    log.debug('Running planning discovery', {
+      mode,
+      readOnlyToolCount: readOnlyTools.length,
+      maxSteps: Math.min(options?.agentMaxSteps ?? 8, 12),
+      requiresPlanGrounding: mode === 'plan' && needsPlanGrounding(userMessage),
+    });
+
     for await (const chunk of this.agentLoop.run(
       provider,
       messages,
@@ -239,6 +263,7 @@ export class PlanExecutor {
       if (signal?.aborted) break;
     }
 
+    log.debug('Planning discovery finished', { outputChars: output.length, aborted: Boolean(signal?.aborted) });
     return output.trim();
   }
 
@@ -256,6 +281,9 @@ export class PlanExecutor {
     this.stepSummaries = [];
     this.touchedFiles.clear();
     const maxRetries = options?.stepMaxRetries ?? 2;
+    let hasSuccessfulVerification = false;
+
+    log.debug('Starting plan execution', { goal: plan.goal, steps: plan.steps.length, maxRetries });
 
     this.planPersistence.save(session.id, plan, 'running');
     onPlanUpdate?.(plan);
@@ -274,6 +302,8 @@ export class PlanExecutor {
       const stepIndex = plan.steps.findIndex((s) => s.id === step.id);
       if (stepIndex < 0 || step.status === 'done') continue;
       i = stepIndex;
+
+      log.debug('Executing step', { stepId: step.id, stepIndex: i + 1, title: step.title, phase: step.phase });
 
       let attempt = 0;
       let stepSucceeded = false;
@@ -337,6 +367,7 @@ export class PlanExecutor {
           yield output;
 
           if (execResult.pendingApproval) {
+            log.debug('Step blocked pending approval', { stepId: step.id, tool: explicitToolCall.name });
             plan.steps[i] = { ...plan.steps[i], status: 'blocked' };
             this.planPersistence.updatePlan(session.id, plan, 'blocked');
             onPlanUpdate?.(plan);
@@ -348,6 +379,7 @@ export class PlanExecutor {
             lastValidationErrors = [`${explicitToolCall.name} failed: ${execResult.error ?? execResult.output}`];
             attempt += 1;
             if (attempt <= maxRetries) {
+              log.debug('Step tool failed, retrying', { stepId: step.id, tool: explicitToolCall.name, attempt: attempt + 1 });
               yield `\n\nStep tool did not complete. Retrying step ${i + 1}/${plan.steps.length} (${attempt + 1}/${maxRetries + 1})…\n`;
               plan.steps[i] = { ...plan.steps[i], status: 'pending' };
               continue;
@@ -355,12 +387,16 @@ export class PlanExecutor {
             plan.steps[i] = { ...plan.steps[i], status: 'failed' };
             this.planPersistence.updatePlan(session.id, plan, 'running');
             onPlanUpdate?.(plan);
+            log.warn('Step failed after max retries', { stepId: step.id, tool: explicitToolCall.name, errors: lastValidationErrors });
             yield `\n\n❌ Step failed after ${maxRetries + 1} attempts. Errors:\n${lastValidationErrors.join('\n')}\n`;
             break;
           }
 
           if (['write_file', 'apply_patch'].includes(explicitToolCall.name)) {
             successfulWrites += 1;
+          }
+          if (isVerifyStep && isVerificationTool(explicitToolCall.name)) {
+            hasSuccessfulVerification = true;
           }
         } else {
           for await (const chunk of this.agentLoop.run(
@@ -374,6 +410,9 @@ export class PlanExecutor {
                 loopCallbacks?.onToolEnd?.(name, success, output);
                 if (success && ['write_file', 'apply_patch'].includes(name)) {
                   successfulWrites += 1;
+                }
+                if (isVerifyStep && success && isVerificationTool(name)) {
+                  hasSuccessfulVerification = true;
                 }
                 if (
                   isVerifyStep &&
@@ -399,6 +438,7 @@ export class PlanExecutor {
         }
 
         if (pendingApproval) {
+          log.debug('Step blocked pending approval', { stepId: step.id });
           plan.steps[i] = { ...plan.steps[i], status: 'blocked' };
           this.planPersistence.updatePlan(session.id, plan, 'blocked');
           onPlanUpdate?.(plan);
@@ -435,6 +475,7 @@ export class PlanExecutor {
           plan.steps[i] = { ...plan.steps[i], status: 'failed' };
           this.planPersistence.updatePlan(session.id, plan, 'running');
           onPlanUpdate?.(plan);
+          log.warn('Step failed validation after max retries', { stepId: step.id, errors: lastValidationErrors });
           yield `\n\n❌ Step failed after ${maxRetries + 1} attempts. Errors:\n${lastValidationErrors.join('\n')}\n`;
           break;
         }
@@ -453,6 +494,7 @@ export class PlanExecutor {
           plan.steps[i] = { ...plan.steps[i], status: 'failed' };
           this.planPersistence.updatePlan(session.id, plan, 'running');
           onPlanUpdate?.(plan);
+          log.warn('Verification step failed after max retries', { stepId: step.id, failedVerifyCommands });
           yield `\n\n❌ Verification step failed after ${maxRetries + 1} attempts.\n`;
           break;
         }
@@ -462,6 +504,7 @@ export class PlanExecutor {
         this.stepSummaries.push(`Step ${i + 1} (${step.title}): ${summary}`);
         plan.steps[i] = { ...plan.steps[i], status: 'done' };
         const stepDurationMs = Date.now() - stepStartedAt;
+        log.debug('Step completed', { stepId: step.id, stepIndex: i + 1, durationMs: stepDurationMs, attempt: attempt + 1 });
         options?.sessionLog?.appendTiming(`plan_step:${step.id}`, stepDurationMs, {
           title: step.title,
           stepIndex: i + 1,
@@ -486,7 +529,7 @@ export class PlanExecutor {
     const blocked = plan.steps.some((s) => s.status === 'blocked');
     const allDone = plan.steps.every((s) => s.status === 'done');
 
-    if (allDone && !blocked && options?.finalValidationEnabled !== false) {
+    if (allDone && !blocked && !hasSuccessfulVerification && options?.finalValidationEnabled !== false) {
       yield '\n\n### Final validation\n\n';
       for await (const chunk of this.runFinalValidation(
         session,
@@ -793,6 +836,10 @@ function summarizeToolExecution(toolName: string, result: ToolExecutionResult): 
   const trimmed = body.trim();
   const capped = trimmed.length > 4000 ? trimmed.slice(-4000) : trimmed;
   return `\n\n${toolName} ${result.success ? 'succeeded' : 'failed'}${capped ? `:\n${capped}\n` : '.\n'}`;
+}
+
+function isVerificationTool(toolName: string): boolean {
+  return ['run_command', 'diagnostics', 'execute_workspace_script'].includes(toolName);
 }
 
 function summarizeStepOutput(output: string, title: string): string {

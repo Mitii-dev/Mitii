@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ask-easy-react-vite-button-props",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["single-file"],
+    "fixture": "react-vite",
+    "prompt": "What props does the Button component accept, and what is the default value for variant?",
+    "rationale": "Single-file interface lookup: ButtonProps { label, variant? } with default 'primary'.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:variant", "file_exists:src/components/Button.tsx"]
+  },
+  {
+    "id": "ask-easy-react-vite-app-usage",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["single-file"],
+    "fixture": "react-vite",
+    "prompt": "How many times is the Button component used in App.tsx, and with what labels?",
+    "rationale": "Tests precise counting/quoting from App.tsx (two Button usages: 'Primary' and 'Secondary').",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:Primary", "stdout_contains:Secondary"]
+  },
+  {
+    "id": "ask-easy-react-vite-build-tool",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "tooling",
+    "tags": ["verify-command"],
+    "fixture": "react-vite",
+    "prompt": "What build tool does this project use, and what command produces a production build?",
+    "rationale": "package.json scripts show Vite; build script is `vite build`.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:vite"]
+  },
+  {
+    "id": "ask-easy-react-vite-styling-approach",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["single-file"],
+    "fixture": "react-vite",
+    "prompt": "How does the Button component apply its variant as a CSS class name?",
+    "rationale": "Tests reading the template literal `btn btn-${variant}` correctly, not just guessing a CSS-in-JS approach.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:btn"]
+  },
+  {
+    "id": "ask-easy-react-vite-duplicate-entry-files",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "corner-case",
+    "tags": ["ambiguity"],
+    "fixture": "react-vite",
+    "prompt": "This project has both src/main.ts and src/main.tsx. Which one is the real Vite entry point referenced by index.html, and what should happen to the other?",
+    "rationale": "Corner case: two similarly-named entry files exist (one is stray/unused). Tests whether the model checks index.html's script tag rather than assuming.",
+    "verify": ["exit_0", "stdout_not_empty", "file_exists:index.html"]
+  }
+]

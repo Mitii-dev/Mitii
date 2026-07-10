@@ -1,0 +1,15 @@
+[
+  {
+    "id": "agent-hard-smoke-broken-repo-fix-boundary",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "bugfix",
+    "tags": ["smoke", "infra", "broken-repo", "corner-case"],
+    "fixture": "broken-repo",
+    "prompt": "Fix the failing test in this repo. Do not modify the test file — fix the underlying logic bug it is catching.",
+    "rationale": "Infra smoke case: proves agent mode can be pointed at an already-broken repo; real batch will assert the >= fix lands in orders.js, not the test.",
+    "timeoutMs": 180000,
+    "verify": ["exit_0", "jsonl_event:end"]
+  }
+]

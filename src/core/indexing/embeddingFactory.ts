@@ -11,21 +11,19 @@ export function createEmbeddingProvider(config: IndexingConfig): EmbeddingProvid
     return new NoOpEmbeddingProvider();
   }
 
-  const preferMinilm =
-    config.embeddingProvider === 'minilm' ||
-    (config.embeddingProvider === 'hash' && isTransformersEmbeddingAvailable());
-
-  if (preferMinilm && isTransformersEmbeddingAvailable()) {
+  if (config.embeddingProvider === 'minilm' && isTransformersEmbeddingAvailable()) {
     return new TransformersEmbeddingProvider();
   }
 
   return new HashEmbeddingProvider();
 }
 
+/** Static description from config + package availability only — does not reflect whether the
+ * model has actually loaded successfully at runtime. See TransformersEmbeddingProvider.getHealth(). */
 export function describeEmbeddingProvider(config: IndexingConfig): string {
   if (!config.vectorsEnabled) return 'none';
-  if (isTransformersEmbeddingAvailable() && config.embeddingProvider !== 'hash') {
-    return 'minilm';
+  if (config.embeddingProvider === 'minilm') {
+    return isTransformersEmbeddingAvailable() ? 'minilm' : 'hash-fallback';
   }
-  return config.embeddingProvider === 'minilm' ? 'minilm' : 'hash-fallback';
+  return 'hash';
 }

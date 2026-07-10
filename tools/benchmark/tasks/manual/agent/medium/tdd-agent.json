@@ -1,0 +1,122 @@
+[
+  {
+    "id": "agent-medium-tdd-node-express-users-list",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "testing",
+    "tags": ["tdd"],
+    "fixture": "node-express",
+    "prompt": "Do a test-driven pass: write a failing test that GET /users returns an empty array with the correct shape, then make it pass.",
+    "rationale": "Tests whether the agent genuinely writes the test before fixing users.js, not the other way around.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:test/users.test.js"]
+  },
+  {
+    "id": "agent-medium-tdd-react-vite-button-variants",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "testing",
+    "tags": ["tdd"],
+    "fixture": "react-vite",
+    "prompt": "TDD pass: write tests for Button's primary and secondary variants first, then implement whatever is missing to make them pass.",
+    "rationale": "Tests real TDD ordering against a component that already technically satisfies most reasonable tests, so the agent shouldn't invent unnecessary implementation changes.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/components/Button.tsx"]
+  },
+  {
+    "id": "agent-medium-tdd-saas-api-inventory-reservation",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "testing",
+    "tags": ["tdd", "saas-api"],
+    "fixture": "saas-api",
+    "prompt": "TDD pass for reserveStock/releaseStock: write a test for the release-without-prior-reserve edge case first, then implement the fix needed to make it pass.",
+    "rationale": "Requires identifying a genuine edge case not obviously covered today and following through with an implementation change driven by that test.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/inventory/inventory.service.ts"]
+  },
+  {
+    "id": "agent-medium-tdd-broken-repo-reserve-stock",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "testing",
+    "tags": ["tdd", "broken-repo"],
+    "fixture": "broken-repo",
+    "prompt": "This repo already has a failing test for reserveStock. Do a proper TDD pass: confirm the test correctly captures the bug, then fix only the implementation to make it pass, without touching the test.",
+    "rationale": "Tests the agent correctly recognizes the existing test as already being the 'red' step of TDD rather than writing a redundant new one.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/routes/orders.js:item.stock >= quantity", "command_exit_0:git diff --quiet -- test/orders.test.js"]
+  },
+  {
+    "id": "agent-medium-tdd-monorepo-shared-validate-email",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "testing",
+    "tags": ["tdd", "monorepo"],
+    "fixture": "monorepo",
+    "prompt": "TDD pass for @mono/shared: write tests for validateEmail covering valid, invalid, and empty-string inputs, then confirm they all pass with the current implementation.",
+    "rationale": "Tests whether the agent writes genuinely meaningful edge-case tests (empty string) rather than only the obvious happy path.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:packages/shared/package.json"]
+  },
+  {
+    "id": "agent-medium-tdd-nest-api-create-user-validation",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "testing",
+    "tags": ["tdd"],
+    "fixture": "nest-api",
+    "prompt": "TDD pass: write a test asserting CreateUserDto rejects an invalid email, then wire the ValidationPipe needed to make that test actually enforce it.",
+    "rationale": "Requires the agent recognize that without a ValidationPipe, the decorators alone won't cause validation to actually run, so the test alone won't pass without the pipe.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/create-user.dto.ts"]
+  },
+  {
+    "id": "agent-medium-tdd-saas-api-shipping-rate-rounding",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "testing",
+    "tags": ["tdd", "saas-api"],
+    "fixture": "saas-api",
+    "prompt": "TDD pass: write a test asserting calculateShippingRate always returns a value rounded to the nearest cent, then fix the implementation to satisfy it.",
+    "rationale": "Requires a precise numeric assertion and a corresponding implementation change, testing TDD discipline on a subtle correctness issue.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/shipping/shipping.service.ts"]
+  },
+  {
+    "id": "agent-medium-tdd-legacy-commonjs-format-user",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "testing",
+    "tags": ["tdd", "legacy"],
+    "fixture": "legacy-commonjs",
+    "prompt": "TDD pass for lib/utils.js's formatUser: since there's no test infra at all yet, set it up first, then write and satisfy a test for its callback behavior.",
+    "rationale": "Requires bootstrapping test infrastructure as a prerequisite step before the actual TDD cycle can begin.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:lib/utils.js"]
+  },
+  {
+    "id": "agent-medium-tdd-next-app-loading-route",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "testing",
+    "tags": ["tdd"],
+    "fixture": "next-app",
+    "prompt": "TDD pass: since the test script is currently just a placeholder, set up a minimal real test that renders app/loading.tsx and asserts the spinner is present, then confirm it passes.",
+    "rationale": "Requires bootstrapping a working Next.js-compatible test setup as part of the TDD cycle, not assuming one exists.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:app/loading.tsx"]
+  },
+  {
+    "id": "agent-medium-tdd-saas-api-webhook-signature",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "testing",
+    "tags": ["tdd", "saas-api", "security"],
+    "fixture": "saas-api",
+    "prompt": "TDD pass for verifySignature: write a test asserting a tampered payload fails verification, then confirm the existing implementation already passes it or fix it if it doesn't.",
+    "rationale": "Security-relevant TDD case; tests whether the agent verifies the existing timing-safe implementation genuinely satisfies the test rather than assuming.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/modules/webhooks/webhooks.service.ts:timingSafeEqual"]
+  }
+]

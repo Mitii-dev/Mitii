@@ -1,4 +1,5 @@
 import { ShikiCodeBlock } from './ShikiCodeBlock';
+import { ThinkingRow } from './ThinkingRow';
 
 interface MarkdownMessageProps {
   content: string;
@@ -115,7 +116,7 @@ function renderInline(text: string): Array<string | JSX.Element> {
 }
 
 function renderTextBlock(text: string, baseKey: string): JSX.Element[] {
-  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const lines = normalizePlainText(text).replace(/\r\n/g, '\n').split('\n');
   const nodes: JSX.Element[] = [];
   let paragraph: string[] = [];
   let list: string[] = [];
@@ -233,6 +234,34 @@ function renderTextBlock(text: string, baseKey: string): JSX.Element[] {
   return nodes;
 }
 
+function normalizePlainText(text: string): string {
+  const normalized = text.replace(/\r\n/g, '\n').trim();
+  if (normalized.length < 360 || normalized.includes('\n\n')) return text;
+  if (/^\s*(#{1,4}|[-*+]|\d+\.|>|-{3,}|\|)/m.test(normalized)) return text;
+
+  const sentences = normalized
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9`])/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+
+  if (sentences.length < 3) return text;
+
+  const paragraphs: string[] = [];
+  let current = '';
+  for (const sentence of sentences) {
+    const next = current ? `${current} ${sentence}` : sentence;
+    if (next.length > 260 && current) {
+      paragraphs.push(current);
+      current = sentence;
+    } else {
+      current = next;
+    }
+  }
+  if (current) paragraphs.push(current);
+  return paragraphs.join('\n\n');
+}
+
 function normalizeListItem(item: string): string {
   return item.replace(/^\[( |x|X)\]\s+/, (match) => `${match.toLowerCase().includes('x') ? 'Done: ' : 'Todo: '}`);
 }
@@ -311,10 +340,7 @@ export function MarkdownMessage({ content, streaming = false }: MarkdownMessageP
   return (
     <div className="markdown-message">
       {thinking && (
-        <details className="thinking-block">
-          <summary>Reasoning</summary>
-          <p>{thinking.slice(0, 500)}{thinking.length > 500 ? '…' : ''}</p>
-        </details>
+        <ThinkingRow content={thinking} streaming={streaming} maxChars={4000} />
       )}
       {segments.map((segment, index) =>
         segment.type === 'code' ? (

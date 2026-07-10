@@ -115,9 +115,9 @@ function isReadOnlyCommandSegment(cmd: string, extraPatterns: string[] = []): bo
   if (/^(npx\s+(--yes\s+)?)?tsc\s+[\s\S]*--noEmit\b/i.test(cmd)) return true;
   if (/^(npx\s+(--yes\s+)?)?vitest\s+(run\b|--run\b)/i.test(cmd)) return true;
   if (/^(npx\s+(--yes\s+)?)?jest\b/i.test(cmd)) return true;
-  if (/^npm\s+(ls|list|outdated|audit|run\s+(lint|test|typecheck|check|build|compile))\b/i.test(cmd)) return true;
-  if (/^yarn\s+(why|list|info|lint|test|build|compile|typecheck|check)\b/i.test(cmd)) return true;
-  if (/^pnpm\s+(why|list|lint|test|build|compile|typecheck|check)\b/i.test(cmd)) return true;
+  if (/^npm\s+(ls|list|outdated|audit|run\s+(lint|test|typecheck|check|build|compile|verify|validate|doctor))\b/i.test(cmd)) return true;
+  if (/^yarn\s+(why|list|info|lint|test|build|compile|typecheck|check|verify|validate|doctor)\b/i.test(cmd)) return true;
+  if (/^pnpm\s+(why|list|lint|test|build|compile|typecheck|check|verify|validate|doctor)\b/i.test(cmd)) return true;
   if (/^(?:\.\/mvnw|mvn)\s+test\b/i.test(cmd)) return true;
   if (/^(?:\.\/gradlew|gradle)\s+test\b/i.test(cmd)) return true;
   if (/^cargo\s+test\b/i.test(cmd)) return true;
@@ -127,6 +127,8 @@ function isReadOnlyCommandSegment(cmd: string, extraPatterns: string[] = []): bo
   if (/^git\s+(status|diff|log|ls-files)\b/i.test(cmd)) return true;
   if (/^\d+>&\d+$/.test(cmd.trim())) return true;
   if (/^true$|^false$/.test(cmd.trim())) return true;
+  if (/^node\s+(--check|-c)\b/i.test(cmd)) return true;
+  if (/^(bash|sh)\s+-n\b/i.test(cmd)) return true;
   return false;
 }
 

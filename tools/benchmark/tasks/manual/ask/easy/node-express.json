@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ask-easy-node-express-entry-point",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "What is the entry point of this Express app and what port does it listen on by default?",
+    "rationale": "Single-file, unambiguous fact lookup (src/index.js, PORT env fallback to 3000).",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:index.js", "file_exists:src/index.js"]
+  },
+  {
+    "id": "ask-easy-node-express-health-route",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "Is there a health-check endpoint in this app? Where is it defined and what does it return?",
+    "rationale": "Checks the model finds GET /health in src/index.js and describes the { ok: true } response.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:health"]
+  },
+  {
+    "id": "ask-easy-node-express-users-mount",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "Where is the users router mounted, and under what path prefix?",
+    "rationale": "Tests that the model connects src/index.js's app.use('/users', usersRouter) to src/routes/users.js.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:/users"]
+  },
+  {
+    "id": "ask-easy-node-express-test-command",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "tooling",
+    "tags": ["verify-command"],
+    "fixture": "node-express",
+    "prompt": "What command should I run to execute this project's tests?",
+    "rationale": "Regression-style check: package.json's test script is `node --test test/users.test.js`, a non-standard runner (not jest/mocha) the model must read rather than assume.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:test", "file_contains:package.json:node --test"]
+  },
+  {
+    "id": "ask-easy-node-express-dependency-list",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "easy",
+    "category": "retrieval",
+    "tags": ["single-file"],
+    "fixture": "node-express",
+    "prompt": "What third-party runtime dependency does this project use, and for what purpose?",
+    "rationale": "Simple package.json lookup: express, used for HTTP routing.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:express"]
+  }
+]

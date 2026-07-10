@@ -5,6 +5,9 @@ import type { ThunderDb } from '../../indexing/ThunderDb';
 import { extractIndexedSearchTerms } from '../fuzzyFileMatch';
 import { applyContentTier, getSourceContentTier, loadFileSignatures } from '../contextTier';
 import { isPathInScope } from '../scopeFilter';
+import { createLogger } from '../../telemetry/Logger';
+
+const log = createLogger('IndexedFileSearchContextSource');
 
 const MAX_FILE_CHARS = 16_000;
 
@@ -18,6 +21,7 @@ export class IndexedFileSearchContextSource implements ContextSource {
 
   async retrieve(query: ContextQuery): Promise<ContextItem[]> {
     const terms = extractIndexedSearchTerms(query.text);
+    log.debug('terms:extracted', { queryText: query.text, terms });
     if (terms.length === 0) return [];
 
     const paths = new Set<string>();
@@ -65,6 +69,7 @@ export class IndexedFileSearchContextSource implements ContextSource {
       }
     }
 
+    log.debug('match:complete', { pathMatchCount: paths.size, itemCount: items.length });
     return items;
   }
 }

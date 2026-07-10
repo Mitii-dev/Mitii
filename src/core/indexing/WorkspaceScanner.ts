@@ -24,7 +24,8 @@ export class WorkspaceScanner {
     private readonly workspace: string
   ) {}
 
-  computeDiff(discovered: DiscoveredFile[]): ScanDiff {
+  computeDiff(discovered: DiscoveredFile[], options: { includeDeleted?: boolean } = {}): ScanDiff {
+    const includeDeleted = options.includeDeleted !== false;
     const existing = this.db.raw
       .prepare('SELECT rel_path, hash, mtime FROM files WHERE workspace = ?')
       .all(this.workspace) as Array<{ rel_path: string; hash: string; mtime: number }>;
@@ -51,9 +52,11 @@ export class WorkspaceScanner {
       }
     }
 
-    for (const row of existing) {
-      if (!discoveredSet.has(row.rel_path)) {
-        deleted.push(row.rel_path);
+    if (includeDeleted) {
+      for (const row of existing) {
+        if (!discoveredSet.has(row.rel_path)) {
+          deleted.push(row.rel_path);
+        }
       }
     }
 

@@ -1,0 +1,98 @@
+[
+  {
+    "id": "plan-medium-conflicting-fast-and-thorough",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity", "conflicting-requirements"],
+    "fixture": "saas-api",
+    "prompt": "Plan a fix for the payments retry logic that ships today, but also make sure you've considered every possible edge case first.",
+    "rationale": "\"Ships today\" and \"every possible edge case\" pull in opposite directions. Tests whether the plan surfaces the tradeoff explicitly.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-medium-conflicting-minimal-and-complete-rewrite",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity", "conflicting-requirements"],
+    "fixture": "node-express",
+    "prompt": "Make a minimal one-line fix to the users route bug, and also take this opportunity to fully rewrite the routing layer for better architecture.",
+    "rationale": "Directly contradictory scope (minimal vs full rewrite) for the same request. Tests whether the plan asks which is actually wanted or clearly picks one and states the assumption.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/routes/users.js"]
+  },
+  {
+    "id": "plan-medium-conflicting-no-new-deps-but-use-library",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity", "conflicting-requirements"],
+    "fixture": "legacy-commonjs",
+    "prompt": "Add proper input validation to routes/users.js, but don't add any new npm dependencies. Use a validation library like joi if it makes the code cleaner.",
+    "rationale": "\"Don't add new dependencies\" directly conflicts with \"use a validation library\" since joi isn't currently installed. Tests whether the plan notices and resolves the contradiction.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-medium-conflicting-keep-style-but-modernize",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity", "conflicting-requirements"],
+    "fixture": "legacy-commonjs",
+    "prompt": "Modernize this codebase to use async/await everywhere, but don't change any of the existing callback-based function signatures.",
+    "rationale": "Converting callbacks to async/await inherently changes function signatures. Tests whether the plan flags this as an inherent tension rather than silently promising both.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:lib/utils.js"]
+  },
+  {
+    "id": "plan-medium-conflicting-strict-scope-cross-package-request",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity", "conflicting-requirements", "monorepo"],
+    "fixture": "monorepo",
+    "prompt": "Only touch packages/web. Also make sure packages/api and packages/shared are updated to match the new email validation rules.",
+    "rationale": "First sentence restricts scope to one package; second sentence requires touching the other two. Tests whether the plan resolves this contradiction explicitly.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-medium-conflicting-zero-downtime-single-migration",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity", "conflicting-requirements"],
+    "fixture": "saas-api",
+    "prompt": "Plan a zero-downtime migration of the orders schema that completes in a single atomic step.",
+    "rationale": "Zero-downtime schema migrations typically require multiple phased steps (expand/contract), which conflicts with 'a single atomic step'. Tests whether the plan surfaces this real-world tension.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-medium-conflicting-backward-compatible-breaking-change",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity", "conflicting-requirements"],
+    "fixture": "saas-api",
+    "prompt": "Change retryPayment's return type to include the retry history, but keep it 100% backward compatible with existing callers.",
+    "rationale": "Adding a required field to a return type is not backward compatible by definition unless made optional. Tests whether the plan catches this and proposes an additive, compatible approach.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/modules/payments/payments.service.ts"]
+  },
+  {
+    "id": "plan-medium-conflicting-remove-file-keep-using-it",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity", "conflicting-requirements"],
+    "fixture": "react-vite",
+    "prompt": "Delete src/main.tsx since it's unused, but make sure the app still boots exactly the way it does today using main.tsx as the entry point.",
+    "rationale": "index.html actually references main.ts (not main.tsx), so 'using main.tsx as the entry point' is a false premise layered on top of a real cleanup request. Tests whether the plan catches the factual error rather than planning around it.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:index.html"]
+  }
+]

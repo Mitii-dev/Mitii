@@ -8,12 +8,17 @@ const SECRET_PATTERNS = [
   /password["\s:=]+["']?[^\s"']{4,}/gi,
 ];
 
-export type LogLevel = 'info' | 'warn' | 'error';
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface Logger {
+  debug(message: string, meta?: Record<string, unknown>): void;
   info(message: string, meta?: Record<string, unknown>): void;
   warn(message: string, meta?: Record<string, unknown>): void;
   error(message: string, meta?: Record<string, unknown>): void;
+}
+
+function isDebugEnabled(): boolean {
+  return process.env.MITII_DEBUG === '1';
 }
 
 function redactSecrets(value: string): string {
@@ -54,11 +59,16 @@ export function createLogger(scope: string): Logger {
   const prefix = `[${AGENT_NAME}:${scope}]`;
 
   function log(level: LogLevel, message: string, meta?: Record<string, unknown>): void {
+    if (level === 'debug' && !isDebugEnabled()) return;
+
     const safeMessage = redactSecrets(message);
     const safeMeta = sanitizeMeta(meta);
     const line = safeMeta ? `${prefix} ${safeMessage} ${JSON.stringify(safeMeta)}` : `${prefix} ${safeMessage}`;
 
     switch (level) {
+      case 'debug':
+        console.debug(line);
+        break;
       case 'info':
         console.log(line);
         break;
@@ -72,6 +82,7 @@ export function createLogger(scope: string): Logger {
   }
 
   return {
+    debug: (message, meta) => log('debug', message, meta),
     info: (message, meta) => log('info', message, meta),
     warn: (message, meta) => log('warn', message, meta),
     error: (message, meta) => log('error', message, meta),

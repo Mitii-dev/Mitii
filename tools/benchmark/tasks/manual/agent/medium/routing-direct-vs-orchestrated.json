@@ -1,0 +1,122 @@
+[
+  {
+    "id": "agent-medium-routing-direct-typo-fix",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["routing"],
+    "fixture": "node-express",
+    "prompt": "Fix the typo in the /health route's response key: 'ok' should stay but make sure the key itself is spelled 'ok' not 'okk'.",
+    "rationale": "Tiny, atomic, single-line fix — expected to route through the direct execution path (straight to the tool-use loop) rather than the discovery-plan-execute pipeline. Verified by outcome; routing itself isn't asserted directly.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/index.js"]
+  },
+  {
+    "id": "agent-medium-routing-orchestrated-multi-module-feature",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["routing"],
+    "fixture": "saas-api",
+    "prompt": "Implement a full order-cancellation flow: mark the order cancelled, release reserved inventory, record an audit-log entry, and notify the user by email.",
+    "rationale": "Large, multi-module feature spanning orders/inventory/audit-log/notifications — expected to route through the orchestrated discovery-plan-execute pipeline given its scope.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/orders/orders.service.ts"]
+  },
+  {
+    "id": "agent-medium-routing-direct-single-line-config",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["routing"],
+    "fixture": "react-vite",
+    "prompt": "Change the default variant in ButtonProps from 'primary' to 'secondary'.",
+    "rationale": "A single, unambiguous one-line change — expected direct path.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/components/Button.tsx:secondary"]
+  },
+  {
+    "id": "agent-medium-routing-ambiguous-boundary-add-endpoint",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["routing"],
+    "fixture": "nest-api",
+    "prompt": "Add a GET /users endpoint with pagination support.",
+    "rationale": "Sits on the direct/orchestrated boundary: a single new endpoint (direct-shaped) but implies broader design decisions (pagination contract). Tests that whichever path is chosen, the outcome is still correct.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/app.controller.ts"]
+  },
+  {
+    "id": "agent-medium-routing-orchestrated-cross-package-rename",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["routing", "monorepo"],
+    "fixture": "monorepo",
+    "prompt": "Rename validateEmail to isValidEmail everywhere in this workspace, including all three packages, and add a changelog note.",
+    "rationale": "Cross-package rename plus docs — scope and coordination needs make this a good candidate for the orchestrated path.",
+    "verify": ["exit_0", "jsonl_event:end", "file_not_contains:packages/shared/src/index.js:validateEmail"]
+  },
+  {
+    "id": "agent-medium-routing-direct-comment-only",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["routing"],
+    "fixture": "nest-api",
+    "prompt": "Add a one-line comment above getHello explaining it's a placeholder greeting.",
+    "rationale": "Trivial docs-only single-line change — expected direct path with minimal tool calls.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/app.service.ts"]
+  },
+  {
+    "id": "agent-medium-routing-orchestrated-full-audit-cleanup",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["routing", "audit-mode"],
+    "fixture": "saas-api",
+    "prompt": "Audit every module's service file for repository calls that don't check for a null/not-found result before using it, and fix all the ones you find.",
+    "rationale": "Broad, discovery-heavy audit request across 17 modules — expected orchestrated path with a script-first, read-only discovery phase before any writes.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/app.module.ts"]
+  },
+  {
+    "id": "agent-medium-routing-direct-package-json-field",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["routing"],
+    "fixture": "legacy-commonjs",
+    "prompt": "Bump the version field in package.json to 0.2.0.",
+    "rationale": "Single metadata field change — expected minimal-step direct path.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:package.json:0.2.0"]
+  },
+  {
+    "id": "agent-medium-routing-orchestrated-broken-repo-remediation",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["routing", "broken-repo"],
+    "fixture": "broken-repo",
+    "prompt": "Bring this repo to a fully working, fully tested state: fix every known issue, add missing tests, and update the docs to match.",
+    "rationale": "Multi-step remediation spanning code, tests, and docs — expected orchestrated path given the breadth and the need to sequence fixes before doc updates.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/db.js"]
+  },
+  {
+    "id": "agent-medium-routing-direct-rename-single-var",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["routing"],
+    "fixture": "node-express",
+    "prompt": "Rename the local variable `port` in src/index.js to `serverPort`.",
+    "rationale": "Single-file, single-identifier rename with no external callers — expected direct path.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/index.js:serverPort"]
+  }
+]

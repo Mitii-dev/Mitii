@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { highlightCode } from '../utils/shikiHighlighter';
+import { IconCopy } from './Icons';
 
 const LANG_ALIASES: Record<string, string> = {
   ts: 'typescript',
@@ -28,7 +29,24 @@ interface ShikiCodeBlockProps {
 
 export function ShikiCodeBlock({ language, path, value, streaming }: ShikiCodeBlockProps) {
   const [html, setHtml] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copyResetRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const label = path ? path : language;
+
+  useEffect(() => {
+    return () => clearTimeout(copyResetRef.current);
+  }, []);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      clearTimeout(copyResetRef.current);
+      copyResetRef.current = setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard unavailable; silently ignore
+    }
+  };
 
   useEffect(() => {
     if (streaming || !value.trim()) {
@@ -56,7 +74,19 @@ export function ShikiCodeBlock({ language, path, value, streaming }: ShikiCodeBl
     <div className={`code-block${streaming ? ' code-block--streaming' : ''}`}>
       <div className="code-block__header">
         <span className="code-block__label">{label}</span>
-        {streaming && <span className="code-block__status">Generating…</span>}
+        {streaming ? (
+          <span className="code-block__status">Generating…</span>
+        ) : (
+          <button
+            type="button"
+            className={`code-block__copy${copied ? ' code-block__copy--copied' : ''}`}
+            onClick={handleCopy}
+            aria-label="Copy code"
+          >
+            <IconCopy width={12} height={12} />
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        )}
       </div>
       {html ? (
         <div className="code-block__shiki" dangerouslySetInnerHTML={{ __html: html }} />

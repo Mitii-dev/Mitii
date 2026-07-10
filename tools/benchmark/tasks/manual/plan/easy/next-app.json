@@ -1,0 +1,74 @@
+[
+  {
+    "id": "plan-easy-next-app-seo-metadata",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["single-file"],
+    "fixture": "next-app",
+    "prompt": "Plan improving SEO metadata in app/layout.tsx (open graph tags, canonical URL).",
+    "rationale": "Well-scoped metadata addition to the existing `metadata` export.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:app/layout.tsx"]
+  },
+  {
+    "id": "plan-easy-next-app-error-boundary",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["single-file"],
+    "fixture": "next-app",
+    "prompt": "Plan adding an error.tsx for the home route following Next.js App Router conventions.",
+    "rationale": "Tests correctly proposing the sibling-to-loading.tsx App Router error boundary convention.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:app/loading.tsx"]
+  },
+  {
+    "id": "plan-easy-next-app-about-page",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["single-file"],
+    "fixture": "next-app",
+    "prompt": "Plan adding a new /about route with a simple static page.",
+    "rationale": "Common App Router addition (app/about/page.tsx); tests correct route folder convention.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:app/page.tsx"]
+  },
+  {
+    "id": "plan-easy-next-app-real-test-script",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["testing"],
+    "fixture": "next-app",
+    "prompt": "Plan setting up a real test runner for this Next.js app, since the current test script is only a placeholder.",
+    "rationale": "Tests the plan notices the placeholder test script and proposes an appropriate Next.js-compatible test setup.",
+    "verify": ["exit_0", "json_path:steps", "file_contains:package.json:next test placeholder"]
+  },
+  {
+    "id": "plan-easy-next-app-loading-docs-sync",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["docs"],
+    "fixture": "next-app",
+    "prompt": "Plan updating docs/loading-indicator.md if it has drifted from the actual app/loading.tsx source.",
+    "rationale": "Tests the plan includes a diffing/verification step against the live source, not just a rewrite from memory.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:docs/loading-indicator.md"]
+  },
+  {
+    "id": "plan-easy-next-app-favicon",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["single-file"],
+    "fixture": "next-app",
+    "prompt": "Plan adding a favicon and app icon metadata for this Next.js app.",
+    "rationale": "Small, well-defined static-asset planning task.",
+    "verify": ["exit_0", "json_path:steps"]
+  }
+]

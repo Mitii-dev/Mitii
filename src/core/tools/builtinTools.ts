@@ -3,8 +3,7 @@ import { z } from 'zod';
 import { mkdirSync, readFileSync, readdirSync, writeFileSync, statSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
-import { exec, execFile } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'child_process';
 import type { Tool, ToolResult } from './types';
 import type { IgnoreService } from '../indexing/IgnoreService';
 import type { FtsIndex } from '../indexing/FtsIndex';
@@ -19,42 +18,140 @@ import { validateMdxContent } from '../apply/mdxValidation';
 import { isDangerousCommand } from '../safety/ToolPolicyEngine';
 import { isReadOnlyCommand, stripLeadingCd } from '../plans/PlanActEngine';
 import { normalizeWorkspaceRoot, resolveWorkspaceRelPath, formatPathNotFoundHint } from '../util/paths';
-import { ResearchAgent } from '../runtime/ResearchAgent';
+import type { ThunderDb } from '../indexing/ThunderDb';
+import { createWorkspacePathResolver } from '../paths/WorkspacePathResolver';
+import { BaseSubagent, createDefaultSubagentRegistry, loadWorkspaceAgents, type SubagentRuntime } from '../subagents';
 import { isAuditSubagentBlocked, buildScriptFirstAuditMessage } from '../runtime/auditRouting';
 import type { SubagentTracker } from '../runtime/SubagentTracker';
-import type { LlmProvider } from '../llm/types';
-import type { ToolDefinition } from '../llm/toolTypes';
-import type { ToolExecutor } from '../safety/ToolExecutor';
 import type { SkillCatalogService } from '../skills/SkillCatalogService';
 import { createLogger } from '../telemetry/Logger';
 import { analyzeChangeImpact, discoverProjectCatalog, formatProjectCatalog, saveProjectCatalog } from '../modes/ask';
 import { filterItemsToScope, normalizeScopeRoot } from '../context/scopeFilter';
 
-const execAsync = promisify(exec);
-const execFileAsync = promisify(execFile);
 const log = createLogger('BuiltinTools');
 
-export interface ResearchAgentRuntime {
-  toolExecutor: ToolExecutor;
-  getProvider: () => LlmProvider | undefined;
-  getTools: () => ToolDefinition[];
-  maxSteps?: number;
-  timeoutMs?: number;
+interface SpawnCaptureOptions {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  timeout?: number;
+  maxBuffer?: number;
 }
 
-let researchAgentRuntime: ResearchAgentRuntime | undefined;
-let researchAgent: ResearchAgent | undefined;
+interface SpawnCaptureError extends Error {
+  code?: number;
+  stdout?: string;
+  stderr?: string;
+}
+
+/**
+ * exec/execFile always create a stdin pipe even when nothing is written to it. In some
+ * host environments (e.g. a VS Code extension host with no valid fd 0) creating that pipe
+ * fails with `spawn EBADF`. spawn() lets us set stdin to 'ignore' to avoid it entirely.
+ */
+function spawnCapture(
+  command: string,
+  args: string[],
+  options: SpawnCaptureOptions
+): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const maxBuffer = options.maxBuffer ?? 4 * 1024 * 1024;
+    let stdout = '';
+    let stderr = '';
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let settled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    const finish = (err: SpawnCaptureError | null, result?: { stdout: string; stderr: string }) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      if (err) reject(err);
+      else resolvePromise(result!);
+    };
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      stdoutBytes += chunk.length;
+      if (stdoutBytes <= maxBuffer) stdout += chunk.toString('utf-8');
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderrBytes += chunk.length;
+      if (stderrBytes <= maxBuffer) stderr += chunk.toString('utf-8');
+    });
+
+    child.on('error', (error) => {
+      const err = error as SpawnCaptureError;
+      err.stdout = stdout;
+      err.stderr = stderr;
+      finish(err);
+    });
+
+    child.on('close', (code) => {
+      if (code === 0 || code === null) {
+        finish(null, { stdout, stderr });
+      } else {
+        const err = new Error(`Command failed with exit code ${code}`) as SpawnCaptureError;
+        err.code = code;
+        err.stdout = stdout;
+        err.stderr = stderr;
+        finish(err);
+      }
+    });
+
+    if (options.timeout) {
+      timeoutId = setTimeout(() => {
+        child.kill('SIGTERM');
+        const err = new Error(`Command timed out after ${options.timeout}ms`) as SpawnCaptureError;
+        err.stdout = stdout;
+        err.stderr = stderr;
+        finish(err);
+      }, options.timeout);
+    }
+  });
+}
+
+/** Runs `command` through a shell, mirroring child_process.exec but with safe stdio. */
+function execShellSafe(
+  command: string,
+  options: SpawnCaptureOptions
+): Promise<{ stdout: string; stderr: string }> {
+  const isWindows = process.platform === 'win32';
+  const shell = isWindows ? process.env.ComSpec ?? 'cmd.exe' : '/bin/sh';
+  const shellArgs = isWindows ? ['/d', '/s', '/c', command] : ['-c', command];
+  return spawnCapture(shell, shellArgs, options);
+}
+
+/** Runs `file` directly (no shell), mirroring child_process.execFile but with safe stdio. */
+function execFileSafe(
+  file: string,
+  args: string[],
+  options: SpawnCaptureOptions
+): Promise<{ stdout: string; stderr: string }> {
+  return spawnCapture(file, args, options);
+}
+
+export type ResearchAgentRuntime = SubagentRuntime;
+
+let subagentRuntime: SubagentRuntime | undefined;
 let subagentTracker: SubagentTracker | undefined;
+let activeSubagents = 0;
 
 export function setSubagentTracker(tracker: SubagentTracker | undefined): void {
   subagentTracker = tracker;
 }
 
 export function setResearchAgentRuntime(runtime: ResearchAgentRuntime | undefined): void {
-  researchAgentRuntime = runtime;
-  researchAgent = runtime
-    ? new ResearchAgent(runtime.toolExecutor, runtime.maxSteps ?? 6, runtime.timeoutMs ?? 90_000)
-    : undefined;
+  setSubagentRuntime(runtime);
+}
+
+export function setSubagentRuntime(runtime: SubagentRuntime | undefined): void {
+  subagentRuntime = runtime;
 }
 
 function blockedPath(relPath: string, ignoreService: IgnoreService, forRead = false): boolean {
@@ -73,6 +170,13 @@ function resolveToolPath(workspace: string, rawPath: string, ignoreService: Igno
 const SOURCE_FILE_PATTERN = /\.(?:tsx?|jsx?|mjs|cjs|css|scss|sass|less|json|ya?ml)$/i;
 const READ_FILE_MAX_CHARS = 50000;
 const READ_FILES_MAX_PATHS = 12;
+
+/** Caps file content for the model and, unlike a silent slice, tells it more was cut off. */
+function truncateFileContent(content: string): string {
+  if (content.length <= READ_FILE_MAX_CHARS) return content;
+  const remaining = content.length - READ_FILE_MAX_CHARS;
+  return `${content.slice(0, READ_FILE_MAX_CHARS)}\n...(truncated, ${remaining} more characters — read a narrower range or a more specific file if you need the rest)`;
+}
 const SHELL_COMMAND_CONTENT_PREFIX =
   /^(?:git\s+(?:checkout|restore|reset|clean|pull|push|commit|merge|rebase|switch)\b|(?:npm|yarn|pnpm|npx)\s+|rm\s+-|mv\s+|cp\s+|sed\s+-i\b|cat\s+>|echo\s+.+>|python(?:3)?\s+|node\s+|bash\s+|sh\s+)/i;
 
@@ -110,7 +214,7 @@ function updateReadFileCache(workspace: string, relPath: string, content: string
   try {
     const st = statSync(join(workspace, relPath));
     getReadFileCache(workspace).set(relPath, {
-      content: content.slice(0, READ_FILE_MAX_CHARS),
+      content: truncateFileContent(content),
       mtimeMs: st.mtimeMs,
       size: st.size,
     });
@@ -136,22 +240,32 @@ function validateWriteFileContent(relPath: string, content: string): string | un
   return undefined;
 }
 
-export function createReadFileTool(workspace: string, ignoreService: IgnoreService): Tool<{ path: string }> {
+export function createReadFileTool(
+  workspace: string,
+  ignoreService: IgnoreService,
+  db?: ThunderDb
+): Tool<{ path: string }> {
   return {
     name: 'read_file',
-    description: 'Read one workspace file. For multiple files, prefer read_files in a single call.',
+    description:
+      'Read one workspace file. Missing paths are auto-resolved via the workspace index when confidence is high. For multiple files, prefer read_files. Use resolve_path when unsure.',
     risk: 'low',
     inputSchema: z.object({ path: z.string() }),
     async execute(input): Promise<ToolResult> {
-      return readSingleFile(workspace, input.path, ignoreService);
+      return readSingleFile(workspace, input.path, ignoreService, db);
     },
   };
 }
 
-export function createReadFilesTool(workspace: string, ignoreService: IgnoreService): Tool<{ paths: string[] }> {
+export function createReadFilesTool(
+  workspace: string,
+  ignoreService: IgnoreService,
+  db?: ThunderDb
+): Tool<{ paths: string[] }> {
   return {
     name: 'read_files',
-    description: 'Read multiple workspace files in one call. Max 12 paths per call; prefer 8-10. If you need more, split into another read_files call.',
+    description:
+      'Read multiple workspace files in one call. Max 12 paths per call; prefer 8-10. Missing paths are auto-resolved when confidence is high. Use resolve_path for uncertain paths.',
     risk: 'low',
     inputSchema: z.object({ paths: z.array(z.string()).min(1) }),
     parametersJsonSchema: {
@@ -179,7 +293,7 @@ export function createReadFilesTool(workspace: string, ignoreService: IgnoreServ
       }
       const results = await Promise.all(paths.map(async (path) => ({
         path,
-        result: await readSingleFile(workspace, path, ignoreService),
+        result: await readSingleFile(workspace, path, ignoreService, db),
       })));
       for (const { path, result } of results) {
         parts.push(result.success
@@ -191,10 +305,69 @@ export function createReadFilesTool(workspace: string, ignoreService: IgnoreServ
   };
 }
 
+async function readWorkspaceFileContent(
+  workspace: string,
+  relPath: string
+): Promise<{ success: true; output: string } | { success: false; error: string }> {
+  try {
+    const fullPath = join(workspace, relPath);
+    const st = statSync(fullPath);
+    if (!st.isFile()) {
+      return { success: false, error: `Not a file: ${relPath}` };
+    }
+    const cached = getReadFileCache(workspace).get(relPath);
+    if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
+      return { success: true, output: cached.content };
+    }
+    const content = await readFile(fullPath, 'utf-8');
+    const truncated = truncateFileContent(content);
+    getReadFileCache(workspace).set(relPath, {
+      content: truncated,
+      mtimeMs: st.mtimeMs,
+      size: st.size,
+    });
+    return { success: true, output: truncated };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+}
+
+/**
+ * Reads a file outside the workspace. Only reachable after the user has explicitly
+ * approved the read_file/read_files call via the approval queue (see ToolExecutor.executeApproved)
+ * — readSingleFile below always refuses external paths outright as a defense-in-depth boundary.
+ */
+export async function readApprovedExternalFile(rawPath: string): Promise<ToolResult> {
+  try {
+    const st = statSync(rawPath);
+    if (!st.isFile()) {
+      return { success: false, output: '', error: `Not a file: ${rawPath}` };
+    }
+    const content = await readFile(rawPath, 'utf-8');
+    return {
+      success: true,
+      output: `[External file outside the workspace — read with user approval]\n${truncateFileContent(content)}`,
+    };
+  } catch (e) {
+    return { success: false, output: '', error: String(e) };
+  }
+}
+
+export async function readApprovedExternalFiles(rawPaths: string[]): Promise<ToolResult> {
+  const results = await Promise.all(
+    rawPaths.map(async (path) => ({ path, result: await readApprovedExternalFile(path) }))
+  );
+  const parts = results.map(({ path, result }) => (
+    result.success ? `### ${path}\n${result.output}` : `### ${path}\nERROR: ${result.error}`
+  ));
+  return { success: true, output: parts.join('\n\n') };
+}
+
 async function readSingleFile(
   workspace: string,
   rawPath: string,
-  ignoreService: IgnoreService
+  ignoreService: IgnoreService,
+  db?: ThunderDb
 ): Promise<ToolResult> {
   const relPath = resolveWorkspaceRelPath(workspace, rawPath);
   if (relPath === null) {
@@ -207,31 +380,93 @@ async function readSingleFile(
       error: `Path is ignored: ${rawPath}. For built package exports read packages/*/src/index.ts instead of dist/.`,
     };
   }
-  try {
-    const fullPath = join(workspace, relPath);
-    const st = statSync(fullPath);
-    const cached = getReadFileCache(workspace).get(relPath);
-    if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
-      return { success: true, output: cached.content };
-    }
-    const content = await readFile(fullPath, 'utf-8');
-    getReadFileCache(workspace).set(relPath, {
-      content: content.slice(0, READ_FILE_MAX_CHARS),
-      mtimeMs: st.mtimeMs,
-      size: st.size,
-    });
-    return { success: true, output: content.slice(0, READ_FILE_MAX_CHARS) };
-  } catch (e) {
-    const err = String(e);
-    if (err.includes('ENOENT')) {
+
+  const direct = await readWorkspaceFileContent(workspace, relPath);
+  if (direct.success) {
+    return { success: true, output: direct.output };
+  }
+
+  const resolver = createWorkspacePathResolver({ workspace, db, ignoreService });
+  const resolution = resolver.resolve(rawPath);
+
+  if (resolution.autoResolved && resolution.resolvedPath && resolution.resolvedPath !== relPath) {
+    if (ignoreService.isIgnored(resolution.resolvedPath, { forRead: true })) {
       return {
         success: false,
         output: '',
-        error: formatPathNotFoundHint(workspace, rawPath, relPath),
+        error: `Resolved path is ignored: ${resolution.resolvedPath}`,
       };
     }
-    return { success: false, output: '', error: err };
+    const resolvedRead = await readWorkspaceFileContent(workspace, resolution.resolvedPath);
+    if (resolvedRead.success) {
+      const candidate = resolution.candidates.find((c) => c.relPath === resolution.resolvedPath)
+        ?? resolution.candidates[0];
+      const prefix = candidate
+        ? `${resolver.formatAutoResolvedNote(rawPath, resolution.resolvedPath, candidate)}\n`
+        : `[Path auto-resolved] ${rawPath} → ${resolution.resolvedPath}\n---\n`;
+      updateReadFileCache(workspace, resolution.resolvedPath, resolvedRead.output);
+      return { success: true, output: `${prefix}${resolvedRead.output}` };
+    }
   }
+
+  if (resolution.candidates.length > 0) {
+    return {
+      success: false,
+      output: '',
+      error: resolver.formatUnresolvedMessage(rawPath, resolution),
+    };
+  }
+
+  return {
+    success: false,
+    output: '',
+    error: `File not found: ${rawPath}. Use resolve_path, search, or list_files before reading.`,
+  };
+}
+
+export function createResolvePathTool(
+  workspace: string,
+  ignoreService: IgnoreService,
+  db?: ThunderDb
+): Tool<{ path: string; scopeRoot?: string }> {
+  return {
+    name: 'resolve_path',
+    description:
+      'Resolve a workspace file path using the SQLite index, layout heuristics, and filesystem search. Returns ranked candidates and auto-resolution when confidence is high. Use before read_file when the exact path is uncertain.',
+    risk: 'low',
+    inputSchema: z.object({
+      path: z.string(),
+      scopeRoot: z.string().optional(),
+    }),
+    async execute(input): Promise<ToolResult> {
+      const resolver = createWorkspacePathResolver({
+        workspace,
+        db,
+        ignoreService,
+        scopeRoot: input.scopeRoot,
+      });
+      const result = resolver.resolve(input.path);
+      const lines = [
+        `Requested: ${input.path}`,
+        `Normalized: ${result.normalizedRequest || '(invalid)'}`,
+        `Confidence: ${result.confidence}`,
+      ];
+      if (result.autoResolved && result.resolvedPath) {
+        lines.push(`Auto-resolved: ${result.resolvedPath}`);
+      }
+      if (result.candidates.length === 0) {
+        lines.push('No indexed or filesystem matches. Try search or list_files on the parent directory.');
+      } else {
+        lines.push('Candidates:');
+        for (const [index, candidate] of result.candidates.entries()) {
+          lines.push(
+            `${index + 1}. ${candidate.relPath} (score ${candidate.score}, ${candidate.source}) — ${candidate.reason}`
+          );
+        }
+      }
+      return { success: true, output: lines.join('\n') };
+    },
+  };
 }
 
 export function createListFilesTool(
@@ -259,7 +494,7 @@ export function createListFilesTool(
             const entryRel = relPath ? join(listRel, entry).replace(/\\/g, '/') : entry;
             try {
               const stat = statSync(join(base, entry));
-              return !ignoreService.isIgnored(stat.isDirectory() ? `${entryRel}/` : entryRel);
+              return !ignoreService.isIgnored(stat.isDirectory() ? `${entryRel}/` : entryRel, { forRead: true });
             } catch {
               return false;
             }
@@ -328,7 +563,7 @@ async function ripgrepSearch(workspace: string, query: string, limit: number, sc
     const rgPath = rg.rgPath;
     const scope = normalizeScopeRoot(scopeRoot);
     const target = scope ? JSON.stringify(scope) : '.';
-    const { stdout } = await execAsync(
+    const { stdout } = await execShellSafe(
       `"${rgPath}" --no-heading --line-number --max-count ${limit} --regexp ${JSON.stringify(query)} ${target}`,
       { cwd: workspace, maxBuffer: 2 * 1024 * 1024, timeout: 15000 }
     );
@@ -341,7 +576,7 @@ async function ripgrepSearch(workspace: string, query: string, limit: number, sc
 export function createSearchTool(fts: FtsIndex, workspace?: string): Tool<{ query: string; limit?: number; scopeRoot?: string }> {
   return {
     name: 'search',
-    description: 'Search code (FTS + ripgrep). For multiple patterns, use search_batch in one call. Use scopeRoot to limit to one project/package.',
+    description: 'Search code (FTS index + ripgrep, merged). For multiple patterns, use search_batch in one call. Use scopeRoot to limit to one project/package. Copy rel_path values exactly into read_file.',
     risk: 'low',
     inputSchema: z.object({ query: z.string(), limit: z.number().optional(), scopeRoot: z.string().optional() }),
     async execute(input): Promise<ToolResult> {
@@ -465,7 +700,7 @@ export function createExecuteWorkspaceScriptTool(
 
       const runner = entry.name.endsWith('.mjs') ? process.execPath : 'bash';
       try {
-        const { stdout, stderr } = await execFileAsync(runner, args, {
+        const { stdout, stderr } = await execFileSafe(runner, args, {
           cwd: workspace,
           maxBuffer: 2 * 1024 * 1024,
           timeout: 120000,
@@ -482,6 +717,14 @@ export function createExecuteWorkspaceScriptTool(
         const output = [err.stdout, err.stderr].filter(Boolean).join('\n').slice(0, 50000);
         if (entry.readOnly && (err.code === 1 || output.length > 0)) {
           return { success: true, output: output || '(no findings)' };
+        }
+        if (entry.name === 'write-checkpoint.sh') {
+          return {
+            success: false,
+            skipped: true,
+            output: output || err.message || 'Checkpoint helper failed',
+            error: 'Non-fatal checkpoint helper failure',
+          };
         }
         return { success: false, output, error: err.message ?? 'Script failed' };
       }
@@ -585,15 +828,31 @@ async function runSearch(
   scopeRoot?: string
 ): Promise<string> {
   const ftsResults = filterItemsToScope(fts.search(query, limit), scopeRoot);
-  let output = ftsResults.map((r) => `${r.relPath}: ${r.snippet}`).join('\n');
+  const ftsLines = ftsResults.map((r) => `${r.relPath}: ${r.snippet}`);
+  const seenPaths = new Set(ftsResults.map((r) => r.relPath));
 
-  if ((!output || ftsResults.length < 3) && workspace) {
+  const rgLines: string[] = [];
+  if (workspace) {
     const rgOut = await ripgrepSearch(workspace, query, limit, scopeRoot);
     if (rgOut) {
-      output = output ? `${output}\n--- ripgrep ---\n${rgOut}` : rgOut;
+      for (const line of rgOut.split('\n')) {
+        const relPath = line.split(':')[0]?.trim();
+        if (relPath && !seenPaths.has(relPath)) {
+          seenPaths.add(relPath);
+        }
+        rgLines.push(line);
+      }
     }
   }
-  return output;
+
+  const sections: string[] = [];
+  if (ftsLines.length > 0) {
+    sections.push(ftsLines.join('\n'));
+  }
+  if (rgLines.length > 0) {
+    sections.push(`--- ripgrep ---\n${rgLines.join('\n')}`);
+  }
+  return sections.join('\n');
 }
 
 export function createRepoMapTool(repoMap: RepoMapService): Tool<{ query?: string }> {
@@ -878,7 +1137,7 @@ export function createRunCommandTool(workspace: string, getMode: () => string): 
         if (normalized.error) {
           return { success: false, output: '', error: normalized.error };
         }
-        const { stdout, stderr } = await execAsync(normalized.command, {
+        const { stdout, stderr } = await execShellSafe(normalized.command, {
           cwd: normalized.cwd,
           maxBuffer: 4 * 1024 * 1024,
           timeout: 120000,
@@ -991,62 +1250,143 @@ export function createSpawnResearchAgentTool(): Tool<{
       persona_instructions: z.string().optional(),
     }),
     async execute(input): Promise<ToolResult> {
-      const combinedTask = [input.task, input.focus, input.persona_instructions].filter(Boolean).join('\n');
-      if (isAuditSubagentBlocked(combinedTask)) {
-        log.warn('Blocked audit subagent', { task: input.task.slice(0, 120) });
-        return { success: true, output: buildScriptFirstAuditMessage(input.task) };
-      }
-
-      if (!researchAgentRuntime || !researchAgent) {
-        return { success: false, output: '', error: 'Research agent not configured' };
-      }
-
-      const provider = researchAgentRuntime.getProvider();
-      if (!provider) {
-        return { success: false, output: '', error: 'No LLM provider available' };
-      }
-      const runId = subagentTracker?.start(input.task, input.focus);
-      try {
-        const targetFiles = input.targetFiles ?? [];
-        let report: string;
-        if (targetFiles.length > 10) {
-          const chunkSize = input.chunkSize ?? 8;
-          const chunks = chunkArray(targetFiles, chunkSize);
-          const reports = await Promise.all(
-            chunks.map((chunk, index) =>
-              researchAgent!.run(
-                provider,
-                `${input.task}\n\nTarget file chunk ${index + 1}/${chunks.length}:\n${chunk.join('\n')}`,
-                input.focus,
-                researchAgentRuntime!.getTools(),
-                undefined,
-                input.persona_instructions
-              )
-            )
-          );
-          report = reports.map((r, i) => `## Chunk ${i + 1}\n${r}`).join('\n\n');
-        } else {
-          const task = targetFiles.length
-            ? `${input.task}\n\nTarget files:\n${targetFiles.join('\n')}`
-            : input.task;
-          report = await researchAgent.run(
-            provider,
-            task,
-            input.focus,
-            researchAgentRuntime.getTools(),
-            undefined,
-            input.persona_instructions
-          );
-        }
-        if (runId) subagentTracker?.finish(runId, report);
-        return { success: true, output: report };
-      } catch (e) {
-        const err = String(e);
-        if (runId) subagentTracker?.fail(runId, err);
-        return { success: false, output: '', error: err };
-      }
+      return runSubagentTool({
+        type: 'research',
+        task: input.task,
+        focus: input.focus,
+        targetFiles: input.targetFiles,
+        chunkSize: input.chunkSize,
+        personaInstructions: input.persona_instructions,
+      });
     },
   };
+}
+
+export function createSpawnSubagentTool(): Tool<{
+  type: string;
+  task: string;
+  focus?: string;
+  targetFiles?: string[];
+  scopeRoot?: string;
+  commands?: string[];
+  chunkSize?: number;
+  persona_instructions?: string;
+}> {
+  return {
+    name: 'spawn_subagent',
+    description:
+      'Delegate scoped work to a typed subagent: research, implementer, reviewer, verifier, or a workspace custom agent from .mitii/agents. Implementer requires targetFiles or scopeRoot.',
+    risk: 'medium',
+    inputSchema: z.object({
+      type: z.string(),
+      task: z.string(),
+      focus: z.string().optional(),
+      targetFiles: z.array(z.string()).optional(),
+      scopeRoot: z.string().optional(),
+      commands: z.array(z.string()).optional(),
+      chunkSize: z.number().int().min(1).max(10).optional(),
+      persona_instructions: z.string().optional(),
+    }),
+    async execute(input): Promise<ToolResult> {
+      return runSubagentTool({
+        type: input.type,
+        task: input.task,
+        focus: input.focus,
+        targetFiles: input.targetFiles,
+        scopeRoot: input.scopeRoot,
+        commands: input.commands,
+        chunkSize: input.chunkSize,
+        personaInstructions: input.persona_instructions,
+      });
+    },
+  };
+}
+
+async function runSubagentTool(input: {
+  type: string;
+  task: string;
+  focus?: string;
+  targetFiles?: string[];
+  scopeRoot?: string;
+  commands?: string[];
+  chunkSize?: number;
+  personaInstructions?: string;
+}): Promise<ToolResult> {
+  const combinedTask = [input.task, input.focus, input.personaInstructions].filter(Boolean).join('\n');
+  if ((input.type === 'research' || input.type === 'reviewer') && isAuditSubagentBlocked(combinedTask)) {
+    log.warn('Blocked audit subagent', { task: input.task.slice(0, 120), type: input.type });
+    return { success: true, output: buildScriptFirstAuditMessage(input.task) };
+  }
+
+  if (!subagentRuntime) {
+    return { success: false, output: '', error: 'Subagent runtime not configured' };
+  }
+  const enabled = new Set(subagentRuntime.enabledTypes ?? ['research']);
+  if (!enabled.has(input.type)) {
+    return { success: false, output: '', error: `Subagent type ${input.type} is disabled by policy` };
+  }
+  const maxConcurrent = Math.max(1, subagentRuntime.maxConcurrent ?? 2);
+  if (activeSubagents >= maxConcurrent) {
+    return { success: false, output: '', error: `Subagent concurrency limit reached (${maxConcurrent})` };
+  }
+  const provider = subagentRuntime.getProvider();
+  if (!provider) {
+    return { success: false, output: '', error: 'No LLM provider available' };
+  }
+
+  const registry = createDefaultSubagentRegistry(
+    subagentRuntime.workspace ? loadWorkspaceAgents(subagentRuntime.workspace).agents : []
+  );
+  const definition = registry.get(input.type);
+  if (!definition) {
+    return { success: false, output: '', error: `Unknown subagent type: ${input.type}` };
+  }
+  const effectiveDefinition = {
+    ...definition,
+    maxSteps: input.type === 'research' && subagentRuntime.maxSteps ? subagentRuntime.maxSteps : definition.maxSteps,
+    timeoutMs: input.type === 'research' && subagentRuntime.timeoutMs ? subagentRuntime.timeoutMs : definition.timeoutMs,
+  };
+
+  const runId = subagentTracker?.start(input.task, input.focus, {
+    type: input.type,
+    scope: input.scopeRoot ?? input.targetFiles?.slice(0, 6).join(', '),
+  });
+  activeSubagents += 1;
+  try {
+    const subagent = new BaseSubagent(effectiveDefinition, subagentRuntime.toolExecutor);
+    const targetFiles = input.targetFiles ?? [];
+    let report: string;
+    if (input.type === 'research' && targetFiles.length > 10) {
+      const chunkSize = input.chunkSize ?? 8;
+      const chunks = chunkArray(targetFiles, chunkSize);
+      const reports = await Promise.all(chunks.map((chunk, index) =>
+        subagent.run(provider, {
+          task: `${input.task}\n\nTarget file chunk ${index + 1}/${chunks.length}`,
+          focus: input.focus,
+          targetFiles: chunk,
+          personaInstructions: input.personaInstructions,
+        }, subagentRuntime!.getTools())
+      ));
+      report = reports.map((r, i) => `## Chunk ${i + 1}\n${r}`).join('\n\n');
+    } else {
+      report = await subagent.run(provider, {
+        task: input.task,
+        focus: input.focus,
+        targetFiles,
+        scopeRoot: input.scopeRoot,
+        commands: input.commands,
+        personaInstructions: input.personaInstructions,
+      }, subagentRuntime.getTools());
+    }
+    if (runId) subagentTracker?.finish(runId, report, { progress: 100 });
+    return { success: true, output: report };
+  } catch (e) {
+    const err = String(e);
+    if (runId) subagentTracker?.fail(runId, err);
+    return { success: false, output: '', error: err };
+  } finally {
+    activeSubagents -= 1;
+  }
 }
 
 function chunkArray<T>(items: T[], size: number): T[][] {

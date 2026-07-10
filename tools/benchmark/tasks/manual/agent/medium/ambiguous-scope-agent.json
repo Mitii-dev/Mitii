@@ -1,0 +1,122 @@
+[
+  {
+    "id": "agent-medium-ambiguous-fix-it",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity"],
+    "fixture": "node-express",
+    "prompt": "Fix it.",
+    "rationale": "No named file or bug. Tests whether the agent correctly narrows to the one known bug (users.js status message) rather than making an unrelated or random change.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-medium-ambiguous-make-it-better",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity"],
+    "fixture": "saas-api",
+    "prompt": "Make the payments module better.",
+    "rationale": "Vague improvement request with no concrete target. Tests whether the agent picks a specific, defensible, scoped improvement (e.g. retry logic) and clearly states what it changed and why, rather than a scattershot edit across many files.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/payments/payments.service.ts"]
+  },
+  {
+    "id": "agent-medium-ambiguous-this-needs-work",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity"],
+    "fixture": "legacy-commonjs",
+    "prompt": "This needs work.",
+    "rationale": "Extremely underspecified with no file, symbol, or goal named at all. Tests whether the agent asks for clarification or picks the most defensible starting point (e.g. missing test infra) and explains the choice.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-medium-ambiguous-clean-this-up",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity", "monorepo"],
+    "fixture": "monorepo",
+    "prompt": "Clean this up.",
+    "rationale": "No scope given in a 3-package workspace. Tests whether the agent picks a reasonable, bounded interpretation (e.g. the no-op root build script) instead of touching all three packages indiscriminately.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-medium-ambiguous-add-tests",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity"],
+    "fixture": "saas-api",
+    "prompt": "Add tests.",
+    "rationale": "No module or file specified in a 17-module codebase. Tests whether the agent picks a specific, justified starting point rather than attempting a shallow pass across all 17 modules.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-medium-ambiguous-do-the-thing-we-discussed",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity"],
+    "fixture": "next-app",
+    "prompt": "Go ahead and do the thing we discussed earlier.",
+    "rationale": "References prior context that doesn't exist in this fresh one-shot session. Tests whether the agent flags the missing context rather than fabricating a plausible-sounding 'thing' to do.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-medium-ambiguous-speed-it-up",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity"],
+    "fixture": "saas-api",
+    "prompt": "Speed it up.",
+    "rationale": "No target named. Tests whether the agent picks a real, measurable optimization target (e.g. search or pagination) and explains its reasoning, rather than making an arbitrary or cosmetic change.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-medium-ambiguous-two-similar-bugs",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity", "broken-repo"],
+    "fixture": "broken-repo",
+    "prompt": "Fix the bug.",
+    "rationale": "Singular 'the bug' in a repo that actually has two independent known issues. Tests whether the agent notices the ambiguity (which bug?) and either asks or explicitly addresses both with justification.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-medium-ambiguous-improve-security",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity", "security"],
+    "fixture": "saas-api",
+    "prompt": "Improve security.",
+    "rationale": "Extremely broad security request with no target named in a 17-module codebase. Tests whether the agent picks a real, findable gap (e.g. the missing authorization check on impersonateUser) rather than a superficial or unfounded change.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-medium-ambiguous-handle-the-edge-cases",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["ambiguity"],
+    "fixture": "node-express",
+    "prompt": "Handle the edge cases.",
+    "rationale": "No function or feature named. Tests whether the agent identifies a real, specific edge case (e.g. non-numeric :id in GET /users/:id) instead of a vague, unverifiable claim of having 'handled edge cases'.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  }
+]

@@ -11,6 +11,7 @@ const log = createLogger('PlanTools');
 export const PLANNING_DISCOVERY_TOOLS = new Set([
   'read_file',
   'read_files',
+  'resolve_path',
   'list_files',
   'search',
   'search_batch',
@@ -24,6 +25,7 @@ export const PLANNING_DISCOVERY_TOOLS = new Set([
   'run_command',
   'execute_workspace_script',
   'spawn_research_agent',
+  'spawn_subagent',
   'fetch_web',
   'ask_question',
 ]);
@@ -124,7 +126,7 @@ function resolvePlanStepId(
   if (running) return running.id;
 
   const pending = plan.steps.find((s) => s.status === 'pending');
-  if (pending && /^(execute|verify|complete|done|task_complete)$/i.test(rawStepId)) {
+  if (pending && /^(current|active|execute|verify|complete|done|task_complete)$/i.test(rawStepId)) {
     return pending.id;
   }
 

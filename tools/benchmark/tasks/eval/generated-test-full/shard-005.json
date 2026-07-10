@@ -1,5 +1,797 @@
 [
   {
+    "id": "eval-coding-event-emitter-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Sketch EventEmitter with on, off, emit. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:emit"
+    ]
+  },
+  {
+    "id": "eval-coding-event-emitter-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Sketch EventEmitter with on, off, emit. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:emit"
+    ]
+  },
+  {
+    "id": "eval-coding-event-emitter-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Sketch EventEmitter with on, off, emit. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:emit"
+    ]
+  },
+  {
+    "id": "eval-coding-event-emitter-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Sketch EventEmitter with on, off, emit. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:emit"
+    ]
+  },
+  {
+    "id": "eval-coding-fibonacci-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement fib(n) iteratively. What is time and space complexity?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-fibonacci-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement fib(n) iteratively. What is time and space complexity? Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-fibonacci-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement fib(n) iteratively. What is time and space complexity? Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-fibonacci-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement fib(n) iteratively. What is time and space complexity? Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-fibonacci-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement fib(n) iteratively. What is time and space complexity? Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-fizzbuzz-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Describe FizzBuzz implementation for 1..n. Mention extensibility.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:FizzBuzz"
+    ]
+  },
+  {
+    "id": "eval-coding-fizzbuzz-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Describe FizzBuzz implementation for 1..n. Mention extensibility. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:FizzBuzz"
+    ]
+  },
+  {
+    "id": "eval-coding-fizzbuzz-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Describe FizzBuzz implementation for 1..n. Mention extensibility. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:FizzBuzz"
+    ]
+  },
+  {
+    "id": "eval-coding-fizzbuzz-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Describe FizzBuzz implementation for 1..n. Mention extensibility. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:FizzBuzz"
+    ]
+  },
+  {
+    "id": "eval-coding-fizzbuzz-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Describe FizzBuzz implementation for 1..n. Mention extensibility. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:FizzBuzz"
+    ]
+  },
+  {
+    "id": "eval-coding-flatten-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Flatten a nested array to arbitrary depth.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:flat"
+    ]
+  },
+  {
+    "id": "eval-coding-flatten-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Flatten a nested array to arbitrary depth. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:flat"
+    ]
+  },
+  {
+    "id": "eval-coding-flatten-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Flatten a nested array to arbitrary depth. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:flat"
+    ]
+  },
+  {
+    "id": "eval-coding-flatten-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Flatten a nested array to arbitrary depth. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:flat"
+    ]
+  },
+  {
+    "id": "eval-coding-flatten-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Flatten a nested array to arbitrary depth. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:flat"
+    ]
+  },
+  {
+    "id": "eval-coding-json-parse-safe-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write safeJsonParse that never throws.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:JSON"
+    ]
+  },
+  {
+    "id": "eval-coding-json-parse-safe-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write safeJsonParse that never throws. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:JSON"
+    ]
+  },
+  {
+    "id": "eval-coding-json-parse-safe-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write safeJsonParse that never throws. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:JSON"
+    ]
+  },
+  {
+    "id": "eval-coding-json-parse-safe-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write safeJsonParse that never throws. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:JSON"
+    ]
+  },
+  {
+    "id": "eval-coding-json-parse-safe-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write safeJsonParse that never throws. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:JSON"
+    ]
+  },
+  {
+    "id": "eval-coding-lru-cache-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Design an LRU cache API (get/put). Describe data structures.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:LRU"
+    ]
+  },
+  {
+    "id": "eval-coding-lru-cache-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Design an LRU cache API (get/put). Describe data structures. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:LRU"
+    ]
+  },
+  {
+    "id": "eval-coding-lru-cache-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Design an LRU cache API (get/put). Describe data structures. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:LRU"
+    ]
+  },
+  {
+    "id": "eval-coding-lru-cache-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Design an LRU cache API (get/put). Describe data structures. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:LRU"
+    ]
+  },
+  {
+    "id": "eval-coding-lru-cache-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Design an LRU cache API (get/put). Describe data structures. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:LRU"
+    ]
+  },
+  {
+    "id": "eval-coding-max-subarray-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Explain Kadane's algorithm for maximum subarray sum.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:subarray"
+    ]
+  },
+  {
+    "id": "eval-coding-max-subarray-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Explain Kadane's algorithm for maximum subarray sum. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:subarray"
+    ]
+  },
+  {
+    "id": "eval-coding-max-subarray-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Explain Kadane's algorithm for maximum subarray sum. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:subarray"
+    ]
+  },
+  {
+    "id": "eval-coding-max-subarray-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Explain Kadane's algorithm for maximum subarray sum. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:subarray"
+    ]
+  },
+  {
+    "id": "eval-coding-max-subarray-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Explain Kadane's algorithm for maximum subarray sum. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:subarray"
+    ]
+  },
+  {
+    "id": "eval-coding-memoize-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Add memoization to an expensive pure function.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:cache"
+    ]
+  },
+  {
+    "id": "eval-coding-memoize-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Add memoization to an expensive pure function. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:cache"
+    ]
+  },
+  {
+    "id": "eval-coding-memoize-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Add memoization to an expensive pure function. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:cache"
+    ]
+  },
+  {
+    "id": "eval-coding-memoize-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Add memoization to an expensive pure function. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:cache"
+    ]
+  },
+  {
+    "id": "eval-coding-memoize-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Add memoization to an expensive pure function. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:cache"
+    ]
+  },
+  {
+    "id": "eval-coding-merge-sorted-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Merge two sorted arrays into one sorted array. Describe algorithm.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:merge"
+    ]
+  },
+  {
+    "id": "eval-coding-merge-sorted-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Merge two sorted arrays into one sorted array. Describe algorithm. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:merge"
+    ]
+  },
+  {
+    "id": "eval-coding-merge-sorted-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Merge two sorted arrays into one sorted array. Describe algorithm. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:merge"
+    ]
+  },
+  {
+    "id": "eval-coding-merge-sorted-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Merge two sorted arrays into one sorted array. Describe algorithm. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:merge"
+    ]
+  },
+  {
+    "id": "eval-coding-merge-sorted-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Merge two sorted arrays into one sorted array. Describe algorithm. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:merge"
+    ]
+  },
+  {
+    "id": "eval-coding-palindrome-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Check if a string is a palindrome ignoring case and non-alphanumeric.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:palindrome"
+    ]
+  },
+  {
+    "id": "eval-coding-palindrome-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Check if a string is a palindrome ignoring case and non-alphanumeric. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:palindrome"
+    ]
+  },
+  {
+    "id": "eval-coding-palindrome-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Check if a string is a palindrome ignoring case and non-alphanumeric. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:palindrome"
+    ]
+  },
+  {
+    "id": "eval-coding-palindrome-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Check if a string is a palindrome ignoring case and non-alphanumeric. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:palindrome"
+    ]
+  },
+  {
+    "id": "eval-coding-palindrome-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Check if a string is a palindrome ignoring case and non-alphanumeric. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:palindrome"
+    ]
+  },
+  {
+    "id": "eval-coding-promise-all-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement promiseAll(iterable) like Promise.all.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Promise"
+    ]
+  },
+  {
+    "id": "eval-coding-promise-all-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement promiseAll(iterable) like Promise.all. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Promise"
+    ]
+  },
+  {
+    "id": "eval-coding-promise-all-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement promiseAll(iterable) like Promise.all. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Promise"
+    ]
+  },
+  {
+    "id": "eval-coding-promise-all-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement promiseAll(iterable) like Promise.all. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Promise"
+    ]
+  },
+  {
+    "id": "eval-coding-promise-all-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement promiseAll(iterable) like Promise.all. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:Promise"
+    ]
+  },
+  {
+    "id": "eval-coding-reverse-string-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write a function reverseString(s) for a string array in-place. Explain complexity.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-reverse-string-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write a function reverseString(s) for a string array in-place. Explain complexity. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-reverse-string-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write a function reverseString(s) for a string array in-place. Explain complexity. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-reverse-string-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write a function reverseString(s) for a string array in-place. Explain complexity. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-reverse-string-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Write a function reverseString(s) for a string array in-place. Explain complexity. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:O(n)"
+    ]
+  },
+  {
+    "id": "eval-coding-throttle-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement throttle(fn, limit) and contrast with debounce.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:throttle"
+    ]
+  },
+  {
+    "id": "eval-coding-throttle-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement throttle(fn, limit) and contrast with debounce. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:throttle"
+    ]
+  },
+  {
+    "id": "eval-coding-throttle-v2",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement throttle(fn, limit) and contrast with debounce. Include unit test cases.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:throttle"
+    ]
+  },
+  {
+    "id": "eval-coding-throttle-v3",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement throttle(fn, limit) and contrast with debounce. Mention Big-O.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:throttle"
+    ]
+  },
+  {
+    "id": "eval-coding-throttle-v4",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement throttle(fn, limit) and contrast with debounce. Show edge case handling.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:throttle"
+    ]
+  },
+  {
+    "id": "eval-coding-two-sum-v0",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement twoSum(nums, target) returning indices. Explain approach briefly.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:map"
+    ]
+  },
+  {
+    "id": "eval-coding-two-sum-v1",
+    "tier": "eval",
+    "category": "coding-js",
+    "mode": "ask",
+    "prompt": "Implement twoSum(nums, target) returning indices. Explain approach briefly. Use TypeScript types in the explanation.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "stdout_contains:map"
+    ]
+  },
+  {
     "id": "eval-coding-two-sum-v2",
     "tier": "eval",
     "category": "coding-js",
@@ -405,746 +1197,6 @@
       "exit_0",
       "stdout_not_empty",
       "stdout_contains:ts"
-    ]
-  },
-  {
-    "id": "eval-gaia-fact-6-v2",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "What file extension does TypeScript use?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:ts"
-    ]
-  },
-  {
-    "id": "eval-gaia-fact-6-v3",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "What file extension does TypeScript use?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:ts"
-    ]
-  },
-  {
-    "id": "eval-gaia-fact-7-v0",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "What command lists git commits?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:git log"
-    ]
-  },
-  {
-    "id": "eval-gaia-fact-7-v1",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "What command lists git commits?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:git log"
-    ]
-  },
-  {
-    "id": "eval-gaia-fact-7-v2",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "What command lists git commits?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:git log"
-    ]
-  },
-  {
-    "id": "eval-gaia-fact-7-v3",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "What command lists git commits?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:git log"
-    ]
-  },
-  {
-    "id": "eval-gaia-fact-8-v0",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "What port does Ollama default API use?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:11434"
-    ]
-  },
-  {
-    "id": "eval-gaia-fact-8-v1",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "What port does Ollama default API use?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:11434"
-    ]
-  },
-  {
-    "id": "eval-gaia-fact-8-v2",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "What port does Ollama default API use?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:11434"
-    ]
-  },
-  {
-    "id": "eval-gaia-fact-8-v3",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "What port does Ollama default API use?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:11434"
-    ]
-  },
-  {
-    "id": "eval-gaia-fact-9-v0",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "What is JSON short for?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:JavaScript"
-    ]
-  },
-  {
-    "id": "eval-gaia-fact-9-v1",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "What is JSON short for?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:JavaScript"
-    ]
-  },
-  {
-    "id": "eval-gaia-fact-9-v2",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "What is JSON short for?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:JavaScript"
-    ]
-  },
-  {
-    "id": "eval-gaia-fact-9-v3",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "What is JSON short for?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "stdout_contains:JavaScript"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-0-v0",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Find package.json in a Node project and explain how to run tests — describe steps without executing. (variant 1)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-0-v1",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Find package.json in a Node project and explain how to run tests — describe steps without executing. (variant 2)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-0-v2",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Find package.json in a Node project and explain how to run tests — describe steps without executing. (variant 3)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-0-v3",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Find package.json in a Node project and explain how to run tests — describe steps without executing. (variant 4)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-0-v4",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Find package.json in a Node project and explain how to run tests — describe steps without executing. (variant 5)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-0-v5",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Find package.json in a Node project and explain how to run tests — describe steps without executing. (variant 6)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-0-v6",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Find package.json in a Node project and explain how to run tests — describe steps without executing. (variant 7)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-0-v7",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Find package.json in a Node project and explain how to run tests — describe steps without executing. (variant 8)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-1-v0",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Outline how to verify a React component renders using browser devtools. (variant 1)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-1-v1",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Outline how to verify a React component renders using browser devtools. (variant 2)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-1-v2",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Outline how to verify a React component renders using browser devtools. (variant 3)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-1-v3",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Outline how to verify a React component renders using browser devtools. (variant 4)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-1-v4",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Outline how to verify a React component renders using browser devtools. (variant 5)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-1-v5",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Outline how to verify a React component renders using browser devtools. (variant 6)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-1-v6",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Outline how to verify a React component renders using browser devtools. (variant 7)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-1-v7",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Outline how to verify a React component renders using browser devtools. (variant 8)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-2-v0",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Describe how to add a health endpoint to an Express app and verify with curl. (variant 1)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-2-v1",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Describe how to add a health endpoint to an Express app and verify with curl. (variant 2)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-2-v2",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Describe how to add a health endpoint to an Express app and verify with curl. (variant 3)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-2-v3",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Describe how to add a health endpoint to an Express app and verify with curl. (variant 4)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-2-v4",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Describe how to add a health endpoint to an Express app and verify with curl. (variant 5)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-2-v5",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Describe how to add a health endpoint to an Express app and verify with curl. (variant 6)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-2-v6",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Describe how to add a health endpoint to an Express app and verify with curl. (variant 7)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-2-v7",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Describe how to add a health endpoint to an Express app and verify with curl. (variant 8)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-3-v0",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Plan reading CHANGELOG, package.json, and src/ to assess release readiness. (variant 1)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-3-v1",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Plan reading CHANGELOG, package.json, and src/ to assess release readiness. (variant 2)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-3-v2",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Plan reading CHANGELOG, package.json, and src/ to assess release readiness. (variant 3)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-3-v3",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Plan reading CHANGELOG, package.json, and src/ to assess release readiness. (variant 4)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-3-v4",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Plan reading CHANGELOG, package.json, and src/ to assess release readiness. (variant 5)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-3-v5",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Plan reading CHANGELOG, package.json, and src/ to assess release readiness. (variant 6)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-3-v6",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Plan reading CHANGELOG, package.json, and src/ to assess release readiness. (variant 7)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-3-v7",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Plan reading CHANGELOG, package.json, and src/ to assess release readiness. (variant 8)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-4-v0",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Explain how to use session logs in .mitii/logs for debugging agent runs. (variant 1)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-4-v1",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Explain how to use session logs in .mitii/logs for debugging agent runs. (variant 2)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-4-v2",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Explain how to use session logs in .mitii/logs for debugging agent runs. (variant 3)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-4-v3",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Explain how to use session logs in .mitii/logs for debugging agent runs. (variant 4)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-4-v4",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Explain how to use session logs in .mitii/logs for debugging agent runs. (variant 5)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-4-v5",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Explain how to use session logs in .mitii/logs for debugging agent runs. (variant 6)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-4-v6",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Explain how to use session logs in .mitii/logs for debugging agent runs. (variant 7)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-multistep-4-v7",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "plan",
-    "prompt": "Explain how to use session logs in .mitii/logs for debugging agent runs. (variant 8)",
-    "verify": [
-      "exit_0",
-      "json_path:steps"
-    ]
-  },
-  {
-    "id": "eval-gaia-research-1",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "Research-style question #1: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-gaia-research-10",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "Research-style question #10: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-gaia-research-11",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "Research-style question #11: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-gaia-research-12",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "Research-style question #12: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-gaia-research-13",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "Research-style question #13: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-gaia-research-14",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "Research-style question #14: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-gaia-research-15",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "Research-style question #15: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-gaia-research-16",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "Research-style question #16: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-gaia-research-17",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "Research-style question #17: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-gaia-research-18",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "Research-style question #18: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-gaia-research-19",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "Research-style question #19: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-gaia-research-2",
-    "tier": "eval",
-    "category": "gaia",
-    "mode": "ask",
-    "prompt": "Research-style question #2: Compare two strategies for eval harness design (subprocess CLI vs in-process host).",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
     ]
   }
 ]

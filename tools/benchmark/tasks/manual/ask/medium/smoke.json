@@ -1,0 +1,26 @@
+[
+  {
+    "id": "ask-medium-smoke-monorepo-shared-usage",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "retrieval",
+    "tags": ["smoke", "infra", "monorepo"],
+    "fixture": "monorepo",
+    "prompt": "Which packages depend on @mono/shared and what do they use from it?",
+    "rationale": "Infra smoke case: proves the new monorepo fixture is reachable and cross-package questions route through ask mode.",
+    "verify": ["exit_0", "stdout_contains:Echo:"]
+  },
+  {
+    "id": "ask-medium-smoke-saas-api-payments",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "retrieval",
+    "tags": ["smoke", "infra"],
+    "fixture": "saas-api",
+    "prompt": "Where is payment retry logic implemented in this codebase?",
+    "rationale": "Infra smoke case: exercises the larger saas-api fixture used for retrieval-heavy questions.",
+    "verify": ["exit_0", "stdout_contains:Echo:"]
+  }
+]

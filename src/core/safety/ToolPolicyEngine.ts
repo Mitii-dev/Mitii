@@ -1,3 +1,5 @@
+import { existsSync, statSync } from 'fs';
+import { isAbsolute } from 'path';
 import { isReadOnlyCommand } from '../plans/PlanActEngine';
 
 export type PolicyDecision = 'allow' | 'require_approval' | 'block';
@@ -15,11 +17,15 @@ const DANGEROUS_COMMANDS = [
 ];
 
 const READ_ONLY_TOOLS = new Set([
-  'read_file', 'read_files', 'list_files', 'search', 'search_batch', 'repo_map',
-  'retrieve_context', 'git_diff', 'diagnostics', 'memory_search', 'spawn_research_agent',
+  'read_file', 'read_files', 'resolve_path', 'list_files', 'search', 'search_batch', 'repo_map',
+  'retrieve_context', 'git_diff', 'diagnostics', 'memory_search', 'spawn_research_agent', 'spawn_subagent',
   'save_task_state', 'search_script_catalog', 'execute_workspace_script', 'use_skill',
   'fetch_web', 'ask_question', 'mark_step_complete', 'propose_plan_mutation',
 ]);
+
+/** Read tools that take a workspace-relative path — checked against the workspace
+ *  boundary so reaching outside it goes through approval instead of being silently allowed. */
+const PATH_READ_TOOLS = new Set(['read_file', 'read_files']);
 
 const WRITE_TOOLS = new Set(['write_file', 'apply_patch', 'memory_write']);
 const SHELL_TOOLS = new Set(['run_command']);
@@ -38,7 +44,9 @@ export class ToolPolicyEngine {
   constructor(
     private safetyConfig: SafetyConfig,
     private readonly isIgnoredPath: (path: string) => boolean,
-    private readonly isWorkspaceTrusted: () => boolean = () => true
+    private readonly isWorkspaceTrusted: () => boolean = () => true,
+    /** Resolves a raw path to a workspace-relative path, or null if it falls outside the workspace. */
+    private readonly resolveWorkspaceRelPath: (path: string) => string | null = () => null
   ) {}
 
   updateSafetyConfig(safetyConfig: SafetyConfig): void {
@@ -68,6 +76,15 @@ export class ToolPolicyEngine {
       }
       if (toolName === 'ask_question') {
         return { decision: 'require_approval', reason: 'Clarifying question requires user response' };
+      }
+      if (PATH_READ_TOOLS.has(toolName)) {
+        const externalPath = this.findExternalFilePath(toolName, input);
+        if (externalPath) {
+          return {
+            decision: 'require_approval',
+            reason: `Reading a file outside the workspace requires approval: ${externalPath}`,
+          };
+        }
       }
       return { decision: 'allow', reason: 'Read-only tool' };
     }
@@ -101,6 +118,32 @@ export class ToolPolicyEngine {
       return { decision: 'allow', reason: 'Unknown tool auto-approved by policy' };
     }
     return { decision: 'require_approval', reason: 'Unknown tool requires approval' };
+  }
+
+  /** Returns the raw path if a read tool targets a real, existing file outside the
+   *  workspace — null otherwise (missing/typo'd paths still fall through to the
+   *  tool's normal "not found" error rather than prompting for approval). */
+  private findExternalFilePath(toolName: string, input: Record<string, unknown>): string | undefined {
+    const candidates: string[] = [];
+    if (toolName === 'read_file' && typeof input.path === 'string') {
+      candidates.push(input.path);
+    }
+    if (toolName === 'read_files' && Array.isArray(input.paths)) {
+      candidates.push(...input.paths.filter((p): p is string => typeof p === 'string'));
+    }
+
+    for (const rawPath of candidates) {
+      if (!isAbsolute(rawPath)) continue;
+      if (this.resolveWorkspaceRelPath(rawPath) !== null) continue;
+      try {
+        if (existsSync(rawPath) && statSync(rawPath).isFile()) {
+          return rawPath;
+        }
+      } catch {
+        // Not a real file — leave it to the tool's normal not-found handling.
+      }
+    }
+    return undefined;
   }
 
   private requiresWriteApproval(): boolean {

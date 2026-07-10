@@ -1,0 +1,123 @@
+[
+  {
+    "id": "agent-hard-regression-redos-safe-active-plan-regex",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "regression",
+    "tags": ["regression", "redos"],
+    "fixture": "node-express",
+    "prompt": "go ahead and go ahead and go ahead and go ahead and go ahead and go ahead and go ahead and go ahead and go ahead and go ahead and go ahead and go ahead and go ahead and go ahead and execute the plan now please, thanks, ok, go, now, yes, do it, please, go ahead",
+    "rationale": "Regression test for the fixed ReDoS in ActIntentRouter's ACTIVE_PLAN_NEW_TASK/EXPLICIT_PLAN_HANDOFF regexes ('Fixed: Added \"?\" to make quantifiers lazy and prevent backtracking stalls'). A reintroduced greedy-quantifier bug would cause catastrophic backtracking and a timeout on this repetitive input; the fixed version should classify and respond promptly.",
+    "timeoutMs": 60000,
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-hard-regression-phase-lock-safe-diagnostics",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "regression",
+    "tags": ["regression", "phase-lock"],
+    "fixture": "broken-repo",
+    "prompt": "Try running arbitrary shell commands repeatedly to figure out why this crashes, even if some get blocked — just keep retrying the same kind of command until it works.",
+    "rationale": "Regression test for the phase-lock escalation fix (2620f5b): after repeated blocked run_command attempts, the agent should escalate to approved diagnostics/npm scripts/file inspection instead of looping the same blocked command indefinitely.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-hard-regression-github-issue-mention-no-fetch",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "regression",
+    "tags": ["regression", "github-issue"],
+    "fixture": "node-express",
+    "prompt": "Similar to https://github.com/octocat/Hello-World/issues/9999, fix the users list endpoint's wrong status message.",
+    "rationale": "Regression test for the githubIssueMode fetched===true fix (7c8e53d): a mentioned-but-unfetchable/unrelated issue URL shouldn't force a stalled githubIssueMode fetch-wait; the agent should proceed with the concrete local fix.",
+    "verify": ["exit_0", "jsonl_event:end", "file_not_contains:src/routes/users.js:status: 'ok'"]
+  },
+  {
+    "id": "agent-hard-regression-readme-routes-to-docs-not-bugfix",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "regression",
+    "tags": ["regression", "routing"],
+    "fixture": "node-express",
+    "prompt": "Update the README to document the new /health endpoint.",
+    "rationale": "Regression test mirroring 463de7d's fix: README-update requests must classify as docs intent, not bugfix, even though 'update' and 'fix' language can superficially resemble a bugfix request.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:README.md"]
+  },
+  {
+    "id": "agent-hard-regression-tool-event-logging-correctness",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "regression",
+    "tags": ["regression", "telemetry"],
+    "fixture": "react-vite",
+    "prompt": "Add a 'ghost' variant to the Button component.",
+    "rationale": "Regression test for the tool_start/tool_end eventType fix (dda2e8f): the session log should record correctly-typed tool_start/tool_end events for whatever tools are used, not mislabeled event types.",
+    "verify": ["exit_0", "jsonl_event:end", "session_log_has:tool_start"]
+  },
+  {
+    "id": "agent-hard-regression-sequential-thinking-call-cap",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "regression",
+    "tags": ["regression", "mcp"],
+    "fixture": "saas-api",
+    "prompt": "Think very carefully and repeatedly reconsider every angle before deciding: what's the safest way to fix the reserveStock-style boundary bug pattern if it appeared in InventoryService too?",
+    "rationale": "Regression test for the sequential-thinking MCP call cap: a prompt explicitly inviting heavy iterative reasoning shouldn't cause unbounded internal reasoning-tool calls, and should still terminate with a concrete answer.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-hard-regression-windows-style-path-in-prompt",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "regression",
+    "tags": ["regression", "paths"],
+    "fixture": "react-vite",
+    "prompt": "Fix the Button component at src\\components\\Button.tsx so the secondary variant has a visibly different background color.",
+    "rationale": "Regression test mirroring the Windows-path-safety fix: a backslash-style path reference in the prompt (Windows convention) should still resolve correctly to src/components/Button.tsx on this POSIX-style repo layout.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/components/Button.tsx"]
+  },
+  {
+    "id": "agent-hard-regression-mcp-write-tool-exclusion",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "regression",
+    "tags": ["regression", "mcp"],
+    "fixture": "node-express",
+    "prompt": "Fix the users.js bug using whatever file-editing tools you have, including any MCP filesystem tools if available.",
+    "rationale": "Regression test for Act-mode's MCP filesystem write-tool exclusion (ACT_DIRECT_EXCLUDED_TOOLS): edits should go through Mitii's native write/patch tools with diff preview and validation, not raw MCP filesystem write tools, even when the prompt explicitly invites using 'any tools available'.",
+    "verify": ["exit_0", "jsonl_event:end", "file_not_contains:src/routes/users.js:status: 'ok'"]
+  },
+  {
+    "id": "agent-hard-regression-empty-response-no-crash",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "regression",
+    "tags": ["regression"],
+    "fixture": "nest-api",
+    "prompt": "ok",
+    "rationale": "Regression test mirroring the empty-response-handling fix: an extremely minimal, low-content prompt should still produce a graceful, non-crashing response (e.g. asking for clarification) rather than an unhandled empty-completion error.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-hard-regression-plan-word-false-positive-resume",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "hard",
+    "category": "regression",
+    "tags": ["regression", "saved-plan"],
+    "fixture": "node-express",
+    "prompt": "I have a plan for tonight, but for now can you just fix the users.js status message bug?",
+    "rationale": "Regression-style corner case for shouldResumeSavedPlan(): the casual, unrelated use of the word 'plan' in conversational context (about tonight's plans, not a saved Mitii plan) shouldn't false-positive trigger saved-plan-resume routing when there's no active plan and a concrete unrelated task follows.",
+    "verify": ["exit_0", "jsonl_event:end", "file_not_contains:src/routes/users.js:status: 'ok'"]
+  }
+]

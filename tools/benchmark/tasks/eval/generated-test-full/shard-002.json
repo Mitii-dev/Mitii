@@ -1,5 +1,196 @@
 [
   {
+    "id": "eval-ask-next-app-package-json-t12",
+    "tier": "eval",
+    "category": "fixture-ask-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Give an architecture overview of this Next.js App Router codebase.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:package.json"
+    ]
+  },
+  {
+    "id": "eval-ask-next-app-package-json-t13",
+    "tier": "eval",
+    "category": "fixture-ask-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "What are the main entry points and request/data flows?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:package.json"
+    ]
+  },
+  {
+    "id": "eval-ask-next-app-package-json-t14",
+    "tier": "eval",
+    "category": "fixture-ask-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Which files would you read to onboard a new engineer to this repo?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:package.json"
+    ]
+  },
+  {
+    "id": "eval-ask-next-app-package-json-t2",
+    "tier": "eval",
+    "category": "fixture-ask-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "How does package.json connect to other modules in this codebase?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:package.json"
+    ]
+  },
+  {
+    "id": "eval-ask-next-app-package-json-t3",
+    "tier": "eval",
+    "category": "fixture-ask-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "List the key functions, classes, or routes defined in package.json.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:package.json"
+    ]
+  },
+  {
+    "id": "eval-ask-next-app-package-json-t4",
+    "tier": "eval",
+    "category": "fixture-ask-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "What dependencies or imports does package.json use?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:package.json"
+    ]
+  },
+  {
+    "id": "eval-ask-next-app-package-json-t5",
+    "tier": "eval",
+    "category": "fixture-ask-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Describe error handling patterns visible in or around package.json.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:package.json"
+    ]
+  },
+  {
+    "id": "eval-ask-next-app-package-json-t6",
+    "tier": "eval",
+    "category": "fixture-ask-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "What would you inspect first in package.json when debugging a runtime issue?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:package.json"
+    ]
+  },
+  {
+    "id": "eval-ask-next-app-package-json-t7",
+    "tier": "eval",
+    "category": "fixture-ask-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Summarize the public API surface exposed via package.json.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:package.json"
+    ]
+  },
+  {
+    "id": "eval-ask-next-app-package-json-t8",
+    "tier": "eval",
+    "category": "fixture-ask-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Which tests (if any) cover behavior related to package.json?",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:package.json"
+    ]
+  },
+  {
+    "id": "eval-ask-next-app-package-json-t9",
+    "tier": "eval",
+    "category": "fixture-ask-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "What refactoring opportunities exist in package.json? Be specific to the file.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty",
+      "file_exists:package.json"
+    ]
+  },
+  {
+    "id": "eval-ask-next-app-symbol-layout",
+    "tier": "eval",
+    "category": "fixture-ask-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Where is \"layout\" defined or used in this codebase? Explain its role.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-ask-next-app-symbol-metadata",
+    "tier": "eval",
+    "category": "fixture-ask-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Where is \"metadata\" defined or used in this codebase? Explain its role.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-ask-next-app-symbol-next-js",
+    "tier": "eval",
+    "category": "fixture-ask-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Where is \"Next.js\" defined or used in this codebase? Explain its role.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
+    "id": "eval-ask-next-app-symbol-page",
+    "tier": "eval",
+    "category": "fixture-ask-nextjs",
+    "mode": "ask",
+    "fixture": "next-app",
+    "prompt": "Where is \"page\" defined or used in this codebase? Explain its role.",
+    "verify": [
+      "exit_0",
+      "stdout_not_empty"
+    ]
+  },
+  {
     "id": "eval-ask-node-express-package-json-t0",
     "tier": "eval",
     "category": "fixture-ask-node",
@@ -1098,193 +1289,6 @@
       "exit_0",
       "stdout_not_empty",
       "file_exists:src/components/Button.tsx"
-    ]
-  },
-  {
-    "id": "eval-ask-react-vite-src-components-Button-tsx-t14",
-    "tier": "eval",
-    "category": "fixture-ask-react",
-    "mode": "ask",
-    "fixture": "react-vite",
-    "prompt": "Which files would you read to onboard a new engineer to this repo?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:src/components/Button.tsx"
-    ]
-  },
-  {
-    "id": "eval-ask-react-vite-src-components-Button-tsx-t2",
-    "tier": "eval",
-    "category": "fixture-ask-react",
-    "mode": "ask",
-    "fixture": "react-vite",
-    "prompt": "How does src/components/Button.tsx connect to other modules in this codebase?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:src/components/Button.tsx"
-    ]
-  },
-  {
-    "id": "eval-ask-react-vite-src-components-Button-tsx-t3",
-    "tier": "eval",
-    "category": "fixture-ask-react",
-    "mode": "ask",
-    "fixture": "react-vite",
-    "prompt": "List the key functions, classes, or routes defined in src/components/Button.tsx.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:src/components/Button.tsx"
-    ]
-  },
-  {
-    "id": "eval-ask-react-vite-src-components-Button-tsx-t4",
-    "tier": "eval",
-    "category": "fixture-ask-react",
-    "mode": "ask",
-    "fixture": "react-vite",
-    "prompt": "What dependencies or imports does src/components/Button.tsx use?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:src/components/Button.tsx"
-    ]
-  },
-  {
-    "id": "eval-ask-react-vite-src-components-Button-tsx-t5",
-    "tier": "eval",
-    "category": "fixture-ask-react",
-    "mode": "ask",
-    "fixture": "react-vite",
-    "prompt": "Describe error handling patterns visible in or around src/components/Button.tsx.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:src/components/Button.tsx"
-    ]
-  },
-  {
-    "id": "eval-ask-react-vite-src-components-Button-tsx-t6",
-    "tier": "eval",
-    "category": "fixture-ask-react",
-    "mode": "ask",
-    "fixture": "react-vite",
-    "prompt": "What would you inspect first in src/components/Button.tsx when debugging a runtime issue?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:src/components/Button.tsx"
-    ]
-  },
-  {
-    "id": "eval-ask-react-vite-src-components-Button-tsx-t7",
-    "tier": "eval",
-    "category": "fixture-ask-react",
-    "mode": "ask",
-    "fixture": "react-vite",
-    "prompt": "Summarize the public API surface exposed via src/components/Button.tsx.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:src/components/Button.tsx"
-    ]
-  },
-  {
-    "id": "eval-ask-react-vite-src-components-Button-tsx-t8",
-    "tier": "eval",
-    "category": "fixture-ask-react",
-    "mode": "ask",
-    "fixture": "react-vite",
-    "prompt": "Which tests (if any) cover behavior related to src/components/Button.tsx?",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:src/components/Button.tsx"
-    ]
-  },
-  {
-    "id": "eval-ask-react-vite-src-components-Button-tsx-t9",
-    "tier": "eval",
-    "category": "fixture-ask-react",
-    "mode": "ask",
-    "fixture": "react-vite",
-    "prompt": "What refactoring opportunities exist in src/components/Button.tsx? Be specific to the file.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty",
-      "file_exists:src/components/Button.tsx"
-    ]
-  },
-  {
-    "id": "eval-ask-react-vite-symbol-button",
-    "tier": "eval",
-    "category": "fixture-ask-react",
-    "mode": "ask",
-    "fixture": "react-vite",
-    "prompt": "Where is \"Button\" defined or used in this codebase? Explain its role.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-ask-react-vite-symbol-props",
-    "tier": "eval",
-    "category": "fixture-ask-react",
-    "mode": "ask",
-    "fixture": "react-vite",
-    "prompt": "Where is \"props\" defined or used in this codebase? Explain its role.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-ask-react-vite-symbol-react",
-    "tier": "eval",
-    "category": "fixture-ask-react",
-    "mode": "ask",
-    "fixture": "react-vite",
-    "prompt": "Where is \"React\" defined or used in this codebase? Explain its role.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-ask-react-vite-symbol-variant",
-    "tier": "eval",
-    "category": "fixture-ask-react",
-    "mode": "ask",
-    "fixture": "react-vite",
-    "prompt": "Where is \"variant\" defined or used in this codebase? Explain its role.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-coding-algo-1",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Solve: Given an array of integers, problem #1 — find the missing number. Explain approach and complexity.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
-    ]
-  },
-  {
-    "id": "eval-coding-algo-10",
-    "tier": "eval",
-    "category": "coding-js",
-    "mode": "ask",
-    "prompt": "Solve: Given an array of integers, problem #10 — find the second largest. Explain approach and complexity.",
-    "verify": [
-      "exit_0",
-      "stdout_not_empty"
     ]
   }
 ]

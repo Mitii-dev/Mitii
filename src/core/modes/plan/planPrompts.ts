@@ -2,6 +2,9 @@ import type { ProjectCatalog } from '../ask/askTypes';
 import { formatProjectCatalog } from '../ask/ProjectCatalog';
 import type { PlanRoute } from './planTypes';
 import type { AskScopeResolution } from '../ask/askTypes';
+import { createLogger } from '../../telemetry/Logger';
+
+const log = createLogger('PlanPrompts');
 
 export function buildPlanPromptContext(
   userMessage: string,
@@ -49,5 +52,7 @@ export function buildPlanPromptContext(
   }
 
   lines.push('', `Original Plan request: ${userMessage}`);
-  return lines.join('\n');
+  const context = lines.join('\n');
+  log.debug('Built plan prompt context', { chars: context.length, scopeStatus: scope.status });
+  return context;
 }

@@ -1,0 +1,98 @@
+[
+  {
+    "id": "ask-medium-saas-api-payment-retry-location",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "retrieval",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Where is the logic that retries a failed payment, and what happens after MAX_RETRY_ATTEMPTS is reached?",
+    "rationale": "Requires finding retryPayment in payments.service.ts and reading the MAX_RETRY_ATTEMPTS threshold logic, not just the method name.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:retryPayment", "file_contains:src/modules/payments/payments.service.ts:MAX_RETRY_ATTEMPTS"]
+  },
+  {
+    "id": "ask-medium-saas-api-webhook-retry-vs-payment-retry",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "retrieval",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "This codebase has two different retry mechanisms: one for payments and one for webhook delivery. How do they differ?",
+    "rationale": "Forces retrieval across two modules (payments.service.ts retryPayment vs webhooks.service.ts retryDelivery) and a compare/contrast answer instead of describing just one.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:retryPayment", "stdout_contains:retryDelivery"]
+  },
+  {
+    "id": "ask-medium-saas-api-cart-checkout-flow",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "retrieval",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "What does checkoutCart do, and which other module's method does it hand off to for actually creating the order?",
+    "rationale": "cart.service.ts's checkoutCart returns { orderId }, implying a relationship with orders.service.ts's convertCartToOrder — tests whether the model connects the two rather than describing cart in isolation.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:checkoutCart", "file_exists:src/modules/cart/cart.service.ts"]
+  },
+  {
+    "id": "ask-medium-saas-api-inventory-reservation",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "retrieval",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "What is the pair of methods used to reserve and release stock, and which module owns them?",
+    "rationale": "Tests finding reserveStock/releaseStock in inventory.service.ts as a matched pair.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:reserveStock", "stdout_contains:releaseStock"]
+  },
+  {
+    "id": "ask-medium-saas-api-subscription-proration",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "retrieval",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "How does this codebase handle a subscription plan upgrade mid-cycle?",
+    "rationale": "Tests locating prorateUpgrade in subscriptions.service.ts, a less obviously-named method than 'upgrade'.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:prorateUpgrade", "file_exists:src/modules/subscriptions/subscriptions.service.ts"]
+  },
+  {
+    "id": "ask-medium-saas-api-support-ticket-lifecycle",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "retrieval",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "What states can a support ticket move through, based on the methods SupportTicketsService exposes?",
+    "rationale": "Tests inferring a lifecycle (create -> escalate -> close) from method names/behavior rather than a literal state enum.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:escalateTicket", "stdout_contains:closeTicket"]
+  },
+  {
+    "id": "ask-medium-saas-api-search-index-rebuild",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "retrieval",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "If product data changes in bulk, what should be called to keep search results consistent?",
+    "rationale": "Tests connecting a hypothetical operational scenario to the concrete rebuildSearchIndex method in search.service.ts.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:rebuildSearchIndex"]
+  },
+  {
+    "id": "ask-medium-saas-api-admin-impersonation-audit",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "retrieval",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "When an admin impersonates a user, is that action recorded anywhere for accountability?",
+    "rationale": "Requires connecting admin.service.ts's impersonateUser to audit-log.service.ts's recordAuditEntry/AuditEntry concept across two modules that don't import each other in this fixture — tests honest reasoning about whether a real link exists in code versus just asserting one should exist.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:impersonateUser"]
+  }
+]

@@ -12,7 +12,9 @@ import { ACT_SKILL_TOOL_GUIDANCE } from '../modes/agent/actSkillRouting';
 
 const ASK_TOOL_GUIDANCE = `
 ASK MODE TOOLS — read-only exploration only:
+- Use resolve_path when the exact file path is uncertain; read_file auto-resolves high-confidence misses.
 - Use read_file/read_files/search/search_batch/list_files/repo_map/retrieve_context before stating codebase facts.
+- Copy rel_path values from search results exactly — do not flatten folder/file layouts.
 - Batch independent reads in ONE turn (read_files max 12 paths; prefer 8-10).
 - Use git_diff and diagnostics when the question is about changes or errors.
 - Use run_command only for read-only inspection (rg, git status/diff/log, lint/test without --fix).
@@ -41,7 +43,9 @@ For concise profile requests, shorten the same structure instead of using a gene
 
 const TOOL_GUIDANCE = `
 TOOLS: You have tools to read files, search code, run commands, write files, and manage memory.
+- Use resolve_path before read_file when unsure of the exact path; read_file auto-resolves high-confidence misses.
 - Use read_file/read_files/search/search_batch/list_files to gather information before editing.
+- Copy rel_path values from search/resolve_path exactly — never invent flattened paths (e.g. fields/foo.tsx vs fields/foo/foo.tsx).
 - Tools named mcp__server__tool come from configured MCP servers. Treat them as external tools; inspect their names and arguments carefully.
 - Batch independent reads and searches in ONE turn (read_files, search_batch). read_files has a hard max of 12 paths per call; prefer 8-10 and split larger batches.
 - For audit/cleanup: use execute_workspace_script (audit-dependencies.mjs, audit-dead-code.sh) — NEVER spawn_research_agent for unused deps/imports/files.

@@ -1,0 +1,98 @@
+[
+  {
+    "id": "plan-medium-broken-repo-fix-both-issues",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["broken-repo"],
+    "fixture": "broken-repo",
+    "prompt": "Plan fixing both known issues in this repo (the startup crash and the failing test) in a single coordinated pass.",
+    "rationale": "Requires the plan to identify and sequence fixes for two independent, unrelated defects rather than only addressing one.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:TODO.md"]
+  },
+  {
+    "id": "plan-medium-broken-repo-db-module-design",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["broken-repo"],
+    "fixture": "broken-repo",
+    "prompt": "Plan what the missing src/db.js module should actually contain, given how it's used in src/index.js's reserve endpoint.",
+    "rationale": "Requires reading the call site (db.recordReservation(quantity)) to correctly infer the minimal interface the new module needs to expose.",
+    "verify": ["exit_0", "json_path:steps", "file_contains:src/index.js:db.recordReservation"]
+  },
+  {
+    "id": "plan-medium-broken-repo-safe-verification-strategy",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["broken-repo", "verification"],
+    "fixture": "broken-repo",
+    "prompt": "Plan how to verify the reserveStock fix is correct without introducing a new regression, including what other boundary cases should be tested.",
+    "rationale": "Tests whether the plan proposes additional boundary cases (e.g. quantity=0, quantity > stock) beyond just the one known failing case.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:test/orders.test.js"]
+  },
+  {
+    "id": "plan-medium-broken-repo-priority-tradeoff",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["broken-repo"],
+    "fixture": "broken-repo",
+    "prompt": "We only have time to fix one issue before the demo. Plan the fix for whichever issue is more urgent, and explain why you chose it.",
+    "rationale": "Requires a prioritization judgment call embedded in the plan's rationale (the startup crash blocks the demo entirely; the test failure doesn't), not an arbitrary choice.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-medium-broken-repo-support-doc-and-code-sync",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["broken-repo", "docs"],
+    "fixture": "broken-repo",
+    "prompt": "Plan updating SUPPORT.md and TODO.md together so they consistently describe both issues once they're fixed.",
+    "rationale": "Requires coordinating two doc files and sequencing them to happen only after the actual fixes, not before.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:SUPPORT.md"]
+  },
+  {
+    "id": "plan-medium-broken-repo-post-fix-hardening",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["broken-repo"],
+    "fixture": "broken-repo",
+    "prompt": "After fixing the two known issues, plan what preventive measure (lint rule, CI check, or test) would have caught each one earlier.",
+    "rationale": "Tests forward-looking root-cause prevention reasoning, not just the immediate fix, for two structurally different bug classes (a missing file vs. an off-by-one comparison).",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-medium-broken-repo-incremental-rollout",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["broken-repo"],
+    "fixture": "broken-repo",
+    "prompt": "Plan an incremental rollout: fix the crash first and ship it, then follow up with the test fix in a second change.",
+    "rationale": "Tests whether the plan respects an explicit two-phase delivery constraint instead of bundling both fixes into one step.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-medium-broken-repo-orders-route-plus-fix",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["broken-repo"],
+    "fixture": "broken-repo",
+    "prompt": "Plan adding a real Express route for reserveStock and fixing its boundary bug at the same time.",
+    "rationale": "Combines a new-feature request (wiring an unrouted function) with an existing-bug fix in one plan, testing correct sequencing between the two.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/routes/orders.js"]
+  }
+]

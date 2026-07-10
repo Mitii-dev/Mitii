@@ -1,0 +1,122 @@
+[
+  {
+    "id": "agent-easy-react-vite-danger-variant",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "react-vite",
+    "prompt": "Add a 'danger' variant to the Button component and use it once in App.tsx.",
+    "rationale": "Extends an existing union type with a clear, verifiable outcome.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/components/Button.tsx:danger", "file_contains:src/App.tsx:danger"]
+  },
+  {
+    "id": "agent-easy-react-vite-onclick-prop",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "react-vite",
+    "prompt": "Add an optional onClick prop to Button and wire it to the button element.",
+    "rationale": "Small, well-scoped prop addition spanning one component file.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/components/Button.tsx:onClick"]
+  },
+  {
+    "id": "agent-easy-react-vite-app-heading-text",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "react-vite",
+    "prompt": "Change the App component's heading text to 'Mitii Benchmark React App'.",
+    "rationale": "Trivial, unambiguous single-file text change.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/App.tsx:Mitii Benchmark React App"]
+  },
+  {
+    "id": "agent-easy-react-vite-button-test",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "testing",
+    "tags": ["single-file"],
+    "fixture": "react-vite",
+    "prompt": "Add a unit test for the Button component covering both the primary and secondary variants.",
+    "rationale": "Tests the agent notices the current test script is only a placeholder and sets up something real.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-easy-react-vite-duplicate-entry-cleanup",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "refactor",
+    "tags": ["corner-case"],
+    "fixture": "react-vite",
+    "prompt": "Remove the unused duplicate entry file (either main.ts or main.tsx, whichever index.html doesn't reference).",
+    "rationale": "Tests the agent correctly checks index.html's actual script reference (main.ts) before deleting the right one, not the one actually in use.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:index.html"]
+  },
+  {
+    "id": "agent-easy-react-vite-css-class-rename",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "refactor",
+    "tags": ["single-file"],
+    "fixture": "react-vite",
+    "prompt": "Rename the CSS class prefix from 'btn' to 'mitii-btn' in Button.tsx and index.css.",
+    "rationale": "Small cross-file rename within a 2-file scope, with a clear, checkable outcome.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/components/Button.tsx:mitii-btn"]
+  },
+  {
+    "id": "agent-easy-react-vite-props-default-export",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "refactor",
+    "tags": ["single-file"],
+    "fixture": "react-vite",
+    "prompt": "Export ButtonProps as a named export from Button.tsx if it isn't already, so other files can import the type directly.",
+    "rationale": "Tests the agent checks current export status before making a change (ButtonProps is already exported) rather than assuming work is needed.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/components/Button.tsx:export interface ButtonProps"]
+  },
+  {
+    "id": "agent-easy-react-vite-lint-script-real",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "tooling",
+    "tags": ["single-file"],
+    "fixture": "react-vite",
+    "prompt": "Update package.json's lint script description so it's clear it's currently a placeholder, without changing its behavior.",
+    "rationale": "Minimal metadata-only change; tests the agent doesn't overreach into a full ESLint setup when not asked.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:package.json"]
+  },
+  {
+    "id": "agent-easy-react-vite-components-readme-cleanup",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "docs",
+    "tags": ["single-file"],
+    "fixture": "react-vite",
+    "prompt": "Update src/components/README.md to also mention that new components should have accompanying tests.",
+    "rationale": "Docs-only edit to a file with pre-existing content; tests the agent preserves the existing content while adding the requested line.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/components/README.md:test"]
+  },
+  {
+    "id": "agent-easy-react-vite-index-css-reset",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["single-file"],
+    "fixture": "react-vite",
+    "prompt": "Add a simple box-sizing: border-box reset to index.css.",
+    "rationale": "Trivial, well-scoped CSS addition.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/index.css:border-box"]
+  }
+]

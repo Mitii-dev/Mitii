@@ -8,6 +8,7 @@ export const BUILTIN_MCP_SERVER_NAMES = [
   'memory',
   'sequential-thinking',
   'puppeteer',
+  'agentmemory',
 ] as const;
 
 export type BuiltinMcpServerName = (typeof BUILTIN_MCP_SERVER_NAMES)[number];
@@ -49,9 +50,27 @@ export function buildBuiltinMcpServers(workspace: string): Record<string, McpSer
     },
   };
 
+  servers.agentmemory = {
+    ...DEFAULT_SERVER_FIELDS,
+    command: '',
+    args: [],
+    type: 'streamable-http',
+    url: 'http://localhost:3111/mcp',
+    timeoutMs: 30_000,
+  };
+
   return servers;
 }
 
 export function isBuiltinMcpServerName(name: string): name is BuiltinMcpServerName {
   return (BUILTIN_MCP_SERVER_NAMES as readonly string[]).includes(name);
+}
+
+export async function checkAgentMemoryHealth(url = 'http://localhost:3111/agentmemory/livez'): Promise<boolean> {
+  try {
+    const response = await fetch(url, { method: 'GET' });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }

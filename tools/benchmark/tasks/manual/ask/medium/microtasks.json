@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ask-medium-microtask-commit-message-staged-fix",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "microtasks",
+    "tags": ["micro-task-routing"],
+    "fixture": "node-express",
+    "prompt": "Write a commit message for the fix to the users list endpoint.",
+    "rationale": "Regression-style case for microTaskRoutingEnabled: commit-message requests should route through minimal git context rather than the full agent loop, and should still produce a concise, conventional message.",
+    "verify": ["exit_0", "stdout_not_empty"]
+  },
+  {
+    "id": "ask-medium-microtask-changelog-entry",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "microtasks",
+    "tags": ["micro-task-routing"],
+    "fixture": "next-app",
+    "prompt": "Draft a changelog entry for adding the loading indicator to the home route.",
+    "rationale": "Tests changelog-entry micro-task routing against a fixture whose docs/loading-indicator.md already documents the feature it should summarize.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:loading"]
+  },
+  {
+    "id": "ask-medium-microtask-release-notes",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "microtasks",
+    "tags": ["micro-task-routing"],
+    "fixture": "saas-api",
+    "prompt": "Summarize release notes for a version bump covering the payments and webhooks modules.",
+    "rationale": "Tests whether a release-notes request stays scoped to the two named modules instead of summarizing all 17.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:payments"]
+  },
+  {
+    "id": "ask-medium-microtask-pr-description",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "microtasks",
+    "tags": ["micro-task-routing"],
+    "fixture": "monorepo",
+    "prompt": "Write a short pull request description for renaming validateEmail to isValidEmail.",
+    "rationale": "Tests a PR-description micro-task against a monorepo fixture, where a correct description should mention that the rename crosses package boundaries.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:validateEmail"]
+  },
+  {
+    "id": "ask-medium-microtask-not-actually-narrow",
+    "tier": "manual",
+    "mode": "ask",
+    "severity": "medium",
+    "category": "microtasks",
+    "tags": ["micro-task-routing", "corner-case"],
+    "fixture": "broken-repo",
+    "prompt": "Write a commit message, and also explain in detail why the whole test suite is failing and what the fix should be.",
+    "rationale": "Looks like a commit-message micro-task at a glance but actually bundles a full diagnostic request. Tests that the router doesn't over-narrow context and skip the real diagnostic work just because the message starts with 'write a commit message'.",
+    "verify": ["exit_0", "stdout_not_empty", "stdout_contains:reserveStock"]
+  }
+]

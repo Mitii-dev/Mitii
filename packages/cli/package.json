@@ -1,0 +1,24 @@
+{
+  "name": "mitii",
+  "version": "2.7.32",
+  "description": "Mitii native CLI launcher",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "bin": {
+    "mitii": "bin/mitii"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "optionalDependencies": {
+    "@mitii/cli-darwin-arm64": "2.7.32",
+    "@mitii/cli-darwin-x64": "2.7.32",
+    "@mitii/cli-linux-x64": "2.7.32",
+    "@mitii/cli-win32-x64": "2.7.32"
+  },
+  "scripts": {
+    "build:platform": "node scripts/build-platform.mjs",
+    "publish:npm": "node scripts/publish-npm.mjs"
+  }
+}

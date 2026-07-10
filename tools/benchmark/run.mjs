@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { verifyTask, summarizeVerifications } from './verify.mjs';
@@ -14,9 +14,14 @@ const provider = valueOf(args, '--provider') ?? 'echo';
 const tier = valueOf(args, '--tier') ?? 'smoke';
 const runtime = valueOf(args, '--runtime') ?? (tier === 'smoke' && provider === 'echo' ? 'stub' : 'real');
 const approval = valueOf(args, '--approval') ?? 'auto';
+const baseUrl = valueOf(args, '--base-url');
+const model = valueOf(args, '--model');
+const apiKey = valueOf(args, '--api-key');
 const enablePuppeteer = args.includes('--enable-puppeteer');
+const verbose = args.includes('--verbose') || args.includes('-v');
 
 if (!existsSync(join(packageRoot, 'dist/cli.js'))) {
+  console.log('▶ Compiling CLI (dist/cli.js not found)...');
   const compile = spawnSync(packageManager(), ['run', 'compile:cli'], {
     cwd: packageRoot,
     stdio: 'inherit',
@@ -30,7 +35,16 @@ const taskIndex = JSON.parse(readFileSync(tasksPath, 'utf8'));
 const selectedTasks = loadTasks(taskIndex, tier);
 const fixtureRoot = join(benchmarkDir, 'fixtures');
 
-const results = selectedTasks.map((task) => runTask(task, { cliPath, packageRoot, fixtureRoot }));
+console.log(
+  `\nRunning ${selectedTasks.length} benchmark task(s) — tier=${tier}, provider=${provider}, runtime=${runtime}\n`
+);
+
+const results = [];
+for (const [index, task] of selectedTasks.entries()) {
+  const result = await runTask(task, { cliPath, packageRoot, fixtureRoot, index, total: selectedTasks.length });
+  results.push(result);
+}
+
 const passed = results.filter((result) => result.passed).length;
 const report = {
   cwd,
@@ -52,7 +66,8 @@ const report = {
 mkdirSync(dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
 writeFileSync(outputPath.replace(/\.json$/, '.md'), toMarkdown(report), 'utf8');
-console.log(`${passed}/${results.length} benchmark tasks passed (${report.summary.score}%)`);
+console.log(`\n${passed}/${results.length} benchmark tasks passed (${report.summary.score}%)`);
+console.log(`Report written to ${outputPath}`);
 if (passed !== results.length) process.exitCode = 1;
 
 function loadTasks(index, selectedTier) {
@@ -73,8 +88,12 @@ function runTask(task, ctx) {
     '--runtime', runtime,
     '--approval', approval,
   ];
+  extraArgs.push('--vectors');
   if (enablePuppeteer || task.enablePuppeteer) extraArgs.push('--enable-puppeteer');
-  if (task.model) extraArgs.push('--model', task.model);
+  if (baseUrl) extraArgs.push('--base-url', baseUrl);
+  if (apiKey) extraArgs.push('--api-key', apiKey);
+  const taskModel = task.model ?? model;
+  if (taskModel) extraArgs.push('--model', taskModel);
   const taskRuntime = task.runtime ?? runtime;
   const runtimeIndex = extraArgs.indexOf('--runtime');
   if (runtimeIndex >= 0) extraArgs[runtimeIndex + 1] = taskRuntime;
@@ -82,33 +101,60 @@ function runTask(task, ctx) {
   const cliArgs = [ctx.cliPath, task.mode, task.prompt, ...extraArgs];
   if (task.mode !== 'ask') cliArgs.push('--json');
 
-  const started = Date.now();
-  const result = spawnSync('node', cliArgs, { cwd: packageRoot, encoding: 'utf8', env: process.env });
-  const durationMs = Date.now() - started;
-  const stdout = result.stdout ?? '';
-  const stderr = result.stderr ?? '';
-  const verifications = (task.verify ?? []).map((rule) => verifyTask(rule, {
-    stdout,
-    stderr,
-    exitCode: result.status ?? 1,
-    cwd: fixtureCwd,
-    packageRoot: ctx.packageRoot,
-    mode: task.mode,
-  }));
-  const passed = result.status === 0 && verifications.every((v) => v.passed);
+  const label = `[${ctx.index + 1}/${ctx.total}]`;
+  console.log(`${label} ▶ ${task.id} (${task.mode}${task.fixture ? `, ${task.fixture}` : ''})`);
 
-  return {
-    id: task.id,
-    category: task.category ?? 'general',
-    mode: task.mode,
-    fixture: task.fixture ?? null,
-    passed,
-    durationMs,
-    exitCode: result.status,
-    verifications,
-    stdout: stdout.slice(0, 4000),
-    stderr: stderr.slice(0, 2000),
-  };
+  return new Promise((resolvePromise) => {
+    const started = Date.now();
+    const child = spawn('node', cliArgs, { cwd: packageRoot, env: process.env });
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout?.on('data', (chunk) => {
+      stdout += chunk;
+      if (verbose) process.stdout.write(`${label}   ${chunk}`);
+    });
+    child.stderr?.on('data', (chunk) => {
+      stderr += chunk;
+      if (verbose) process.stderr.write(`${label}   ${chunk}`);
+    });
+
+    child.on('close', (code) => {
+      const durationMs = Date.now() - started;
+      const verifications = (task.verify ?? []).map((rule) => verifyTask(rule, {
+        stdout,
+        stderr,
+        exitCode: code ?? 1,
+        cwd: fixtureCwd,
+        packageRoot: ctx.packageRoot,
+        mode: task.mode,
+      }));
+      const passed = code === 0 && verifications.every((v) => v.passed);
+
+      console.log(
+        `${label} ${passed ? '✓ pass' : '✗ FAIL'} — ${task.id} (${durationMs}ms)`
+      );
+      if (!passed && !verbose) {
+        const failedChecks = verifications.filter((v) => !v.passed).map((v) => v.rule ?? v.name).filter(Boolean);
+        if (failedChecks.length) console.log(`${label}   failed checks: ${failedChecks.join(', ')}`);
+        if (code !== 0) console.log(`${label}   exit code: ${code}`);
+        if (stderr.trim()) console.log(`${label}   stderr: ${stderr.trim().slice(0, 500)}`);
+      }
+
+      resolvePromise({
+        id: task.id,
+        category: task.category ?? 'general',
+        mode: task.mode,
+        fixture: task.fixture ?? null,
+        passed,
+        durationMs,
+        exitCode: code,
+        verifications,
+        stdout: stdout.slice(0, 4000),
+        stderr: stderr.slice(0, 2000),
+      });
+    });
+  });
 }
 
 function valueOf(argv, name) {

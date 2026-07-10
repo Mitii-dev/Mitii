@@ -1,0 +1,98 @@
+[
+  {
+    "id": "plan-medium-monorepo-rename-cross-package",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["monorepo", "cross-package"],
+    "fixture": "monorepo",
+    "prompt": "Plan renaming validateEmail to isValidEmail across every package that uses it.",
+    "rationale": "Requires the plan's steps to explicitly enumerate all three packages (shared, api, web), not just the definition site.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:packages/shared/src/index.js"]
+  },
+  {
+    "id": "plan-medium-monorepo-scoped-to-web-only",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["monorepo", "scope"],
+    "fixture": "monorepo",
+    "prompt": "Only plan changes inside packages/web. Add a confirmation step before the signup form submits.",
+    "rationale": "Explicit scope restriction. Tests the plan doesn't propose changes to packages/api or packages/shared even though they're related.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:packages/web/src/App.tsx"]
+  },
+  {
+    "id": "plan-medium-monorepo-shared-breaking-change-migration",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["monorepo", "cross-package"],
+    "fixture": "monorepo",
+    "prompt": "Plan changing validateEmail's signature to also accept an options object, migrating every call site.",
+    "rationale": "A breaking-change migration plan; tests sequencing (update definition, then each of the two call sites, then verify) across package boundaries.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:packages/api/src/index.js"]
+  },
+  {
+    "id": "plan-medium-monorepo-new-shared-logger-consumer",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["monorepo", "cross-package"],
+    "fixture": "monorepo",
+    "prompt": "Plan making packages/web also use @mono/shared's Logger for client-side error logging, matching how packages/api already uses it.",
+    "rationale": "Tests the plan correctly notes Logger is currently only used in packages/api, and proposes adding the same pattern to packages/web.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:packages/shared/src/index.js"]
+  },
+  {
+    "id": "plan-medium-monorepo-workspace-ci-pipeline",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["monorepo", "tooling"],
+    "fixture": "monorepo",
+    "prompt": "Plan a CI pipeline that runs each package's own build/test scripts independently, since the root has no unified build.",
+    "rationale": "Tests the plan correctly reasons about the root package.json's no-op build script and proposes a per-package CI matrix instead of a single monolithic build step.",
+    "verify": ["exit_0", "json_path:steps", "file_contains:package.json:no root build"]
+  },
+  {
+    "id": "plan-medium-monorepo-shared-versioning-strategy",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["monorepo", "tooling"],
+    "fixture": "monorepo",
+    "prompt": "Plan introducing changesets or a similar versioning strategy so @mono/shared's changes are tracked across releases.",
+    "rationale": "Tooling-introduction plan; tests reasonable sequencing (install, config, first changeset) for a workspace that has none of this today.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:pnpm-workspace.yaml"]
+  },
+  {
+    "id": "plan-medium-monorepo-api-web-shared-contract-test",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "planning",
+    "tags": ["monorepo", "cross-package", "testing"],
+    "fixture": "monorepo",
+    "prompt": "Plan a contract test ensuring packages/api and packages/web stay in sync on how they call @mono/shared's validateEmail.",
+    "rationale": "Tests planning a cross-package consistency check, a more advanced testing concept than a per-package unit test.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-medium-monorepo-partial-package-failure",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "medium",
+    "category": "corner-case",
+    "tags": ["monorepo"],
+    "fixture": "monorepo",
+    "prompt": "packages/shared's tests are failing (hypothetically). Plan how to safely continue developing packages/web without being blocked by that.",
+    "rationale": "Hypothetical premise about a failure that isn't real in the pinned fixture. Tests whether the plan reasons about workspace isolation strategy without falsely claiming to have found real failing tests.",
+    "verify": ["exit_0", "json_path:steps"]
+  }
+]

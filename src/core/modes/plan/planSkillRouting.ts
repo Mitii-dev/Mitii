@@ -1,6 +1,9 @@
 import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import type { SkillCatalogService } from '../../skills/SkillCatalogService';
 import type { PlanIntent } from './planTypes';
+import { createLogger } from '../../telemetry/Logger';
+
+const log = createLogger('PlanSkillRouting');
 
 const MAX_SKILL_CHARS = 24_000;
 
@@ -24,7 +27,9 @@ export function resolvePlanningSkillNames(
     names.push('debugging-and-error-recovery');
   }
 
-  return [...new Set(names)];
+  const resolved = [...new Set(names)];
+  log.debug('Resolved planning skill names', { intent, taskKind: taskAnalysis?.kind, resolved });
+  return resolved;
 }
 
 export function loadPlanningSkillPlaybooks(
@@ -32,16 +37,21 @@ export function loadPlanningSkillPlaybooks(
   skillNames: string[]
 ): { context: string; loaded: string[] } {
   if (!catalog || skillNames.length === 0) {
+    log.debug('Skipping planning skill playbook load', { hasCatalog: Boolean(catalog), skillNames });
     return { context: '', loaded: [] };
   }
 
   const loaded: string[] = [];
+  const skipped: string[] = [];
   const blocks: string[] = [];
   let totalChars = 0;
 
   for (const name of skillNames) {
     const skill = catalog.get(name);
-    if (!skill) continue;
+    if (!skill) {
+      skipped.push(name);
+      continue;
+    }
 
     const block = [
       `### Skill: ${skill.entry.name}`,
@@ -49,13 +59,25 @@ export function loadPlanningSkillPlaybooks(
       skill.content.trim(),
     ].join('\n\n');
 
-    if (totalChars + block.length > MAX_SKILL_CHARS) break;
+    if (totalChars + block.length > MAX_SKILL_CHARS) {
+      skipped.push(name);
+      break;
+    }
     blocks.push(block);
     loaded.push(skill.entry.name);
     totalChars += block.length;
   }
 
-  if (blocks.length === 0) return { context: '', loaded: [] };
+  if (skipped.length > 0) {
+    log.debug('Some planning skills were not loaded', { skipped, budgetChars: MAX_SKILL_CHARS });
+  }
+
+  if (blocks.length === 0) {
+    log.debug('No planning skill playbooks loaded');
+    return { context: '', loaded: [] };
+  }
+
+  log.debug('Loaded planning skill playbooks', { loaded, totalChars });
 
   return {
     context: [

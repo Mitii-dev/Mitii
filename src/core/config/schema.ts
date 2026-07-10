@@ -20,7 +20,7 @@ export const ProviderConfigSchema = z.object({
   model: z.string().default('qwen3-coder:30b'),
   apiVersion: z.string().default('2024-10-21'),
   region: z.string().default('us-east-1'),
-  apiKeyRef: z.string().default('thunder.apiKey'),
+  apiKeyRef: z.string().default('mitii.apiKey'),
   contextWindow: z.number().int().positive().default(8192),
   supportsStreaming: z.boolean().default(true),
   supportsTools: z.boolean().default(true),
@@ -30,7 +30,7 @@ export const ProviderConfigSchema = z.object({
 });
 
 export const EmbeddingProviderSchema = z.enum(['hash', 'minilm']).default('minilm');
-export const VectorBackendSchema = z.enum(['sqlite', 'lancedb']).default('sqlite');
+export const VectorBackendSchema = z.enum(['sqlite', 'lancedb']).default('lancedb');
 
 export const IndexingConfigSchema = z.object({
   enabled: z.boolean().default(true),
@@ -44,6 +44,8 @@ export const IndexingConfigSchema = z.object({
   vectorsEnabled: z.boolean().default(true),
   embeddingProvider: EmbeddingProviderSchema,
   vectorBackend: VectorBackendSchema,
+  watchDebounceMs: z.number().int().min(100).max(10_000).default(500),
+  priorityPaths: z.array(z.string()).default([]),
 });
 
 export const ContextConfigSchema = z.object({
@@ -62,6 +64,8 @@ export const EnterpriseConfigSchema = z.object({
   localProvidersOnly: z.boolean().default(false),
   stripFileContentsFromAuditPacks: z.boolean().default(false),
   autoExportAuditPackOnSessionEnd: z.boolean().default(false),
+  channelsDisabled: z.boolean().default(false),
+  maxParallel: z.number().int().min(1).max(100).default(10),
 });
 
 export const AgentDepthSchema = z.enum(['auto', 'quick', 'standard', 'deep', 'pilot', 'enterprise']);
@@ -81,10 +85,17 @@ export const MemoryConfigSchema = z.object({
   maxItems: z.number().int().positive().default(500),
   summarizeAfterTask: z.boolean().default(true),
   hybridSearchEnabled: z.boolean().default(true),
+  autoMemoryEnabled: z.boolean().default(true),
+  autoMemoryScope: z.enum(['user', 'workspace', 'both']).default('user'),
 });
 
 export const AgentConfigSchema = z.object({
   subagentsEnabled: z.boolean().default(true),
+  teamsEnabled: z.boolean().default(false),
+  subagentTypesEnabled: z.array(z.string()).default(['research']),
+  maxConcurrentSubagents: z.number().int().min(1).max(10).default(2),
+  implementerRequiresScope: z.boolean().default(true),
+  subagentDailyBudget: z.number().int().min(0).default(0),
   maxSteps: z.number().int().min(1).max(100).default(15),
   askMaxSteps: z.number().int().min(1).max(50).default(18),
   askDepth: AgentDepthSchema.default('auto'),
@@ -141,6 +152,7 @@ export const BuiltinMcpTogglesSchema = z.object({
   memory: z.boolean().default(true),
   sequentialThinking: z.boolean().default(true),
   puppeteer: z.boolean().default(false),
+  agentmemory: z.boolean().default(false),
 });
 
 export const McpConfigSchema = z.object({
@@ -162,7 +174,10 @@ export const ScmConfigSchema = z.object({
 export const GitHubConfigSchema = z.object({
   issueFetchEnabled: z.boolean().default(true),
   issueCommentLimit: z.number().int().min(0).max(25).default(8),
-  tokenRef: z.string().default('thunder.github.token'),
+  tokenRef: z.string().default('mitii.github.token'),
+  autoPrEnabled: z.boolean().default(false),
+  defaultBaseBranch: z.string().default(''),
+  webhookSecret: z.string().default(''),
 });
 
 export const TelemetryConfigSchema = z.object({

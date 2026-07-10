@@ -2,7 +2,7 @@ import { extractOriginalTaskMessage, isApprovalContinuationMessage } from './tas
 import { routeAskIntent } from '../modes/ask/AskIntentRouter';
 import { routePlanIntent } from '../modes/plan/PlanIntentRouter';
 
-export type TaskKind = 'question' | 'audit' | 'simple_edit' | 'implementation' | 'explicit_plan';
+export type TaskKind = 'question' | 'audit' | 'simple_edit' | 'implementation' | 'explicit_plan' | 'debugging';
 
 export type TaskComplexity = 'low' | 'medium' | 'high';
 
@@ -35,11 +35,23 @@ const QUESTION =
 const DIRECT_ERROR_FIX =
   /\b(syntax error|type error|referenceerror|cannot find module|missing semicolon|unexpected token|unexpected character|parse error|compilation (?:error|failed)|mdx compilation failed|could not parse expression|is not defined|enoent|can'?t resolve|module not found|compiled with problems)\b/i;
 
+const DIAGNOSTIC_REQUEST =
+  /\b(identify (?:the )?(?:issues?|problems?|bugs?|errors?)|find (?:the )?(?:issues?|problems?|bugs?|errors?)|what(?:'s| is) (?:wrong|broken)|why (?:doesn'?t|does ?n'?t|isn'?t|is ?n'?t|won'?t|can'?t|cannot)|diagnose|root cause|investigate why|figure out why|spot (?:the )?(?:issues?|bugs?|problems?)|doesn'?t (?:read|work|load|render|run|start)|does not (?:read|work|load|render|run|start))\b/i;
+
+const DIAGNOSTIC_SCOPE_EXPANDING =
+  /\b(refactor|redesign|rewrite|migrate|implement (?:a|the) new|new feature|entire codebase|whole codebase|across (?:the )?(?:whole|entire)?\s*(?:codebase|project|repo))\b/i;
+
 const FILE_PATH_IN_TEXT =
   /(?:^|\s|['"`])([\w./-]+\.(?:tsx?|jsx?|py|go|rs|json|css|scss|mdx?))\b/i;
 
 const SIMPLE_EDIT =
   /\b(fix typo|rename|change (?:the )?(?:name|text|label)|update import|add comment|format)\b/i;
+
+const SIMPLE_CONTENT_APPEND =
+  /\b(add|append|insert|extend|update)\b[\s\S]{0,100}\b(?:day|days|row|rows|line|lines|entry|entries|section|sections|module|modules)\b/i;
+
+const SIMPLE_FILE_TARGET =
+  /\b(?:to|in|into|at (?:the )?end of)\b[\s\S]{0,80}\b[\w./-]+\.(txt|md|csv|json|yaml|yml)\b|\b(?:plan|roadmap|curriculum|schedule)\b/i;
 
 const AUDIT_CLEANUP =
   /\b(unus[a-z]*|dead code|orphan|cleanup|clean up|remove\s+(?:all\s+)?(?:the\s+)?(?:(?:uns[a-z]*|unused)\s+)?(?:imports?|files?|dependenc(?:y|ies)?)|depcheck|dependencies audit|dependency audit|find unused|list unused|reduce bundle|tree[- ]shake)\b/i;
@@ -173,6 +185,20 @@ function classifyTask(text: string): TaskAnalysis {
     };
   }
 
+  if (DIAGNOSTIC_REQUEST.test(text) && !DIAGNOSTIC_SCOPE_EXPANDING.test(text)) {
+    const fileMatch = text.match(FILE_PATH_IN_TEXT);
+    return {
+      kind: 'debugging',
+      complexity: 'low',
+      shouldPlan: false,
+      shouldVerify: true,
+      shouldUseSubagents: false,
+      summary: fileMatch
+        ? `Diagnosis request — read ${fileMatch[1]}, identify the root cause, and report or apply a minimal fix without replanning.`
+        : 'Diagnosis request — read the referenced file(s)/logs, identify the root cause, and report or apply a minimal fix without replanning.',
+    };
+  }
+
   if (SIMPLE_EDIT.test(text) && text.length < 120) {
     return {
       kind: 'simple_edit',
@@ -181,6 +207,21 @@ function classifyTask(text: string): TaskAnalysis {
       shouldVerify: true,
       shouldUseSubagents: false,
       summary: 'Small targeted edit — execute directly with validation.',
+    };
+  }
+
+  if (
+    SIMPLE_CONTENT_APPEND.test(text) &&
+    (SIMPLE_FILE_TARGET.test(text) || text.length < 180) &&
+    !/\b(refactor|migrate|implement|build|across|entire|whole codebase)\b/i.test(text)
+  ) {
+    return {
+      kind: 'simple_edit',
+      complexity: 'low',
+      shouldPlan: false,
+      shouldVerify: true,
+      shouldUseSubagents: false,
+      summary: 'Single-file content append — read the target file and patch directly.',
     };
   }
 
@@ -204,11 +245,14 @@ function classifyTask(text: string): TaskAnalysis {
   const hasImplementationHint = IMPLEMENTATION_HINTS.test(text);
   const isUiPolishTask = (ACTION_VERBS.test(text) || hasImplementationHint) && UI_POLISH_SCOPE.test(text);
 
+  const connectorImpliesMultiStep =
+    connectorCount >= 1 && (text.length > 140 || complexity !== 'low' || fileMentions >= 2);
+
   const isImplementation =
     isUiPolishTask ||
     (actionCount >= 1 &&
       (hasImplementationHint ||
-        connectorCount >= 1 ||
+        connectorImpliesMultiStep ||
         fileMentions >= 2 ||
         text.length > 140 ||
         complexity !== 'low'));

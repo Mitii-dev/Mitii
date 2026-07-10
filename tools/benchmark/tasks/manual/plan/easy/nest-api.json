@@ -1,0 +1,74 @@
+[
+  {
+    "id": "plan-easy-nest-api-health-endpoint",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "Plan adding a GET /health endpoint to AppController that returns { status: 'ok' }.",
+    "rationale": "Well-scoped NestJS controller addition with an unambiguous success criterion.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/app.controller.ts"]
+  },
+  {
+    "id": "plan-easy-nest-api-real-tests",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["testing"],
+    "fixture": "nest-api",
+    "prompt": "Plan replacing the placeholder test script with a real Jest setup that runs the existing .spec.ts files.",
+    "rationale": "Tests the plan notices the current test script is a placeholder and that real spec files already exist waiting to be run.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/app.controller.spec.ts"]
+  },
+  {
+    "id": "plan-easy-nest-api-dto-validation-pipe",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "Plan wiring a global ValidationPipe so CreateUserDto's class-validator decorators are actually enforced at runtime.",
+    "rationale": "Tests recognizing that decorators alone (without a ValidationPipe) don't enforce validation in Nest.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/create-user.dto.ts"]
+  },
+  {
+    "id": "plan-easy-nest-api-get-users-list",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "Plan adding a GET /users endpoint that returns an in-memory list of created users.",
+    "rationale": "Extends AppService/AppController with a matching read-side endpoint for the existing createUser method.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/app.service.ts"]
+  },
+  {
+    "id": "plan-easy-nest-api-error-filter",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["single-file"],
+    "fixture": "nest-api",
+    "prompt": "Plan adding a global exception filter that returns consistent JSON error responses.",
+    "rationale": "Standard NestJS pattern; well-scoped to one new filter file plus main.ts wiring.",
+    "verify": ["exit_0", "json_path:steps", "file_exists:src/main.ts"]
+  },
+  {
+    "id": "plan-easy-nest-api-module-doc-comment",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["docs"],
+    "fixture": "nest-api",
+    "prompt": "Plan adding doc comments to AppModule explaining what it composes.",
+    "rationale": "Minimal, low-risk documentation-only planning task.",
+    "verify": ["exit_0", "json_path:steps"]
+  }
+]

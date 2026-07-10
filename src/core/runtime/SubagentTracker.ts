@@ -4,8 +4,11 @@ export type SubagentStatus = 'queued' | 'running' | 'done' | 'error';
 
 export interface SubagentRun {
   id: string;
+  type: string;
   task: string;
   focus?: string;
+  scope?: string;
+  progress?: number;
   status: SubagentStatus;
   startedAt: number;
   finishedAt?: number;
@@ -28,11 +31,14 @@ export class SubagentTracker {
     this.notify();
   }
 
-  start(task: string, focus?: string): string {
+  start(task: string, focus?: string, metadata: { type?: string; scope?: string; progress?: number } = {}): string {
     const run: SubagentRun = {
       id: randomUUID(),
+      type: metadata.type ?? 'research',
       task,
       focus,
+      scope: metadata.scope,
+      progress: metadata.progress,
       status: 'running',
       startedAt: Date.now(),
     };
@@ -41,10 +47,10 @@ export class SubagentTracker {
     return run.id;
   }
 
-  finish(id: string, summary: string): void {
+  finish(id: string, summary: string, metadata: { progress?: number } = {}): void {
     this.runs = this.runs.map((r) =>
       r.id === id
-        ? { ...r, status: 'done' as const, finishedAt: Date.now(), summary: summary.slice(0, 300) }
+        ? { ...r, status: 'done' as const, finishedAt: Date.now(), progress: metadata.progress ?? r.progress, summary: summary.slice(0, 300) }
         : r
     );
     this.notify();

@@ -258,7 +258,7 @@ function reciprocalRankFusion(lists: Observation[][], limit: number): Observatio
     .map((e) => e.obs);
 }
 
-function filterSecrets(text: string): string | null {
+export function filterSecrets(text: string): string | null {
   for (const pattern of SECRET_PATTERNS) {
     if (pattern.test(text)) return null;
   }

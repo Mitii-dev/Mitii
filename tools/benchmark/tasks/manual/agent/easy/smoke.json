@@ -1,0 +1,26 @@
+[
+  {
+    "id": "agent-easy-smoke-node-fix-typo",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "bugfix",
+    "tags": ["smoke", "infra"],
+    "fixture": "node-express",
+    "prompt": "Fix the bug in src/routes/users.js where the list endpoint returns the wrong status message.",
+    "rationale": "Infra smoke case: proves the manual runner wires agent mode + node-express fixture end to end.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  },
+  {
+    "id": "agent-easy-smoke-legacy-commonjs-health-route",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "easy",
+    "category": "feature",
+    "tags": ["smoke", "infra", "legacy"],
+    "fixture": "legacy-commonjs",
+    "prompt": "Add a GET /health route that responds with a JSON body of {\"status\":\"ok\"}.",
+    "rationale": "Infra smoke case: exercises agent mode against a callback-style CommonJS fixture with no test tooling.",
+    "verify": ["exit_0", "jsonl_event:end"]
+  }
+]

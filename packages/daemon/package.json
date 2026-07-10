@@ -1,0 +1,27 @@
+{
+  "name": "@mitii/daemon",
+  "version": "2.7.32",
+  "description": "HTTP/SSE daemon runtime for Mitii sessions.",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js",
+      "default": "./dist/server.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "esbuild src/server.ts --bundle --outfile=dist/server.js --platform=node --format=esm --packages=external && esbuild src/cli.ts --bundle --outfile=dist/cli.js --platform=node --format=esm --packages=external"
+  }
+}

@@ -14,6 +14,7 @@ export class ThunderDb {
     }
     this.db = new Database(this.dbPath);
     this.db.pragma('journal_mode = WAL');
+    this.db.pragma('busy_timeout = 5000');
     this.db.pragma('foreign_keys = ON');
     log.info('Database opened', { path: this.dbPath });
   }

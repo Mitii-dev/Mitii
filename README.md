@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.7.29" src="https://img.shields.io/badge/version-2.7.29-111111">
+  <img alt="Version 2.7.50" src="https://img.shields.io/badge/version-2.7.50-111111">
   <a href="https://mitii.dev"><img alt="Website" src="https://img.shields.io/badge/website-mitii.dev-000000"></a>
   <a href="https://docs.mitii.dev"><img alt="Docs" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
@@ -32,6 +32,49 @@
 Mitii is built for developers who want an AI agent that understands the repo before changing it. It runs inside VS Code, indexes your workspace locally, plans work before execution, asks for approval when risk is involved, and keeps a useful trail of memory, checkpoints, logs, and task plans.
 
 Use it with Ollama, LM Studio, OpenAI-compatible endpoints, native OpenRouter, Azure OpenAI, AWS Bedrock, OpenAI, Anthropic, Gemini, DeepSeek, Cursor-compatible APIs, Codex-compatible APIs, or the Echo provider for UI testing.
+
+## Phase 2 Runtime
+
+Mitii can run as a shared HTTP/SSE daemon:
+
+```bash
+mitii serve --cwd /path/to/project
+curl http://127.0.0.1:4310/health
+```
+
+External clients can use `@mitii/sdk/daemon` to create sessions, stream events with replay, respond to approvals, and cancel turns.
+
+Phase 2 also adds typed subagents through `spawn_subagent` while preserving `spawn_research_agent` as a compatibility alias. Built-ins are `research`, `implementer`, `reviewer`, and `verifier`; workspace agents can be added under `.mitii/agents/`.
+
+Parallel worktree tasks are available from the CLI:
+
+```bash
+mitii task add "Implement feature" --prompt "Implement the scoped feature and verify it"
+mitii task run --parallel 2
+mitii task worktrees
+```
+
+See `docs/users/mitii-serve.md`, `docs/developers/mitii-serve-protocol.md`, and `docs/users/parallel-agents.md`.
+
+## Phase 3 Platform Maturity
+
+Phase 3 adds distribution, scale, external workflow, and enterprise surfaces while keeping legacy `thunder.*` compatibility.
+
+| Area | What is available |
+|---|---|
+| Native distribution | `packages/cli`, platform optional package manifests, release matrix workflow, `scripts/install.sh`, `scripts/install.ps1`, and `pnpm run sync:versions` |
+| npm publishing | `@mitii/sdk`, `@mitii/daemon`, board/channels package metadata, and `.github/workflows/npm-publish.yml` |
+| Brand migration | `mitii.*` settings and command IDs are primary; `thunder.*` reads still fall back and `Mitii: Migrate Settings from thunder.* to mitii.*` copies old values |
+| Indexing at scale | Daemon-backed index worker API: `GET /index/status`, `POST /index/enqueue`, `POST /index/delete`, `POST /index/repair` |
+| CLI index admin | `mitii index status --json`, `mitii index repair`, `mitii index enqueue [paths...]`, `mitii index watch` |
+| GitHub PR flow | `GitHubPullRequestService` and `mitii pr create --title "..." --body-file .mitii/pr-body.md` |
+| Async jobs | Durable `.mitii/jobs/queue.json`, `mitii job enqueue`, `mitii job list`, and `mitii worker --once` |
+| Channels | Shared channel runtime plus Telegram polling connector: `mitii connect telegram --token "$TELEGRAM_BOT_TOKEN"` |
+| Persistent teams | `~/.mitii/teams/<team-name>/manifest.json`, task board, mailbox, mission log, and `mitii team ...` commands |
+| Marketplace | Open VSX publish script, native binary workflow, GitHub Actions example, Cursor env rename, and JetBrains companion workflow docs |
+| Enterprise scale | Managed policy docs, channel security docs, and air-gapped bundle script |
+
+Default external-write surfaces remain opt-in: auto PR creation, persistent teams, and channel connectors must be explicitly enabled or started.
 
 **Docs:** [docs.mitii.dev](https://docs.mitii.dev)  
 **Website:** [mitii.dev](https://mitii.dev)  
@@ -88,6 +131,7 @@ flowchart LR
   Context --> Index[SQLite + FTS5 + Symbols]
   Context --> Vectors[MiniLM or Hash Vectors]
   Context --> RepoMap[PageRank Repo Map]
+  Context --> CallGraph[Call Graph]
   Context --> Git[Git Diff + SCM]
   Context --> Issues[GitHub Issues]
   Context --> LSP[Diagnostics]
@@ -114,8 +158,9 @@ Mitii creates a useful working map of your repository before it asks the model t
 | Full-text search | SQLite FTS5 with ripgrep fallback for paths not yet indexed |
 | Symbol extraction | TypeScript, JavaScript, Python, Java, Go; tree-sitter with regex fallback |
 | Repo map | PageRank-style scoring to surface structurally important files |
+| Call graph | `CallGraphContextSource` resolves symbols and callers through the VS Code language service, with unsaved-editor content sync |
 | Vector search | MiniLM embeddings through `@xenova/transformers`, with hash fallback |
-| Vector backend | SQLite by default, LanceDB optional |
+| Vector backend | LanceDB by default, SQLite optional; embedding/vector components report runtime health and surface a "degraded" state in Settings if native modules fail to load |
 | Context reranking | Trims noisy candidates, for example top 20 down to top 8 |
 | Token budgeting | Keeps context useful without blindly flooding the model |
 
@@ -152,7 +197,7 @@ Fix https://github.com/owner/repo/issues/123
 
 Mitii detects `github.com/{owner}/{repo}/issues/{number}`, fetches the issue through the GitHub REST API when network access is allowed, and injects a structured context block containing the title, body, state, labels, assignees, milestone, and newest comments. When the fetch succeeds, the Act router treats the issue signal as a verified bugfix workflow, so the agent investigates the open workspace, makes scoped edits, and runs relevant verification.
 
-If the active safety preset disables network access or GitHub cannot be reached, Mitii still injects a lightweight reference block with the repository and issue number instead of scraping GitHub HTML. Private repository support uses a GitHub token stored in VS Code SecretStorage under `thunder.github.token` by default; enter or replace the token from **Settings → Integrations → GitHub issues**. The VS Code setting stores only the secret key name, not the token value.
+If the active safety preset disables network access or GitHub cannot be reached, Mitii still injects a lightweight reference block with the repository and issue number instead of scraping GitHub HTML. Private repository support uses a GitHub token stored in VS Code SecretStorage under `mitii.github.token` by default; enter or replace the token from **Settings → Integrations → GitHub issues**. The VS Code setting stores only the secret key name, not the token value.
 
 ### 4. Safer Tool Execution
 
@@ -196,13 +241,14 @@ Mitii stores useful state locally so every serious task does not start from zero
 
 | System | What it stores |
 |---|---|
-| Memory | Decisions, facts, observations, touched files |
+| Memory | Decisions, facts, observations, touched files in SQLite |
+| Markdown auto-memory | Human-readable summaries in `~/.mitii/projects/<project-hash>/memory/` or `.mitii/auto-memory/` |
 | Session history | `agent_sessions` and `agent_turns` in SQLite |
 | Plans | `task_plans` in SQLite and `.mitii/tasks/` files |
 | Logs | JSONL session logs in `.mitii/logs/` |
 | Checkpoints | File-copy, git-stash, or shadow-git strategies before writes |
 
-Post-task memory extraction can capture useful observations after completed work, so future sessions can reuse decisions without asking you to repeat context.
+Post-task memory extraction can capture useful observations after completed work, so future sessions can reuse decisions without asking you to repeat context. Markdown auto-memory is optional, secret-filtered, and controlled by `mitii.memory.autoMemoryEnabled` plus `mitii.memory.autoMemoryScope`.
 
 Audit review is available through `Mitii: Export Audit Pack`. The zip contains sanitized `session.jsonl`, `summary.md`, `manifest.json`, `tool-audit.json`, `approvals.json`, `redaction-report.json`, and `signature.json` with SHA-256 hashes for tamper detection. Set `MITII_AUDIT_SIGNING_KEY` to add HMAC signing, then verify archives with `mitii verify-audit <zip>`.
 
@@ -241,8 +287,10 @@ Mitii can preload keyless MCP servers:
 | `filesystem` | Scoped file access for the open workspace |
 | `memory` | Cross-session knowledge graph |
 | `sequential-thinking` | Structured reasoning helper |
+| `puppeteer` | Optional browser automation |
+| `agentmemory` | Optional enterprise memory backend at `http://localhost:3111/mcp` |
 
-You can add custom servers with `thunder.mcp.servers`, `.mitii/mcp.json`, or `.mcp.json`. MCP tools appear as `mcp__server__tool` and still pass through the same approval policy.
+You can add custom servers with `mitii.mcp.servers`, `.mitii/mcp.json`, or `.mcp.json`. MCP tools appear as `mcp__server__tool` and still pass through the same approval policy. See [docs/integrations/agentmemory.md](docs/integrations/agentmemory.md) for the optional agentmemory setup.
 
 ### 9. Developer UI
 
@@ -260,10 +308,11 @@ The sidebar is a React webview with:
 | Token meter | Understand context usage |
 | Indexing status | Know when the workspace brain is ready |
 | Context warnings | See when context may be thin or over budget |
+| Code block copy | One-click clipboard copy on rendered code blocks in chat |
 
-Reasoning deltas from supported providers stream live in the chat UI. Use `thunder.ui.showReasoning` and `thunder.ui.reasoningPreviewMaxChars` to control visibility and inline preview size.
+Reasoning deltas from supported providers stream live in the chat UI. Use `mitii.ui.showReasoning` and `mitii.ui.reasoningPreviewMaxChars` to control visibility and inline preview size.
 
-Mitii also detects common model capabilities from the provider/model name, including vision and reasoning support. Enterprise teams can override detection with `thunder.provider.supportsVision` and `thunder.provider.supportsReasoning` when routing through private or custom OpenAI-compatible gateways.
+Mitii also detects common model capabilities from the provider/model name, including vision and reasoning support. Enterprise teams can override detection with `mitii.provider.supportsVision` and `mitii.provider.supportsReasoning` when routing through private or custom OpenAI-compatible gateways.
 
 ## Enterprise Readiness
 
@@ -271,13 +320,13 @@ Enterprise review materials live in [docs/enterprise](docs/enterprise/README.md)
 
 | Control | Setting or command |
 |---|---|
-| Route narrow Git/release tasks through minimal context | `thunder.context.microTaskRoutingEnabled` |
-| Require local model providers | `thunder.enterprise.localProvidersOnly` |
-| Strip file contents from exported audit packs | `thunder.enterprise.stripFileContentsFromAuditPacks` |
-| Auto-export audit packs after agent turns | `thunder.enterprise.autoExportAuditPackOnSessionEnd` |
+| Route narrow Git/release tasks through minimal context | `mitii.context.microTaskRoutingEnabled` |
+| Require local model providers | `mitii.enterprise.localProvidersOnly` |
+| Strip file contents from exported audit packs | `mitii.enterprise.stripFileContentsFromAuditPacks` |
+| Auto-export audit packs after agent turns | `mitii.enterprise.autoExportAuditPackOnSessionEnd` |
 | Verify audit pack integrity | `mitii verify-audit <zip>` |
-| Disable session logging | `thunder.telemetry.sessionLogging` |
-| Stream sanitized SIEM events | `thunder.telemetry.webhookUrl` and optional `thunder.telemetry.webhookSecret` |
+| Disable session logging | `mitii.telemetry.sessionLogging` |
+| Stream sanitized SIEM events | `mitii.telemetry.webhookUrl` and optional `mitii.telemetry.webhookSecret` |
 | Export audit evidence | `Mitii: Export Audit Pack` |
 | Windows smoke checklist | [docs/qa/WINDOWS_SMOKE.md](docs/qa/WINDOWS_SMOKE.md) |
 
@@ -396,6 +445,26 @@ This is why Mitii focuses on visible plans, local logs, checkpoints, and verific
 
 ## Quick Start
 
+### Install
+
+Release channels:
+
+```bash
+curl -fsSL https://mitii.dev/install.sh | bash
+npm i -g mitii
+brew install mitii/tap/mitii
+```
+
+Editor marketplaces:
+
+```bash
+pnpm run package          # local VSIX
+pnpm run publish:vsce     # VS Code Marketplace
+pnpm run publish:ovsx     # Open VSX
+```
+
+Native release assets are produced by `.github/workflows/native-binaries.yml`; npm package publishing is handled by `.github/workflows/npm-publish.yml`.
+
 **Requirements**
 
 | Tool | Version |
@@ -415,9 +484,9 @@ pnpm run setup
 ### Connect A Model
 
 1. Open **Settings** in the Mitii sidebar, or VS Code settings under `Mitii AI Agent`.
-2. Set `thunder.provider.type` to `openai-compatible`, `openrouter`, `azure-openai`, or another supported provider.
-3. Point `thunder.provider.baseUrl` at your endpoint. The default is `http://localhost:11434/v1` for Ollama.
-4. Set `thunder.provider.model`. The default is `qwen3-coder:30b`.
+2. Set `mitii.provider.type` to `openai-compatible`, `openrouter`, `azure-openai`, or another supported provider.
+3. Point `mitii.provider.baseUrl` at your endpoint. The default is `http://localhost:11434/v1` for Ollama.
+4. Set `mitii.provider.model`. The default is `qwen3-coder:30b`.
 
 Use the Echo provider for UI testing without an LLM. API keys are stored through VS Code SecretStorage.
 
@@ -428,8 +497,8 @@ Use the Echo provider for UI testing without an LLM. API keys are stored through
 | OpenAI-compatible | `qwen3-coder:30b` | Ollama, LM Studio, vLLM, local gateways |
 | OpenRouter | `anthropic/claude-sonnet-4` | Native headers and reasoning deltas |
 | OpenAI | `gpt-4.1` | API key required |
-| Azure OpenAI | `your-deployment-name` | API key required; model field is the deployment name; uses `thunder.provider.apiVersion` |
-| AWS Bedrock | `anthropic.claude-3-5-sonnet-20240620-v1:0` | Uses AWS default credential chain and `thunder.provider.region`; tool calls disabled by default |
+| Azure OpenAI | `your-deployment-name` | API key required; model field is the deployment name; uses `mitii.provider.apiVersion` |
+| AWS Bedrock | `anthropic.claude-3-5-sonnet-20240620-v1:0` | Uses AWS default credential chain and `mitii.provider.region`; tool calls disabled by default |
 | Anthropic | `claude-sonnet-4-20250514` | API key required |
 | Gemini | `gemini-2.0-flash` | API key required |
 | DeepSeek | `deepseek-chat` | API key required |
@@ -452,6 +521,20 @@ Use the Echo provider for UI testing without an LLM. API keys are stored through
 | `Mitii: Accept Inline Diff` | Accept a pending inline diff |
 | `Mitii: Reject Inline Diff` | Reject a pending inline diff |
 | `Mitii: Generate Commit Message` | Generate a commit message from Source Control |
+| `Mitii: Migrate Settings from thunder.* to mitii.*` | Copy legacy settings into the new namespace without deleting old values |
+
+CLI additions:
+
+```bash
+mitii index status --json
+mitii index repair
+mitii pr create --title "Fix issue" --body-file .mitii/pr-body.md
+mitii job enqueue "Run this later" --mode agent
+mitii worker --once
+mitii connect telegram --token "$TELEGRAM_BOT_TOKEN"
+mitii team create sprint
+mitii team status sprint
+```
 
 ---
 
@@ -459,27 +542,37 @@ Use the Echo provider for UI testing without an LLM. API keys are stored through
 
 ```json
 {
-  "thunder.provider.type": "openai-compatible",
-  "thunder.provider.baseUrl": "http://localhost:11434/v1",
-  "thunder.provider.model": "qwen3-coder:30b",
-  "thunder.provider.apiVersion": "2024-10-21",
-  "thunder.provider.region": "us-east-1",
-  "thunder.provider.contextWindow": 8192,
-  "thunder.safety.autonomyPreset": "guided",
-  "thunder.safety.approvalMode": "review_all",
-  "thunder.indexing.autoIndexOnOpen": true,
-  "thunder.indexing.vectorsEnabled": true,
-  "thunder.indexing.vectorBackend": "sqlite",
-  "thunder.context.rerankerEnabled": true,
-  "thunder.memory.enabled": true,
-  "thunder.mcp.enabled": true,
-  "thunder.github.issueFetchEnabled": true,
-  "thunder.github.issueCommentLimit": 8,
-  "thunder.github.tokenRef": "thunder.github.token",
-  "thunder.agent.verifyCommands": ["npm run lint", "npm test"],
-  "thunder.telemetry.sessionLogging": true,
-  "thunder.telemetry.webhookUrl": "",
-  "thunder.enterprise.autoExportAuditPackOnSessionEnd": false
+  "mitii.provider.type": "openai-compatible",
+  "mitii.provider.baseUrl": "http://localhost:11434/v1",
+  "mitii.provider.model": "qwen3-coder:30b",
+  "mitii.provider.apiVersion": "2024-10-21",
+  "mitii.provider.region": "us-east-1",
+  "mitii.provider.contextWindow": 8192,
+  "mitii.safety.autonomyPreset": "guided",
+  "mitii.safety.approvalMode": "review_all",
+  "mitii.indexing.autoIndexOnOpen": true,
+  "mitii.indexing.vectorsEnabled": true,
+  "mitii.indexing.vectorBackend": "lancedb",
+  "mitii.indexing.watchDebounceMs": 500,
+  "mitii.indexing.priorityPaths": [],
+  "mitii.context.rerankerEnabled": true,
+  "mitii.memory.enabled": true,
+  "mitii.memory.summarizeAfterTask": true,
+  "mitii.memory.autoMemoryEnabled": true,
+  "mitii.memory.autoMemoryScope": "user",
+  "mitii.mcp.enabled": true,
+  "mitii.github.issueFetchEnabled": true,
+  "mitii.github.issueCommentLimit": 8,
+  "mitii.github.tokenRef": "mitii.github.token",
+  "mitii.github.autoPrEnabled": false,
+  "mitii.github.defaultBaseBranch": "",
+  "mitii.agent.verifyCommands": ["npm run lint", "npm test"],
+  "mitii.agent.teamsEnabled": false,
+  "mitii.telemetry.sessionLogging": true,
+  "mitii.telemetry.webhookUrl": "",
+  "mitii.enterprise.autoExportAuditPackOnSessionEnd": false,
+  "mitii.enterprise.channelsDisabled": false,
+  "mitii.enterprise.maxParallel": 10
 }
 ```
 
@@ -493,19 +586,29 @@ Mitii automatically picks up common project instruction files:
 
 | File or folder | Purpose |
 |---|---|
-| `AGENTS.md` | Agent instructions |
-| `CLAUDE.md` | Claude-style project guidance |
-| `WARP.md` | Warp-style workflow guidance |
-| `.cursorrules` | Cursor rules |
-| `.cursor/rules` | Cursor rule directory |
-| `.clinerules` | Cline rules |
-| `.continue/rules` | Continue rules |
-| `.mitii/rules` | Mitii project rules |
-| `.mitii/agents` | Agent-specific instructions |
-| `.mitii/checks` | Verification guidance |
-| `.mitii/prompts` | Reusable prompts |
+| `~/.mitii/MITTII.md` | Personal global instructions |
+| `MITII.md` | Shared workspace instructions |
+| `AGENTS.md` | Compatibility instructions |
+| `CLAUDE.md` | Compatibility instructions |
+| `.mitii/rules/**/*.md` | Shared Mitii rule directory |
+| `.cursor/rules/**/*.md` | Cursor rule compatibility |
+| `.mitii/MITTII.local.md` | Personal workspace override, loaded last |
 
-Commit these files to your repo when you want every Mitii session to start with the same engineering conventions.
+Commit shared files to your repo when you want every Mitii session to start with the same engineering conventions. `@path/to/file` references inside rule files are resolved relative to the rule file and inlined within the rules budget.
+
+## SDK And CLI
+
+The publishable SDK lives in `packages/sdk` and exposes `createClient()` plus `query()` for Node 20+ projects:
+
+```ts
+import { query } from '@mitii/sdk';
+
+for await (const event of query({ cwd: process.cwd(), prompt: 'Summarize the repo', mode: 'agent' })) {
+  if (event.type === 'assistant_delta') process.stdout.write(event.content);
+}
+```
+
+The CLI uses the same SDK contract for one-shot commands. `mitii agent "..." --json` emits one typed event per line. Running `mitii` with no args opens an interactive terminal session; `mitii init` creates a starter `MITII.md`; `mitii auth` stores headless provider credentials in `~/.mitii/credentials.json`; `mitii memory connect agentmemory` wires the optional agentmemory MCP entry.
 
 ---
 
@@ -564,7 +667,8 @@ mitii-ai-agent/                 # VS Code extension (ships as .vsix)
 │   ├── fixtures/               # Pinned sample repos
 │   ├── tasks/enterprise/       # ~26 fixed benchmark tasks
 │   └── tasks/eval/             # Generated 500–1000 task shards
-├── pnpm-workspace.yaml         # tools/* workspace packages
+├── packages/sdk/               # @mitii/sdk headless runtime package
+├── pnpm-workspace.yaml         # tools/* and packages/* workspace packages
 └── package.json
 ```
 
@@ -592,7 +696,10 @@ pnpm run eval:generate        # generate 500 standard eval tasks
 pnpm run eval:smoke           # eval wiring check (CI)
 pnpm run eval:standard -- --provider openai-compatible \
   --base-url http://localhost:11434/v1 --model qwen3-coder:30b --limit 50
+pnpm run eval:retrieval        # Recall@5/10, nDCG@10, MRR for HybridRetriever against a hand-labeled query set
 ```
+
+`eval:retrieval` runs `test/benchmark/retrieval-eval.test.ts` against the `saas-api` fixture (112 files, 17 domain modules) and 68 hand-labeled queries in `tools/benchmark/datasets/retrieval-eval.json`, writing `.mitii/benchmark/retrieval-report.{json,md}`. It is additive instrumentation only — HybridRetriever's actual ranking logic is unchanged.
 
 ### Native Rebuilds
 
@@ -601,14 +708,14 @@ VS Code and Cursor ship their own Electron runtime, so native modules may need a
 | Scenario | Command |
 |---|---|
 | VS Code Extension Development Host | `pnpm run rebuild:native` |
-| Cursor Extension Development Host | `THUNDER_EDITOR=cursor pnpm run rebuild:native` |
+| Cursor Extension Development Host | `MITII_EDITOR=cursor pnpm run rebuild:native` |
 | Local Vitest runs | `pnpm run rebuild:node` |
 | Everything | `pnpm run rebuild:all` |
 
 On Linux and Windows, Electron version auto-detection is not available. Set the version explicitly:
 
 ```bash
-THUNDER_ELECTRON_VERSION=<electron-version> pnpm run rebuild:native
+MITII_ELECTRON_VERSION=<electron-version> pnpm run rebuild:native
 ```
 
 For example, use the Electron version shipped by your VS Code or Cursor build.
@@ -634,7 +741,7 @@ Bundled skills orchestrate these scripts instead of replacing them. `audit-clean
 
 | Problem | Fix |
 |---|---|
-| `better-sqlite3` fails to load | Run `pnpm run rebuild:native` for VS Code or `THUNDER_EDITOR=cursor pnpm run rebuild:native` for Cursor |
+| `better-sqlite3` fails to load | Run `pnpm run rebuild:native` for VS Code or `MITII_EDITOR=cursor pnpm run rebuild:native` for Cursor |
 | Provider errors | Check base URL, model name, and API key. Try Echo provider to isolate UI issues |
 | Indexing feels empty | Check `.gitignore`, `.mitiiignore`, workspace write access, then run `Mitii: Index Workspace` |
 | Context feels thin | Wait for indexing, enable vectors, check context warnings, and mention important files directly |

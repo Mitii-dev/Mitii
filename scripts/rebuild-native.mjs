@@ -1,15 +1,35 @@
 #!/usr/bin/env node
 /**
- * Rebuild native modules (better-sqlite3) for VS Code / Cursor Electron.
+ * Rebuild native modules for VS Code / Cursor Electron.
  * A normal install compiles for Node.js; the extension host uses Electron's ABI.
+ * Also ensures sharp carries vendored libvips so MiniLM text embeddings do not fail
+ * when @xenova/transformers imports its image utility module.
  *
- * Override: THUNDER_ELECTRON_VERSION=42.2.0 pnpm run rebuild:native
- * Override editor: THUNDER_EDITOR=cursor pnpm run rebuild:native
+ * Override: MITII_ELECTRON_VERSION=42.2.0 pnpm run rebuild:native
+ * Override editor: MITII_EDITOR=cursor pnpm run rebuild:native
  */
 import { execSync, spawnSync } from 'child_process';
 import { existsSync } from 'fs';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 
 const MODULES = ['better-sqlite3'];
+const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+function ensureSharpVendor() {
+  console.log('Ensuring sharp vendored libvips is installed for MiniLM embeddings…');
+  const result = spawnSync(
+    'pnpm',
+    ['rebuild', 'sharp'],
+    {
+      cwd: packageRoot,
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+      env: { ...process.env, SHARP_IGNORE_GLOBAL_LIBVIPS: '1' },
+    }
+  );
+  return result.status === 0;
+}
 
 function readElectronFromPlist(plistPath) {
   if (!existsSync(plistPath)) return null;
@@ -23,8 +43,8 @@ function readElectronFromPlist(plistPath) {
 }
 
 function detectElectronVersion() {
-  if (process.env.THUNDER_ELECTRON_VERSION) {
-    return process.env.THUNDER_ELECTRON_VERSION;
+  if (process.env.MITII_ELECTRON_VERSION || process.env.THUNDER_ELECTRON_VERSION) {
+    return process.env.MITII_ELECTRON_VERSION || process.env.THUNDER_ELECTRON_VERSION;
   }
 
   const editors = {
@@ -38,7 +58,7 @@ function detectElectronVersion() {
     },
   };
 
-  const preferred = (process.env.THUNDER_EDITOR ?? 'vscode').toLowerCase();
+  const preferred = (process.env.MITII_EDITOR ?? process.env.THUNDER_EDITOR ?? 'vscode').toLowerCase();
   const order =
     preferred === 'cursor' ? ['cursor', 'vscode'] : ['vscode', 'cursor'];
 
@@ -56,6 +76,11 @@ function detectElectronVersion() {
 }
 
 function main() {
+  if (!ensureSharpVendor()) {
+    console.error('\nRebuild failed for sharp/libvips.');
+    process.exit(1);
+  }
+
   const electronVersion = detectElectronVersion();
   console.log(`Rebuilding native modules for Electron ${electronVersion}…`);
 
@@ -72,18 +97,18 @@ function main() {
       '-w',
       ...MODULES,
     ],
-    { stdio: 'inherit', shell: true }
+    { cwd: packageRoot, stdio: 'inherit', shell: true }
   );
 
   if (result.status !== 0) {
     console.error('\nRebuild failed. Try:');
-    console.error('  THUNDER_ELECTRON_VERSION=42.2.0 pnpm run rebuild:native   # VS Code 1.124+');
-    console.error('  THUNDER_ELECTRON_VERSION=39.8.1 pnpm run rebuild:native   # Cursor');
+    console.error('  MITII_ELECTRON_VERSION=42.2.0 pnpm run rebuild:native   # VS Code 1.124+');
+    console.error('  MITII_ELECTRON_VERSION=39.8.1 pnpm run rebuild:native   # Cursor');
     process.exit(result.status ?? 1);
   }
 
   console.log('\nNative rebuild complete. Reload the Extension Development Host (F5).');
-  console.log('Note: run "pnpm run rebuild:node" before CLI eval or "pnpm test" if sqlite fails under Node.');
+  console.log('Note: run "pnpm run rebuild:node" before CLI eval or "pnpm test" if native modules fail under Node.');
 }
 
 main();

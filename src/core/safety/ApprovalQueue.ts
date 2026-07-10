@@ -37,6 +37,7 @@ export class ApprovalQueue {
     metadata?: { toolCallId?: string }
   ): ApprovalRequest {
     const path = typeof input.path === 'string' ? input.path : undefined;
+    const paths = Array.isArray(input.paths) ? input.paths.filter((p): p is string => typeof p === 'string') : undefined;
     const contentLen = typeof input.content === 'string' ? input.content.length : undefined;
 
     const request: ApprovalRequest = {
@@ -44,7 +45,7 @@ export class ApprovalQueue {
       sessionId,
       toolName,
       inputPreview: buildDisplayPreview(toolName, input),
-      files: path ? [path] : [],
+      files: path ? [path] : paths ?? [],
       risk: toolName.includes('write') || toolName.includes('patch') || toolName === 'run_command' ? 'high' : 'medium',
       reason: policy.reason,
       policy,
@@ -145,6 +146,12 @@ function buildDisplayPreview(toolName: string, input: Record<string, unknown>): 
   }
   if (toolName === 'apply_patch' && typeof input.path === 'string') {
     return `Patch file: ${input.path}`;
+  }
+  if (toolName === 'read_file' && typeof input.path === 'string') {
+    return `Read external file (outside workspace): ${input.path}`;
+  }
+  if (toolName === 'read_files' && Array.isArray(input.paths)) {
+    return `Read external file(s) (outside workspace):\n${input.paths.join('\n')}`;
   }
   if (toolName === 'run_command' && typeof input.command === 'string') {
     return `Run: ${input.command.slice(0, 200)}`;

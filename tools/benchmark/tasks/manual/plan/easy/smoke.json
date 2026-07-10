@@ -1,0 +1,26 @@
+[
+  {
+    "id": "plan-easy-smoke-react-tests",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["smoke", "infra"],
+    "fixture": "react-vite",
+    "prompt": "Plan adding unit tests for the Button component.",
+    "rationale": "Infra smoke case: proves the manual runner wires plan mode + react-vite fixture end to end.",
+    "verify": ["exit_0", "json_path:steps"]
+  },
+  {
+    "id": "plan-easy-smoke-legacy-commonjs-tests",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "easy",
+    "category": "planning",
+    "tags": ["smoke", "infra", "legacy"],
+    "fixture": "legacy-commonjs",
+    "prompt": "Plan introducing a test runner and first tests for routes/users.js.",
+    "rationale": "Infra smoke case: exercises planning against a fixture with no existing test tooling.",
+    "verify": ["exit_0", "json_path:steps"]
+  }
+]

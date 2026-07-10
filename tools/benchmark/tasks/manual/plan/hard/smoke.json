@@ -1,0 +1,14 @@
+[
+  {
+    "id": "plan-hard-smoke-broken-repo-fix",
+    "tier": "manual",
+    "mode": "plan",
+    "severity": "hard",
+    "category": "corner-case",
+    "tags": ["smoke", "infra", "broken-repo", "corner-case"],
+    "fixture": "broken-repo",
+    "prompt": "Plan a fix for the failing test in this repo without executing any changes yet.",
+    "rationale": "Infra smoke case: proves plan mode stays read-only (no writes) even against a repo that's already broken.",
+    "verify": ["exit_0", "json_path:steps"]
+  }
+]

@@ -55,6 +55,7 @@ export interface McpToggles {
   memory: boolean;
   sequentialThinking: boolean;
   puppeteer: boolean;
+  agentmemory?: boolean;
 }
 
 export interface McpCustomServerView {
@@ -91,11 +92,18 @@ export interface IndexingSettingsPayload {
   hybridMemorySearch: boolean;
 }
 
+export interface MemorySettingsPayload {
+  summarizeAfterTask: boolean;
+  autoMemoryEnabled: boolean;
+  autoMemoryScope: 'user' | 'workspace' | 'both';
+}
+
 export interface ThunderSettingsPayload {
   provider: ProviderSettingsPayload;
   agent: AgentSettingsPayload;
   safety: SafetySettingsPayload;
   mcp: McpSettingsPayload;
   indexing: IndexingSettingsPayload;
+  memory?: MemorySettingsPayload;
   telemetry: TelemetrySettingsPayload;
 }

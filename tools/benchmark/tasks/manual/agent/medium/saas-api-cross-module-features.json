@@ -1,0 +1,122 @@
+[
+  {
+    "id": "agent-medium-saas-api-order-cancel-inventory-release",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "feature",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "Make cancelOrder automatically release any reserved inventory back to stock by calling InventoryService's releaseStock.",
+    "rationale": "Cross-module integration spanning orders.service.ts and inventory.service.ts.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/modules/orders/orders.service.ts:releaseStock"]
+  },
+  {
+    "id": "agent-medium-saas-api-price-change-audit-log",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "feature",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "Make adjustPrice record an audit-log entry every time a product's price changes, using AuditLogService's recordAuditEntry.",
+    "rationale": "Requires connecting products.service.ts to audit-log.service.ts, a genuine cross-module integration.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/modules/products/products.service.ts:recordAuditEntry"]
+  },
+  {
+    "id": "agent-medium-saas-api-admin-impersonation-guardrails",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "security",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "Add an authorization check to impersonateUser (reject if the caller isn't an admin) and record the action via AuditLogService.",
+    "rationale": "Multi-phase security-hardening change spanning admin.service.ts and audit-log.service.ts.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/admin/admin.service.ts"]
+  },
+  {
+    "id": "agent-medium-saas-api-webhook-retry-backoff",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "feature",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Add exponential backoff with jitter to webhook delivery retries in retryDelivery, respecting the existing MAX_DELIVERY_ATTEMPTS cap.",
+    "rationale": "Requires the agent to discover the existing retry logic before extending it, not design in a vacuum.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/webhooks/webhooks.service.ts"]
+  },
+  {
+    "id": "agent-medium-saas-api-cart-checkout-inventory-check",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "feature",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "Make checkoutCart verify inventory is available for every cart item before calling convertCartToOrder.",
+    "rationale": "Cross-module coordination between cart.service.ts, inventory.service.ts, and orders.service.ts.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/cart/cart.service.ts"]
+  },
+  {
+    "id": "agent-medium-saas-api-subscription-cancellation-notification",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "feature",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "When a subscription is cancelled, send the user an email notification via NotificationsService.",
+    "rationale": "Cross-module hookup between subscriptions.service.ts and notifications.service.ts.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/subscriptions/subscriptions.service.ts"]
+  },
+  {
+    "id": "agent-medium-saas-api-support-ticket-sla-escalation",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "feature",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Add a checkSlaBreaches method to SupportTicketsService that calls escalateTicket for any ticket open more than 48 hours.",
+    "rationale": "Requires wiring a new method into the existing escalateTicket/closeTicket lifecycle correctly.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/modules/support-tickets/support-tickets.service.ts:checkSlaBreaches"]
+  },
+  {
+    "id": "agent-medium-saas-api-search-reindex-on-product-update",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "feature",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "Make adjustPrice trigger rebuildSearchIndex for the 'products' entity type after a successful price update.",
+    "rationale": "Cross-module integration between products.service.ts and search.service.ts.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/search/search.service.ts"]
+  },
+  {
+    "id": "agent-medium-saas-api-review-flag-rating-exclusion",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "bugfix",
+    "tags": ["saas-api"],
+    "fixture": "saas-api",
+    "prompt": "Make computeAverageRating exclude any reviews that have been flagged via flagReview.",
+    "rationale": "Requires reading both methods together and correctly connecting flagged state to the rating calculation.",
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/modules/reviews/reviews.service.ts:flag"]
+  },
+  {
+    "id": "agent-medium-saas-api-analytics-admin-endpoint-access-control",
+    "tier": "manual",
+    "mode": "agent",
+    "severity": "medium",
+    "category": "feature",
+    "tags": ["saas-api", "cross-module"],
+    "fixture": "saas-api",
+    "prompt": "Expose computeConversionFunnel through a new method that only proceeds if given an admin user id, otherwise throws.",
+    "rationale": "Cross-cutting access-control feature spanning analytics.service.ts and the admin-role concept.",
+    "verify": ["exit_0", "jsonl_event:end", "file_exists:src/modules/analytics/analytics.service.ts"]
+  }
+]

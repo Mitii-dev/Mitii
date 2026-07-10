@@ -252,7 +252,7 @@ function isDirectory(path: string): boolean {
 }
 
 function isProjectScopeQuestion(text: string): boolean {
-  return /\b(project|package|workspace|monorepo|docs?|docusaurus|website|extension|app|library|service|scope|where is|sidebar|documentation|form-builder|ffb-mui)\b/i.test(text);
+  return /\b(project|package|workspace|monorepo|docs?|docusaurus|website|extension|app|library|service|scope|where is|sidebar|documentation|form-builder|ffb-mui|run|command|script|npm|pnpm|yarn|build|test|benchmark|eval|lint|compile|install|setup)\b/i.test(text);
 }
 
 /** Discover top-level docs content areas from sidebars and docs folders. */

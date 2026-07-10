@@ -4,6 +4,7 @@ export const TOOL_NAME_ALIASES: Record<string, string> = {
   grep: 'search',
   ripgrep: 'search',
   rg: 'search',
+  resolve_file: 'resolve_path',
   read_file_batch: 'read_files',
   read_files_batch: 'read_files',
   list_directory: 'list_files',
