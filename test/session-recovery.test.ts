@@ -2,13 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
+import { ThunderController } from '../src/core/app/ThunderController';
+import { PlanPersistence } from '../src/core/plans/PlanPersistence';
+import { ThunderSession } from '../src/core/session/ThunderSession';
 
 describe('session recovery', () => {
   const fixturePlanPath = () => join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures/session-recovery/active-plan.json');
 
   it('creates ThunderSession instances for restored chat thread ids', async () => {
-    const { ThunderSession } = await import('../src/core/session/ThunderSession');
-
     const session = new ThunderSession('/repo', 'agent', {
       id: 'ollama-thread-1',
       title: 'Ollama plan',
@@ -25,7 +26,6 @@ describe('session recovery', () => {
   });
 
   it('rehydrates the active plan when a history thread is restored', async () => {
-    const { ThunderController } = await import('../src/core/app/ThunderController');
     const plan = JSON.parse(readFileSync(fixturePlanPath(), 'utf8'));
     const ensured: string[] = [];
     const notified: unknown[] = [];
@@ -64,7 +64,6 @@ describe('session recovery', () => {
   });
 
   it('keeps active plans addressable by the original restored session id', async () => {
-    const { PlanPersistence } = await import('../src/core/plans/PlanPersistence');
     const plan = JSON.parse(readFileSync(fixturePlanPath(), 'utf8'));
     const rows = new Map<string, { id: string; session_id: string; plan_json: string; status: string; updated_at: number }>();
     const db = {
