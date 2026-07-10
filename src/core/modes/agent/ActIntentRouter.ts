@@ -180,10 +180,10 @@ function inferActIntent(userMessage: string, analysis: TaskAnalysis): ActRoute['
   if (analysis.kind === 'question') return 'question';
   if (analysis.kind === 'debugging') return 'diagnose';
 
-  if (analysis.kind === 'implementation' || analysis.kind === 'explicit_plan') return 'feature';
-  
   if (DOCS_HINT.test(userMessage)) return 'docs';
   if (REFACTOR_HINT.test(userMessage)) return 'refactor';
+
+  if (analysis.kind === 'implementation' || analysis.kind === 'explicit_plan') return 'feature';
   
   // Catch workflows and "write/create" requests and elevate them to features
   if (INFRA_HINT.test(userMessage) || CREATE_HINT.test(userMessage)) return 'feature'; 
