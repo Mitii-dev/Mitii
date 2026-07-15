@@ -3,14 +3,11 @@ import type { AgentDepth } from '../../config/schema';
 import type { TaskAnalysis, TaskComplexity } from '../../runtime/TaskAnalyzer';
 
 export type ActIntent =
-  | 'resume_plan'
   | 'bugfix'
   | 'feature'
   | 'refactor'
   | 'docs'
   | 'audit'
-  | 'mdx_repair'
-  | 'direct'
   | 'question'
   | 'diagnose';
 

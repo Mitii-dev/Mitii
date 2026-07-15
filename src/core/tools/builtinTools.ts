@@ -170,6 +170,22 @@ function resolveToolPath(workspace: string, rawPath: string, ignoreService: Igno
 const SOURCE_FILE_PATTERN = /\.(?:tsx?|jsx?|mjs|cjs|css|scss|sass|less|json|ya?ml)$/i;
 const READ_FILE_MAX_CHARS = 50000;
 const READ_FILES_MAX_PATHS = 12;
+const MAX_SCOPE_CANDIDATES = 12;
+
+interface ReadFileInput {
+  path: string;
+  startLine?: number;
+  endLine?: number;
+}
+
+interface FileScopeCandidateInput {
+  path: string;
+  reason?: string;
+  intent?: 'read' | 'write';
+  access?: 'read' | 'write';
+  startLine?: number;
+  endLine?: number;
+}
 
 /** Caps file content for the model and, unlike a silent slice, tells it more was cut off. */
 function truncateFileContent(content: string): string {
@@ -244,15 +260,33 @@ export function createReadFileTool(
   workspace: string,
   ignoreService: IgnoreService,
   db?: ThunderDb
-): Tool<{ path: string }> {
+): Tool<ReadFileInput> {
   return {
     name: 'read_file',
     description:
-      'Read one workspace file. Missing paths are auto-resolved via the workspace index when confidence is high. For multiple files, prefer read_files. Use resolve_path when unsure.',
+      'Read one workspace file in the accepted file scope. Supports startLine/endLine for narrow slices. Missing paths are auto-resolved when confidence is high. Call propose_file_scope before reading.',
     risk: 'low',
-    inputSchema: z.object({ path: z.string() }),
+    inputSchema: z.object({
+      path: z.string(),
+      startLine: z.number().int().positive().optional(),
+      endLine: z.number().int().positive().optional(),
+    }).refine((input) => !input.startLine || !input.endLine || input.endLine >= input.startLine, {
+      message: 'endLine must be greater than or equal to startLine',
+    }),
+    parametersJsonSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Workspace-relative file path from propose_file_scope.' },
+        startLine: { type: 'integer', minimum: 1, description: 'Optional 1-based starting line for a slice.' },
+        endLine: { type: 'integer', minimum: 1, description: 'Optional 1-based ending line for a slice.' },
+      },
+      required: ['path'],
+    },
     async execute(input): Promise<ToolResult> {
-      return readSingleFile(workspace, input.path, ignoreService, db);
+      return readSingleFile(workspace, input.path, ignoreService, db, {
+        startLine: input.startLine,
+        endLine: input.endLine,
+      });
     },
   };
 }
@@ -265,7 +299,7 @@ export function createReadFilesTool(
   return {
     name: 'read_files',
     description:
-      'Read multiple workspace files in one call. Max 12 paths per call; prefer 8-10. Missing paths are auto-resolved when confidence is high. Use resolve_path for uncertain paths.',
+      'Read multiple workspace files from the accepted file scope. Max 12 paths per call; prefer 8-10. Call propose_file_scope before reading.',
     risk: 'low',
     inputSchema: z.object({ paths: z.array(z.string()).min(1) }),
     parametersJsonSchema: {
@@ -307,7 +341,8 @@ export function createReadFilesTool(
 
 async function readWorkspaceFileContent(
   workspace: string,
-  relPath: string
+  relPath: string,
+  range?: { startLine?: number; endLine?: number }
 ): Promise<{ success: true; output: string } | { success: false; error: string }> {
   try {
     const fullPath = join(workspace, relPath);
@@ -315,11 +350,17 @@ async function readWorkspaceFileContent(
     if (!st.isFile()) {
       return { success: false, error: `Not a file: ${relPath}` };
     }
-    const cached = getReadFileCache(workspace).get(relPath);
-    if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
-      return { success: true, output: cached.content };
+    const hasRange = Boolean(range?.startLine || range?.endLine);
+    if (!hasRange) {
+      const cached = getReadFileCache(workspace).get(relPath);
+      if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
+        return { success: true, output: cached.content };
+      }
     }
     const content = await readFile(fullPath, 'utf-8');
+    if (hasRange) {
+      return { success: true, output: sliceFileContent(content, range) };
+    }
     const truncated = truncateFileContent(content);
     getReadFileCache(workspace).set(relPath, {
       content: truncated,
@@ -330,6 +371,17 @@ async function readWorkspaceFileContent(
   } catch (e) {
     return { success: false, error: String(e) };
   }
+}
+
+function sliceFileContent(content: string, range: { startLine?: number; endLine?: number } = {}): string {
+  const lines = content.split(/\r?\n/);
+  const total = lines.length;
+  const start = Math.max(1, range.startLine ?? 1);
+  const end = Math.min(total, range.endLine ?? total);
+  if (start > total) {
+    return `// lines ${start}-${start} of ${total}\n`;
+  }
+  return `// lines ${start}-${end} of ${total}\n${lines.slice(start - 1, end).join('\n')}`;
 }
 
 /**
@@ -367,7 +419,8 @@ async function readSingleFile(
   workspace: string,
   rawPath: string,
   ignoreService: IgnoreService,
-  db?: ThunderDb
+  db?: ThunderDb,
+  range?: { startLine?: number; endLine?: number }
 ): Promise<ToolResult> {
   const relPath = resolveWorkspaceRelPath(workspace, rawPath);
   if (relPath === null) {
@@ -381,7 +434,7 @@ async function readSingleFile(
     };
   }
 
-  const direct = await readWorkspaceFileContent(workspace, relPath);
+  const direct = await readWorkspaceFileContent(workspace, relPath, range);
   if (direct.success) {
     return { success: true, output: direct.output };
   }
@@ -397,14 +450,13 @@ async function readSingleFile(
         error: `Resolved path is ignored: ${resolution.resolvedPath}`,
       };
     }
-    const resolvedRead = await readWorkspaceFileContent(workspace, resolution.resolvedPath);
+    const resolvedRead = await readWorkspaceFileContent(workspace, resolution.resolvedPath, range);
     if (resolvedRead.success) {
       const candidate = resolution.candidates.find((c) => c.relPath === resolution.resolvedPath)
         ?? resolution.candidates[0];
       const prefix = candidate
         ? `${resolver.formatAutoResolvedNote(rawPath, resolution.resolvedPath, candidate)}\n`
         : `[Path auto-resolved] ${rawPath} → ${resolution.resolvedPath}\n---\n`;
-      updateReadFileCache(workspace, resolution.resolvedPath, resolvedRead.output);
       return { success: true, output: `${prefix}${resolvedRead.output}` };
     }
   }
@@ -968,6 +1020,146 @@ export function createAnalyzeChangeImpactTool(
       return { success: true, output: JSON.stringify(analysis, null, 2) };
     },
   };
+}
+
+export function createProposeFileScopeTool(
+  workspace: string,
+  ignoreService: IgnoreService,
+  db?: ThunderDb,
+  getTaskState?: () => import('../runtime/AgentTaskState').AgentTaskState | undefined
+): Tool<{
+  objective: string;
+  candidates: FileScopeCandidateInput[];
+  scopeRoot?: string;
+  maxFilesRead?: number;
+}> {
+  return {
+    name: 'propose_file_scope',
+    description:
+      'Declare the candidate files before read_file/read_files/write_file/apply_patch. Validates paths, drops ignored/invalid entries, accepts a scoped read budget, and returns the allowed file scope.',
+    risk: 'low',
+    inputSchema: z.object({
+      objective: z.string().min(3),
+      candidates: z.array(z.object({
+        path: z.string(),
+        reason: z.string().optional(),
+        intent: z.enum(['read', 'write']).optional(),
+        access: z.enum(['read', 'write']).optional(),
+        startLine: z.number().int().positive().optional(),
+        endLine: z.number().int().positive().optional(),
+      }).refine((candidate) => !candidate.startLine || !candidate.endLine || candidate.endLine >= candidate.startLine, {
+        message: 'endLine must be greater than or equal to startLine',
+      })).min(1).max(MAX_SCOPE_CANDIDATES),
+      scopeRoot: z.string().optional(),
+      maxFilesRead: z.number().int().positive().optional(),
+    }),
+    parametersJsonSchema: {
+      type: 'object',
+      properties: {
+        objective: { type: 'string', description: 'Current task objective for this proposed file scope.' },
+        candidates: {
+          type: 'array',
+          minItems: 1,
+          maxItems: MAX_SCOPE_CANDIDATES,
+          items: {
+            type: 'object',
+            properties: {
+              path: { type: 'string', description: 'Workspace-relative file path candidate.' },
+              reason: { type: 'string', description: 'Why this file is needed.' },
+              intent: { type: 'string', enum: ['read', 'write'], description: 'Whether the file is expected to be read or changed.' },
+              access: { type: 'string', enum: ['read', 'write'], description: 'Alias for intent; use read or write.' },
+              startLine: { type: 'integer', minimum: 1, description: 'Optional likely starting line.' },
+              endLine: { type: 'integer', minimum: 1, description: 'Optional likely ending line.' },
+            },
+            required: ['path'],
+          },
+        },
+        scopeRoot: { type: 'string', description: 'Optional project root or project id to bias path resolution.' },
+        maxFilesRead: { type: 'integer', minimum: 1, description: 'Optional maximum number of files to read for this task.' },
+      },
+      required: ['objective', 'candidates'],
+    },
+    async execute(input): Promise<ToolResult> {
+      const resolver = createWorkspacePathResolver({ workspace, db, ignoreService, scopeRoot: input.scopeRoot });
+      const accepted = new Map<string, FileScopeCandidateInput & { resolvedPath: string }>();
+      const rejected: Array<{ path: string; reason: string }> = [];
+      const scopeAliases = new Set<string>();
+
+      for (const candidate of input.candidates.slice(0, MAX_SCOPE_CANDIDATES)) {
+        const intent = candidate.intent ?? candidate.access ?? 'read';
+        const directRel = resolveWorkspaceRelPath(workspace, candidate.path);
+        const directIgnored = directRel
+          ? ignoreService.isIgnored(directRel, intent === 'read' ? { forRead: true } : undefined)
+          : true;
+        const directValid = Boolean(directRel && !directIgnored);
+        const directReadable = directValid && directRel ? isWorkspaceFile(workspace, directRel) : false;
+        let resolvedPath = directValid && (intent === 'write' || directReadable) ? directRel ?? undefined : undefined;
+        if (!resolvedPath) {
+          const resolution = resolver.resolve(candidate.path);
+          if (resolution.autoResolved && resolution.resolvedPath && !ignoreService.isIgnored(resolution.resolvedPath, { forRead: true })) {
+            resolvedPath = resolution.resolvedPath;
+          }
+        }
+
+        if (!resolvedPath) {
+          rejected.push({ path: candidate.path, reason: 'Path is invalid, ignored, outside the workspace, or could not be resolved with high confidence.' });
+          continue;
+        }
+
+        const normalizedCandidatePath = normalizeFileScopePath(candidate.path);
+        if (normalizedCandidatePath && !isAbsolute(candidate.path)) {
+          scopeAliases.add(normalizedCandidatePath);
+        }
+        accepted.set(resolvedPath, { ...candidate, intent, resolvedPath });
+      }
+
+      const acceptedPaths = [...accepted.keys()];
+      if (acceptedPaths.length === 0) {
+        return {
+          success: false,
+          output: '',
+          error: `No valid file-scope candidates were accepted. Rejected: ${rejected.map((item) => `${item.path} (${item.reason})`).join('; ')}`,
+        };
+      }
+
+      const maxFilesRead = input.maxFilesRead ?? Math.max(acceptedPaths.length, 6);
+      getTaskState?.()?.setFileScope([...new Set([...acceptedPaths, ...scopeAliases])], maxFilesRead);
+
+      return {
+        success: true,
+        output: JSON.stringify({
+          objective: input.objective,
+          accepted: [...accepted.values()].map((item) => ({
+            path: item.resolvedPath,
+            intent: item.intent,
+            reason: item.reason,
+            startLine: item.startLine,
+            endLine: item.endLine,
+          })),
+          rejected,
+          budget: {
+            maxFilesRead,
+            remainingReads: maxFilesRead,
+          },
+          note: input.candidates.length > MAX_SCOPE_CANDIDATES
+            ? `Accepted scope was evaluated from the first ${MAX_SCOPE_CANDIDATES} candidates.`
+            : undefined,
+        }, null, 2),
+      };
+    },
+  };
+}
+
+function isWorkspaceFile(workspace: string, relPath: string): boolean {
+  try {
+    return statSync(join(workspace, relPath)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function normalizeFileScopePath(path: string): string {
+  return path.replace(/\\/g, '/').replace(/^\.\/+/, '').replace(/\/+/g, '/');
 }
 
 export function createMemorySearchTool(memory: MemoryService): Tool<{ query: string; limit?: number }> {

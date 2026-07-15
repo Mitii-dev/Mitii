@@ -37,7 +37,7 @@ describe('Act orchestration boundary', () => {
       orchestrationEnabled: true,
     });
 
-    expect(route.intent).toBe('resume_plan');
+    expect(route.intent).toBe('feature');
     expect(route.executionPath).toBe('resume_saved_plan');
     expect(route.shouldUsePlanner).toBe(false);
   });
@@ -79,6 +79,7 @@ describe('Act orchestration boundary', () => {
       mode: 'agent',
       hasActivePlan: false,
       orchestrationEnabled: true,
+      intent: 'docs',
     });
 
     expect(route.executionPath).toBe('orchestrated');
@@ -108,6 +109,7 @@ describe('Act orchestration boundary', () => {
       mode: 'agent',
       hasActivePlan: false,
       orchestrationEnabled: true,
+      intent: 'docs',
     });
 
     expect(route.intent).toBe('docs');
@@ -134,6 +136,7 @@ describe('Act orchestration boundary', () => {
       skillCatalog,
       verifyCommands: ['npm test'],
       taskAnalysis: analyzeTask('fix the failing test in src/core/foo.ts', 'agent'),
+      intent: 'bugfix',
     });
 
     expect(plan.executionPath).toBe('resume_saved_plan');

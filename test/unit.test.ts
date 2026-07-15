@@ -118,6 +118,95 @@ describe('IgnoreService', () => {
     }
   });
 
+  it('read_file returns a requested line slice with file line metadata', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-read-slice-test-'));
+    try {
+      const { createReadFileTool } = await import('../src/core/tools/builtinTools');
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      const relPath = 'src/sliced.ts';
+      mkdirSync(dirname(join(tempDir, relPath)), { recursive: true });
+      writeFileSync(join(tempDir, relPath), ['line 1', 'line 2', 'line 3', 'line 4'].join('\n'));
+
+      const result = await createReadFileTool(tempDir, ig).execute({
+        path: relPath,
+        startLine: 2,
+        endLine: 3,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('// lines 2-3 of 4');
+      expect(result.output).toContain('line 2\nline 3');
+      expect(result.output).not.toContain('line 1');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('propose_file_scope validates candidates and stores accepted scope', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-file-scope-test-'));
+    try {
+      const { createProposeFileScopeTool } = await import('../src/core/tools/builtinTools');
+      const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      mkdirSync(join(tempDir, 'src'), { recursive: true });
+      writeFileSync(join(tempDir, 'src/foo.ts'), 'export const foo = 1;\n');
+      const state = new AgentTaskState();
+      const tool = createProposeFileScopeTool(tempDir, ig, undefined, () => state);
+
+      const result = await tool.execute({
+        objective: 'inspect foo',
+        candidates: [
+          { path: 'src/foo.ts', reason: 'target file', intent: 'read' },
+          { path: '../outside.ts', reason: 'invalid path', intent: 'read' },
+        ],
+        maxFilesRead: 2,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('src/foo.ts');
+      expect(result.output).toContain('outside.ts');
+      expect(state.isPathInScope('src/foo.ts')).toBe(true);
+      expect(state.checkFileScopeBlocked('read_file', { path: 'src/foo.ts' })).toBeNull();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('propose_file_scope accepts access aliases and rejects missing read targets', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-file-scope-access-test-'));
+    try {
+      const { createProposeFileScopeTool } = await import('../src/core/tools/builtinTools');
+      const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      mkdirSync(join(tempDir, 'src'), { recursive: true });
+      writeFileSync(join(tempDir, 'src/foo.ts'), 'export const foo = 1;\n');
+      const state = new AgentTaskState();
+      const tool = createProposeFileScopeTool(tempDir, ig, undefined, () => state);
+
+      const result = await tool.execute({
+        objective: 'inspect and add files',
+        candidates: [
+          { path: 'src/foo.ts', access: 'read' },
+          { path: 'src/missing.ts', access: 'read' },
+          { path: 'src/new.ts', access: 'write' },
+        ],
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('src/foo.ts');
+      expect(result.output).toContain('src/new.ts');
+      expect(result.output).toContain('src/missing.ts');
+      expect(state.isPathInScope('src/foo.ts')).toBe(true);
+      expect(state.isPathInScope('src/new.ts')).toBe(true);
+      expect(state.isPathInScope('src/missing.ts')).toBe(false);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('serves repeat file reads from cache across read_file and read_files', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-read-cache-test-'));
     const targetRelPath = 'src/cache-target.ts';
@@ -1467,6 +1556,7 @@ describe('AgentTaskState', () => {
   it('blocks repeated read_file after first successful read', async () => {
     const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
     const state = new AgentTaskState();
+    state.setFileScope(['apps/docs/docusaurus.config.ts']);
     state.recordToolSuccess('read_file', { path: 'apps/docs/docusaurus.config.ts' }, 'export default {}');
     const blocked = state.checkBlocked('read_file', { path: 'apps/docs/docusaurus.config.ts' });
     expect(blocked).toContain('Already read');
@@ -1478,9 +1568,43 @@ describe('AgentTaskState', () => {
   it('invalidates read cache after apply_patch', async () => {
     const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
     const state = new AgentTaskState();
+    state.setFileScope(['src/foo.ts']);
     state.recordToolSuccess('read_file', { path: 'src/foo.ts' }, 'const x = 1');
     state.recordToolSuccess('apply_patch', { path: 'src/foo.ts' }, 'Patched');
     expect(state.checkBlocked('read_file', { path: 'src/foo.ts' })).toBeNull();
+  });
+
+  it('requires proposed file scope before reads and edits', async () => {
+    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const state = new AgentTaskState();
+    expect(state.checkFileScopeBlocked('read_file', { path: 'src/foo.ts' })).toContain('propose_file_scope');
+    state.setFileScope(['src/foo.ts', 'src/other.ts'], 1);
+    expect(state.checkFileScopeBlocked('read_file', { path: 'src/foo.ts' })).toBeNull();
+    expect(state.checkFileScopeBlocked('write_file', { path: 'src/bar.ts' })).toContain('outside the accepted file scope');
+    state.recordToolSuccess('read_file', { path: 'src/foo.ts' }, 'const x = 1');
+    expect(state.checkFileScopeBlocked('read_file', { path: 'src/foo.ts' })).toBeNull();
+    expect(state.checkFileScopeBlocked('read_file', { path: 'src/other.ts' })).toContain('File read budget exceeded');
+  });
+
+  it('parses and gates JSON intent classifications', async () => {
+    const {
+      gateIntentClassification,
+      parseIntentClassification,
+    } = await import('../src/core/runtime/intentClassifier');
+    const parsed = parseIntentClassification(
+      '{"intent":"docs","confidence":0.82,"alternatives":[{"intent":"feature","confidence":0.4}]}',
+      ['bugfix', 'feature', 'docs'] as const
+    );
+    expect(parsed).toMatchObject({ intent: 'docs', confidence: 0.82 });
+    expect(parsed.alternatives?.[0]).toMatchObject({ intent: 'feature', confidence: 0.4 });
+
+    const gated = gateIntentClassification(
+      { intent: 'feature' as const, confidence: 0.3, alternatives: [] },
+      'agent',
+      'question' as const
+    );
+    expect(gated.intent).toBe('question');
+    expect(gated.needsClarification).toBe(true);
   });
 
   it('caps sequential-thinking MCP calls', async () => {

@@ -311,6 +311,16 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         await this.syncState();
         break;
 
+      case 'selectSessionModel':
+        await this.controller.selectSessionModel(message.payload);
+        await this.syncState();
+        break;
+
+      case 'saveSessionModelAsDefault':
+        await this.controller.saveSessionModelAsDefault();
+        await this.syncState();
+        break;
+
       case 'saveAgentSettings':
         await this.controller.saveAgentSettings(message.payload);
         await this.syncState();

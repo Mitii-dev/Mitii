@@ -1411,6 +1411,11 @@ body,
   min-width: 112px;
 }
 
+.composer__dropdown--model .composer__dropdown-button {
+  min-width: 132px;
+  max-width: 178px;
+}
+
 .composer__dropdown-value {
   display: inline-flex;
   align-items: center;
@@ -1459,6 +1464,56 @@ body,
   border-radius: 7px;
   background: var(--vscode-quickInput-background, var(--thunder-surface));
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.38);
+}
+
+.composer__dropdown-menu--model {
+  width: max(260px, 100%);
+  max-height: min(420px, 70vh);
+  overflow: auto;
+}
+
+.composer__model-group {
+  display: grid;
+  gap: 2px;
+}
+
+.composer__model-group + .composer__model-group {
+  margin-top: 4px;
+}
+
+.composer__model-group-label {
+  padding: 5px 7px 2px;
+  color: var(--thunder-muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.composer__dropdown-option--clear {
+  margin-bottom: 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--thunder-border) 70%, transparent);
+  border-radius: 5px 5px 0 0;
+}
+
+.composer__model-default-button {
+  width: 100%;
+  margin-top: 6px;
+  padding: 7px 8px;
+  border: 1px solid color-mix(in srgb, var(--thunder-accent) 58%, var(--thunder-border));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--thunder-accent) 12%, transparent);
+  color: var(--thunder-fg);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.composer__model-default-button:hover,
+.composer__model-default-button:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--thunder-accent) 18%, transparent);
 }
 
 .composer__dropdown-option {

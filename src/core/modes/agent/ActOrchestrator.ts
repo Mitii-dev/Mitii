@@ -8,7 +8,7 @@ import { resolvePlanScope } from '../plan/PlanScopeResolver';
 import { routeActIntent } from './ActIntentRouter';
 import { buildActPromptContext } from './actPrompts';
 import { loadActSkillPlaybooks, resolveActSkillNames } from './actSkillRouting';
-import type { ActDepth, ActRunPlan } from './actTypes';
+import type { ActDepth, ActIntent, ActRunPlan } from './actTypes';
 
 export interface ActPrepareOptions {
   workspaceRoot?: string;
@@ -27,6 +27,7 @@ export interface ActPrepareOptions {
   savedPlanId?: string;
   /** Empty = discover verify commands from project manifests at runtime */
   verifyCommands?: string[];
+  intent?: ActIntent;
 }
 
 export class ActOrchestrator {
@@ -40,6 +41,7 @@ export class ActOrchestrator {
       mdxRepairMode: options.mdxRepairMode,
       githubIssueMode: options.githubIssueMode,
       actDepth: options.actDepth,
+      intent: options.intent,
     });
     const catalog = options.catalog ?? (options.workspaceRoot ? loadProjectCatalog(options.workspaceRoot) : undefined);
     const scope = resolvePlanScope(userMessage, catalog);

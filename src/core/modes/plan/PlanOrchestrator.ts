@@ -6,7 +6,7 @@ import { routePlanIntent } from './PlanIntentRouter';
 import { resolvePlanScope } from './PlanScopeResolver';
 import { buildPlanPromptContext } from './planPrompts';
 import { loadPlanningSkillPlaybooks, resolvePlanningSkillNames } from './planSkillRouting';
-import type { PlanDepth, PlanRunPlan } from './planTypes';
+import type { PlanDepth, PlanIntent, PlanRunPlan } from './planTypes';
 import { createLogger } from '../../telemetry/Logger';
 
 const log = createLogger('PlanOrchestrator');
@@ -20,6 +20,7 @@ export interface PlanPrepareOptions {
   planAutoContinue?: boolean;
   planMaxAutoContinues?: number;
   taskAnalysis?: TaskAnalysis;
+  intent?: PlanIntent;
 }
 
 export class PlanOrchestrator {
@@ -30,7 +31,7 @@ export class PlanOrchestrator {
       planDepth: options.planDepth,
     });
 
-    const route = routePlanIntent(userMessage, options.taskAnalysis);
+    const route = routePlanIntent(userMessage, options.taskAnalysis, options.intent ? { intent: options.intent } : undefined);
     log.debug('Plan route resolved', { route });
 
     const catalog = options.catalog ?? (options.workspaceRoot ? loadProjectCatalog(options.workspaceRoot) : undefined);

@@ -1,4 +1,4 @@
-import type { AskRunPlan, ProjectCatalog } from './askTypes';
+import type { AskIntent, AskRunPlan, ProjectCatalog } from './askTypes';
 import type { AgentDepth } from '../../config/schema';
 import { routeAskIntent } from './AskIntentRouter';
 import { buildAskPromptContext } from './askPrompts';
@@ -12,11 +12,12 @@ export interface AskPrepareOptions {
   askDepth?: AgentDepth;
   askAutoContinue?: boolean;
   askMaxAutoContinues?: number;
+  intent?: AskIntent;
 }
 
 export class AskOrchestrator {
   static prepare(userMessage: string, options: AskPrepareOptions = {}): AskRunPlan {
-    const route = routeAskIntent(userMessage);
+    const route = routeAskIntent(userMessage, options.intent ? { intent: options.intent } : undefined);
     const catalog = options.catalog ?? (options.workspaceRoot ? loadProjectCatalog(options.workspaceRoot) : undefined);
     const scope = resolveAskScope(userMessage, catalog);
     const maxSteps = resolveAskMaxSteps(route.profile, route.intent, options.configuredMaxSteps, options.askDepth);

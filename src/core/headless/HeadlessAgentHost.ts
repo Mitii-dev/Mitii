@@ -36,6 +36,7 @@ import {
   createDiagnosticsTool, createWriteFileTool, createApplyPatchTool, createRunCommandTool,
   createMemorySearchTool, createMemoryWriteTool, createSaveTaskStateTool,
   createFetchWebTool, createAskQuestionTool, createProjectCatalogTool, createAnalyzeChangeImpactTool,
+  createProposeFileScopeTool,
   setSubagentTracker,
 } from '../tools/builtinTools';
 import { ProjectCatalogContextSource, discoverProjectCatalog, saveProjectCatalog } from '../modes/ask';
@@ -479,6 +480,7 @@ export class HeadlessAgentHost {
     this.toolRuntime.register(createDiagnosticsTool(this.diagnosticsService as never));
     this.toolRuntime.register(createProjectCatalogTool(workspace));
     this.toolRuntime.register(createAnalyzeChangeImpactTool(workspace));
+    this.toolRuntime.register(createProposeFileScopeTool(workspace, this.ignoreService, db, () => this.agentTaskState));
     this.toolRuntime.register(createWriteFileTool(workspace, this.ignoreService));
     this.toolRuntime.register(createApplyPatchTool(workspace, this.ignoreService));
     this.toolRuntime.register(createRunCommandTool(workspace, () => this.session?.mode ?? 'plan'));
@@ -605,6 +607,7 @@ export class HeadlessAgentHost {
     this.agentTaskState.reset();
     this.agentTaskState.setLimits({
       maxSequentialThinkingCalls: this.config.agent.maxSequentialThinkingCallsPerTurn,
+      maxFilesRead: 12,
     });
 
     if (this.options.approval === 'auto') {

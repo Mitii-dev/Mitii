@@ -32,6 +32,16 @@ import { AgentLoop, type ApprovedToolResult, type AgentLoopSuspendState } from '
 import { isSkippedToolOutput } from '../runtime/toolSkip';
 import { PlanExecutor } from '../runtime/PlanExecutor';
 import { analyzeTask, type TaskAnalysis } from '../runtime/TaskAnalyzer';
+import {
+  ACT_INTENT_DESCRIPTIONS,
+  ASK_INTENT_DESCRIPTIONS,
+  PLAN_INTENT_DESCRIPTIONS,
+  buildIntentClarification,
+  classifyIntent,
+  gateIntentClassification,
+  safeDefaultIntent,
+  type IntentClassification,
+} from '../runtime/intentClassifier';
 import { extractOriginalTaskMessage, isApprovalContinuationMessage, resolveConversationTaskMessage } from '../runtime/taskMessage';
 import { compactMessagesWithLlm } from '../runtime/ContextCompaction';
 import { getMaxInputTokens } from '../runtime/PromptBudget';
@@ -77,6 +87,9 @@ import { resolveMaxContextItems } from '../context/resolveMaxContextItems';
 import { enrichTask } from '../task';
 import type { GitHubIssueFetcher } from '../integrations/github';
 import { detectMicroTask, type MicroTaskExecutor } from '../microtasks';
+import type { AskIntent } from '../modes/ask/askTypes';
+import type { PlanIntent } from '../modes/plan/planTypes';
+import type { ActIntent } from '../modes/agent/actTypes';
 
 const log = createLogger('ChatOrchestrator');
 
@@ -99,6 +112,11 @@ export type TokenUsageCallback = (
   breakdown: TokenUsageBreakdownItem[],
   options?: { final?: boolean }
 ) => void;
+
+type ModeIntentRouting =
+  | { mode: 'ask'; classification: IntentClassification<AskIntent>; needsClarification: boolean; useClassification?: boolean }
+  | { mode: 'plan'; classification: IntentClassification<PlanIntent>; needsClarification: boolean; useClassification?: boolean }
+  | { mode: 'agent'; classification: IntentClassification<ActIntent>; needsClarification: boolean; useClassification?: boolean };
 
 export interface ChatOrchestratorDeps {
   toolRuntime?: ToolRuntime;
@@ -127,6 +145,7 @@ export interface ChatOrchestratorDeps {
   githubIssueCommentLimit?: number;
   microTaskExecutorFactory?: (provider: LlmProvider) => MicroTaskExecutor;
   microTaskRoutingEnabled?: boolean;
+  intentClassifierProvider?: LlmProvider;
 }
 
 export class ChatOrchestrator {
@@ -234,6 +253,78 @@ export class ChatOrchestrator {
       return;
     }
     this.onLiveStatus?.({ label, detail, stepCurrent, stepTotal });
+  }
+
+  private async resolveIntentRouting(
+    mode: ThunderSession['mode'],
+    userMessage: string,
+    provider: LlmProvider
+  ): Promise<ModeIntentRouting> {
+    const classifierProvider = this.deps.intentClassifierProvider ?? this.deps.researchAgentProvider ?? provider;
+    try {
+      if (mode === 'ask') {
+        const intents = Object.keys(ASK_INTENT_DESCRIPTIONS) as AskIntent[];
+        const raw = await classifyIntent(classifierProvider, mode, userMessage, intents, ASK_INTENT_DESCRIPTIONS);
+        const classification = gateIntentClassification(raw, mode, safeDefaultIntent(mode, intents));
+        this.logIntentRouting(mode, classification, raw.intent !== classification.intent);
+        return { mode, classification, needsClarification: Boolean(classification.needsClarification) };
+      }
+      if (mode === 'plan') {
+        const intents = Object.keys(PLAN_INTENT_DESCRIPTIONS) as PlanIntent[];
+        const raw = await classifyIntent(classifierProvider, mode, userMessage, intents, PLAN_INTENT_DESCRIPTIONS);
+        const classification = gateIntentClassification(raw, mode, safeDefaultIntent(mode, intents));
+        this.logIntentRouting(mode, classification, raw.intent !== classification.intent);
+        return { mode, classification, needsClarification: Boolean(classification.needsClarification) };
+      }
+      const intents = Object.keys(ACT_INTENT_DESCRIPTIONS) as ActIntent[];
+      const raw = await classifyIntent(classifierProvider, 'agent', userMessage, intents, ACT_INTENT_DESCRIPTIONS);
+      const classification = gateIntentClassification(raw, 'agent', safeDefaultIntent('agent', intents));
+      this.logIntentRouting('agent', classification, raw.intent !== classification.intent);
+      return { mode: 'agent', classification, needsClarification: Boolean(classification.needsClarification) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log.warn('Intent classifier failed; using synchronous fallback', { mode, error: message });
+      this.emitActivity('info', 'Intent classifier fallback', message);
+      return this.fallbackIntentRouting(mode);
+    }
+  }
+
+  private fallbackIntentRouting(mode: ThunderSession['mode']): ModeIntentRouting {
+    if (mode === 'ask') {
+      return { mode, classification: { intent: 'explain_code', confidence: 0, alternatives: [] }, needsClarification: false, useClassification: false };
+    }
+    if (mode === 'plan') {
+      return { mode, classification: { intent: 'question', confidence: 0, alternatives: [] }, needsClarification: false, useClassification: false };
+    }
+    return { mode: 'agent', classification: { intent: 'question', confidence: 0, alternatives: [] }, needsClarification: false, useClassification: false };
+  }
+
+  private buildRoutingClarification(
+    mode: ThunderSession['mode'],
+    routing: ModeIntentRouting
+  ): { question: string; options: string[] } {
+    if (routing.mode === 'ask') {
+      return buildIntentClarification(mode, routing.classification, ASK_INTENT_DESCRIPTIONS);
+    }
+    if (routing.mode === 'plan') {
+      return buildIntentClarification(mode, routing.classification, PLAN_INTENT_DESCRIPTIONS);
+    }
+    return buildIntentClarification('agent', routing.classification, ACT_INTENT_DESCRIPTIONS);
+  }
+
+  private logIntentRouting<T extends string>(
+    mode: ThunderSession['mode'],
+    classification: IntentClassification<T>,
+    gated: boolean
+  ): void {
+    this.deps.sessionLog?.appendDebug('info', 'Intent classifier result', {
+      mode,
+      intent: classification.intent,
+      confidence: classification.confidence,
+      alternatives: classification.alternatives,
+      needsClarification: classification.needsClarification,
+      gated,
+    });
   }
 
   async *send(
@@ -352,7 +443,21 @@ export class ChatOrchestrator {
     const activePlanAtStart = isAgentMode
       ? this.deps.planPersistence?.getActive(session.id)
       : undefined;
-    const taskAnalysis = analyzeTask(taskForClassification, session.mode);
+    const intentRouting = await this.resolveIntentRouting(session.mode, taskForClassification, provider);
+    if (intentRouting.needsClarification && this.deps.toolExecutor && !isApprovalContinuationMessage(userMessage)) {
+      const clarification = this.buildRoutingClarification(session.mode, intentRouting);
+      const questionResult = await this.deps.toolExecutor.execute('ask_question', clarification);
+      if (questionResult.pendingApproval) {
+        this.saveTurn(session.id, 'user', userMessage);
+        this.setLiveStatus('Waiting for clarification', clarification.question);
+        return;
+      }
+    }
+    const taskAnalysis = analyzeTask(taskForClassification, session.mode, {
+      askIntent: intentRouting.mode === 'ask' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
+      planIntent: intentRouting.mode === 'plan' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
+      actIntent: intentRouting.mode === 'agent' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
+    });
     const askPlan = isAskMode
       ? AskOrchestrator.prepare(taskForClassification, {
           workspaceRoot: this.deps.workspace,
@@ -360,6 +465,7 @@ export class ChatOrchestrator {
           askDepth: agentConfig?.askDepth,
           askAutoContinue: agentConfig?.askAutoContinue,
           askMaxAutoContinues: agentConfig?.askMaxAutoContinues,
+          intent: intentRouting.mode === 'ask' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
         })
       : undefined;
     if (isPlanMode) {
@@ -374,6 +480,7 @@ export class ChatOrchestrator {
           planAutoContinue: agentConfig?.autoContinue,
           planMaxAutoContinues: agentConfig?.maxAutoContinues,
           taskAnalysis,
+          intent: intentRouting.mode === 'plan' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
         })
       : undefined;
     const actPlan = isAgentMode
@@ -392,6 +499,7 @@ export class ChatOrchestrator {
           hasActivePlan: Boolean(activePlanAtStart?.plan),
           savedPlanId: activePlanAtStart?.id,
           verifyCommands: agentConfig?.verifyCommands,
+          intent: intentRouting.mode === 'agent' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
         })
       : undefined;
     const scopedRoot =

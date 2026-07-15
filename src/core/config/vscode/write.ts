@@ -11,8 +11,18 @@ import type {
 import { updateMcpSettings } from './mcpWrite';
 import { CONFIG_SECTION } from '../keys';
 
-export async function updateProviderSettings(settings: ProviderSettingsPayload): Promise<void> {
+export type ProviderSettingsWriteReason = 'settings' | 'save-as-default';
+
+export async function updateProviderSettings(
+  settings: ProviderSettingsPayload,
+  reason: ProviderSettingsWriteReason | string = 'settings'
+): Promise<void> {
   const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
+  // Provider writes are permanent. Session model switches must stay in session state and
+  // reach this path only through an explicit Settings save or composer "Save as default".
+  if (reason !== 'settings' && reason !== 'save-as-default') {
+    throw new Error('Refusing to write provider settings without an explicit permanent-save reason.');
+  }
   const target = vscode.ConfigurationTarget.Global;
 
   await config.update('provider.type', settings.providerType, target);

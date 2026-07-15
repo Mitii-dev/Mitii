@@ -2,7 +2,11 @@ import * as vscode from 'vscode';
 import { AGENT_NAME, brandMessage } from '../../shared/brand';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
-import { ThunderSession, type ThunderMode } from '../session/ThunderSession';
+import {
+  ThunderSession,
+  type ThunderMode,
+  type ThunderSessionProviderOverride,
+} from '../session/ThunderSession';
 import { ConfigService } from '../config/ConfigService';
 import { LlmProviderRegistry } from '../llm/LlmProviderRegistry';
 import { IndexService } from '../indexing/IndexService';
@@ -41,6 +45,7 @@ import {
   createDiagnosticsTool, createWriteFileTool, createApplyPatchTool, createRunCommandTool,
   createMemorySearchTool, createMemoryWriteTool, createSaveTaskStateTool,
   createFetchWebTool, createAskQuestionTool, createProjectCatalogTool, createAnalyzeChangeImpactTool,
+  createProposeFileScopeTool,
   setSubagentTracker,
 } from '../tools/builtinTools';
 import { ProjectCatalogContextSource, discoverProjectCatalog, saveProjectCatalog } from '../modes/ask';
@@ -79,6 +84,7 @@ import { McpManager } from '../mcp/McpManager';
 import { ProjectRulesContextSource, ProjectRulesService } from '../rules/ProjectRulesService';
 import {
   ProviderProfilesService,
+  type ProviderProfileView as StoredProviderProfileView,
   providerSecretRef,
 } from '../providers/ProviderProfilesService';
 import { SkillCatalogContextSource, SkillCatalogService } from '../skills/SkillCatalogService';
@@ -99,6 +105,8 @@ import type {
   TokenUsageView,
   TokenUsageBreakdownItem,
   McpCustomServerView,
+  ModelOptionView,
+  SessionProviderOverrideView,
 } from '../../vscode/webview/messages';
 import {
   initialWebviewState,
@@ -128,6 +136,8 @@ import type {
   SafetySettingsPayload,
   ThunderSettingsPayload,
 } from '../config/ui/payloads';
+import { PROVIDER_PRESETS, isCloudProvider } from '../llm/providerPresets';
+import type { ProviderType } from '../config/schema';
 
 const log = createLogger('ThunderController');
 const ONBOARDING_STATE_KEY = 'thunder.onboarding.completed.v1';
@@ -220,6 +230,7 @@ export class ThunderController {
   private pendingTokenUsage: TokenUsageView | undefined;
   private settingsSaving = false;
   private testingConnection = false;
+  private recentProviderOverrides: ThunderSessionProviderOverride[] = [];
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.configService = new ConfigService(context);
@@ -654,6 +665,7 @@ export class ThunderController {
     this.toolRuntime.register(createDiagnosticsTool(this.diagnosticsService));
     this.toolRuntime.register(createProjectCatalogTool(workspace));
     this.toolRuntime.register(createAnalyzeChangeImpactTool(workspace));
+    this.toolRuntime.register(createProposeFileScopeTool(workspace, this.ignoreService, db, () => this.agentTaskState));
     this.toolRuntime.register(createWriteFileTool(workspace, this.ignoreService));
     this.toolRuntime.register(createApplyPatchTool(workspace, this.ignoreService));
     this.toolRuntime.register(createRunCommandTool(workspace, () => this.session?.mode ?? 'plan'));
@@ -994,6 +1006,7 @@ export class ThunderController {
     const providerConfigured = config.provider.type !== 'echo' || Boolean(apiKey);
 
     const approvals: ApprovalRequestView[] = (this.approvalQueue?.getPending() ?? []).map(toApprovalView);
+    const effectiveProvider = this.resolveEffectiveProviderSelection(this.session?.mode ?? 'plan');
 
     return {
       ...initialWebviewState(),
@@ -1026,7 +1039,7 @@ export class ThunderController {
       vectorIndex: buildVectorIndexStatusView(config.indexing, workspacePath, this.vectorIndexService),
       tokenUsage: base.tokenUsage ?? {
         ...this.tokenUsage,
-        contextWindow: config.provider.contextWindow,
+        contextWindow: effectiveProvider.contextWindow ?? config.provider.contextWindow,
       },
       mode: base.mode ?? this.session?.mode ?? 'plan',
       indexing: this.indexingStatus,
@@ -1127,7 +1140,9 @@ export class ThunderController {
       },
       contextToggles: this.contextToggles,
       mcpToggles: this.mcpToggles,
-      providerLabel: `${config.provider.type} / ${config.provider.model}`,
+      providerLabel: `${effectiveProvider.providerType} / ${effectiveProvider.model}`,
+      modelOptions: this.buildModelOptions(effectiveProvider),
+      sessionProviderOverride: this.session?.providerOverride ?? null,
       workspaceOpen: Boolean(workspacePath),
       workspacePath,
       vscodeWorkspaceFolders: vscodeFolders,
@@ -1316,6 +1331,7 @@ export class ThunderController {
     this.agentTaskState.reset();
     this.agentTaskState.setLimits({
       maxSequentialThinkingCalls: this.configService.getConfig().agent.maxSequentialThinkingCallsPerTurn,
+      maxFilesRead: 12,
     });
     this.chatOrchestrator?.clearRoutingState();
 
@@ -1393,48 +1409,209 @@ export class ThunderController {
     };
   }
 
-  private async resolveProviderForMode(mode: string): Promise<LlmProvider> {
+  private resolveEffectiveProviderSelection(mode: string): ThunderSessionProviderOverride & { source: 'session' | 'mode' | 'global' } {
     const config = this.configService.getConfig();
-    const apiKey = await this.configService.getApiKey();
+    const sessionOverride = this.session?.providerOverride;
+    if (sessionOverride?.model.trim()) {
+      return {
+        ...sessionOverride,
+        source: 'session',
+        contextWindow: sessionOverride.contextWindow ?? config.provider.contextWindow,
+        apiVersion: sessionOverride.apiVersion ?? config.provider.apiVersion,
+        region: sessionOverride.region ?? config.provider.region,
+      };
+    }
 
     if (mode === 'plan') {
       const planModel = config.agent.planModel?.trim();
       if (planModel) {
-        enforceEnterpriseProviderPolicy(
-          config.enterprise.localProvidersOnly,
-          config.agent.planProviderType ?? config.provider.type,
-          config.agent.planBaseUrl?.trim() || config.provider.baseUrl
-        );
-        return this.providerRegistry.resolveFromOptions({
-          type: config.agent.planProviderType ?? config.provider.type,
+        return {
+          providerType: config.agent.planProviderType ?? config.provider.type,
           baseUrl: config.agent.planBaseUrl?.trim() || config.provider.baseUrl,
           model: planModel,
+          profile: 'Plan override',
+          apiVersion: config.provider.apiVersion,
+          region: config.provider.region,
           contextWindow: config.provider.contextWindow,
-          supportsStreaming: config.provider.supportsStreaming,
-          supportsTools: config.provider.supportsTools,
-          supportsEmbeddings: config.provider.supportsEmbeddings,
-        }, apiKey);
+          source: 'mode',
+        };
       }
     }
 
     if (mode === 'agent') {
       const actModel = config.agent.actModel?.trim();
       if (actModel) {
-        enforceEnterpriseProviderPolicy(
-          config.enterprise.localProvidersOnly,
-          config.agent.actProviderType ?? config.provider.type,
-          config.agent.actBaseUrl?.trim() || config.provider.baseUrl
-        );
-        return this.providerRegistry.resolveFromOptions({
-          type: config.agent.actProviderType ?? config.provider.type,
+        return {
+          providerType: config.agent.actProviderType ?? config.provider.type,
           baseUrl: config.agent.actBaseUrl?.trim() || config.provider.baseUrl,
           model: actModel,
+          profile: 'Agent override',
+          apiVersion: config.provider.apiVersion,
+          region: config.provider.region,
           contextWindow: config.provider.contextWindow,
-          supportsStreaming: config.provider.supportsStreaming,
-          supportsTools: config.provider.supportsTools,
-          supportsEmbeddings: config.provider.supportsEmbeddings,
-        }, apiKey);
+          source: 'mode',
+        };
       }
+    }
+
+    return {
+      providerType: config.provider.type,
+      baseUrl: config.provider.baseUrl,
+      model: config.provider.model,
+      profile: 'Global default',
+      apiVersion: config.provider.apiVersion,
+      region: config.provider.region,
+      contextWindow: config.provider.contextWindow,
+      source: 'global',
+    };
+  }
+
+  private buildModelOptions(effectiveProvider: ThunderSessionProviderOverride & { source: 'session' | 'mode' | 'global' }): ModelOptionView[] {
+    const config = this.configService.getConfig();
+    const options: ModelOptionView[] = [];
+    const push = (option: ModelOptionView) => {
+      options.push(option);
+    };
+
+    push(this.toModelOption(
+      {
+        providerType: effectiveProvider.providerType,
+        baseUrl: effectiveProvider.baseUrl,
+        model: effectiveProvider.model,
+        profile: effectiveProvider.profile,
+        profileId: effectiveProvider.profileId,
+        apiVersion: effectiveProvider.apiVersion,
+        region: effectiveProvider.region,
+        contextWindow: effectiveProvider.contextWindow,
+      },
+      'recent',
+      effectiveProvider.source === 'session' ? 'This chat' : effectiveProvider.source === 'mode' ? 'Mode override' : 'Global default',
+      `current:${effectiveProvider.source}:${this.providerOverrideKey(effectiveProvider)}`
+    ));
+
+    for (const [index, recent] of this.recentProviderOverrides.entries()) {
+      push(this.toModelOption(recent, 'recent', recent.profile ?? 'Recent model', `recent:${index}:${this.providerOverrideKey(recent)}`));
+    }
+
+    const globalDefault: ThunderSessionProviderOverride = {
+      providerType: config.provider.type,
+      baseUrl: config.provider.baseUrl,
+      model: config.provider.model,
+      profile: 'Global default',
+      apiVersion: config.provider.apiVersion,
+      region: config.provider.region,
+      contextWindow: config.provider.contextWindow,
+    };
+    push(this.toModelOption(globalDefault, 'recent', 'Global default', `global:${this.providerOverrideKey(globalDefault)}`));
+
+    for (const preset of PROVIDER_PRESETS) {
+      const category = isCloudProvider(preset.type) ? 'cloud' : 'local';
+      push(this.toModelOption({
+        providerType: preset.type,
+        baseUrl: preset.baseUrl,
+        model: preset.model,
+        profile: preset.label,
+        contextWindow: preset.contextWindow,
+        apiVersion: config.provider.apiVersion,
+        region: config.provider.region,
+      }, category, preset.label, `preset:${preset.type}`));
+    }
+
+    push(this.toModelOption({
+      providerType: 'echo',
+      baseUrl: '',
+      model: 'echo',
+      profile: 'Echo',
+      contextWindow: 8192,
+      apiVersion: config.provider.apiVersion,
+      region: config.provider.region,
+    }, 'local', 'Echo provider', 'preset:echo'));
+
+    for (const profile of this.providerProfilesService?.list() ?? []) {
+      push(this.profileToModelOption(profile));
+    }
+
+    return options;
+  }
+
+  private profileToModelOption(profile: StoredProviderProfileView): ModelOptionView {
+    return this.toModelOption({
+      providerType: profile.providerType,
+      baseUrl: profile.baseUrl,
+      model: profile.model,
+      profile: profile.name,
+      profileId: profile.id,
+      apiVersion: profile.apiVersion,
+      region: profile.region,
+      contextWindow: profile.contextWindow,
+    }, 'custom', profile.name, `profile:${profile.id}`);
+  }
+
+  private toModelOption(
+    override: ThunderSessionProviderOverride,
+    category: ModelOptionView['category'],
+    profile: string,
+    id: string
+  ): ModelOptionView {
+    const model = override.model.trim() || 'model';
+    const provider = override.providerType;
+    return {
+      id,
+      category,
+      providerType: provider,
+      baseUrl: override.baseUrl,
+      model,
+      profile,
+      profileId: override.profileId,
+      apiVersion: override.apiVersion,
+      region: override.region,
+      contextWindow: override.contextWindow,
+      label: model,
+      description: `${profile} · ${provider}${override.baseUrl ? ` · ${override.baseUrl}` : ''}`,
+    };
+  }
+
+  private providerOverrideKey(override: Pick<ThunderSessionProviderOverride, 'providerType' | 'baseUrl' | 'model' | 'profileId'>): string {
+    return [
+      override.providerType,
+      override.baseUrl,
+      override.model,
+      override.profileId ?? '',
+    ].join('\u0000');
+  }
+
+  private rememberProviderOverride(override: ThunderSessionProviderOverride): void {
+    const key = this.providerOverrideKey(override);
+    this.recentProviderOverrides = [
+      override,
+      ...this.recentProviderOverrides.filter((item) => this.providerOverrideKey(item) !== key),
+    ].slice(0, 6);
+  }
+
+  private async resolveProviderForMode(mode: string): Promise<LlmProvider> {
+    const config = this.configService.getConfig();
+    const selection = this.resolveEffectiveProviderSelection(mode);
+    const apiKey = selection.profileId
+      ? ((await this.configService.getApiKey(providerSecretRef(selection.profileId))) ?? (await this.configService.getApiKey()))
+      : await this.configService.getApiKey();
+
+    if (selection.source === 'session' || selection.source === 'mode') {
+      enforceEnterpriseProviderPolicy(
+        config.enterprise.localProvidersOnly,
+        selection.providerType,
+        selection.baseUrl
+      );
+      return this.providerRegistry.resolveFromOptions({
+        type: selection.providerType,
+        baseUrl: selection.baseUrl,
+        model: selection.model,
+        apiVersion: selection.apiVersion ?? config.provider.apiVersion,
+        region: selection.region ?? config.provider.region,
+        contextWindow: selection.contextWindow ?? config.provider.contextWindow,
+        supportsStreaming: config.provider.supportsStreaming,
+        supportsTools: config.provider.supportsTools,
+        supportsEmbeddings: config.provider.supportsEmbeddings,
+      }, apiKey);
     }
 
     const active = this.providerRegistry.getActive();
@@ -1722,6 +1899,7 @@ export class ThunderController {
       this.agentTaskState.reset();
       this.agentTaskState.setLimits({
         maxSequentialThinkingCalls: this.configService.getConfig().agent.maxSequentialThinkingCallsPerTurn,
+        maxFilesRead: 12,
       });
       this.notifyUi({ agentActivity: [], agentLiveStatus: null, subagents: [] });
     }
@@ -2363,6 +2541,88 @@ export class ThunderController {
     }
   }
 
+  async selectSessionModel(selection: SessionProviderOverrideView | null): Promise<void> {
+    if (!this.session) return;
+    if (!selection) {
+      this.session.setProviderOverride(null);
+      const state = await this.buildUiState(this.getPreservedUiBase());
+      this.notifyUi({
+        providerLabel: state.providerLabel,
+        modelOptions: state.modelOptions,
+        sessionProviderOverride: null,
+        tokenUsage: state.tokenUsage,
+      });
+      return;
+    }
+
+    const config = this.configService.getConfig();
+    const override: ThunderSessionProviderOverride = {
+      providerType: selection.providerType as ProviderType,
+      model: selection.model.trim(),
+      baseUrl: selection.baseUrl.trim(),
+      profile: selection.profile?.trim() || null,
+      profileId: selection.profileId,
+      apiVersion: selection.apiVersion?.trim() || config.provider.apiVersion,
+      region: selection.region?.trim() || config.provider.region,
+      contextWindow: selection.contextWindow ?? config.provider.contextWindow,
+    };
+
+    const validation = validateProviderSettings({
+      providerType: override.providerType,
+      baseUrl: override.baseUrl,
+      model: override.model,
+      apiVersion: override.apiVersion,
+      region: override.region,
+      contextWindow: override.contextWindow ?? config.provider.contextWindow,
+    });
+    if (!validation.ok) {
+      void vscode.window.showErrorMessage(`${AGENT_NAME}: ${validation.errors.join(' ')}`);
+      return;
+    }
+
+    try {
+      enforceEnterpriseProviderPolicy(config.enterprise.localProvidersOnly, override.providerType, override.baseUrl);
+    } catch (error) {
+      const safe = normalizeError(error);
+      void vscode.window.showErrorMessage(`${AGENT_NAME}: ${safe.message}`);
+      return;
+    }
+
+    this.session.setProviderOverride(override);
+    this.rememberProviderOverride(override);
+    const state = await this.buildUiState(this.getPreservedUiBase());
+    this.notifyUi({
+      providerLabel: state.providerLabel,
+      modelOptions: state.modelOptions,
+      sessionProviderOverride: state.sessionProviderOverride,
+      tokenUsage: state.tokenUsage,
+    });
+  }
+
+  async saveSessionModelAsDefault(): Promise<void> {
+    const override = this.session?.providerOverride;
+    if (!override) return;
+
+    const config = this.configService.getConfig();
+    await this.saveProviderSettings({
+      providerType: override.providerType,
+      baseUrl: override.baseUrl,
+      model: override.model,
+      apiVersion: override.apiVersion ?? config.provider.apiVersion,
+      region: override.region ?? config.provider.region,
+      contextWindow: override.contextWindow ?? config.provider.contextWindow,
+    }, 'save-as-default');
+    this.session?.setProviderOverride(null);
+    const state = await this.buildUiState(this.getPreservedUiBase());
+    this.notifyUi({
+      providerLabel: state.providerLabel,
+      modelOptions: state.modelOptions,
+      sessionProviderOverride: null,
+      tokenUsage: state.tokenUsage,
+      settings: state.settings,
+    });
+  }
+
   async testProviderConnection(settings?: ProviderSettingsPayload): Promise<void> {
     this.testingConnection = true;
     this.notifyUi({ testingConnection: true });
@@ -2475,7 +2735,10 @@ export class ThunderController {
     this.notifyUi({ settings: (await this.buildUiState()).settings });
   }
 
-  async saveProviderSettings(settings: ProviderSettingsPayload): Promise<void> {
+  async saveProviderSettings(
+    settings: ProviderSettingsPayload,
+    reason: import('../config/vscode/write').ProviderSettingsWriteReason = 'settings'
+  ): Promise<void> {
     const validation = validateProviderSettings(settings);
     if (!validation.ok) {
       void vscode.window.showErrorMessage(`${AGENT_NAME}: ${validation.errors.join(' ')}`);
@@ -2489,7 +2752,8 @@ export class ThunderController {
       return;
     }
     await this.configService.updateProviderSettings(
-      normalizeProviderSettings(settings, this.configService.getConfig().provider.contextWindow)
+      normalizeProviderSettings(settings, this.configService.getConfig().provider.contextWindow),
+      reason
     );
     const config = this.configService.getConfig();
     const apiKey = await this.configService.getApiKey();

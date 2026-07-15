@@ -24,6 +24,7 @@ export const ASK_ALLOWED_TOOLS = new Set([
   'spawn_subagent',
   'project_catalog',
   'analyze_change_impact',
+  'propose_file_scope',
 ]);
 
 const GROUNDING_TOOLS = new Set([
@@ -42,6 +43,7 @@ const GROUNDING_TOOLS = new Set([
   'spawn_subagent',
   'project_catalog',
   'analyze_change_impact',
+  'propose_file_scope',
 ]);
 
 export function filterAskModeTools(tools: ToolDefinition[]): ToolDefinition[] {

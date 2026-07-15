@@ -171,6 +171,7 @@ export class AgentLoop {
       options?.planMode ? isPlanGroundingToolCall(toolName) : isGroundingToolCall(toolName);
 
     this.toolExecutor.clearPlanPhaseLock?.();
+    injectFileScopeContract(messages);
 
     for (let step = 0; step < hardLimit; step++) {
       totalSteps = step + 1;
@@ -1026,6 +1027,29 @@ function injectPlanTracker(messages: ChatMessage[], plan?: ThunderPlan): void {
     } else {
       messages.unshift({ role: 'system', content: trackerContent });
     }
+  }
+}
+
+function injectFileScopeContract(messages: ChatMessage[]): void {
+  const marker = '[FILE_SCOPE_CONTRACT]';
+  if (messages.some((m) => m.role === 'system' && typeof m.content === 'string' && m.content.includes(marker))) {
+    return;
+  }
+  const contract: ChatMessage = {
+    role: 'system',
+    content: [
+      marker,
+      'Before reading or editing workspace files, call propose_file_scope with the objective and candidate paths.',
+      'Only call read_file/read_files/write_file/apply_patch for paths accepted by propose_file_scope.',
+      'Use read_file startLine/endLine slices for large files or targeted symbols, and stay within the returned maxFilesRead budget.',
+    ].join('\n'),
+  };
+
+  const systemIndex = messages.findIndex((m) => m.role === 'system');
+  if (systemIndex >= 0) {
+    messages.splice(systemIndex + 1, 0, contract);
+  } else {
+    messages.unshift(contract);
   }
 }
 

@@ -21,6 +21,7 @@ export interface ToolResultRecord {
 
 export interface AgentTaskLimits {
   maxSequentialThinkingCalls?: number;
+  maxFilesRead?: number;
 }
 
 export class AgentTaskState {
@@ -34,6 +35,9 @@ export class AgentTaskState {
   private executionToolsUsed = false;
   private sequentialThinkingCalls = 0;
   private maxSequentialThinkingCalls = 6;
+  private fileScope: Set<string> | null = null;
+  private maxFilesRead = Infinity;
+  private readPaths = new Set<string>();
 
   reset(): void {
     sendPhaseEvent(this.phaseActor, { type: 'RESET' });
@@ -45,11 +49,16 @@ export class AgentTaskState {
     this.pauseSummary = '';
     this.executionToolsUsed = false;
     this.sequentialThinkingCalls = 0;
+    this.fileScope = null;
+    this.readPaths.clear();
   }
 
   setLimits(limits: AgentTaskLimits): void {
     if (typeof limits.maxSequentialThinkingCalls === 'number') {
       this.maxSequentialThinkingCalls = Math.max(0, limits.maxSequentialThinkingCalls);
+    }
+    if (typeof limits.maxFilesRead === 'number') {
+      this.maxFilesRead = limits.maxFilesRead > 0 ? limits.maxFilesRead : Infinity;
     }
   }
 
@@ -71,6 +80,35 @@ export class AgentTaskState {
     return this.pauseSummary;
   }
 
+  setFileScope(paths: string[], maxFilesRead?: number): void {
+    this.fileScope = new Set(paths.map(normalizeScopePath).filter(Boolean));
+    this.readPaths.clear();
+    if (typeof maxFilesRead === 'number') {
+      this.maxFilesRead = maxFilesRead > 0 ? maxFilesRead : Infinity;
+    }
+  }
+
+  hasFileScope(): boolean {
+    return this.fileScope !== null;
+  }
+
+  isPathInScope(path: string): boolean {
+    return Boolean(this.fileScope?.has(normalizeScopePath(path)));
+  }
+
+  getFileScopeSnapshot(): { paths: string[]; maxFilesRead: number | 'unlimited'; filesReadCount: number; remainingReads: number | 'unlimited' } {
+    const filesReadCount = this.readPaths.size;
+    const remaining = Number.isFinite(this.maxFilesRead)
+      ? Math.max(0, this.maxFilesRead - filesReadCount)
+      : 'unlimited';
+    return {
+      paths: [...(this.fileScope ?? new Set<string>())],
+      maxFilesRead: Number.isFinite(this.maxFilesRead) ? this.maxFilesRead : 'unlimited',
+      filesReadCount,
+      remainingReads: remaining,
+    };
+  }
+
   recordToolSuccess(toolName: string, input: Record<string, unknown>, output: string): void {
     if (isSequentialThinkingTool(toolName)) {
       this.sequentialThinkingCalls += 1;
@@ -82,6 +120,17 @@ export class AgentTaskState {
       if (editedPath) this.invalidateReadsForPath(editedPath);
       if (this.getPhase() === 'analyze') {
         sendPhaseEvent(this.phaseActor, { type: 'ADVANCE_EXECUTE' });
+      }
+    }
+
+    if (toolName === 'read_file' && typeof input.path === 'string') {
+      this.readPaths.add(normalizeScopePath(input.path));
+    } else if (toolName === 'read_files') {
+      const paths = Array.isArray(input.paths)
+        ? input.paths.filter((p): p is string => typeof p === 'string')
+        : [];
+      for (const path of paths) {
+        this.readPaths.add(normalizeScopePath(path));
       }
     }
 
@@ -126,6 +175,9 @@ export class AgentTaskState {
 
   /** Returns block reason if this tool call should be rejected. */
   checkBlocked(toolName: string, input: Record<string, unknown>): string | null {
+    const scopeBlocked = this.checkFileScopeBlocked(toolName, input);
+    if (scopeBlocked) return scopeBlocked;
+
     if (this.getPhase() === 'verify') return null;
 
     if (toolName === 'memory_search' && this.getPhase() === 'execute') {
@@ -201,6 +253,43 @@ export class AgentTaskState {
     return null;
   }
 
+  checkFileScopeBlocked(toolName: string, input: Record<string, unknown>): string | null {
+    if (!isScopedFileTool(toolName)) return null;
+    const paths = extractScopedPaths(toolName, input);
+    if (paths.length === 0) return null;
+
+    if (!this.hasFileScope()) {
+      return 'Call propose_file_scope first to declare the candidate read/write paths for this task.';
+    }
+
+    const outOfScope = paths.filter((path) => !this.isPathInScope(path));
+    if (outOfScope.length > 0) {
+      return (
+        `Path(s) outside the accepted file scope: ${outOfScope.join(', ')}. ` +
+        'Call propose_file_scope again with the revised candidate paths before reading or editing them.'
+      );
+    }
+
+    if ((toolName === 'read_file' || toolName === 'read_files') && Number.isFinite(this.maxFilesRead)) {
+      const projected = new Set(this.readPaths);
+      for (const path of paths) {
+        projected.add(normalizeScopePath(path));
+      }
+      if (projected.size > this.maxFilesRead) {
+        return (
+          `File read budget exceeded (${this.readPaths.size}/${this.maxFilesRead} distinct files already used, ` +
+          `${projected.size - this.readPaths.size} new requested). Narrow the scope, use line ranges, or proceed from existing context.`
+        );
+      }
+    }
+
+    return null;
+  }
+
+  checkScopeGate(toolName: string, input: Record<string, unknown>): string | null {
+    return this.checkFileScopeBlocked(toolName, input);
+  }
+
   /** Cap MCP sequential-thinking calls to reduce latency and token burn. */
   checkMcpCap(toolName: string): string | null {
     if (!isSequentialThinkingTool(toolName)) return null;
@@ -213,10 +302,10 @@ export class AgentTaskState {
   }
 
   invalidateReadsForPath(relPath: string): void {
-    const normalized = relPath.replace(/\\/g, '/');
+    const normalized = normalizeScopePath(relPath);
     this.completedKeys.delete(`read_file:${normalized}`);
     for (const key of [...this.completedKeys]) {
-      if (key.startsWith('read_files:') && key.includes(normalized)) {
+      if ((key.startsWith('read_file:') || key.startsWith('read_files:')) && key.includes(normalized)) {
         this.completedKeys.delete(key);
       }
     }
@@ -295,6 +384,17 @@ export class AgentTaskState {
       for (const key of this.completedKeys) {
         lines.push(`- ${key}`);
       }
+    }
+
+    if (this.fileScope) {
+      const snapshot = this.getFileScopeSnapshot();
+      lines.push(
+        '',
+        `Accepted file scope (${snapshot.filesReadCount}/${snapshot.maxFilesRead} reads used):`,
+        ...snapshot.paths.map((path) => `- ${path}`)
+      );
+    } else {
+      lines.push('', 'File scope: not proposed yet. Call propose_file_scope before read_file/read_files/write_file/apply_patch.');
     }
 
     if (this.toolResults.length > 0) {
@@ -425,12 +525,13 @@ export function toolKey(toolName: string, input: Record<string, unknown>): strin
     return `list_files:${path}:${recursive}`;
   }
   if (toolName === 'read_file' && typeof input.path === 'string') {
-    return `read_file:${input.path.replace(/\\/g, '/')}`;
+    const range = formatLineRange(input);
+    return `read_file:${normalizeScopePath(input.path)}${range}`;
   }
   if (toolName === 'read_files' && Array.isArray(input.paths)) {
     const paths = input.paths
       .filter((p): p is string => typeof p === 'string')
-      .map((p) => p.replace(/\\/g, '/'))
+      .map(normalizeScopePath)
       .sort();
     if (paths.length === 0) return null;
     return `read_files:${paths.join('|')}`;
@@ -442,6 +543,34 @@ export function toolKey(toolName: string, input: Record<string, unknown>): strin
     return `research:${input.task.slice(0, 80)}`;
   }
   return null;
+}
+
+function isScopedFileTool(toolName: string): boolean {
+  return toolName === 'read_file' ||
+    toolName === 'read_files' ||
+    toolName === 'write_file' ||
+    toolName === 'apply_patch';
+}
+
+function extractScopedPaths(toolName: string, input: Record<string, unknown>): string[] {
+  if ((toolName === 'read_file' || toolName === 'write_file' || toolName === 'apply_patch') && typeof input.path === 'string') {
+    return [normalizeScopePath(input.path)];
+  }
+  if (toolName === 'read_files' && Array.isArray(input.paths)) {
+    return input.paths.filter((p): p is string => typeof p === 'string').map(normalizeScopePath);
+  }
+  return [];
+}
+
+function normalizeScopePath(path: string): string {
+  return path.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+/g, '/');
+}
+
+function formatLineRange(input: Record<string, unknown>): string {
+  const start = typeof input.startLine === 'number' ? input.startLine : undefined;
+  const end = typeof input.endLine === 'number' ? input.endLine : undefined;
+  if (!start && !end) return '';
+  return `:${start ?? 1}-${end ?? 'end'}`;
 }
 
 export function normalizeDiagnosticKey(command: string): string | null {

@@ -7,6 +7,7 @@ import type {
   McpSettingsPayload,
   McpToggles,
   ProviderSettingsPayload,
+  ProviderTypeView,
   SafetySettingsPayload,
   ThunderSettingsPayload,
 } from '../../core/config/ui/payloads';
@@ -338,6 +339,26 @@ export interface ProviderProfileView {
   hasApiKey: boolean;
 }
 
+export type ModelOptionCategory = 'recent' | 'local' | 'cloud' | 'custom';
+
+export interface SessionProviderOverrideView {
+  providerType: ProviderTypeView;
+  model: string;
+  baseUrl: string;
+  profile: string | null;
+  profileId?: string;
+  apiVersion?: string;
+  region?: string;
+  contextWindow?: number;
+}
+
+export interface ModelOptionView extends SessionProviderOverrideView {
+  id: string;
+  label: string;
+  description: string;
+  category: ModelOptionCategory;
+}
+
 export interface McpServerStatusView {
   name: string;
   connected: boolean;
@@ -385,6 +406,8 @@ export interface WebviewState {
   logoUri: string;
   showContextPreview: boolean;
   providerLabel: string;
+  modelOptions: ModelOptionView[];
+  sessionProviderOverride: SessionProviderOverrideView | null;
   workspaceOpen: boolean;
   workspacePath: string;
   vscodeWorkspaceFolders: string[];
@@ -439,6 +462,8 @@ export type WebviewToExtensionMessage =
   | { type: 'saveApiKey'; payload: { key: string } }
   | { type: 'saveGitHubToken'; payload: { token: string } }
   | { type: 'saveProviderSettings'; payload: ProviderSettingsPayload }
+  | { type: 'selectSessionModel'; payload: SessionProviderOverrideView | null }
+  | { type: 'saveSessionModelAsDefault' }
   | { type: 'saveAgentSettings'; payload: AgentSettingsPayload }
   | { type: 'saveSafetySettings'; payload: SafetySettingsPayload }
   | { type: 'saveMcpSettings'; payload: McpSettingsPayload }
@@ -579,6 +604,8 @@ export const initialWebviewState = (): WebviewState => ({
   logoUri: '',
   showContextPreview: false,
   providerLabel: 'echo',
+  modelOptions: [],
+  sessionProviderOverride: null,
   workspaceOpen: false,
   workspacePath: '',
   vscodeWorkspaceFolders: [],

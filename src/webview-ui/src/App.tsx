@@ -211,6 +211,8 @@ export function App() {
               activeDepth={activeDepth}
               tokenUsage={state.tokenUsage}
               modelLabel={state.providerLabel.split(' / ').pop() || state.providerLabel}
+              modelOptions={state.modelOptions}
+              sessionProviderOverride={state.sessionProviderOverride}
               pinnedContext={state.pinnedContext}
               canRetry={canRetry}
               onSend={(content, pinnedContext, attachments) =>
@@ -236,6 +238,8 @@ export function App() {
                   payload: buildAgentSettingsPayload(state.settings, depthPatch),
                 });
               }}
+              onModelChange={(selection) => postMessage({ type: 'selectSessionModel', payload: selection })}
+              onSaveModelDefault={() => postMessage({ type: 'saveSessionModelAsDefault' })}
               onRetry={() => postMessage({ type: 'retryLastMessage' })}
               onCopyResponse={() => postMessage({ type: 'copyLastResponse' })}
               onCopyChatHistory={() => postMessage({ type: 'copyChatHistoryMarkdown' })}

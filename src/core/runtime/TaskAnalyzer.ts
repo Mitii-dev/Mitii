@@ -1,6 +1,9 @@
 import { extractOriginalTaskMessage, isApprovalContinuationMessage } from './taskMessage';
 import { routeAskIntent } from '../modes/ask/AskIntentRouter';
 import { routePlanIntent } from '../modes/plan/PlanIntentRouter';
+import type { AskIntent } from '../modes/ask/askTypes';
+import type { PlanIntent } from '../modes/plan/planTypes';
+import type { ActIntent } from '../modes/agent/actTypes';
 
 export type TaskKind = 'question' | 'audit' | 'simple_edit' | 'implementation' | 'explicit_plan' | 'debugging';
 
@@ -13,8 +16,16 @@ export interface TaskAnalysis {
   shouldVerify: boolean;
   shouldUseSubagents: boolean;
   summary: string;
-  askIntent?: import('../modes/ask/askTypes').AskIntent;
+  askIntent?: AskIntent;
   askProfile?: import('../modes/ask/askTypes').AskResponseProfile;
+  planIntent?: PlanIntent;
+  actIntent?: ActIntent;
+}
+
+export interface TaskAnalysisOptions {
+  askIntent?: AskIntent;
+  planIntent?: PlanIntent;
+  actIntent?: ActIntent;
 }
 
 const ACTION_VERBS =
@@ -59,7 +70,7 @@ const AUDIT_CLEANUP =
 const DOCS_IMPLEMENTATION =
   /\b(add|create|write|update|generate|build)\b[\s\S]{0,80}\b(docs?|documentation|docusaurus|mdx?|examples?)\b|\b(docs?|documentation|docusaurus|mdx?|examples?)\b[\s\S]{0,80}\b(all|every|features?|components?|exports?|api|route|sidebar|navbar|installation|configuration)\b/i;
 
-export function analyzeTask(userMessage: string, mode: string): TaskAnalysis {
+export function analyzeTask(userMessage: string, mode: string, options: TaskAnalysisOptions = {}): TaskAnalysis {
   const text = userMessage.trim();
   const isContinuation = isApprovalContinuationMessage(text);
   const taskText = extractOriginalTaskMessage(text) ?? text;
@@ -78,7 +89,7 @@ export function analyzeTask(userMessage: string, mode: string): TaskAnalysis {
 
   const classified = classifyTask(taskText);
   if (mode === 'ask') {
-    const askRoute = routeAskIntent(taskText);
+    const askRoute = routeAskIntent(taskText, options.askIntent ? { intent: options.askIntent } : undefined);
     return {
       kind: 'question',
       complexity: estimateAskComplexity(askRoute.intent, taskText),
@@ -92,7 +103,7 @@ export function analyzeTask(userMessage: string, mode: string): TaskAnalysis {
   }
 
   if (mode === 'plan') {
-    const planRoute = routePlanIntent(taskText, classified);
+    const planRoute = routePlanIntent(taskText, classified, options.planIntent ? { intent: options.planIntent } : undefined);
     return {
       ...classified,
       complexity: planRoute.complexity,
@@ -103,6 +114,7 @@ export function analyzeTask(userMessage: string, mode: string): TaskAnalysis {
         classified.shouldUseSubagents ||
         (classified.kind === 'audit' && !/\bdependenc/i.test(taskText)),
       summary: planRoute.summary,
+      planIntent: planRoute.intent,
     };
   }
 
@@ -117,7 +129,10 @@ export function analyzeTask(userMessage: string, mode: string): TaskAnalysis {
     };
   }
 
-  return classified;
+  return {
+    ...classified,
+    actIntent: options.actIntent,
+  };
 }
 
 function estimateAskComplexity(

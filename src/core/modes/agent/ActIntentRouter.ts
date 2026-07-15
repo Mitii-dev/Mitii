@@ -3,6 +3,7 @@ import type { ThunderMode } from '../../session/ThunderSession';
 import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import { isApprovalContinuationMessage } from '../../runtime/taskMessage';
 import type { ActDepth, ActRoute } from './actTypes';
+import { ACT_INTENT_DESCRIPTIONS } from '../../runtime/intentClassifier';
 
 export interface ActRouteOptions {
   mode?: ThunderMode;
@@ -12,13 +13,8 @@ export interface ActRouteOptions {
   mdxRepairMode?: boolean;
   githubIssueMode?: boolean;
   actDepth?: ActDepth;
+  intent?: ActRoute['intent'];
 }
-
-const DOCS_HINT = /\b(docs?|documentation|docusaurus|mdx?|examples?|readme|changelog)\b/i;
-const REFACTOR_HINT = /\b(refactor|rewrite|migrate|cleanup architecture|restructure)\b/i;
-const BUGFIX_HINT = /\b(fix|debug|repair|failing|failed|error|bug|regression|broken|crash|compile|test failure)\b/i;
-const INFRA_HINT = /\b(ci\/cd|pipeline|workflows?|github actions|docker|config|infrastructure|deployment|terraform)\b/i;
-const CREATE_HINT = /\b(write|create|build|generate|scaffold)\b/i;
 
 // Fixed: Added '?' to make quantifiers lazy and prevent backtracking stalls
 const ACTIVE_PLAN_NEW_TASK =
@@ -66,7 +62,7 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
 
   if (!isApprovalContinuationMessage(userMessage) && shouldResumeSavedPlan(userMessage, hasActivePlan, isDirectOverride, { actDepth })) {
     return {
-      intent: 'resume_plan',
+      intent: options.intent ?? fallbackActIntent(analysis),
       executionPath: 'resume_saved_plan',
       complexity: analysis.complexity,
       shouldUsePlanner: false,
@@ -90,7 +86,7 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
 
   if (mdxRepairMode) {
     return {
-      intent: 'mdx_repair',
+      intent: 'bugfix',
       executionPath: 'mdx_repair',
       complexity: 'low',
       shouldUsePlanner: false,
@@ -118,7 +114,7 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
     };
   }
 
-  const intent = inferActIntent(userMessage, analysis);
+  const intent = options.intent ?? fallbackActIntent(analysis);
 
   return {
     intent,
@@ -175,24 +171,14 @@ export function hasDirectRouteOverride(userMessage: string): boolean {
   return DIRECT_ROUTE_OVERRIDE.test(userMessage);
 }
 
-function inferActIntent(userMessage: string, analysis: TaskAnalysis): ActRoute['intent'] {
+function fallbackActIntent(analysis: TaskAnalysis): ActRoute['intent'] {
   if (analysis.kind === 'audit') return 'audit';
   if (analysis.kind === 'question') return 'question';
   if (analysis.kind === 'debugging') return 'diagnose';
-
-  if (DOCS_HINT.test(userMessage)) return 'docs';
-  if (REFACTOR_HINT.test(userMessage)) return 'refactor';
-
   if (analysis.kind === 'implementation' || analysis.kind === 'explicit_plan') return 'feature';
-  
-  // Catch workflows and "write/create" requests and elevate them to features
-  if (INFRA_HINT.test(userMessage) || CREATE_HINT.test(userMessage)) return 'feature'; 
-  
-  if (BUGFIX_HINT.test(userMessage) || analysis.kind === 'simple_edit') return 'bugfix';
-  
-  return 'direct';
+  return 'bugfix';
 }
 
 function intentLabel(intent: ActRoute['intent']): string {
-  return intent.replace(/_/g, ' ');
+  return ACT_INTENT_DESCRIPTIONS[intent] ?? intent.replace(/_/g, ' ');
 }

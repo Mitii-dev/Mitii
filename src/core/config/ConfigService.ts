@@ -10,6 +10,7 @@ import {
   updateAllSettings,
   updateWorkspaceOverride,
   clearWorkspaceOverride,
+  type ProviderSettingsWriteReason,
 } from './vscode/write';
 import { updateCustomMcpServers } from './vscode/mcpWrite';
 import type { ThunderConfig } from './schema';
@@ -86,8 +87,11 @@ export class ConfigService {
     log.info('API key stored securely', { ref: keyRef });
   }
 
-  async updateProviderSettings(settings: ProviderSettingsPayload): Promise<void> {
-    await updateProviderSettings(settings);
+  async updateProviderSettings(
+    settings: ProviderSettingsPayload,
+    reason: ProviderSettingsWriteReason = 'settings'
+  ): Promise<void> {
+    await updateProviderSettings(settings, reason);
     this.config = readThunderConfigFromSettings();
     log.info('Provider settings updated');
   }

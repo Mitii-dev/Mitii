@@ -103,6 +103,12 @@ export class ToolExecutor {
     }
 
     const readOnlyMode = normalizeThunderMode(mode) === 'ask' || normalizeThunderMode(mode) === 'plan';
+    const scopeBlocked = this.getTaskState?.()?.checkScopeGate(resolvedName, input);
+    if (scopeBlocked) {
+      const soft = this.getTaskState?.()?.buildSoftBlockResponse(resolvedName, input);
+      return this.finishSoftBlock(resolvedName, input, soft ?? scopeBlocked);
+    }
+
     const mcpCap = readOnlyMode ? null : this.getTaskState?.()?.checkMcpCap(resolvedName);
     if (mcpCap) {
       return this.finishSoftBlock(resolvedName, input, mcpCap);
