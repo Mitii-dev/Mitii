@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type {
   AgentLiveStatusView,
   PlanPhaseView,
   PlanStepView,
   PlanView,
-  ThunderMode,
 } from '../../../vscode/webview/messages';
+import type { ThunderMode } from '../../../core/session/ThunderSession';
 
 interface PlanPanelProps {
   plan: PlanView | null;
@@ -141,13 +141,22 @@ function PlanPhaseSection({ phase }: { phase: PlanPhaseView }) {
 
 export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = null }: PlanPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [autoCollapsedSignature, setAutoCollapsedSignature] = useState<string | null>(null);
   const hasSteps = Boolean(plan && plan.steps.length > 0);
   const isPlanningSession = Boolean(plan?.status === 'planning' || (loading && !hasSteps));
   const showPanel = Boolean(plan && (hasSteps || isPlanningSession || plan.requirementAnalysis));
-  const collapseLabel = collapsed ? 'Expand' : 'Collapse';
+  const collapseLabel = collapsed ? 'View plan' : 'Hide plan';
   const planningLabel = liveStatus?.label?.toLowerCase().includes('plan')
     ? liveStatus.label
     : 'Building plan…';
+
+  useEffect(() => {
+    if (!plan || isPlanningSession || !plan.steps.length) return;
+    const signature = `${plan.goal}:${plan.steps.length}`;
+    if (autoCollapsedSignature === signature) return;
+    setCollapsed(true);
+    setAutoCollapsedSignature(signature);
+  }, [autoCollapsedSignature, isPlanningSession, plan]);
 
   if (!showPanel) return null;
 
@@ -169,6 +178,14 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
   const stepStats = liveStatus?.stepCurrent && liveStatus.stepTotal
     ? `${liveStatus.stepCurrent}/${liveStatus.stepTotal}`
     : undefined;
+  const activeStatusText = isPlanningSession
+    ? `${planningLabel}${liveStatus?.detail ? ` - ${liveStatus.detail}` : ''}`
+    : running && loading
+      ? `Step ${runningIndex + 1}/${plan.steps.length}: ${running.title}`
+      : isPlanComplete
+        ? 'All plan steps done'
+        : undefined;
+  const showHeaderSpinner = Boolean(isPlanningSession || (running && loading));
 
   const progressPct = hasSteps
     ? Math.round((done / plan.steps.length) * 100)
@@ -206,8 +223,7 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
               <p className="plan-panel__running" role="status">
                 <span className="plan-panel__spinner plan-panel__spinner--inline" aria-hidden="true" />
                 <span className="plan-panel__running-text">
-                  {planningLabel}
-                  {liveStatus?.detail ? ` — ${liveStatus.detail}` : ''}
+                  {activeStatusText}
                 </span>
                 {stepStats && <span className="plan-panel__running-stat">{stepStats}</span>}
               </p>
@@ -225,6 +241,9 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
             )}
           </div>
           <span className="plan-panel__meta">
+            {collapsed && showHeaderSpinner && (
+              <span className="plan-panel__spinner plan-panel__spinner--meta" aria-hidden="true" />
+            )}
             {hasSteps && (
               <span className="plan-panel__progress">{done}/{plan.steps.length}</span>
             )}
@@ -239,7 +258,7 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
       )}
 
       {!collapsed && (
-        <>
+        <div className="plan-panel__content">
           {plan.appliedSkills && plan.appliedSkills.length > 0 && (
             <div className="plan-panel__skills" aria-label="Applied planning skills">
               {plan.appliedSkills.map((skill) => (
@@ -304,7 +323,7 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
               </li>
             </ol>
           ) : null}
-        </>
+        </div>
       )}
     </section>
   );

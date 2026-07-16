@@ -191,6 +191,12 @@ export function App() {
             loading={state.loading}
             liveStatus={state.agentLiveStatus}
           />
+          <ContextPanel
+            items={state.pinnedContext}
+            onRemove={(path) => postMessage({ type: 'removePinnedContext', payload: { path } })}
+            onClear={() => postMessage({ type: 'clearPinnedContext' })}
+            onPick={() => postMessage({ type: 'pickContextPath' })}
+          />
           <div className="chat-body">
             <MessageList
               messages={state.messages}
@@ -262,12 +268,6 @@ export function App() {
               onShowInlineDiff={(approvalId) =>
                 postMessage({ type: 'showInlineDiff', payload: { approvalId } })
               }
-            />
-            <ContextPanel
-              items={state.pinnedContext}
-              onRemove={(path) => postMessage({ type: 'removePinnedContext', payload: { path } })}
-              onClear={() => postMessage({ type: 'clearPinnedContext' })}
-              onPick={() => postMessage({ type: 'pickContextPath' })}
             />
           </footer>
         </div>

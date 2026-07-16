@@ -563,7 +563,7 @@ export function ChatInput({
           </div>
         )}
         <div className="composer__footer">
-          <div className="composer__left">
+          <div className="composer__dropdown-row" aria-label="Chat controls">
             {renderDropdown({
               id: 'mode',
               label: 'Mode',
@@ -589,62 +589,66 @@ export function ChatInput({
               onChange: (nextDepth) => onDepthChange(nextDepth),
             })}
             {renderModelDropdown()}
-            <TokenMeter usage={tokenUsage} compact placement="above" />
           </div>
-          <div className="composer__actions">
-            <input
-              ref={fileInputRef}
-              className="composer__file-input"
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(e) => {
-                if (e.target.files) addImageFiles(e.target.files);
-                e.currentTarget.value = '';
-              }}
-            />
-            <IconButton
-              label="Attach image"
-              variant="ghost"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={loading}
-            >
-              <IconImage />
-            </IconButton>
-            {onRetry && (
-              <IconButton label="Retry last message" variant="ghost" onClick={onRetry} disabled={loading || !canRetry}>
-                <IconRetry />
-              </IconButton>
-            )}
-            {onCopyResponse && (
-              <IconButton label="Copy last response" variant="ghost" onClick={onCopyResponse} disabled={loading}>
-                <IconCopy />
-              </IconButton>
-            )}
-            {onCopyChatHistory && (
+          <div className="composer__utility-row">
+            <div className="composer__left">
+              <TokenMeter usage={tokenUsage} compact placement="above" />
+            </div>
+            <div className="composer__actions">
+              <input
+                ref={fileInputRef}
+                className="composer__file-input"
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => {
+                  if (e.target.files) addImageFiles(e.target.files);
+                  e.currentTarget.value = '';
+                }}
+              />
               <IconButton
-                label="Copy chat as Markdown"
+                label="Attach image"
                 variant="ghost"
-                onClick={onCopyChatHistory}
-                disabled={!canCopyChatHistory}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading}
               >
-                <IconMarkdown />
+                <IconImage />
               </IconButton>
-            )}
-            {loading ? (
-              <IconButton label="Stop generation" variant="accent" onClick={onStop}>
-                <IconStop />
-              </IconButton>
-            ) : (
-              <IconButton
-                label="Send message"
-                variant="accent"
-                onClick={handleSend}
-                disabled={!value.trim() && attachments.length === 0}
-              >
-                <IconSend />
-              </IconButton>
-            )}
+              {onRetry && (
+                <IconButton label="Retry last message" variant="ghost" onClick={onRetry} disabled={loading || !canRetry}>
+                  <IconRetry />
+                </IconButton>
+              )}
+              {onCopyResponse && (
+                <IconButton label="Copy last response" variant="ghost" onClick={onCopyResponse} disabled={loading}>
+                  <IconCopy />
+                </IconButton>
+              )}
+              {onCopyChatHistory && (
+                <IconButton
+                  label="Copy chat as Markdown"
+                  variant="ghost"
+                  onClick={onCopyChatHistory}
+                  disabled={!canCopyChatHistory}
+                >
+                  <IconMarkdown />
+                </IconButton>
+              )}
+              {loading ? (
+                <IconButton label="Stop generation" variant="accent" onClick={onStop}>
+                  <IconStop />
+                </IconButton>
+              ) : (
+                <IconButton
+                  label="Send message"
+                  variant="accent"
+                  onClick={handleSend}
+                  disabled={!value.trim() && attachments.length === 0}
+                >
+                  <IconSend />
+                </IconButton>
+              )}
+            </div>
           </div>
         </div>
       </div>
