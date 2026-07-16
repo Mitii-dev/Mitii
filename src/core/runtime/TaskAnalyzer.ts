@@ -5,6 +5,7 @@ import type { AskIntent } from '../modes/ask/askTypes';
 import type { PlanIntent } from '../modes/plan/planTypes';
 import type { ActIntent } from '../modes/agent/actTypes';
 import { isLogAuditTask } from './logAudit';
+import { resolveGitRoute, type GitRouteResolution } from '../git/intents';
 
 export type TaskKind =
   | 'question'
@@ -13,7 +14,8 @@ export type TaskKind =
   | 'simple_edit'
   | 'implementation'
   | 'explicit_plan'
-  | 'debugging';
+  | 'debugging'
+  | 'git';
 
 export type TaskComplexity = 'low' | 'medium' | 'high';
 
@@ -28,6 +30,7 @@ export interface TaskAnalysis {
   askProfile?: import('../modes/ask/askTypes').AskResponseProfile;
   planIntent?: PlanIntent;
   actIntent?: ActIntent;
+  gitRoute?: GitRouteResolution;
 }
 
 export interface TaskAnalysisOptions {
@@ -96,6 +99,26 @@ export function analyzeTask(userMessage: string, mode: string, options: TaskAnal
   }
 
   const classified = classifyTask(taskText);
+  const gitRoute = resolveGitRoute(taskText, mode);
+  if (gitRoute.isGitTask && gitRoute.classification.metadata) {
+    const gitAnalysis: TaskAnalysis = {
+      kind: 'git',
+      complexity: gitRoute.risk === 'critical' || gitRoute.risk === 'high' ? 'high' : gitRoute.risk === 'medium' ? 'medium' : 'low',
+      shouldPlan: gitRoute.requiredApproval !== 'none' || gitRoute.route === 'release_management',
+      shouldVerify: gitRoute.classification.requiresWorkspaceWrite || gitRoute.classification.requiresGitWrite || gitRoute.classification.requiresRemoteWrite,
+      shouldUseSubagents: false,
+      summary: `Git route ${gitRoute.route} — intent ${gitRoute.classification.primaryIntent}, approval ${gitRoute.requiredApproval}.`,
+      actIntent: options.actIntent,
+      gitRoute,
+    };
+    if (mode === 'ask') {
+      return { ...gitAnalysis, kind: 'question', shouldPlan: false, shouldVerify: false };
+    }
+    if (mode === 'plan') {
+      return { ...gitAnalysis, shouldPlan: true, shouldVerify: false };
+    }
+    if (mode === 'agent') return gitAnalysis;
+  }
   if (mode === 'ask') {
     const askRoute = routeAskIntent(taskText, options.askIntent ? { intent: options.askIntent } : undefined);
     return {

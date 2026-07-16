@@ -16,6 +16,13 @@ const DANGEROUS_COMMANDS = [
   /\bmkfs\b/i, /\bdd\b/i, /\bshutdown\b/i, /\breboot\b/i,
   /curl\s+.*\|\s*sh/i, /wget\s+.*\|\s*sh/i,
   /\bnpm\s+publish\b/i, /git\s+push\s+--force/i,
+  /\bgit\s+reset\s+--hard\b/i,
+  /\bgit\s+clean\s+-f(?:d|x|dx|xd)?\b/i,
+  /\bgit\s+checkout\s+--\s+\.\b/i,
+  /\bgit\s+restore\s+\.\b/i,
+  /\bgit\s+branch\s+-D\b/i,
+  /\bgit\s+rebase\s+--onto\b/i,
+  /\bgit\s+(?:filter-branch|filter-repo)\b/i,
 ];
 
 const READ_ONLY_TOOLS = new Set([
@@ -24,6 +31,10 @@ const READ_ONLY_TOOLS = new Set([
   'save_task_state', 'search_script_catalog', 'execute_workspace_script', 'use_skill',
   'fetch_web', 'ask_question', 'mark_step_complete', 'propose_plan_mutation', 'propose_file_scope',
   'analyze_log_directory', 'analyze_jsonl', 'query_log_events', 'list_logs',
+  'git_status', 'git_log', 'git_show', 'git_blame', 'git_compare_branches', 'git_tag_list',
+  'detect_changelog_strategy', 'aggregate_changelog', 'discover_github_workflows', 'analyze_github_workflow',
+  'github_verify_repository', 'github_draft_pull_request', 'github_draft_issue', 'github_find_duplicate_issues',
+  'github_get_workflow_run',
 ]);
 
 /** Read tools that take a workspace-relative path — checked against the workspace
@@ -33,6 +44,15 @@ const LOG_AUDIT_PATH_TOOLS = new Set(['analyze_log_directory', 'analyze_jsonl', 
 
 const WRITE_TOOLS = new Set(['write_file', 'apply_patch', 'memory_write']);
 const SHELL_TOOLS = new Set(['run_command']);
+const GIT_POLICY_WRITE_TOOLS = new Set([
+  'git_stage_files', 'git_unstage_files', 'generate_changelog_patch',
+  'git_branch_create', 'git_branch_switch',
+]);
+const GIT_EXPLICIT_TOOLS = new Set([
+  'git_commit', 'git_branch_delete', 'git_merge', 'git_rebase', 'git_tag_create', 'git_tag_delete_local',
+  'github_create_pull_request', 'github_create_issue', 'github_dispatch_workflow', 'github_create_release',
+  'release_plan_controller',
+]);
 
 const MCP_FILESYSTEM_WRITE =
   /^mcp__filesystem__(create_directory|move_file|write_file|edit_file)$/i;
@@ -95,6 +115,17 @@ export class ToolPolicyEngine {
         }
       }
       return { decision: 'allow', reason: 'Read-only tool' };
+    }
+
+    if (GIT_POLICY_WRITE_TOOLS.has(toolName)) {
+      if (this.requiresWriteApproval()) {
+        return { decision: 'require_approval', reason: 'Git workspace/local write requires approval by policy' };
+      }
+      return { decision: 'allow', reason: 'Git policy-write auto-approved by current policy' };
+    }
+
+    if (GIT_EXPLICIT_TOOLS.has(toolName)) {
+      return { decision: 'require_approval', reason: 'Git or GitHub operation requires explicit approval' };
     }
 
     if (toolName === 'memory_write') {

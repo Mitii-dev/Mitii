@@ -113,6 +113,9 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       autoPrEnabled: config.get<boolean>('github.autoPrEnabled'),
       defaultBaseBranch: config.get<string>('github.defaultBaseBranch'),
       webhookSecret: config.get<string>('github.webhookSecret'),
+      lazyMcpActivation: config.get<boolean>('github.lazyMcpActivation'),
+      requireApprovalForRemoteWrites: config.get<boolean>('github.requireApprovalForRemoteWrites'),
+      workflowDispatchEnabled: config.get<boolean>('github.workflowDispatchEnabled'),
     },
     telemetry: {
       sessionLogging: config.get<boolean>('telemetry.sessionLogging'),

@@ -55,6 +55,27 @@ import {
   createQueryLogEventsTool,
   createListLogsTool,
 } from '../tools/logAuditTools';
+import {
+  createChangelogTools,
+  createGitBlameTool,
+  createGitBranchCreateTool,
+  createGitBranchDeleteTool,
+  createGitBranchSwitchTool,
+  createGitCommitTool,
+  createGitCompareBranchesTool,
+  createGitHubTools,
+  createGitLogTool,
+  createGitMergeTool,
+  createGitRebaseTool,
+  createGitStageFilesTool,
+  createGitStatusTool,
+  createGitTagTools,
+  createGitUnstageFilesTool,
+  createReleasePlanControllerTool,
+  createStructuredGitDiffTool,
+  createWorkflowTools,
+  createGitShowTool,
+} from '../tools/gitTools';
 import { ProjectCatalogContextSource, discoverProjectCatalog, saveProjectCatalog } from '../modes/ask';
 import { createMarkStepCompleteTool, createProposePlanMutationTool } from '../tools/planTools';
 import type { AssistantStreamChunk, LlmProvider } from '../llm/types';
@@ -675,6 +696,25 @@ export class ThunderController {
     this.toolRuntime.register(createRepoMapTool(repoMap));
     this.toolRuntime.register(createRetrieveContextTool(retriever, budgeter));
     this.toolRuntime.register(createGitDiffTool(this.gitService));
+    this.toolRuntime.register(createGitStatusTool(workspace));
+    this.toolRuntime.register(createStructuredGitDiffTool(workspace));
+    this.toolRuntime.register(createGitLogTool(workspace));
+    this.toolRuntime.register(createGitShowTool(workspace));
+    this.toolRuntime.register(createGitBlameTool(workspace));
+    this.toolRuntime.register(createGitCompareBranchesTool(workspace));
+    this.toolRuntime.register(createGitStageFilesTool(workspace));
+    this.toolRuntime.register(createGitUnstageFilesTool(workspace));
+    this.toolRuntime.register(createGitCommitTool(workspace));
+    this.toolRuntime.register(createGitBranchCreateTool(workspace));
+    this.toolRuntime.register(createGitBranchSwitchTool(workspace));
+    this.toolRuntime.register(createGitBranchDeleteTool(workspace));
+    this.toolRuntime.register(createGitMergeTool(workspace));
+    this.toolRuntime.register(createGitRebaseTool(workspace));
+    for (const tool of createGitTagTools(workspace)) this.toolRuntime.register(tool);
+    for (const tool of createChangelogTools(workspace)) this.toolRuntime.register(tool);
+    for (const tool of createWorkflowTools(workspace)) this.toolRuntime.register(tool);
+    for (const tool of createGitHubTools(workspace)) this.toolRuntime.register(tool);
+    this.toolRuntime.register(createReleasePlanControllerTool());
     this.toolRuntime.register(createDiagnosticsTool(this.diagnosticsService));
     this.toolRuntime.register(createProjectCatalogTool(workspace));
     this.toolRuntime.register(createAnalyzeChangeImpactTool(workspace));

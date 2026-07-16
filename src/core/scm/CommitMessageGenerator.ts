@@ -1,5 +1,5 @@
 import type { LlmProvider } from '../llm/types';
-import { buildCommitMessagePrompt } from './commitMessagePrompt';
+import { buildCommitMessagePrompt, validateCommitMessage } from './commitMessagePrompt';
 import type { CommitMessageInput, CommitMessageResult } from './commitMessageTypes';
 
 export async function generateCommitMessage(
@@ -7,22 +7,24 @@ export async function generateCommitMessage(
   provider: LlmProvider
 ): Promise<CommitMessageResult> {
   validateCommitMessageInput(input);
-  let text = '';
-  for await (const delta of provider.complete({
+  const prompt = buildCommitMessagePrompt(input);
+  let text = await collectCommitMessage(provider, {
     messages: [
       {
         role: 'system',
         content: 'You write concise, accurate Git commit messages for a coding agent. Return only the message.',
       },
-      { role: 'user', content: buildCommitMessagePrompt(input) },
+      { role: 'user', content: prompt },
     ],
     stream: true,
     toolChoice: 'none',
     maxTokens: 240,
-  })) {
-    if (delta.error) throw new Error(delta.error);
-    if (delta.content) text += delta.content;
-    if (delta.done) break;
+  });
+
+  const validation = validateCommitMessage(text);
+  if (!validation.valid && validation.corrected) {
+    const correctedValidation = validateCommitMessage(validation.corrected);
+    if (correctedValidation.valid) text = validation.corrected;
   }
 
   return normalizeCommitMessage(text);
@@ -48,6 +50,19 @@ function validateCommitMessageInput(input: CommitMessageInput): void {
   if (!input.stagedDiff.trim()) {
     throw new Error('No staged changes found. Stage files before generating a commit message.');
   }
+}
+
+async function collectCommitMessage(
+  provider: LlmProvider,
+  request: Parameters<LlmProvider['complete']>[0]
+): Promise<string> {
+  let text = '';
+  for await (const delta of provider.complete(request)) {
+    if (delta.error) throw new Error(delta.error);
+    if (delta.content) text += delta.content;
+    if (delta.done) break;
+  }
+  return text;
 }
 
 function truncateSubject(subject: string): string {

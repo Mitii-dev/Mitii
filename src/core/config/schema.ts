@@ -186,6 +186,9 @@ export const GitHubConfigSchema = z.object({
   autoPrEnabled: z.boolean().default(false),
   defaultBaseBranch: z.string().default(''),
   webhookSecret: z.string().default(''),
+  lazyMcpActivation: z.boolean().default(true),
+  requireApprovalForRemoteWrites: z.boolean().default(true),
+  workflowDispatchEnabled: z.boolean().default(false),
 });
 
 export const TelemetryConfigSchema = z.object({
