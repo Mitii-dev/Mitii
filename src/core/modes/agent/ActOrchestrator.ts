@@ -4,6 +4,8 @@ import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import { analyzeTask } from '../../runtime/TaskAnalyzer';
 import { AUDIT_AGENT_MAX_STEPS } from '../../runtime/taskKind';
 import type { SkillCatalogService } from '../../skills/SkillCatalogService';
+import type { TierPolicy } from '../../agentic/tierPolicy';
+import { scaleTierSteps } from '../../agentic/tierPolicy';
 import { resolvePlanScope } from '../plan/PlanScopeResolver';
 import { routeActIntent } from './ActIntentRouter';
 import { buildActPromptContext } from './actPrompts';
@@ -14,6 +16,7 @@ export interface ActPrepareOptions {
   workspaceRoot?: string;
   catalog?: ProjectCatalog;
   skillCatalog?: SkillCatalogService;
+  tierPolicy?: TierPolicy;
   configuredMaxSteps?: number;
   actDepth?: ActDepth;
   actAutoContinue?: boolean;
@@ -46,15 +49,18 @@ export class ActOrchestrator {
     const catalog = options.catalog ?? (options.workspaceRoot ? loadProjectCatalog(options.workspaceRoot) : undefined);
     const scope = resolvePlanScope(userMessage, catalog);
     const suggestedSkills = resolveActSkillNames(route.intent, taskAnalysis);
+    const policy = options.tierPolicy;
     const { context: skillPlaybookContext, loaded: appliedSkills } = loadActSkillPlaybooks(
       options.skillCatalog,
-      suggestedSkills
+      suggestedSkills,
+      { style: policy?.skillInjection, maxChars: policy?.maxSkillChars }
     );
     const maxSteps = resolveActMaxSteps(
       route.executionPath,
       route.complexity,
       options.configuredMaxSteps,
-      options.actDepth
+      options.actDepth,
+      policy
     );
     const autoContinue = options.actAutoContinue ?? route.executionPath !== 'resume_saved_plan';
     const maxAutoContinues = resolveActMaxAutoContinues(
@@ -93,11 +99,14 @@ function resolveActMaxSteps(
   executionPath: string,
   complexity: string,
   configured: number | undefined,
-  actDepth: ActDepth = 'auto'
+  actDepth: ActDepth = 'auto',
+  policy?: TierPolicy
 ): number {
   const automatic = depthDefaultSteps(actDepth) ?? pathDefaultSteps(executionPath, complexity);
-  if (!configured || configured <= 0) return automatic;
-  return Math.max(1, Math.min(automatic, configured, 60));
+  const bounded = !configured || configured <= 0
+    ? automatic
+    : Math.max(1, Math.min(automatic, configured, 60));
+  return scaleTierSteps(bounded, policy, 60);
 }
 
 function resolveActMaxAutoContinues(

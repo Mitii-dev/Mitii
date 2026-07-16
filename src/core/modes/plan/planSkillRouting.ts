@@ -1,5 +1,7 @@
 import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import type { SkillCatalogService } from '../../skills/SkillCatalogService';
+import { stripSkillFrontmatter } from '../../skills/SkillCatalogService';
+import type { SkillInjectionStyle } from '../../agentic/tierPolicy';
 import type { PlanIntent } from './planTypes';
 import { createLogger } from '../../telemetry/Logger';
 
@@ -34,12 +36,15 @@ export function resolvePlanningSkillNames(
 
 export function loadPlanningSkillPlaybooks(
   catalog: SkillCatalogService | undefined,
-  skillNames: string[]
+  skillNames: string[],
+  opts: { style?: SkillInjectionStyle; maxChars?: number } = {}
 ): { context: string; loaded: string[] } {
-  if (!catalog || skillNames.length === 0) {
+  const style = opts.style ?? 'full';
+  if (!catalog || skillNames.length === 0 || style === 'none' || style === 'catalog') {
     log.debug('Skipping planning skill playbook load', { hasCatalog: Boolean(catalog), skillNames });
     return { context: '', loaded: [] };
   }
+  const maxChars = opts.maxChars ?? MAX_SKILL_CHARS;
 
   const loaded: string[] = [];
   const skipped: string[] = [];
@@ -56,10 +61,10 @@ export function loadPlanningSkillPlaybooks(
     const block = [
       `### Skill: ${skill.entry.name}`,
       `Path: ${skill.entry.relPath}`,
-      skill.content.trim(),
+      style === 'quick-ref' ? extractQuickRef(skill.content, skill.entry.description) : skill.content.trim(),
     ].join('\n\n');
 
-    if (totalChars + block.length > MAX_SKILL_CHARS) {
+    if (totalChars + block.length > maxChars) {
       skipped.push(name);
       break;
     }
@@ -69,7 +74,7 @@ export function loadPlanningSkillPlaybooks(
   }
 
   if (skipped.length > 0) {
-    log.debug('Some planning skills were not loaded', { skipped, budgetChars: MAX_SKILL_CHARS });
+    log.debug('Some planning skills were not loaded', { skipped, budgetChars: maxChars });
   }
 
   if (blocks.length === 0) {
@@ -88,6 +93,23 @@ export function loadPlanningSkillPlaybooks(
     ].join('\n'),
     loaded,
   };
+}
+
+function extractQuickRef(content: string, description?: string): string {
+  const trimmed = stripSkillFrontmatter(content).trim();
+  const parts: string[] = [];
+  if (description?.trim()) parts.push(`Description: ${description.trim()}`);
+
+  const match = trimmed.match(/^##\s+(Quick Reference|Overview)\s*$/im);
+  if (match && match.index !== undefined) {
+    const section = trimmed.slice(match.index);
+    const next = section.slice(match[0].length).search(/^##\s+/m);
+    parts.push((next >= 0 ? section.slice(0, match[0].length + next) : section).trim());
+  } else {
+    parts.push(trimmed.slice(0, 800).trim());
+  }
+
+  return parts.filter(Boolean).join('\n\n');
 }
 
 export const PLAN_SKILL_TOOL_GUIDANCE = `

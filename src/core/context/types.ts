@@ -1,3 +1,5 @@
+import type { TierPolicy } from '../agentic/tierPolicy';
+
 export interface ContextItem {
   id: string;
   source: string;
@@ -24,6 +26,7 @@ export interface ContextQuery {
   pinnedContext?: PinnedContextRef[];
   scopeRoot?: string;
   maxItems?: number;
+  tierPolicy?: TierPolicy;
 }
 
 export interface ContextPack {

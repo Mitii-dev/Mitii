@@ -1,5 +1,7 @@
 import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import type { SkillCatalogService } from '../../skills/SkillCatalogService';
+import { stripSkillFrontmatter } from '../../skills/SkillCatalogService';
+import type { SkillInjectionStyle } from '../../agentic/tierPolicy';
 import type { ActIntent } from './actTypes';
 
 const MAX_SKILL_CHARS = 24_000;
@@ -42,9 +44,14 @@ export function resolveActSkillNames(intent: ActIntent, taskAnalysis?: TaskAnaly
 
 export function loadActSkillPlaybooks(
   catalog: SkillCatalogService | undefined,
-  skillNames: string[]
+  skillNames: string[],
+  opts: { style?: SkillInjectionStyle; maxChars?: number } = {}
 ): { context: string; loaded: string[] } {
-  if (!catalog || skillNames.length === 0) return { context: '', loaded: [] };
+  const style = opts.style ?? 'full';
+  if (!catalog || skillNames.length === 0 || style === 'none' || style === 'catalog') {
+    return { context: '', loaded: [] };
+  }
+  const maxChars = opts.maxChars ?? MAX_SKILL_CHARS;
 
   const loaded: string[] = [];
   const blocks: string[] = [];
@@ -57,10 +64,10 @@ export function loadActSkillPlaybooks(
     const block = [
       `### Skill: ${skill.entry.name}`,
       `Path: ${skill.entry.relPath}`,
-      skill.content.trim(),
+      style === 'quick-ref' ? extractQuickRef(skill.content, skill.entry.description) : skill.content.trim(),
     ].join('\n\n');
 
-    if (totalChars + block.length > MAX_SKILL_CHARS) break;
+    if (totalChars + block.length > maxChars) break;
     blocks.push(block);
     loaded.push(skill.entry.name);
     totalChars += block.length;
@@ -77,6 +84,23 @@ export function loadActSkillPlaybooks(
     ].join('\n'),
     loaded,
   };
+}
+
+function extractQuickRef(content: string, description?: string): string {
+  const trimmed = stripSkillFrontmatter(content).trim();
+  const parts: string[] = [];
+  if (description?.trim()) parts.push(`Description: ${description.trim()}`);
+
+  const match = trimmed.match(/^##\s+(Quick Reference|Overview)\s*$/im);
+  if (match && match.index !== undefined) {
+    const section = trimmed.slice(match.index);
+    const next = section.slice(match[0].length).search(/^##\s+/m);
+    parts.push((next >= 0 ? section.slice(0, match[0].length + next) : section).trim());
+  } else {
+    parts.push(trimmed.slice(0, 800).trim());
+  }
+
+  return parts.filter(Boolean).join('\n\n');
 }
 
 export const ACT_SKILL_TOOL_GUIDANCE = `

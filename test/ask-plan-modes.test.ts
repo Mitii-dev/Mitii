@@ -262,6 +262,7 @@ description: "Measure-first performance work for LCP, INP, CLS, API latency, and
     const { AgentConfigSchema } = await import('../src/core/config/schema');
     const parsed = AgentConfigSchema.parse({});
     expect(parsed.planDepth).toBe('auto');
+    expect(parsed.agenticTierOverride).toBe('auto');
   });
 
   it('installs bundled skills from the extension into the workspace', async () => {

@@ -1,5 +1,7 @@
 import type { ProviderType } from '../config/schema';
 import type { ModelCapabilities } from './types';
+import { resolveAgenticTier } from './agenticTier';
+export { isHostedProvider } from './hostedProvider';
 
 export interface CapabilityOverride {
   contextWindow?: number;
@@ -14,8 +16,9 @@ export function detectModelCapabilities(
   providerType: ProviderType,
   model: string,
   presetContextWindow = 8192,
-  override: CapabilityOverride = {}
+  override: CapabilityOverride & { baseUrl?: string } = {}
 ): ModelCapabilities {
+  const { baseUrl, ...capabilityOverride } = override;
   const normalized = model.toLowerCase();
   const base: ModelCapabilities = {
     contextWindow: presetContextWindow,
@@ -54,12 +57,21 @@ export function detectModelCapabilities(
     base.supportsReasoning = /reason|thinking|r1|qwen3|o[134]/.test(normalized);
   }
 
-  return {
+  const withTier = {
     ...base,
-    ...definedOnly(override),
-    contextWindow: override.contextWindow ?? base.contextWindow,
+    ...definedOnly(capabilityOverride),
+    contextWindow: capabilityOverride.contextWindow ?? base.contextWindow,
+  };
+  return {
+    ...withTier,
+    agenticTier: resolveAgenticTier(providerType, {
+      ...withTier,
+      model,
+      baseUrl,
+    }),
   };
 }
+
 
 function definedOnly<T extends object>(value: T): Partial<T> {
   return Object.fromEntries(

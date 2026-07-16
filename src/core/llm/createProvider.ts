@@ -53,6 +53,7 @@ export function createProvider(
     supportsEmbeddings: config.supportsEmbeddings,
     supportsVision: config.supportsVision,
     supportsReasoning: config.supportsReasoning,
+    baseUrl,
   });
 
   switch (type) {

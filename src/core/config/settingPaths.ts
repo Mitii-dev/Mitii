@@ -57,6 +57,7 @@ export const MITII_SETTING_PATHS = [
   'github.defaultBaseBranch',
   'github.webhookSecret',
   'agent.subagentsEnabled',
+  'agent.agenticTierOverride',
   'agent.subagentTypesEnabled',
   'agent.maxConcurrentSubagents',
   'agent.implementerRequiresScope',

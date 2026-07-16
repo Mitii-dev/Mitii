@@ -37,6 +37,8 @@ describe('providerPresets', () => {
   it('marks cloud providers correctly', () => {
     expect(isCloudProvider('anthropic')).toBe(true);
     expect(isCloudProvider('openai-compatible')).toBe(false);
+    expect(isCloudProvider('openai-compatible', { baseUrl: 'https://api.groq.com/openai/v1' })).toBe(true);
+    expect(isCloudProvider('openai-compatible', { baseUrl: 'http://localhost:11434/v1' })).toBe(false);
     expect(isCloudProvider('echo')).toBe(false);
   });
 });

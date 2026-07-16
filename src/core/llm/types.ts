@@ -1,4 +1,6 @@
 import type { ToolDefinition } from './toolTypes';
+import type { AgenticTier, ReasoningEffort } from '../agentic/tierPolicy';
+export type { AgenticTier } from '../agentic/tierPolicy';
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -28,7 +30,7 @@ export interface ChatRequest {
   stream?: boolean;
   tools?: ToolDefinition[];
   toolChoice?: 'auto' | 'none' | 'required';
-  reasoningEffort?: 'low' | 'medium' | 'high';
+  reasoningEffort?: ReasoningEffort;
   includeReasoning?: boolean;
 }
 
@@ -64,6 +66,7 @@ export interface ModelCapabilities {
   supportsEmbeddings: boolean;
   supportsVision?: boolean;
   supportsReasoning?: boolean;
+  agenticTier?: AgenticTier;
 }
 
 export interface LlmProvider {

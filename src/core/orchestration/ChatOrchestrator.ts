@@ -83,6 +83,9 @@ import { thunderPlanToView } from '../modes/plan/planViewMapper';
 import { showWriteDiffPreview, showPatchDiffPreview } from '../../vscode/diffPreview';
 import { toWorkspaceRelPath } from '../util/paths';
 import { estimateChatRequestTokens } from '../llm/UsageTrackingProvider';
+import { resolveTierPolicy } from '../llm/agenticTier';
+import type { AgenticTier, TierPolicy } from '../agentic/tierPolicy';
+import { describeTier, scaleTierSteps } from '../agentic/tierPolicy';
 import { resolveMaxContextItems } from '../context/resolveMaxContextItems';
 import { enrichTask } from '../task';
 import type { GitHubIssueFetcher } from '../integrations/github';
@@ -159,6 +162,13 @@ export class ChatOrchestrator {
   private deps: ChatOrchestratorDeps = {};
   private agentLoop: AgentLoop | undefined;
   private planExecutor: PlanExecutor | undefined;
+  private useSkillInvocationsThisTurn = 0;
+  private skillInjectionTelemetry: {
+    tier?: AgenticTier;
+    style: TierPolicy['skillInjection'];
+    suggested: string[];
+    injectedChars: number;
+  } | undefined;
   private suspendContext: {
     session: ThunderSession;
     provider: LlmProvider;
@@ -440,6 +450,18 @@ export class ChatOrchestrator {
     const mdxRepairMode = isMdxRepairTask(taskForClassification);
     const mdxErrorFile = mdxRepairMode ? extractMdxErrorFile(taskForClassification) : undefined;
     const orchestrationEnabled = agentConfig?.orchestrationEnabled ?? true;
+    const resolvedTier = resolveTurnAgenticTier(provider, agentConfig);
+    const tierPolicy = resolveTierPolicy(resolvedTier);
+    this.useSkillInvocationsThisTurn = 0;
+    this.skillInjectionTelemetry = undefined;
+    this.emitActivity('info', 'Active agent tier', describeTier(resolvedTier, tierPolicy));
+    this.deps.sessionLog?.append('info', 'Active agent tier', {
+      tier: resolvedTier,
+      policy: tierPolicy,
+      provider: provider.id,
+      contextWindow: provider.capabilities.contextWindow,
+      supportsReasoning: provider.capabilities.supportsReasoning,
+    });
     const activePlanAtStart = isAgentMode
       ? this.deps.planPersistence?.getActive(session.id)
       : undefined;
@@ -475,6 +497,7 @@ export class ChatOrchestrator {
       ? PlanOrchestrator.prepare(taskForClassification, {
           workspaceRoot: this.deps.workspace,
           skillCatalog: this.deps.skillCatalog,
+          tierPolicy,
           configuredMaxSteps: agentConfig?.maxSteps,
           planDepth: agentConfig?.planDepth,
           planAutoContinue: agentConfig?.autoContinue,
@@ -487,6 +510,7 @@ export class ChatOrchestrator {
       ? ActOrchestrator.prepare(taskForClassification, {
           workspaceRoot: this.deps.workspace,
           skillCatalog: this.deps.skillCatalog,
+          tierPolicy,
           configuredMaxSteps: agentConfig?.maxSteps,
           actDepth: agentConfig?.actDepth,
           actAutoContinue: agentConfig?.autoContinue,
@@ -535,6 +559,7 @@ export class ChatOrchestrator {
       openFiles,
       scopeRoot: scopedRoot,
       pinned: pinnedContext.map((p) => p.path),
+      tier: resolvedTier,
     });
     const cacheFresh =
       this.retrievalCache &&
@@ -553,10 +578,12 @@ export class ChatOrchestrator {
           openFiles,
           scopeRoot: scopedRoot,
           pinnedContext: pinnedContext.map((p) => ({ path: p.path, kind: p.kind })),
+          tierPolicy,
           maxItems: resolveMaxContextItems({
             contextWindow: provider.capabilities.contextWindow,
             actDepth: agentConfig?.actDepth,
             expandedQuery: retrievalText !== userMessage,
+            tierPolicy,
           }),
         });
         this.retrievalCache = { key: retrievalKey, items, at: Date.now() };
@@ -678,6 +705,7 @@ export class ChatOrchestrator {
     } else if (isPlanMode) {
       tools = filterPlanModeTools(tools);
     }
+    tools = filterToolsForTier(tools, tierPolicy);
 
     if (toolsEnabled && this.deps.toolExecutor) {
       setSubagentRuntime({
@@ -689,6 +717,8 @@ export class ChatOrchestrator {
         enabledTypes: agentConfig?.subagentTypesEnabled,
         maxConcurrent: agentConfig?.maxConcurrentSubagents,
         workspace: this.deps.workspace,
+        tierPolicy,
+        skillCatalog: this.deps.skillCatalog,
       });
     } else {
       setSubagentRuntime(undefined);
@@ -808,6 +838,9 @@ export class ChatOrchestrator {
         taskAnalysis.shouldPlan
       ) {
         const planningRoute = planPlan?.route ?? routePlanIntent(planningRequest, taskAnalysis);
+        const suggestedPlanningSkills = planPlan?.suggestedSkills ??
+          actPlan?.suggestedSkills ??
+          resolvePlanningSkillNames(planningRoute.intent, taskAnalysis);
         const skillContext = planPlan
           ? {
               skillPlaybookContext: planPlan.skillPlaybookContext,
@@ -821,7 +854,8 @@ export class ChatOrchestrator {
           : (() => {
               const loaded = loadPlanningSkillPlaybooks(
                 this.deps.skillCatalog,
-                resolvePlanningSkillNames(planningRoute.intent, taskAnalysis)
+                suggestedPlanningSkills,
+                { style: tierPolicy.skillInjection, maxChars: tierPolicy.maxSkillChars }
               );
               return {
                 skillPlaybookContext: loaded.context,
@@ -832,6 +866,12 @@ export class ChatOrchestrator {
         const planningSkillOptions = {
           skillPlaybookContext: skillContext.skillPlaybookContext,
         };
+        this.recordSkillInjectionTelemetry(
+          resolvedTier,
+          tierPolicy,
+          suggestedPlanningSkills,
+          skillContext.skillPlaybookContext.length
+        );
 
         let requirementAnalysisText = '';
         let planningDiscovery = '';
@@ -1107,6 +1147,15 @@ export class ChatOrchestrator {
 
       const isResume = isApprovalContinuationMessage(userMessage);
       const taskStateBlock = this.deps.taskState?.buildPromptBlock();
+      if (!this.skillInjectionTelemetry && (planPlan || actPlan)) {
+        const directSkillContext = planPlan ?? actPlan;
+        this.recordSkillInjectionTelemetry(
+          resolvedTier,
+          tierPolicy,
+          directSkillContext?.suggestedSkills ?? [],
+          directSkillContext?.skillPlaybookContext.length ?? 0
+        );
+      }
       const messages = attachImagesToLastUser(buildPrompt(
         session.mode,
         pack,
@@ -1156,13 +1205,19 @@ export class ChatOrchestrator {
             planMode: isPlanMode,
             requiresAskGrounding: isAskMode && needsAskGrounding(userMessage),
             requiresPlanGrounding: isPlanMode && needsPlanGrounding(taskForClassification),
-            maxSteps: isAskMode
-              ? (askPlan?.maxSteps ?? agentConfig?.askMaxSteps ?? 18)
-              : isPlanMode
-                ? (planPlan?.discoveryMaxSteps ?? agentConfig?.maxSteps ?? 8)
-                : auditMode
-                  ? AUDIT_AGENT_MAX_STEPS
-                  : (actPlan?.maxSteps ?? agentConfig?.maxSteps),
+            maxSteps: resolveLoopMaxSteps({
+              isAskMode,
+              isPlanMode,
+              auditMode,
+              askSteps: askPlan?.maxSteps ?? agentConfig?.askMaxSteps,
+              planSteps: planPlan?.discoveryMaxSteps ?? (
+                agentConfig?.maxSteps ? scaleTierSteps(agentConfig.maxSteps, tierPolicy, 50) : undefined
+              ),
+              actSteps: actPlan?.maxSteps ?? (
+                agentConfig?.maxSteps ? scaleTierSteps(agentConfig.maxSteps, tierPolicy, 100) : undefined
+              ),
+              tierPolicy,
+            }),
             autoContinue: isAskMode
               ? (askPlan?.autoContinue ?? true)
               : isPlanMode
@@ -1174,6 +1229,7 @@ export class ChatOrchestrator {
                 ? (planPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues)
                 : (actPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues),
             requiresWrite: requiresAgentWrite,
+            reasoningEffort: tierPolicy.reasoningEffort,
           }
         )) {
           if (signal.aborted) break;
@@ -1272,7 +1328,11 @@ export class ChatOrchestrator {
       } else {
         this.setLiveStatus('Generating response');
         this.emitActivity('info', 'Streaming response…');
-        for await (const delta of provider.complete({ messages, stream: true })) {
+        for await (const delta of provider.complete({
+          messages,
+          stream: true,
+          reasoningEffort: tierPolicy.reasoningEffort,
+        })) {
           if (signal.aborted) break;
           if (delta.content) {
             fullResponse += delta.content;
@@ -1304,6 +1364,8 @@ export class ChatOrchestrator {
       );
       this.onLiveStatus?.(null);
     } finally {
+      this.useSkillInvocationsThisTurn = 0;
+      this.skillInjectionTelemetry = undefined;
       sessionTiming.end('turn_total', sessionLog, {
         mode: session.mode,
         responseLength: fullResponse.length,
@@ -1373,6 +1435,33 @@ export class ChatOrchestrator {
       );
     }
 
+    this.flushSkillInjectionTelemetry(provider);
+  }
+
+  private recordSkillInjectionTelemetry(
+    tier: AgenticTier,
+    tierPolicy: TierPolicy,
+    suggested: string[],
+    injectedChars: number
+  ): void {
+    this.skillInjectionTelemetry = {
+      tier,
+      style: tierPolicy.skillInjection,
+      suggested,
+      injectedChars,
+    };
+  }
+
+  private flushSkillInjectionTelemetry(provider: LlmProvider): void {
+    if (!this.skillInjectionTelemetry) return;
+    this.deps.sessionLog?.append('info', 'Skill injection summary', {
+      tier: this.skillInjectionTelemetry.tier ?? provider.capabilities.agenticTier,
+      style: this.skillInjectionTelemetry.style,
+      suggested: this.skillInjectionTelemetry.suggested,
+      injectedChars: this.skillInjectionTelemetry.injectedChars,
+      useSkillCount: this.useSkillInvocationsThisTurn,
+    });
+    this.skillInjectionTelemetry = undefined;
   }
 
   private emitTurnTokenUsage(
@@ -1466,6 +1555,7 @@ export class ChatOrchestrator {
     const sessionLog = this.deps.sessionLog;
     return {
       onToolStart: (name, input) => {
+        if (name === 'use_skill') this.useSkillInvocationsThisTurn += 1;
         lastToolInputs.set(name, input);
         const activity = describeToolActivity(name, input, 'start');
         this.setLiveStatus(activity.liveLabel, activity.detail);
@@ -1977,6 +2067,52 @@ function attachImagesToLastUser(
     return next;
   }
   return [...next, { role: 'user', content: 'Attached image context.', attachments: images }];
+}
+
+function resolveTurnAgenticTier(provider: LlmProvider, agentConfig?: AgentConfig): AgenticTier {
+  const override = agentConfig?.agenticTierOverride;
+  if (override && override !== 'auto') return override;
+  return provider.capabilities.agenticTier ?? 'cloud-standard';
+}
+
+function resolveLoopMaxSteps(options: {
+  isAskMode: boolean;
+  isPlanMode: boolean;
+  auditMode: boolean;
+  askSteps?: number;
+  planSteps?: number;
+  actSteps?: number;
+  tierPolicy: TierPolicy;
+}): number {
+  if (options.isAskMode) {
+    return scaleTierSteps(options.askSteps ?? 18, options.tierPolicy, 50);
+  }
+  if (options.isPlanMode) {
+    return options.planSteps ?? scaleTierSteps(8, options.tierPolicy, 50);
+  }
+  if (options.auditMode) {
+    return AUDIT_AGENT_MAX_STEPS;
+  }
+  return options.actSteps ?? scaleTierSteps(15, options.tierPolicy, 100);
+}
+
+const MINIMAL_TIER_EXCLUDED_TOOLS = new Set([
+  'spawn_research_agent',
+  'spawn_subagent',
+  'memory_write',
+  'save_task_state',
+  'use_skill',
+  'fetch_web',
+]);
+
+function filterToolsForTier<T extends { function: { name: string } }>(tools: T[], policy: TierPolicy): T[] {
+  if (policy.toolExposure === 'full') return tools;
+  return tools.filter((tool) => {
+    const name = tool.function.name;
+    if (name.startsWith('mcp__')) return false;
+    if (policy.toolExposure === 'minimal' && MINIMAL_TIER_EXCLUDED_TOOLS.has(name)) return false;
+    return true;
+  });
 }
 
 function emptyContextPack(): ContextPack {

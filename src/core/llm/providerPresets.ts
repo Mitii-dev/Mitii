@@ -1,4 +1,5 @@
 import type { ProviderType } from '../config/schema';
+import { isHostedProvider } from './hostedProvider';
 
 export interface ProviderPreset {
   type: ProviderType;
@@ -100,6 +101,9 @@ export function getProviderPreset(type: ProviderType): ProviderPreset | undefine
   return PROVIDER_PRESETS.find((p) => p.type === type);
 }
 
-export function isCloudProvider(type: ProviderType): boolean {
-  return type !== 'echo' && type !== 'openai-compatible';
+export function isCloudProvider(
+  type: ProviderType,
+  details: { baseUrl?: string; model?: string; contextWindow?: number; supportsReasoning?: boolean } = {}
+): boolean {
+  return isHostedProvider(type, details);
 }

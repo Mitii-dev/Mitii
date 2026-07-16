@@ -63,6 +63,7 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       autoMemoryScope: config.get<string>('memory.autoMemoryScope'),
     },
     agent: {
+      agenticTierOverride: config.get<string>('agent.agenticTierOverride'),
       subagentsEnabled: config.get<boolean>('agent.subagentsEnabled'),
       teamsEnabled: config.get<boolean>('agent.teamsEnabled'),
       maxSteps: config.get<number>('agent.maxSteps'),

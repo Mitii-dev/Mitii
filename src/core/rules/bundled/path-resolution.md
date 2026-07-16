@@ -4,10 +4,12 @@ Mitii auto-resolves missing read paths using the workspace index (SQLite), files
 
 ## Before reading
 
-1. Prefer **resolve_path** when the exact path is uncertain.
-2. Use **search** / **search_batch** with `scopeRoot` for symbols or feature names.
-3. Use **list_files** on the parent directory when exploring package layout (e.g. `packages/foo/src/fields`).
-4. Only pass paths returned by tools or auto-resolution — never invent flattened paths.
+1. Call **propose_file_scope** with the objective and candidate paths before reading or editing workspace files.
+2. Only call **read_file** / **read_files** / **write_file** / **apply_patch** for paths accepted by **propose_file_scope**.
+3. Use **resolve_path** as a fallback for one uncertain or ambiguous path, then pass the resolved candidate back through scope.
+4. Use **search** / **search_batch** with `scopeRoot` for symbols or feature names.
+5. Use **list_files** on the parent directory when exploring package layout (e.g. `packages/foo/src/fields`).
+6. Only pass paths returned by tools, accepted scope, or auto-resolution — never invent flattened paths.
 
 ## Common monorepo layouts
 
@@ -21,7 +23,7 @@ If you request a wrong but close path, Mitii may read the best indexed match and
 
 ## If resolution is ambiguous
 
-Call **resolve_path** and pick from ranked candidates. Do not guess among multiple equally likely files.
+Call **resolve_path** for the single ambiguous path and pick from ranked candidates, then confirm the file through **propose_file_scope**. Do not guess among multiple equally likely files.
 
 ## Accuracy over speed
 

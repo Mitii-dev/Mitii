@@ -1545,7 +1545,11 @@ async function runSubagentTool(input: {
   });
   activeSubagents += 1;
   try {
-    const subagent = new BaseSubagent(effectiveDefinition, subagentRuntime.toolExecutor);
+    const subagent = new BaseSubagent(effectiveDefinition, subagentRuntime.toolExecutor, {
+      tierPolicy: subagentRuntime.tierPolicy,
+      workspace: subagentRuntime.workspace,
+      skillCatalog: subagentRuntime.skillCatalog,
+    });
     const targetFiles = input.targetFiles ?? [];
     let report: string;
     if (input.type === 'research' && targetFiles.length > 10) {

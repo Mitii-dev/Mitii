@@ -43,6 +43,8 @@ import { ProjectCatalogContextSource, discoverProjectCatalog, saveProjectCatalog
 import { createMarkStepCompleteTool, createProposePlanMutationTool } from '../tools/planTools';
 import type { AssistantStreamChunk, LlmProvider } from '../llm/types';
 import { createProvider } from '../llm/createProvider';
+import { resolveTierPolicy } from '../llm/agenticTier';
+import type { AgenticTier, TierPolicy } from '../agentic/tierPolicy';
 import { scaffoldMitiiWorkspace } from '../mcp/scaffoldMitiiWorkspace';
 import { AgentTaskState } from '../runtime/AgentTaskState';
 import {
@@ -514,7 +516,7 @@ export class HeadlessAgentHost {
   private buildRetriever(db: import('../indexing/ThunderDb').ThunderDb, workspace: string): HybridRetriever {
     const sources = [];
     const projectRulesService = new ProjectRulesService(workspace);
-    sources.push(new ProjectRulesContextSource(projectRulesService));
+    sources.push(new ProjectRulesContextSource(projectRulesService, () => this.currentTierPolicy()));
     if (this.skillCatalogService) {
       sources.push(new SkillCatalogContextSource(this.skillCatalogService));
     }
@@ -548,6 +550,14 @@ export class HeadlessAgentHost {
       candidatePool: this.config.context.rerankerCandidatePool,
       topK: this.config.context.rerankerTopK,
     });
+  }
+
+  private currentTierPolicy(): TierPolicy | undefined {
+    const override = this.config.agent.agenticTierOverride;
+    const tier: AgenticTier | undefined = override !== 'auto'
+      ? override
+      : this.provider?.capabilities.agenticTier;
+    return tier ? resolveTierPolicy(tier) : undefined;
   }
 
   private async indexWorkspace(workspace: string): Promise<void> {

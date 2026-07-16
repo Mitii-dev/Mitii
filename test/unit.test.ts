@@ -876,6 +876,45 @@ describe('ChatOrchestrator response handling', () => {
     });
     expect(normalizeAssistantResponse('ok')).toEqual({ content: 'ok', wasEmpty: false });
   });
+
+  it('passes resolved tier policy into context retrieval', async () => {
+    const { ChatOrchestrator } = await import('../src/core/orchestration/ChatOrchestrator');
+    const { ContextBudgeter } = await import('../src/core/context/ContextBudgeter');
+    const { ThunderSession } = await import('../src/core/session/ThunderSession');
+    let capturedQuery: import('../src/core/context/types').ContextQuery | undefined;
+    const retriever = {
+      retrieve: async (query: import('../src/core/context/types').ContextQuery) => {
+        capturedQuery = query;
+        return [];
+      },
+    };
+    const provider = {
+      id: 'fake-local',
+      capabilities: {
+        contextWindow: 8192,
+        supportsStreaming: true,
+        supportsTools: false,
+        supportsEmbeddings: false,
+        agenticTier: 'local-small' as const,
+      },
+      async *complete() {
+        yield { content: 'done', done: true };
+      },
+    };
+
+    const orchestrator = new ChatOrchestrator(
+      retriever as unknown as import('../src/core/context/HybridRetriever').HybridRetriever,
+      new ContextBudgeter()
+    );
+    const session = new ThunderSession('/tmp/mitii-test', 'ask');
+    for await (const chunk of orchestrator.send(session, provider, 'Explain this repo', [])) {
+      expect(chunk).toBeDefined();
+    }
+
+    expect(capturedQuery?.tierPolicy?.skillInjection).toBe('none');
+    expect(capturedQuery?.tierPolicy?.rulesMaxTotalChars).toBe(6_000);
+    expect(capturedQuery?.maxItems).toBeLessThanOrEqual(18);
+  });
 });
 
 describe('Plan parser', () => {

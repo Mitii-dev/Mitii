@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join as pathJoin } from 'path';
 import { IgnoreService } from '../src/core/indexing/IgnoreService';
 import { ThunderDb } from '../src/core/indexing/ThunderDb';
 import { MigrationRunner } from '../src/core/indexing/migrations';
 import { createWorkspacePathResolver } from '../src/core/paths/WorkspacePathResolver';
-import { ProjectRulesService } from '../src/core/rules/ProjectRulesService';
+import { ProjectRulesContextSource, ProjectRulesService } from '../src/core/rules/ProjectRulesService';
 import { installBundledRules } from '../src/core/rules/installBundledRules';
 import { BUNDLED_DEFAULT_RULES } from '../src/core/rules/bundledDefaultRules';
 
@@ -118,11 +118,20 @@ describe('bundled path-resolution rules', () => {
     try {
       const rules = new ProjectRulesService(tempDir).load();
       expect(rules[0]?.relPath).toBe('mitii:defaults/path-resolution');
+      expect(rules[0]?.content).toContain('propose_file_scope');
       expect(rules[0]?.content).toContain('resolve_path');
       expect(BUNDLED_DEFAULT_RULES).toContain('fields/field-slider/field-slider.tsx');
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it('keeps bundled markdown and TypeScript fallback rules in sync', () => {
+    const markdown = readFileSync(
+      pathJoin(process.cwd(), 'src/core/rules/bundled/path-resolution.md'),
+      'utf8'
+    );
+    expect(BUNDLED_DEFAULT_RULES.trim()).toBe(markdown.trim());
   });
 
   it('installs bundled rules into .mitii/rules on scaffold', () => {
@@ -139,6 +148,61 @@ describe('bundled path-resolution rules', () => {
       const result = installBundledRules(workspace, extensionRoot);
       expect(result.installed).toContain('path-resolution.md');
       expect(existsSync(pathJoin(workspace, '.mitii', 'rules', 'path-resolution.md'))).toBe(true);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('prefers the editable on-disk path-resolution rule exactly once', () => {
+    const tempDir = mkdtempSync(pathJoin(tmpdir(), 'mitii-path-rule-dedupe-'));
+    try {
+      const rulePath = pathJoin(tempDir, '.mitii', 'rules', 'path-resolution.md');
+      mkdirSync(dirname(rulePath), { recursive: true });
+      writeFileSync(rulePath, '# Custom path rule\n\nUse workspace scope.\n');
+
+      const rules = new ProjectRulesService(tempDir).load();
+      expect(rules.filter((rule) => rule.content.includes('path rule'))).toHaveLength(1);
+      expect(rules.map((rule) => rule.relPath)).toEqual(['.mitii/rules/path-resolution.md']);
+      expect(rules.some((rule) => rule.relPath === 'mitii:defaults/path-resolution')).toBe(false);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('caps project rules by per-file and total budgets', () => {
+    const tempDir = mkdtempSync(pathJoin(tmpdir(), 'mitii-rule-budget-'));
+    try {
+      writeFileSync(pathJoin(tempDir, 'MITII.md'), `${'a'.repeat(5000)}\n`);
+      writeFileSync(pathJoin(tempDir, 'AGENTS.md'), `${'b'.repeat(5000)}\n`);
+
+      const rules = new ProjectRulesService(tempDir).load(1000, 2500);
+      const totalChars = rules.reduce((sum, rule) => sum + rule.content.length, 0);
+      expect(totalChars).toBeLessThanOrEqual(2500);
+      expect(rules.every((rule) => rule.content.length <= 1000)).toBe(true);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('honors tier policy budgets through ProjectRulesContextSource.retrieve()', async () => {
+    const tempDir = mkdtempSync(pathJoin(tmpdir(), 'mitii-rule-source-budget-'));
+    try {
+      writeFileSync(pathJoin(tempDir, 'MITII.md'), `${'a'.repeat(5000)}\n`);
+      writeFileSync(pathJoin(tempDir, 'AGENTS.md'), `${'b'.repeat(5000)}\n`);
+
+      const source = new ProjectRulesContextSource(new ProjectRulesService(tempDir));
+      const items = await source.retrieve({
+        text: 'rules',
+        tierPolicy: {
+          skillInjection: 'none',
+          maxSkillChars: 0,
+          rulesMaxTotalChars: 1200,
+          rulesMaxCharsPerFile: 600,
+        },
+      });
+      const totalChars = items.reduce((sum, item) => sum + item.content.length, 0);
+      expect(totalChars).toBeLessThanOrEqual(1200);
+      expect(items.every((item) => item.content.length <= 600)).toBe(true);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

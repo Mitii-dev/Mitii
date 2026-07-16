@@ -1,4 +1,5 @@
 import type { AssistantStreamChunk, LlmProvider, ChatMessage } from '../llm/types';
+import type { ReasoningEffort } from '../agentic/tierPolicy';
 import type { ToolDefinition, ToolCall } from '../llm/toolTypes';
 import { toAssistantStreamChunk } from '../llm/streamChunks';
 import type { ToolExecutor, ToolExecutionResult } from '../safety/ToolExecutor';
@@ -87,6 +88,7 @@ export interface AgentLoopOptions {
   requiresPlanGrounding?: boolean;
   /** Agent mode edit tasks: retry once if the model tries to stop before writing. */
   requiresWrite?: boolean;
+  reasoningEffort?: ReasoningEffort;
 }
 
 export interface AgentLoopSuspendState {
@@ -190,6 +192,7 @@ export class AgentLoop {
         tools,
         toolChoice: 'auto',
         stream: true,
+        reasoningEffort: options?.reasoningEffort,
       })) {
         if (signal?.aborted) break;
         if (delta.error) throw new Error(delta.error);
@@ -533,6 +536,7 @@ export class AgentLoop {
         tools: [],
         toolChoice: 'none',
         stream: true,
+        reasoningEffort: options?.reasoningEffort,
       })) {
         if (signal?.aborted) break;
         if (delta.error) throw new Error(delta.error);
@@ -638,6 +642,7 @@ export class AgentLoop {
         tools,
         toolChoice: 'auto',
         stream: true,
+        reasoningEffort: options.reasoningEffort,
       })) {
         if (signal?.aborted) break;
         if (delta.error) throw new Error(delta.error);
@@ -847,7 +852,7 @@ export class AgentLoop {
       if (signal?.aborted) break;
       callbacks?.onStep?.(step + 1, maxSteps);
 
-      const collected = await collectCompletion(provider, messages, tools, signal, streamContent && step === 0);
+      const collected = await collectCompletion(provider, messages, tools, signal, streamContent && step === 0, options?.reasoningEffort);
 
       if (collected.content) {
         fullContent += collected.content;
@@ -1078,7 +1083,8 @@ async function collectCompletion(
   messages: ChatMessage[],
   tools: ToolDefinition[],
   signal?: AbortSignal,
-  stream = true
+  stream = true,
+  reasoningEffort?: ReasoningEffort
 ): Promise<CollectedCompletion> {
   let content = '';
   const toolCallsMap = new Map<number, ToolCall>();
@@ -1088,6 +1094,7 @@ async function collectCompletion(
     tools,
     toolChoice: 'auto',
     stream,
+    reasoningEffort,
   })) {
     if (signal?.aborted) break;
     if (delta.error) throw new Error(delta.error);

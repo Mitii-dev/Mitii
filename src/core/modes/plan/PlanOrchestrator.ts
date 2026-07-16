@@ -2,6 +2,8 @@ import type { ProjectCatalog } from '../ask/askTypes';
 import { loadProjectCatalog } from '../ask/ProjectCatalog';
 import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import type { SkillCatalogService } from '../../skills/SkillCatalogService';
+import type { TierPolicy } from '../../agentic/tierPolicy';
+import { scaleTierSteps } from '../../agentic/tierPolicy';
 import { routePlanIntent } from './PlanIntentRouter';
 import { resolvePlanScope } from './PlanScopeResolver';
 import { buildPlanPromptContext } from './planPrompts';
@@ -15,6 +17,7 @@ export interface PlanPrepareOptions {
   workspaceRoot?: string;
   catalog?: ProjectCatalog;
   skillCatalog?: SkillCatalogService;
+  tierPolicy?: TierPolicy;
   configuredMaxSteps?: number;
   planDepth?: PlanDepth;
   planAutoContinue?: boolean;
@@ -42,12 +45,15 @@ export class PlanOrchestrator {
       route.complexity,
       route.intent,
       options.configuredMaxSteps,
-      options.planDepth
+      options.planDepth,
+      options.tierPolicy
     );
     const suggestedSkills = resolvePlanningSkillNames(route.intent, options.taskAnalysis);
+    const policy = options.tierPolicy;
     const { context: skillPlaybookContext, loaded: appliedSkills } = loadPlanningSkillPlaybooks(
       options.skillCatalog,
-      suggestedSkills
+      suggestedSkills,
+      { style: policy?.skillInjection, maxChars: policy?.maxSkillChars }
     );
 
     const autoContinue = Boolean(options.planAutoContinue ?? (route.groundingRequired && route.complexity === 'high'));
@@ -83,11 +89,14 @@ function resolvePlanDiscoveryMaxSteps(
   complexity: string,
   intent: string,
   configuredMaxSteps: number | undefined,
-  planDepth: PlanDepth = 'auto'
+  planDepth: PlanDepth = 'auto',
+  policy?: TierPolicy
 ): number {
   const automatic = depthDefaultSteps(planDepth) ?? intentDefaultSteps(complexity, intent);
-  if (!configuredMaxSteps || configuredMaxSteps <= 0) return automatic;
-  return Math.max(1, Math.min(automatic, configuredMaxSteps, 50));
+  const bounded = !configuredMaxSteps || configuredMaxSteps <= 0
+    ? automatic
+    : Math.max(1, Math.min(automatic, configuredMaxSteps, 50));
+  return scaleTierSteps(bounded, policy, 50);
 }
 
 function resolvePlanMaxAutoContinues(

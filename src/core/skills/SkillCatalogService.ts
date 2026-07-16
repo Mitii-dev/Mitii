@@ -69,12 +69,17 @@ export class SkillCatalogService {
   }
 }
 
+/**
+ * Skills are on-demand task workflows/playbooks, exposed as a catalog and loaded by use_skill.
+ * Use ProjectRulesService for always-on workspace policy that must apply to every task.
+ */
 export class SkillCatalogContextSource implements ContextSource {
   id = 'skill-catalog';
 
   constructor(private readonly catalog: SkillCatalogService) {}
 
   async retrieve(_query: ContextQuery): Promise<ContextItem[]> {
+    if (_query.tierPolicy?.skillInjection === 'none') return [];
     const entries = this.catalog.list();
     if (entries.length === 0) return [];
     const content = [
@@ -134,7 +139,7 @@ function extractDescription(
 ): string {
   if (frontmatter.description) return frontmatter.description.slice(0, 240);
 
-  const lines = content
+  const lines = stripSkillFrontmatter(content)
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith('#') && !line.startsWith('---'));
@@ -149,6 +154,10 @@ function parseSkillFrontmatter(content: string): { name?: string; description?: 
   const name = readYamlScalar(block, 'name');
   const description = readYamlScalar(block, 'description');
   return { name, description };
+}
+
+export function stripSkillFrontmatter(content: string): string {
+  return content.replace(/^---\r?\n[\s\S]*?\r?\n---\s*/, '');
 }
 
 function readYamlScalar(block: string, key: string): string | undefined {

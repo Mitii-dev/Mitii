@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow",
-  "version": "2.7.53",
+  "version": "2.7.54",
   "publisher": "mitii",
   "icon": "media/mitii-short-logo.png",
   "license": "AGPL-3.0-or-later",
@@ -588,6 +588,19 @@
           "description": "Enable subagent tools for typed delegation.",
           "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
+        "thunder.agent.agenticTierOverride": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "local-small",
+            "local-large",
+            "cloud-standard",
+            "cloud-frontier"
+          ],
+          "default": "auto",
+          "description": "Force the agentic capability tier for testing or managed enterprise policy. Auto uses provider/model capabilities.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
         "thunder.agent.subagentTypesEnabled": {
           "type": "array",
           "default": [
@@ -1147,6 +1160,18 @@
           "type": "boolean",
           "default": true,
           "description": "Enable subagent tools for typed delegation."
+        },
+        "mitii.agent.agenticTierOverride": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "local-small",
+            "local-large",
+            "cloud-standard",
+            "cloud-frontier"
+          ],
+          "default": "auto",
+          "description": "Force the agentic capability tier for testing or managed enterprise policy. Auto uses provider/model capabilities."
         },
         "mitii.agent.subagentTypesEnabled": {
           "type": "array",

@@ -147,6 +147,49 @@ describe('Act orchestration boundary', () => {
     expect(plan.appliedSkills).toContain('debugging-and-error-recovery');
   });
 
+  it('uses catalog-only skill discovery for lean Act tiers', () => {
+    const skillCatalog = createSkillCatalog({
+      'using-agent-skills': '# Agent Skills\n\nFull playbook.',
+    });
+
+    const plan = ActOrchestrator.prepare('Implement the new settings flow', {
+      skillCatalog,
+      tierPolicy: {
+        skillInjection: 'catalog',
+        maxSkillChars: 0,
+        rulesMaxTotalChars: 6_000,
+        rulesMaxCharsPerFile: 2_000,
+      },
+      taskAnalysis: analyzeTask('Implement the new settings flow', 'agent'),
+    });
+
+    expect(plan.skillPlaybookContext).toBe('');
+    expect(plan.appliedSkills).toEqual([]);
+  });
+
+  it('fully injects Act skills within the tier budget', () => {
+    const skillCatalog = createSkillCatalog({
+      'using-agent-skills': '# Agent Skills\n\nShort playbook.',
+      'test-driven-development': '# TDD\n\n'.repeat(80),
+    });
+
+    const plan = ActOrchestrator.prepare('Implement the new settings flow', {
+      skillCatalog,
+      tierPolicy: {
+        skillInjection: 'full',
+        maxSkillChars: 180,
+        rulesMaxTotalChars: 20_000,
+        rulesMaxCharsPerFile: 5_000,
+      },
+      taskAnalysis: analyzeTask('Implement the new settings flow', 'agent'),
+    });
+
+    expect(plan.skillPlaybookContext).toContain('Act skill playbooks');
+    expect(plan.appliedSkills).toEqual(['using-agent-skills']);
+    expect(plan.skillPlaybookContext).toContain('Short playbook');
+    expect(plan.skillPlaybookContext).not.toContain('# TDD');
+  });
+
   it('honors deep Act depth as a 16-step execution budget', () => {
     const plan = ActOrchestrator.prepare('Implement the new settings flow', {
       actDepth: 'deep',
@@ -250,4 +293,21 @@ function tool(name: string): ToolDefinition {
       parameters: {},
     },
   };
+}
+
+function createSkillCatalog(contents: Record<string, string>): SkillCatalogService {
+  return {
+    get(name: string) {
+      const content = contents[name];
+      if (!content) return undefined;
+      return {
+        entry: {
+          name,
+          description: `${name} description`,
+          relPath: `.mitii/skills/${name}/SKILL.md`,
+        },
+        content,
+      };
+    },
+  } as unknown as SkillCatalogService;
 }

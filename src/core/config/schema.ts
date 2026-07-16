@@ -69,6 +69,13 @@ export const EnterpriseConfigSchema = z.object({
 });
 
 export const AgentDepthSchema = z.enum(['auto', 'quick', 'standard', 'deep', 'pilot', 'enterprise']);
+export const AgenticTierOverrideSchema = z.enum([
+  'auto',
+  'local-small',
+  'local-large',
+  'cloud-standard',
+  'cloud-frontier',
+]);
 
 export const SafetyConfigSchema = z.object({
   requireApprovalForWrites: z.boolean().default(true),
@@ -90,6 +97,7 @@ export const MemoryConfigSchema = z.object({
 });
 
 export const AgentConfigSchema = z.object({
+  agenticTierOverride: AgenticTierOverrideSchema.default('auto'),
   subagentsEnabled: z.boolean().default(true),
   teamsEnabled: z.boolean().default(false),
   subagentTypesEnabled: z.array(z.string()).default(['research']),
@@ -217,6 +225,7 @@ export type EnterpriseConfig = z.infer<typeof EnterpriseConfigSchema>;
 export type SafetyConfig = z.infer<typeof SafetyConfigSchema>;
 export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
 export type AgentDepth = z.infer<typeof AgentDepthSchema>;
+export type AgenticTierOverride = z.infer<typeof AgenticTierOverrideSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 export type McpConfig = z.infer<typeof McpConfigSchema>;

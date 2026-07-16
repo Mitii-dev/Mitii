@@ -137,6 +137,8 @@ import type {
   ThunderSettingsPayload,
 } from '../config/ui/payloads';
 import { PROVIDER_PRESETS, isCloudProvider } from '../llm/providerPresets';
+import { resolveTierPolicy } from '../llm/agenticTier';
+import type { AgenticTier, TierPolicy } from '../agentic/tierPolicy';
 import type { ProviderType } from '../config/schema';
 
 const log = createLogger('ThunderController');
@@ -467,7 +469,7 @@ export class ThunderController {
     this.skillCatalogService.refresh();
     const retriever = new HybridRetriever(
       [
-        new ProjectRulesContextSource(this.projectRulesService),
+        new ProjectRulesContextSource(this.projectRulesService, () => this.currentTierPolicy()),
         new SkillCatalogContextSource(this.skillCatalogService),
         new ProjectCatalogContextSource(workspace),
         new MentionedFileContextSource(workspace),
@@ -874,10 +876,19 @@ export class ThunderController {
     };
   }
 
+  private currentTierPolicy(): TierPolicy | undefined {
+    const config = this.configService.getConfig();
+    const override = config.agent.agenticTierOverride;
+    const tier: AgenticTier | undefined = override !== 'auto'
+      ? override
+      : this.providerRegistry.getActive()?.capabilities.agenticTier;
+    return tier ? resolveTierPolicy(tier) : undefined;
+  }
+
   private buildRetriever(db: import('../indexing/ThunderDb').ThunderDb, workspace: string): HybridRetriever {
     const sources = [];
     if (this.projectRulesService) {
-      sources.push(new ProjectRulesContextSource(this.projectRulesService));
+      sources.push(new ProjectRulesContextSource(this.projectRulesService, () => this.currentTierPolicy()));
     }
     if (this.skillCatalogService) {
       sources.push(new SkillCatalogContextSource(this.skillCatalogService));
@@ -1505,7 +1516,11 @@ export class ThunderController {
     push(this.toModelOption(globalDefault, 'recent', 'Global default', `global:${this.providerOverrideKey(globalDefault)}`));
 
     for (const preset of PROVIDER_PRESETS) {
-      const category = isCloudProvider(preset.type) ? 'cloud' : 'local';
+      const category = isCloudProvider(preset.type, {
+        baseUrl: preset.baseUrl,
+        model: preset.model,
+        contextWindow: preset.contextWindow,
+      }) ? 'cloud' : 'local';
       push(this.toModelOption({
         providerType: preset.type,
         baseUrl: preset.baseUrl,
