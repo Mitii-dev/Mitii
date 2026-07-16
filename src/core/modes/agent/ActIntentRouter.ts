@@ -10,6 +10,7 @@ export interface ActRouteOptions {
   hasActivePlan?: boolean;
   orchestrationEnabled?: boolean;
   auditMode?: boolean;
+  logAuditMode?: boolean;
   mdxRepairMode?: boolean;
   githubIssueMode?: boolean;
   actDepth?: ActDepth;
@@ -39,6 +40,7 @@ const PLANNED_WORK_REFERENCE =
 export function routeActIntent(userMessage: string, analysis: TaskAnalysis, options: ActRouteOptions = {}): ActRoute {
   const mode = options.mode ?? 'agent';
   const auditMode = Boolean(options.auditMode || analysis.kind === 'audit');
+  const logAuditMode = Boolean(options.logAuditMode || analysis.kind === 'log_audit');
   const mdxRepairMode = Boolean(options.mdxRepairMode);
   const githubIssueMode = Boolean(options.githubIssueMode);
   const hasActivePlan = Boolean(options.hasActivePlan);
@@ -72,6 +74,18 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
     };
   }
 
+  if (logAuditMode) {
+    return {
+      intent: 'log_audit',
+      executionPath: 'log_audit',
+      complexity: 'low',
+      shouldUsePlanner: false,
+      shouldUseSubagents: false,
+      shouldVerify: false,
+      summary: 'Log audit Act route — analyze_log_directory/analyze_jsonl → optional query_log_events → synthesize (max 3 model calls).',
+    };
+  }
+
   if (auditMode) {
     return {
       intent: 'audit',
@@ -96,7 +110,7 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
     };
   }
 
-  const shouldUsePlanner = shouldUsePlannerForAct(analysis, orchestrationEnabled, auditMode, actDepth, {
+  const shouldUsePlanner = shouldUsePlannerForAct(analysis, orchestrationEnabled, auditMode || logAuditMode, actDepth, {
     directOverride: isDirectOverride,
   });
   
@@ -172,6 +186,7 @@ export function hasDirectRouteOverride(userMessage: string): boolean {
 }
 
 function fallbackActIntent(analysis: TaskAnalysis): ActRoute['intent'] {
+  if (analysis.kind === 'log_audit') return 'log_audit';
   if (analysis.kind === 'audit') return 'audit';
   if (analysis.kind === 'question') return 'question';
   if (analysis.kind === 'debugging') return 'diagnose';

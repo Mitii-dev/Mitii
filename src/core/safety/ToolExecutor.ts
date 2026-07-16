@@ -1,6 +1,6 @@
 import type { ToolRuntime } from '../tools/ToolRuntime';
 import { readApprovedExternalFile, readApprovedExternalFiles } from '../tools/builtinTools';
-import type { ToolPolicyEngine } from './ToolPolicyEngine';
+import type { ToolPolicyEngine, PolicyResult } from './ToolPolicyEngine';
 import type { ApprovalQueue } from './ApprovalQueue';
 import type { AgentTaskState } from '../runtime/AgentTaskState';
 import {
@@ -122,28 +122,56 @@ export class ToolExecutor {
       return this.finishSoftBlock(resolvedName, input, output);
     }
 
+    const sessionId = this.getSessionId();
+    const normalizedMode = normalizeThunderMode(mode);
+
+    // Ask/Plan/Review: mutating actions request user approval instead of hard-blocking.
+    // After the user approves (once or for the task), grants allow the call to proceed.
     if (['write_file', 'apply_patch', 'memory_write', 'save_task_state'].includes(resolvedName) && !isWriteAllowed(mode)) {
-      return this.finishBlocked(resolvedName, input, 'Writes blocked in Ask/Plan/Review mode');
-    }
-    if (resolvedName === 'apply_patch' && !isPatchAllowed(mode)) {
-      return this.finishBlocked(resolvedName, input, 'Patch apply blocked in Ask/Plan/Review mode');
-    }
-    if (readOnlyMode && isMcpFilesystemWriteTool(resolvedName)) {
-      return this.finishBlocked(
+      const gated = this.requestModeEscalationApproval(
+        sessionId,
         resolvedName,
         input,
-        'MCP filesystem writes are blocked in Ask/Plan/Review mode — switch to Agent mode to edit files'
+        'File writes in Ask/Plan/Review require your approval',
+        context?.toolCallId
       );
+      if (gated) return gated;
+    }
+    if (resolvedName === 'apply_patch' && !isPatchAllowed(mode)) {
+      const gated = this.requestModeEscalationApproval(
+        sessionId,
+        resolvedName,
+        input,
+        'Patch apply in Ask/Plan/Review requires your approval',
+        context?.toolCallId
+      );
+      if (gated) return gated;
+    }
+    if ((readOnlyMode || normalizedMode === 'review') && isMcpFilesystemWriteTool(resolvedName)) {
+      const gated = this.requestModeEscalationApproval(
+        sessionId,
+        resolvedName,
+        input,
+        'MCP filesystem writes in Ask/Plan/Review require your approval',
+        context?.toolCallId
+      );
+      if (gated) return gated;
     }
     if (resolvedName === 'run_command' && !isShellAllowed(mode, typeof input.command === 'string' ? input.command : undefined)) {
-      return this.finishBlocked(resolvedName, input, 'Shell blocked in Ask/Plan/Review mode (read-only commands like depcheck/grep are allowed)');
+      const gated = this.requestModeEscalationApproval(
+        sessionId,
+        resolvedName,
+        input,
+        'Mutating shell commands in Ask/Plan/Review require your approval (read-only grep/rg/ls/etc. are allowed without approval)',
+        context?.toolCallId
+      );
+      if (gated) return gated;
     }
 
-    if (normalizeThunderMode(mode) === 'ask' && !isAskAllowedTool(resolvedName)) {
+    if (normalizedMode === 'ask' && !isAskAllowedTool(resolvedName)) {
       return this.finishBlocked(resolvedName, input, `Tool ${resolvedName} is not available in Ask mode`);
     }
 
-    const sessionId = this.getSessionId();
     const policy = this.policyEngine.evaluate(resolvedName, input);
 
     if (policy.decision === 'block') {
@@ -152,25 +180,7 @@ export class ToolExecutor {
 
     if (policy.decision === 'require_approval') {
       if (!this.approvalQueue.hasApprovalGrant(sessionId, resolvedName)) {
-        const request = this.approvalQueue.createRequest(sessionId, resolvedName, input, policy, {
-          toolCallId: context?.toolCallId,
-        });
-        this.sessionLog?.append('approval_request', `${request.kind ?? 'approval'}: ${resolvedName}`, {
-          id: request.id,
-          toolName: request.toolName,
-          kind: request.kind,
-          risk: request.risk,
-          reason: request.reason,
-          files: request.files,
-          contentLength: request.contentLength,
-          question: request.question,
-          options: request.options,
-          optionCount: request.options?.length ?? 0,
-          toolCallId: request.toolCallId,
-        });
-        this.onPendingApproval?.();
-        this.logRejectedToolCall(resolvedName, input, false, 'Awaiting approval', 'Awaiting approval');
-        return { success: false, output: '', pendingApproval: true, error: 'Awaiting approval' };
+        return this.enqueueApproval(sessionId, resolvedName, input, policy, context?.toolCallId);
       }
     }
 
@@ -185,6 +195,47 @@ export class ToolExecutor {
       this.getTaskState?.()?.recordToolFailure(resolvedName, input);
     }
     return result;
+  }
+
+  private requestModeEscalationApproval(
+    sessionId: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    reason: string,
+    toolCallId?: string
+  ): ToolExecutionResult | null {
+    if (this.approvalQueue.hasApprovalGrant(sessionId, toolName)) {
+      return null;
+    }
+    return this.enqueueApproval(sessionId, toolName, input, { decision: 'require_approval', reason }, toolCallId);
+  }
+
+  private enqueueApproval(
+    sessionId: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    policy: PolicyResult,
+    toolCallId?: string
+  ): ToolExecutionResult {
+    const request = this.approvalQueue.createRequest(sessionId, toolName, input, policy, {
+      toolCallId,
+    });
+    this.sessionLog?.append('approval_request', `${request.kind ?? 'approval'}: ${toolName}`, {
+      id: request.id,
+      toolName: request.toolName,
+      kind: request.kind,
+      risk: request.risk,
+      reason: request.reason,
+      files: request.files,
+      contentLength: request.contentLength,
+      question: request.question,
+      options: request.options,
+      optionCount: request.options?.length ?? 0,
+      toolCallId: request.toolCallId,
+    });
+    this.onPendingApproval?.();
+    this.logRejectedToolCall(toolName, input, false, 'Awaiting approval', 'Awaiting approval');
+    return { success: false, output: '', pendingApproval: true, error: 'Awaiting approval' };
   }
 
   private finishSoftBlock(toolName: string, input: Record<string, unknown>, output: string): ToolExecutionResult {

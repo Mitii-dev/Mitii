@@ -100,7 +100,7 @@ describe('Plan mode orchestration', () => {
     expect(prepared.skillPlaybookContext.match(/### Skill:/g)).toHaveLength(1);
   });
 
-  it('filters Plan mode tools to read-only planning capabilities', async () => {
+  it('filters Plan mode tools to planning capabilities with approval-gated mutators', async () => {
     const { filterPlanModeTools, PLAN_ALLOWED_TOOLS } = await import('../../src/core/modes/plan/planMode');
     const tools = [
       tool('read_file'),
@@ -116,7 +116,16 @@ describe('Plan mode orchestration', () => {
     const filtered = filterPlanModeTools(tools).map((t) => t.function.name);
 
     expect(PLAN_ALLOWED_TOOLS.has('read_file')).toBe(true);
-    expect(filtered).toEqual(['read_file', 'search_batch', 'execute_workspace_script', 'mcp__github__search']);
+    expect(PLAN_ALLOWED_TOOLS.has('write_file')).toBe(true);
+    expect(PLAN_ALLOWED_TOOLS.has('apply_patch')).toBe(true);
+    expect(filtered).toEqual([
+      'read_file',
+      'search_batch',
+      'execute_workspace_script',
+      'write_file',
+      'apply_patch',
+      'mcp__github__search',
+    ]);
   });
 
   it('passes planning discovery into isolated plan compilation', async () => {

@@ -1,5 +1,6 @@
 import type { AskRoute, AskIntent, AskResponseProfile } from './askTypes';
 import { ASK_INTENT_DESCRIPTIONS } from '../../runtime/intentClassifier';
+import { isLogAuditTask } from '../../runtime/logAudit';
 
 const LOCATE_RE = /\b(where|which file|what file|find|locate|defined|definition|lives?)\b/i;
 const ARCHITECTURE_RE = /\b(architecture|overview|flow|data flow|control flow|how does .+ work|walkthrough|trace|map out|pipeline|retrieval|orchestrat)\b/i;
@@ -37,6 +38,7 @@ export function routeAskIntent(userMessage: string, options: AskRouteOptions = {
 
 function classifyAskIntentFallback(text: string): AskIntent {
   if (!text) return 'general_knowledge';
+  if (isLogAuditTask(text)) return 'log_analysis';
   if (CROSS_PROJECT_RE.test(text)) return 'cross_project';
   if (IMPLEMENT_RE.test(text)) return 'implement_here';
   if (DEBUG_RE.test(text)) return 'debug_explain';
@@ -57,6 +59,7 @@ function chooseProfile(intent: AskIntent, text: string): AskResponseProfile {
 }
 
 function shouldUseAskSubagents(intent: AskIntent, text: string): boolean {
+  if (intent === 'log_analysis') return false;
   if (intent === 'general_knowledge' || intent === 'locate') return false;
   if (intent === 'architecture' || intent === 'cross_project' || intent === 'implement_here') return true;
   return text.length > 160 || /\b(entire|whole|across|all files|deep dive|full)\b/i.test(text);

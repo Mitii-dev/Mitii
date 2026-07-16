@@ -23,11 +23,13 @@ const READ_ONLY_TOOLS = new Set([
   'retrieve_context', 'git_diff', 'diagnostics', 'memory_search', 'spawn_research_agent', 'spawn_subagent',
   'save_task_state', 'search_script_catalog', 'execute_workspace_script', 'use_skill',
   'fetch_web', 'ask_question', 'mark_step_complete', 'propose_plan_mutation', 'propose_file_scope',
+  'analyze_log_directory', 'analyze_jsonl', 'query_log_events', 'list_logs',
 ]);
 
 /** Read tools that take a workspace-relative path — checked against the workspace
  *  boundary so reaching outside it goes through approval instead of being silently allowed. */
 const PATH_READ_TOOLS = new Set(['read_file', 'read_files', 'list_files', 'resolve_path']);
+const LOG_AUDIT_PATH_TOOLS = new Set(['analyze_log_directory', 'analyze_jsonl', 'query_log_events']);
 
 const WRITE_TOOLS = new Set(['write_file', 'apply_patch', 'memory_write']);
 const SHELL_TOOLS = new Set(['run_command']);
@@ -137,6 +139,7 @@ export class ToolPolicyEngine {
       candidates.push(...input.paths.filter((p): p is string => typeof p === 'string'));
     }
     for (const raw of candidates) {
+      if (LOG_AUDIT_PATH_TOOLS.has(toolName) && isLogAuditReadablePath(raw)) continue;
       if (this.isIgnoredPath(raw, { forRead })) return raw;
     }
     void toolName;
@@ -202,8 +205,16 @@ export class ToolPolicyEngine {
 
 /** Native + MCP tools that inspect paths and should use IgnoreService forRead exceptions. */
 export function usesReadPathSemantics(toolName: string): boolean {
-  if (PATH_READ_TOOLS.has(toolName) || toolName === 'propose_file_scope') return true;
+  if (PATH_READ_TOOLS.has(toolName) || LOG_AUDIT_PATH_TOOLS.has(toolName) || toolName === 'propose_file_scope') return true;
   return isMcpFilesystemReadTool(toolName);
+}
+
+function isLogAuditReadablePath(path: string): boolean {
+  const normalized = path.replace(/\\/g, '/').replace(/^\.\/+/, '').trim().replace(/\/+$/, '');
+  return /(?:^|\/)(?:\.mitii|\.miti|\.mtii|\.mitti)\/logs$/i.test(normalized) ||
+    /(?:^|\/)(?:\.mitii|\.miti|\.mtii|\.mitti)\/logs\/[^/]+\.(?:jsonl|json|log)$/i.test(normalized) ||
+    /(?:^|\/)logs$/i.test(normalized) ||
+    /(?:^|\/)logs\/[^/]+\.(?:jsonl|json|log)$/i.test(normalized);
 }
 
 export function isMcpFilesystemReadTool(toolName: string): boolean {

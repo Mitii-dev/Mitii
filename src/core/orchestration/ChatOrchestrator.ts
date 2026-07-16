@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { randomUUID } from 'crypto';
 import type { ThunderDb } from '../indexing/ThunderDb';
 import type { AssistantStreamChunk, LlmProvider, ChatMessage } from '../llm/types';
-import { chunkContent, toAssistantStreamChunk } from '../llm/streamChunks';
+import { chunkContent, isProgressChunk, toAssistantStreamChunk } from '../llm/streamChunks';
 import type { ThunderSession } from '../session/ThunderSession';
 import type { ContextItem, ContextPack } from '../context/types';
 import type {
@@ -47,6 +47,13 @@ import { compactMessagesWithLlm } from '../runtime/ContextCompaction';
 import { getMaxInputTokens } from '../runtime/PromptBudget';
 import { isAuditCleanupTask, AUDIT_AGENT_MAX_STEPS } from '../runtime/taskKind';
 import {
+  isLogAuditTask,
+  extractLogAuditTargetPath,
+  buildLogAuditBootstrapBlock,
+  LOG_AUDIT_AGENT_MAX_STEPS,
+  LOG_AUDIT_SKIP_RETRIEVAL_SOURCES,
+} from '../runtime/logAudit';
+import {
   filterAskModeTools,
   needsAskGrounding,
   shouldEnableAskSubagents,
@@ -59,6 +66,7 @@ import { routePlanIntent } from '../modes/plan/PlanIntentRouter';
 import {
   ActOrchestrator,
   filterActModeTools,
+  filterLogAuditModeTools,
   hasDirectRouteOverride,
   shouldResumeSavedPlan,
   shouldUsePlannerForAct,
@@ -447,6 +455,8 @@ export class ChatOrchestrator {
     const isPlanMode = session.mode === 'plan';
     const isAgentMode = session.mode === 'agent';
     const auditMode = isAuditCleanupTask(taskForClassification);
+    const logAuditMode = isLogAuditTask(taskForClassification);
+    const logAuditTarget = logAuditMode ? extractLogAuditTargetPath(taskForClassification) : undefined;
     const mdxRepairMode = isMdxRepairTask(taskForClassification);
     const mdxErrorFile = mdxRepairMode ? extractMdxErrorFile(taskForClassification) : undefined;
     const orchestrationEnabled = agentConfig?.orchestrationEnabled ?? true;
@@ -518,6 +528,7 @@ export class ChatOrchestrator {
           taskAnalysis,
           orchestrationEnabled,
           auditMode,
+          logAuditMode,
           mdxRepairMode,
           githubIssueMode: taskEnrichment.signals.githubIssue?.fetched === true,
           hasActivePlan: Boolean(activePlanAtStart?.plan),
@@ -541,8 +552,31 @@ export class ChatOrchestrator {
     const maxInputTokens = getMaxInputTokens(provider.capabilities.contextWindow);
     const explicitContextTokenBudget = Math.min(32_000, Math.floor(maxInputTokens * 0.08));
     const pinnedContext = options?.pinnedContext ?? [];
+    const userMentions = extractFileMentions(userMessage);
+    // Explicit user paths outrank pinned context (stale pins must not override the named target).
+    const logAuditFileTarget =
+      logAuditTarget && /\.(?:jsonl|json|log)$/i.test(logAuditTarget) ? logAuditTarget : undefined;
+    const effectivePinnedContext =
+      logAuditMode && logAuditFileTarget
+        ? pinnedContext.filter((p) => {
+            const pin = p.path.replace(/\\/g, '/');
+            const target = logAuditFileTarget.replace(/\\/g, '/');
+            return pin === target || pin.endsWith(`/${target}`) || target.endsWith(`/${pin}`);
+          })
+        : userMentions.length > 0
+          ? pinnedContext.filter((p) =>
+              userMentions.some((m) => {
+                const pin = p.path.replace(/\\/g, '/');
+                const mention = m.replace(/\\/g, '/');
+                return pin === mention || pin.endsWith(`/${mention}`) || mention.endsWith(`/${pin}`);
+              })
+            )
+          : pinnedContext;
     const explicitBuilder = new UserExplicitContextBuilder(this.db, ws, explicitContextTokenBudget);
-    const explicitResult = explicitBuilder.build(pinnedContext);
+    const explicitResult = explicitBuilder.build(effectivePinnedContext, {
+      demote: userMentions.length > 0 || Boolean(logAuditFileTarget),
+      primaryPaths: logAuditFileTarget ? [logAuditFileTarget] : userMentions,
+    });
     if (explicitResult.items.length > 0) {
       this.emitActivity(
         'context',
@@ -577,7 +611,7 @@ export class ChatOrchestrator {
           currentFile,
           openFiles,
           scopeRoot: scopedRoot,
-          pinnedContext: pinnedContext.map((p) => ({ path: p.path, kind: p.kind })),
+          pinnedContext: effectivePinnedContext.map((p) => ({ path: p.path, kind: p.kind })),
           tierPolicy,
           maxItems: resolveMaxContextItems({
             contextWindow: provider.capabilities.contextWindow,
@@ -585,6 +619,7 @@ export class ChatOrchestrator {
             expandedQuery: retrievalText !== userMessage,
             tierPolicy,
           }),
+          skipSources: logAuditMode ? [...LOG_AUDIT_SKIP_RETRIEVAL_SOURCES] : undefined,
         });
         this.retrievalCache = { key: retrievalKey, items, at: Date.now() };
         sessionTiming.end('context_retrieval', sessionLog, {
@@ -607,10 +642,14 @@ export class ChatOrchestrator {
       retrievedPaths.slice(0, 8).join('\n')
     );
 
-    const hookInjection = this.deps.memoryHookService
-      ? await this.deps.memoryHookService.onUserPromptSubmit(session.id, userMessage)
-      : undefined;
-    const passiveMemories = await (this.deps.passiveMemoryInjector?.inject(userMessage, session.id) ?? Promise.resolve([]));
+    const hookInjection = logAuditMode
+      ? undefined
+      : this.deps.memoryHookService
+        ? await this.deps.memoryHookService.onUserPromptSubmit(session.id, userMessage)
+        : undefined;
+    const passiveMemories = logAuditMode
+      ? []
+      : await (this.deps.passiveMemoryInjector?.inject(userMessage, session.id) ?? Promise.resolve([]));
     if (passiveMemories.length > 0) {
       items = [...items, ...passiveMemories];
       this.emitActivity('info', `Injected ${passiveMemories.length} passive memories`);
@@ -632,13 +671,26 @@ export class ChatOrchestrator {
 
     const contextBudget = Math.floor(maxInputTokens * 0.65);
     const pack = this.budgeter.budget(items, contextBudget);
+    // Precedence: user-explicit path / mentions first, then pinned, then retrieved.
+    const userPathBlock = logAuditMode
+      ? [
+          '## User-explicit target (highest priority — overrides pinned context)',
+          logAuditTarget ? `\`${logAuditTarget}\`` : 'Session logs under `.mitii/logs/`',
+          buildLogAuditBootstrapBlock(logAuditTarget),
+        ].join('\n')
+      : userMentions.length > 0
+        ? [
+            '## User-explicit paths (highest priority — overrides pinned context)',
+            ...userMentions.map((p) => `- \`${p}\``),
+          ].join('\n')
+        : '';
     const displayPack: ContextPack = {
       ...pack,
       items: [...explicitResult.items, ...pack.items],
-      totalTokens: pack.totalTokens + explicitResult.totalTokens,
-      formatted: explicitResult.formatted
-        ? `${explicitResult.formatted}\n\n---\n\n${pack.formatted}`
-        : pack.formatted,
+      totalTokens: pack.totalTokens + explicitResult.totalTokens + Math.ceil(userPathBlock.length / 4),
+      formatted: [userPathBlock, explicitResult.formatted, pack.formatted]
+        .filter(Boolean)
+        .join('\n\n---\n\n'),
     };
     const views = contextItemsToViews(displayPack.items);
     const budgetView = contextPackToBudgetView(displayPack);
@@ -690,6 +742,7 @@ export class ChatOrchestrator {
     const subagentsEnabled =
       (agentConfig?.subagentsEnabled ?? true) &&
       !auditMode &&
+      !logAuditMode &&
       (isAskMode
         ? (askPlan?.route.shouldUseSubagents ?? shouldEnableAskSubagents(userMessage))
         : isPlanMode
@@ -700,7 +753,10 @@ export class ChatOrchestrator {
           subagentsEnabled || !['spawn_research_agent', 'spawn_subagent'].includes(tool.function.name)
         )
       : [];
-    if (isAskMode) {
+    if (logAuditMode) {
+      // Log audit wins over Ask/Plan allowlists so only deterministic log analyzers are available.
+      tools = filterLogAuditModeTools(tools);
+    } else if (isAskMode) {
       tools = filterAskModeTools(tools);
     } else if (isPlanMode) {
       tools = filterPlanModeTools(tools);
@@ -724,7 +780,9 @@ export class ChatOrchestrator {
       setSubagentRuntime(undefined);
     }
 
-    if (auditMode) {
+    if (logAuditMode) {
+      this.emitActivity('info', 'Log audit mode — deterministic log analyzer', logAuditTarget);
+    } else if (auditMode) {
       this.emitActivity('info', 'Audit mode — using tools to scan project');
     } else if (mdxRepairMode) {
       this.emitActivity('info', 'MDX repair mode — fix exact build failure', mdxErrorFile ?? taskAnalysis.summary);
@@ -756,6 +814,7 @@ export class ChatOrchestrator {
       actScope: actPlan?.scope.status,
       actSkills: actPlan?.appliedSkills,
       auditMode,
+      logAuditMode,
       mdxRepairMode,
       toolsEnabled,
       requiresAgentWrite,
@@ -1185,11 +1244,19 @@ export class ChatOrchestrator {
       emitLiveTokenUsage();
 
       if (toolsEnabled && this.agentLoop) {
-        const directAgentTools = filterActModeTools(tools);
+        const directAgentTools = logAuditMode
+          ? filterLogAuditModeTools(tools)
+          : filterActModeTools(tools);
         this.setLiveStatus(isAskMode ? 'Answering' : 'Agent running');
         this.emitActivity(
           'info',
-          isAskMode ? 'Exploring codebase (read-only)…' : auditMode ? 'Scanning project with tools…' : 'Agent loop started'
+          isAskMode
+            ? 'Exploring codebase (read-only)…'
+            : logAuditMode
+              ? 'Analyzing log deterministically…'
+              : auditMode
+                ? 'Scanning project with tools…'
+                : 'Agent loop started'
         );
         sessionTiming.start('direct_agent');
 
@@ -1201,6 +1268,7 @@ export class ChatOrchestrator {
           sharedLoopCallbacks,
           {
             auditMode,
+            logAuditMode,
             askMode: isAskMode,
             planMode: isPlanMode,
             requiresAskGrounding: isAskMode && needsAskGrounding(userMessage),
@@ -1209,6 +1277,7 @@ export class ChatOrchestrator {
               isAskMode,
               isPlanMode,
               auditMode,
+              logAuditMode,
               askSteps: askPlan?.maxSteps ?? agentConfig?.askMaxSteps,
               planSteps: planPlan?.discoveryMaxSteps ?? (
                 agentConfig?.maxSteps ? scaleTierSteps(agentConfig.maxSteps, tierPolicy, 50) : undefined
@@ -1222,17 +1291,31 @@ export class ChatOrchestrator {
               ? (askPlan?.autoContinue ?? true)
               : isPlanMode
                 ? (planPlan?.autoContinue ?? agentConfig?.autoContinue ?? true)
-                : (actPlan?.autoContinue ?? agentConfig?.autoContinue ?? true),
+                : logAuditMode
+                  ? false
+                  : (actPlan?.autoContinue ?? agentConfig?.autoContinue ?? true),
             maxAutoContinues: isAskMode
               ? (askPlan?.maxAutoContinues ?? 1)
               : isPlanMode
                 ? (planPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues)
-                : (actPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues),
+                : logAuditMode
+                  ? 0
+                  : (actPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues),
             requiresWrite: requiresAgentWrite,
             reasoningEffort: tierPolicy.reasoningEffort,
+            getTaskState: () => this.deps.taskState,
           }
         )) {
           if (signal.aborted) break;
+          if (isProgressChunk(chunk)) {
+            const progress = chunkContent(chunk).trim();
+            if (progress) {
+              this.emitActivity('info', progress.slice(0, 160));
+            }
+            // Stream to UI for live status, but do not persist into the final answer.
+            yield chunk;
+            continue;
+          }
           fullResponse += chunkContent(chunk);
           emitLiveTokenUsage();
           yield chunk;
@@ -2033,7 +2116,12 @@ function shouldRequireAgentWrite(
   taskKind: ReturnType<typeof analyzeTask>['kind'],
   auditMode: boolean
 ): boolean {
-  return mode === 'agent' && !auditMode && (taskKind === 'simple_edit' || taskKind === 'implementation');
+  return (
+    mode === 'agent' &&
+    !auditMode &&
+    taskKind !== 'log_audit' &&
+    (taskKind === 'simple_edit' || taskKind === 'implementation')
+  );
 }
 
 function touchesDocs(files: string[]): boolean {
@@ -2079,11 +2167,16 @@ function resolveLoopMaxSteps(options: {
   isAskMode: boolean;
   isPlanMode: boolean;
   auditMode: boolean;
+  logAuditMode?: boolean;
   askSteps?: number;
   planSteps?: number;
   actSteps?: number;
   tierPolicy: TierPolicy;
 }): number {
+  // Log audit is a short, tool-first route in any chat mode.
+  if (options.logAuditMode) {
+    return LOG_AUDIT_AGENT_MAX_STEPS;
+  }
   if (options.isAskMode) {
     return scaleTierSteps(options.askSteps ?? 18, options.tierPolicy, 50);
   }

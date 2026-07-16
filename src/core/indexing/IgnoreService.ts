@@ -105,6 +105,7 @@ function normalizeIgnorePath(path: string, workspacePath: string): string {
 export function canonicalizeMitiiRelPath(relPath: string): string {
   return relPath
     .replace(/^\.miti\//i, '.mitii/')
+    .replace(/^\.mtii\//i, '.mitii/')
     .replace(/^\.mitti\//i, '.mitii/')
     .replace(/^\.mitii\b/i, '.mitii');
 }

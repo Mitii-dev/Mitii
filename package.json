@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow",
-  "version": "2.7.56",
+  "version": "2.7.57",
   "publisher": "mitii",
   "icon": "media/mitii-short-logo.png",
   "license": "AGPL-3.0-or-later",
@@ -1420,6 +1420,21 @@
           "default": "",
           "description": "Shared secret used to verify GitHub webhook requests before enqueueing async jobs."
         },
+        "mitii.github.lazyMcpActivation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start GitHub MCP integrations only for requests that need current GitHub data or remote writes."
+        },
+        "mitii.github.requireApprovalForRemoteWrites": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require explicit approval before Mitii creates or mutates GitHub pull requests, issues, workflows, or releases."
+        },
+        "mitii.github.workflowDispatchEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow GitHub Actions workflow dispatch when explicitly requested and approved."
+        },
         "mitii.agent.teamsEnabled": {
           "type": "boolean",
           "default": false,
@@ -1470,6 +1485,24 @@
           "type": "string",
           "default": "",
           "description": "Shared secret used to verify GitHub webhook requests before enqueueing async jobs.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
+        "thunder.github.lazyMcpActivation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start GitHub MCP integrations only for requests that need current GitHub data or remote writes.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
+        "thunder.github.requireApprovalForRemoteWrites": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require explicit approval before Mitii creates or mutates GitHub pull requests, issues, workflows, or releases.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
+        "thunder.github.workflowDispatchEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow GitHub Actions workflow dispatch when explicitly requested and approved.",
           "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.teamsEnabled": {

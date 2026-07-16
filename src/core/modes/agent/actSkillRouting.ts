@@ -9,6 +9,10 @@ const MAX_SKILL_CHARS = 24_000;
 export function resolveActSkillNames(intent: ActIntent, taskAnalysis?: TaskAnalysis): string[] {
   const names: string[] = ['using-agent-skills'];
 
+  if (intent === 'log_audit' || taskAnalysis?.kind === 'log_audit') {
+    return ['log-audit'];
+  }
+
   if (intent === 'audit' || taskAnalysis?.kind === 'audit') {
     names.push('audit-cleanup');
   }

@@ -3,6 +3,7 @@ import { normalizeToolInput } from './coerceInput';
 import { resolveToolName } from './toolAliases';
 import { createLogger } from '../telemetry/Logger';
 import type { SessionLogService } from '../telemetry/SessionLogService';
+import { storeDebugBlob } from '../telemetry/debugBlobs';
 
 const log = createLogger('ToolRuntime');
 
@@ -10,9 +11,14 @@ export class ToolRuntime {
   private tools = new Map<string, Tool>();
   private auditLog: ToolCallAudit[] = [];
   private sessionLog: SessionLogService | undefined;
+  private workspace = '';
 
   setSessionLog(sessionLog: SessionLogService): void {
     this.sessionLog = sessionLog;
+  }
+
+  setWorkspace(workspace: string): void {
+    this.workspace = workspace;
   }
 
   register(tool: Tool): void {
@@ -100,12 +106,13 @@ export class ToolRuntime {
       ...extractToolLocator(input),
       inputPreview: previewValue(input),
     });
+    // Verbose duplicate of tool_start only when debugMetrics is on — keep compact audit clean.
     this.sessionLog?.appendDebug('info', `debug tool_start ${name}`, {
       eventType: 'tool_start',
       toolCallId,
       tool: name,
       toolName: name,
-      input,
+      inputPreview: previewValue(input),
     });
   }
 
@@ -119,6 +126,9 @@ export class ToolRuntime {
     const durationMs = Date.now() - startedAt;
     const output = result.output || result.error || '';
     const inputPreview = previewValue(input);
+    const blob = storeDebugBlob(this.workspace, output);
+
+    // Compact audit event — never embed full tool output (avoids recursive log amplification).
     this.sessionLog?.append('tool_end', name, {
       toolCallId,
       tool: name,
@@ -128,7 +138,10 @@ export class ToolRuntime {
       failure: !result.success,
       durationMs,
       inputPreview,
-      outputPreview: output.slice(0, 500),
+      outputPreview: blob.preview,
+      outputBytes: blob.outputBytes,
+      outputSha256: blob.outputSha256,
+      blobPath: blob.blobPath,
       error: result.error,
     });
     this.sessionLog?.appendDebug('info', `debug tool_end ${name}`, {
@@ -136,9 +149,13 @@ export class ToolRuntime {
       toolCallId,
       tool: name,
       toolName: name,
-      input,
-      result,
       durationMs,
+      success: result.success,
+      outputPreview: blob.preview,
+      outputBytes: blob.outputBytes,
+      outputSha256: blob.outputSha256,
+      blobPath: blob.blobPath,
+      error: result.error,
     });
   }
 }

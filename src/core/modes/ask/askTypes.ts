@@ -1,5 +1,6 @@
 export type AskIntent =
   | 'explain_code'
+  | 'log_analysis'
   | 'locate'
   | 'architecture'
   | 'compare'

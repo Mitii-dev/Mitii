@@ -30,6 +30,9 @@ export class AgentTaskState {
   private taskSummary = '';
   private originalTask = '';
   private completedKeys = new Set<string>();
+  /** How many times each successful action signature was attempted (including soft-blocked retries). */
+  private actionAttemptCounts = new Map<string, number>();
+  private lastAttemptAt = new Map<string, number>();
   private toolResults: ToolResultRecord[] = [];
   private pauseSummary = '';
   private executionToolsUsed = false;
@@ -38,6 +41,7 @@ export class AgentTaskState {
   private fileScope: Set<string> | null = null;
   private maxFilesRead = Infinity;
   private readPaths = new Set<string>();
+  private forceSynthesis = false;
 
   reset(): void {
     sendPhaseEvent(this.phaseActor, { type: 'RESET' });
@@ -45,12 +49,15 @@ export class AgentTaskState {
     this.taskSummary = '';
     this.originalTask = '';
     this.completedKeys.clear();
+    this.actionAttemptCounts.clear();
+    this.lastAttemptAt.clear();
     this.toolResults = [];
     this.pauseSummary = '';
     this.executionToolsUsed = false;
     this.sequentialThinkingCalls = 0;
     this.fileScope = null;
     this.readPaths.clear();
+    this.forceSynthesis = false;
   }
 
   setLimits(limits: AgentTaskLimits): void {
@@ -85,6 +92,26 @@ export class AgentTaskState {
     this.readPaths.clear();
     if (typeof maxFilesRead === 'number') {
       this.maxFilesRead = maxFilesRead > 0 ? maxFilesRead : Infinity;
+    }
+  }
+
+  /**
+   * Merge newly accepted paths into the existing scope without resetting the
+   * session-level read budget / already-read set. New proposals are additive
+   * unless `replace` is true.
+   */
+  mergeFileScope(paths: string[], maxFilesRead?: number, options?: { replace?: boolean }): void {
+    const normalized = paths.map(normalizeScopePath).filter(Boolean);
+    if (options?.replace || !this.fileScope) {
+      this.fileScope = new Set(normalized);
+      if (options?.replace) this.readPaths.clear();
+    } else {
+      for (const path of normalized) this.fileScope.add(path);
+    }
+    if (typeof maxFilesRead === 'number' && maxFilesRead > 0) {
+      // Never shrink an already-consumed budget below files already read.
+      const minNeeded = this.readPaths.size;
+      this.maxFilesRead = Math.max(maxFilesRead, minNeeded, this.maxFilesRead === Infinity ? maxFilesRead : this.maxFilesRead);
     }
   }
 
@@ -178,6 +205,13 @@ export class AgentTaskState {
     const scopeBlocked = this.checkFileScopeBlocked(toolName, input);
     if (scopeBlocked) return scopeBlocked;
 
+    if (this.forceSynthesis) {
+      return (
+        'FORCE_SYNTHESIS: enough evidence is already cached. Do not call more tools — ' +
+        'write the final answer from prior tool results now.'
+      );
+    }
+
     if (this.getPhase() === 'verify') return null;
 
     if (toolName === 'memory_search' && this.getPhase() === 'execute') {
@@ -186,6 +220,22 @@ export class AgentTaskState {
 
     const key = toolKey(toolName, input);
     if (!key || !this.completedKeys.has(key)) return null;
+
+    // Count duplicate attempts once per blocked call chain (checkBlocked may be
+    // invoked again from buildSoftBlockResponse — ignore same-millisecond double hits).
+    const now = Date.now();
+    const last = this.lastAttemptAt.get(key) ?? 0;
+    if (now - last > 25) {
+      this.lastAttemptAt.set(key, now);
+      this.actionAttemptCounts.set(key, (this.actionAttemptCounts.get(key) ?? 0) + 1);
+    }
+    if ((this.actionAttemptCounts.get(key) ?? 0) >= 2) {
+      this.forceSynthesis = true;
+      return (
+        `already_completed:${key}. Do not retry. Synthesize from the cached result. ` +
+        'Controller will force final synthesis after this response.'
+      );
+    }
 
     if (toolName === 'run_command') {
       if (this.executionToolsUsed && isPostEditVerificationKey(key)) {
@@ -250,7 +300,37 @@ export class AgentTaskState {
       );
     }
 
+    if (toolName === 'analyze_jsonl') {
+      const path = typeof input.path === 'string' ? input.path : 'log';
+      return (
+        `already_completed: analyze_jsonl for \`${path}\`. ` +
+        'Do not retry. Synthesize from the cached report, or call query_log_events once if a narrow follow-up is required.'
+      );
+    }
+
+    if (toolName === 'query_log_events') {
+      return (
+        'already_completed: query_log_events with these filters. ' +
+        'Do not retry. Synthesize the final analysis from cached results now.'
+      );
+    }
+
+    if (toolName === 'propose_file_scope') {
+      return (
+        'File scope was already proposed this session. Use getFileScopeSnapshot paths from chat history; ' +
+        'only re-propose when adding genuinely new paths (merge is additive).'
+      );
+    }
+
     return null;
+  }
+
+  shouldForceSynthesis(): boolean {
+    return this.forceSynthesis;
+  }
+
+  markForceSynthesis(): void {
+    this.forceSynthesis = true;
   }
 
   checkFileScopeBlocked(toolName: string, input: Record<string, unknown>): string | null {
@@ -542,7 +622,36 @@ export function toolKey(toolName: string, input: Record<string, unknown>): strin
   if (toolName === 'spawn_research_agent' && typeof input.task === 'string') {
     return `research:${input.task.slice(0, 80)}`;
   }
+  if (toolName === 'analyze_jsonl' && typeof input.path === 'string') {
+    return `analyze_jsonl:${normalizeScopePath(input.path)}`;
+  }
+  if (toolName === 'query_log_events' && typeof input.path === 'string') {
+    const filter = input.filter && typeof input.filter === 'object'
+      ? JSON.stringify(sortKeys(input.filter as Record<string, unknown>))
+      : '';
+    return `query_log_events:${normalizeScopePath(input.path)}:${filter}`;
+  }
+  if (toolName === 'propose_file_scope') {
+    const candidates = Array.isArray(input.candidates)
+      ? input.candidates
+          .map((c) => (c && typeof c === 'object' && typeof (c as { path?: unknown }).path === 'string'
+            ? normalizeScopePath((c as { path: string }).path)
+            : ''))
+          .filter(Boolean)
+          .sort()
+          .join('|')
+      : '';
+    return candidates ? `propose_file_scope:${candidates}` : 'propose_file_scope';
+  }
   return null;
+}
+
+function sortKeys(value: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(value).sort()) {
+    out[key] = value[key];
+  }
+  return out;
 }
 
 function isScopedFileTool(toolName: string): boolean {

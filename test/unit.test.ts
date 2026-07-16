@@ -59,6 +59,10 @@ describe('IgnoreService', () => {
     expect(engine.evaluate('list_files', { path: '.mitii/logs' }).decision).toBe('allow');
     expect(engine.evaluate('read_file', { path: '.mitii/logs/session.jsonl' }).decision).toBe('allow');
     expect(engine.evaluate('list_files', { path: '.miti/logs' }).decision).toBe('allow');
+    expect(engine.evaluate('analyze_jsonl', { path: '.mitii/logs/session.jsonl' }).decision).toBe('allow');
+    expect(engine.evaluate('analyze_jsonl', { path: '.miti/logs/session.jsonl' }).decision).toBe('allow');
+    expect(engine.evaluate('analyze_jsonl', { path: 'logs/session.jsonl' }).decision).toBe('allow');
+    expect(engine.evaluate('query_log_events', { path: '.mitii/logs/session.jsonl' }).decision).toBe('allow');
     expect(engine.evaluate('read_file', { path: '.mitii/config.json' }).decision).toBe('block');
     expect(engine.evaluate('mcp__filesystem__read_text_file', { path: '.mitii/logs/session.jsonl' }).decision).toBe('allow');
   });
@@ -813,19 +817,26 @@ describe('Plan/Act task analysis', () => {
 });
 
 describe('Ask mode helpers', () => {
-  it('filters tools to the Ask allowlist', async () => {
+  it('filters tools to the Ask allowlist (writes are approval-gated)', async () => {
     const { filterAskModeTools, ASK_ALLOWED_TOOLS } = await import('../src/core/runtime/askMode');
     const tools = [
       { type: 'function' as const, function: { name: 'read_file', description: '', parameters: {} } },
       { type: 'function' as const, function: { name: 'write_file', description: '', parameters: {} } },
       { type: 'function' as const, function: { name: 'analyze_change_impact', description: '', parameters: {} } },
       { type: 'function' as const, function: { name: 'mcp__fs__read', description: '', parameters: {} } },
+      { type: 'function' as const, function: { name: 'mark_step_complete', description: '', parameters: {} } },
     ];
     const filtered = filterAskModeTools(tools);
-    expect(filtered.map((t) => t.function.name)).toEqual(['read_file', 'analyze_change_impact', 'mcp__fs__read']);
+    expect(filtered.map((t) => t.function.name)).toEqual([
+      'read_file',
+      'write_file',
+      'analyze_change_impact',
+      'mcp__fs__read',
+    ]);
     expect(ASK_ALLOWED_TOOLS.has('spawn_research_agent')).toBe(true);
     expect(ASK_ALLOWED_TOOLS.has('project_catalog')).toBe(true);
-    expect(ASK_ALLOWED_TOOLS.has('write_file')).toBe(false);
+    expect(ASK_ALLOWED_TOOLS.has('write_file')).toBe(true);
+    expect(ASK_ALLOWED_TOOLS.has('analyze_jsonl')).toBe(true);
   });
 
   it('detects when Ask answers need grounding', async () => {
@@ -864,6 +875,58 @@ describe('Ask mode helpers', () => {
     const result = await executor.execute('mark_step_complete', { stepId: 'step-1' });
     expect(result.success).toBe(false);
     expect(result.error).toContain('not available in Ask mode');
+  });
+
+  it('requests approval for writes in Ask mode instead of hard-blocking', async () => {
+    const { ToolExecutor } = await import('../src/core/safety/ToolExecutor');
+    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
+    const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
+    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
+
+    const queue = new ApprovalQueue();
+    const executor = new ToolExecutor(
+      new ToolRuntime(),
+      new ToolPolicyEngine({
+        requireApprovalForWrites: true,
+        requireApprovalForShell: true,
+        allowNetwork: false,
+        blockDangerousCommands: true,
+      }, () => false),
+      queue,
+      () => 'session-ask-write',
+      () => 'ask'
+    );
+
+    const result = await executor.execute('write_file', { path: 'README.md', content: 'x' });
+    expect(result.pendingApproval).toBe(true);
+    expect(result.error).toBe('Awaiting approval');
+    expect(queue.getPending()).toHaveLength(1);
+    expect(queue.getPending()[0]?.toolName).toBe('write_file');
+  });
+
+  it('requests approval for mutating shell in Ask mode', async () => {
+    const { ToolExecutor } = await import('../src/core/safety/ToolExecutor');
+    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
+    const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
+    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
+
+    const queue = new ApprovalQueue();
+    const executor = new ToolExecutor(
+      new ToolRuntime(),
+      new ToolPolicyEngine({
+        requireApprovalForWrites: true,
+        requireApprovalForShell: true,
+        allowNetwork: false,
+        blockDangerousCommands: true,
+      }, () => false),
+      queue,
+      () => 'session-ask-shell',
+      () => 'ask'
+    );
+
+    const result = await executor.execute('run_command', { command: 'npm install lodash' });
+    expect(result.pendingApproval).toBe(true);
+    expect(queue.getPending()[0]?.reason).toMatch(/approval/i);
   });
 });
 
@@ -2551,6 +2614,29 @@ describe('run_command exit codes', () => {
 
       const npm = await tool.execute({ command: 'npm test' });
       expect(npm.success).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not treat historical "not found" in stdout as a shell failure', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const { createRunCommandTool } = await import('../src/core/tools/builtinTools');
+
+    const dir = mkdtempSync(join(tmpdir(), 'thunder-cmd-log-'));
+    try {
+      writeFileSync(
+        join(dir, 'sample.jsonl'),
+        '{"error":"File not found: missing.md","message":"read file failed"}\n'
+      );
+      const tool = createRunCommandTool(dir, () => 'ask');
+      const result = await tool.execute({
+        command: 'grep -h "failure\\|not found\\|error" sample.jsonl | head -5',
+      });
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('File not found');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

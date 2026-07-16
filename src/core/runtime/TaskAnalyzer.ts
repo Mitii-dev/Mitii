@@ -4,8 +4,16 @@ import { routePlanIntent } from '../modes/plan/PlanIntentRouter';
 import type { AskIntent } from '../modes/ask/askTypes';
 import type { PlanIntent } from '../modes/plan/planTypes';
 import type { ActIntent } from '../modes/agent/actTypes';
+import { isLogAuditTask } from './logAudit';
 
-export type TaskKind = 'question' | 'audit' | 'simple_edit' | 'implementation' | 'explicit_plan' | 'debugging';
+export type TaskKind =
+  | 'question'
+  | 'audit'
+  | 'log_audit'
+  | 'simple_edit'
+  | 'implementation'
+  | 'explicit_plan'
+  | 'debugging';
 
 export type TaskComplexity = 'low' | 'medium' | 'high';
 
@@ -147,6 +155,19 @@ function estimateAskComplexity(
 
 function classifyTask(text: string): TaskAnalysis {
   const lower = text.toLowerCase();
+
+  // Prefer log-audit before dependency-audit: both may match "audit" wording.
+  if (isLogAuditTask(text)) {
+    return {
+      kind: 'log_audit',
+      complexity: 'low',
+      shouldPlan: false,
+      shouldVerify: false,
+      shouldUseSubagents: false,
+      summary: 'Log audit — analyze_jsonl first; no repo RAG, subagents, or full-file reads.',
+      actIntent: 'log_audit',
+    };
+  }
 
   if (AUDIT_CLEANUP.test(text)) {
     return {

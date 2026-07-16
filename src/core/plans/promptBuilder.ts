@@ -11,9 +11,10 @@ import { PLAN_SKILL_TOOL_GUIDANCE } from '../modes/plan/planSkillRouting';
 import { ACT_SKILL_TOOL_GUIDANCE } from '../modes/agent/actSkillRouting';
 
 const ASK_TOOL_GUIDANCE = `
-ASK MODE TOOLS — read-only exploration only:
+ASK MODE TOOLS — prefer read-only exploration; mutating actions need user approval:
 - Use resolve_path when the exact file path is uncertain; read_file auto-resolves high-confidence misses.
 - Use read_file/read_files/search/search_batch/list_files/repo_map/retrieve_context before stating codebase facts.
+- For \`.mitii/logs\` / \`.jsonl\` analysis: use analyze_log_directory for directories or analyze_jsonl for one file (never dump raw logs via read_file/grep).
 - Copy rel_path values from search results exactly — do not flatten folder/file layouts.
 - Batch independent reads in ONE turn (read_files max 12 paths; prefer 8-10).
 - Use git_diff and diagnostics when the question is about changes or errors.
@@ -24,7 +25,7 @@ ASK MODE TOOLS — read-only exploration only:
 - Use spawn_research_agent for broad architecture, cross-project, or deep explain questions.
 - Use fetch_web for external docs when implement_here depends on a library/API or local context is insufficient.
 - Use ask_question when scope is ambiguous (2-5 options).
-- NEVER call write_file, apply_patch, or mutating shell commands.
+- If you need write_file / apply_patch / a mutating shell command, call the tool — the user will be prompted to allow it. Do not stall only telling them to switch modes.
 - NEVER say "I will search…" without calling tools in the same turn.
 
 Ask intent taxonomy:
@@ -63,7 +64,7 @@ TOOLS: You have tools to read files, search code, run commands, write files, and
 - Use save_task_state or memory_write to persist progress BEFORE pausing for approval (required).
 - Use ask_question when a key decision is ambiguous — provide 2-5 options to reduce wrong-direction work.
 - Use fetch_web for external docs, API references, advisory pages, or debugging when local context is insufficient. For "check online" / CVE lookups, fetch advisory URLs from audit output or https://osv.dev / npm advisory pages.
-- Session logs: .mitii/logs/*.jsonl are readable with list_files/read_file even though .mitii/ is ignored for indexing. Typo .miti/ is auto-corrected to .mitii/.
+- Session logs: .mitii/logs/*.jsonl are readable with list_files/read_file even though .mitii/ is ignored for indexing. Common typos like .miti/ and .mtii/ are auto-corrected to .mitii/.
 - Use mark_step_complete when finishing a plan step; use propose_plan_mutation if you hit a major roadblock.
 - In Agent mode, you may call write_file/apply_patch/run_command tools directly.
 - If a tool returns "awaiting approval", stop and inform the user.
@@ -125,17 +126,18 @@ export function buildSystemPrompt(
   isContinuation = false
 ): string {
   const modeInstructions: Record<ThunderMode, string> = {
-    ask: `You are in ASK mode. Answer questions about the codebase using read-only exploration.
+    ask: `You are in ASK mode. Answer questions about the codebase using read-only exploration by default.
 - Investigate with tools before stating facts about this repo — do not guess from training data.
 - Give thorough, well-structured answers with \`path:line\` citations when referencing code.
 - For deep Ask responses, write like a technical blog post: clear sections, complete sentences, context, tradeoffs, and gotchas.
 - For "how do I implement X here?", produce a read-only implementation guide with likely affected files and verification commands.
 - Say explicitly when something was not found in the workspace.
-- Do NOT edit files, run mutating shell commands, or implement changes — suggest switching to Agent mode if the user wants edits.`,
+- Prefer not to edit files. If a write or mutating shell command is necessary, call the tool and wait for the user to approve — do not only tell them to switch modes.`,
     plan: `You are in PLAN mode. Analyze the codebase and give a direct answer.
 - Start with a 1-2 sentence summary of your recommendation.
 - Use bullet points for steps. Be specific with file paths from context.
-- Do NOT write files — propose what to change and where.
+- Prefer not to write files — propose what to change and where.
+- If a write is necessary to proceed, call write_file/apply_patch and wait for user approval.
 - For complex tasks, output a JSON plan block (see format below).`,
     agent: `You are in AGENT mode. Implement changes using tools and/or CODE_EDIT_BLOCK format.
 
@@ -193,7 +195,7 @@ ${toolsEnabled && isContinuation ? '\nCONTINUATION TURN: Resume the existing sta
 ${mode === 'plan' ? planFormat : ''}
 
 RULES:
-- The user's message may include a <user_explicit_context> block with files/folders they pinned. Treat that as highest priority — focus there first before wider codebase context.
+- The user's message may include a <user_explicit_context> or <user_pinned_context> block. Paths named in the current user message always outrank pinned context. Treat pinned paths as highest priority only when the message does not name a conflicting target.
 - The user's message includes a ## Codebase Context section with real project files. READ IT and answer from it.
 - If ## Codebase Context includes a repo_map/workspace overview, use that provided map first. Do NOT repeatedly call list_files for the same structure unless the map is absent or demonstrably stale.
 - \`MITII.md\` in context is the operating instructions file for this workspace. Follow it unless it conflicts with explicit user instructions or safety policy.

@@ -25,6 +25,13 @@ export const ASK_ALLOWED_TOOLS = new Set([
   'project_catalog',
   'analyze_change_impact',
   'propose_file_scope',
+  // Approval-gated mutators — ToolExecutor prompts the user; do not auto-run.
+  'write_file',
+  'apply_patch',
+  'analyze_log_directory',
+  'analyze_jsonl',
+  'query_log_events',
+  'list_logs',
 ]);
 
 const GROUNDING_TOOLS = new Set([
@@ -44,6 +51,10 @@ const GROUNDING_TOOLS = new Set([
   'project_catalog',
   'analyze_change_impact',
   'propose_file_scope',
+  'analyze_log_directory',
+  'analyze_jsonl',
+  'query_log_events',
+  'list_logs',
 ]);
 
 export function filterAskModeTools(tools: ToolDefinition[]): ToolDefinition[] {
@@ -51,15 +62,15 @@ export function filterAskModeTools(tools: ToolDefinition[]): ToolDefinition[] {
     const name = tool.function.name;
     if (ASK_ALLOWED_TOOLS.has(name)) return true;
     if (!name.startsWith('mcp__')) return false;
-    // Ask mode may use MCP readers, never MCP filesystem mutators.
-    return !/^mcp__filesystem__(create_directory|move_file|write_file|edit_file)$/i.test(name);
+    // MCP tools are available; filesystem mutators still require user approval at execute time.
+    return true;
   });
 }
 
 export function isAskAllowedTool(toolName: string): boolean {
   if (ASK_ALLOWED_TOOLS.has(toolName)) return true;
   if (!toolName.startsWith('mcp__')) return false;
-  return !/^mcp__filesystem__(create_directory|move_file|write_file|edit_file)$/i.test(toolName);
+  return true;
 }
 
 /** Whether the answer should be grounded in codebase reads/searches before finishing. */

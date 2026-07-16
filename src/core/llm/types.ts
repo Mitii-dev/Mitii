@@ -55,6 +55,8 @@ export interface ChatDelta {
 export interface AssistantStreamDelta {
   content?: string;
   reasoning?: string;
+  /** Progress narration between tool calls — UI only, not persisted as the final answer. */
+  kind?: 'progress' | 'final';
 }
 
 export type AssistantStreamChunk = string | AssistantStreamDelta;

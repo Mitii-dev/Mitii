@@ -24,6 +24,7 @@ const rawClassificationSchema = z.object({
 
 export const ASK_INTENT_DESCRIPTIONS = {
   explain_code: 'Explain repository code with grounded file citations.',
+  log_analysis: 'Analyze JSONL / session logs with deterministic log-analysis tools.',
   locate: 'Find where code, configuration, symbols, or behavior live.',
   architecture: 'Explain architecture, flows, pipelines, or orchestration.',
   compare: 'Compare code paths, approaches, APIs, or tradeoffs.',
@@ -49,6 +50,7 @@ export const ACT_INTENT_DESCRIPTIONS = {
   refactor: 'Refactor, migrate, rename, restructure, or simplify code.',
   docs: 'Create or update docs, examples, README, changelog, or MDX.',
   audit: 'Clean up unused dependencies, imports, files, or dead code.',
+  log_audit: 'Analyze a JSONL / session log with analyze_jsonl (never full-file reads).',
   question: 'Answer or investigate without making code changes.',
   diagnose: 'Find and explain a root cause, possibly before a minimal fix.',
 } as const;
@@ -105,11 +107,24 @@ export function classifyIntentFastPath<T extends string>(
   }
 
   if (mode === 'agent') {
+    if (/\b[\w./-]+\.jsonl\b/i.test(text) && /\b(analy[sz]e|audit|inspect|review|debug|explain|token|tool_start|session\s+log)\b/i.test(text) && has('log_audit')) {
+      return high('log_audit' as T);
+    }
     if (/\b(audit|cleanup|clean up|unused|dead code|depcheck|knip)\b/i.test(text) && has('audit')) {
       return high('audit' as T);
     }
     if (/\b(?:execute|implement|run|follow|resume|continue with)\b[\s\S]{0,40}?\b(?:the|this|saved|current|active)?\s*plan\b|\bplan looks good\b|\bexecute the plan\b/i.test(text) && has('feature')) {
       return high('feature' as T);
+    }
+  }
+
+  if (mode === 'ask') {
+    if (
+      /(?:\b[\w./-]+\.jsonl\b|\.mitii\/logs\/?|\bsession\s+log\b)/i.test(text) &&
+      /\b(analy[sz]e|analysis|audit|inspect|review|debug|explain|summarize|token|tool_start|tool_end|improv)/i.test(text) &&
+      has('log_analysis')
+    ) {
+      return high('log_analysis' as T);
     }
   }
 

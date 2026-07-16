@@ -3,6 +3,7 @@ import { loadProjectCatalog } from '../ask/ProjectCatalog';
 import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import { analyzeTask } from '../../runtime/TaskAnalyzer';
 import { AUDIT_AGENT_MAX_STEPS } from '../../runtime/taskKind';
+import { LOG_AUDIT_AGENT_MAX_STEPS } from '../../runtime/logAudit';
 import type { SkillCatalogService } from '../../skills/SkillCatalogService';
 import type { TierPolicy } from '../../agentic/tierPolicy';
 import { scaleTierSteps } from '../../agentic/tierPolicy';
@@ -24,6 +25,7 @@ export interface ActPrepareOptions {
   taskAnalysis?: TaskAnalysis;
   orchestrationEnabled?: boolean;
   auditMode?: boolean;
+  logAuditMode?: boolean;
   mdxRepairMode?: boolean;
   githubIssueMode?: boolean;
   hasActivePlan?: boolean;
@@ -41,6 +43,7 @@ export class ActOrchestrator {
       hasActivePlan: options.hasActivePlan,
       orchestrationEnabled: options.orchestrationEnabled,
       auditMode: options.auditMode,
+      logAuditMode: options.logAuditMode,
       mdxRepairMode: options.mdxRepairMode,
       githubIssueMode: options.githubIssueMode,
       actDepth: options.actDepth,
@@ -120,6 +123,7 @@ function resolveActMaxAutoContinues(
 }
 
 function pathDefaultSteps(executionPath: string, complexity: string): number {
+  if (executionPath === 'log_audit') return LOG_AUDIT_AGENT_MAX_STEPS;
   if (executionPath === 'audit') return AUDIT_AGENT_MAX_STEPS;
   if (executionPath === 'resume_saved_plan') return 15;
   if (executionPath === 'orchestrated') return complexity === 'high' ? 12 : 10;

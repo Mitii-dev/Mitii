@@ -8,6 +8,7 @@ export type ActIntent =
   | 'refactor'
   | 'docs'
   | 'audit'
+  | 'log_audit'
   | 'question'
   | 'diagnose';
 
@@ -16,6 +17,7 @@ export type ActExecutionPath =
   | 'orchestrated'
   | 'direct'
   | 'audit'
+  | 'log_audit'
   | 'mdx_repair';
 
 export interface ActRoute {

@@ -27,6 +27,8 @@ export interface ContextQuery {
   scopeRoot?: string;
   maxItems?: number;
   tierPolicy?: TierPolicy;
+  /** Source ids to skip for this retrieval (e.g. log_audit disables repo RAG). */
+  skipSources?: string[];
 }
 
 export interface ContextPack {

@@ -49,6 +49,12 @@ import {
   createProposeFileScopeTool,
   setSubagentTracker,
 } from '../tools/builtinTools';
+import {
+  createAnalyzeLogDirectoryTool,
+  createAnalyzeJsonlTool,
+  createQueryLogEventsTool,
+  createListLogsTool,
+} from '../tools/logAuditTools';
 import { ProjectCatalogContextSource, discoverProjectCatalog, saveProjectCatalog } from '../modes/ask';
 import { createMarkStepCompleteTool, createProposePlanMutationTool } from '../tools/planTools';
 import type { AssistantStreamChunk, LlmProvider } from '../llm/types';
@@ -345,6 +351,7 @@ export class ThunderController {
   private configureSessionLogging(session: ThunderSession, workspace: string): void {
     const telemetry = this.configService.getConfig().telemetry;
     this.sessionLog.configure(workspace, session.id, telemetry.sessionLogging, telemetry.debugMetrics);
+    this.toolRuntime.setWorkspace(workspace);
     this.sessionLog.configureWebhook({
       url: telemetry.webhookUrl,
       secret: telemetry.webhookSecret || process.env.MITII_TELEMETRY_WEBHOOK_SECRET,
@@ -672,6 +679,10 @@ export class ThunderController {
     this.toolRuntime.register(createProjectCatalogTool(workspace));
     this.toolRuntime.register(createAnalyzeChangeImpactTool(workspace));
     this.toolRuntime.register(createProposeFileScopeTool(workspace, this.ignoreService, db, () => this.agentTaskState));
+    this.toolRuntime.register(createAnalyzeLogDirectoryTool(workspace, this.ignoreService, () => this.sessionLog.getLogPath()));
+    this.toolRuntime.register(createAnalyzeJsonlTool(workspace, this.ignoreService));
+    this.toolRuntime.register(createQueryLogEventsTool(workspace, this.ignoreService));
+    this.toolRuntime.register(createListLogsTool(workspace));
     this.toolRuntime.register(createWriteFileTool(workspace, this.ignoreService));
     this.toolRuntime.register(createApplyPatchTool(workspace, this.ignoreService));
     this.toolRuntime.register(createRunCommandTool(workspace, () => this.session?.mode ?? 'plan'));
@@ -1842,14 +1853,22 @@ export class ThunderController {
     this.tokenUsage.estimated = usage.estimated;
 
     this.sessionLog.append('token_usage', 'AI call token usage', {
-      provider: usage.providerId,
+      // Per-call metrics (do not confuse with cumulative totals below).
+      call_input_tokens: usage.inputTokens,
+      call_output_tokens: usage.outputTokens,
+      call_total_tokens: usage.totalTokens,
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
       totalTokens: usage.totalTokens,
+      // Cumulative across the turn / session.
+      turn_cumulative_tokens: this.tokenUsage.currentTurnTotal,
       currentTurnTotal: this.tokenUsage.currentTurnTotal,
+      currentTurnInputTokens: this.tokenUsage.currentTurnInputTokens,
+      currentTurnOutputTokens: this.tokenUsage.currentTurnOutputTokens,
       sessionTotal: this.tokenUsage.sessionTotal,
       aiCallCount: this.tokenUsage.aiCallCount,
       estimated: usage.estimated,
+      provider: usage.providerId,
     });
 
     this.scheduleTokenUsageUiUpdate({

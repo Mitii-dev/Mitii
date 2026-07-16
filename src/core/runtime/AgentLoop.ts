@@ -4,7 +4,8 @@ import type { ToolDefinition, ToolCall } from '../llm/toolTypes';
 import { toAssistantStreamChunk } from '../llm/streamChunks';
 import type { ToolExecutor, ToolExecutionResult } from '../safety/ToolExecutor';
 import { formatToolResult } from '../tools/builtinTools';
-import { NO_TOOLS_AUDIT_NUDGE } from './taskKind';
+import { NO_TOOLS_AUDIT_NUDGE, NO_TOOLS_LOG_AUDIT_NUDGE } from './taskKind';
+import type { AgentTaskState } from './AgentTaskState';
 import { NO_TOOLS_ASK_NUDGE, ASK_SYNTHESIS_NUDGE, isGroundingToolCall } from './askMode';
 import { NO_TOOLS_PLAN_NUDGE, PLAN_SYNTHESIS_NUDGE, isPlanGroundingToolCall } from '../modes/plan/planMode';
 import { isSkippedToolOutput } from './toolSkip';
@@ -73,6 +74,7 @@ export interface AgentLoopCallbacks {
 
 export interface AgentLoopOptions {
   auditMode?: boolean;
+  logAuditMode?: boolean;
   maxSteps?: number;
   autoContinue?: boolean;
   maxAutoContinues?: number;
@@ -89,6 +91,8 @@ export interface AgentLoopOptions {
   /** Agent mode edit tasks: retry once if the model tries to stop before writing. */
   requiresWrite?: boolean;
   reasoningEffort?: ReasoningEffort;
+  /** Optional task-state for duplicate-action forced synthesis. */
+  getTaskState?: () => AgentTaskState | undefined;
 }
 
 export interface AgentLoopSuspendState {
@@ -149,9 +153,11 @@ export class AgentLoop {
     this.lastSuspendState = undefined;
     const maxSteps = options?.maxSteps ?? this.defaultMaxSteps;
     const auditMode = options?.auditMode ?? false;
+    const logAuditMode = options?.logAuditMode ?? false;
     const autoContinue = options?.autoContinue ?? true;
     const maxAutoContinues = options?.maxAutoContinues ?? 2;
     let auditNudgeUsed = false;
+    let logAuditNudgeUsed = false;
     let askNudgeUsed = false;
     let planNudgeUsed = false;
     let groundingToolCallsMade = false;
@@ -166,6 +172,7 @@ export class AgentLoop {
     let noWriteNudgeUsed = false;
     let noWriteToolRounds = 0;
     let writeChurnNudgeUsed = false;
+    let synthesizeOnly = false;
     const hardLimit = maxSteps + maxAutoContinues * maxSteps;
 
     const readOnlyMode = Boolean(options?.askMode || options?.planMode);
@@ -189,8 +196,8 @@ export class AgentLoop {
 
       for await (const delta of provider.complete({
         messages,
-        tools,
-        toolChoice: 'auto',
+        tools: synthesizeOnly ? [] : tools,
+        toolChoice: synthesizeOnly ? 'none' : 'auto',
         stream: true,
         reasoningEffort: options?.reasoningEffort,
       })) {
@@ -199,8 +206,11 @@ export class AgentLoop {
         if (delta.content) {
           stepContent += delta.content;
         }
-        const chunk = toAssistantStreamChunk(delta.content, delta.reasoning);
-        if (chunk) yield chunk;
+        // Stream reasoning live; buffer plain content until we know if this step is final.
+        if (delta.reasoning) {
+          const reasoningChunk = toAssistantStreamChunk(undefined, delta.reasoning, 'progress');
+          if (reasoningChunk) yield reasoningChunk;
+        }
         if (delta.tool_calls) {
           for (const partial of delta.tool_calls) {
             const existing = toolCallsMap.get(partial.index);
@@ -234,6 +244,7 @@ export class AgentLoop {
           options?.requiresWrite &&
           !readOnlyMode &&
           !auditMode &&
+          !logAuditMode &&
           stepContent &&
           !writeToolCallsMade &&
           !noWriteNudgeUsed
@@ -247,6 +258,7 @@ export class AgentLoop {
           options?.requiresWrite &&
           !readOnlyMode &&
           !auditMode &&
+          !logAuditMode &&
           stepContent &&
           !writeToolCallsMade &&
           noWriteNudgeUsed
@@ -254,6 +266,12 @@ export class AgentLoop {
           messages.push({ role: 'assistant', content: NO_WRITE_AGENT_STOP });
           yield NO_WRITE_AGENT_STOP;
           break;
+        }
+        if (logAuditMode && stepContent && !logAuditNudgeUsed) {
+          logAuditNudgeUsed = true;
+          messages.push({ role: 'assistant', content: stepContent });
+          messages.push({ role: 'user', content: NO_TOOLS_LOG_AUDIT_NUDGE });
+          continue;
         }
         if (auditMode && stepContent && !auditNudgeUsed) {
           auditNudgeUsed = true;
@@ -287,8 +305,16 @@ export class AgentLoop {
         }
         if (stepContent) {
           messages.push({ role: 'assistant', content: stepContent });
+          const finalChunk = toAssistantStreamChunk(stepContent, undefined, 'final');
+          if (finalChunk) yield finalChunk;
         }
         break;
+      }
+
+      // Intermediate narration → progress only (not persisted as the final answer).
+      if (stepContent) {
+        const progressChunk = toAssistantStreamChunk(stepContent, undefined, 'progress');
+        if (progressChunk) yield progressChunk;
       }
 
       messages.push({
@@ -430,6 +456,33 @@ export class AgentLoop {
 
       if (postWriteValidationFailed) {
         messages.push({ role: 'user', content: VALIDATION_BLOCK_MESSAGE });
+      }
+
+      if (options?.getTaskState?.()?.shouldForceSynthesis()) {
+        messages.push({
+          role: 'user',
+          content:
+            'FORCE_SYNTHESIS: Duplicate or sufficient tool evidence is already cached. ' +
+            'Do not call any more tools. Write the final analysis now from the cached results above.',
+        });
+      }
+
+      // After deterministic log analysis reports hasEnoughEvidence, force synthesis-only mode.
+      if (logAuditMode) {
+        const lastTool = messages[messages.length - 1];
+        if (
+          lastTool?.role === 'tool' &&
+          typeof lastTool.content === 'string' &&
+          lastTool.content.includes('[hasEnoughEvidence=true]')
+        ) {
+          options?.getTaskState?.()?.markForceSynthesis();
+          synthesizeOnly = true;
+          messages.push({
+            role: 'user',
+            content:
+              'Log analysis returned hasEnoughEvidence=true. Tools are now disabled for this route. Write the final analysis now.',
+          });
+        }
       }
 
       let phaseLockHardStop: string | undefined;
@@ -1191,13 +1244,13 @@ function buildRepeatedToolInputFailureMessage(toolName: string, output: string, 
     'I will not keep retrying the same failing tool call. The next attempt should use a different tool, different arguments, or explain the blocker instead.';
   if (/Path is ignored/i.test(detail)) {
     recovery =
-      'Session logs under `.mitii/logs/*.jsonl` are readable via `list_files` / `read_file` (and typos like `.miti/logs` are canonicalized). Prefer those tools or `grep`/`ls` via run_command — do not keep retrying ignored non-log `.mitii` paths.';
-  } else if (/Shell blocked/i.test(detail)) {
+      'For log analysis, call `analyze_log_directory` for `.mitii/logs/` or `analyze_jsonl` for a specific `.mitii/logs/*.jsonl`; common `.mitii` typos such as `.miti/logs` and `.mtii/logs` are canonicalized. Do not fall back to raw file reads or keep retrying ignored non-log paths.';
+  } else if (/Shell blocked|Mutating shell commands in Ask\/Plan\/Review require your approval/i.test(detail)) {
     recovery =
-      'Ask/Plan allow read-only shell only. Prefer `pnpm/npm audit|outdated`, `grep`/`ls`/`cat`, or `execute_workspace_script` (`audit-vulnerabilities.mjs`, `audit-dependencies.mjs`). Switch to Agent mode for installs and edits.';
-  } else if (/not available in this mode|Writes blocked|Patch apply blocked|MCP filesystem writes are blocked/i.test(detail)) {
+      'Ask/Plan allow read-only shell without approval. For installs/edits, call the mutating tool again so the user can approve — or use `execute_workspace_script` / read-only `grep`/`ls`/`cat`.';
+  } else if (/not available in this mode|Writes blocked|Patch apply blocked|MCP filesystem writes|require your approval/i.test(detail)) {
     recovery =
-      'Ask/Plan modes are read-only. Finish the analysis, then ask the user to switch to Agent mode for `apply_patch` / `write_file`.';
+      'Ask/Plan prefer read-only analysis. For writes, call `write_file` / `apply_patch` so the user can approve the action; do not keep retrying the identical blocked call.';
   }
   return [
     `\n\n### ${REPEATED_TOOL_INPUT_FAILURE_PREFIX}`,

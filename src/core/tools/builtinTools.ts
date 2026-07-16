@@ -16,7 +16,7 @@ import type { MemoryService } from '../memory/MemoryService';
 import { PatchApplyService } from '../apply/PatchApplyService';
 import { validateMdxContent } from '../apply/mdxValidation';
 import { isDangerousCommand } from '../safety/ToolPolicyEngine';
-import { isReadOnlyCommand, stripLeadingCd } from '../plans/PlanActEngine';
+import { stripLeadingCd } from '../plans/PlanActEngine';
 import { normalizeWorkspaceRoot, resolveWorkspaceRelPath, formatPathNotFoundHint } from '../util/paths';
 import type { ThunderDb } from '../indexing/ThunderDb';
 import { createWorkspacePathResolver } from '../paths/WorkspacePathResolver';
@@ -1123,7 +1123,15 @@ export function createProposeFileScopeTool(
       }
 
       const maxFilesRead = input.maxFilesRead ?? Math.max(acceptedPaths.length, 6);
-      getTaskState?.()?.setFileScope([...new Set([...acceptedPaths, ...scopeAliases])], maxFilesRead);
+      const taskState = getTaskState?.();
+      // Additive merge preserves remainingReads / already-read paths across proposals.
+      taskState?.mergeFileScope([...new Set([...acceptedPaths, ...scopeAliases])], maxFilesRead);
+      const budget = taskState?.getFileScopeSnapshot() ?? {
+        maxFilesRead,
+        remainingReads: maxFilesRead,
+        filesReadCount: 0,
+        paths: acceptedPaths,
+      };
 
       return {
         success: true,
@@ -1138,12 +1146,14 @@ export function createProposeFileScopeTool(
           })),
           rejected,
           budget: {
-            maxFilesRead,
-            remainingReads: maxFilesRead,
+            maxFilesRead: budget.maxFilesRead,
+            remainingReads: budget.remainingReads,
+            filesReadCount: budget.filesReadCount,
           },
+          scopePaths: budget.paths,
           note: input.candidates.length > MAX_SCOPE_CANDIDATES
             ? `Accepted scope was evaluated from the first ${MAX_SCOPE_CANDIDATES} candidates.`
-            : undefined,
+            : 'Scope merged additively; remainingReads reflects session-level budget.',
         }, null, 2),
       };
     },
@@ -1316,14 +1326,9 @@ export function createRunCommandTool(workspace: string, getMode: () => string): 
       if (isDangerousCommand(input.command)) {
         return { success: false, output: '', error: 'Dangerous command blocked' };
       }
-      const mode = getMode();
-      if (mode !== 'agent' && !isReadOnlyCommand(input.command)) {
-        return {
-          success: false,
-          output: '',
-          error: 'Only read-only inspection commands are allowed in Ask/Plan/Review mode',
-        };
-      }
+      // Mode gates live in ToolExecutor (approval for mutators in Ask/Plan). Do not
+      // re-block here so user-approved commands can run via executeApproved.
+      void getMode;
       try {
         const normalized = normalizeWorkspaceCommand(input.command, workspace);
         if (normalized.error) {
@@ -1336,13 +1341,24 @@ export function createRunCommandTool(workspace: string, getMode: () => string): 
           env: { ...process.env, FORCE_COLOR: '0' },
         });
         const output = [normalized.note, stdout, stderr].filter(Boolean).join('\n').slice(0, 50000);
+        // Exit 0 is not enough — BSD grep etc. can still emit "invalid option" on stderr.
+        if (looksLikeShellFailure(stderr, stdout)) {
+          log.info('Command exit 0 treated as failure (error signature in output)', {
+            command: normalized.command.slice(0, 80),
+          });
+          return {
+            success: false,
+            output: output || '(no output)',
+            error: extractShellFailureMessage(stderr, stdout) || 'Command reported an error',
+          };
+        }
         log.info('Command executed', { command: normalized.command.slice(0, 80), cwd: normalized.cwd });
         return { success: true, output: output || '(no output)' };
       } catch (e) {
         const err = e as { code?: number; stdout?: string; stderr?: string; message?: string };
         const output = [err.stdout, err.stderr].filter(Boolean).join('\n').slice(0, 50000);
-        if (isBenignNonZeroExit(input.command, err.code)) {
-          log.info('Command exit 1 treated as success (no matches / empty result)', {
+        if (isBenignNonZeroExit(input.command, err.code, output) && !looksLikeShellFailure(err.stderr, err.stdout)) {
+          log.info('Command non-zero exit treated as success (no matches / pipe closed)', {
             command: input.command.slice(0, 80),
             code: err.code,
           });
@@ -1354,12 +1370,45 @@ export function createRunCommandTool(workspace: string, getMode: () => string): 
   };
 }
 
-function isBenignNonZeroExit(command: string, code?: number): boolean {
+/** Prefer stderr — grepping logs often prints historical "not found" / "permission denied" in stdout. */
+function looksLikeShellFailure(stderr?: string, stdout?: string): boolean {
+  const errText = stderr ?? '';
+  if (
+    /\b(invalid option|illegal option|permission denied|command not found|usage:)\b/i.test(errText) ||
+    /\bgrep:\s/i.test(errText)
+  ) {
+    return true;
+  }
+  // Only treat stdout as a shell failure when it looks like a usage/help dump, not data.
+  const out = (stdout ?? '').trim();
+  if (!errText && /^(usage:|grep:\s)/i.test(out) && out.length < 800) {
+    return true;
+  }
+  return false;
+}
+
+function extractShellFailureMessage(stderr?: string, stdout?: string): string | undefined {
+  const text = `${stderr ?? ''}\n${stdout ?? ''}`.trim();
+  const line = text.split('\n').map((l) => l.trim()).find(Boolean);
+  return line?.slice(0, 240);
+}
+
+function isBenignNonZeroExit(command: string, code?: number, output?: string): boolean {
+  // SIGPIPE (141) when head/tail closes a pipe early — common and successful if we got data.
+  if (code === 141 && (output?.trim().length ?? 0) > 0) return true;
   if (code !== 1) return false;
   const cmd = stripLeadingCd(command).trim();
   if (/^(grep|rg|ag|ack|find)\b/i.test(cmd)) return true;
   if (/^(npx\s+(--yes\s+)?)?depcheck\b/i.test(cmd)) return true;
   if (/^(npx\s+(--yes\s+)?)?knip\b/i.test(cmd)) return true;
+  // Pipelines that start with read-only tools and end with head/tail/wc often exit 1/141.
+  if (
+    /\|/.test(cmd) &&
+    /^(grep|rg|find|cat|ls|sed|awk|jq)\b/i.test(cmd) &&
+    /\|\s*(head|tail|wc)\b/i.test(cmd)
+  ) {
+    return true;
+  }
   return false;
 }
 

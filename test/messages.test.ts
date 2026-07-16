@@ -24,7 +24,7 @@ describe('Webview message protocol', () => {
 });
 
 describe('ToolExecutor', () => {
-  it('blocks writes in plan mode', async () => {
+  it('requests approval for writes in plan mode', async () => {
     const { ToolExecutor } = await import('../src/core/safety/ToolExecutor');
     const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
     const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
@@ -36,16 +36,20 @@ describe('ToolExecutor', () => {
     const runtime = new ToolRuntime();
     runtime.register(createWriteFileTool(process.cwd(), new IgnoreService()));
 
+    const approvalQueue = new ApprovalQueue();
     const executor = new ToolExecutor(
       runtime,
       new ToolPolicyEngine(defaultThunderConfig().safety, () => false),
-      new ApprovalQueue(),
+      approvalQueue,
       () => 'session-1',
       () => 'plan'
     );
 
     const result = await executor.execute('write_file', { path: 'test.ts', content: 'x' });
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Plan');
+    expect(result.pendingApproval).toBe(true);
+    expect(result.error).toBe('Awaiting approval');
+    expect(approvalQueue.getPending()).toHaveLength(1);
+    expect(approvalQueue.getPending()[0]?.toolName).toBe('write_file');
   });
 });

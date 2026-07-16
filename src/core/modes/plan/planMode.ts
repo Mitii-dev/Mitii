@@ -7,6 +7,13 @@ export const PLAN_ALLOWED_TOOLS = new Set([
   'execute_workspace_script',
   'project_catalog',
   'analyze_change_impact',
+  // Approval-gated mutators — ToolExecutor prompts the user before running.
+  'write_file',
+  'apply_patch',
+  'analyze_log_directory',
+  'analyze_jsonl',
+  'query_log_events',
+  'list_logs',
 ]);
 
 const PLAN_GROUNDING_TOOLS = new Set([

@@ -65,6 +65,7 @@ export function normalizeRelPath(path: string | undefined): string {
 export function canonicalizeMitiiPathTypos(relPath: string): string {
   return relPath
     .replace(/^\.miti\//i, '.mitii/')
+    .replace(/^\.mtii\//i, '.mitii/')
     .replace(/^\.mitti\//i, '.mitii/')
     .replace(/^\.mitii\b/i, '.mitii');
 }

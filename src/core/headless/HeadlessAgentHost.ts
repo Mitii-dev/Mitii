@@ -39,6 +39,12 @@ import {
   createProposeFileScopeTool,
   setSubagentTracker,
 } from '../tools/builtinTools';
+import {
+  createAnalyzeLogDirectoryTool,
+  createAnalyzeJsonlTool,
+  createListLogsTool,
+  createQueryLogEventsTool,
+} from '../tools/logAuditTools';
 import { ProjectCatalogContextSource, discoverProjectCatalog, saveProjectCatalog } from '../modes/ask';
 import { createMarkStepCompleteTool, createProposePlanMutationTool } from '../tools/planTools';
 import type { AssistantStreamChunk, LlmProvider } from '../llm/types';
@@ -483,6 +489,10 @@ export class HeadlessAgentHost {
     this.toolRuntime.register(createProjectCatalogTool(workspace));
     this.toolRuntime.register(createAnalyzeChangeImpactTool(workspace));
     this.toolRuntime.register(createProposeFileScopeTool(workspace, this.ignoreService, db, () => this.agentTaskState));
+    this.toolRuntime.register(createAnalyzeLogDirectoryTool(workspace, this.ignoreService, () => this.sessionLog.getLogPath()));
+    this.toolRuntime.register(createAnalyzeJsonlTool(workspace, this.ignoreService));
+    this.toolRuntime.register(createQueryLogEventsTool(workspace, this.ignoreService));
+    this.toolRuntime.register(createListLogsTool(workspace));
     this.toolRuntime.register(createWriteFileTool(workspace, this.ignoreService));
     this.toolRuntime.register(createApplyPatchTool(workspace, this.ignoreService));
     this.toolRuntime.register(createRunCommandTool(workspace, () => this.session?.mode ?? 'plan'));

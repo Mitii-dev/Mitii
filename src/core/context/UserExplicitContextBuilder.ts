@@ -36,7 +36,10 @@ export class UserExplicitContextBuilder {
     this.tokenBudget = Math.max(1000, Math.floor(tokenBudget));
   }
 
-  build(entries: PinnedContextEntry[]): ExplicitContextResult {
+  build(
+    entries: PinnedContextEntry[],
+    options?: { demote?: boolean; primaryPaths?: string[] }
+  ): ExplicitContextResult {
     if (entries.length === 0) {
       return { items: [], formatted: '', totalTokens: 0 };
     }
@@ -75,17 +78,22 @@ export class UserExplicitContextBuilder {
       return { items: [], formatted: '', totalTokens: 0 };
     }
 
-    const systemNote =
-      'The user explicitly requested you focus on the above files/folders to solve the current task. ' +
-      'Prioritize modifying these paths before exploring the wider repo-map.';
+    const demote = Boolean(options?.demote);
+    const primary = (options?.primaryPaths ?? []).filter(Boolean);
+    const systemNote = demote
+      ? 'Pinned context is supplementary. Prefer paths the user named in the current message ' +
+        (primary.length ? `(${primary.map((p) => `\`${p}\``).join(', ')}) ` : '') +
+        'over these pinned paths when they conflict.'
+      : 'The user explicitly requested you focus on the above files/folders to solve the current task. ' +
+        'Prioritize modifying these paths before exploring the wider repo-map.';
 
     const formatted = [
-      '<user_explicit_context>',
+      demote ? '<user_pinned_context priority="secondary">' : '<user_explicit_context>',
       ...xmlParts,
       '  <system_note>',
       `    ${systemNote}`,
       '  </system_note>',
-      '</user_explicit_context>',
+      demote ? '</user_pinned_context>' : '</user_explicit_context>',
     ].join('\n');
 
     return {
