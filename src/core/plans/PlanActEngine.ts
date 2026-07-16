@@ -108,6 +108,8 @@ function isReadOnlyCommandSegment(cmd: string, extraPatterns: string[] = []): bo
   for (const pattern of extraPatterns) {
     if (matchesVerifyPattern(cmd, pattern)) return true;
   }
+  // Shell loop scaffolding — body segments are validated independently after `;` splits.
+  if (/^(for|while|do|done|then|else|elif|fi|in)\b/i.test(cmd.trim())) return true;
   if (/^(npx\s+(--yes\s+)?)?depcheck\b/i.test(cmd)) return true;
   if (/^(npx\s+(--yes\s+)?)?knip\b/i.test(cmd)) return true;
   if (/^npx\s+(--yes\s+)?docusaurus\b/i.test(cmd)) return true;
@@ -115,21 +117,38 @@ function isReadOnlyCommandSegment(cmd: string, extraPatterns: string[] = []): bo
   if (/^(npx\s+(--yes\s+)?)?tsc\s+[\s\S]*--noEmit\b/i.test(cmd)) return true;
   if (/^(npx\s+(--yes\s+)?)?vitest\s+(run\b|--run\b)/i.test(cmd)) return true;
   if (/^(npx\s+(--yes\s+)?)?jest\b/i.test(cmd)) return true;
-  if (/^npm\s+(ls|list|outdated|audit|run\s+(lint|test|typecheck|check|build|compile|verify|validate|doctor))\b/i.test(cmd)) return true;
-  if (/^yarn\s+(why|list|info|lint|test|build|compile|typecheck|check|verify|validate|doctor)\b/i.test(cmd)) return true;
-  if (/^pnpm\s+(why|list|lint|test|build|compile|typecheck|check|verify|validate|doctor)\b/i.test(cmd)) return true;
+  // Align npm/pnpm/yarn: audit + outdated are read-only advisory lookups (no lockfile mutation).
+  if (/^npm\s+(ls|list|outdated|audit|why|view|info|run\s+(lint|test|typecheck|check|build|compile|verify|validate|doctor))\b/i.test(cmd)) return true;
+  if (/^yarn\s+(why|list|info|outdated|audit|lint|test|build|compile|typecheck|check|verify|validate|doctor)\b/i.test(cmd)) return true;
+  if (/^pnpm\s+(why|list|outdated|audit|lint|test|build|compile|typecheck|check|verify|validate|doctor)\b/i.test(cmd)) return true;
   if (/^(?:\.\/mvnw|mvn)\s+test\b/i.test(cmd)) return true;
   if (/^(?:\.\/gradlew|gradle)\s+test\b/i.test(cmd)) return true;
   if (/^cargo\s+test\b/i.test(cmd)) return true;
   if (/^go\s+test\b/i.test(cmd)) return true;
   if (/^(?:python(?:3)?\s+-m\s+pytest|pytest)\b/i.test(cmd)) return true;
-  if (/^(grep|rg|find|cat|head|tail|sed|wc|sort|uniq|ls|tree|which|echo)\b/i.test(cmd)) return true;
+  if (/^(grep|rg|find|cat|head|tail|sed|wc|sort|uniq|ls|tree|which|echo|awk|jq)\b/i.test(cmd)) return true;
   if (/^git\s+(status|diff|log|ls-files)\b/i.test(cmd)) return true;
   if (/^\d+>&\d+$/.test(cmd.trim())) return true;
   if (/^true$|^false$/.test(cmd.trim())) return true;
   if (/^node\s+(--check|-c)\b/i.test(cmd)) return true;
   if (/^(bash|sh)\s+-n\b/i.test(cmd)) return true;
+  // Read-only interpreters for log/JSON inspection pipelines (cat file | python3 -c '...').
+  if (isReadOnlyInterpreterSnippet(cmd)) return true;
   return false;
+}
+
+/** Allow python/node one-liners that only inspect data — reject obvious mutators. */
+function isReadOnlyInterpreterSnippet(cmd: string): boolean {
+  const trimmed = cmd.trim();
+  const match = trimmed.match(/^(python3?|node)\s+(-c|-e|-p)\s+([\s\S]+)$/i);
+  if (!match) return false;
+  const snippet = match[3];
+  // Strip surrounding quotes for keyword scan.
+  const body = snippet.replace(/^['"]|['"]$/g, '');
+  if (body.length > 8_000) return false;
+  const mutate =
+    /\b(writeFile|writeFileSync|appendFile|unlink|rmdir|mkdir|chmod|chown|spawn|exec|open\s*\([^)]*['"]w|open\s*\([^)]*['"]a|os\.remove|shutil|subprocess|requests\.(post|put|patch|delete)|fetch\s*\(|http\.(request|post)|fs\.write|createWriteStream|install|uninstall)\b/i;
+  return !mutate.test(body);
 }
 
 function matchesVerifyPattern(cmd: string, pattern: string): boolean {

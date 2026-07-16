@@ -13,8 +13,17 @@
     "name": "audit-dependencies.mjs",
     "category": "advanced-project-auditing",
     "command": "node scripts/audit-dependencies.mjs",
-    "description": "Run depcheck with stack-specific ignores for React, Babel, Electron, Vite, TypeScript, and test tooling.",
+    "description": "Run depcheck across monorepo package roots for UNUSED dependencies (not CVEs). Stack-specific ignores for React, Babel, Electron, Vite, TypeScript, and test tooling.",
     "keywords": ["depcheck", "dependencies", "unused dependencies", "react", "babel", "electron", "vite"],
+    "readOnly": true
+  },
+  {
+    "id": 421,
+    "name": "audit-vulnerabilities.mjs",
+    "category": "advanced-project-auditing",
+    "command": "node scripts/audit-vulnerabilities.mjs",
+    "description": "Read-only CVE/advisory scan via pnpm/npm/yarn audit across package roots, with optional OSV enrichment and outdated package summary.",
+    "keywords": ["vulnerability", "cve", "advisory", "npm audit", "pnpm audit", "outdated", "security", "osv", "ghsa"],
     "readOnly": true
   },
   {

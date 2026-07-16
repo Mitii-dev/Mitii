@@ -118,6 +118,7 @@ export function App() {
           <IndexingStatusBar
             status={state.indexing}
             onIndex={() => postMessage({ type: 'indexWorkspace' })}
+            onCancel={() => postMessage({ type: 'cancelIndexing' })}
           />
         </div>
       </header>

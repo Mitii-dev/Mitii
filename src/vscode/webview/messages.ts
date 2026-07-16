@@ -224,6 +224,12 @@ export interface IndexingStatusView {
   activeWorkers?: number;
   processed?: number;
   runTotal?: number;
+  phase?: 'idle' | 'scanning' | 'indexing' | 'complete' | 'cancelled';
+  partial?: boolean;
+  degraded?: boolean;
+  detail?: string;
+  startedAt?: number;
+  updatedAt?: number;
 }
 
 export interface MemoryItemView {
@@ -476,6 +482,7 @@ export type WebviewToExtensionMessage =
   | { type: 'setWorkspaceOverride'; payload: { path: string } }
   | { type: 'clearWorkspaceOverride' }
   | { type: 'indexWorkspace' }
+  | { type: 'cancelIndexing' }
   | { type: 'restoreCheckpoint'; payload: { id: string } }
   | { type: 'deleteMemory'; payload: { id: number } }
   | { type: 'clearMemory' }
@@ -588,7 +595,7 @@ export const initialWebviewState = (): WebviewState => ({
   subagents: [],
   vectorIndex: { enabled: false, embeddedChunks: 0, provider: 'none', backend: 'none', degraded: false },
   plan: null,
-  indexing: { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0, processed: 0, runTotal: 0 },
+  indexing: { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0, processed: 0, runTotal: 0, phase: 'idle' },
   memories: [],
   checkpoints: [],
   reviewDiff: null,

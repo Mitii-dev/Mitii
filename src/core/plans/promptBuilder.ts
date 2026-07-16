@@ -43,14 +43,16 @@ For concise profile requests, shorten the same structure instead of using a gene
 
 const TOOL_GUIDANCE = `
 TOOLS: You have tools to read files, search code, run commands, write files, and manage memory.
+- File scope contract: call propose_file_scope before every task that reads or edits workspace files. Include the objective, candidate paths, intended access, and a small maxFilesRead budget; then only use read_file/read_files/write_file/apply_patch for accepted paths. If a new path becomes necessary, call propose_file_scope again before touching it.
 - Use resolve_path before read_file when unsure of the exact path; read_file auto-resolves high-confidence misses.
 - Use read_file/read_files/search/search_batch/list_files to gather information before editing.
 - Copy rel_path values from search/resolve_path exactly — never invent flattened paths (e.g. fields/foo.tsx vs fields/foo/foo.tsx).
 - Tools named mcp__server__tool come from configured MCP servers. Treat them as external tools; inspect their names and arguments carefully.
 - Batch independent reads and searches in ONE turn (read_files, search_batch). read_files has a hard max of 12 paths per call; prefer 8-10 and split larger batches.
 - For audit/cleanup: use execute_workspace_script (audit-dependencies.mjs, audit-dead-code.sh) — NEVER spawn_research_agent for unused deps/imports/files.
+- For vulnerability/CVE/outdated package checks: execute_workspace_script("audit-vulnerabilities.mjs") first, then optional pnpm/npm audit|outdated or fetch_web on advisory URLs. Do NOT use audit-dependencies.mjs for CVEs (that is unused-deps only).
 - For unused exports/dead code: trust automated AST tools only (knip via audit-dead-code.sh, or npx knip / npx ts-prune). Do NOT manually grep for unused exports as the source of truth.
-- Prefer execute_workspace_script for known repo scripts (knip, depcheck, safe lint, checkpoint read/write). Search with search_script_catalog first if needed.
+- Prefer execute_workspace_script for known repo scripts (knip, depcheck, vulnerability audit, safe lint, checkpoint read/write). Search with search_script_catalog first if needed.
 - Prefer apply_patch for targeted logical blocks; use write_file for new files or full rewrites.
 - Before writing several new nested docs/files, decide the directory naming convention first and keep it consistent.
 - Never put shell commands such as git checkout, npm install, yarn build, or rm into write_file content. Use run_command for commands and write_file/apply_patch only for actual file contents.
@@ -60,7 +62,8 @@ TOOLS: You have tools to read files, search code, run commands, write files, and
 - Use memory_search only as a fallback when chat history lacks needed facts.
 - Use save_task_state or memory_write to persist progress BEFORE pausing for approval (required).
 - Use ask_question when a key decision is ambiguous — provide 2-5 options to reduce wrong-direction work.
-- Use fetch_web for external docs, API references, or debugging when local context is insufficient.
+- Use fetch_web for external docs, API references, advisory pages, or debugging when local context is insufficient. For "check online" / CVE lookups, fetch advisory URLs from audit output or https://osv.dev / npm advisory pages.
+- Session logs: .mitii/logs/*.jsonl are readable with list_files/read_file even though .mitii/ is ignored for indexing. Typo .miti/ is auto-corrected to .mitii/.
 - Use mark_step_complete when finishing a plan step; use propose_plan_mutation if you hit a major roadblock.
 - In Agent mode, you may call write_file/apply_patch/run_command tools directly.
 - If a tool returns "awaiting approval", stop and inform the user.
@@ -68,24 +71,25 @@ TOOLS: You have tools to read files, search code, run commands, write files, and
 
 const AUDIT_GUIDANCE = `
 AUDIT / CLEANUP MODE — AST-FIRST (avoid tunnel vision and manual grep):
-1. **First turn**: execute_workspace_script("audit-dependencies.mjs") — depcheck scans ALL npm deps via AST in ~0.5s.
-2. **Second turn**: execute_workspace_script("audit-dead-code.sh") — knip finds unused files/exports/deps in one pass.
-3. read_file package.json only if scripts fail.
-4. NEVER use manual grep/search as the source of truth for unused exports. Use knip or ts-prune output.
-5. NEVER spawn_research_agent to grep each dependency (64 deps × 3s inference = 108s+).
-6. NEVER run search per-package — regex misses comments; AST scripts do not.
-7. Report with confidence: high (safe to remove), medium (likely unused), low (needs review).
-8. In Plan/Review mode: report only — do NOT delete until user confirms.
-9. Run compile/lint/build only in the final Verify phase. If final TypeScript errors are unrelated to touched files, log them as remaining issues and do not restart cleanup or pivot to unrelated fixes.`;
+1. **CVE / vulnerability tasks**: execute_workspace_script("audit-vulnerabilities.mjs") first. Then optionally pnpm/npm audit|outdated or fetch_web on advisory URLs.
+2. **Unused-deps tasks**: execute_workspace_script("audit-dependencies.mjs") — depcheck across package roots.
+3. **Dead code**: execute_workspace_script("audit-dead-code.sh") — knip finds unused files/exports/deps in one pass.
+4. read_file package.json only if scripts fail.
+5. NEVER use manual grep/search as the source of truth for unused exports. Use knip or ts-prune output.
+6. NEVER spawn_research_agent to grep each dependency (64 deps × 3s inference = 108s+).
+7. NEVER run search per-package — regex misses comments; AST scripts do not.
+8. Report with confidence: high (safe to remove), medium (likely unused), low (needs review).
+9. In Plan/Review mode: report only — do NOT delete until user confirms.
+10. Run compile/lint/build only in the final Verify phase. If final TypeScript errors are unrelated to touched files, log them as remaining issues and do not restart cleanup or pivot to unrelated fixes.`;
 
 const PLANNING_DISCOVERY_GUIDANCE = `
 READ-ONLY PLANNING DISCOVERY TOOLS:
 - Use read_file/read_files/search/search_batch/list_files/repo_map/retrieve_context to inspect the codebase.
 - Use diagnostics, git_diff, memory_search, and search_script_catalog when relevant.
 ${PLAN_SKILL_TOOL_GUIDANCE}
-- For audit/cleanup: execute_workspace_script (audit-dependencies.mjs, audit-dead-code.sh) — NOT spawn_research_agent.
+- For audit/cleanup: execute_workspace_script (audit-dependencies.mjs, audit-dead-code.sh, audit-vulnerabilities.mjs) — NOT spawn_research_agent.
 - For unused exports/dead code: use knip/ts-prune through audit-dead-code.sh or read-only npx commands; do NOT manually grep.
-- Use run_command only for read-only inspection commands such as rg, find, git status, npx depcheck, npx knip, lint/test/typecheck checks.
+- Use run_command only for read-only inspection commands such as rg, find, git status, pnpm/npm audit|outdated, npx depcheck, npx knip, lint/test/typecheck checks.
 - Use ask_question when a missing user decision would materially change the plan scope, target files, risk, or acceptance criteria. Ask exactly ONE concise question with 2-5 actionable options, then stop for the answer.
 - Do not ask for information that can be discovered from the workspace. If ambiguity is low-risk, record an assumption in DISCOVERY_SUMMARY and continue.
 - Do NOT call write_file, apply_patch, memory_write, or save_task_state during planning discovery.`;
@@ -139,10 +143,11 @@ ${STATE_MACHINE_GUIDANCE}
 ${CHAT_HISTORY_GUIDANCE}
 
 Systematic workflow — follow this order:
-1. **Analyze** — read_file / list_files / depcheck / eslint (once each) to understand the codebase
-2. **Execute** — apply_patch or write_file to make changes; update package.json only for dependency tasks
-3. **Verify** — diagnostics / run_command (lint, test, build) after changes
-4. **Fix** — fix validation errors only when they are caused by your touched files or current task. Log unrelated pre-existing TypeScript errors without derailing the plan.
+1. **Scope** — call propose_file_scope with candidate read/write paths before read_file/read_files/write_file/apply_patch
+2. **Analyze** — read_file / list_files / depcheck / eslint (once each) to understand the codebase
+3. **Execute** — apply_patch or write_file to make changes; update package.json only for dependency tasks
+4. **Verify** — diagnostics / run_command (lint, test, build) after changes
+5. **Fix** — fix validation errors only when they are caused by your touched files or current task. Log unrelated pre-existing TypeScript errors without derailing the plan.
 
 You may also output files in this format when tools are unavailable:
 

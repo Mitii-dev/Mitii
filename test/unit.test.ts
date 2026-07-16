@@ -43,9 +43,24 @@ describe('IgnoreService', () => {
     ig.load('/tmp');
     expect(ig.isIgnored('.mitii/logs/2026-07-08_23-10-52-abc.jsonl', { forRead: true })).toBe(false);
     expect(ig.isIgnored('.mitii/logs', { forRead: true })).toBe(false);
+    expect(ig.isIgnored('.miti/logs/2026-07-08_23-10-52-abc.jsonl', { forRead: true })).toBe(false);
     expect(ig.isIgnored('.mitii/logs/2026-07-08_23-10-52-abc.jsonl')).toBe(true);
     expect(ig.isIgnored('.mitii/config.json', { forRead: true })).toBe(true);
     expect(ig.isIgnored('.mitii/logs/nested/other.jsonl', { forRead: true })).toBe(true);
+  });
+
+  it('policy allows list_files/read on session logs when forRead is wired', () => {
+    const ig = new IgnoreService();
+    ig.load('/tmp');
+    const engine = new ToolPolicyEngine(
+      defaultThunderConfig().safety,
+      (path, options) => ig.isIgnored(path, options)
+    );
+    expect(engine.evaluate('list_files', { path: '.mitii/logs' }).decision).toBe('allow');
+    expect(engine.evaluate('read_file', { path: '.mitii/logs/session.jsonl' }).decision).toBe('allow');
+    expect(engine.evaluate('list_files', { path: '.miti/logs' }).decision).toBe('allow');
+    expect(engine.evaluate('read_file', { path: '.mitii/config.json' }).decision).toBe('block');
+    expect(engine.evaluate('mcp__filesystem__read_text_file', { path: '.mitii/logs/session.jsonl' }).decision).toBe('allow');
   });
 
   it('normalizes absolute workspace paths before ignore checks', () => {
@@ -1467,6 +1482,19 @@ describe('auditRouting', () => {
       'Audit unused npm dependencies in this project. For each dependency in package.json, search whether it is actually imported';
     expect(isDependencyEnumerationTask(task)).toBe(true);
   });
+
+  it('routes vulnerability / CVE tasks to audit-vulnerabilities script', async () => {
+    const {
+      isVulnerabilityAuditTask,
+      buildScriptFirstAuditMessage,
+    } = await import('../src/core/runtime/auditRouting');
+    expect(isVulnerabilityAuditTask('Can you check the vulnerabilities in my package.json?')).toBe(true);
+    expect(isVulnerabilityAuditTask('Find unused dependencies')).toBe(false);
+    const msg = buildScriptFirstAuditMessage('check vulnerabilities and use web to check online');
+    expect(msg).toContain('audit-vulnerabilities.mjs');
+    expect(msg).toContain('fetch_web');
+    expect(msg).not.toMatch(/Preferred:\n1\. `execute_workspace_script\(\{ script: "audit-dependencies\.mjs" \}\)`/);
+  });
 });
 
 describe('shouldUsePlanner', () => {
@@ -1698,9 +1726,19 @@ describe('PlanActEngine read-only shell', () => {
     expect(isReadOnlyCommand('npm run verify')).toBe(true);
     expect(isReadOnlyCommand('npm run doctor')).toBe(true);
     expect(isReadOnlyCommand('pnpm validate')).toBe(true);
+    expect(isReadOnlyCommand('pnpm audit --json')).toBe(true);
+    expect(isReadOnlyCommand('pnpm outdated --filter frontend')).toBe(true);
+    expect(isReadOnlyCommand('cd frontend && pnpm audit --json 2>&1 | head -300')).toBe(true);
+    expect(isReadOnlyCommand('yarn outdated')).toBe(true);
+    expect(isReadOnlyCommand('yarn audit --json')).toBe(true);
+    expect(isReadOnlyCommand('cat .mitii/logs/a.jsonl | python3 -c "import sys; print(sys.stdin.read()[:10])"')).toBe(true);
+    expect(isReadOnlyCommand('python3 -c "open(\'x\',\'w\').write(\'nope\')"')).toBe(false);
+    expect(isReadOnlyCommand('for f in logs/*.jsonl; do grep error "$f"; done')).toBe(true);
     expect(stripLeadingCd('cd /home/user && npm ls')).toBe('npm ls');
     expect(isShellAllowed('plan', 'npx depcheck')).toBe(true);
     expect(isShellAllowed('ask', 'npx depcheck')).toBe(true);
+    expect(isShellAllowed('ask', 'pnpm audit --json')).toBe(true);
+    expect(isShellAllowed('plan', 'pnpm outdated')).toBe(true);
     expect(isShellAllowed('plan', 'npm install lodash')).toBe(false);
     expect(isShellAllowed('ask', 'npm install lodash')).toBe(false);
     expect(isToolAllowedInPlanPhase('execute', 'run_command', { command: 'npm run build' }).allowed).toBe(true);

@@ -50,12 +50,16 @@ export function filterAskModeTools(tools: ToolDefinition[]): ToolDefinition[] {
   return tools.filter((tool) => {
     const name = tool.function.name;
     if (ASK_ALLOWED_TOOLS.has(name)) return true;
-    return name.startsWith('mcp__');
+    if (!name.startsWith('mcp__')) return false;
+    // Ask mode may use MCP readers, never MCP filesystem mutators.
+    return !/^mcp__filesystem__(create_directory|move_file|write_file|edit_file)$/i.test(name);
   });
 }
 
 export function isAskAllowedTool(toolName: string): boolean {
-  return ASK_ALLOWED_TOOLS.has(toolName) || toolName.startsWith('mcp__');
+  if (ASK_ALLOWED_TOOLS.has(toolName)) return true;
+  if (!toolName.startsWith('mcp__')) return false;
+  return !/^mcp__filesystem__(create_directory|move_file|write_file|edit_file)$/i.test(toolName);
 }
 
 /** Whether the answer should be grounded in codebase reads/searches before finishing. */

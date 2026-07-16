@@ -236,7 +236,7 @@ export class HeadlessAgentHost {
 
     this.policyEngine = new ToolPolicyEngine(
       effectiveSafety,
-      (path) => this.ignoreService.isIgnored(path),
+      (path, options) => this.ignoreService.isIgnored(path, options),
       () => true,
       (path) => resolveWorkspaceRelPath(workspace, path)
     );

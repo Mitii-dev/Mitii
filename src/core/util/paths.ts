@@ -54,9 +54,19 @@ export function canUseVscodeFindFiles(workspaceRoot: string): boolean {
 /** Normalize tool/list paths — "." means workspace root (empty relative path). */
 export function normalizeRelPath(path: string | undefined): string {
   if (!path) return '';
-  const p = path.replace(/\\/g, '/').replace(/^\.\//, '').trim();
+  const p = canonicalizeMitiiPathTypos(
+    path.replace(/\\/g, '/').replace(/^\.\//, '').trim()
+  );
   if (p === '.' || p === '/') return '';
   return p;
+}
+
+/** Rewrite common Mitii directory typos so tools resolve session logs correctly. */
+export function canonicalizeMitiiPathTypos(relPath: string): string {
+  return relPath
+    .replace(/^\.miti\//i, '.mitii/')
+    .replace(/^\.mitti\//i, '.mitii/')
+    .replace(/^\.mitii\b/i, '.mitii');
 }
 
 export function isPathInsideWorkspace(absPath: string, workspaceRoot: string): boolean {
@@ -141,7 +151,9 @@ function isWindowsAbsolutePath(value: string): boolean {
 
 /** Common extension / naming variants when a path is missing. */
 export function pathExistenceVariants(relPath: string): string[] {
-  const variants = new Set<string>([relPath]);
+  const canonical = canonicalizeMitiiPathTypos(relPath);
+  const variants = new Set<string>([relPath, canonical]);
+  if (canonical !== relPath) variants.add(canonical);
   if (relPath.endsWith('.js')) variants.add(relPath.replace(/\.js$/, '.ts'));
   if (relPath.endsWith('.ts')) variants.add(relPath.replace(/\.ts$/, '.js'));
   if (relPath.endsWith('.mjs')) variants.add(relPath.replace(/\.mjs$/, '.ts'));

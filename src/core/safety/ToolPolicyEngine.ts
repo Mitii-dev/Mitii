@@ -9,6 +9,8 @@ export interface PolicyResult {
   reason: string;
 }
 
+export type IgnoredPathChecker = (path: string, options?: { forRead?: boolean }) => boolean;
+
 const DANGEROUS_COMMANDS = [
   /rm\s+-rf/i, /\bsudo\b/i, /chmod\s+-R/i, /chown\s+-R/i,
   /\bmkfs\b/i, /\bdd\b/i, /\bshutdown\b/i, /\breboot\b/i,
@@ -25,10 +27,13 @@ const READ_ONLY_TOOLS = new Set([
 
 /** Read tools that take a workspace-relative path — checked against the workspace
  *  boundary so reaching outside it goes through approval instead of being silently allowed. */
-const PATH_READ_TOOLS = new Set(['read_file', 'read_files']);
+const PATH_READ_TOOLS = new Set(['read_file', 'read_files', 'list_files', 'resolve_path']);
 
 const WRITE_TOOLS = new Set(['write_file', 'apply_patch', 'memory_write']);
 const SHELL_TOOLS = new Set(['run_command']);
+
+const MCP_FILESYSTEM_WRITE =
+  /^mcp__filesystem__(create_directory|move_file|write_file|edit_file)$/i;
 
 export interface SafetyConfig {
   requireApprovalForWrites: boolean;
@@ -43,7 +48,7 @@ export interface SafetyConfig {
 export class ToolPolicyEngine {
   constructor(
     private safetyConfig: SafetyConfig,
-    private readonly isIgnoredPath: (path: string) => boolean,
+    private readonly isIgnoredPath: IgnoredPathChecker,
     private readonly isWorkspaceTrusted: () => boolean = () => true,
     /** Resolves a raw path to a workspace-relative path, or null if it falls outside the workspace. */
     private readonly resolveWorkspaceRelPath: (path: string) => string | null = () => null
@@ -54,15 +59,16 @@ export class ToolPolicyEngine {
   }
 
   evaluate(toolName: string, input: Record<string, unknown>): PolicyResult {
-    const path = typeof input.path === 'string' ? input.path : undefined;
-    if (path && this.isIgnoredPath(path)) {
+    const forRead = usesReadPathSemantics(toolName);
+    const blockedPath = this.findIgnoredInputPath(toolName, input, forRead);
+    if (blockedPath) {
       return { decision: 'block', reason: 'Path is ignored' };
     }
 
     if (
       !this.isWorkspaceTrusted() &&
       !this.safetyConfig.allowUntrustedWorkspace &&
-      (WRITE_TOOLS.has(toolName) || SHELL_TOOLS.has(toolName))
+      (WRITE_TOOLS.has(toolName) || SHELL_TOOLS.has(toolName) || MCP_FILESYSTEM_WRITE.test(toolName))
     ) {
       return {
         decision: 'block',
@@ -70,14 +76,14 @@ export class ToolPolicyEngine {
       };
     }
 
-    if (READ_ONLY_TOOLS.has(toolName)) {
+    if (READ_ONLY_TOOLS.has(toolName) || isMcpFilesystemReadTool(toolName)) {
       if (toolName === 'fetch_web' && !this.safetyConfig.allowNetwork) {
         return { decision: 'block', reason: 'Network access disabled' };
       }
       if (toolName === 'ask_question') {
         return { decision: 'require_approval', reason: 'Clarifying question requires user response' };
       }
-      if (PATH_READ_TOOLS.has(toolName)) {
+      if (PATH_READ_TOOLS.has(toolName) || isMcpFilesystemReadTool(toolName)) {
         const externalPath = this.findExternalFilePath(toolName, input);
         if (externalPath) {
           return {
@@ -93,7 +99,7 @@ export class ToolPolicyEngine {
       return { decision: 'allow', reason: 'Memory writes are low risk' };
     }
 
-    if (WRITE_TOOLS.has(toolName)) {
+    if (WRITE_TOOLS.has(toolName) || MCP_FILESYSTEM_WRITE.test(toolName)) {
       if (this.requiresWriteApproval()) {
         return { decision: 'require_approval', reason: 'Write operations require approval' };
       }
@@ -120,12 +126,29 @@ export class ToolPolicyEngine {
     return { decision: 'require_approval', reason: 'Unknown tool requires approval' };
   }
 
+  private findIgnoredInputPath(
+    toolName: string,
+    input: Record<string, unknown>,
+    forRead: boolean
+  ): string | undefined {
+    const candidates: string[] = [];
+    if (typeof input.path === 'string') candidates.push(input.path);
+    if (Array.isArray(input.paths)) {
+      candidates.push(...input.paths.filter((p): p is string => typeof p === 'string'));
+    }
+    for (const raw of candidates) {
+      if (this.isIgnoredPath(raw, { forRead })) return raw;
+    }
+    void toolName;
+    return undefined;
+  }
+
   /** Returns the raw path if a read tool targets a real, existing file outside the
    *  workspace — null otherwise (missing/typo'd paths still fall through to the
    *  tool's normal "not found" error rather than prompting for approval). */
   private findExternalFilePath(toolName: string, input: Record<string, unknown>): string | undefined {
     const candidates: string[] = [];
-    if (toolName === 'read_file' && typeof input.path === 'string') {
+    if ((toolName === 'read_file' || isMcpFilesystemReadTool(toolName)) && typeof input.path === 'string') {
       candidates.push(input.path);
     }
     if (toolName === 'read_files' && Array.isArray(input.paths)) {
@@ -175,6 +198,21 @@ export class ToolPolicyEngine {
         return this.safetyConfig.requireApprovalForShell;
     }
   }
+}
+
+/** Native + MCP tools that inspect paths and should use IgnoreService forRead exceptions. */
+export function usesReadPathSemantics(toolName: string): boolean {
+  if (PATH_READ_TOOLS.has(toolName) || toolName === 'propose_file_scope') return true;
+  return isMcpFilesystemReadTool(toolName);
+}
+
+export function isMcpFilesystemReadTool(toolName: string): boolean {
+  if (!toolName.startsWith('mcp__filesystem__')) return false;
+  return !MCP_FILESYSTEM_WRITE.test(toolName);
+}
+
+export function isMcpFilesystemWriteTool(toolName: string): boolean {
+  return MCP_FILESYSTEM_WRITE.test(toolName);
 }
 
 export function isDangerousCommand(command: string): boolean {

@@ -1613,27 +1613,45 @@ function htmlToText(html: string): string {
 export function createFetchWebTool(allowNetwork: () => boolean): Tool<{
   url: string;
   prompt?: string;
+  method?: 'GET' | 'POST';
+  body?: string;
 }> {
   return {
     name: 'fetch_web',
     description:
-      'Fetch content from a URL for documentation, API research, or debugging. Returns page text (HTML stripped). Use for retrieving docs when local context is insufficient.',
+      'Fetch content from a URL for documentation, API research, advisory pages, or debugging. Supports GET (default) and POST (for APIs like OSV). Returns page text (HTML stripped). Use when the user asks to check online or local context is insufficient.',
     risk: 'low',
     inputSchema: z.object({
       url: z.string().url(),
       prompt: z.string().optional(),
+      method: z.enum(['GET', 'POST']).optional(),
+      body: z.string().max(32_000).optional(),
     }),
     async execute(input): Promise<ToolResult> {
       if (!allowNetwork()) {
         return { success: false, output: '', error: `Network access disabled in ${AGENT_NAME} settings` };
       }
 
+      const method = input.method ?? 'GET';
+      if (method === 'POST' && !input.body) {
+        return { success: false, output: '', error: 'POST requests require a body' };
+      }
+
       try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+        const headers: Record<string, string> = {
+          'User-Agent': 'Mitii-AI-Agent/0.1',
+          Accept: 'text/html,application/json,text/plain,*/*',
+        };
+        if (method === 'POST') {
+          headers['Content-Type'] = 'application/json';
+        }
         const response = await fetch(input.url, {
+          method,
           signal: controller.signal,
-          headers: { 'User-Agent': 'Mitii-AI-Agent/0.1', Accept: 'text/html,application/json,text/plain,*/*' },
+          headers,
+          body: method === 'POST' ? input.body : undefined,
         });
         clearTimeout(timer);
 
@@ -1649,7 +1667,7 @@ export function createFetchWebTool(allowNetwork: () => boolean): Tool<{
 
         const text = contentType.includes('html') ? htmlToText(body) : body;
         const promptNote = input.prompt ? `\n\nExtract focus: ${input.prompt}` : '';
-        return { success: true, output: `URL: ${input.url}\n${text}${promptNote}` };
+        return { success: true, output: `URL: ${input.url}\nMethod: ${method}\n${text}${promptNote}` };
       } catch (error) {
         return { success: false, output: '', error: error instanceof Error ? error.message : String(error) };
       }

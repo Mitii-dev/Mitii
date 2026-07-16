@@ -54,7 +54,7 @@ mitii task run --parallel 2
 mitii task worktrees
 ```
 
-See `docs/users/mitii-serve.md`, `docs/developers/mitii-serve-protocol.md`, and `docs/users/parallel-agents.md`.
+See `docs/users/mitii-serve.md`, `docs/developers/mitii-serve-protocol.md`, `docs/users/parallel-agents.md`, and `docs/users/async-jobs.md`.
 
 ## Phase 3 Platform Maturity
 
@@ -68,7 +68,7 @@ Phase 3 adds distribution, scale, external workflow, and enterprise surfaces whi
 | Indexing at scale | Daemon-backed index worker API: `GET /index/status`, `POST /index/enqueue`, `POST /index/delete`, `POST /index/repair` |
 | CLI index admin | `mitii index status --json`, `mitii index repair`, `mitii index enqueue [paths...]`, `mitii index watch` |
 | GitHub PR flow | `GitHubPullRequestService` and `mitii pr create --title "..." --body-file .mitii/pr-body.md` |
-| Async jobs | Durable `.mitii/jobs/queue.json`, `mitii job enqueue`, `mitii job list`, and `mitii worker --once` |
+| Async jobs | Durable `.mitii/jobs/queue.json`, `mitii job enqueue`, `mitii job list/show/retry/cancel`, and `mitii worker --max-jobs ...` for local overnight runs |
 | Channels | Shared channel runtime plus Telegram polling connector: `mitii connect telegram --token "$TELEGRAM_BOT_TOKEN"` |
 | Persistent teams | `~/.mitii/teams/<team-name>/manifest.json`, task board, mailbox, mission log, and `mitii team ...` commands |
 | Marketplace | Open VSX publish script, native binary workflow, GitHub Actions example, Cursor env rename, and JetBrains companion workflow docs |
@@ -530,7 +530,8 @@ mitii index status --json
 mitii index repair
 mitii pr create --title "Fix issue" --body-file .mitii/pr-body.md
 mitii job enqueue "Run this later" --mode agent
-mitii worker --once
+mitii job show <job-id>
+mitii worker --max-jobs 1 --lease-ms 3600000
 mitii connect telegram --token "$TELEGRAM_BOT_TOKEN"
 mitii team create sprint
 mitii team status sprint

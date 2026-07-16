@@ -144,6 +144,7 @@ describe('Act orchestration boundary', () => {
     expect(plan.verifyCommands).toEqual(['npm test']);
     expect(plan.promptContext).toContain('Saved plan handoff');
     expect(plan.promptContext).toContain('plan-123');
+    expect(plan.promptContext).toContain('propose_file_scope is the default Act file contract');
     expect(plan.appliedSkills).toContain('debugging-and-error-recovery');
   });
 
@@ -257,6 +258,7 @@ describe('Act orchestration boundary', () => {
     const prompt = buildSystemPrompt('agent', true);
     expect(prompt).toContain('ACT SKILLS:');
     expect(prompt).toContain('Call use_skill');
+    expect(prompt).toContain('File scope contract: call propose_file_scope');
   });
 
   it('scales retrieved context item count with context window and Act depth', () => {

@@ -15,6 +15,7 @@ import {
 import { resolveToolName } from '../tools/toolAliases';
 import { normalizeThunderMode } from '../session/ThunderSession';
 import { isAskAllowedTool } from '../runtime/askMode';
+import { isMcpFilesystemWriteTool } from './ToolPolicyEngine';
 import { createLogger } from '../telemetry/Logger';
 import type { SessionLogService } from '../telemetry/SessionLogService';
 
@@ -126,6 +127,13 @@ export class ToolExecutor {
     }
     if (resolvedName === 'apply_patch' && !isPatchAllowed(mode)) {
       return this.finishBlocked(resolvedName, input, 'Patch apply blocked in Ask/Plan/Review mode');
+    }
+    if (readOnlyMode && isMcpFilesystemWriteTool(resolvedName)) {
+      return this.finishBlocked(
+        resolvedName,
+        input,
+        'MCP filesystem writes are blocked in Ask/Plan/Review mode — switch to Agent mode to edit files'
+      );
     }
     if (resolvedName === 'run_command' && !isShellAllowed(mode, typeof input.command === 'string' ? input.command : undefined)) {
       return this.finishBlocked(resolvedName, input, 'Shell blocked in Ask/Plan/Review mode (read-only commands like depcheck/grep are allowed)');

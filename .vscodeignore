@@ -40,6 +40,7 @@ bin/.mitii/**
 !scripts/script-catalog.json
 !scripts/audit-dead-code.sh
 !scripts/audit-dependencies.mjs
+!scripts/audit-vulnerabilities.mjs
 !scripts/check-circular-deps.mjs
 !scripts/audit-package-engines.mjs
 !scripts/find-console-logs.sh

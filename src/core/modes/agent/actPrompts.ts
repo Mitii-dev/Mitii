@@ -25,6 +25,8 @@ export function buildActPromptContext(
     `Summary: ${route.summary}`,
     '',
     '## Act workflow contract',
+    '- propose_file_scope is the default Act file contract: call it before read_file/read_files/write_file/apply_patch with objective, candidate paths, intended read/write access, and a tight maxFilesRead budget.',
+    '- Only read or edit paths accepted by propose_file_scope. If the task discovers a new needed path, propose the revised scope before touching it.',
     '- Read or search relevant files before writing.',
     '- Keep edits scoped to the user request, active plan, and touched files.',
     '- Prefer targeted patches and preserve unrelated user changes.',

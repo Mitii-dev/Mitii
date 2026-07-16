@@ -1187,11 +1187,23 @@ function normalizeToolFailure(output: string): string {
 
 function buildRepeatedToolInputFailureMessage(toolName: string, output: string, count: number): string {
   const detail = normalizeToolFailure(output).slice(0, 320);
+  let recovery =
+    'I will not keep retrying the same failing tool call. The next attempt should use a different tool, different arguments, or explain the blocker instead.';
+  if (/Path is ignored/i.test(detail)) {
+    recovery =
+      'Session logs under `.mitii/logs/*.jsonl` are readable via `list_files` / `read_file` (and typos like `.miti/logs` are canonicalized). Prefer those tools or `grep`/`ls` via run_command — do not keep retrying ignored non-log `.mitii` paths.';
+  } else if (/Shell blocked/i.test(detail)) {
+    recovery =
+      'Ask/Plan allow read-only shell only. Prefer `pnpm/npm audit|outdated`, `grep`/`ls`/`cat`, or `execute_workspace_script` (`audit-vulnerabilities.mjs`, `audit-dependencies.mjs`). Switch to Agent mode for installs and edits.';
+  } else if (/not available in this mode|Writes blocked|Patch apply blocked|MCP filesystem writes are blocked/i.test(detail)) {
+    recovery =
+      'Ask/Plan modes are read-only. Finish the analysis, then ask the user to switch to Agent mode for `apply_patch` / `write_file`.';
+  }
   return [
     `\n\n### ${REPEATED_TOOL_INPUT_FAILURE_PREFIX}`,
     '',
     `The agent stopped after ${count} consecutive \`${toolName}\` calls that failed with the same error: ${detail}`,
     '',
-    'I will not keep retrying the same failing tool call. The next attempt should use a different tool, different arguments, or explain the blocker instead.',
+    recovery,
   ].join('\n');
 }

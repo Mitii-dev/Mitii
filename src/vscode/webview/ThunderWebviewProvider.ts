@@ -380,6 +380,11 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         await this.syncState();
         break;
 
+      case 'cancelIndexing':
+        this.controller.cancelIndexing();
+        await this.syncState();
+        break;
+
       case 'restoreCheckpoint':
         await this.controller.restoreCheckpoint(message.payload.id);
         await this.syncState();

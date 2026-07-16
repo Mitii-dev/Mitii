@@ -146,7 +146,7 @@ export class AgentTaskState {
 
     if (toolName === 'execute_workspace_script') {
       const script = typeof input.script === 'string' ? input.script : '';
-      if (this.isAuditTask() && /audit-dependencies|audit-dead-code/.test(script) && this.getPhase() === 'analyze') {
+      if (this.isAuditTask() && /audit-dependencies|audit-dead-code|audit-vulnerabilities/.test(script) && this.getPhase() === 'analyze') {
         sendPhaseEvent(this.phaseActor, { type: 'ADVANCE_EXECUTE' });
       }
     }
@@ -428,7 +428,7 @@ export class AgentTaskState {
   private shouldDiagnosticAdvanceToExecute(key: string | null): boolean {
     if (!key) return false;
     if (this.isAuditTask()) {
-      return key === 'depcheck' || key === 'eslint' || key === 'audit-dependencies' || key === 'audit-dead-code';
+      return key === 'depcheck' || key === 'eslint' || key === 'audit-dependencies' || key === 'audit-dead-code' || key === 'audit-vulnerabilities';
     }
     return key === 'eslint';
   }
@@ -579,6 +579,7 @@ export function normalizeDiagnosticKey(command: string): string | null {
   if (/\bdepcheck\b/.test(cmd)) return 'depcheck';
   if (/\bknip\b/.test(cmd)) return 'audit-dead-code';
   if (/audit-dependencies/.test(cmd)) return 'audit-dependencies';
+  if (/audit-vulnerabilities/.test(cmd) || /\b(?:npm|pnpm|yarn)\s+audit\b/.test(cmd)) return 'audit-vulnerabilities';
   if (/\beslint\b/.test(cmd)) return cmd.includes('--fix') ? 'eslint:fix' : 'eslint';
   if (/\bnpm\s+(ls|list)\b/.test(cmd)) return 'npm-ls';
   if (/\bdocusaurus\s+build\b/.test(cmd) || /\bnpm\s+run\s+build(?:\s|$)/.test(cmd)) return 'docs-build';

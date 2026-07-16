@@ -446,6 +446,7 @@ body,
   align-items: center;
   gap: 4px;
   position: relative;
+  min-width: 0;
 }
 
 .indexing-chip__pulse {
@@ -466,6 +467,40 @@ body,
 .indexing-chip__btn {
   width: 26px;
   height: 26px;
+  flex: 0 0 26px;
+}
+
+.indexing-chip__label {
+  max-width: min(220px, 28vw);
+  overflow: hidden;
+  color: var(--thunder-muted);
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.indexing-chip--degraded .indexing-chip__label {
+  color: var(--thunder-orange-text);
+}
+
+.indexing-chip__progress {
+  position: absolute;
+  right: 0;
+  bottom: -4px;
+  left: 30px;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--thunder-muted) 18%, transparent);
+}
+
+.indexing-chip__progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--thunder-accent);
+  transition: width 180ms ease;
 }
 
 /* ── Chat shell ── */
@@ -1962,7 +1997,7 @@ body,
 
 .onboarding__steps {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -2012,6 +2047,51 @@ body,
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.onboarding__preset-grid,
+.onboarding__safety {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.onboarding__preset,
+.onboarding__safety > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--thunder-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--thunder-surface-2) 78%, transparent);
+  color: var(--thunder-fg);
+}
+
+.onboarding__preset {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.onboarding__preset:hover,
+.onboarding__preset:focus-visible {
+  outline: none;
+  border-color: var(--thunder-accent);
+}
+
+.onboarding__preset strong,
+.onboarding__safety strong {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.onboarding__preset span,
+.onboarding__safety span {
+  overflow-wrap: anywhere;
+  color: var(--thunder-muted);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .review-panel {

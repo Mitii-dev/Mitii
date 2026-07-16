@@ -12,6 +12,12 @@ export interface IndexStatusReport {
   queued: number;
   failed: number;
   running: boolean;
+  phase?: string;
+  partial?: boolean;
+  degraded?: boolean;
+  detail?: string;
+  processed?: number;
+  runTotal?: number;
   dbPath?: string;
   dbSizeBytes?: number;
   lastIndexedAt?: number;
@@ -32,7 +38,17 @@ export class IndexMaintenanceService {
     private readonly dbPath?: string
   ) {}
 
-  status(queue?: { queued?: number; failed?: number; running?: boolean }): IndexStatusReport {
+  status(queue?: {
+    queued?: number;
+    failed?: number;
+    running?: boolean;
+    phase?: string;
+    partial?: boolean;
+    degraded?: boolean;
+    detail?: string;
+    processed?: number;
+    runTotal?: number;
+  }): IndexStatusReport {
     const files = this.db.raw.prepare(`
       SELECT
         COUNT(*) as total,
@@ -53,6 +69,12 @@ export class IndexMaintenanceService {
       queued: queue?.queued ?? 0,
       failed: queue?.failed ?? 0,
       running: queue?.running ?? false,
+      phase: queue?.phase,
+      partial: queue?.partial,
+      degraded: queue?.degraded,
+      detail: queue?.detail,
+      processed: queue?.processed,
+      runTotal: queue?.runTotal,
       dbPath: this.dbPath,
       dbSizeBytes,
       lastIndexedAt: files.lastIndexedAt ?? undefined,

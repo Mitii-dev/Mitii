@@ -23,6 +23,7 @@ import {
 import { initTreeSitter, preloadCommonLanguages } from '../indexing/TreeSitterService';
 import { setTreeSitterEnabled } from '../indexing/SymbolExtractor';
 import { FtsIndex } from '../indexing/FtsIndex';
+import { detectLanguage, isBinaryByExtension } from '../indexing/fileUtils';
 import { HybridRetriever } from '../context/HybridRetriever';
 import { createContextReranker } from '../context/ContextReranker';
 import { ContextBudgeter } from '../context/ContextBudgeter';
@@ -185,7 +186,7 @@ export class ThunderController {
   private sessionLog = new SessionLogService();
   private lastAutoAuditExportSignature = '';
   private lastSubagentSnapshot = new Map<string, string>();
-  private indexingStatus: IndexingStatus = { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0, processed: 0, runTotal: 0 };
+  private indexingStatus: IndexingStatus = { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0, processed: 0, runTotal: 0, phase: 'idle' };
   private contextToggles: ContextToggles = defaultContextToggles();
   private mcpToggles: McpToggles = defaultMcpToggles();
   private pendingWatchJobs = new Map<string, import('../indexing/IndexQueue').IndexJob>();
@@ -315,6 +316,9 @@ export class ThunderController {
       activeWorkers: status.activeWorkers ?? 0,
       processed: status.processed ?? 0,
       runTotal: status.runTotal ?? 0,
+      phase: status.phase ?? (status.running ? 'indexing' : 'idle'),
+      partial: status.partial ?? false,
+      degraded: status.degraded ?? false,
     };
     this.indexingStatus = normalized;
     this.pendingIndexStatus = normalized;
@@ -610,7 +614,7 @@ export class ThunderController {
 
     this.policyEngine = new ToolPolicyEngine(
       effectiveSafety,
-      (path) => this.ignoreService.isIgnored(path),
+      (path, options) => this.ignoreService.isIgnored(path, options),
       () => this.isWorkspaceTrusted(),
       (path) => resolveWorkspaceRelPath(workspace, path)
     );
@@ -944,6 +948,7 @@ export class ThunderController {
       log.info('Skipping VS Code file watcher — workspace override is outside open folders');
       return;
     }
+    const config = this.configService.getConfig();
 
     try {
       const watcher = vscode.workspace.createFileSystemWatcher(
@@ -956,19 +961,40 @@ export class ThunderController {
         if (!relPath || this.ignoreService.isIgnored(relPath)) return;
         if (isTsLikeFile(relPath)) this.languageService?.syncFileFromDisk(relPath);
         if (!this.indexQueue || !this.scanner) return;
-        const fileId = this.scanner.getFileId(relPath);
+        let fileId = this.scanner.getFileId(relPath);
+        if (!fileId) {
+          try {
+            const stat = statSync(uri.fsPath);
+            if (!stat.isFile() || stat.size > config.indexing.hardSkipSizeBytes || isBinaryByExtension(relPath)) return;
+            const discovered = [{
+              absPath: uri.fsPath,
+              relPath,
+              size: stat.size,
+              mtime: stat.mtimeMs,
+              language: detectLanguage(relPath),
+            }];
+            const diff = this.scanner.computeDiff(discovered, { includeDeleted: false });
+            this.scanner.persistScan(diff);
+            fileId = this.scanner.getFileId(relPath);
+          } catch {
+            return;
+          }
+        }
         if (fileId) {
           this.pendingWatchJobs.set(relPath, {
             fileId,
             relPath,
             absPath: uri.fsPath,
-            language: null,
+            language: detectLanguage(relPath),
           });
           if (this.watchDebounceTimer) clearTimeout(this.watchDebounceTimer);
           this.watchDebounceTimer = setTimeout(() => {
             const jobs = [...this.pendingWatchJobs.values()];
             this.pendingWatchJobs.clear();
-            this.indexQueue?.enqueue(jobs);
+            this.indexQueue?.enqueue(jobs, {
+              partial: true,
+              detail: `Incrementally indexing ${jobs.length} changed file${jobs.length === 1 ? '' : 's'} from the file watcher.`,
+            });
           }, 5000);
         }
       };
@@ -980,6 +1006,17 @@ export class ThunderController {
         const relPath = toWorkspaceRelPath(uri, workspace);
         if (relPath && isTsLikeFile(relPath) && !this.ignoreService.isIgnored(relPath)) {
           this.languageService?.syncFileFromDisk(relPath);
+        }
+        if (relPath && !this.ignoreService.isIgnored(relPath)) {
+          const db = this.indexService?.getDb();
+          if (db?.isOpen()) {
+            new FtsIndex(db).deleteByFile(relPath);
+            db.raw.prepare('DELETE FROM files WHERE workspace = ? AND rel_path = ?').run(workspace, relPath);
+            RepoMapService.invalidateWorkspace(workspace);
+            this.debouncedRebuildRetriever?.();
+            this.indexingStatus = this.indexQueue?.getStatus() ?? this.indexingStatus;
+            this.notifyUi({ indexing: this.indexingStatus });
+          }
         }
       });
       this.context.subscriptions.push(watcher);
@@ -3100,6 +3137,16 @@ export class ThunderController {
     const priorityRoots = firstAutoRun ? priorityDiscoveryRoots(workspace) : [];
     const isPartialDiscovery = firstAutoRun;
     const discovery = new FileDiscoveryService(workspace, this.ignoreService, config.indexing);
+    this.indexQueue.setRunMetadata({
+      phase: 'scanning',
+      partial: isPartialDiscovery,
+      degraded: isPartialDiscovery || this.indexingStatus.degraded,
+      detail: isPartialDiscovery
+        ? 'Scanning priority files first. Existing indexed context stays usable while the full repository is discovered in the background.'
+        : options.background
+          ? 'Scanning the remaining repository for incremental indexing.'
+          : 'Scanning workspace for changed files.',
+    });
     const files = sortIndexCandidates(
       await discovery.discoverAsync({
         roots: isPartialDiscovery && priorityRoots.length > 0 ? priorityRoots : undefined,
@@ -3107,6 +3154,11 @@ export class ThunderController {
       }),
       config.indexing.priorityPaths
     );
+    if (this.indexQueue.getStatus().phase === 'cancelled') {
+      this.indexingStatus = this.indexQueue.getStatus();
+      this.notifyUi({ indexing: this.indexingStatus, workspaceNotice: this.workspaceNotice });
+      return;
+    }
 
     const diff = this.scanner.computeDiff(files, { includeDeleted: !isPartialDiscovery });
     this.scanner.persistScan(diff);
@@ -3124,6 +3176,13 @@ export class ThunderController {
 
     if (jobs.length === 0) {
       this.indexingStatus = this.indexQueue.getStatus();
+      this.indexQueue.setRunMetadata({
+        phase: 'complete',
+        partial: false,
+        degraded: false,
+        detail: 'Index is up to date.',
+      });
+      this.indexingStatus = this.indexQueue.getStatus();
       this.setWorkspaceNotice('ok', 'Index is up to date');
       this.sessionLog.append('index_complete', 'Index up to date', { workspace, jobCount: 0 });
       this.notifyUi({ indexing: this.indexingStatus, workspaceNotice: this.workspaceNotice });
@@ -3131,7 +3190,15 @@ export class ThunderController {
       return;
     }
 
-    this.indexQueue.enqueue(jobs);
+    this.indexQueue.enqueue(jobs, {
+      partial: isPartialDiscovery,
+      degraded: isPartialDiscovery,
+      detail: isPartialDiscovery
+        ? `Indexing ${jobs.length} priority file${jobs.length === 1 ? '' : 's'} first. Ask and Plan remain usable with partial context.`
+        : options.background
+          ? `Background indexing ${jobs.length} changed file${jobs.length === 1 ? '' : 's'} for full repository coverage.`
+          : `Indexing ${jobs.length} changed file${jobs.length === 1 ? '' : 's'}.`,
+    });
     this.indexingStatus = this.indexQueue.getStatus();
     const label = options.background
       ? 'Background indexing'
@@ -3154,6 +3221,21 @@ export class ThunderController {
 
     if (firstAutoRun) this.scheduleBackgroundIndex(workspace);
     void this.waitForIndexingComplete(workspace, jobs.length);
+  }
+
+  cancelIndexing(): void {
+    if (!this.indexQueue) return;
+    this.indexQueue.cancel();
+    this.indexingStatus = this.indexQueue.getStatus();
+    this.setWorkspaceNotice('warn', 'Indexing canceled. Existing indexed context is still usable.');
+    this.sessionLog.append('info', 'Indexing canceled by user', {
+      workspace: this.resolveWorkspacePath(),
+      indexed: this.indexingStatus.indexed,
+      queued: this.indexingStatus.queued,
+      processed: this.indexingStatus.processed,
+      runTotal: this.indexingStatus.runTotal,
+    });
+    this.notifyUi({ indexing: this.indexingStatus, workspaceNotice: this.workspaceNotice });
   }
 
   private scheduleBackgroundIndex(workspace: string): void {
@@ -3186,7 +3268,15 @@ export class ThunderController {
       failed: status.failed,
       durationMs: Date.now() - start,
     });
-    this.setWorkspaceNotice('ok', `Indexed ${status.indexed} files`);
+    if (status.phase === 'cancelled') return;
+    this.setWorkspaceNotice(
+      status.failed > 0 ? 'warn' : 'ok',
+      status.failed > 0
+        ? `Indexed ${status.indexed} files; ${status.failed} failed`
+        : status.partial
+          ? `Indexed ${status.indexed} priority files; background indexing continues`
+          : `Indexed ${status.indexed} files`
+    );
     this.notifyUi({ indexing: status, workspaceNotice: this.workspaceNotice });
   }
 

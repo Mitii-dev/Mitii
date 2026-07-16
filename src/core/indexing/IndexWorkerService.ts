@@ -81,7 +81,12 @@ export class IndexWorkerService {
         return fileId ? { fileId, relPath: file.relPath, absPath: file.absPath, language: file.language } : undefined;
       })
       .filter((job): job is IndexJob => Boolean(job));
-    queue.enqueue(jobs);
+    queue.enqueue(jobs, {
+      partial: Boolean(paths?.length),
+      detail: paths?.length
+        ? `Queued ${jobs.length} changed file${jobs.length === 1 ? '' : 's'} from the requested path scope.`
+        : `Queued ${jobs.length} changed file${jobs.length === 1 ? '' : 's'} for incremental indexing.`,
+    });
     return {
       added: diff.added.length,
       changed: diff.changed.length,
@@ -98,6 +103,11 @@ export class IndexWorkerService {
   repair(): IndexRepairReport {
     const { maintenance } = this.ready();
     return maintenance.repair();
+  }
+
+  cancel(): void {
+    const { queue } = this.ready();
+    queue.cancel();
   }
 
   dispose(): void {
