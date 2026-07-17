@@ -8,6 +8,7 @@ import {
   type ThunderSessionProviderOverride,
 } from '../session/ThunderSession';
 import { ConfigService } from '../config/ConfigService';
+import { normalizeAgentDepth } from '../config/agentDepth';
 import { LlmProviderRegistry } from '../llm/LlmProviderRegistry';
 import { IndexService } from '../indexing/IndexService';
 import { IgnoreService } from '../indexing/IgnoreService';
@@ -1182,9 +1183,9 @@ export class ThunderController {
         autoMemoryScope: config.memory.autoMemoryScope,
         subagentsEnabled: config.agent.subagentsEnabled,
         agentMaxSteps: config.agent.maxSteps,
-        askDepth: config.agent.askDepth,
-        planDepth: config.agent.planDepth,
-        actDepth: config.agent.actDepth,
+        askDepth: normalizeAgentDepth(config.agent.askDepth),
+        planDepth: normalizeAgentDepth(config.agent.planDepth),
+        actDepth: normalizeAgentDepth(config.agent.actDepth),
         askMaxSteps: config.agent.askMaxSteps,
         askAutoContinue: config.agent.askAutoContinue,
         askMaxAutoContinues: config.agent.askMaxAutoContinues,

@@ -20,6 +20,24 @@ describe('planSkillRouting', () => {
     });
     expect(names).toContain('using-agent-skills');
     expect(names).toContain('planning-and-task-breakdown');
+    expect(names).not.toContain('agent-plan');
+  });
+
+  it('resolves agent-plan for Agent-mode structured planning', () => {
+    const names = resolvePlanningSkillNames('feature', {
+      kind: 'implementation',
+      complexity: 'high',
+      summary: 'Build SDK',
+      shouldPlan: true,
+      shouldVerify: true,
+      shouldUseSubagents: false,
+    }, { sourceMode: 'agent' });
+
+    expect(names).toEqual(expect.arrayContaining([
+      'using-agent-skills',
+      'agent-plan',
+      'planning-and-task-breakdown',
+    ]));
   });
 
   it('injects Git route selected skills into planning', () => {

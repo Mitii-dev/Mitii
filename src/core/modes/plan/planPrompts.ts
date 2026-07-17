@@ -43,7 +43,7 @@ export function buildPlanPromptContext(
     '## Plan response contract',
     'Use Ask-style read-only discovery first, then compile a structured, persisted execution plan.',
     'Plan steps must be concrete enough for the SDK/headless agent boundary: stable goal, assumptions, affected files, tools, success criteria, risk, and verification.',
-    'Follow loaded planning skill playbooks (planning-and-task-breakdown): dependency graph, vertical slices, acceptance criteria, and verification per step.',
+    'Follow loaded planning skill playbooks for dependency ordering, acceptance criteria, and verification per step.',
     'Do not execute writes in Plan mode. Execution happens later through the same saved plan contract an SDK can expose as Agent.plan() followed by Agent.executePlan().'
   );
 

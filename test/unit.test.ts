@@ -2017,9 +2017,13 @@ describe('toolAliases', () => {
 });
 
 describe('promptBuilder', () => {
-  it('includes cause-specific MDX generic repair guidance', async () => {
+  it('includes cause-specific MDX generic repair guidance only for MDX repair mode', async () => {
     const { buildSystemPrompt } = await import('../src/core/plans/promptBuilder');
-    const prompt = buildSystemPrompt('agent', true);
+    const defaultPrompt = buildSystemPrompt('agent', true);
+    expect(defaultPrompt).not.toContain('Unexpected character `,` in name');
+    expect(defaultPrompt).not.toContain('LiveCodeBlock');
+
+    const prompt = buildSystemPrompt('agent', true, { mdxRepairMode: true });
 
     expect(prompt).toContain('Unexpected character `,` in name');
     expect(prompt).toContain('Record<string, any>');
@@ -2884,13 +2888,16 @@ describe('Ask v2 routing, scope, and impact', () => {
     expect(contextResult.output).toContain('apps/docs/src/index.ts');
   });
 
-  it('injects deep Ask instructions into prompts without applying concise global prose rules', async () => {
+  it('injects Ask routing instructions without forcing deep prose on concise profiles', async () => {
     const { buildPrompt, buildSystemPrompt } = await import('../src/core/plans/promptBuilder');
 
     const system = buildSystemPrompt('ask', true);
-    expect(system).toContain('technical blog post');
+    expect(system).not.toContain('technical blog post');
     expect(system).toContain('analyze_change_impact');
     expect(system).not.toContain('Keep prose concise. Avoid filler');
+
+    const deepSystem = buildSystemPrompt('ask', true, { askProfile: 'deep' });
+    expect(deepSystem).toContain('technical blog post');
 
     const messages = buildPrompt(
       'ask',
@@ -2904,7 +2911,9 @@ describe('Ask v2 routing, scope, and impact', () => {
       undefined,
       false,
       undefined,
-      '## Ask routing\nIntent: architecture'
+      '## Ask routing\nIntent: architecture',
+      undefined,
+      { askProfile: 'deep' }
     );
 
     expect(messages.at(-1)?.content).toContain('## Ask routing');

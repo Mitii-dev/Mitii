@@ -273,12 +273,11 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
           message.payload.scope
         );
         await this.syncState();
-        if (message.payload.decision === 'approved') {
-          if (this.state.loading || this.isStreaming) {
-            this.resumeAfterCurrentStream = true;
-          } else {
-            await this.continueAfterApproval();
-          }
+        // Approve and deny both resume — denial must unblock the planner / agent loop.
+        if (this.state.loading || this.isStreaming) {
+          this.resumeAfterCurrentStream = true;
+        } else {
+          await this.continueAfterApproval();
         }
         break;
 
@@ -627,6 +626,10 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       (this.controller.getPendingApprovalContext().length > 0);
     if (!paused) return;
 
+    // If the planner is stuck on an approval-blocked step with no agent suspend
+    // state, ask Agent mode to resume the saved plan rather than a vague continue.
+    const plan = this.state.plan;
+    const hasBlockedPlanStep = Boolean(plan?.steps.some((s) => s.status === 'blocked'));
     const originalUser = [...this.state.messages]
       .filter((m) => m.role === 'user')
       .reverse()
@@ -634,17 +637,27 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
     if (!originalUser?.content) return;
 
     const approvalContext = this.controller.consumePendingApprovalContext();
-    const continuation = [
-      approvalContext,
-      'Continue the current approved task from where it paused.',
-      'Current phase: EXECUTE — apply file edits and dependency removals based on the approved command output above.',
-      'Do not recreate the requirement analysis or plan.',
-      'Do not call memory_search first — read the sections above and recent chat messages.',
-      'Do not re-run depcheck, eslint, or list_files already marked complete in Task progress.',
-      '',
-      'Original user request:',
-      originalUser.content,
-    ].filter(Boolean).join('\n');
+    const continuation = hasBlockedPlanStep
+      ? [
+          approvalContext,
+          'Resume the saved plan from the step that was awaiting approval.',
+          'If a tool was denied, do not retry it — continue the remaining plan steps another way.',
+          'Do not recreate the requirement analysis or recompile the plan from scratch.',
+          '',
+          'Original user request:',
+          originalUser.content,
+        ].filter(Boolean).join('\n')
+      : [
+          approvalContext,
+          'Continue the current approved task from where it paused.',
+          'Current phase: EXECUTE — apply file edits and dependency removals based on the approved command output above.',
+          'Do not recreate the requirement analysis or plan.',
+          'Do not call memory_search first — read the sections above and recent chat messages.',
+          'Do not re-run depcheck, eslint, or list_files already marked complete in Task progress.',
+          '',
+          'Original user request:',
+          originalUser.content,
+        ].filter(Boolean).join('\n');
 
     await this.runChatCompletion(continuation, false);
   }

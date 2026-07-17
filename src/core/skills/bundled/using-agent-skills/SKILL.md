@@ -30,7 +30,7 @@ description: >-
 
 | Domain | Skill names |
 | --- | --- |
-| Meta / plan | `using-agent-skills`, `planning-and-task-breakdown` |
+| Meta / plan | `using-agent-skills`, `agent-plan`, `planning-and-task-breakdown` |
 | Quality | `code-review-and-quality`, `code-smells-and-tech-debt`, `test-driven-development` |
 | Debug / perf | `debugging-and-error-recovery`, `performance-optimization`, `log-audit` |
 | Cleanup / env | `audit-cleanup`, `environment-and-secrets` |

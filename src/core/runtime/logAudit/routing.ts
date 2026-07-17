@@ -6,35 +6,39 @@
 import { AGENT_NAME } from '../../../shared/brand';
 
 export const LOG_AUDIT_ALLOWED_TOOLS = new Set([
-  'analyze_log_directory',
-  'analyze_jsonl',
-  'query_log_events',
-]);
-
-/** Generic readers / search / MCP filesystem — must not be exposed on this route. */
-export const LOG_AUDIT_EXCLUDED_TOOLS = new Set([
   'read_file',
   'read_files',
-  'write_file',
-  'apply_patch',
+  'resolve_path',
+  'list_files',
   'search',
   'search_batch',
   'repo_map',
   'retrieve_context',
   'git_diff',
+  'diagnostics',
   'memory_search',
-  'memory_write',
-  'spawn_research_agent',
-  'spawn_subagent',
   'run_command',
   'execute_workspace_script',
   'search_script_catalog',
-  'propose_file_scope',
-  'save_task_state',
+  'use_skill',
   'fetch_web',
-  'diagnostics',
-  'resolve_path',
+  'ask_question',
+  'project_catalog',
   'analyze_change_impact',
+  'propose_file_scope',
+  'analyze_log_directory',
+  'analyze_jsonl',
+  'query_log_events',
+]);
+
+/** Mutating, broad fan-out, and plan-management tools are not exposed on this route. */
+export const LOG_AUDIT_EXCLUDED_TOOLS = new Set([
+  'write_file',
+  'apply_patch',
+  'memory_write',
+  'spawn_research_agent',
+  'spawn_subagent',
+  'save_task_state',
   'discover_project_catalog',
   'mark_step_complete',
   'propose_plan_mutation',
@@ -142,7 +146,7 @@ ${pathHint}
 3. Synthesize from the evidence packet. Stop — tools are disabled after sufficient analysis.
 4. Treat \`inputTokens\` as per-call usage; report cumulative/turn totals separately.
 5. Separate confirmed findings from hypotheses. Cite file paths and event line numbers when present.
-6. Subagents, repo search, vector RAG, memory, git diff, raw file reads, and list_logs are DISABLED for this route.
+6. Use the deterministic analyzers first. Read-only inspection tools such as \`list_files\`, \`search\`, \`read_file\`, \`run_command\`, and \`use_skill\` are available only for narrow follow-up context or recovery. Do not use write tools or subagents on this route.
 
 ${AGENT_NAME} parses logs in code; the model only interprets the compact report.`;
 }
@@ -150,7 +154,7 @@ ${AGENT_NAME} parses logs in code; the model only interprets the compact report.
 export function buildLogAuditBlockedToolMessage(toolName: string, task: string): string {
   return [
     `LOG AUDIT — tool "${toolName}" is not available on this route.`,
-    'Use analyze_log_directory for directories or analyze_jsonl for a single file, then at most one query_log_events, then synthesize.',
+    'Use analyze_log_directory for directories or analyze_jsonl for a single file first. Read-only inspection/use_skill tools are available for narrow follow-up context; mutating and broad fan-out tools are blocked.',
     `Blocked task: ${task.slice(0, 400)}`,
   ].join('\n');
 }
@@ -161,6 +165,6 @@ export const NO_TOOLS_LOG_AUDIT_NUDGE = `You responded without calling tools. Fo
 
 1. analyze_log_directory({ path: "<user-named log directory>" }) for directories, or analyze_jsonl({ path: "<user-named .jsonl>" }) for one file
 2. Optionally query_log_events once for a narrow follow-up
-3. Then write the final analysis — do not read the raw log into context
+3. Then write the final analysis. Use read-only inspection only when the analyzer output is insufficient.
 
 Call the correct analyzer now.`;

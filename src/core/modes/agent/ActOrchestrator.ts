@@ -7,6 +7,7 @@ import { LOG_AUDIT_AGENT_MAX_STEPS } from '../../runtime/logAudit';
 import type { SkillCatalogService } from '../../skills/SkillCatalogService';
 import type { TierPolicy } from '../../agentic/tierPolicy';
 import { scaleTierSteps } from '../../agentic/tierPolicy';
+import { normalizeAgentDepth } from '../../config/agentDepth';
 import { resolvePlanScope } from '../plan/PlanScopeResolver';
 import { routeActIntent } from './ActIntentRouter';
 import { buildActPromptContext } from './actPrompts';
@@ -19,7 +20,7 @@ export interface ActPrepareOptions {
   skillCatalog?: SkillCatalogService;
   tierPolicy?: TierPolicy;
   configuredMaxSteps?: number;
-  actDepth?: ActDepth;
+  actDepth?: ActDepth | string;
   actAutoContinue?: boolean;
   actMaxAutoContinues?: number;
   taskAnalysis?: TaskAnalysis;
@@ -37,6 +38,7 @@ export interface ActPrepareOptions {
 
 export class ActOrchestrator {
   static prepare(userMessage: string, options: ActPrepareOptions = {}): ActRunPlan {
+    const actDepth = normalizeAgentDepth(options.actDepth);
     const taskAnalysis = options.taskAnalysis ?? analyzeTask(userMessage, 'agent');
     const route = routeActIntent(userMessage, taskAnalysis, {
       mode: 'agent',
@@ -46,7 +48,7 @@ export class ActOrchestrator {
       logAuditMode: options.logAuditMode,
       mdxRepairMode: options.mdxRepairMode,
       githubIssueMode: options.githubIssueMode,
-      actDepth: options.actDepth,
+      actDepth,
       intent: options.intent,
     });
     const catalog = options.catalog ?? (options.workspaceRoot ? loadProjectCatalog(options.workspaceRoot) : undefined);
@@ -62,7 +64,7 @@ export class ActOrchestrator {
       route.executionPath,
       route.complexity,
       options.configuredMaxSteps,
-      options.actDepth,
+      actDepth,
       policy
     );
     const autoContinue = options.actAutoContinue ?? route.executionPath !== 'resume_saved_plan';
@@ -135,10 +137,7 @@ function pathDefaultSteps(executionPath: string, complexity: string): number {
 
 function depthDefaultSteps(actDepth: ActDepth): number | undefined {
   if (actDepth === 'quick') return 6;
-  if (actDepth === 'standard') return 10;
   if (actDepth === 'deep') return 16;
-  if (actDepth === 'pilot') return 24;
-  if (actDepth === 'enterprise') return 32;
   return undefined;
 }
 

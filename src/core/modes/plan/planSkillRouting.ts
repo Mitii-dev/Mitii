@@ -25,9 +25,14 @@ function appendGitSkills(names: string[], taskAnalysis?: TaskAnalysis): void {
 /** Skills to load for planning, ordered by priority. */
 export function resolvePlanningSkillNames(
   intent: PlanIntent,
-  taskAnalysis?: TaskAnalysis
+  taskAnalysis?: TaskAnalysis,
+  options: { sourceMode?: 'plan' | 'agent' } = {}
 ): string[] {
-  const names: string[] = ['using-agent-skills', 'planning-and-task-breakdown'];
+  const names: string[] = ['using-agent-skills'];
+  if (options.sourceMode === 'agent') {
+    names.push('agent-plan');
+  }
+  names.push('planning-and-task-breakdown');
   appendGitSkills(names, taskAnalysis);
 
   if (intent === 'audit' || taskAnalysis?.kind === 'audit') {
@@ -134,9 +139,10 @@ function extractQuickRef(content: string, description?: string): string {
 
 export const PLAN_SKILL_TOOL_GUIDANCE = `
 PLANNING SKILLS:
-- Call use_skill to load a workspace playbook when you need one not already injected below.
-- For task breakdown and phased plans, use_skill("planning-and-task-breakdown") if not pre-loaded.
-- For skill discovery/routing, use_skill("using-agent-skills") if not pre-loaded.
+- Follow injected planning playbooks first. Call use_skill only when you need a specific workspace playbook that is not already injected below.
+- For Agent-mode structured planning, use the injected agent-plan playbook when present; otherwise use_skill("agent-plan").
+- For task breakdown and phased plans, use the injected planning-and-task-breakdown playbook when present; otherwise use_skill("planning-and-task-breakdown").
+- For skill discovery/routing, use the injected using-agent-skills playbook when present; otherwise use_skill("using-agent-skills").
 - For Git/GitHub plans, follow the injected git-* / github-* skills; do not invent remote write steps without approval.
 - For tech-debt and env/secrets tasks, prefer the bundled script-backed skills before manual inspection.
-- Follow loaded skill workflows: dependency graph, vertical slices, acceptance criteria, and verification commands per step.`;
+- Follow loaded skill workflows for planning structure, acceptance criteria, and verification commands per step.`;

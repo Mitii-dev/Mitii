@@ -27,6 +27,12 @@ import {
   buildIsolatedPlanPrompt,
 } from '../plans/promptBuilder';
 import { PlanFileStore } from '../plans/PlanFileStore';
+import {
+  maxStepsForPlanningDepth,
+  minStepsForPlanningDepth,
+  resolvePlanningDepth,
+  type PlanningDepth,
+} from '../plans/planningDepth';
 import { applyDependencyLocks, getNextExecutableStep, PLANNING_DISCOVERY_TOOLS } from '../tools/planTools';
 import { needsPlanGrounding } from '../modes/plan/planMode';
 import { filterDirectAgentTools } from '../tools/toolAliases';
@@ -35,6 +41,8 @@ import { createLogger } from '../telemetry/Logger';
 const log = createLogger('PlanExecutor');
 
 export type PlanUpdateCallback = (plan: ThunderPlan) => void;
+export type { PlanningDepth };
+export { resolvePlanningDepth } from '../plans/planningDepth';
 
 export interface PlanExecutorOptions {
   stepMaxRetries?: number;
@@ -48,6 +56,10 @@ export interface PlanExecutorOptions {
   planAutoContinue?: boolean;
   planMaxAutoContinues?: number;
   skillPlaybookContext?: string;
+  taskAnalysis?: TaskAnalysis;
+  planningDepth?: PlanningDepth;
+  /** Auto-approve step file paths into the session file scope before the step runs. */
+  seedFileScope?: (paths: string[]) => void;
   onRequirementAnalysisDelta?: (text: string) => void;
   onPlanQualityIssues?: (issues: string[]) => void;
 }
@@ -133,6 +145,7 @@ export class PlanExecutor {
       hasDiscovery: Boolean(planningDiscovery),
       taskKind: taskAnalysis?.kind,
     });
+    const planningDepth = options?.planningDepth ?? resolvePlanningDepth(taskAnalysis);
 
     for (let attempt = 0; attempt < 2; attempt++) {
       log.debug('Plan generation attempt', { attempt: attempt + 1 });
@@ -147,7 +160,7 @@ export class PlanExecutor {
             userMessage,
             effectiveAnalysis,
             planningDiscovery,
-            taskAnalysis,
+            taskAnalysis ? { ...taskAnalysis, planningDepth } : undefined,
             options?.skillPlaybookContext
           )
         : buildPlanGenerationPrompt(
@@ -156,7 +169,7 @@ export class PlanExecutor {
             userMessage,
             effectiveAnalysis,
             planningDiscovery,
-            taskAnalysis,
+            taskAnalysis ? { ...taskAnalysis, planningDepth } : undefined,
             options?.skillPlaybookContext
           );
       let response = '';
@@ -173,7 +186,7 @@ export class PlanExecutor {
         continue;
       }
 
-      const issues = validatePlanQuality(plan, taskAnalysis);
+      const issues = validatePlanQuality(plan, taskAnalysis, planningDepth);
       if (issues.length === 0) {
         applyDependencyLocks(plan);
         if (sessionId && options?.workspace) {
@@ -228,9 +241,15 @@ export class PlanExecutor {
       pack,
       userMessage,
       analysis,
-      options?.skillPlaybookContext
+      {
+        skillPlaybookContext: options?.skillPlaybookContext,
+        docsMode: isDocumentationPlan(analysis),
+        subagentsEnabled: analysis.shouldUseSubagents,
+      }
     );
-    const readOnlyTools = tools.filter((tool) => PLANNING_DISCOVERY_TOOLS.has(tool.function.name));
+    const readOnlyTools = tools
+      .filter((tool) => PLANNING_DISCOVERY_TOOLS.has(tool.function.name))
+      .filter((tool) => analysis.shouldUseSubagents || !['spawn_research_agent', 'spawn_subagent'].includes(tool.function.name));
     let output = '';
 
     log.debug('Running planning discovery', {
@@ -285,13 +304,16 @@ export class PlanExecutor {
 
     log.debug('Starting plan execution', { goal: plan.goal, steps: plan.steps.length, maxRetries });
 
-    this.planPersistence.save(session.id, plan, 'running');
-    onPlanUpdate?.(plan);
-
-    if (options?.workspace) {
-      const fileStore = new PlanFileStore(options.workspace, session.id);
-      fileStore.save(plan, 'running');
+    // Re-open steps left blocked by an approval pause so execution can continue.
+    for (let si = 0; si < plan.steps.length; si++) {
+      if (plan.steps[si].status === 'blocked') {
+        plan.steps[si] = { ...plan.steps[si], status: 'pending' };
+      }
     }
+
+    this.planPersistence.save(session.id, plan, 'running');
+    this.syncPlanFile(options?.workspace, session.id, plan, 'running');
+    onPlanUpdate?.(plan);
 
     applyDependencyLocks(plan);
 
@@ -320,6 +342,7 @@ export class PlanExecutor {
 
         plan.steps[i] = { ...step, status: 'running' };
         this.planPersistence.updatePlan(session.id, plan, 'running');
+        this.syncPlanFile(options?.workspace, session.id, plan, 'running');
         onPlanUpdate?.(plan);
 
         const stepStartedAt = Date.now();
@@ -336,7 +359,11 @@ export class PlanExecutor {
             : undefined;
         const messages =
           attempt === 0
-            ? buildStepPrompt(session.mode, pack, plan, step, this.stepSummaries, verifyContextBlock)
+            ? buildStepPrompt(session.mode, pack, plan, step, this.stepSummaries, verifyContextBlock, {
+                skillPlaybookContext: options?.skillPlaybookContext,
+                auditMode: options?.restrictRunCommandToReadOnly,
+                docsMode: isDocumentationPlan(options?.taskAnalysis, plan.goal),
+              })
             : buildStepRetryPrompt(
                 session.mode,
                 pack,
@@ -344,8 +371,17 @@ export class PlanExecutor {
                 step,
                 this.stepSummaries,
                 lastValidationErrors,
-                verifyContextBlock
+                verifyContextBlock,
+                {
+                  skillPlaybookContext: options?.skillPlaybookContext,
+                  auditMode: options?.restrictRunCommandToReadOnly,
+                  docsMode: isDocumentationPlan(options?.taskAnalysis, plan.goal),
+                }
               );
+
+        if (attempt === 0 && step.files?.length && options?.seedFileScope) {
+          options.seedFileScope(step.files);
+        }
 
         let stepOutput = '';
         let successfulWrites = 0;
@@ -370,6 +406,7 @@ export class PlanExecutor {
             log.debug('Step blocked pending approval', { stepId: step.id, tool: explicitToolCall.name });
             plan.steps[i] = { ...plan.steps[i], status: 'blocked' };
             this.planPersistence.updatePlan(session.id, plan, 'blocked');
+            this.syncPlanFile(options?.workspace, session.id, plan, 'blocked');
             onPlanUpdate?.(plan);
             yield '\n\n⏸ Waiting for approval before continuing…\n';
             return;
@@ -402,7 +439,7 @@ export class PlanExecutor {
           for await (const chunk of this.agentLoop.run(
             provider,
             messages,
-            filterDirectAgentTools(tools),
+            filterToolsForPlanPhase(filterDirectAgentTools(tools), phaseLock),
             signal,
             {
               ...loopCallbacks,
@@ -441,6 +478,7 @@ export class PlanExecutor {
           log.debug('Step blocked pending approval', { stepId: step.id });
           plan.steps[i] = { ...plan.steps[i], status: 'blocked' };
           this.planPersistence.updatePlan(session.id, plan, 'blocked');
+          this.syncPlanFile(options?.workspace, session.id, plan, 'blocked');
           onPlanUpdate?.(plan);
           yield '\n\n⏸ Waiting for approval before continuing…\n';
           return;
@@ -561,6 +599,20 @@ export class PlanExecutor {
     });
   }
 
+  private syncPlanFile(
+    workspace: string | undefined,
+    sessionId: string,
+    plan: ThunderPlan,
+    status: 'planning' | 'running' | 'blocked' | 'completed' | 'failed'
+  ): void {
+    if (!workspace) return;
+    try {
+      new PlanFileStore(workspace, sessionId).save(plan, status);
+    } catch (error) {
+      log.warn('Failed to sync plan file', { error: String(error) });
+    }
+  }
+
   private async validateStepFiles(files: string[]): Promise<string[]> {
     if (!this.postEditValidator || files.length === 0) return [];
 
@@ -601,13 +653,18 @@ export class PlanExecutor {
       this.stepSummaries,
       touchedFiles,
       workspaceErrors,
-      verifyContextBlock
+      verifyContextBlock,
+      {
+        skillPlaybookContext: options?.skillPlaybookContext,
+        auditMode: options?.restrictRunCommandToReadOnly,
+        docsMode: isDocumentationPlan(undefined, plan.goal),
+      }
     );
 
     for await (const chunk of this.agentLoop.run(
       provider,
       messages,
-      tools,
+      filterToolsForPlanPhase(tools, 'verify'),
       signal,
       loopCallbacks,
       {
@@ -723,22 +780,34 @@ function parseGeneratedPlan(response: string, mode: ThunderSession['mode'] = 'pl
   return null;
 }
 
-function validatePlanQuality(plan: ThunderPlan, taskAnalysis?: TaskAnalysis): string[] {
+function validatePlanQuality(
+  plan: ThunderPlan,
+  taskAnalysis?: TaskAnalysis,
+  planningDepth: PlanningDepth = resolvePlanningDepth(taskAnalysis)
+): string[] {
   const issues: string[] = [];
   const stepCount = plan.steps.length;
   const phases = new Set(plan.steps.map((step) => step.phase).filter(Boolean));
 
   if (stepCount < 1) issues.push('Plan must contain at least one step.');
+  const maxSteps = maxStepsForPlanningDepth(planningDepth, taskAnalysis);
+  if (maxSteps && stepCount > maxSteps) {
+    issues.push(`Plan has ${stepCount} steps, but ${planningDepth} planning allows at most ${maxSteps} steps. Merge duplicate discovery/verification work.`);
+  }
+
+  const minSteps = minStepsForPlanningDepth(planningDepth, taskAnalysis);
+  if (stepCount < minSteps) {
+    issues.push(
+      taskAnalysis?.kind === 'audit'
+        ? 'Audit/cleanup plans must contain at least 8 granular steps.'
+        : `Plans at ${planningDepth} depth must contain at least ${minSteps} step${minSteps === 1 ? '' : 's'}.`
+    );
+  }
 
   if (taskAnalysis?.kind === 'audit') {
-    if (stepCount < 8) issues.push('Audit/cleanup plans must contain at least 8 granular steps.');
     for (const phase of ['diagnostics', 'review', 'execute', 'verify'] as const) {
       if (!phases.has(phase)) issues.push(`Audit/cleanup plans must include a ${phase} phase.`);
     }
-  } else if (taskAnalysis?.complexity === 'high' && stepCount < 4) {
-    issues.push('High-complexity plans must contain at least 4 steps.');
-  } else if (taskAnalysis?.shouldPlan && stepCount < 2) {
-    issues.push('Planned tasks must contain at least 2 steps.');
   }
 
   if (isDocumentationPlan(taskAnalysis)) {
@@ -787,11 +856,36 @@ function validatePlanQuality(plan: ThunderPlan, taskAnalysis?: TaskAnalysis): st
   return issues;
 }
 
-function isDocumentationPlan(taskAnalysis?: TaskAnalysis): boolean {
+function isDocumentationPlan(taskAnalysis?: TaskAnalysis, fallbackText = ''): boolean {
+  const text = `${taskAnalysis?.summary ?? ''} ${fallbackText}`;
   return Boolean(
-    taskAnalysis?.kind === 'implementation' &&
-    /\b(documentation|docs?|docusaurus)\b/i.test(taskAnalysis.summary)
+    (taskAnalysis?.kind === 'implementation' || taskAnalysis?.planIntent === 'docs' || taskAnalysis?.actIntent === 'docs') &&
+    /\b(documentation|docs?|docusaurus|mdx)\b/i.test(text)
   );
+}
+
+function filterToolsForPlanPhase<T extends { function: { name: string } }>(
+  tools: T[],
+  phase: PlanPhase | undefined
+): T[] {
+  if (!phase) return tools;
+  const hiddenInReadOnly = new Set([
+    'write_file',
+    'apply_patch',
+    'memory_write',
+    'save_task_state',
+  ]);
+  const hiddenMcpWrite = /^mcp__filesystem__(create_directory|move_file|write_file|edit_file)$/i;
+
+  return tools.filter((tool) => {
+    const name = tool.function.name;
+    if (phase === 'diagnostics' || phase === 'review') {
+      if (hiddenInReadOnly.has(name)) return false;
+      if (hiddenMcpWrite.test(name)) return false;
+    }
+    if (phase === 'verify' && hiddenMcpWrite.test(name)) return false;
+    return true;
+  });
 }
 
 function normalizeRisk(risk: unknown): 'low' | 'medium' | 'high' {

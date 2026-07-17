@@ -25,6 +25,7 @@ import {
 } from './Icons';
 import { TokenMeter } from './TokenMeter';
 import { APPROVAL_MODE_OPTIONS } from '../utils/approvalMode';
+import { AGENT_DEPTH_OPTIONS, normalizeAgentDepth } from '../../../core/config/agentDepth';
 
 interface ChatInputProps {
   loading: boolean;
@@ -103,14 +104,12 @@ const APPROVAL_OPTIONS: Array<ComposerOption<ApprovalMode>> = APPROVAL_MODE_OPTI
   };
 });
 
-const DEPTH_OPTIONS: Array<ComposerOption<AgentDepthView>> = [
-  { id: 'auto', label: 'Auto', description: 'Choose depth from the request', color: '#38bdf8' },
-  { id: 'quick', label: 'Quick', description: 'Use a smaller exploration or execution budget', color: '#22c55e' },
-  { id: 'standard', label: 'Standard', description: 'Use the normal exploration or execution budget', color: '#60a5fa' },
-  { id: 'deep', label: 'Deep', description: 'Use a larger budget for complex work', color: '#f59e0b' },
-  { id: 'pilot', label: 'Pilot', description: 'Use an expanded budget for broad implementation or investigation', color: '#a78bfa' },
-  { id: 'enterprise', label: 'Enterprise', description: 'Use the largest built-in budget for exhaustive work', color: '#ef4444' },
-];
+const DEPTH_OPTIONS: Array<ComposerOption<AgentDepthView>> = AGENT_DEPTH_OPTIONS.map((option) => ({
+  id: option.id,
+  label: option.label,
+  description: option.description,
+  color: option.color,
+}));
 
 const MODEL_CATEGORY_LABELS: Record<ModelOptionView['category'], string> = {
   recent: 'Recent',
@@ -172,7 +171,7 @@ export function ChatInput({
   const visibleMode = mode === 'review' ? 'plan' : mode;
   const activeMode = MODES.find((m) => m.id === visibleMode) ?? MODES[1];
   const activeApproval = APPROVAL_OPTIONS.find((option) => option.id === approvalMode) ?? APPROVAL_OPTIONS[0];
-  const selectedDepth = DEPTH_OPTIONS.find((option) => option.id === activeDepth) ?? DEPTH_OPTIONS[0];
+  const selectedDepth = DEPTH_OPTIONS.find((option) => option.id === normalizeAgentDepth(activeDepth)) ?? DEPTH_OPTIONS[0];
   const selectedModel = modelOptions.find((option) => sameModelSelection(option, sessionProviderOverride))
     ?? modelOptions[0]
     ?? {
@@ -583,10 +582,10 @@ export function ChatInput({
             {renderDropdown({
               id: 'depth',
               label: 'Depth',
-              value: activeDepth,
+              value: normalizeAgentDepth(activeDepth),
               selected: selectedDepth,
               options: DEPTH_OPTIONS,
-              onChange: (nextDepth) => onDepthChange(nextDepth),
+              onChange: (nextDepth) => onDepthChange(normalizeAgentDepth(nextDepth)),
             })}
             {renderModelDropdown()}
           </div>

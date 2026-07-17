@@ -207,7 +207,7 @@ describe('Ask and Plan mode reliability', () => {
     });
 
     expect(quick.discoveryMaxSteps).toBeLessThan(deep.discoveryMaxSteps);
-    expect(enterprise.discoveryMaxSteps).toBeGreaterThan(deep.discoveryMaxSteps);
+    expect(enterprise.discoveryMaxSteps).toBe(deep.discoveryMaxSteps);
     expect(quick.promptContext).toContain('Plan routing');
   });
 

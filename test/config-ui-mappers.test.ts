@@ -73,9 +73,9 @@ describe('config UI mappers', () => {
           askMaxAutoContinues: 99,
           maxAutoContinues: Number.NaN,
           researchAgentMaxSteps: 50.9,
-          askDepth: 'pilot',
-          planDepth: 'enterprise',
-          actDepth: 'pilot',
+          askDepth: 'deep',
+          planDepth: 'quick',
+          actDepth: 'auto',
           planModel: '  planner  ',
           planBaseUrl: '  http://planner.local/v1  ',
           actModel: '  builder  ',
@@ -88,13 +88,29 @@ describe('config UI mappers', () => {
       askMaxAutoContinues: 10,
       maxAutoContinues: 0,
       researchAgentMaxSteps: 50,
-      askDepth: 'pilot',
-      planDepth: 'enterprise',
-      actDepth: 'pilot',
+      askDepth: 'deep',
+      planDepth: 'quick',
+      actDepth: 'auto',
       planModel: 'planner',
       planBaseUrl: 'http://planner.local/v1',
       actModel: 'builder',
       actBaseUrl: 'http://builder.local/v1',
+    });
+  });
+
+  it('coerces legacy agent depths onto the canonical UI set', () => {
+    expect(
+      normalizeAgentSettings(
+        agentSettings({
+          askDepth: 'pilot' as AgentSettingsPayload['askDepth'],
+          planDepth: 'enterprise' as AgentSettingsPayload['askDepth'],
+          actDepth: 'standard' as AgentSettingsPayload['askDepth'],
+        })
+      )
+    ).toMatchObject({
+      askDepth: 'deep',
+      planDepth: 'deep',
+      actDepth: 'deep',
     });
   });
 

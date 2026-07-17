@@ -45,14 +45,17 @@ describe('logAudit routing', () => {
     });
   });
 
-  it('routes directory analysis to analyze_log_directory without list_logs', () => {
-    expect([...LOG_AUDIT_ALLOWED_TOOLS].sort()).toEqual([
-      'analyze_jsonl',
-      'analyze_log_directory',
-      'query_log_events',
-    ]);
+  it('routes directory analysis to analyze_log_directory while keeping read-only recovery tools available', () => {
+    expect(LOG_AUDIT_ALLOWED_TOOLS.has('analyze_jsonl')).toBe(true);
+    expect(LOG_AUDIT_ALLOWED_TOOLS.has('analyze_log_directory')).toBe(true);
+    expect(LOG_AUDIT_ALLOWED_TOOLS.has('query_log_events')).toBe(true);
+    expect(LOG_AUDIT_ALLOWED_TOOLS.has('list_files')).toBe(true);
+    expect(LOG_AUDIT_ALLOWED_TOOLS.has('run_command')).toBe(true);
+    expect(LOG_AUDIT_ALLOWED_TOOLS.has('use_skill')).toBe(true);
+    expect(LOG_AUDIT_ALLOWED_TOOLS.has('write_file')).toBe(false);
+    expect(LOG_AUDIT_ALLOWED_TOOLS.has('apply_patch')).toBe(false);
     expect(buildLogAuditBootstrapBlock('.mitii/logs/')).toContain('analyze_log_directory({ path })');
-    expect(buildLogAuditBootstrapBlock('.mitii/logs/')).toContain('list_logs are DISABLED');
+    expect(buildLogAuditBootstrapBlock('.mitii/logs/')).toContain('Read-only inspection tools');
   });
 
   it('skips every registered repo/context source for log audits', () => {

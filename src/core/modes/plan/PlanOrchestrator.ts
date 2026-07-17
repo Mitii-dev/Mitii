@@ -4,6 +4,7 @@ import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import type { SkillCatalogService } from '../../skills/SkillCatalogService';
 import type { TierPolicy } from '../../agentic/tierPolicy';
 import { scaleTierSteps } from '../../agentic/tierPolicy';
+import { normalizeAgentDepth } from '../../config/agentDepth';
 import { routePlanIntent } from './PlanIntentRouter';
 import { resolvePlanScope } from './PlanScopeResolver';
 import { buildPlanPromptContext } from './planPrompts';
@@ -19,7 +20,7 @@ export interface PlanPrepareOptions {
   skillCatalog?: SkillCatalogService;
   tierPolicy?: TierPolicy;
   configuredMaxSteps?: number;
-  planDepth?: PlanDepth;
+  planDepth?: PlanDepth | string;
   planAutoContinue?: boolean;
   planMaxAutoContinues?: number;
   taskAnalysis?: TaskAnalysis;
@@ -28,10 +29,11 @@ export interface PlanPrepareOptions {
 
 export class PlanOrchestrator {
   static prepare(userMessage: string, options: PlanPrepareOptions = {}): PlanRunPlan {
+    const planDepth = normalizeAgentDepth(options.planDepth);
     log.debug('Preparing plan', {
       messageLength: userMessage.length,
       workspaceRoot: options.workspaceRoot,
-      planDepth: options.planDepth,
+      planDepth,
     });
 
     const route = routePlanIntent(userMessage, options.taskAnalysis, options.intent ? { intent: options.intent } : undefined);
@@ -45,7 +47,7 @@ export class PlanOrchestrator {
       route.complexity,
       route.intent,
       options.configuredMaxSteps,
-      options.planDepth,
+      planDepth,
       options.tierPolicy
     );
     const suggestedSkills = resolvePlanningSkillNames(route.intent, options.taskAnalysis);
@@ -118,10 +120,7 @@ function intentDefaultSteps(complexity: string, intent: string): number {
 
 function depthDefaultSteps(planDepth: PlanDepth): number | undefined {
   if (planDepth === 'quick') return 5;
-  if (planDepth === 'standard') return 8;
   if (planDepth === 'deep') return 12;
-  if (planDepth === 'pilot') return 16;
-  if (planDepth === 'enterprise') return 20;
   return undefined;
 }
 

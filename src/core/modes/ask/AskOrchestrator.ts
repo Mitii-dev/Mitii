@@ -1,5 +1,6 @@
 import type { AskIntent, AskRunPlan, ProjectCatalog } from './askTypes';
 import type { AgentDepth } from '../../config/schema';
+import { normalizeAgentDepth } from '../../config/agentDepth';
 import { routeAskIntent } from './AskIntentRouter';
 import { buildAskPromptContext } from './askPrompts';
 import { loadProjectCatalog } from './ProjectCatalog';
@@ -9,7 +10,7 @@ export interface AskPrepareOptions {
   workspaceRoot?: string;
   catalog?: ProjectCatalog;
   configuredMaxSteps?: number;
-  askDepth?: AgentDepth;
+  askDepth?: AgentDepth | string;
   askAutoContinue?: boolean;
   askMaxAutoContinues?: number;
   intent?: AskIntent;
@@ -20,8 +21,9 @@ export class AskOrchestrator {
     const route = routeAskIntent(userMessage, options.intent ? { intent: options.intent } : undefined);
     const catalog = options.catalog ?? (options.workspaceRoot ? loadProjectCatalog(options.workspaceRoot) : undefined);
     const scope = resolveAskScope(userMessage, catalog);
-    const maxSteps = resolveAskMaxSteps(route.profile, route.intent, options.configuredMaxSteps, options.askDepth);
-    const maxAutoContinues = resolveAskMaxAutoContinues(route.profile, route.intent, options.askMaxAutoContinues, options.askDepth);
+    const askDepth = normalizeAgentDepth(options.askDepth);
+    const maxSteps = resolveAskMaxSteps(route.profile, route.intent, options.configuredMaxSteps, askDepth);
+    const maxAutoContinues = resolveAskMaxAutoContinues(route.profile, route.intent, options.askMaxAutoContinues, askDepth);
 
     return {
       route,
@@ -39,7 +41,7 @@ function resolveAskMaxSteps(
   profile: string,
   intent: string,
   configuredMaxSteps: number | undefined,
-  askDepth: AskPrepareOptions['askDepth'] = 'auto'
+  askDepth: AgentDepth = 'auto'
 ): number {
   const intentBudget = intentDefaultSteps(profile, intent);
   const depthBudget = depthDefaultSteps(askDepth);
@@ -52,19 +54,17 @@ function resolveAskMaxAutoContinues(
   profile: string,
   intent: string,
   configured: number | undefined,
-  askDepth: AskPrepareOptions['askDepth'] = 'auto'
+  askDepth: AgentDepth = 'auto'
 ): number {
   const automatic = askDepth === 'quick'
     ? 0
-    : askDepth === 'pilot'
-      ? 2
-      : askDepth === 'enterprise'
-        ? 3
-    : intent === 'implement_here' || intent === 'architecture' || intent === 'cross_project'
+    : askDepth === 'deep' ||
+        intent === 'implement_here' ||
+        intent === 'architecture' ||
+        intent === 'cross_project' ||
+        profile === 'deep'
       ? 1
-      : profile === 'deep'
-        ? 1
-        : 0;
+      : 0;
   if (configured === undefined) return automatic;
   return Math.max(0, Math.min(automatic, configured, 10));
 }
@@ -75,12 +75,9 @@ function intentDefaultSteps(profile: string, intent: string): number {
   return 16;
 }
 
-function depthDefaultSteps(askDepth: AskPrepareOptions['askDepth']): number | undefined {
+function depthDefaultSteps(askDepth: AgentDepth): number | undefined {
   if (askDepth === 'quick') return 8;
-  if (askDepth === 'standard') return 16;
   if (askDepth === 'deep') return 22;
-  if (askDepth === 'pilot') return 28;
-  if (askDepth === 'enterprise') return 34;
   return undefined;
 }
 

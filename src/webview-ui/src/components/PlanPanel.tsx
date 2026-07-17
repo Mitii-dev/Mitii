@@ -18,7 +18,7 @@ const STATUS_LABEL: Record<PlanStepView['status'], string> = {
   pending: 'Pending',
   running: 'Running',
   done: 'Done',
-  blocked: 'Blocked',
+  blocked: 'Awaiting approval',
   failed: 'Failed',
   blocked_by_dependency: 'Waiting',
 };

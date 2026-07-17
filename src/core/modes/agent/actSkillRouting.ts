@@ -148,7 +148,7 @@ function extractQuickRef(content: string, description?: string): string {
 
 export const ACT_SKILL_TOOL_GUIDANCE = `
 ACT SKILLS:
-- Call use_skill to load a workspace playbook when the task needs a workflow that is not already injected.
+- Follow injected act playbooks first. Call use_skill only when the task needs a specific workspace playbook that is not already injected.
 - For Git/GitHub tasks, prefer the injected git-* / github-* / release-management / changelog-maintenance skills.
 - For bug fixes and failed verification, use debugging-and-error-recovery.
 - For implementation and refactors, use test-driven-development when tests or verification strategy are unclear.

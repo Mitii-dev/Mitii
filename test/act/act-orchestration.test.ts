@@ -201,7 +201,7 @@ describe('Act orchestration boundary', () => {
     expect(plan.maxSteps).toBe(16);
   });
 
-  it('honors pilot and enterprise Act depths as larger execution budgets', () => {
+  it('maps legacy pilot/enterprise Act depths onto deep budgets', () => {
     const pilot = ActOrchestrator.prepare('Implement the new settings flow', {
       actDepth: 'pilot',
       configuredMaxSteps: 100,
@@ -213,8 +213,8 @@ describe('Act orchestration boundary', () => {
       taskAnalysis: analyzeTask('Implement the new settings flow', 'agent'),
     });
 
-    expect(pilot.maxSteps).toBe(24);
-    expect(enterprise.maxSteps).toBe(32);
+    expect(pilot.maxSteps).toBe(16);
+    expect(enterprise.maxSteps).toBe(16);
   });
 
   it('includes configured verification commands in the Act prompt contract', () => {
@@ -258,7 +258,7 @@ describe('Act orchestration boundary', () => {
     const prompt = buildSystemPrompt('agent', true);
     expect(prompt).toContain('ACT SKILLS:');
     expect(prompt).toContain('Call use_skill');
-    expect(prompt).toContain('File scope contract: call propose_file_scope');
+    expect(prompt).toContain('File scope contract: call propose_file_scope when no scope is approved yet');
   });
 
   it('scales retrieved context item count with context window and Act depth', () => {

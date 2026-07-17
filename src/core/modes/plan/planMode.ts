@@ -42,7 +42,7 @@ export const PLAN_SYNTHESIS_NUDGE = `Read-only discovery for this Plan-mode turn
 
 Output a concise DISCOVERY_SUMMARY NOW in plain text:
 - Key facts, relevant file paths, risks, and verification commands.
-- Note which planning skill workflows apply (dependency graph, vertical slices, acceptance criteria).
+- Note which planning skill workflows apply.
 - Do NOT call any more tools in this turn.
 - The orchestrator will compile the structured plan from your summary.`;
 

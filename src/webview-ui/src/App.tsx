@@ -17,22 +17,23 @@ import { PlanPanel } from './components/PlanPanel';
 import { IconButton } from './components/IconButton';
 import { IconChat, IconHistory, IconPlus, IconSettings } from './components/Icons';
 import { deriveSafetySettings } from './utils/approvalMode';
+import { normalizeAgentDepth } from '../../core/config/agentDepth';
 import type { AgentDepthView, AgentSettingsPayload, ApprovalMode, SettingsView } from '../../vscode/webview/messages';
 import type { ThunderMode } from '../../core/session/ThunderSession';
 
 function activeDepthForMode(settings: SettingsView, mode: ThunderMode): AgentDepthView {
-  if (mode === 'ask') return settings.askDepth;
-  if (mode === 'agent') return settings.actDepth;
-  return settings.planDepth;
+  if (mode === 'ask') return normalizeAgentDepth(settings.askDepth);
+  if (mode === 'agent') return normalizeAgentDepth(settings.actDepth);
+  return normalizeAgentDepth(settings.planDepth);
 }
 
 function buildAgentSettingsPayload(settings: SettingsView, depthPatch: Partial<Pick<AgentSettingsPayload, 'askDepth' | 'planDepth' | 'actDepth'>> = {}): AgentSettingsPayload {
   return {
     subagentsEnabled: settings.subagentsEnabled,
     maxSteps: settings.agentMaxSteps,
-    askDepth: settings.askDepth,
-    planDepth: settings.planDepth,
-    actDepth: settings.actDepth,
+    askDepth: normalizeAgentDepth(depthPatch.askDepth ?? settings.askDepth),
+    planDepth: normalizeAgentDepth(depthPatch.planDepth ?? settings.planDepth),
+    actDepth: normalizeAgentDepth(depthPatch.actDepth ?? settings.actDepth),
     askMaxSteps: settings.askMaxSteps,
     askAutoContinue: settings.askAutoContinue,
     askMaxAutoContinues: settings.askMaxAutoContinues,

@@ -23,6 +23,7 @@ import { MemoryPanel } from './MemoryPanel';
 import { CheckpointPanel } from './CheckpointPanel';
 import { getProviderPreset } from '../../../core/llm/providerPresets';
 import { validateProviderSettings } from '../../../core/config/ui/mappers';
+import { AGENT_DEPTH_OPTIONS, normalizeAgentDepth } from '../../../core/config/agentDepth';
 import {
   deriveSafetyFromAutonomyPreset,
 } from '../utils/autonomyPreset';
@@ -52,32 +53,20 @@ const PROVIDER_OPTIONS: Array<{ id: ProviderSettingsPayload['providerType']; lab
   { id: 'codex', label: 'OpenAI Codex' },
 ];
 
-const ASK_DEPTH_OPTIONS: Array<{ id: SettingsView['askDepth']; label: string }> = [
-  { id: 'auto', label: 'Auto' },
-  { id: 'quick', label: 'Quick' },
-  { id: 'standard', label: 'Standard' },
-  { id: 'deep', label: 'Deep' },
-  { id: 'pilot', label: 'Pilot' },
-  { id: 'enterprise', label: 'Enterprise' },
-];
+const ASK_DEPTH_OPTIONS = AGENT_DEPTH_OPTIONS.map((option) => ({
+  id: option.id,
+  label: option.askLabel,
+}));
 
-const PLAN_DEPTH_OPTIONS: Array<{ id: SettingsView['planDepth']; label: string }> = [
-  { id: 'auto', label: 'Auto' },
-  { id: 'quick', label: 'Quick discovery' },
-  { id: 'standard', label: 'Standard discovery' },
-  { id: 'deep', label: 'Deep discovery' },
-  { id: 'pilot', label: 'Pilot discovery' },
-  { id: 'enterprise', label: 'Enterprise discovery' },
-];
+const PLAN_DEPTH_OPTIONS = AGENT_DEPTH_OPTIONS.map((option) => ({
+  id: option.id,
+  label: option.planLabel,
+}));
 
-const ACT_DEPTH_OPTIONS: Array<{ id: SettingsView['actDepth']; label: string }> = [
-  { id: 'auto', label: 'Auto' },
-  { id: 'quick', label: 'Quick execution' },
-  { id: 'standard', label: 'Standard execution' },
-  { id: 'deep', label: 'Deep execution' },
-  { id: 'pilot', label: 'Pilot execution' },
-  { id: 'enterprise', label: 'Enterprise execution' },
-];
+const ACT_DEPTH_OPTIONS = AGENT_DEPTH_OPTIONS.map((option) => ({
+  id: option.id,
+  label: option.actLabel,
+}));
 
 const CONTEXT_TOGGLES: Array<{
   key: keyof ContextToggles;
@@ -249,9 +238,9 @@ export function SettingsPanel({
 
   const [subagentsEnabled, setSubagentsEnabled] = useState(settings.subagentsEnabled);
   const [agentMaxSteps, setAgentMaxSteps] = useState(settings.agentMaxSteps);
-  const [askDepth, setAskDepth] = useState<SettingsView['askDepth']>(settings.askDepth);
-  const [planDepth, setPlanDepth] = useState<SettingsView['planDepth']>(settings.planDepth);
-  const [actDepth, setActDepth] = useState<SettingsView['actDepth']>(settings.actDepth);
+  const [askDepth, setAskDepth] = useState<SettingsView['askDepth']>(normalizeAgentDepth(settings.askDepth));
+  const [planDepth, setPlanDepth] = useState<SettingsView['planDepth']>(normalizeAgentDepth(settings.planDepth));
+  const [actDepth, setActDepth] = useState<SettingsView['actDepth']>(normalizeAgentDepth(settings.actDepth));
   const [askMaxSteps, setAskMaxSteps] = useState(settings.askMaxSteps);
   const [askAutoContinue, setAskAutoContinue] = useState(settings.askAutoContinue);
   const [askMaxAutoContinues, setAskMaxAutoContinues] = useState(settings.askMaxAutoContinues);
@@ -286,9 +275,9 @@ export function SettingsPanel({
     setContextWindow(settings.contextWindow);
     setSubagentsEnabled(settings.subagentsEnabled);
     setAgentMaxSteps(settings.agentMaxSteps);
-    setAskDepth(settings.askDepth);
-    setPlanDepth(settings.planDepth);
-    setActDepth(settings.actDepth);
+    setAskDepth(normalizeAgentDepth(settings.askDepth));
+    setPlanDepth(normalizeAgentDepth(settings.planDepth));
+    setActDepth(normalizeAgentDepth(settings.actDepth));
     setAskMaxSteps(settings.askMaxSteps);
     setAskAutoContinue(settings.askAutoContinue);
     setAskMaxAutoContinues(settings.askMaxAutoContinues);
@@ -794,7 +783,7 @@ export function SettingsPanel({
                   ))}
                 </select>
                 <span className="settings-hint">
-                  Auto chooses by question type; quick favors locate answers, deep allows broader read-only exploration.
+                  Auto chooses by question type; quick favors locate answers; deep allows broader read-only exploration.
                 </span>
               </label>
               <label className="settings-field">
@@ -812,7 +801,7 @@ export function SettingsPanel({
                   ))}
                 </select>
                 <span className="settings-hint">
-                  Controls read-only discovery before plan compilation. Deep allows more codebase exploration in Plan mode.
+                  Controls read-only discovery before plan compilation. Deep explores more of the codebase in Plan mode.
                 </span>
               </label>
               <label className="settings-field">

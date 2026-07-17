@@ -167,7 +167,7 @@ export function formatVerifyPlanForAgent(plan: VerifyCommandPlan): string {
   lines.push(
     '',
     '### Verify policy',
-    '- If a command fails with "Cannot find module" or "Can\'t resolve", run install from the monorepo root, then retry.',
+    '- If a command fails with "Cannot find module" or "Can\'t resolve", propose the install command unless current policy already allows running it.',
     '- If a script does not exist, do not invent it — pick another available script or report the gap.',
     '- Prefer package-scoped commands (cd packages/foo && npm run build:types) over root guesses.',
   );

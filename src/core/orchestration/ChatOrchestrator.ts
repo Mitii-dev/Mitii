@@ -16,7 +16,11 @@ import type {
 import { HybridRetriever } from '../context/HybridRetriever';
 import { ContextBudgeter } from '../context/ContextBudgeter';
 import { UserExplicitContextBuilder, type PinnedContextEntry } from '../context/UserExplicitContextBuilder';
-import { buildPrompt } from '../plans/promptBuilder';
+import {
+  buildPrompt,
+  collectSystemPromptSections,
+  describePromptSections,
+} from '../plans/promptBuilder';
 import { parsePlanFromText, isWriteAllowed } from '../plans/PlanActEngine';
 import { createLogger } from '../telemetry/Logger';
 import type { SessionLogService } from '../telemetry/SessionLogService';
@@ -27,10 +31,12 @@ import { isInternalAgentPath } from '../context/contextRelevance';
 import { AutoApplyService } from '../apply/AutoApplyService';
 import type { ToolExecutor } from '../safety/ToolExecutor';
 import type { ToolRuntime } from '../tools/ToolRuntime';
+import type { ToolDefinition } from '../llm/toolTypes';
 import { toolsToDefinitions } from '../tools/toolSchema';
 import { AgentLoop, type ApprovedToolResult, type AgentLoopSuspendState } from '../runtime/AgentLoop';
 import { isSkippedToolOutput } from '../runtime/toolSkip';
 import { PlanExecutor } from '../runtime/PlanExecutor';
+import { resolvePlanningDepth, shouldSkipStructuredPlanner } from '../plans/planningDepth';
 import { analyzeTask, type TaskAnalysis } from '../runtime/TaskAnalyzer';
 import {
   ACT_INTENT_DESCRIPTIONS,
@@ -68,6 +74,7 @@ import {
   filterActModeTools,
   filterLogAuditModeTools,
   hasDirectRouteOverride,
+  loadActSkillPlaybooks,
   shouldResumeSavedPlan,
   shouldUsePlannerForAct,
 } from '../modes/agent';
@@ -192,6 +199,14 @@ export class ChatOrchestrator {
       initialPlanningDiscovery: string;
       skillPlaybookContext: string;
       appliedSkills: string[];
+    };
+    planResume?: {
+      plan: import('../plans/PlanActEngine').ThunderPlan;
+      displayPack: ContextPack;
+      tools: ToolDefinition[];
+      requirementAnalysis?: string;
+      appliedSkills?: string[];
+      skillPlaybookContext?: string;
     };
   } | undefined;
   private retrievalCache: { key: string; items: ContextItem[]; at: number } | null = null;
@@ -537,6 +552,20 @@ export class ChatOrchestrator {
           intent: intentRouting.mode === 'agent' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
         })
       : undefined;
+    const logAuditSkillContext =
+      logAuditMode && !actPlan?.appliedSkills.includes('log-audit')
+        ? (() => {
+            const loaded = loadActSkillPlaybooks(this.deps.skillCatalog, ['log-audit'], {
+              style: tierPolicy.skillInjection,
+              maxChars: tierPolicy.maxSkillChars,
+            });
+            return {
+              skillPlaybookContext: loaded.context,
+              appliedSkills: loaded.loaded,
+              suggestedSkills: ['log-audit'],
+            };
+          })()
+        : undefined;
     const scopedRoot =
       askPlan?.scope.status === 'matched'
         ? askPlan.scope.scopeRoot
@@ -838,6 +867,7 @@ export class ChatOrchestrator {
       );
     };
     const sharedLoopCallbacks = this.buildLoopCallbacks(emitLiveTokenUsage);
+    const planningDepth = resolvePlanningDepth(taskAnalysis);
     const sharedPlanOptions = {
       stepMaxRetries: agentConfig?.stepMaxRetries,
       finalValidationEnabled: agentConfig?.finalValidationEnabled,
@@ -845,6 +875,11 @@ export class ChatOrchestrator {
       restrictRunCommandToReadOnly: auditMode,
       workspace: this.deps.workspace,
       sessionLog,
+      taskAnalysis,
+      planningDepth,
+      seedFileScope: (paths: string[]) => {
+        this.deps.taskState?.mergeFileScope(paths);
+      },
     };
     const planningContextBlock = mergePromptContexts(
       isAgentMode && actPlan ? actPlan.promptContext : undefined,
@@ -878,7 +913,10 @@ export class ChatOrchestrator {
           (updated) => this.onPlan?.(thunderPlanToView(updated, { status: 'running' })),
           signal,
           sharedLoopCallbacks,
-          sharedPlanOptions
+          {
+            ...sharedPlanOptions,
+            skillPlaybookContext: actPlan?.skillPlaybookContext,
+          }
         )) {
           if (signal.aborted) break;
           fullResponse += chunkContent(chunk);
@@ -894,33 +932,35 @@ export class ChatOrchestrator {
       if (
         plannerEnabled &&
         this.planExecutor &&
-        taskAnalysis.shouldPlan
+        taskAnalysis.shouldPlan &&
+        !shouldSkipStructuredPlanner(planningDepth, session.mode)
       ) {
+        this.deps.sessionLog?.append('info', 'Planning depth resolved', {
+          planningDepth,
+          mode: session.mode,
+        });
         const planningRoute = planPlan?.route ?? routePlanIntent(planningRequest, taskAnalysis);
         const suggestedPlanningSkills = planPlan?.suggestedSkills ??
-          actPlan?.suggestedSkills ??
-          resolvePlanningSkillNames(planningRoute.intent, taskAnalysis);
-        const skillContext = planPlan
-          ? {
+          resolvePlanningSkillNames(planningRoute.intent, taskAnalysis, {
+            sourceMode: session.mode === 'agent' ? 'agent' : 'plan',
+          });
+        const skillContext = (() => {
+          if (planPlan?.skillPlaybookContext) {
+            return {
               skillPlaybookContext: planPlan.skillPlaybookContext,
               appliedSkills: planPlan.appliedSkills,
-            }
-          : actPlan
-            ? {
-                skillPlaybookContext: actPlan.skillPlaybookContext,
-                appliedSkills: actPlan.appliedSkills,
-              }
-          : (() => {
-              const loaded = loadPlanningSkillPlaybooks(
-                this.deps.skillCatalog,
-                suggestedPlanningSkills,
-                { style: tierPolicy.skillInjection, maxChars: tierPolicy.maxSkillChars }
-              );
-              return {
-                skillPlaybookContext: loaded.context,
-                appliedSkills: loaded.loaded,
-              };
-            })();
+            };
+          }
+          const loaded = loadPlanningSkillPlaybooks(
+            this.deps.skillCatalog,
+            suggestedPlanningSkills,
+            { style: tierPolicy.skillInjection, maxChars: tierPolicy.maxSkillChars }
+          );
+          return {
+            skillPlaybookContext: loaded.context,
+            appliedSkills: loaded.loaded,
+          };
+        })();
 
         const planningSkillOptions = {
           skillPlaybookContext: skillContext.skillPlaybookContext,
@@ -1076,6 +1116,7 @@ export class ChatOrchestrator {
           {
             workspace: this.deps.workspace,
             useIsolatedPlanning: true,
+            planningDepth,
             ...planningSkillOptions,
             onPlanQualityIssues: (issues) => {
               planQualityIssues = issues;
@@ -1138,7 +1179,10 @@ export class ChatOrchestrator {
               },
               signal,
               sharedLoopCallbacks,
-              sharedPlanOptions
+              {
+                ...sharedPlanOptions,
+                ...planningSkillOptions,
+              }
             )) {
               if (signal.aborted) break;
               fullResponse += chunkContent(chunk);
@@ -1148,7 +1192,10 @@ export class ChatOrchestrator {
               stepCount: plan.steps.length,
             });
 
-            if (this.agentLoop?.hadPendingApproval()) {
+            const pausedForApproval =
+              this.agentLoop?.hadPendingApproval() ||
+              plan.steps.some((s) => s.status === 'blocked');
+            if (pausedForApproval) {
               this.suspendContext = {
                 session,
                 provider,
@@ -1157,6 +1204,14 @@ export class ChatOrchestrator {
                 agentMaxSteps: agentConfig?.maxSteps,
                 autoContinue: agentConfig?.autoContinue,
                 maxAutoContinues: agentConfig?.maxAutoContinues,
+                planResume: {
+                  plan,
+                  displayPack,
+                  tools,
+                  requirementAnalysis: requirementAnalysis || undefined,
+                  appliedSkills: skillContext.appliedSkills,
+                  skillPlaybookContext: skillContext.skillPlaybookContext,
+                },
               };
               const pauseBlock = this.savePauseState(session, taskForClassification, taskAnalysis.kind);
               const approvalNote =
@@ -1206,8 +1261,8 @@ export class ChatOrchestrator {
 
       const isResume = isApprovalContinuationMessage(userMessage);
       const taskStateBlock = this.deps.taskState?.buildPromptBlock();
-      if (!this.skillInjectionTelemetry && (planPlan || actPlan)) {
-        const directSkillContext = planPlan ?? actPlan;
+      if (!this.skillInjectionTelemetry && (planPlan || actPlan || logAuditSkillContext)) {
+        const directSkillContext = logAuditSkillContext ?? planPlan ?? actPlan;
         this.recordSkillInjectionTelemetry(
           resolvedTier,
           tierPolicy,
@@ -1232,8 +1287,35 @@ export class ChatOrchestrator {
           planPlan?.promptContext,
           actPlan?.promptContext,
           ...taskEnrichment.contextBlocks
-        )
+        ),
+        mergePromptContexts(
+          planPlan?.skillPlaybookContext,
+          actPlan?.skillPlaybookContext,
+          logAuditSkillContext?.skillPlaybookContext
+        ),
+        {
+          docsMode: planPlan?.route.intent === 'docs' || actPlan?.route.intent === 'docs',
+          mdxRepairMode,
+          askProfile: askPlan?.route.profile,
+        }
       ), options?.attachments);
+      const promptSections = describePromptSections(
+        collectSystemPromptSections(session.mode, toolsEnabled, {
+          auditMode,
+          docsMode: planPlan?.route.intent === 'docs' || actPlan?.route.intent === 'docs',
+          mdxRepairMode,
+          isContinuation: isResume,
+          askProfile: askPlan?.route.profile,
+        })
+      );
+      this.deps.sessionLog?.append('info', 'Prompt sections', {
+        sections: promptSections,
+        planningDepth,
+        skillChars:
+          (planPlan?.skillPlaybookContext.length ?? 0) +
+          (actPlan?.skillPlaybookContext.length ?? 0) +
+          (logAuditSkillContext?.skillPlaybookContext.length ?? 0),
+      });
       const promptTokens = estimateChatRequestTokens({
         messages,
         tools: tools.length > 0 ? tools : undefined,
@@ -1719,7 +1801,10 @@ export class ChatOrchestrator {
   }
 
   hasSuspendState(): boolean {
-    return Boolean(this.agentLoop?.getSuspendState() && this.suspendContext);
+    return Boolean(
+      this.suspendContext &&
+        (this.agentLoop?.getSuspendState() || this.suspendContext.planResume || this.suspendContext.planningResume)
+    );
   }
 
   clearRoutingState(): void {
@@ -1728,97 +1813,199 @@ export class ChatOrchestrator {
   }
 
   async *resumeAfterApproval(approved: ApprovedToolResult[]): AsyncIterable<AssistantStreamChunk> {
-    if (!this.agentLoop || !this.suspendContext || approved.length === 0) return;
-
-    const baseState = this.agentLoop.getSuspendState();
-    if (!baseState) return;
+    if (!this.suspendContext || approved.length === 0) return;
 
     const { session, provider, userMessage } = this.suspendContext;
     const taskStateBlock = this.deps.taskState?.buildPromptBlock();
     const planningResume = this.suspendContext.planningResume;
+    const planResume = this.suspendContext.planResume;
+    const anyDenied = approved.some((result) => !result.success);
+    const anyApproved = approved.some((result) => result.success);
 
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
-    this.setLiveStatus('Resuming agent', 'Continuing after approval');
-    this.emitActivity('info', 'Resuming agent loop after approval');
-
-    const state: AgentLoopSuspendState = {
-      ...baseState,
-      messages: [
-        ...baseState.messages,
-        {
-          role: 'user',
-          content:
-            planningResume
-              ? [
-                  'User answered the pending planning clarification. Resume read-only planning discovery from the approved tool result.',
-                  baseState.checkpoint ? `\n## Approval checkpoint\n${baseState.checkpoint}` : '',
-                  '\nContinue with only the extra read-only discovery needed, then output DISCOVERY_SUMMARY.',
-                  'Do not execute edits. Do not compile the structured plan yourself; the orchestrator will compile it after discovery.',
-                ].filter(Boolean).join('\n')
-              : [
-                  'User approved the pending tool(s). Resume the existing task state machine from the approved tool result(s).',
-                  taskStateBlock ? `\n## Task progress\n${taskStateBlock}` : '',
-                  baseState.checkpoint ? `\n## Approval checkpoint\n${baseState.checkpoint}` : '',
-                  '\nContinue from the pending Execute/Verify step. Do not restart planning or diagnostics.',
-                  'Do not re-run audit-dependencies, audit-dead-code, depcheck, knip, eslint discovery, list_files, or memory_search unless the approved result proves the prior output is stale.',
-                  'If final verification reports unrelated TypeScript errors outside touched files, log them as remaining issues instead of derailing the cleanup task.',
-                ].filter(Boolean).join('\n'),
-        },
-      ],
-    };
+    this.setLiveStatus(
+      anyDenied && !anyApproved ? 'Resuming after denial' : 'Resuming agent',
+      anyDenied && !anyApproved ? 'Continuing without denied tool' : 'Continuing after approval'
+    );
+    this.emitActivity(
+      'info',
+      anyDenied && !anyApproved
+        ? 'Resuming after denial'
+        : 'Resuming agent loop after approval'
+    );
 
     let fullResponse = '';
     const sharedLoopCallbacks = this.buildLoopCallbacks();
+    const baseState = this.agentLoop?.getSuspendState();
 
     try {
-      for await (const chunk of this.agentLoop.resume(
-        provider,
-        state,
-        approved,
-        signal,
-        sharedLoopCallbacks
-      )) {
-        if (signal.aborted) break;
-        fullResponse += chunkContent(chunk);
-        yield chunk;
-      }
+      // Structured plans: reopen the blocked step and continue the DAG.
+      // Approved tools were already applied in resolveApproval; denied tools must not be retried.
+      if (planResume && this.planExecutor && session.mode === 'agent' && !planningResume) {
+        const plan = planResume.plan;
+        for (let i = 0; i < plan.steps.length; i++) {
+          if (plan.steps[i].status === 'blocked') {
+            plan.steps[i] = { ...plan.steps[i], status: 'pending' };
+          }
+        }
+        this.deps.planPersistence?.updatePlan(session.id, plan, 'running');
+        this.onPlan?.(
+          thunderPlanToView(plan, {
+            status: 'running',
+            requirementAnalysis: planResume.requirementAnalysis,
+            appliedSkills: planResume.appliedSkills,
+          })
+        );
 
-      if (this.agentLoop.hadPendingApproval()) {
-        const pauseBlock = planningResume ? '' : this.savePauseState(session, userMessage);
-        const approvalNote = planningResume
-          ? '\n\n**Planning paused for another clarification.** Choose an option below and I will continue the plan.\n'
-          : `\n\n${pauseBlock}\n\n⏸ **Waiting for your approval** — review the proposed changes above, then approve or deny in the panel below.\n`;
-        fullResponse += approvalNote;
-        yield approvalNote;
-        this.setLiveStatus(
-          planningResume ? 'Waiting for planning answer' : 'Waiting for approval',
-          planningResume ? 'Choose an option below' : 'Review and approve below'
-        );
-        this.emitActivity(
-          'approval',
-          planningResume ? 'Planning paused for a clarifying question' : 'Paused — waiting for your approval',
-          planningResume ? undefined : this.deps.taskState?.getPauseSummary()
-        );
-      } else if (planningResume) {
-        const planText = await this.compilePlanAfterPlanningDiscovery(
+        const decisionNote = anyDenied && !anyApproved
+          ? '\n\nDenied tool(s) will not be retried. Continuing remaining plan steps…\n\n'
+          : '\n\nApproval recorded. Continuing remaining plan steps…\n\n';
+        fullResponse += decisionNote;
+        yield decisionNote;
+
+        this.setLiveStatus('Continuing plan', plan.goal);
+        this.emitActivity('info', 'Continuing remaining plan steps after approval decision');
+
+        for await (const chunk of this.planExecutor.executePlan(
           session,
           provider,
-          planningResume.displayPack,
-          planningResume.planningRequest,
-          planningResume.taskAnalysis,
-          [planningResume.initialPlanningDiscovery, fullResponse].filter((part) => part.trim()).join('\n\n'),
-          planningResume.skillPlaybookContext,
-          planningResume.appliedSkills,
-          signal
-        );
-        fullResponse += planText;
-        yield planText;
-        this.suspendContext = undefined;
-        this.agentLoop.clearSuspendState();
+          plan,
+          planResume.displayPack,
+          planResume.tools,
+          (updated) => {
+            this.onPlan?.(
+              thunderPlanToView(updated, {
+                status: 'running',
+                requirementAnalysis: planResume.requirementAnalysis,
+                appliedSkills: planResume.appliedSkills,
+              })
+            );
+          },
+          signal,
+          sharedLoopCallbacks,
+          {
+            workspace: this.deps.workspace,
+            sessionLog: this.deps.sessionLog,
+            skillPlaybookContext: planResume.skillPlaybookContext,
+            agentMaxSteps: this.suspendContext.agentMaxSteps,
+            restrictRunCommandToReadOnly: this.suspendContext.auditMode,
+            seedFileScope: (paths: string[]) => {
+              this.deps.taskState?.mergeFileScope(paths);
+            },
+          }
+        )) {
+          if (signal.aborted) break;
+          fullResponse += chunkContent(chunk);
+          yield chunk;
+        }
+
+        if (this.agentLoop?.hadPendingApproval() || plan.steps.some((s) => s.status === 'blocked')) {
+          this.suspendContext = {
+            ...this.suspendContext,
+            planResume: {
+              ...planResume,
+              plan,
+            },
+          };
+          const pauseBlock = this.savePauseState(session, userMessage);
+          const approvalNote =
+            `\n\n${pauseBlock}\n\n⏸ **Waiting for your approval** — review the proposed changes above, then approve or deny in the panel below.\n`;
+          fullResponse += approvalNote;
+          yield approvalNote;
+          this.setLiveStatus('Waiting for approval', 'Review and approve below');
+          this.emitActivity('approval', 'Paused — waiting for your approval', this.deps.taskState?.getPauseSummary());
+        } else {
+          this.suspendContext = undefined;
+          this.agentLoop?.clearSuspendState();
+        }
+      } else if (this.agentLoop && baseState) {
+        const wakeUpContent = planningResume
+          ? [
+              'User answered the pending planning clarification. Resume read-only planning discovery from the approved tool result.',
+              baseState.checkpoint ? `\n## Approval checkpoint\n${baseState.checkpoint}` : '',
+              '\nContinue with only the extra read-only discovery needed, then output DISCOVERY_SUMMARY.',
+              'Do not execute edits. Do not compile the structured plan yourself; the orchestrator will compile it after discovery.',
+            ].filter(Boolean).join('\n')
+          : anyDenied && !anyApproved
+            ? [
+                'User denied the pending tool(s). Do not retry the denied tool. Continue the existing task another way.',
+                taskStateBlock ? `\n## Task progress\n${taskStateBlock}` : '',
+                baseState.checkpoint ? `\n## Approval checkpoint\n${baseState.checkpoint}` : '',
+                '\nContinue from the pending Execute/Verify step. Do not restart planning or diagnostics.',
+                'Skip incidental git_commit / GitHub publish tools unless the user explicitly asked for a commit or PR.',
+              ].filter(Boolean).join('\n')
+            : [
+                'User approved the pending tool(s). Resume the existing task state machine from the approved tool result(s).',
+                taskStateBlock ? `\n## Task progress\n${taskStateBlock}` : '',
+                baseState.checkpoint ? `\n## Approval checkpoint\n${baseState.checkpoint}` : '',
+                '\nContinue from the pending Execute/Verify step. Do not restart planning or diagnostics.',
+                'Do not re-run audit-dependencies, audit-dead-code, depcheck, knip, eslint discovery, list_files, or memory_search unless the approved result proves the prior output is stale.',
+                'If final verification reports unrelated TypeScript errors outside touched files, log them as remaining issues instead of derailing the cleanup task.',
+              ].filter(Boolean).join('\n');
+
+        const state: AgentLoopSuspendState = {
+          ...baseState,
+          messages: [
+            ...baseState.messages,
+            {
+              role: 'user',
+              content: wakeUpContent,
+            },
+          ],
+        };
+
+        for await (const chunk of this.agentLoop.resume(
+          provider,
+          state,
+          approved,
+          signal,
+          sharedLoopCallbacks
+        )) {
+          if (signal.aborted) break;
+          fullResponse += chunkContent(chunk);
+          yield chunk;
+        }
+
+        if (this.agentLoop.hadPendingApproval()) {
+          const pauseBlock = planningResume ? '' : this.savePauseState(session, userMessage);
+          const approvalNote = planningResume
+            ? '\n\n**Planning paused for another clarification.** Choose an option below and I will continue the plan.\n'
+            : `\n\n${pauseBlock}\n\n⏸ **Waiting for your approval** — review the proposed changes above, then approve or deny in the panel below.\n`;
+          fullResponse += approvalNote;
+          yield approvalNote;
+          this.setLiveStatus(
+            planningResume ? 'Waiting for planning answer' : 'Waiting for approval',
+            planningResume ? 'Choose an option below' : 'Review and approve below'
+          );
+          this.emitActivity(
+            'approval',
+            planningResume ? 'Planning paused for a clarifying question' : 'Paused — waiting for your approval',
+            planningResume ? undefined : this.deps.taskState?.getPauseSummary()
+          );
+        } else if (planningResume) {
+          const planText = await this.compilePlanAfterPlanningDiscovery(
+            session,
+            provider,
+            planningResume.displayPack,
+            planningResume.planningRequest,
+            planningResume.taskAnalysis,
+            [planningResume.initialPlanningDiscovery, fullResponse].filter((part) => part.trim()).join('\n\n'),
+            planningResume.skillPlaybookContext,
+            planningResume.appliedSkills,
+            signal
+          );
+          fullResponse += planText;
+          yield planText;
+          this.suspendContext = undefined;
+          this.agentLoop.clearSuspendState();
+        } else {
+          this.suspendContext = undefined;
+          this.agentLoop.clearSuspendState();
+        }
       } else {
         this.suspendContext = undefined;
-        this.agentLoop.clearSuspendState();
+        this.agentLoop?.clearSuspendState();
       }
 
       if (fullResponse) {

@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { AGENT_DEPTHS, normalizeAgentDepth } from './agentDepth';
+
+export type { AgentDepth } from './agentDepth';
 
 export const ProviderTypeSchema = z.enum([
   'openai-compatible',
@@ -68,7 +71,11 @@ export const EnterpriseConfigSchema = z.object({
   maxParallel: z.number().int().min(1).max(100).default(10),
 });
 
-export const AgentDepthSchema = z.enum(['auto', 'quick', 'standard', 'deep', 'pilot', 'enterprise']);
+/** Accepts legacy depth aliases and coerces them onto the canonical 3-option set. */
+export const AgentDepthSchema = z.preprocess(
+  (value) => normalizeAgentDepth(typeof value === 'string' ? value : undefined),
+  z.enum(AGENT_DEPTHS)
+);
 export const AgenticTierOverrideSchema = z.enum([
   'auto',
   'local-small',
@@ -227,7 +234,6 @@ export type UiConfig = z.infer<typeof UiConfigSchema>;
 export type EnterpriseConfig = z.infer<typeof EnterpriseConfigSchema>;
 export type SafetyConfig = z.infer<typeof SafetyConfigSchema>;
 export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
-export type AgentDepth = z.infer<typeof AgentDepthSchema>;
 export type AgenticTierOverride = z.infer<typeof AgenticTierOverrideSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;

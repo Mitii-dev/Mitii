@@ -4,6 +4,8 @@ import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import { isApprovalContinuationMessage } from '../../runtime/taskMessage';
 import type { ActDepth, ActRoute } from './actTypes';
 import { ACT_INTENT_DESCRIPTIONS } from '../../runtime/intentClassifier';
+import { normalizeAgentDepth } from '../../config/agentDepth';
+import { resolvePlanningDepth } from '../../plans/planningDepth';
 
 export interface ActRouteOptions {
   mode?: ThunderMode;
@@ -13,7 +15,7 @@ export interface ActRouteOptions {
   logAuditMode?: boolean;
   mdxRepairMode?: boolean;
   githubIssueMode?: boolean;
-  actDepth?: ActDepth;
+  actDepth?: ActDepth | string;
   intent?: ActRoute['intent'];
 }
 
@@ -45,7 +47,7 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
   const githubIssueMode = Boolean(options.githubIssueMode);
   const hasActivePlan = Boolean(options.hasActivePlan);
   const orchestrationEnabled = options.orchestrationEnabled ?? true;
-  const actDepth = options.actDepth ?? 'auto';
+  const actDepth = normalizeAgentDepth(options.actDepth);
 
   if (mode !== 'agent') {
     return {
@@ -147,14 +149,14 @@ export function shouldResumeSavedPlan(
   userMessage: string,
   hasActivePlan: boolean,
   isDirectOverride = false,
-  options: { actDepth?: ActDepth } = {}
+  options: { actDepth?: ActDepth | string } = {}
 ): boolean {
   if (!hasActivePlan) return false;
   const text = userMessage.trim();
   if (!text) return false;
   if (isDirectOverride) return false; // Use the boolean
   if (ACTIVE_PLAN_NEW_TASK.test(text)) return false;
-  if (options.actDepth === 'quick') {
+  if (normalizeAgentDepth(options.actDepth) === 'quick') {
     return EXPLICIT_PLAN_HANDOFF.test(text);
   }
   return (
@@ -169,15 +171,17 @@ export function shouldUsePlannerForAct(
   analysis: TaskAnalysis,
   orchestrationEnabled: boolean,
   auditMode = false,
-  actDepth: ActDepth = 'auto',
+  actDepth: ActDepth | string = 'auto',
   options: { directOverride?: boolean } = {}
 ): boolean {
   if (analysis.kind === 'simple_edit' || analysis.kind === 'question' || analysis.kind === 'debugging') return false;
   if (options.directOverride) return false;
-  if (actDepth === 'quick') return false;
+  if (normalizeAgentDepth(actDepth) === 'quick') return false;
   if (!analysis.shouldPlan) return false;
   if (!orchestrationEnabled) return false;
   if (auditMode) return false;
+  const depth = resolvePlanningDepth(analysis);
+  if (depth === 'none' || depth === 'micro') return false;
   return true;
 }
 

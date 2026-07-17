@@ -1491,6 +1491,52 @@ body,
 
 .composer__dropdown--depth .composer__dropdown-button {
   min-width: 0;
+  height: 22px;
+  padding: 0 14px 0 5px;
+  border-radius: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.composer__dropdown--depth .composer__dropdown-dot {
+  width: 6px;
+  height: 6px;
+}
+
+.composer__dropdown--depth .composer__dropdown-menu {
+  width: max(168px, 100%);
+  max-width: min(200px, calc(100vw - 24px));
+  padding: 4px;
+  gap: 1px;
+  border-radius: 6px;
+}
+
+.composer__dropdown--depth .composer__dropdown-option {
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 6px;
+  border-radius: 4px;
+}
+
+.composer__dropdown--depth .composer__dropdown-option-dot {
+  width: 7px;
+  height: 7px;
+  margin-top: 4px;
+}
+
+.composer__dropdown--depth .composer__dropdown-option-text span {
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.composer__dropdown--depth .composer__dropdown-option-text small {
+  font-size: 9px;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .composer__dropdown--model .composer__dropdown-button {

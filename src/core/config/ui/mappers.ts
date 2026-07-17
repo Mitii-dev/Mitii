@@ -1,3 +1,4 @@
+import { normalizeAgentDepth } from '../agentDepth';
 import type {
   AgentSettingsPayload,
   McpToggles,
@@ -83,9 +84,18 @@ export function validateProviderSettings(settings: ProviderSettingsPayload): Pro
   return { ok: errors.length === 0, errors };
 }
 
-export function normalizeAgentSettings(settings: AgentSettingsPayload): AgentSettingsPayload {
+export function normalizeAgentSettings(
+  settings: Omit<AgentSettingsPayload, 'askDepth' | 'planDepth' | 'actDepth'> & {
+    askDepth: string;
+    planDepth: string;
+    actDepth: string;
+  }
+): AgentSettingsPayload {
   return {
     ...settings,
+    askDepth: normalizeAgentDepth(settings.askDepth),
+    planDepth: normalizeAgentDepth(settings.planDepth),
+    actDepth: normalizeAgentDepth(settings.actDepth),
     maxSteps: clampInteger(settings.maxSteps, 1, 100),
     askMaxSteps: clampInteger(settings.askMaxSteps, 1, 50),
     askMaxAutoContinues: clampInteger(settings.askMaxAutoContinues, 0, 10),
