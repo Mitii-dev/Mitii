@@ -38,6 +38,8 @@ export interface AgentSettingsPayload {
   maxAutoContinues: number;
   researchAgentMaxSteps: number;
   showDiffPreview: boolean;
+  askModel: string;
+  askBaseUrl: string;
   planModel: string;
   planBaseUrl: string;
   actModel: string;

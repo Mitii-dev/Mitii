@@ -82,6 +82,8 @@ export const MITII_SETTING_PATHS = [
   'agent.showDiffPreview',
   'agent.verifyCommands',
   'agent.verifyOnActComplete',
+  'agent.askModel',
+  'agent.askBaseUrl',
   'agent.planModel',
   'agent.planBaseUrl',
   'agent.actModel',

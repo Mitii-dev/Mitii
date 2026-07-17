@@ -2,6 +2,7 @@ import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import type { SkillCatalogService } from '../../skills/SkillCatalogService';
 import { stripSkillFrontmatter } from '../../skills/SkillCatalogService';
 import { MAX_SKILL_INJECTION_CHARS, QUICK_REF_FALLBACK_CHARS } from '../../skills/skillLimits';
+import { formatSkillRuntimeContext, type SkillRuntimeContext } from '../../skills/skillRuntimeContext';
 import type { SkillInjectionStyle } from '../../agentic/tierPolicy';
 import type { ActIntent } from './actTypes';
 
@@ -88,7 +89,7 @@ function shouldLoadTddSkill(intent: ActIntent, taskAnalysis?: TaskAnalysis): boo
 export function loadActSkillPlaybooks(
   catalog: SkillCatalogService | undefined,
   skillNames: string[],
-  opts: { style?: SkillInjectionStyle; maxChars?: number } = {}
+  opts: { style?: SkillInjectionStyle; maxChars?: number; runtimeContext?: SkillRuntimeContext } = {}
 ): { context: string; loaded: string[] } {
   const style = opts.style ?? 'full';
   if (!catalog || skillNames.length === 0 || style === 'none' || style === 'catalog') {
@@ -122,6 +123,7 @@ export function loadActSkillPlaybooks(
     context: [
       '## Act skill playbooks (follow these workflows)',
       'These playbooks were pre-loaded for this execution session. Use them to guide implementation, debugging, verification, and recovery.',
+      formatSkillRuntimeContext(opts.runtimeContext),
       '',
       blocks.join('\n\n---\n\n'),
     ].join('\n'),

@@ -2,6 +2,7 @@ import type { ProjectCatalog } from '../ask/askTypes';
 import { loadProjectCatalog } from '../ask/ProjectCatalog';
 import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import type { SkillCatalogService } from '../../skills/SkillCatalogService';
+import type { SkillRuntimeContext } from '../../skills/skillRuntimeContext';
 import type { TierPolicy } from '../../agentic/tierPolicy';
 import { scaleTierSteps } from '../../agentic/tierPolicy';
 import { normalizeAgentDepth } from '../../config/agentDepth';
@@ -25,6 +26,7 @@ export interface PlanPrepareOptions {
   planMaxAutoContinues?: number;
   taskAnalysis?: TaskAnalysis;
   intent?: PlanIntent;
+  runtimeContext?: SkillRuntimeContext;
 }
 
 export class PlanOrchestrator {
@@ -55,7 +57,7 @@ export class PlanOrchestrator {
     const { context: skillPlaybookContext, loaded: appliedSkills } = loadPlanningSkillPlaybooks(
       options.skillCatalog,
       suggestedSkills,
-      { style: policy?.skillInjection, maxChars: policy?.maxSkillChars }
+      { style: policy?.skillInjection, maxChars: policy?.maxSkillChars, runtimeContext: options.runtimeContext ?? { mode: 'plan', depth: planDepth } }
     );
 
     const autoContinue = Boolean(options.planAutoContinue ?? (route.groundingRequired && route.complexity === 'high'));

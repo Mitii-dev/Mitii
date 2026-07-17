@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow",
-  "version": "2.7.60",
+  "version": "2.7.61",
   "publisher": "mitii",
   "icon": "media/mitii-short-logo.png",
   "license": "AGPL-3.0-or-later",
@@ -757,6 +757,18 @@
           "description": "After Act-mode runs, discover and run project-appropriate verification (package.json scripts). Uses verifyCommands when set; otherwise auto-discovers.",
           "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
+        "thunder.agent.askModel": {
+          "type": "string",
+          "default": "",
+          "description": "Optional model override for Ask mode. Empty uses thunder.provider.model.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
+        "thunder.agent.askBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional base URL override for Ask mode.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
         "thunder.agent.planModel": {
           "type": "string",
           "default": "",
@@ -1299,6 +1311,16 @@
           "type": "boolean",
           "default": true,
           "description": "After Act-mode runs, discover and run project-appropriate verification (package.json scripts). Uses verifyCommands when set; otherwise auto-discovers."
+        },
+        "mitii.agent.askModel": {
+          "type": "string",
+          "default": "",
+          "description": "Optional model override for Ask mode. Empty uses mitii.provider.model."
+        },
+        "mitii.agent.askBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional base URL override for Ask mode."
         },
         "mitii.agent.planModel": {
           "type": "string",

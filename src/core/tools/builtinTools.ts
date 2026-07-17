@@ -25,6 +25,7 @@ import { isAuditSubagentBlocked, buildScriptFirstAuditMessage } from '../runtime
 import type { SubagentTracker } from '../runtime/SubagentTracker';
 import type { SkillCatalogService } from '../skills/SkillCatalogService';
 import { MAX_SKILL_INJECTION_CHARS } from '../skills/skillLimits';
+import { formatSkillRuntimeContext, type SkillRuntimeContext } from '../skills/skillRuntimeContext';
 import { createLogger } from '../telemetry/Logger';
 import { analyzeChangeImpact, discoverProjectCatalog, formatProjectCatalog, saveProjectCatalog } from '../modes/ask';
 import { filterItemsToScope, normalizeScopeRoot } from '../context/scopeFilter';
@@ -785,7 +786,10 @@ export function createExecuteWorkspaceScriptTool(
   };
 }
 
-export function createUseSkillTool(skillCatalog: SkillCatalogService): Tool<{ name: string }> {
+export function createUseSkillTool(
+  skillCatalog: SkillCatalogService,
+  getRuntimeContext?: () => SkillRuntimeContext | undefined
+): Tool<{ name: string }> {
   return {
     name: 'use_skill',
     description:
@@ -810,7 +814,13 @@ export function createUseSkillTool(skillCatalog: SkillCatalogService): Tool<{ na
       }
       return {
         success: true,
-        output: `# Skill: ${skill.entry.name}\nPath: ${skill.entry.relPath}\nDescription: ${skill.entry.description}${truncated ? '\nNote: body truncated to skill injection budget' : ''}\n\n${body}`,
+        output: [
+          `# Skill: ${skill.entry.name}`,
+          `Path: ${skill.entry.relPath}`,
+          `Description: ${skill.entry.description}${truncated ? '\nNote: body truncated to skill injection budget' : ''}`,
+          formatSkillRuntimeContext(getRuntimeContext?.()),
+          body,
+        ].filter(Boolean).join('\n\n'),
       };
     },
   };

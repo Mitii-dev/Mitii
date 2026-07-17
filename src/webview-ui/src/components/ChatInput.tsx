@@ -50,6 +50,8 @@ interface ChatInputProps {
   onCopyChatHistory?: () => void;
   canCopyChatHistory?: boolean;
   onAddPinned: (path: string, kind: 'file' | 'folder') => void;
+  onRemovePinned: (path: string) => void;
+  onClearPinned: () => void;
   onSearchPaths: (query: string, requestId: string) => void;
   pathSuggestions: ContextPathSuggestion[];
   pathSearchRequestId: string | null;
@@ -154,6 +156,8 @@ export function ChatInput({
   onCopyChatHistory,
   canCopyChatHistory = false,
   onAddPinned,
+  onRemovePinned,
+  onClearPinned,
   onSearchPaths,
   pathSuggestions,
   pathSearchRequestId,
@@ -517,6 +521,32 @@ export function ChatInput({
                   <span className="mention-picker__label">{suggestion.label}</span>
                 </button>
               ))
+            )}
+          </div>
+        )}
+        {pinnedContext.length > 0 && (
+          <div className="composer__context-pills" aria-label="Pinned chat context">
+            {pinnedContext.map((item) => (
+              <button
+                key={`${item.kind}:${item.path}`}
+                type="button"
+                className="composer__context-pill"
+                onClick={() => onRemovePinned(item.path)}
+                title={`Remove ${item.path}`}
+              >
+                <span className="composer__context-kind">{item.kind === 'folder' ? 'DIR' : 'FILE'}</span>
+                <span className="composer__context-path">{item.path}</span>
+                <span className="composer__context-remove" aria-hidden>×</span>
+              </button>
+            ))}
+            {pinnedContext.length > 1 && (
+              <button
+                type="button"
+                className="composer__context-clear"
+                onClick={onClearPinned}
+              >
+                Clear
+              </button>
             )}
           </div>
         )}

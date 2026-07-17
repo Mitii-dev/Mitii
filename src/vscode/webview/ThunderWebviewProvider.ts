@@ -231,6 +231,39 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         break;
       }
 
+      case 'deleteChatThread': {
+        this.archivedThreads.delete(message.payload.id);
+        if (this.state.currentSessionId === message.payload.id) {
+          this.controller.startNewChat();
+          this.state = {
+            ...this.state,
+            tab: 'history',
+            loading: false,
+            error: null,
+            messages: [],
+            currentSessionId: this.controller.getSession()?.id ?? '',
+            pinnedContext: this.controller.getPinnedContext(),
+            contextPreview: [],
+            contextTokenEstimate: 0,
+            contextBudget: null,
+            agentActivity: [],
+            agentLiveStatus: null,
+            plan: null,
+          };
+        }
+        this.persistArchivedThreads();
+        this.state = { ...this.state, chatHistory: this.historySummaries() };
+        this.postMessage({ type: 'state', payload: this.state });
+        break;
+      }
+
+      case 'clearChatHistory':
+        this.archivedThreads.clear();
+        this.persistArchivedThreads();
+        this.state = { ...this.state, chatHistory: [] };
+        this.postMessage({ type: 'state', payload: this.state });
+        break;
+
       case 'setMode': {
         this.state = { ...this.state, mode: message.payload };
         this.controller.handleModeChange(message.payload);

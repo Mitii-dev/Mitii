@@ -691,7 +691,7 @@ export class ThunderController {
     this.toolRuntime.register(createSearchBatchTool(fts, workspace));
     this.toolRuntime.register(createSearchScriptCatalogTool(workspace, this.context.extensionPath));
     this.toolRuntime.register(createExecuteWorkspaceScriptTool(workspace, this.context.extensionPath, this.ignoreService));
-    this.toolRuntime.register(createUseSkillTool(this.skillCatalogService));
+    this.toolRuntime.register(createUseSkillTool(this.skillCatalogService, () => this.getSkillRuntimeContext()));
     this.toolRuntime.register(createSpawnSubagentTool());
     this.toolRuntime.register(createSpawnResearchAgentTool());
     this.toolRuntime.register(createRepoMapTool(repoMap));
@@ -1228,6 +1228,8 @@ export class ThunderController {
         minilmAvailable: isMinilmAvailable(),
         lancedbAvailable: isLanceDbAvailable(),
         autonomyPreset: config.safety.autonomyPreset,
+        askModel: config.agent.askModel,
+        askBaseUrl: config.agent.askBaseUrl,
         planModel: config.agent.planModel,
         planBaseUrl: config.agent.planBaseUrl,
         actModel: config.agent.actModel,
@@ -1522,6 +1524,22 @@ export class ThunderController {
       };
     }
 
+    if (mode === 'ask') {
+      const askModel = config.agent.askModel?.trim();
+      if (askModel) {
+        return {
+          providerType: config.agent.askProviderType ?? config.provider.type,
+          baseUrl: config.agent.askBaseUrl?.trim() || config.provider.baseUrl,
+          model: askModel,
+          profile: 'Ask override',
+          apiVersion: config.provider.apiVersion,
+          region: config.provider.region,
+          contextWindow: config.provider.contextWindow,
+          source: 'mode',
+        };
+      }
+    }
+
     if (mode === 'plan') {
       const planModel = config.agent.planModel?.trim();
       if (planModel) {
@@ -1563,6 +1581,25 @@ export class ThunderController {
       region: config.provider.region,
       contextWindow: config.provider.contextWindow,
       source: 'global',
+    };
+  }
+
+  private getSkillRuntimeContext(): import('../skills/skillRuntimeContext').SkillRuntimeContext {
+    const config = this.configService.getConfig();
+    const mode = this.session?.mode ?? 'agent';
+    const askDepth = normalizeAgentDepth(config.agent.askDepth);
+    const planDepth = normalizeAgentDepth(config.agent.planDepth);
+    const actDepth = normalizeAgentDepth(config.agent.actDepth);
+    const depth = mode === 'ask' ? askDepth : mode === 'plan' ? planDepth : actDepth;
+    const provider = this.resolveEffectiveProviderSelection(mode);
+    return {
+      mode,
+      depth,
+      askDepth,
+      planDepth,
+      actDepth,
+      model: provider.model,
+      modelSource: provider.source,
     };
   }
 
@@ -2056,7 +2093,6 @@ export class ThunderController {
 
   clearPinnedContext(): void {
     this.pinnedContext = [];
-    this.syncActiveEditorPin();
     this.notifyUi({ pinnedContext: this.pinnedContext });
   }
 

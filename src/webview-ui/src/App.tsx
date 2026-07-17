@@ -41,6 +41,8 @@ function buildAgentSettingsPayload(settings: SettingsView, depthPatch: Partial<P
     maxAutoContinues: settings.agentMaxAutoContinues,
     researchAgentMaxSteps: settings.researchAgentMaxSteps,
     showDiffPreview: settings.showDiffPreview,
+    askModel: settings.askModel,
+    askBaseUrl: settings.askBaseUrl,
     planModel: settings.planModel,
     planBaseUrl: settings.planBaseUrl,
     actModel: settings.actModel,
@@ -255,6 +257,10 @@ export function App() {
               onAddPinned={(path, kind) =>
                 postMessage({ type: 'addPinnedContext', payload: { path, kind } })
               }
+              onRemovePinned={(path) =>
+                postMessage({ type: 'removePinnedContext', payload: { path } })
+              }
+              onClearPinned={() => postMessage({ type: 'clearPinnedContext' })}
               onSearchPaths={(query, requestId) => {
                 postMessage({ type: 'searchContextPaths', payload: { query, requestId } });
               }}
@@ -277,6 +283,8 @@ export function App() {
         <HistoryPanel
           threads={state.chatHistory}
           onOpen={(id) => postMessage({ type: 'openChatThread', payload: { id } })}
+          onDelete={(id) => postMessage({ type: 'deleteChatThread', payload: { id } })}
+          onClear={() => postMessage({ type: 'clearChatHistory' })}
         />
       ) : (
         <main className="thunder-main settings-view">

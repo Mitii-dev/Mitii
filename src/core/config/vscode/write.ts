@@ -53,6 +53,8 @@ export async function updateAgentSettings(settings: AgentSettingsPayload): Promi
   await config.update('agent.maxAutoContinues', settings.maxAutoContinues, target);
   await config.update('agent.researchAgentMaxSteps', settings.researchAgentMaxSteps, target);
   await config.update('agent.showDiffPreview', settings.showDiffPreview, target);
+  await config.update('agent.askModel', settings.askModel.trim(), target);
+  await config.update('agent.askBaseUrl', settings.askBaseUrl.trim(), target);
   await config.update('agent.planModel', settings.planModel.trim(), target);
   await config.update('agent.planBaseUrl', settings.planBaseUrl.trim(), target);
   await config.update('agent.actModel', settings.actModel.trim(), target);

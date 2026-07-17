@@ -322,6 +322,8 @@ export interface SettingsView {
   minilmAvailable: boolean;
   lancedbAvailable: boolean;
   autonomyPreset: 'safe' | 'guided' | 'builder' | 'pilot' | 'enterprise';
+  askModel: string;
+  askBaseUrl: string;
   planModel: string;
   planBaseUrl: string;
   actModel: string;
@@ -459,6 +461,8 @@ export type WebviewToExtensionMessage =
   | { type: 'retryLastMessage' }
   | { type: 'newChat' }
   | { type: 'openChatThread'; payload: { id: string } }
+  | { type: 'deleteChatThread'; payload: { id: string } }
+  | { type: 'clearChatHistory' }
   | { type: 'setMode'; payload: ThunderMode }
   | { type: 'setTab'; payload: WebviewTab }
   | { type: 'stopGeneration' }
@@ -566,6 +570,8 @@ export const defaultSettingsView = (): SettingsView => ({
   minilmAvailable: false,
   lancedbAvailable: false,
   autonomyPreset: 'guided',
+  askModel: '',
+  askBaseUrl: '',
   planModel: '',
   planBaseUrl: '',
   actModel: '',

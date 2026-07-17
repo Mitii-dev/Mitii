@@ -5,6 +5,7 @@ import { analyzeTask } from '../../runtime/TaskAnalyzer';
 import { AUDIT_AGENT_MAX_STEPS } from '../../runtime/taskKind';
 import { LOG_AUDIT_AGENT_MAX_STEPS } from '../../runtime/logAudit';
 import type { SkillCatalogService } from '../../skills/SkillCatalogService';
+import type { SkillRuntimeContext } from '../../skills/skillRuntimeContext';
 import type { TierPolicy } from '../../agentic/tierPolicy';
 import { scaleTierSteps } from '../../agentic/tierPolicy';
 import { normalizeAgentDepth } from '../../config/agentDepth';
@@ -34,6 +35,7 @@ export interface ActPrepareOptions {
   /** Empty = discover verify commands from project manifests at runtime */
   verifyCommands?: string[];
   intent?: ActIntent;
+  runtimeContext?: SkillRuntimeContext;
 }
 
 export class ActOrchestrator {
@@ -58,7 +60,7 @@ export class ActOrchestrator {
     const { context: skillPlaybookContext, loaded: appliedSkills } = loadActSkillPlaybooks(
       options.skillCatalog,
       suggestedSkills,
-      { style: policy?.skillInjection, maxChars: policy?.maxSkillChars }
+      { style: policy?.skillInjection, maxChars: policy?.maxSkillChars, runtimeContext: options.runtimeContext ?? { mode: 'agent', depth: actDepth } }
     );
     const maxSteps = resolveActMaxSteps(
       route.executionPath,

@@ -80,7 +80,14 @@ export class BaseSubagent {
       const loaded = loadActSkillPlaybooks(
         this.options.skillCatalog,
         resolveSubagentSkillNames(this.definition.id),
-        { style: policy.skillInjection, maxChars: policy.maxSkillChars }
+        {
+          style: policy.skillInjection,
+          maxChars: policy.maxSkillChars,
+          runtimeContext: {
+            mode: `agent:${this.definition.id}`,
+            depth: 'auto',
+          },
+        }
       );
       if (loaded.context) blocks.push(loaded.context);
     } else if (policy?.skillInjection !== 'none' && this.options.skillCatalog) {

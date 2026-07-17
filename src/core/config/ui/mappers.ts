@@ -101,10 +101,12 @@ export function normalizeAgentSettings(
     askMaxAutoContinues: clampInteger(settings.askMaxAutoContinues, 0, 10),
     maxAutoContinues: clampInteger(settings.maxAutoContinues, 0, 10),
     researchAgentMaxSteps: clampInteger(settings.researchAgentMaxSteps, 1, 50),
-    planModel: settings.planModel.trim(),
-    planBaseUrl: settings.planBaseUrl.trim(),
-    actModel: settings.actModel.trim(),
-    actBaseUrl: settings.actBaseUrl.trim(),
+    askModel: (settings.askModel ?? '').trim(),
+    askBaseUrl: (settings.askBaseUrl ?? '').trim(),
+    planModel: (settings.planModel ?? '').trim(),
+    planBaseUrl: (settings.planBaseUrl ?? '').trim(),
+    actModel: (settings.actModel ?? '').trim(),
+    actBaseUrl: (settings.actBaseUrl ?? '').trim(),
   };
 }
 

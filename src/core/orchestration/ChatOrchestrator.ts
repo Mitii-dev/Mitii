@@ -94,6 +94,8 @@ import type { MemoryService } from '../memory/MemoryService';
 import type { AgentTaskState } from '../runtime/AgentTaskState';
 import type { PostEditValidator } from '../apply/PostEditValidator';
 import type { SkillCatalogService } from '../skills/SkillCatalogService';
+import { normalizeAgentDepth } from '../config/agentDepth';
+import type { SkillRuntimeContext } from '../skills/skillRuntimeContext';
 import { thunderPlanToView } from '../modes/plan/planViewMapper';
 import { showWriteDiffPreview, showPatchDiffPreview } from '../../vscode/diffPreview';
 import { toWorkspaceRelPath } from '../util/paths';
@@ -443,6 +445,19 @@ export class ChatOrchestrator {
     }
 
     const agentConfig = this.deps.agentConfig;
+    const askDepth = normalizeAgentDepth(agentConfig?.askDepth);
+    const planDepth = normalizeAgentDepth(agentConfig?.planDepth);
+    const actDepth = normalizeAgentDepth(agentConfig?.actDepth);
+    const activeDepth = session.mode === 'ask' ? askDepth : session.mode === 'plan' ? planDepth : actDepth;
+    const skillRuntimeContext: SkillRuntimeContext = {
+      mode: session.mode,
+      depth: activeDepth,
+      askDepth,
+      planDepth,
+      actDepth,
+      model: provider.id,
+      modelSource: session.providerOverride?.model ? 'session' : 'turn',
+    };
     const originalTaskMessage = extractOriginalTaskMessage(userMessage) ?? userMessage;
     const conversationTaskMessage = resolveConversationTaskMessage(originalTaskMessage, recentMessages);
     const taskEnrichment = await enrichTask(conversationTaskMessage, {
@@ -529,6 +544,7 @@ export class ChatOrchestrator {
           planMaxAutoContinues: agentConfig?.maxAutoContinues,
           taskAnalysis,
           intent: intentRouting.mode === 'plan' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
+          runtimeContext: skillRuntimeContext,
         })
       : undefined;
     const actPlan = isAgentMode
@@ -550,6 +566,7 @@ export class ChatOrchestrator {
           savedPlanId: activePlanAtStart?.id,
           verifyCommands: agentConfig?.verifyCommands,
           intent: intentRouting.mode === 'agent' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
+          runtimeContext: skillRuntimeContext,
         })
       : undefined;
     const logAuditSkillContext =
@@ -558,6 +575,7 @@ export class ChatOrchestrator {
             const loaded = loadActSkillPlaybooks(this.deps.skillCatalog, ['log-audit'], {
               style: tierPolicy.skillInjection,
               maxChars: tierPolicy.maxSkillChars,
+              runtimeContext: skillRuntimeContext,
             });
             return {
               skillPlaybookContext: loaded.context,
@@ -954,7 +972,7 @@ export class ChatOrchestrator {
           const loaded = loadPlanningSkillPlaybooks(
             this.deps.skillCatalog,
             suggestedPlanningSkills,
-            { style: tierPolicy.skillInjection, maxChars: tierPolicy.maxSkillChars }
+            { style: tierPolicy.skillInjection, maxChars: tierPolicy.maxSkillChars, runtimeContext: skillRuntimeContext }
           );
           return {
             skillPlaybookContext: loaded.context,

@@ -2,6 +2,7 @@ import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import type { SkillCatalogService } from '../../skills/SkillCatalogService';
 import { stripSkillFrontmatter } from '../../skills/SkillCatalogService';
 import { MAX_SKILL_INJECTION_CHARS, QUICK_REF_FALLBACK_CHARS } from '../../skills/skillLimits';
+import { formatSkillRuntimeContext, type SkillRuntimeContext } from '../../skills/skillRuntimeContext';
 import type { SkillInjectionStyle } from '../../agentic/tierPolicy';
 import type { PlanIntent } from './planTypes';
 import { createLogger } from '../../telemetry/Logger';
@@ -62,7 +63,7 @@ export function resolvePlanningSkillNames(
 export function loadPlanningSkillPlaybooks(
   catalog: SkillCatalogService | undefined,
   skillNames: string[],
-  opts: { style?: SkillInjectionStyle; maxChars?: number } = {}
+  opts: { style?: SkillInjectionStyle; maxChars?: number; runtimeContext?: SkillRuntimeContext } = {}
 ): { context: string; loaded: string[] } {
   const style = opts.style ?? 'full';
   if (!catalog || skillNames.length === 0 || style === 'none' || style === 'catalog') {
@@ -113,6 +114,7 @@ export function loadPlanningSkillPlaybooks(
     context: [
       '## Planning skill playbooks (follow these workflows)',
       'These playbooks were pre-loaded for this planning session. Apply their process, structure, and verification rules when discovering and compiling the plan.',
+      formatSkillRuntimeContext(opts.runtimeContext),
       '',
       blocks.join('\n\n---\n\n'),
     ].join('\n'),
