@@ -22,6 +22,52 @@ describe('planSkillRouting', () => {
     expect(names).toContain('planning-and-task-breakdown');
   });
 
+  it('injects Git route selected skills into planning', () => {
+    const names = resolvePlanningSkillNames('feature', {
+      kind: 'implementation',
+      complexity: 'low',
+      summary: 'Create a pull request',
+      shouldPlan: true,
+      shouldVerify: true,
+      shouldUseSubagents: false,
+      gitRoute: {
+        isGitTask: true,
+        route: 'github_remote_write',
+        classification: {
+          primaryIntent: 'github_pr_create',
+          secondaryIntents: [],
+          confidence: 0.94,
+          scope: 'repo',
+          requiresWorkspaceWrite: false,
+          requiresGitWrite: false,
+          requiresRemoteWrite: true,
+          requiresApproval: true,
+        },
+        risk: 'high',
+        requiredApproval: 'explicit',
+        allowedTools: [],
+        selectedSkills: {
+          primarySkill: 'github-pull-request',
+          additionalSkills: [],
+          candidates: [{ skill: 'github-pull-request', score: 0.94, reason: 'primary' }],
+          rejected: [],
+          injected: ['github-pull-request'],
+        },
+        telemetry: {
+          detectedIntent: 'github_pr_create',
+          confidence: 0.94,
+          scope: 'repo',
+          route: 'github_remote_write',
+          risk: 'high',
+          writeClass: 'remote_write',
+          approval: 'explicit',
+        },
+      },
+    });
+    expect(names).toContain('github-pull-request');
+    expect(names).toContain('planning-and-task-breakdown');
+  });
+
   it('loads skill playbooks from workspace catalog', () => {
     const workspace = mkdtempSync(join(tmpdir(), 'mitii-plan-skills-'));
     try {

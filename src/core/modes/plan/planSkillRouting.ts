@@ -1,13 +1,26 @@
 import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import type { SkillCatalogService } from '../../skills/SkillCatalogService';
 import { stripSkillFrontmatter } from '../../skills/SkillCatalogService';
+import { MAX_SKILL_INJECTION_CHARS, QUICK_REF_FALLBACK_CHARS } from '../../skills/skillLimits';
 import type { SkillInjectionStyle } from '../../agentic/tierPolicy';
 import type { PlanIntent } from './planTypes';
 import { createLogger } from '../../telemetry/Logger';
 
 const log = createLogger('PlanSkillRouting');
 
-const MAX_SKILL_CHARS = 24_000;
+const MAX_SKILL_CHARS = MAX_SKILL_INJECTION_CHARS;
+
+function appendGitSkills(names: string[], taskAnalysis?: TaskAnalysis): void {
+  const git = taskAnalysis?.gitRoute;
+  if (!git?.isGitTask) return;
+  const injected =
+    git.selectedSkills.injected.length > 0
+      ? git.selectedSkills.injected
+      : git.selectedSkills.primarySkill
+        ? [git.selectedSkills.primarySkill, ...git.selectedSkills.additionalSkills]
+        : [];
+  for (const skill of injected) names.push(skill);
+}
 
 /** Skills to load for planning, ordered by priority. */
 export function resolvePlanningSkillNames(
@@ -15,6 +28,7 @@ export function resolvePlanningSkillNames(
   taskAnalysis?: TaskAnalysis
 ): string[] {
   const names: string[] = ['using-agent-skills', 'planning-and-task-breakdown'];
+  appendGitSkills(names, taskAnalysis);
 
   if (intent === 'audit' || taskAnalysis?.kind === 'audit') {
     names.push('audit-cleanup');
@@ -27,6 +41,12 @@ export function resolvePlanningSkillNames(
   }
   if (intent === 'bugfix' || taskAnalysis?.kind === 'question') {
     names.push('debugging-and-error-recovery');
+  }
+  if (/\b(code review|review (this|the|my) (pr|pull request|diff|change)|quality gate)\b/i.test(taskAnalysis?.summary ?? '')) {
+    names.push('code-review-and-quality');
+  }
+  if (/\b(performance|slow|latency|core web vitals|bundle size|profil(e|ing))\b/i.test(taskAnalysis?.summary ?? '')) {
+    names.push('performance-optimization');
   }
 
   const resolved = [...new Set(names)];
@@ -106,7 +126,7 @@ function extractQuickRef(content: string, description?: string): string {
     const next = section.slice(match[0].length).search(/^##\s+/m);
     parts.push((next >= 0 ? section.slice(0, match[0].length + next) : section).trim());
   } else {
-    parts.push(trimmed.slice(0, 800).trim());
+    parts.push(trimmed.slice(0, QUICK_REF_FALLBACK_CHARS).trim());
   }
 
   return parts.filter(Boolean).join('\n\n');
@@ -117,5 +137,6 @@ PLANNING SKILLS:
 - Call use_skill to load a workspace playbook when you need one not already injected below.
 - For task breakdown and phased plans, use_skill("planning-and-task-breakdown") if not pre-loaded.
 - For skill discovery/routing, use_skill("using-agent-skills") if not pre-loaded.
+- For Git/GitHub plans, follow the injected git-* / github-* skills; do not invent remote write steps without approval.
 - For tech-debt and env/secrets tasks, prefer the bundled script-backed skills before manual inspection.
 - Follow loaded skill workflows: dependency graph, vertical slices, acceptance criteria, and verification commands per step.`;

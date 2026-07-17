@@ -1,22 +1,35 @@
 ---
 name: github-actions
-description: Use for GitHub Actions workflow analysis, failure analysis, workflow file updates, dispatch, and reruns.
+description: >-
+  Analyze GitHub Actions workflows and failures; update workflow files; dispatch or rerun runs.
+  Use for CI workflow analysis, patches, and approved remote dispatch.
 ---
 
 # GitHub Actions
 
-Workflow dispatch is a remote write.
+## Quick Reference
 
-Security checks:
+- Analyze first; patch workflow files only when asked.
+- Workflow **dispatch/rerun is a remote write** and needs explicit approval.
+- Production/release workflow execution always requires approval.
+- Check permissions, fork trust, secrets, and pinned action versions.
 
-- Excessive permissions
-- `pull_request_target`
+## Security Checks
+
+- Excessive permissions / `pull_request_target`
 - Untrusted fork execution
-- Secret exposure
-- Command interpolation
-- Third-party action versions
-- Production deployment
-- Package publication
-- Database migrations
+- Secret exposure and command interpolation
+- Third-party action versions (prefer pinned SHAs)
+- Production deployment, package publication, database migrations
 
-Production or release workflow execution must always require approval.
+## Workflow
+
+1. Discover workflows and the failing run.
+2. Analyze logs with bounded evidence.
+3. Propose the smallest workflow or code fix.
+4. For dispatch/rerun: confirm target, inputs, and environment, then request approval.
+5. Verify the resulting run status.
+
+## Tools
+
+Prefer Mitii GitHub Actions tools: discover/analyze workflow, get run, dispatch — never invent credentials.

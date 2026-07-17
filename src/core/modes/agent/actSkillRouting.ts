@@ -1,17 +1,31 @@
 import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import type { SkillCatalogService } from '../../skills/SkillCatalogService';
 import { stripSkillFrontmatter } from '../../skills/SkillCatalogService';
+import { MAX_SKILL_INJECTION_CHARS, QUICK_REF_FALLBACK_CHARS } from '../../skills/skillLimits';
 import type { SkillInjectionStyle } from '../../agentic/tierPolicy';
 import type { ActIntent } from './actTypes';
 
-const MAX_SKILL_CHARS = 24_000;
+const MAX_SKILL_CHARS = MAX_SKILL_INJECTION_CHARS;
+
+function appendGitSkills(names: string[], taskAnalysis?: TaskAnalysis): void {
+  const git = taskAnalysis?.gitRoute;
+  if (!git?.isGitTask) return;
+  const injected =
+    git.selectedSkills.injected.length > 0
+      ? git.selectedSkills.injected
+      : git.selectedSkills.primarySkill
+        ? [git.selectedSkills.primarySkill, ...git.selectedSkills.additionalSkills]
+        : [];
+  for (const skill of injected) names.push(skill);
+}
 
 export function resolveActSkillNames(intent: ActIntent, taskAnalysis?: TaskAnalysis): string[] {
-  const names: string[] = ['using-agent-skills'];
-
   if (intent === 'log_audit' || taskAnalysis?.kind === 'log_audit') {
     return ['log-audit'];
   }
+
+  const names: string[] = ['using-agent-skills'];
+  appendGitSkills(names, taskAnalysis);
 
   if (intent === 'audit' || taskAnalysis?.kind === 'audit') {
     names.push('audit-cleanup');
@@ -33,17 +47,42 @@ export function resolveActSkillNames(intent: ActIntent, taskAnalysis?: TaskAnaly
     names.push('debugging-and-error-recovery');
   }
 
-  if (
-    intent === 'feature' ||
-    intent === 'refactor' ||
-    intent === 'docs' ||
-    taskAnalysis?.kind === 'implementation' ||
-    taskAnalysis?.kind === 'explicit_plan'
-  ) {
+  if (shouldLoadTddSkill(intent, taskAnalysis)) {
     names.push('test-driven-development');
   }
 
+  if (/\b(code review|review (this|the|my) (pr|pull request|diff|change)|quality gate)\b/i.test(taskAnalysis?.summary ?? '')) {
+    names.push('code-review-and-quality');
+  }
+
+  if (/\b(performance|slow|latency|core web vitals|bundle size|profil(e|ing))\b/i.test(taskAnalysis?.summary ?? '')) {
+    names.push('performance-optimization');
+  }
+
+  if (/\b(browser|puppeteer|screenshot|ui (test|verif)|devtools)\b/i.test(taskAnalysis?.summary ?? '')) {
+    names.push('browser-testing-with-devtools');
+  }
+
   return [...new Set(names)];
+}
+
+function shouldLoadTddSkill(intent: ActIntent, taskAnalysis?: TaskAnalysis): boolean {
+  const summary = taskAnalysis?.summary ?? '';
+  if (intent === 'docs') return false;
+  if (
+    /\b(readme|documentation|docs?|static content|pure config|configuration only)\b/i.test(summary) &&
+    !/\b(behavior|logic|runtime|bug|fix|regression|component|api|route|service)\b/i.test(summary)
+  ) {
+    return false;
+  }
+  return (
+    intent === 'bugfix' ||
+    intent === 'diagnose' ||
+    intent === 'feature' ||
+    intent === 'refactor' ||
+    taskAnalysis?.kind === 'implementation' ||
+    taskAnalysis?.kind === 'explicit_plan'
+  );
 }
 
 export function loadActSkillPlaybooks(
@@ -101,7 +140,7 @@ function extractQuickRef(content: string, description?: string): string {
     const next = section.slice(match[0].length).search(/^##\s+/m);
     parts.push((next >= 0 ? section.slice(0, match[0].length + next) : section).trim());
   } else {
-    parts.push(trimmed.slice(0, 800).trim());
+    parts.push(trimmed.slice(0, QUICK_REF_FALLBACK_CHARS).trim());
   }
 
   return parts.filter(Boolean).join('\n\n');
@@ -110,8 +149,10 @@ function extractQuickRef(content: string, description?: string): string {
 export const ACT_SKILL_TOOL_GUIDANCE = `
 ACT SKILLS:
 - Call use_skill to load a workspace playbook when the task needs a workflow that is not already injected.
+- For Git/GitHub tasks, prefer the injected git-* / github-* / release-management / changelog-maintenance skills.
 - For bug fixes and failed verification, use debugging-and-error-recovery.
 - For implementation and refactors, use test-driven-development when tests or verification strategy are unclear.
 - For cleanup tasks, use audit-cleanup and prefer repository audit scripts over manual grep.
 - For console logs, inline styles, missing types, lint hygiene, or tech debt, use code-smells-and-tech-debt.
-- For .env files, environment variables, keys, tokens, or secrets, use environment-and-secrets and never print secret values.`;
+- For .env files, environment variables, keys, tokens, or secrets, use environment-and-secrets and never print secret values.
+- For PR/code review, use code-review-and-quality. For perf work, use performance-optimization. For UI smoke checks, use browser-testing-with-devtools.`;

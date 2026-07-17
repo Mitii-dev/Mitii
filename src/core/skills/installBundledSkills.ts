@@ -1,15 +1,27 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'fs';
-import { basename, join } from 'path';
+import { createHash } from 'crypto';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { basename, join, relative } from 'path';
 import { createLogger } from '../telemetry/Logger';
 import { resolveBundledSkillsRoot } from './resolveBundledSkillsRoot';
+import { parseSkillFrontmatter } from './SkillCatalogService';
+import { MAX_SKILL_DESCRIPTION_CHARS } from './skillLimits';
 
 const log = createLogger('BundledSkills');
+const MANIFEST_FILE = '.bundled-skills.json';
 
 export interface InstallBundledSkillsResult {
   installed: string[];
   skipped: string[];
   bundledRoot: string;
   destinationRoot: string;
+}
+
+interface BundledSkillsManifest {
+  version: 1;
+  skills: Record<string, {
+    sourceHash: string;
+    installedHash: string;
+  }>;
 }
 
 /** Copy extension-bundled skills into the workspace `.mitii/skills` folder (idempotent). */
@@ -29,6 +41,8 @@ export function installBundledSkills(
   }
 
   mkdirSync(destinationRoot, { recursive: true });
+  const manifestPath = join(destinationRoot, MANIFEST_FILE);
+  const manifest = readManifest(manifestPath);
 
   for (const skillDir of listBundledSkillDirs(bundledRoot)) {
     const skillName = basename(skillDir);
@@ -41,7 +55,34 @@ export function installBundledSkills(
     }
 
     const targetSkillFile = join(targetDir, 'SKILL.md');
-    if (existsSync(targetDir) && !options.force) {
+    const sourceHash = hashDirectory(skillDir);
+    const targetExists = existsSync(targetDir);
+    const previous = manifest.skills[skillName];
+    const targetHash = targetExists ? hashDirectory(targetDir) : undefined;
+
+    if (
+      targetExists &&
+      !options.force &&
+      (previous?.sourceHash === sourceHash || (!previous && targetHash === sourceHash))
+    ) {
+      if (!previous && targetHash === sourceHash) {
+        manifest.skills[skillName] = { sourceHash, installedHash: targetHash };
+      }
+      skipped.push(skillName);
+      continue;
+    }
+
+    if (
+      targetExists &&
+      !options.force &&
+      previous &&
+      previous.installedHash !== targetHash &&
+      previous.sourceHash !== sourceHash
+    ) {
+      log.warn('Bundled skill has local changes; leaving workspace copy in place', {
+        skillName,
+        targetDir,
+      });
       skipped.push(skillName);
       continue;
     }
@@ -58,7 +99,13 @@ export function installBundledSkills(
     }
 
     installed.push(skillName);
+    manifest.skills[skillName] = {
+      sourceHash,
+      installedHash: hashDirectory(targetDir),
+    };
   }
+
+  writeManifest(manifestPath, manifest);
 
   if (installed.length > 0 || skipped.length > 0) {
     log.info('Bundled skills install finished', {
@@ -103,10 +150,51 @@ function listBundledSkillDirs(bundledRoot: string): string[] {
 }
 
 function extractBundledDescription(content: string): string | undefined {
-  const match = content.match(/^---\r?\n[\s\S]*?\r?\n---/);
-  if (!match) return undefined;
-  const block = match[0];
-  const descriptionMatch = block.match(/^description:\s*(.+)$/m);
-  if (!descriptionMatch) return undefined;
-  return descriptionMatch[1].trim().replace(/^['"]|['"]$/g, '').slice(0, 240);
+  const description = parseSkillFrontmatter(content).description;
+  return description?.slice(0, MAX_SKILL_DESCRIPTION_CHARS);
+}
+
+function readManifest(path: string): BundledSkillsManifest {
+  if (!existsSync(path)) return { version: 1, skills: {} };
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as Partial<BundledSkillsManifest>;
+    if (parsed.version === 1 && parsed.skills && typeof parsed.skills === 'object') {
+      return { version: 1, skills: parsed.skills as BundledSkillsManifest['skills'] };
+    }
+  } catch (error) {
+    log.warn('Could not read bundled skills manifest; it will be recreated', {
+      path,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return { version: 1, skills: {} };
+}
+
+function writeManifest(path: string, manifest: BundledSkillsManifest): void {
+  writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+}
+
+function hashDirectory(root: string): string {
+  const hash = createHash('sha256');
+  const files: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir).sort()) {
+      if (entry === '.git') continue;
+      const absPath = join(dir, entry);
+      const st = statSync(absPath);
+      if (st.isDirectory()) {
+        walk(absPath);
+      } else if (st.isFile()) {
+        files.push(absPath);
+      }
+    }
+  };
+  walk(root);
+  for (const file of files) {
+    hash.update(relative(root, file).replace(/\\/g, '/'));
+    hash.update('\0');
+    hash.update(readFileSync(file));
+    hash.update('\0');
+  }
+  return hash.digest('hex');
 }

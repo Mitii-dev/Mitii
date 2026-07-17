@@ -1,19 +1,31 @@
 ---
 name: browser-testing-with-devtools
-description: Browser automation and UI verification with Puppeteer MCP for React, Next.js, and web apps.
+description: >-
+  Browser automation and UI verification with Puppeteer MCP for React, Next.js, and web apps.
+  Use for screenshots, DOM assertions, and smoke-testing pages after UI changes.
 ---
 
-# Browser testing with Puppeteer
+# Browser Testing with Puppeteer
 
-Use this skill when validating UI behavior, screenshots, or client-side flows in JavaScript web apps.
+## Quick Reference
 
-## When to use
+- Use for UI smoke checks, screenshots, and client-side flow verification.
+- Prefer Mitii-preloaded Puppeteer MCP when enabled.
+- Keep runs bounded: one page/flow, explicit selectors, clear pass/fail.
+- Pair with `test-driven-development` for behavior changes that need unit tests too.
 
-- React / Next.js / Vite UI verification
-- Screenshot or DOM assertions after Agent edits
-- Smoke-testing pages in benchmark or CI fixtures
+## When to Use
 
-## MCP setup
+- React / Next.js / Vite UI verification after Agent edits
+- Screenshot or DOM assertions
+- Smoke-testing pages in benchmarks or CI fixtures
+
+## When Not to Use
+
+- Pure backend/API work with no UI surface
+- Accessibility audits that need specialized tooling beyond smoke checks
+
+## MCP Setup
 
 Mitii preloads `@modelcontextprotocol/server-puppeteer` when `mitii.mcp.builtinServers.puppeteer` is enabled.
 
@@ -23,17 +35,10 @@ Headless CLI:
 mitii agent "Open the home page and verify the title" --runtime real --enable-puppeteer --approval auto
 ```
 
-## Tools
-
-- `mcp__puppeteer__puppeteer_navigate`
-- `mcp__puppeteer__puppeteer_screenshot`
-- `mcp__puppeteer__puppeteer_click`
-- `mcp__puppeteer__puppeteer_fill`
-- `mcp__puppeteer__puppeteer_evaluate`
-
 ## Workflow
 
-1. Start or assume a local dev server (`npm run dev`) when testing a fixture repo.
-2. Navigate to the page under test.
-3. Capture screenshot or evaluate DOM selectors.
-4. Report pass/fail with evidence in the session log.
+1. Confirm the app is reachable (dev server URL or static path).
+2. Navigate to the target route.
+3. Assert title/DOM/screenshot against the acceptance criteria.
+4. Report pass/fail with the evidence collected.
+5. On failure, capture console errors and a screenshot before debugging code.

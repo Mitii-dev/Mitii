@@ -1,28 +1,34 @@
 ---
 name: audit-cleanup
-description: Find unused imports, npm dependencies, and orphan source files. Use for cleanup, depcheck, dead code, or bundle-size audits.
+description: >-
+  Find unused imports, npm dependencies, and orphan source files.
+  Use for cleanup, depcheck, dead code, knip, circular deps, or bundle-size audits.
 ---
 
-# Audit / cleanup — script-first
+# Audit / Cleanup — Script-First
 
-## Why scripts, not subagents
+## Quick Reference
 
-Checking 64 dependencies via `spawn_research_agent` + `search` causes ~20 LLM rounds × 3s = **108s+**.
-Scripts use AST parsing and finish in **~3s**.
+1. Run workspace audit scripts before any manual grep or subagent.
+2. Classify findings: **high** (safe), **medium** (likely), **low** (review).
+3. Plan mode: report only. Act mode: remove only after user confirms.
+4. Never spawn research agents to check dependencies one-by-one.
+
+## Why Scripts
+
+Checking dozens of dependencies via subagents causes many LLM rounds. Scripts use AST/dep tooling and finish in seconds.
 
 ## Steps
 
-1. `execute_workspace_script({ script: "audit-dependencies.mjs" })` — depcheck, all deps at once
-2. `execute_workspace_script({ script: "audit-dead-code.sh" })` — knip: unused files, deps, exports
-3. `execute_workspace_script({ script: "check-circular-deps.mjs" })` — dependency cycles and import graph risks
-4. `execute_workspace_script({ script: "audit-package-engines.mjs" })` — Node/npm/VS Code engine drift
-5. read_file `package.json` only if scripts are unavailable
-6. Classify: **high** (safe), **medium** (likely), **low** (review)
-7. Plan mode: report only. Act mode: remove after user confirms
+1. `execute_workspace_script({ script: "audit-dependencies.mjs" })` — depcheck
+2. `execute_workspace_script({ script: "audit-dead-code.sh" })` — knip unused files/exports
+3. `execute_workspace_script({ script: "check-circular-deps.mjs" })` — cycles
+4. `execute_workspace_script({ script: "audit-package-engines.mjs" })` — engine drift
+5. `read_file` `package.json` only if scripts are unavailable
+6. Classify and propose a fix order
+7. Act only after confirmation for removals
 
-## Do NOT
+## Do Not
 
-- spawn_research_agent to grep each dependency
-- search package-by-package through 18 prod + 46 dev deps
-- re-run depcheck after script output is in chat history
-- replace deterministic scripts with LLM-only investigation
+- `spawn_research_agent` / broad search to grep each dependency
+- Delete packages without confirming they are unused at runtime and in docs/CI

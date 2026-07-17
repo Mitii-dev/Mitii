@@ -1,9 +1,16 @@
 ---
 name: test-driven-development
-description: Drives development with tests. Use when implementing any logic, fixing any bug, or changing any behavior. Use when you need to prove that code works, when a bug report arrives, or when you're about to modify existing functionality.
+description: Test-driven development and prove-it bug fixes. Use when implementing logic, fixing bugs, or changing behavior that needs durable verification.
 ---
 
 # Test-Driven Development
+
+## Quick Reference
+
+- Red → Green → Refactor for new behavior; Prove-It for bugs (failing repro first).
+- Skip for pure docs/config/static content with no behavior change.
+- Tests are the durable spec — "seems right" is not done.
+- Patterns: `references/testing-patterns.md`.
 
 ## Overview
 
@@ -346,28 +353,8 @@ This separation ensures the test is written without knowledge of the fix, making
 
 For detailed testing patterns, examples, and anti-patterns across frameworks, see `references/testing-patterns.md`.
 
-## Common Rationalizations
+For common rationalizations, see `references/tdd-pitfalls.md`.
 
-| Rationalization | Reality |
-|---|---|
-| "I'll write tests after the code works" | You won't. And tests written after the fact test implementation, not behavior. |
-| "This is too simple to test" | Simple code gets complicated. The test documents the expected behavior. |
-| "Tests slow me down" | Tests slow you down now. They speed you up every time you change the code later. |
-| "I tested it manually" | Manual testing doesn't persist. Tomorrow's change might break it with no way to know. |
-| "The code is self-explanatory" | Tests ARE the specification. They document what the code should do, not what it does. |
-| "It's just a prototype" | Prototypes become production code. Tests from day one prevent the "test debt" crisis. |
-| "Let me run the tests again just to be extra sure" | After a clean test run, repeating the same command adds nothing unless the code has changed since. Run again after subsequent edits, not as reassurance. |
-
-## Red Flags
-
-- Writing code without any corresponding tests
-- Tests that pass on the first run (they may not be testing what you think)
-- "All tests pass" but no tests were actually run
-- Bug fixes without reproduction tests
-- Tests that test framework behavior instead of application behavior
-- Test names that don't describe the expected behavior
-- Skipping tests to make the suite pass
-- Running the same test command twice in a row without any intervening code change
 
 ## Verification
 

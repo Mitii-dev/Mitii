@@ -1,9 +1,19 @@
 ---
 name: log-audit
-description: Analyze application, infrastructure, system, security, build, test, database, cloud, and AI-agent logs efficiently. Use for JSON, JSONL, NDJSON, CSV, plain-text, syslog, stack traces, tool traces, access logs, and rotated or compressed log files.
+description: Analyze application, system, security, build, test, cloud, and AI-agent logs. Use for JSON/JSONL, syslog, stack traces, access logs, and rotated or compressed files.
 ---
 
 # Log Audit
+
+## Quick Reference
+
+- Never load an entire large log into model context — sample, stream, aggregate first.
+- Prefer `analyze_log` (or format-specific parsers) before free-form reading.
+- Detect format from extension + bounded sample; do not assume `.log` is unstructured.
+- Use at most one targeted `query_log_events` follow-up unless the report is incomplete.
+- Stop once major findings have supporting evidence.
+
+## Log Types Covered
 
 Use this skill for analyzing any type of log file, including:
 

@@ -1,9 +1,16 @@
 ---
 name: performance-optimization
-description: Optimizes application performance. Use when performance requirements exist, when you suspect performance regressions, or when Core Web Vitals or load times need improvement. Use when profiling reveals bottlenecks that need fixing.
+description: Measure-first performance optimization for regressions, Core Web Vitals, and load-time budgets. Use when profiling shows a bottleneck to fix.
 ---
 
 # Performance Optimization
+
+## Quick Reference
+
+- Measure before optimizing; fix the proven bottleneck; re-measure.
+- Do not use this skill for speculative premature optimization.
+- Prefer budgets (CWV, p95, bundle size) and CI guardrails.
+- Deep checklist: `references/performance-checklist.md`.
 
 ## Overview
 
@@ -317,25 +324,6 @@ npx lhci autorun
 For detailed performance checklists, optimization commands, and anti-pattern reference, see `references/performance-checklist.md`.
 
 
-## Common Rationalizations
-
-| Rationalization | Reality |
-|---|---|
-| "We'll optimize later" | Performance debt compounds. Fix obvious anti-patterns now, defer micro-optimizations. |
-| "It's fast on my machine" | Your machine isn't the user's. Profile on representative hardware and networks. |
-| "This optimization is obvious" | If you didn't measure, you don't know. Profile first. |
-| "Users won't notice 100ms" | Research shows 100ms delays impact conversion rates. Users notice more than you think. |
-| "The framework handles performance" | Frameworks prevent some issues but can't fix N+1 queries or oversized bundles. |
-
-## Red Flags
-
-- Optimization without profiling data to justify it
-- N+1 query patterns in data fetching
-- List endpoints without pagination
-- Images without dimensions, lazy loading, or responsive sizes
-- Bundle size growing without review
-- No performance monitoring in production
-- `React.memo` and `useMemo` everywhere (overusing is as bad as underusing)
 
 ## Verification
 

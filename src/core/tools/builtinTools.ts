@@ -24,6 +24,7 @@ import { BaseSubagent, createDefaultSubagentRegistry, loadWorkspaceAgents, type 
 import { isAuditSubagentBlocked, buildScriptFirstAuditMessage } from '../runtime/auditRouting';
 import type { SubagentTracker } from '../runtime/SubagentTracker';
 import type { SkillCatalogService } from '../skills/SkillCatalogService';
+import { MAX_SKILL_INJECTION_CHARS } from '../skills/skillLimits';
 import { createLogger } from '../telemetry/Logger';
 import { analyzeChangeImpact, discoverProjectCatalog, formatProjectCatalog, saveProjectCatalog } from '../modes/ask';
 import { filterItemsToScope, normalizeScopeRoot } from '../context/scopeFilter';
@@ -788,7 +789,7 @@ export function createUseSkillTool(skillCatalog: SkillCatalogService): Tool<{ na
   return {
     name: 'use_skill',
     description:
-      'Load a workspace skill playbook from .mitii/skills. Use when a named playbook or specialized workflow applies.',
+      'Load a workspace skill playbook from .mitii/skills. Use when a named playbook or specialized workflow applies. Prefer skills already pre-injected in context.',
     risk: 'low',
     inputSchema: z.object({ name: z.string() }),
     async execute(input): Promise<ToolResult> {
@@ -801,9 +802,15 @@ export function createUseSkillTool(skillCatalog: SkillCatalogService): Tool<{ na
           error: `Skill not found: ${input.name}`,
         };
       }
+      let body = skill.content;
+      let truncated = false;
+      if (body.length > MAX_SKILL_INJECTION_CHARS) {
+        body = `${body.slice(0, MAX_SKILL_INJECTION_CHARS)}\n\n…(truncated at ${MAX_SKILL_INJECTION_CHARS} chars; read_file ${skill.entry.relPath} or sibling references/ for the remainder)`;
+        truncated = true;
+      }
       return {
         success: true,
-        output: `# Skill: ${skill.entry.name}\nPath: ${skill.entry.relPath}\nDescription: ${skill.entry.description}\n\n${skill.content}`,
+        output: `# Skill: ${skill.entry.name}\nPath: ${skill.entry.relPath}\nDescription: ${skill.entry.description}${truncated ? '\nNote: body truncated to skill injection budget' : ''}\n\n${body}`,
       };
     },
   };
