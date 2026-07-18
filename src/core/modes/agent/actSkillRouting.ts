@@ -1,52 +1,69 @@
 import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import type { SkillCatalogService } from '../../skills/SkillCatalogService';
+import { stripSkillFrontmatter } from '../../skills/SkillCatalogService';
+import { MAX_SKILL_INJECTION_CHARS, QUICK_REF_FALLBACK_CHARS } from '../../skills/skillLimits';
+import { formatSkillRuntimeContext, type SkillRuntimeContext } from '../../skills/skillRuntimeContext';
+import type { SkillInjectionStyle } from '../../agentic/tierPolicy';
 import type { ActIntent } from './actTypes';
+import { resolveRoute, resolveSkillsForRoute, type SkillResolution } from '../../pipeline';
 
-const MAX_SKILL_CHARS = 24_000;
+const MAX_SKILL_CHARS = MAX_SKILL_INJECTION_CHARS;
 
+/**
+ * Skills to pre-inject (0–1 active). Uses pipeline skill resolver.
+ * `using-agent-skills` is never auto-injected.
+ */
 export function resolveActSkillNames(intent: ActIntent, taskAnalysis?: TaskAnalysis): string[] {
-  const names: string[] = ['using-agent-skills'];
+  return resolveActSkillResolution(intent, taskAnalysis).injectSkills;
+}
 
-  if (intent === 'audit' || taskAnalysis?.kind === 'audit') {
-    names.push('audit-cleanup');
+/** Full skill resolution for telemetry / prompt catalog hints. */
+export function resolveActSkillResolution(intent: ActIntent, taskAnalysis?: TaskAnalysis): SkillResolution {
+  const summary = taskAnalysis?.summary ?? intent;
+  const analysis: TaskAnalysis = taskAnalysis
+    ? {
+        ...taskAnalysis,
+        actIntent: taskAnalysis.actIntent ?? intent,
+        kind:
+          intent === 'docs' && taskAnalysis.kind === 'implementation'
+            ? 'docs'
+            : taskAnalysis.kind,
+      }
+    : {
+        kind:
+          intent === 'docs'
+            ? 'docs'
+            : intent === 'log_audit'
+              ? 'log_audit'
+              : intent === 'audit'
+                ? 'audit'
+                : 'implementation',
+        complexity: 'medium',
+        shouldPlan: false,
+        shouldVerify: true,
+        shouldUseSubagents: false,
+        summary,
+        actIntent: intent,
+      };
+  const route = resolveRoute(summary, analysis);
+  if (intent === 'docs') route.intent = 'docs';
+  if (intent === 'log_audit') {
+    route.intent = 'log_audit';
+    route.executionPath = 'log_audit';
   }
-
-  if (/\b(console\.log|inline style|missing types?|type annotations?|eslint|lint|tech debt|code smells?)\b/i.test(taskAnalysis?.summary ?? '')) {
-    names.push('code-smells-and-tech-debt');
-  }
-
-  if (/\b(\.env|environment variable|missing keys?|secrets?|api keys?|tokens?)\b/i.test(taskAnalysis?.summary ?? '')) {
-    names.push('environment-and-secrets');
-  }
-
-  if (
-    intent === 'resume_plan' ||
-    intent === 'bugfix' ||
-    intent === 'mdx_repair' ||
-    intent === 'diagnose' ||
-    /\b(error|failing|failed|debug|repair|fix)\b/i.test(taskAnalysis?.summary ?? '')
-  ) {
-    names.push('debugging-and-error-recovery');
-  }
-
-  if (
-    intent === 'feature' ||
-    intent === 'refactor' ||
-    intent === 'docs' ||
-    taskAnalysis?.kind === 'implementation' ||
-    taskAnalysis?.kind === 'explicit_plan'
-  ) {
-    names.push('test-driven-development');
-  }
-
-  return [...new Set(names)];
+  return resolveSkillsForRoute(route, analysis, { sourceMode: 'agent', planning: false });
 }
 
 export function loadActSkillPlaybooks(
   catalog: SkillCatalogService | undefined,
-  skillNames: string[]
+  skillNames: string[],
+  opts: { style?: SkillInjectionStyle; maxChars?: number; runtimeContext?: SkillRuntimeContext } = {}
 ): { context: string; loaded: string[] } {
-  if (!catalog || skillNames.length === 0) return { context: '', loaded: [] };
+  const style = opts.style ?? 'full';
+  if (!catalog || skillNames.length === 0 || style === 'none' || style === 'catalog') {
+    return { context: '', loaded: [] };
+  }
+  const maxChars = opts.maxChars ?? MAX_SKILL_CHARS;
 
   const loaded: string[] = [];
   const blocks: string[] = [];
@@ -59,10 +76,10 @@ export function loadActSkillPlaybooks(
     const block = [
       `### Skill: ${skill.entry.name}`,
       `Path: ${skill.entry.relPath}`,
-      skill.content.trim(),
+      style === 'quick-ref' ? extractQuickRef(skill.content, skill.entry.description) : skill.content.trim(),
     ].join('\n\n');
 
-    if (totalChars + block.length > MAX_SKILL_CHARS) break;
+    if (totalChars + block.length > maxChars) break;
     blocks.push(block);
     loaded.push(skill.entry.name);
     totalChars += block.length;
@@ -74,6 +91,7 @@ export function loadActSkillPlaybooks(
     context: [
       '## Act skill playbooks (follow these workflows)',
       'These playbooks were pre-loaded for this execution session. Use them to guide implementation, debugging, verification, and recovery.',
+      formatSkillRuntimeContext(opts.runtimeContext),
       '',
       blocks.join('\n\n---\n\n'),
     ].join('\n'),
@@ -81,11 +99,27 @@ export function loadActSkillPlaybooks(
   };
 }
 
+function extractQuickRef(content: string, description?: string): string {
+  const trimmed = stripSkillFrontmatter(content).trim();
+  const parts: string[] = [];
+  if (description?.trim()) parts.push(`Description: ${description.trim()}`);
+
+  const match = trimmed.match(/^##\s+(Quick Reference|Overview)\s*$/im);
+  if (match && match.index !== undefined) {
+    const section = trimmed.slice(match.index);
+    const next = section.slice(match[0].length).search(/^##\s+/m);
+    parts.push((next >= 0 ? section.slice(0, match[0].length + next) : section).trim());
+  } else {
+    parts.push(trimmed.slice(0, QUICK_REF_FALLBACK_CHARS).trim());
+  }
+
+  return parts.filter(Boolean).join('\n\n');
+}
+
 export const ACT_SKILL_TOOL_GUIDANCE = `
 ACT SKILLS:
-- Call use_skill to load a workspace playbook when the task needs a workflow that is not already injected.
-- For bug fixes and failed verification, use debugging-and-error-recovery.
-- For implementation and refactors, use test-driven-development when tests or verification strategy are unclear.
-- For cleanup tasks, use audit-cleanup and prefer repository audit scripts over manual grep.
-- For console logs, inline styles, missing types, lint hygiene, or tech debt, use code-smells-and-tech-debt.
-- For .env files, environment variables, keys, tokens, or secrets, use environment-and-secrets and never print secret values.`;
+- Follow the single injected playbook first (0–1 active skill). Call use_skill only for a deferred/catalog skill that is not already injected.
+- Do not load using-agent-skills unless you need meta skill-routing help.
+- For documentation / README work, use the documentation skill — never release_plan_controller or audit-cleanup.
+- For dependency/dead-code cleanup only, use audit-cleanup. Other "audit" subtypes are not knip/depcheck tasks.
+- Prefer builtin read_file / write_file over MCP filesystem tools.`;

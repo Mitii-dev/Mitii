@@ -28,6 +28,12 @@ export interface IndexingStatus {
   activeWorkers: number;
   processed: number;
   runTotal: number;
+  phase?: 'idle' | 'scanning' | 'indexing' | 'complete' | 'cancelled';
+  partial?: boolean;
+  degraded?: boolean;
+  detail?: string;
+  startedAt?: number;
+  updatedAt?: number;
 }
 
 export interface IndexQueueOptions {
@@ -47,6 +53,12 @@ export class IndexQueue {
   private activeWorkers = 0;
   private processed = 0;
   private runTotal = 0;
+  private phase: NonNullable<IndexingStatus['phase']> = 'idle';
+  private partial = false;
+  private degraded = false;
+  private detail = '';
+  private startedAt: number | undefined;
+  private updatedAt: number | undefined;
   private maxConcurrency = 2;
   private maxFileSizeBytes = 512_000;
   private readonly chunker = new ChunkingService();
@@ -94,7 +106,16 @@ export class IndexQueue {
     this.vectorService = service;
   }
 
-  enqueue(jobs: IndexJob[]): void {
+  setRunMetadata(metadata: Pick<IndexingStatus, 'phase' | 'partial' | 'degraded' | 'detail'>): void {
+    if (metadata.phase) this.phase = metadata.phase;
+    if (metadata.partial !== undefined) this.partial = metadata.partial;
+    if (metadata.degraded !== undefined) this.degraded = metadata.degraded;
+    if (metadata.detail !== undefined) this.detail = metadata.detail;
+    this.updatedAt = Date.now();
+    this.onProgress?.(this.getStatus());
+  }
+
+  enqueue(jobs: IndexJob[], metadata: Pick<IndexingStatus, 'partial' | 'degraded' | 'detail'> = {}): void {
     const existing = new Set(this.queue.map((j) => j.relPath));
     const wasIdle = !this.running && this.queue.length === 0;
     let enqueued = 0;
@@ -109,9 +130,15 @@ export class IndexQueue {
       this.failed = 0;
       this.processed = 0;
       this.runTotal = enqueued;
+      this.startedAt = Date.now();
     } else {
       this.runTotal += enqueued;
     }
+    this.phase = enqueued > 0 || this.queue.length > 0 ? 'indexing' : this.phase;
+    if (metadata.partial !== undefined) this.partial = metadata.partial;
+    if (metadata.degraded !== undefined) this.degraded = metadata.degraded;
+    if (metadata.detail !== undefined) this.detail = metadata.detail;
+    this.updatedAt = Date.now();
     this.onProgress?.(this.getStatus());
     void this.process();
   }
@@ -119,6 +146,10 @@ export class IndexQueue {
   cancel(): void {
     this.cancelled = true;
     this.queue = [];
+    this.phase = 'cancelled';
+    this.detail = 'Indexing canceled. The completed index remains usable, but pending files were skipped.';
+    this.updatedAt = Date.now();
+    this.onProgress?.(this.getStatus());
   }
 
   /** Waits for embedding writes still in flight — indexFile() kicks these off without awaiting
@@ -146,6 +177,12 @@ export class IndexQueue {
       activeWorkers: this.activeWorkers,
       processed: this.processed,
       runTotal: this.runTotal,
+      phase: this.phase,
+      partial: this.partial,
+      degraded: this.degraded,
+      detail: this.detail || undefined,
+      startedAt: this.startedAt,
+      updatedAt: this.updatedAt,
     };
   }
 
@@ -159,6 +196,15 @@ export class IndexQueue {
     await Promise.all(workers);
 
     this.running = false;
+    if (this.phase !== 'cancelled') {
+      this.phase = this.failed > 0 ? 'complete' : 'complete';
+      this.detail = this.failed > 0
+        ? `Indexing finished with ${this.failed} failed file${this.failed === 1 ? '' : 's'}. Search remains available for indexed files.`
+        : this.partial
+          ? 'Priority files indexed. Background indexing will continue for full coverage.'
+          : 'Indexing complete.';
+    }
+    this.updatedAt = Date.now();
     this.onProgress?.(this.getStatus());
     this.onComplete?.();
     if (this.deferVectorWrites && this.vectorService && this.workspace) {

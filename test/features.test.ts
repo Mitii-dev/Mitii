@@ -37,6 +37,8 @@ describe('providerPresets', () => {
   it('marks cloud providers correctly', () => {
     expect(isCloudProvider('anthropic')).toBe(true);
     expect(isCloudProvider('openai-compatible')).toBe(false);
+    expect(isCloudProvider('openai-compatible', { baseUrl: 'https://api.groq.com/openai/v1' })).toBe(true);
+    expect(isCloudProvider('openai-compatible', { baseUrl: 'http://localhost:11434/v1' })).toBe(false);
     expect(isCloudProvider('echo')).toBe(false);
   });
 });
@@ -400,6 +402,38 @@ describe('fetch_web tool policy', () => {
     );
     const result = engine.evaluate('fetch_web', { url: 'https://example.com' });
     expect(result.decision).toBe('block');
+  });
+
+  it('explains that OSV package queries require POST before making a request', async () => {
+    const { createFetchWebTool } = await import('../src/core/tools/builtinTools');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const result = await createFetchWebTool(() => true).execute({
+        url: 'https://api.osv.dev/v1/query?package=fastify&ecosystem=npm',
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('requires POST');
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('corrects malformed GitHub advisory ID URLs before making a request', async () => {
+    const { createFetchWebTool } = await import('../src/core/tools/builtinTools');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const result = await createFetchWebTool(() => true).execute({
+        url: 'https://api.github.com/advisories?GHSA-mrq3-vjjr-p77c',
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('/advisories/GHSA-mrq3-vjjr-p77c');
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

@@ -28,6 +28,7 @@ export const PLANNING_DISCOVERY_TOOLS = new Set([
   'spawn_subagent',
   'fetch_web',
   'ask_question',
+  'propose_file_scope',
 ]);
 
 /** Tools available during plan step execution. */

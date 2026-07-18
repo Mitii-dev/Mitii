@@ -24,6 +24,14 @@ export const ASK_ALLOWED_TOOLS = new Set([
   'spawn_subagent',
   'project_catalog',
   'analyze_change_impact',
+  'propose_file_scope',
+  // Approval-gated mutators — ToolExecutor prompts the user; do not auto-run.
+  'write_file',
+  'apply_patch',
+  'analyze_log_directory',
+  'analyze_jsonl',
+  'query_log_events',
+  'list_logs',
 ]);
 
 const GROUNDING_TOOLS = new Set([
@@ -42,18 +50,27 @@ const GROUNDING_TOOLS = new Set([
   'spawn_subagent',
   'project_catalog',
   'analyze_change_impact',
+  'propose_file_scope',
+  'analyze_log_directory',
+  'analyze_jsonl',
+  'query_log_events',
+  'list_logs',
 ]);
 
 export function filterAskModeTools(tools: ToolDefinition[]): ToolDefinition[] {
   return tools.filter((tool) => {
     const name = tool.function.name;
     if (ASK_ALLOWED_TOOLS.has(name)) return true;
-    return name.startsWith('mcp__');
+    if (!name.startsWith('mcp__')) return false;
+    // MCP tools are available; filesystem mutators still require user approval at execute time.
+    return true;
   });
 }
 
 export function isAskAllowedTool(toolName: string): boolean {
-  return ASK_ALLOWED_TOOLS.has(toolName) || toolName.startsWith('mcp__');
+  if (ASK_ALLOWED_TOOLS.has(toolName)) return true;
+  if (!toolName.startsWith('mcp__')) return false;
+  return true;
 }
 
 /** Whether the answer should be grounded in codebase reads/searches before finishing. */

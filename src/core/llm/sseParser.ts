@@ -1,5 +1,6 @@
 import type { ChatDelta } from './types';
 import { ProviderError } from './errors';
+import { debugTrace } from '../telemetry/AsyncDebugTrace';
 
 export async function* parseSseStream(
   body: ReadableStream<Uint8Array>
@@ -7,6 +8,7 @@ export async function* parseSseStream(
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let networkChunkSequence = 0;
 
   try {
     while (true) {
@@ -15,6 +17,11 @@ export async function* parseSseStream(
         break;
       }
 
+      networkChunkSequence += 1;
+      debugTrace.trace('llm', 'network_chunk_receive', {
+        sequence: networkChunkSequence,
+        bytes: value.byteLength,
+      });
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? '';
@@ -76,7 +83,10 @@ export async function* parseSseStream(
           if (e instanceof ProviderError) {
             throw e;
           }
-          // Skip malformed SSE lines
+          debugTrace.trace('llm', 'malformed_sse_frame', {
+            sequence: networkChunkSequence,
+            error: e instanceof Error ? e.message : String(e),
+          }, trimmed);
         }
       }
     }

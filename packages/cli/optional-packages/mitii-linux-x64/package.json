@@ -1,6 +1,6 @@
 {
   "name": "@mitii/cli-linux-x64",
-  "version": "2.7.32",
+  "version": "2.7.67",
   "description": "Mitii native CLI for Linux x64",
   "license": "AGPL-3.0-or-later",
   "os": [

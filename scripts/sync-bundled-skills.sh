@@ -8,15 +8,19 @@ SOURCE_DIR="${AGENT_SKILLS_SOURCE_DIR:-}"
 
 usage() {
   cat <<'EOF'
-Sync bundled skills committed with the VS Code extension.
+Sync selected upstream skills into the VS Code extension bundle.
 
 Usage:
   AGENT_SKILLS_SOURCE_DIR=/path/to/agent-skills/skills bash scripts/sync-bundled-skills.sh
   bash scripts/sync-bundled-skills.sh /path/to/agent-skills/skills
 
-Copies the seven Tier-1 SKILL.md folders from addyosmani/agent-skills into src/core/skills/bundled/.
-Mitii-owned skills (e.g. audit-cleanup) live in src/core/skills/bundled/ and are not overwritten.
+Copies the listed Tier-1 SKILL.md folders from an upstream agent-skills checkout into
+src/core/skills/bundled/. Mitii-owned skills (git-*, github-*, audit-cleanup, log-audit, etc.)
+live in this tree and are not overwritten unless they appear in SKILLS below.
+
 Does not run at extension runtime — commit the result and ship it in the VSIX.
+
+After sync, run: pnpm run skills:validate
 EOF
 }
 
@@ -35,13 +39,15 @@ if [[ -z "$SOURCE_DIR" || ! -d "$SOURCE_DIR" ]]; then
   exit 1
 fi
 
+# Upstream playbooks that Mitii still vendors. Keep in sync with enterprise authoring
+# (Quick Reference, ≤240-char descriptions). Do not reintroduce git-workflow-and-versioning;
+# Mitii uses the git-* / github-* skill family instead.
 SKILLS=(
   planning-and-task-breakdown
   debugging-and-error-recovery
   performance-optimization
   test-driven-development
   code-review-and-quality
-  git-workflow-and-versioning
   using-agent-skills
 )
 
@@ -59,3 +65,4 @@ for skill in "${SKILLS[@]}"; do
 done
 
 echo "Done. src/core/skills/bundled now contains $(find "$DEST_DIR" -name SKILL.md | wc -l | tr -d ' ') skill(s)."
+echo "Run: pnpm run skills:validate"

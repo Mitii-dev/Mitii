@@ -10,6 +10,16 @@ export function readThunderConfigFromSettings(): ThunderConfig {
   const config = createMitiiConfigReader();
   const raw = {
     debug: config.get<boolean>('debug'),
+    debugTrace: {
+      enabled: config.get<boolean>('debugOptions.trace.enabled'),
+      includePayloads: config.get<boolean>('debugOptions.trace.includePayloads'),
+      llm: config.get<boolean>('debugOptions.trace.llm'),
+      mcp: config.get<boolean>('debugOptions.trace.mcp'),
+      webview: config.get<boolean>('debugOptions.trace.webview'),
+      daemon: config.get<boolean>('debugOptions.trace.daemon'),
+      webhook: config.get<boolean>('debugOptions.trace.webhook'),
+      maxPayloadChars: config.get<number>('debugOptions.trace.maxPayloadChars'),
+    },
     provider: {
       type: config.get<string>('provider.type'),
       baseUrl: config.get<string>('provider.baseUrl'),
@@ -63,6 +73,7 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       autoMemoryScope: config.get<string>('memory.autoMemoryScope'),
     },
     agent: {
+      agenticTierOverride: config.get<string>('agent.agenticTierOverride'),
       subagentsEnabled: config.get<boolean>('agent.subagentsEnabled'),
       teamsEnabled: config.get<boolean>('agent.teamsEnabled'),
       maxSteps: config.get<number>('agent.maxSteps'),
@@ -84,6 +95,9 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       showDiffPreview: config.get<boolean>('agent.showDiffPreview'),
       verifyCommands: config.get<string[]>('agent.verifyCommands'),
       verifyOnActComplete: config.get<boolean>('agent.verifyOnActComplete'),
+      askModel: config.get<string>('agent.askModel'),
+      askBaseUrl: config.get<string>('agent.askBaseUrl'),
+      askProviderType: config.get<string>('agent.askProviderType'),
       planModel: config.get<string>('agent.planModel'),
       planBaseUrl: config.get<string>('agent.planBaseUrl'),
       planProviderType: config.get<string>('agent.planProviderType'),
@@ -112,6 +126,9 @@ export function readThunderConfigFromSettings(): ThunderConfig {
       autoPrEnabled: config.get<boolean>('github.autoPrEnabled'),
       defaultBaseBranch: config.get<string>('github.defaultBaseBranch'),
       webhookSecret: config.get<string>('github.webhookSecret'),
+      lazyMcpActivation: config.get<boolean>('github.lazyMcpActivation'),
+      requireApprovalForRemoteWrites: config.get<boolean>('github.requireApprovalForRemoteWrites'),
+      workflowDispatchEnabled: config.get<boolean>('github.workflowDispatchEnabled'),
     },
     telemetry: {
       sessionLogging: config.get<boolean>('telemetry.sessionLogging'),

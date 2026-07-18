@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react';
 import { AGENT_NAME } from '../../../shared/brand';
 import { LOCAL_MODEL_PRESETS, findLocalModelPreset } from '../../../shared/modelPresets';
 import type {
@@ -23,19 +23,27 @@ import { MemoryPanel } from './MemoryPanel';
 import { CheckpointPanel } from './CheckpointPanel';
 import { getProviderPreset } from '../../../core/llm/providerPresets';
 import { validateProviderSettings } from '../../../core/config/ui/mappers';
+import { AGENT_DEPTH_OPTIONS, normalizeAgentDepth } from '../../../core/config/agentDepth';
 import {
   deriveSafetyFromAutonomyPreset,
 } from '../utils/autonomyPreset';
 
 type SettingsTab = 'workspace' | 'model' | 'agent' | 'context' | 'integrations' | 'debug';
+type ModeSettingsTab = 'ask' | 'plan' | 'agent';
 
 const TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'workspace', label: 'Workspace' },
   { id: 'model', label: 'Model' },
-  { id: 'agent', label: 'Agent' },
+  { id: 'agent', label: 'Modes' },
   { id: 'context', label: 'Context' },
   { id: 'integrations', label: 'Integrations' },
   { id: 'debug', label: 'Debug' },
+];
+
+const MODE_TABS: Array<{ id: ModeSettingsTab; label: string; tone: string; description: string }> = [
+  { id: 'ask', label: 'Ask', tone: '#22c55e', description: 'Read-only answers and exploration.' },
+  { id: 'plan', label: 'Plan', tone: '#f59e0b', description: 'Read-only discovery and structured plans.' },
+  { id: 'agent', label: 'Agent', tone: '#ef4444', description: 'Implementation, edits, and verification.' },
 ];
 
 const PROVIDER_OPTIONS: Array<{ id: ProviderSettingsPayload['providerType']; label: string }> = [
@@ -52,32 +60,20 @@ const PROVIDER_OPTIONS: Array<{ id: ProviderSettingsPayload['providerType']; lab
   { id: 'codex', label: 'OpenAI Codex' },
 ];
 
-const ASK_DEPTH_OPTIONS: Array<{ id: SettingsView['askDepth']; label: string }> = [
-  { id: 'auto', label: 'Auto' },
-  { id: 'quick', label: 'Quick' },
-  { id: 'standard', label: 'Standard' },
-  { id: 'deep', label: 'Deep' },
-  { id: 'pilot', label: 'Pilot' },
-  { id: 'enterprise', label: 'Enterprise' },
-];
+const ASK_DEPTH_OPTIONS = AGENT_DEPTH_OPTIONS.map((option) => ({
+  id: option.id,
+  label: option.askLabel,
+}));
 
-const PLAN_DEPTH_OPTIONS: Array<{ id: SettingsView['planDepth']; label: string }> = [
-  { id: 'auto', label: 'Auto' },
-  { id: 'quick', label: 'Quick discovery' },
-  { id: 'standard', label: 'Standard discovery' },
-  { id: 'deep', label: 'Deep discovery' },
-  { id: 'pilot', label: 'Pilot discovery' },
-  { id: 'enterprise', label: 'Enterprise discovery' },
-];
+const PLAN_DEPTH_OPTIONS = AGENT_DEPTH_OPTIONS.map((option) => ({
+  id: option.id,
+  label: option.planLabel,
+}));
 
-const ACT_DEPTH_OPTIONS: Array<{ id: SettingsView['actDepth']; label: string }> = [
-  { id: 'auto', label: 'Auto' },
-  { id: 'quick', label: 'Quick execution' },
-  { id: 'standard', label: 'Standard execution' },
-  { id: 'deep', label: 'Deep execution' },
-  { id: 'pilot', label: 'Pilot execution' },
-  { id: 'enterprise', label: 'Enterprise execution' },
-];
+const ACT_DEPTH_OPTIONS = AGENT_DEPTH_OPTIONS.map((option) => ({
+  id: option.id,
+  label: option.actLabel,
+}));
 
 const CONTEXT_TOGGLES: Array<{
   key: keyof ContextToggles;
@@ -228,6 +224,8 @@ export function SettingsPanel({
   onDeleteProviderProfile,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('workspace');
+  const [activeModeTab, setActiveModeTab] = useState<ModeSettingsTab>('ask');
+  const [activeDepthTab, setActiveDepthTab] = useState<ModeSettingsTab>('ask');
   const [apiKey, setApiKey] = useState('');
   const [githubToken, setGithubToken] = useState('');
   const [saved, setSaved] = useState(false);
@@ -249,9 +247,9 @@ export function SettingsPanel({
 
   const [subagentsEnabled, setSubagentsEnabled] = useState(settings.subagentsEnabled);
   const [agentMaxSteps, setAgentMaxSteps] = useState(settings.agentMaxSteps);
-  const [askDepth, setAskDepth] = useState<SettingsView['askDepth']>(settings.askDepth);
-  const [planDepth, setPlanDepth] = useState<SettingsView['planDepth']>(settings.planDepth);
-  const [actDepth, setActDepth] = useState<SettingsView['actDepth']>(settings.actDepth);
+  const [askDepth, setAskDepth] = useState<SettingsView['askDepth']>(normalizeAgentDepth(settings.askDepth));
+  const [planDepth, setPlanDepth] = useState<SettingsView['planDepth']>(normalizeAgentDepth(settings.planDepth));
+  const [actDepth, setActDepth] = useState<SettingsView['actDepth']>(normalizeAgentDepth(settings.actDepth));
   const [askMaxSteps, setAskMaxSteps] = useState(settings.askMaxSteps);
   const [askAutoContinue, setAskAutoContinue] = useState(settings.askAutoContinue);
   const [askMaxAutoContinues, setAskMaxAutoContinues] = useState(settings.askMaxAutoContinues);
@@ -259,6 +257,8 @@ export function SettingsPanel({
   const [agentMaxAutoContinues, setAgentMaxAutoContinues] = useState(settings.agentMaxAutoContinues);
   const [researchAgentMaxSteps, setResearchAgentMaxSteps] = useState(settings.researchAgentMaxSteps);
   const [showDiffPreview, setShowDiffPreview] = useState(settings.showDiffPreview);
+  const [askModel, setAskModel] = useState(settings.askModel);
+  const [askBaseUrl, setAskBaseUrl] = useState(settings.askBaseUrl);
   const [planModel, setPlanModel] = useState(settings.planModel);
   const [planBaseUrl, setPlanBaseUrl] = useState(settings.planBaseUrl);
   const [actModel, setActModel] = useState(settings.actModel);
@@ -268,6 +268,14 @@ export function SettingsPanel({
   const [mcpEnabled, setMcpEnabled] = useState(settings.mcpEnabled);
   const [sessionLogging, setSessionLogging] = useState(settings.sessionLogging);
   const [debugMetrics, setDebugMetrics] = useState(settings.debugMetrics);
+  const [traceEnabled, setTraceEnabled] = useState(settings.traceEnabled);
+  const [traceIncludePayloads, setTraceIncludePayloads] = useState(settings.traceIncludePayloads);
+  const [traceLlm, setTraceLlm] = useState(settings.traceLlm);
+  const [traceMcp, setTraceMcp] = useState(settings.traceMcp);
+  const [traceWebview, setTraceWebview] = useState(settings.traceWebview);
+  const [traceDaemon, setTraceDaemon] = useState(settings.traceDaemon);
+  const [traceWebhook, setTraceWebhook] = useState(settings.traceWebhook);
+  const [traceMaxPayloadChars, setTraceMaxPayloadChars] = useState(settings.traceMaxPayloadChars);
   const [vectorsEnabled, setVectorsEnabled] = useState(settings.vectorsEnabled);
   const [embeddingProvider, setEmbeddingProvider] = useState<'minilm' | 'hash'>(settings.embeddingProvider);
   const [vectorBackend, setVectorBackend] = useState<'sqlite' | 'lancedb'>(settings.vectorBackend);
@@ -286,9 +294,9 @@ export function SettingsPanel({
     setContextWindow(settings.contextWindow);
     setSubagentsEnabled(settings.subagentsEnabled);
     setAgentMaxSteps(settings.agentMaxSteps);
-    setAskDepth(settings.askDepth);
-    setPlanDepth(settings.planDepth);
-    setActDepth(settings.actDepth);
+    setAskDepth(normalizeAgentDepth(settings.askDepth));
+    setPlanDepth(normalizeAgentDepth(settings.planDepth));
+    setActDepth(normalizeAgentDepth(settings.actDepth));
     setAskMaxSteps(settings.askMaxSteps);
     setAskAutoContinue(settings.askAutoContinue);
     setAskMaxAutoContinues(settings.askMaxAutoContinues);
@@ -296,6 +304,8 @@ export function SettingsPanel({
     setAgentMaxAutoContinues(settings.agentMaxAutoContinues);
     setResearchAgentMaxSteps(settings.researchAgentMaxSteps);
     setShowDiffPreview(settings.showDiffPreview);
+    setAskModel(settings.askModel);
+    setAskBaseUrl(settings.askBaseUrl);
     setPlanModel(settings.planModel);
     setPlanBaseUrl(settings.planBaseUrl);
     setActModel(settings.actModel);
@@ -304,6 +314,14 @@ export function SettingsPanel({
     setMcpEnabled(settings.mcpEnabled);
     setSessionLogging(settings.sessionLogging);
     setDebugMetrics(settings.debugMetrics);
+    setTraceEnabled(settings.traceEnabled);
+    setTraceIncludePayloads(settings.traceIncludePayloads);
+    setTraceLlm(settings.traceLlm);
+    setTraceMcp(settings.traceMcp);
+    setTraceWebview(settings.traceWebview);
+    setTraceDaemon(settings.traceDaemon);
+    setTraceWebhook(settings.traceWebhook);
+    setTraceMaxPayloadChars(settings.traceMaxPayloadChars);
     setVectorsEnabled(settings.vectorsEnabled);
     setEmbeddingProvider(settings.embeddingProvider);
     setVectorBackend(settings.vectorBackend);
@@ -359,6 +377,8 @@ export function SettingsPanel({
         maxAutoContinues: agentMaxAutoContinues,
         researchAgentMaxSteps,
         showDiffPreview,
+        askModel: askModel.trim(),
+        askBaseUrl: askBaseUrl.trim(),
         planModel: planModel.trim(),
         planBaseUrl: planBaseUrl.trim(),
         actModel: actModel.trim(),
@@ -380,7 +400,15 @@ export function SettingsPanel({
       },
       telemetry: {
         sessionLogging,
-        debugMetrics: settings.localDebugAvailable && sessionLogging ? debugMetrics : false,
+        debugMetrics: sessionLogging ? debugMetrics : false,
+        traceEnabled: sessionLogging ? traceEnabled : false,
+        traceIncludePayloads: sessionLogging && traceEnabled ? traceIncludePayloads : false,
+        traceLlm,
+        traceMcp,
+        traceWebview,
+        traceDaemon,
+        traceWebhook,
+        traceMaxPayloadChars,
       },
     };
   };
@@ -468,9 +496,9 @@ export function SettingsPanel({
 
   const isLocalProvider = providerType !== 'echo';
   const showSaveBar = activeTab !== 'workspace';
-  const visibleTabs = settings.localDebugAvailable
-    ? TABS
-    : TABS.filter((tab) => tab.id !== 'debug');
+  const visibleTabs = TABS;
+  const activeModeMeta = MODE_TABS.find((tab) => tab.id === activeModeTab) ?? MODE_TABS[0];
+  const activeDepthMeta = MODE_TABS.find((tab) => tab.id === activeDepthTab) ?? MODE_TABS[0];
 
   return (
     <div className="settings-shell">
@@ -757,236 +785,339 @@ export function SettingsPanel({
         {activeTab === 'agent' && (
           <>
             <SettingsCard
-              title="Agent behavior"
-              description="Control tool rounds, subagents, and editor integration."
+              title="Mode behavior"
+              description="Separate defaults for Ask, Plan, and Agent. Mode colors match the chat composer."
             >
-              <SettingSwitch
-                label="Research subagents"
-                description="Parallel read-only investigation via spawn_research_agent."
-                checked={subagentsEnabled}
-                onChange={(v) => {
-                  setSubagentsEnabled(v);
-                  markDirty();
-                }}
-              />
-              <SettingSwitch
-                label="Auto-continue rounds"
-                description="Keep working after the main step budget is spent."
-                checked={agentAutoContinue}
-                onChange={(v) => {
-                  setAgentAutoContinue(v);
-                  markDirty();
-                }}
-              />
+              <div className="settings-mode-tabs" role="tablist" aria-label="Mode settings">
+                {MODE_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={`settings-mode-tab ${activeModeTab === tab.id ? 'settings-mode-tab--active' : ''}`}
+                    style={{ '--mode-color': tab.tone } as CSSProperties}
+                    onClick={() => setActiveModeTab(tab.id)}
+                  >
+                    <span>{tab.label}</span>
+                    <small>{tab.description}</small>
+                  </button>
+                ))}
+              </div>
 
-              <label className="settings-field">
-                <span className="settings-label">Ask depth</span>
-                <select
-                  className="settings-input settings-select"
-                  value={askDepth}
-                  onChange={(e) => {
-                    setAskDepth(e.target.value as SettingsView['askDepth']);
-                    markDirty();
-                  }}
-                >
-                  {ASK_DEPTH_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>{option.label}</option>
-                  ))}
-                </select>
-                <span className="settings-hint">
-                  Auto chooses by question type; quick favors locate answers, deep allows broader read-only exploration.
-                </span>
-              </label>
-              <label className="settings-field">
-                <span className="settings-label">Plan depth</span>
-                <select
-                  className="settings-input settings-select"
-                  value={planDepth}
-                  onChange={(e) => {
-                    setPlanDepth(e.target.value as SettingsView['planDepth']);
-                    markDirty();
-                  }}
-                >
-                  {PLAN_DEPTH_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>{option.label}</option>
-                  ))}
-                </select>
-                <span className="settings-hint">
-                  Controls read-only discovery before plan compilation. Deep allows more codebase exploration in Plan mode.
-                </span>
-              </label>
-              <label className="settings-field">
-                <span className="settings-label">Act depth</span>
-                <select
-                  className="settings-input settings-select"
-                  value={actDepth}
-                  onChange={(e) => {
-                    setActDepth(e.target.value as SettingsView['actDepth']);
-                    markDirty();
-                  }}
-                >
-                  {ACT_DEPTH_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>{option.label}</option>
-                  ))}
-                </select>
-                <span className="settings-hint">
-                  Controls direct Agent execution steps. Deep allows longer implementation runs before auto-continue.
-                </span>
-              </label>
+              <div
+                className="settings-mode-pane"
+                style={{ '--mode-color': activeModeMeta.tone } as CSSProperties}
+              >
+                {activeModeTab === 'ask' && (
+                  <>
+                    <label className="settings-field">
+                      <span className="settings-label">Ask model</span>
+                      <input
+                        type="text"
+                        className="settings-input"
+                        value={askModel}
+                        onChange={(e) => {
+                          setAskModel(e.target.value);
+                          markDirty();
+                        }}
+                        placeholder={model || 'Same as main model'}
+                      />
+                      <span className="settings-hint">Optional read-only question model. Empty uses the global provider.</span>
+                    </label>
+                    <label className="settings-field">
+                      <span className="settings-label">Ask base URL</span>
+                      <input
+                        type="url"
+                        className="settings-input"
+                        value={askBaseUrl}
+                        onChange={(e) => {
+                          setAskBaseUrl(e.target.value);
+                          markDirty();
+                        }}
+                        placeholder={baseUrl || 'Same as main provider'}
+                      />
+                    </label>
+                    <SettingSwitch
+                      label="Ask auto-continue"
+                      description="Let deep Ask continue once when exploration reaches its cap."
+                      checked={askAutoContinue}
+                      onChange={(v) => {
+                        setAskAutoContinue(v);
+                        markDirty();
+                      }}
+                    />
+                    <SettingStepper
+                      label="Max Ask tool steps"
+                      description="Advanced ceiling; Ask still chooses smaller budgets automatically."
+                      value={askMaxSteps}
+                      min={1}
+                      max={50}
+                      onChange={(v) => {
+                        setAskMaxSteps(v);
+                        markDirty();
+                      }}
+                    />
+                    <SettingStepper
+                      label="Ask max auto-continues"
+                      value={askMaxAutoContinues}
+                      min={0}
+                      max={10}
+                      disabled={!askAutoContinue}
+                      onChange={(v) => {
+                        setAskMaxAutoContinues(v);
+                        markDirty();
+                      }}
+                    />
+                  </>
+                )}
 
-              <SettingSwitch
-                label="Ask auto-continue"
-                description="Let deep Ask continue once when exploration reaches its cap."
-                checked={askAutoContinue}
-                onChange={(v) => {
-                  setAskAutoContinue(v);
-                  markDirty();
-                }}
-              />
-              <SettingSwitch
-                label="Diff previews"
-                description="Open VS Code diff tabs before file edits."
-                checked={showDiffPreview}
-                onChange={(v) => {
-                  setShowDiffPreview(v);
-                  markDirty();
-                }}
-              />
+                {activeModeTab === 'plan' && (
+                  <>
+                    <label className="settings-field">
+                      <span className="settings-label">Plan model</span>
+                      <input
+                        type="text"
+                        className="settings-input"
+                        value={planModel}
+                        onChange={(e) => {
+                          setPlanModel(e.target.value);
+                          markDirty();
+                        }}
+                        placeholder={model || 'Same as main model'}
+                      />
+                      <span className="settings-hint">Optional planning model. Empty uses the global provider.</span>
+                    </label>
+                    <label className="settings-field">
+                      <span className="settings-label">Plan base URL</span>
+                      <input
+                        type="url"
+                        className="settings-input"
+                        value={planBaseUrl}
+                        onChange={(e) => {
+                          setPlanBaseUrl(e.target.value);
+                          markDirty();
+                        }}
+                        placeholder={baseUrl || 'Same as main provider'}
+                      />
+                    </label>
+                    <SettingSwitch
+                      label="Auto-continue rounds"
+                      description="Allow long Plan-mode discovery and compilation to continue after budget."
+                      checked={agentAutoContinue}
+                      onChange={(v) => {
+                        setAgentAutoContinue(v);
+                        markDirty();
+                      }}
+                    />
+                    <SettingStepper
+                      label="Max Plan tool steps"
+                      value={agentMaxSteps}
+                      min={1}
+                      max={100}
+                      onChange={(v) => {
+                        setAgentMaxSteps(v);
+                        markDirty();
+                      }}
+                    />
+                    <SettingStepper
+                      label="Plan max auto-continues"
+                      value={agentMaxAutoContinues}
+                      min={0}
+                      max={10}
+                      disabled={!agentAutoContinue}
+                      onChange={(v) => {
+                        setAgentMaxAutoContinues(v);
+                        markDirty();
+                      }}
+                    />
+                  </>
+                )}
 
-              <div className="settings-divider" />
+                {activeModeTab === 'agent' && (
+                  <>
+                    <label className="settings-field">
+                      <span className="settings-label">Agent model</span>
+                      <input
+                        type="text"
+                        className="settings-input"
+                        value={actModel}
+                        onChange={(e) => {
+                          setActModel(e.target.value);
+                          markDirty();
+                        }}
+                        placeholder={model || 'Same as main model'}
+                      />
+                      <span className="settings-hint">Optional implementation model. Empty uses the global provider.</span>
+                    </label>
+                    <label className="settings-field">
+                      <span className="settings-label">Agent base URL</span>
+                      <input
+                        type="url"
+                        className="settings-input"
+                        value={actBaseUrl}
+                        onChange={(e) => {
+                          setActBaseUrl(e.target.value);
+                          markDirty();
+                        }}
+                        placeholder={baseUrl || 'Same as main provider'}
+                      />
+                    </label>
+                    <SettingSwitch
+                      label="Research subagents"
+                      description="Parallel read-only investigation via spawn_research_agent."
+                      checked={subagentsEnabled}
+                      onChange={(v) => {
+                        setSubagentsEnabled(v);
+                        markDirty();
+                      }}
+                    />
+                    <SettingSwitch
+                      label="Diff previews"
+                      description="Open VS Code diff tabs before file edits."
+                      checked={showDiffPreview}
+                      onChange={(v) => {
+                        setShowDiffPreview(v);
+                        markDirty();
+                      }}
+                    />
+                    <SettingStepper
+                      label="Max Agent tool steps"
+                      value={agentMaxSteps}
+                      min={1}
+                      max={100}
+                      onChange={(v) => {
+                        setAgentMaxSteps(v);
+                        markDirty();
+                      }}
+                    />
+                    <SettingStepper
+                      label="Agent max auto-continues"
+                      value={agentMaxAutoContinues}
+                      min={0}
+                      max={10}
+                      disabled={!agentAutoContinue}
+                      onChange={(v) => {
+                        setAgentMaxAutoContinues(v);
+                        markDirty();
+                      }}
+                    />
+                    <SettingStepper
+                      label="Research subagent max steps"
+                      value={researchAgentMaxSteps}
+                      min={1}
+                      max={50}
+                      disabled={!subagentsEnabled}
+                      onChange={(v) => {
+                        setResearchAgentMaxSteps(v);
+                        markDirty();
+                      }}
+                    />
+                    <label className="settings-field">
+                      <span className="settings-label">Checkpoint strategy</span>
+                      <select
+                        className="settings-input settings-select"
+                        value={checkpointStrategy}
+                        onChange={(e) => {
+                          setCheckpointStrategy(e.target.value as SettingsView['checkpointStrategy']);
+                          markDirty();
+                        }}
+                      >
+                        <option value="git-stash">Git stash (recommended)</option>
+                        <option value="shadow-git">Shadow git stash</option>
+                        <option value="file-copy">File copy fallback</option>
+                      </select>
+                      <span className="settings-hint">
+                        Uses git stash when the workspace is a repo; falls back to file copies otherwise.
+                      </span>
+                    </label>
+                  </>
+                )}
+              </div>
+            </SettingsCard>
 
-              <SettingStepper
-                label="Main agent max steps"
-                value={agentMaxSteps}
-                min={1}
-                max={100}
-                onChange={(v) => {
-                  setAgentMaxSteps(v);
-                  markDirty();
-                }}
-              />
-              <SettingStepper
-                label="Max Ask tool steps"
-                description="Advanced ceiling; Ask still chooses smaller budgets automatically."
-                value={askMaxSteps}
-                min={1}
-                max={50}
-                onChange={(v) => {
-                  setAskMaxSteps(v);
-                  markDirty();
-                }}
-              />
-              <SettingStepper
-                label="Ask max auto-continues"
-                value={askMaxAutoContinues}
-                min={0}
-                max={10}
-                disabled={!askAutoContinue}
-                onChange={(v) => {
-                  setAskMaxAutoContinues(v);
-                  markDirty();
-                }}
-              />
-              <SettingStepper
-                label="Max auto-continues"
-                value={agentMaxAutoContinues}
-                min={0}
-                max={10}
-                disabled={!agentAutoContinue}
-                onChange={(v) => {
-                  setAgentMaxAutoContinues(v);
-                  markDirty();
-                }}
-              />
-              <SettingStepper
-                label="Research subagent max steps"
-                value={researchAgentMaxSteps}
-                min={1}
-                max={50}
-                disabled={!subagentsEnabled}
-                onChange={(v) => {
-                  setResearchAgentMaxSteps(v);
-                  markDirty();
-                }}
-              />
+            <SettingsCard
+              title="Depth settings"
+              description="Choose how much context and tool budget each mode can use. These values are sent to skill playbooks."
+            >
+              <div className="settings-mode-tabs" role="tablist" aria-label="Depth settings">
+                {MODE_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={`settings-mode-tab ${activeDepthTab === tab.id ? 'settings-mode-tab--active' : ''}`}
+                    style={{ '--mode-color': tab.tone } as CSSProperties}
+                    onClick={() => setActiveDepthTab(tab.id)}
+                  >
+                    <span>{tab.label}</span>
+                    <small>{tab.id === 'ask' ? askDepth : tab.id === 'plan' ? planDepth : actDepth}</small>
+                  </button>
+                ))}
+              </div>
 
-              <div className="settings-divider" />
-
-              <h4 className="settings-subheading">Plan vs Act models</h4>
-              <p className="settings-inline-note">
-                Optional overrides. Leave blank to use the main provider model for both modes.
-              </p>
-              <label className="settings-field">
-                <span className="settings-label">Plan mode model</span>
-                <input
-                  type="text"
-                  className="settings-input"
-                  value={planModel}
-                  onChange={(e) => {
-                    setPlanModel(e.target.value);
-                    markDirty();
-                  }}
-                  placeholder={model || 'Same as main model'}
-                />
-              </label>
-              <label className="settings-field">
-                <span className="settings-label">Plan mode base URL (optional)</span>
-                <input
-                  type="url"
-                  className="settings-input"
-                  value={planBaseUrl}
-                  onChange={(e) => {
-                    setPlanBaseUrl(e.target.value);
-                    markDirty();
-                  }}
-                  placeholder={baseUrl || 'Same as main provider'}
-                />
-              </label>
-              <label className="settings-field">
-                <span className="settings-label">Act mode model</span>
-                <input
-                  type="text"
-                  className="settings-input"
-                  value={actModel}
-                  onChange={(e) => {
-                    setActModel(e.target.value);
-                    markDirty();
-                  }}
-                  placeholder={model || 'Same as main model'}
-                />
-              </label>
-              <label className="settings-field">
-                <span className="settings-label">Act mode base URL (optional)</span>
-                <input
-                  type="url"
-                  className="settings-input"
-                  value={actBaseUrl}
-                  onChange={(e) => {
-                    setActBaseUrl(e.target.value);
-                    markDirty();
-                  }}
-                  placeholder={baseUrl || 'Same as main provider'}
-                />
-              </label>
-
-              <label className="settings-field">
-                <span className="settings-label">Checkpoint strategy</span>
-                <select
-                  className="settings-input settings-select"
-                  value={checkpointStrategy}
-                  onChange={(e) => {
-                    setCheckpointStrategy(e.target.value as SettingsView['checkpointStrategy']);
-                    markDirty();
-                  }}
-                >
-                  <option value="git-stash">Git stash (recommended)</option>
-                  <option value="shadow-git">Shadow git stash</option>
-                  <option value="file-copy">File copy fallback</option>
-                </select>
-                <span className="settings-hint">
-                  Uses git stash when the workspace is a repo; falls back to file copies otherwise.
-                </span>
-              </label>
+              <div
+                className="settings-mode-pane"
+                style={{ '--mode-color': activeDepthMeta.tone } as CSSProperties}
+              >
+                {activeDepthTab === 'ask' && (
+                  <label className="settings-field">
+                    <span className="settings-label">Ask depth</span>
+                    <select
+                      className="settings-input settings-select"
+                      value={askDepth}
+                      onChange={(e) => {
+                        setAskDepth(e.target.value as SettingsView['askDepth']);
+                        markDirty();
+                      }}
+                    >
+                      {ASK_DEPTH_OPTIONS.map((option) => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
+                      ))}
+                    </select>
+                    <span className="settings-hint">
+                      Auto chooses by question type; quick favors located answers; deep allows broader read-only exploration.
+                    </span>
+                  </label>
+                )}
+                {activeDepthTab === 'plan' && (
+                  <label className="settings-field">
+                    <span className="settings-label">Plan depth</span>
+                    <select
+                      className="settings-input settings-select"
+                      value={planDepth}
+                      onChange={(e) => {
+                        setPlanDepth(e.target.value as SettingsView['planDepth']);
+                        markDirty();
+                      }}
+                    >
+                      {PLAN_DEPTH_OPTIONS.map((option) => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
+                      ))}
+                    </select>
+                    <span className="settings-hint">
+                      Controls read-only discovery before plan compilation. Deep explores more of the codebase.
+                    </span>
+                  </label>
+                )}
+                {activeDepthTab === 'agent' && (
+                  <label className="settings-field">
+                    <span className="settings-label">Agent depth</span>
+                    <select
+                      className="settings-input settings-select"
+                      value={actDepth}
+                      onChange={(e) => {
+                        setActDepth(e.target.value as SettingsView['actDepth']);
+                        markDirty();
+                      }}
+                    >
+                      {ACT_DEPTH_OPTIONS.map((option) => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
+                      ))}
+                    </select>
+                    <span className="settings-hint">
+                      Controls direct implementation steps. Deep allows longer execution before auto-continue.
+                    </span>
+                  </label>
+                )}
+              </div>
             </SettingsCard>
 
             <SettingsCard
@@ -1271,11 +1402,11 @@ export function SettingsPanel({
           </>
         )}
 
-        {activeTab === 'debug' && settings.localDebugAvailable && (
+        {activeTab === 'debug' && (
           <>
             <SettingsCard
-              title="Local debug"
-              description="Development-only diagnostics for inspecting agent prompts, context, tool calls, and UI traces."
+              title="Debug logging"
+              description="Local diagnostics for inspecting agent prompts, context, tools, transports, and UI messages."
             >
               <SettingSwitch
                 label="JSONL session log"
@@ -1283,7 +1414,10 @@ export function SettingsPanel({
                 checked={sessionLogging}
                 onChange={(v) => {
                   setSessionLogging(v);
-                  if (!v) setDebugMetrics(false);
+                  if (!v) {
+                    setDebugMetrics(false);
+                    setTraceEnabled(false);
+                  }
                   markDirty();
                 }}
               />
@@ -1297,9 +1431,97 @@ export function SettingsPanel({
                   markDirty();
                 }}
               />
+              <SettingSwitch
+                label="Async send/receive tracing"
+                description="Trace every LLM delta, MCP operation, and webview message to a separate session trace file."
+                checked={traceEnabled && sessionLogging}
+                disabled={!sessionLogging}
+                onChange={(v) => {
+                  setTraceEnabled(v);
+                  markDirty();
+                }}
+              />
+              <SettingSwitch
+                label="Include sanitized payloads"
+                description="Include prompts, responses, tool arguments, and UI payloads. Sensitive values are redacted and strings are capped."
+                checked={traceIncludePayloads && traceEnabled && sessionLogging}
+                disabled={!sessionLogging || !traceEnabled}
+                onChange={(v) => {
+                  setTraceIncludePayloads(v);
+                  markDirty();
+                }}
+              />
+              <SettingSwitch
+                label="Trace LLM traffic"
+                description="Requests, first-token timing, network chunks, streamed deltas, completions, and errors."
+                checked={traceLlm}
+                disabled={!sessionLogging || !traceEnabled}
+                onChange={(v) => {
+                  setTraceLlm(v);
+                  markDirty();
+                }}
+              />
+              <SettingSwitch
+                label="Trace MCP traffic"
+                description="Connections, tool discovery, calls, responses, failures, and shutdown."
+                checked={traceMcp}
+                disabled={!sessionLogging || !traceEnabled}
+                onChange={(v) => {
+                  setTraceMcp(v);
+                  markDirty();
+                }}
+              />
+              <SettingSwitch
+                label="Trace webview traffic"
+                description="Every message sent between the extension host and Mitii sidebar."
+                checked={traceWebview}
+                disabled={!sessionLogging || !traceEnabled}
+                onChange={(v) => {
+                  setTraceWebview(v);
+                  markDirty();
+                }}
+              />
+              <SettingSwitch
+                label="Trace daemon traffic"
+                description="Daemon HTTP requests, responses, errors, and streamed SSE events."
+                checked={traceDaemon}
+                disabled={!sessionLogging || !traceEnabled}
+                onChange={(v) => {
+                  setTraceDaemon(v);
+                  markDirty();
+                }}
+              />
+              <SettingSwitch
+                label="Trace webhook traffic"
+                description="Telemetry webhook delivery attempts, responses, retries, and failures."
+                checked={traceWebhook}
+                disabled={!sessionLogging || !traceEnabled}
+                onChange={(v) => {
+                  setTraceWebhook(v);
+                  markDirty();
+                }}
+              />
+              <label className="settings-field">
+                <span className="settings-label">Maximum payload string length</span>
+                <input
+                  type="number"
+                  className="settings-input"
+                  min={1_000}
+                  max={1_000_000}
+                  step={1_000}
+                  value={traceMaxPayloadChars}
+                  disabled={!sessionLogging || !traceEnabled || !traceIncludePayloads}
+                  onChange={(event) => {
+                    const parsed = Number(event.target.value);
+                    if (Number.isFinite(parsed)) {
+                      setTraceMaxPayloadChars(Math.max(1_000, Math.min(1_000_000, Math.floor(parsed))));
+                      markDirty();
+                    }
+                  }}
+                />
+              </label>
               <p className="settings-inline-note">
-                This panel only appears in the Extension Development Host. Logs are local files under{' '}
-                <code>.mitii/logs</code>.
+                Trace writes are batched asynchronously. Logs stay local under <code>.mitii/logs</code>.
               </p>
             </SettingsCard>
           </>

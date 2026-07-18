@@ -3,6 +3,11 @@ import { basename, dirname, join, relative } from 'path';
 import type { ContextItem, ContextQuery, ContextSource } from '../context/types';
 import { createLogger } from '../telemetry/Logger';
 import { AGENT_NAME } from '../../shared/brand';
+import {
+  MAX_SKILL_DESCRIPTION_CHARS,
+  MAX_SKILL_WALK_DEPTH,
+  RECOMMENDED_SKILL_BODY_CHARS,
+} from './skillLimits';
 
 const log = createLogger('SkillCatalog');
 
@@ -28,12 +33,41 @@ export class SkillCatalogService {
     this.entries = skillFiles.map((absPath) => {
       const content = readFileSync(absPath, 'utf8');
       const frontmatter = parseSkillFrontmatter(content);
+      const folderName = skillNameFromPath(absPath);
+      const name = frontmatter.name || folderName;
+      const description = extractDescription(content, frontmatter);
       const relPath = relative(this.workspace, absPath).replace(/\\/g, '/');
-      return {
-        name: frontmatter.name || skillNameFromPath(absPath),
-        description: extractDescription(content, frontmatter),
-        relPath,
-      };
+
+      if (!frontmatter.name || !frontmatter.description) {
+        log.warn('Skill missing required frontmatter fields', {
+          relPath,
+          hasName: Boolean(frontmatter.name),
+          hasDescription: Boolean(frontmatter.description),
+        });
+      }
+      if (frontmatter.name && frontmatter.name !== folderName) {
+        log.warn('Skill frontmatter name does not match folder', {
+          relPath,
+          frontmatterName: frontmatter.name,
+          folderName,
+        });
+      }
+      if ((frontmatter.description?.length ?? 0) > MAX_SKILL_DESCRIPTION_CHARS) {
+        log.warn('Skill description exceeds catalog limit and will be truncated', {
+          relPath,
+          length: frontmatter.description!.length,
+          limit: MAX_SKILL_DESCRIPTION_CHARS,
+        });
+      }
+      if (content.length > RECOMMENDED_SKILL_BODY_CHARS) {
+        log.debug('Skill body exceeds recommended size; prefer Quick Reference + references/', {
+          relPath,
+          chars: content.length,
+          recommended: RECOMMENDED_SKILL_BODY_CHARS,
+        });
+      }
+
+      return { name, description, relPath };
     });
 
     this.writeCatalog();
@@ -69,12 +103,17 @@ export class SkillCatalogService {
   }
 }
 
+/**
+ * Skills are on-demand task workflows/playbooks, exposed as a catalog and loaded by use_skill.
+ * Use ProjectRulesService for always-on workspace policy that must apply to every task.
+ */
 export class SkillCatalogContextSource implements ContextSource {
   id = 'skill-catalog';
 
   constructor(private readonly catalog: SkillCatalogService) {}
 
   async retrieve(_query: ContextQuery): Promise<ContextItem[]> {
+    if (_query.tierPolicy?.skillInjection === 'none') return [];
     const entries = this.catalog.list();
     if (entries.length === 0) return [];
     const content = [
@@ -97,7 +136,7 @@ export class SkillCatalogContextSource implements ContextSource {
 function findSkillFiles(root: string): string[] {
   const out: string[] = [];
   const walk = (dir: string, depth: number): void => {
-    if (depth > 6) return;
+    if (depth > MAX_SKILL_WALK_DEPTH) return;
     let entries: string[];
     try {
       entries = readdirSync(dir);
@@ -132,13 +171,13 @@ function extractDescription(
   content: string,
   frontmatter: { name?: string; description?: string } = parseSkillFrontmatter(content)
 ): string {
-  if (frontmatter.description) return frontmatter.description.slice(0, 240);
+  if (frontmatter.description) return frontmatter.description.slice(0, MAX_SKILL_DESCRIPTION_CHARS);
 
-  const lines = content
+  const lines = stripSkillFrontmatter(content)
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith('#') && !line.startsWith('---'));
-  return (lines[0] ?? 'Workspace skill playbook').slice(0, 240);
+  return (lines[0] ?? 'Workspace skill playbook').slice(0, MAX_SKILL_DESCRIPTION_CHARS);
 }
 
 function parseSkillFrontmatter(content: string): { name?: string; description?: string } {
@@ -151,6 +190,10 @@ function parseSkillFrontmatter(content: string): { name?: string; description?: 
   return { name, description };
 }
 
+export function stripSkillFrontmatter(content: string): string {
+  return content.replace(/^---\r?\n[\s\S]*?\r?\n---\s*/, '');
+}
+
 function readYamlScalar(block: string, key: string): string | undefined {
   const lines = block.replace(/\r\n/g, '\n').split('\n');
   for (let index = 0; index < lines.length; index += 1) {
@@ -159,7 +202,8 @@ function readYamlScalar(block: string, key: string): string | undefined {
     if (!match) continue;
 
     const value = match[1].trim();
-    if (value === '|' || value === '>') {
+    if (value === '|' || value === '|-' || value === '>' || value === '>-') {
+      const folded = value.startsWith('>');
       const indented: string[] = [];
       for (let child = index + 1; child < lines.length; child += 1) {
         const childLine = lines[child];
@@ -170,7 +214,7 @@ function readYamlScalar(block: string, key: string): string | undefined {
         }
         indented.push(childLine.replace(/^\s{1,}/, ''));
       }
-      const joined = value === '>'
+      const joined = folded
         ? indented.join(' ').replace(/\s+/g, ' ').trim()
         : indented.join('\n').trim();
       return cleanYamlScalar(joined);

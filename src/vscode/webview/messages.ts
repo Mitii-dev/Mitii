@@ -7,6 +7,7 @@ import type {
   McpSettingsPayload,
   McpToggles,
   ProviderSettingsPayload,
+  ProviderTypeView,
   SafetySettingsPayload,
   ThunderSettingsPayload,
 } from '../../core/config/ui/payloads';
@@ -223,6 +224,12 @@ export interface IndexingStatusView {
   activeWorkers?: number;
   processed?: number;
   runTotal?: number;
+  phase?: 'idle' | 'scanning' | 'indexing' | 'complete' | 'cancelled';
+  partial?: boolean;
+  degraded?: boolean;
+  detail?: string;
+  startedAt?: number;
+  updatedAt?: number;
 }
 
 export interface MemoryItemView {
@@ -307,6 +314,14 @@ export interface SettingsView {
   projectRules: number;
   sessionLogging: boolean;
   debugMetrics: boolean;
+  traceEnabled: boolean;
+  traceIncludePayloads: boolean;
+  traceLlm: boolean;
+  traceMcp: boolean;
+  traceWebview: boolean;
+  traceDaemon: boolean;
+  traceWebhook: boolean;
+  traceMaxPayloadChars: number;
   localDebugAvailable: boolean;
   vectorsEnabled: boolean;
   embeddingProvider: 'minilm' | 'hash';
@@ -315,6 +330,8 @@ export interface SettingsView {
   minilmAvailable: boolean;
   lancedbAvailable: boolean;
   autonomyPreset: 'safe' | 'guided' | 'builder' | 'pilot' | 'enterprise';
+  askModel: string;
+  askBaseUrl: string;
   planModel: string;
   planBaseUrl: string;
   actModel: string;
@@ -336,6 +353,26 @@ export interface ProviderProfileView {
   region: string;
   contextWindow: number;
   hasApiKey: boolean;
+}
+
+export type ModelOptionCategory = 'recent' | 'local' | 'cloud' | 'custom';
+
+export interface SessionProviderOverrideView {
+  providerType: ProviderTypeView;
+  model: string;
+  baseUrl: string;
+  profile: string | null;
+  profileId?: string;
+  apiVersion?: string;
+  region?: string;
+  contextWindow?: number;
+}
+
+export interface ModelOptionView extends SessionProviderOverrideView {
+  id: string;
+  label: string;
+  description: string;
+  category: ModelOptionCategory;
 }
 
 export interface McpServerStatusView {
@@ -385,6 +422,8 @@ export interface WebviewState {
   logoUri: string;
   showContextPreview: boolean;
   providerLabel: string;
+  modelOptions: ModelOptionView[];
+  sessionProviderOverride: SessionProviderOverrideView | null;
   workspaceOpen: boolean;
   workspacePath: string;
   vscodeWorkspaceFolders: string[];
@@ -430,6 +469,8 @@ export type WebviewToExtensionMessage =
   | { type: 'retryLastMessage' }
   | { type: 'newChat' }
   | { type: 'openChatThread'; payload: { id: string } }
+  | { type: 'deleteChatThread'; payload: { id: string } }
+  | { type: 'clearChatHistory' }
   | { type: 'setMode'; payload: ThunderMode }
   | { type: 'setTab'; payload: WebviewTab }
   | { type: 'stopGeneration' }
@@ -439,6 +480,8 @@ export type WebviewToExtensionMessage =
   | { type: 'saveApiKey'; payload: { key: string } }
   | { type: 'saveGitHubToken'; payload: { token: string } }
   | { type: 'saveProviderSettings'; payload: ProviderSettingsPayload }
+  | { type: 'selectSessionModel'; payload: SessionProviderOverrideView | null }
+  | { type: 'saveSessionModelAsDefault' }
   | { type: 'saveAgentSettings'; payload: AgentSettingsPayload }
   | { type: 'saveSafetySettings'; payload: SafetySettingsPayload }
   | { type: 'saveMcpSettings'; payload: McpSettingsPayload }
@@ -451,6 +494,7 @@ export type WebviewToExtensionMessage =
   | { type: 'setWorkspaceOverride'; payload: { path: string } }
   | { type: 'clearWorkspaceOverride' }
   | { type: 'indexWorkspace' }
+  | { type: 'cancelIndexing' }
   | { type: 'restoreCheckpoint'; payload: { id: string } }
   | { type: 'deleteMemory'; payload: { id: number } }
   | { type: 'clearMemory' }
@@ -526,6 +570,14 @@ export const defaultSettingsView = (): SettingsView => ({
   projectRules: 0,
   sessionLogging: true,
   debugMetrics: false,
+  traceEnabled: false,
+  traceIncludePayloads: false,
+  traceLlm: true,
+  traceMcp: true,
+  traceWebview: true,
+  traceDaemon: true,
+  traceWebhook: true,
+  traceMaxPayloadChars: 16000,
   localDebugAvailable: false,
   vectorsEnabled: true,
   embeddingProvider: 'minilm',
@@ -534,6 +586,8 @@ export const defaultSettingsView = (): SettingsView => ({
   minilmAvailable: false,
   lancedbAvailable: false,
   autonomyPreset: 'guided',
+  askModel: '',
+  askBaseUrl: '',
   planModel: '',
   planBaseUrl: '',
   actModel: '',
@@ -563,7 +617,7 @@ export const initialWebviewState = (): WebviewState => ({
   subagents: [],
   vectorIndex: { enabled: false, embeddedChunks: 0, provider: 'none', backend: 'none', degraded: false },
   plan: null,
-  indexing: { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0, processed: 0, runTotal: 0 },
+  indexing: { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0, processed: 0, runTotal: 0, phase: 'idle' },
   memories: [],
   checkpoints: [],
   reviewDiff: null,
@@ -579,6 +633,8 @@ export const initialWebviewState = (): WebviewState => ({
   logoUri: '',
   showContextPreview: false,
   providerLabel: 'echo',
+  modelOptions: [],
+  sessionProviderOverride: null,
   workspaceOpen: false,
   workspacePath: '',
   vscodeWorkspaceFolders: [],

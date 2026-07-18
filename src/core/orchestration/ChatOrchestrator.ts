@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { randomUUID } from 'crypto';
 import type { ThunderDb } from '../indexing/ThunderDb';
 import type { AssistantStreamChunk, LlmProvider, ChatMessage } from '../llm/types';
-import { chunkContent, toAssistantStreamChunk } from '../llm/streamChunks';
+import { chunkContent, isProgressChunk, toAssistantStreamChunk } from '../llm/streamChunks';
 import type { ThunderSession } from '../session/ThunderSession';
 import type { ContextItem, ContextPack } from '../context/types';
 import type {
@@ -16,7 +16,11 @@ import type {
 import { HybridRetriever } from '../context/HybridRetriever';
 import { ContextBudgeter } from '../context/ContextBudgeter';
 import { UserExplicitContextBuilder, type PinnedContextEntry } from '../context/UserExplicitContextBuilder';
-import { buildPrompt } from '../plans/promptBuilder';
+import {
+  buildPrompt,
+  collectSystemPromptSections,
+  describePromptSections,
+} from '../plans/promptBuilder';
 import { parsePlanFromText, isWriteAllowed } from '../plans/PlanActEngine';
 import { createLogger } from '../telemetry/Logger';
 import type { SessionLogService } from '../telemetry/SessionLogService';
@@ -27,15 +31,40 @@ import { isInternalAgentPath } from '../context/contextRelevance';
 import { AutoApplyService } from '../apply/AutoApplyService';
 import type { ToolExecutor } from '../safety/ToolExecutor';
 import type { ToolRuntime } from '../tools/ToolRuntime';
+import type { ToolDefinition } from '../llm/toolTypes';
 import { toolsToDefinitions } from '../tools/toolSchema';
 import { AgentLoop, type ApprovedToolResult, type AgentLoopSuspendState } from '../runtime/AgentLoop';
-import { isSkippedToolOutput } from '../runtime/toolSkip';
+import { describeSkipLabel, isSkippedToolOutput } from '../runtime/toolSkip';
 import { PlanExecutor } from '../runtime/PlanExecutor';
+import { resolvePlanningDepth, shouldSkipStructuredPlanner } from '../plans/planningDepth';
 import { analyzeTask, type TaskAnalysis } from '../runtime/TaskAnalyzer';
+import {
+  resolveTurnPipeline,
+  filterToolsByCapabilities,
+  buildRoutePolicyText,
+  type PipelineResolution,
+} from '../pipeline';
+import {
+  ACT_INTENT_DESCRIPTIONS,
+  ASK_INTENT_DESCRIPTIONS,
+  PLAN_INTENT_DESCRIPTIONS,
+  buildIntentClarification,
+  classifyIntent,
+  gateIntentClassification,
+  safeDefaultIntent,
+  type IntentClassification,
+} from '../runtime/intentClassifier';
 import { extractOriginalTaskMessage, isApprovalContinuationMessage, resolveConversationTaskMessage } from '../runtime/taskMessage';
 import { compactMessagesWithLlm } from '../runtime/ContextCompaction';
 import { getMaxInputTokens } from '../runtime/PromptBudget';
 import { isAuditCleanupTask, AUDIT_AGENT_MAX_STEPS } from '../runtime/taskKind';
+import {
+  isLogAuditTask,
+  extractLogAuditTargetPath,
+  buildLogAuditBootstrapBlock,
+  LOG_AUDIT_AGENT_MAX_STEPS,
+  LOG_AUDIT_SKIP_RETRIEVAL_SOURCES,
+} from '../runtime/logAudit';
 import {
   filterAskModeTools,
   needsAskGrounding,
@@ -48,7 +77,7 @@ import { loadPlanningSkillPlaybooks, resolvePlanningSkillNames } from '../modes/
 import { routePlanIntent } from '../modes/plan/PlanIntentRouter';
 import {
   ActOrchestrator,
-  filterActModeTools,
+  filterLogAuditModeTools,
   hasDirectRouteOverride,
   shouldResumeSavedPlan,
   shouldUsePlannerForAct,
@@ -59,6 +88,7 @@ import {
   suggestDocsVerifyCommands,
 } from '../runtime/mdxRepairRouting';
 import { setSubagentRuntime } from '../tools/builtinTools';
+import { resolveControlIntent } from '../runtime/controlIntent';
 import type { SessionService } from '../session/SessionService';
 import type { PlanPersistence } from '../plans/PlanPersistence';
 import type { MemoryExtractor } from '../runtime/MemoryExtractor';
@@ -69,14 +99,22 @@ import type { MemoryService } from '../memory/MemoryService';
 import type { AgentTaskState } from '../runtime/AgentTaskState';
 import type { PostEditValidator } from '../apply/PostEditValidator';
 import type { SkillCatalogService } from '../skills/SkillCatalogService';
+import { normalizeAgentDepth } from '../config/agentDepth';
+import type { SkillRuntimeContext } from '../skills/skillRuntimeContext';
 import { thunderPlanToView } from '../modes/plan/planViewMapper';
 import { showWriteDiffPreview, showPatchDiffPreview } from '../../vscode/diffPreview';
 import { toWorkspaceRelPath } from '../util/paths';
 import { estimateChatRequestTokens } from '../llm/UsageTrackingProvider';
+import { resolveTierPolicy } from '../llm/agenticTier';
+import type { AgenticTier, TierPolicy } from '../agentic/tierPolicy';
+import { describeTier, scaleTierSteps } from '../agentic/tierPolicy';
 import { resolveMaxContextItems } from '../context/resolveMaxContextItems';
 import { enrichTask } from '../task';
 import type { GitHubIssueFetcher } from '../integrations/github';
 import { detectMicroTask, type MicroTaskExecutor } from '../microtasks';
+import type { AskIntent } from '../modes/ask/askTypes';
+import type { PlanIntent } from '../modes/plan/planTypes';
+import type { ActIntent } from '../modes/agent/actTypes';
 
 const log = createLogger('ChatOrchestrator');
 
@@ -99,6 +137,24 @@ export type TokenUsageCallback = (
   breakdown: TokenUsageBreakdownItem[],
   options?: { final?: boolean }
 ) => void;
+
+type ModeIntentRouting =
+  | { mode: 'ask'; classification: IntentClassification<AskIntent>; needsClarification: boolean; useClassification?: boolean }
+  | { mode: 'plan'; classification: IntentClassification<PlanIntent>; needsClarification: boolean; useClassification?: boolean }
+  | { mode: 'agent'; classification: IntentClassification<ActIntent>; needsClarification: boolean; useClassification?: boolean };
+
+interface FinishTurnOptions {
+  allowResponseAutoApply?: boolean;
+  auditStartIndex?: number;
+  activeTools?: ToolDefinition[];
+  explicitContextBlock?: string;
+}
+
+interface RoutingClarificationState {
+  originalMessage: string;
+  mode: ThunderSession['mode'];
+  candidateIntents: string[];
+}
 
 export interface ChatOrchestratorDeps {
   toolRuntime?: ToolRuntime;
@@ -127,6 +183,7 @@ export interface ChatOrchestratorDeps {
   githubIssueCommentLimit?: number;
   microTaskExecutorFactory?: (provider: LlmProvider) => MicroTaskExecutor;
   microTaskRoutingEnabled?: boolean;
+  intentClassifierProvider?: LlmProvider;
 }
 
 export class ChatOrchestrator {
@@ -140,6 +197,16 @@ export class ChatOrchestrator {
   private deps: ChatOrchestratorDeps = {};
   private agentLoop: AgentLoop | undefined;
   private planExecutor: PlanExecutor | undefined;
+  private useSkillInvocationsThisTurn = 0;
+  private skillInjectionTelemetry: {
+    tier?: AgenticTier;
+    style: TierPolicy['skillInjection'];
+    suggested: string[];
+    selected: string[];
+    loaded: string[];
+    rejected: Array<{ name: string; reason: string }>;
+    injectedChars: number;
+  } | undefined;
   private suspendContext: {
     session: ThunderSession;
     provider: LlmProvider;
@@ -156,7 +223,16 @@ export class ChatOrchestrator {
       skillPlaybookContext: string;
       appliedSkills: string[];
     };
+    planResume?: {
+      plan: import('../plans/PlanActEngine').ThunderPlan;
+      displayPack: ContextPack;
+      tools: ToolDefinition[];
+      requirementAnalysis?: string;
+      appliedSkills?: string[];
+      skillPlaybookContext?: string;
+    };
   } | undefined;
+  private routingClarifications = new Map<string, RoutingClarificationState>();
   private retrievalCache: { key: string; items: ContextItem[]; at: number } | null = null;
 
   constructor(
@@ -236,6 +312,123 @@ export class ChatOrchestrator {
     this.onLiveStatus?.({ label, detail, stepCurrent, stepTotal });
   }
 
+  private async resolveIntentRouting(
+    mode: ThunderSession['mode'],
+    userMessage: string,
+    provider: LlmProvider
+  ): Promise<ModeIntentRouting> {
+    const classifierProvider = this.deps.intentClassifierProvider ?? this.deps.researchAgentProvider ?? provider;
+    try {
+      if (mode === 'ask') {
+        const intents = Object.keys(ASK_INTENT_DESCRIPTIONS) as AskIntent[];
+        const raw = await classifyIntent(classifierProvider, mode, userMessage, intents, ASK_INTENT_DESCRIPTIONS);
+        const classification = gateIntentClassification(raw, mode, safeDefaultIntent(mode, intents));
+        this.logIntentRouting(mode, classification, raw.intent !== classification.intent);
+        return { mode, classification, needsClarification: Boolean(classification.needsClarification) };
+      }
+      if (mode === 'plan') {
+        const intents = Object.keys(PLAN_INTENT_DESCRIPTIONS) as PlanIntent[];
+        const raw = await classifyIntent(classifierProvider, mode, userMessage, intents, PLAN_INTENT_DESCRIPTIONS);
+        const classification = gateIntentClassification(raw, mode, safeDefaultIntent(mode, intents));
+        this.logIntentRouting(mode, classification, raw.intent !== classification.intent);
+        return { mode, classification, needsClarification: Boolean(classification.needsClarification) };
+      }
+      const intents = Object.keys(ACT_INTENT_DESCRIPTIONS) as ActIntent[];
+      const raw = await classifyIntent(classifierProvider, 'agent', userMessage, intents, ACT_INTENT_DESCRIPTIONS);
+      const classification = gateIntentClassification(raw, 'agent', safeDefaultIntent('agent', intents));
+      this.logIntentRouting('agent', classification, raw.intent !== classification.intent);
+      return { mode: 'agent', classification, needsClarification: Boolean(classification.needsClarification) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log.warn('Intent classifier failed; using synchronous fallback', { mode, error: message });
+      this.emitActivity('info', 'Intent classifier fallback', message);
+      return this.fallbackIntentRouting(mode);
+    }
+  }
+
+  private fallbackIntentRouting(mode: ThunderSession['mode']): ModeIntentRouting {
+    if (mode === 'ask') {
+      return {
+        mode,
+        classification: {
+          intent: 'explain_code',
+          confidence: 0,
+          alternatives: [],
+          needsClarification: false,
+          source: 'fallback',
+          gated: true,
+          gateReason: 'classifier_unavailable',
+        },
+        needsClarification: false,
+        useClassification: false,
+      };
+    }
+    if (mode === 'plan') {
+      return {
+        mode,
+        classification: {
+          intent: 'question',
+          confidence: 0,
+          alternatives: [],
+          needsClarification: false,
+          source: 'fallback',
+          gated: true,
+          gateReason: 'classifier_unavailable',
+        },
+        needsClarification: false,
+        useClassification: false,
+      };
+    }
+    return {
+      mode: 'agent',
+      classification: {
+        intent: 'question',
+        confidence: 0,
+        alternatives: [],
+        needsClarification: false,
+        source: 'fallback',
+        gated: true,
+        gateReason: 'classifier_unavailable',
+      },
+      needsClarification: false,
+      useClassification: false,
+    };
+  }
+
+  private buildRoutingClarification(
+    mode: ThunderSession['mode'],
+    routing: ModeIntentRouting
+  ): { question: string; options: string[] } {
+    if (routing.mode === 'ask') {
+      return buildIntentClarification(mode, routing.classification, ASK_INTENT_DESCRIPTIONS);
+    }
+    if (routing.mode === 'plan') {
+      return buildIntentClarification(mode, routing.classification, PLAN_INTENT_DESCRIPTIONS);
+    }
+    return buildIntentClarification('agent', routing.classification, ACT_INTENT_DESCRIPTIONS);
+  }
+
+  private logIntentRouting<T extends string>(
+    mode: ThunderSession['mode'],
+    classification: IntentClassification<T>,
+    gated: boolean
+  ): void {
+    this.deps.sessionLog?.appendDebug('info', 'Intent classifier result', {
+      mode,
+      intent: classification.intent,
+      confidence: classification.confidence,
+      alternatives: classification.alternatives,
+      needsClarification: classification.needsClarification,
+      source: classification.source,
+      matchedRule: classification.matchedRule,
+      confidenceMargin: classification.confidenceMargin,
+      originalIntent: classification.originalIntent,
+      originalConfidence: classification.originalConfidence,
+      gated: classification.gated ?? gated,
+      gateReason: classification.gateReason,
+    });
+  }
+
   async *send(
     session: ThunderSession,
     provider: LlmProvider,
@@ -248,10 +441,20 @@ export class ChatOrchestrator {
     const sessionLog = this.deps.sessionLog;
     const sessionTiming = new SessionTiming();
     sessionTiming.start('turn_total');
+    const auditStartIndex = this.deps.toolRuntime?.getAuditLog().length ?? 0;
+    let preserveLiveStatus = false;
+    let fullResponse = '';
+    let completedContextTokens = 0;
+
+    try {
     this.setLiveStatus('Starting', `Mode: ${session.mode}`);
     this.emitActivity('info', `Mode: ${session.mode} · Provider: ${provider.id}`);
 
     this.deps.sessionService?.ensureSession(session, userMessage.slice(0, 64));
+    this.deps.sessionLog?.beginTurn({
+      mode: session.mode,
+      provider: provider.id,
+    });
     this.deps.sessionLog?.append('user_message', userMessage.slice(0, 200), {
       mode: session.mode,
       provider: provider.id,
@@ -259,7 +462,22 @@ export class ChatOrchestrator {
       auditMode: isAuditCleanupTask(userMessage),
     });
 
-    const microTaskId = this.deps.microTaskRoutingEnabled === false || isApprovalContinuationMessage(userMessage)
+    const previousAssistantMessage = [...recentMessages].reverse().find((message) => message.role === 'assistant');
+    const control = resolveControlIntent(userMessage, {
+      hasActiveTask: recentMessages.length > 0,
+      hasPendingApproval: isApprovalContinuationMessage(userMessage),
+      previousTurnAskedQuestion: Boolean(previousAssistantMessage?.content.trim().endsWith('?')),
+    });
+    this.deps.sessionLog?.appendDebug('info', 'Control intent resolved', {
+      intent: control.intent,
+      matchedRule: control.matchedRule,
+      requiresConversationContext: control.requiresConversationContext,
+    });
+
+    const microTaskId =
+      this.deps.microTaskRoutingEnabled === false ||
+      isApprovalContinuationMessage(userMessage) ||
+      control.intent !== 'new_task'
       ? null
       : detectMicroTask(userMessage);
     if (microTaskId && this.deps.microTaskExecutorFactory) {
@@ -270,11 +488,19 @@ export class ChatOrchestrator {
       sessionTiming.end('microtask', sessionLog, result.metadata);
       const normalizedResult = normalizeAssistantResponse(result.content);
       const content = normalizedResult.content;
+      fullResponse = content;
       if (normalizedResult.wasEmpty) {
         this.emitEmptyResponse(provider.id);
       }
       this.saveTurn(session.id, 'user', userMessage);
       const emptyPack = emptyContextPack();
+      const microTaskMessages: ChatMessage[] = [
+        { role: 'system', content: `Mitii micro-task: ${microTaskId}` },
+        { role: 'user', content: userMessage },
+      ];
+      const microTaskPromptTokens = estimateChatRequestTokens({
+        messages: microTaskMessages,
+      });
       await this.finishTurn(
         session,
         provider,
@@ -282,11 +508,13 @@ export class ChatOrchestrator {
         content,
         emptyPack,
         [],
-        Math.ceil(content.length / 4),
-        [
-          { role: 'system', content: `Mitii micro-task: ${microTaskId}` },
-          { role: 'user', content: userMessage },
-        ]
+        microTaskPromptTokens,
+        microTaskMessages,
+        {
+          allowResponseAutoApply: false,
+          auditStartIndex,
+          activeTools: [],
+        }
       );
       yield content;
       this.setLiveStatus(null);
@@ -319,6 +547,19 @@ export class ChatOrchestrator {
     }
 
     const agentConfig = this.deps.agentConfig;
+    const askDepth = normalizeAgentDepth(agentConfig?.askDepth);
+    const planDepth = normalizeAgentDepth(agentConfig?.planDepth);
+    const actDepth = normalizeAgentDepth(agentConfig?.actDepth);
+    const activeDepth = session.mode === 'ask' ? askDepth : session.mode === 'plan' ? planDepth : actDepth;
+    const skillRuntimeContext: SkillRuntimeContext = {
+      mode: session.mode,
+      depth: activeDepth,
+      askDepth,
+      planDepth,
+      actDepth,
+      model: provider.id,
+      modelSource: session.providerOverride?.model ? 'session' : 'turn',
+    };
     const originalTaskMessage = extractOriginalTaskMessage(userMessage) ?? userMessage;
     const conversationTaskMessage = resolveConversationTaskMessage(originalTaskMessage, recentMessages);
     const taskEnrichment = await enrichTask(conversationTaskMessage, {
@@ -341,18 +582,104 @@ export class ChatOrchestrator {
       );
     }
 
+    const classifierText = conversationTaskMessage;
     const taskForClassification = taskEnrichment.classificationText;
     const isAskMode = session.mode === 'ask';
     const isPlanMode = session.mode === 'plan';
     const isAgentMode = session.mode === 'agent';
     const auditMode = isAuditCleanupTask(taskForClassification);
+    const logAuditMode = isLogAuditTask(taskForClassification);
+    const logAuditTarget = logAuditMode ? extractLogAuditTargetPath(taskForClassification) : undefined;
     const mdxRepairMode = isMdxRepairTask(taskForClassification);
     const mdxErrorFile = mdxRepairMode ? extractMdxErrorFile(taskForClassification) : undefined;
     const orchestrationEnabled = agentConfig?.orchestrationEnabled ?? true;
+    const resolvedTier = resolveTurnAgenticTier(provider, agentConfig);
+    const tierPolicy = resolveTierPolicy(resolvedTier);
+    this.useSkillInvocationsThisTurn = 0;
+    this.skillInjectionTelemetry = undefined;
+    this.emitActivity('info', 'Active agent tier', describeTier(resolvedTier, tierPolicy));
+    this.deps.sessionLog?.append('info', 'Active agent tier', {
+      tier: resolvedTier,
+      policy: tierPolicy,
+      provider: provider.id,
+      contextWindow: provider.capabilities.contextWindow,
+      supportsReasoning: provider.capabilities.supportsReasoning,
+    });
     const activePlanAtStart = isAgentMode
       ? this.deps.planPersistence?.getActive(session.id)
       : undefined;
-    const taskAnalysis = analyzeTask(taskForClassification, session.mode);
+    let intentRouting = await this.resolveIntentRouting(session.mode, classifierText, provider);
+    if (intentRouting.needsClarification && (!this.deps.toolExecutor || isApprovalContinuationMessage(userMessage))) {
+      this.deps.sessionLog?.append('info', 'Intent clarification skipped; using deterministic analyzer fallback', {
+        mode: session.mode,
+        hasToolExecutor: Boolean(this.deps.toolExecutor),
+        isApprovalContinuation: isApprovalContinuationMessage(userMessage),
+        classifierIntent: intentRouting.classification.intent,
+      });
+      intentRouting = {
+        ...intentRouting,
+        needsClarification: false,
+        useClassification: false,
+        classification: {
+          ...intentRouting.classification,
+          needsClarification: false,
+        },
+      } as ModeIntentRouting;
+    }
+    if (intentRouting.needsClarification && this.deps.toolExecutor && !isApprovalContinuationMessage(userMessage)) {
+      const clarification = this.buildRoutingClarification(session.mode, intentRouting);
+      const questionResult = await this.deps.toolExecutor.execute('ask_question', clarification);
+      if (questionResult.pendingApproval) {
+        this.routingClarifications.set(session.id, {
+          originalMessage: classifierText,
+          mode: session.mode,
+          candidateIntents: [
+            intentRouting.classification.intent,
+            ...intentRouting.classification.alternatives.map((item) => item.intent),
+          ],
+        });
+        this.saveTurn(session.id, 'user', userMessage);
+        this.setLiveStatus('Waiting for clarification', clarification.question);
+        preserveLiveStatus = true;
+        return;
+      }
+    }
+    const taskAnalysis = analyzeTask(taskForClassification, session.mode, {
+      askIntent: intentRouting.mode === 'ask' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
+      planIntent: intentRouting.mode === 'plan' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
+      actIntent: intentRouting.mode === 'agent' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
+    });
+    const resumeSavedPlan = shouldExecuteSavedPlan(
+      session.mode,
+      taskForClassification,
+      Boolean(activePlanAtStart?.plan),
+      actDepth
+    );
+    const pipeline: PipelineResolution = resolveTurnPipeline(taskForClassification, taskAnalysis, {
+      mode: session.mode,
+      userDepth: isAskMode ? askDepth : isPlanMode ? planDepth : actDepth,
+      toolExposure: tierPolicy.toolExposure,
+      mdxRepairMode,
+      resumeSavedPlan,
+      planning: isPlanMode || taskAnalysis.shouldPlan,
+      planExecution: false,
+      orchestrationEnabled,
+      forceDirect: isAgentMode && hasDirectRouteOverride(taskForClassification),
+    });
+    this.deps.sessionLog?.append('info', 'Pipeline resolution', {
+      intent: pipeline.route.intent,
+      auditSubtype: pipeline.route.auditSubtype,
+      docsSubtype: pipeline.route.docsSubtype,
+      operationClass: pipeline.route.operationClass,
+      artifacts: pipeline.artifact.artifacts,
+      executionPath: pipeline.route.executionPath,
+      depthAxis: pipeline.depthAxis,
+      activeSkill: pipeline.skills.activeSkill,
+      injectSkills: pipeline.skills.injectSkills,
+      excludedToolCount: pipeline.capabilities.excludedTools.size,
+      mcpPolicy: pipeline.capabilities.mcpPolicy,
+      shouldUsePlanner: pipeline.shouldUsePlanner,
+    });
     const askPlan = isAskMode
       ? AskOrchestrator.prepare(taskForClassification, {
           workspaceRoot: this.deps.workspace,
@@ -360,6 +687,7 @@ export class ChatOrchestrator {
           askDepth: agentConfig?.askDepth,
           askAutoContinue: agentConfig?.askAutoContinue,
           askMaxAutoContinues: agentConfig?.askMaxAutoContinues,
+          intent: intentRouting.mode === 'ask' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
         })
       : undefined;
     if (isPlanMode) {
@@ -369,17 +697,22 @@ export class ChatOrchestrator {
       ? PlanOrchestrator.prepare(taskForClassification, {
           workspaceRoot: this.deps.workspace,
           skillCatalog: this.deps.skillCatalog,
+          tierPolicy,
           configuredMaxSteps: agentConfig?.maxSteps,
           planDepth: agentConfig?.planDepth,
           planAutoContinue: agentConfig?.autoContinue,
           planMaxAutoContinues: agentConfig?.maxAutoContinues,
           taskAnalysis,
+          intent: intentRouting.mode === 'plan' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
+          runtimeContext: skillRuntimeContext,
+          skillResolution: pipeline.skills,
         })
       : undefined;
     const actPlan = isAgentMode
       ? ActOrchestrator.prepare(taskForClassification, {
           workspaceRoot: this.deps.workspace,
           skillCatalog: this.deps.skillCatalog,
+          tierPolicy,
           configuredMaxSteps: agentConfig?.maxSteps,
           actDepth: agentConfig?.actDepth,
           actAutoContinue: agentConfig?.autoContinue,
@@ -387,11 +720,15 @@ export class ChatOrchestrator {
           taskAnalysis,
           orchestrationEnabled,
           auditMode,
+          logAuditMode,
           mdxRepairMode,
           githubIssueMode: taskEnrichment.signals.githubIssue?.fetched === true,
           hasActivePlan: Boolean(activePlanAtStart?.plan),
           savedPlanId: activePlanAtStart?.id,
           verifyCommands: agentConfig?.verifyCommands,
+          intent: intentRouting.mode === 'agent' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
+          runtimeContext: skillRuntimeContext,
+          skillResolution: pipeline.skills,
         })
       : undefined;
     const scopedRoot =
@@ -409,8 +746,31 @@ export class ChatOrchestrator {
     const maxInputTokens = getMaxInputTokens(provider.capabilities.contextWindow);
     const explicitContextTokenBudget = Math.min(32_000, Math.floor(maxInputTokens * 0.08));
     const pinnedContext = options?.pinnedContext ?? [];
+    const userMentions = extractFileMentions(userMessage);
+    // Explicit user paths outrank pinned context (stale pins must not override the named target).
+    const logAuditFileTarget =
+      logAuditTarget && /\.(?:jsonl|json|log)$/i.test(logAuditTarget) ? logAuditTarget : undefined;
+    const effectivePinnedContext =
+      logAuditMode && logAuditFileTarget
+        ? pinnedContext.filter((p) => {
+            const pin = p.path.replace(/\\/g, '/');
+            const target = logAuditFileTarget.replace(/\\/g, '/');
+            return pin === target || pin.endsWith(`/${target}`) || target.endsWith(`/${pin}`);
+          })
+        : userMentions.length > 0
+          ? pinnedContext.filter((p) =>
+              userMentions.some((m) => {
+                const pin = p.path.replace(/\\/g, '/');
+                const mention = m.replace(/\\/g, '/');
+                return pin === mention || pin.endsWith(`/${mention}`) || mention.endsWith(`/${pin}`);
+              })
+            )
+          : pinnedContext;
     const explicitBuilder = new UserExplicitContextBuilder(this.db, ws, explicitContextTokenBudget);
-    const explicitResult = explicitBuilder.build(pinnedContext);
+    const explicitResult = explicitBuilder.build(effectivePinnedContext, {
+      demote: userMentions.length > 0 || Boolean(logAuditFileTarget),
+      primaryPaths: logAuditFileTarget ? [logAuditFileTarget] : userMentions,
+    });
     if (explicitResult.items.length > 0) {
       this.emitActivity(
         'context',
@@ -418,6 +778,25 @@ export class ChatOrchestrator {
         pinnedContext.map((p) => p.path).join(', ')
       );
     }
+    // Explicit path blocks are appended after retrieval, so reserve those tokens before budgeting retrieved context.
+    const userPathBlock = logAuditMode
+      ? [
+          '## User-explicit target (highest priority — overrides pinned context)',
+          logAuditTarget ? `\`${logAuditTarget}\`` : 'Session logs under `.mitii/logs/`',
+          buildLogAuditBootstrapBlock(logAuditTarget),
+        ].join('\n')
+      : userMentions.length > 0
+        ? [
+            '## User-explicit paths (highest priority — overrides pinned context)',
+            ...userMentions.map((p) => `- \`${p}\``),
+          ].join('\n')
+        : '';
+    const userPathTokens = Math.ceil(userPathBlock.length / 4);
+    const contextBudget = calculateRetrievalContextBudget(
+      maxInputTokens,
+      explicitResult.totalTokens,
+      userPathTokens
+    );
 
     const retrievalText = expandContextQuery(taskEnrichment.retrievalText);
     let items;
@@ -427,6 +806,7 @@ export class ChatOrchestrator {
       openFiles,
       scopeRoot: scopedRoot,
       pinned: pinnedContext.map((p) => p.path),
+      tier: resolvedTier,
     });
     const cacheFresh =
       this.retrievalCache &&
@@ -444,12 +824,15 @@ export class ChatOrchestrator {
           currentFile,
           openFiles,
           scopeRoot: scopedRoot,
-          pinnedContext: pinnedContext.map((p) => ({ path: p.path, kind: p.kind })),
+          pinnedContext: effectivePinnedContext.map((p) => ({ path: p.path, kind: p.kind })),
+          tierPolicy,
           maxItems: resolveMaxContextItems({
             contextWindow: provider.capabilities.contextWindow,
             actDepth: agentConfig?.actDepth,
             expandedQuery: retrievalText !== userMessage,
+            tierPolicy,
           }),
+          skipSources: logAuditMode ? [...LOG_AUDIT_SKIP_RETRIEVAL_SOURCES] : undefined,
         });
         this.retrievalCache = { key: retrievalKey, items, at: Date.now() };
         sessionTiming.end('context_retrieval', sessionLog, {
@@ -472,10 +855,14 @@ export class ChatOrchestrator {
       retrievedPaths.slice(0, 8).join('\n')
     );
 
-    const hookInjection = this.deps.memoryHookService
-      ? await this.deps.memoryHookService.onUserPromptSubmit(session.id, userMessage)
-      : undefined;
-    const passiveMemories = await (this.deps.passiveMemoryInjector?.inject(userMessage, session.id) ?? Promise.resolve([]));
+    const hookInjection = logAuditMode
+      ? undefined
+      : this.deps.memoryHookService
+        ? await this.deps.memoryHookService.onUserPromptSubmit(session.id, userMessage)
+        : undefined;
+    const passiveMemories = logAuditMode
+      ? []
+      : await (this.deps.passiveMemoryInjector?.inject(userMessage, session.id) ?? Promise.resolve([]));
     if (passiveMemories.length > 0) {
       items = [...items, ...passiveMemories];
       this.emitActivity('info', `Injected ${passiveMemories.length} passive memories`);
@@ -495,16 +882,18 @@ export class ChatOrchestrator {
       this.emitActivity('info', 'UserPromptSubmit hook injected context');
     }
 
-    const contextBudget = Math.floor(maxInputTokens * 0.65);
-    const pack = this.budgeter.budget(items, contextBudget);
+    const pack = this.budgeter.budget(items, contextBudget.retrievalContextBudget);
+    // Precedence: user-explicit path / mentions first, then pinned, then retrieved.
     const displayPack: ContextPack = {
       ...pack,
       items: [...explicitResult.items, ...pack.items],
-      totalTokens: pack.totalTokens + explicitResult.totalTokens,
-      formatted: explicitResult.formatted
-        ? `${explicitResult.formatted}\n\n---\n\n${pack.formatted}`
-        : pack.formatted,
+      totalTokens: pack.totalTokens + explicitResult.totalTokens + userPathTokens,
+      budgetLimit: contextBudget.requestedContextBudget,
+      formatted: [userPathBlock, explicitResult.formatted, pack.formatted]
+        .filter(Boolean)
+        .join('\n\n---\n\n'),
     };
+    completedContextTokens = displayPack.totalTokens;
     const views = contextItemsToViews(displayPack.items);
     const budgetView = contextPackToBudgetView(displayPack);
 
@@ -549,12 +938,11 @@ export class ChatOrchestrator {
       this.suspendContext = undefined;
       this.agentLoop?.clearSuspendState();
     }
-    const plannerEnabled = actPlan?.route.shouldUsePlanner
-      ?? shouldUsePlanner(session.mode, taskAnalysis, orchestrationEnabled, auditMode, agentConfig?.actDepth);
-    const requiresAgentWrite = shouldRequireAgentWrite(session.mode, taskAnalysis.kind, auditMode);
+    const plannerEnabled = pipeline.shouldUsePlanner;
     const subagentsEnabled =
       (agentConfig?.subagentsEnabled ?? true) &&
       !auditMode &&
+      !logAuditMode &&
       (isAskMode
         ? (askPlan?.route.shouldUseSubagents ?? shouldEnableAskSubagents(userMessage))
         : isPlanMode
@@ -565,11 +953,18 @@ export class ChatOrchestrator {
           subagentsEnabled || !['spawn_research_agent', 'spawn_subagent'].includes(tool.function.name)
         )
       : [];
-    if (isAskMode) {
+    if (logAuditMode) {
+      // Log audit wins over Ask/Plan allowlists so only deterministic log analyzers are available.
+      tools = filterLogAuditModeTools(tools);
+    } else if (isAskMode) {
       tools = filterAskModeTools(tools);
     } else if (isPlanMode) {
       tools = filterPlanModeTools(tools);
     }
+    tools = filterToolsForTier(tools, tierPolicy);
+
+    const requiresAgentWrite = shouldRequireAgentWrite(session.mode, pipeline.route.operationClass);
+    tools = filterToolsByCapabilities(tools, pipeline.capabilities);
 
     if (toolsEnabled && this.deps.toolExecutor) {
       setSubagentRuntime({
@@ -581,12 +976,16 @@ export class ChatOrchestrator {
         enabledTypes: agentConfig?.subagentTypesEnabled,
         maxConcurrent: agentConfig?.maxConcurrentSubagents,
         workspace: this.deps.workspace,
+        tierPolicy,
+        skillCatalog: this.deps.skillCatalog,
       });
     } else {
       setSubagentRuntime(undefined);
     }
 
-    if (auditMode) {
+    if (logAuditMode) {
+      this.emitActivity('info', 'Log audit mode — deterministic log analyzer', logAuditTarget);
+    } else if (auditMode) {
       this.emitActivity('info', 'Audit mode — using tools to scan project');
     } else if (mdxRepairMode) {
       this.emitActivity('info', 'MDX repair mode — fix exact build failure', mdxErrorFile ?? taskAnalysis.summary);
@@ -618,6 +1017,7 @@ export class ChatOrchestrator {
       actScope: actPlan?.scope.status,
       actSkills: actPlan?.appliedSkills,
       auditMode,
+      logAuditMode,
       mdxRepairMode,
       toolsEnabled,
       requiresAgentWrite,
@@ -625,10 +1025,10 @@ export class ChatOrchestrator {
 
     this.saveTurn(session.id, 'user', userMessage);
 
-    let fullResponse = '';
     let livePromptTokens = 0;
     let livePromptMessages: ChatMessage[] | undefined;
     let liveExplicitContextBlock = explicitResult.formatted || undefined;
+    let liveActiveTools: ToolDefinition[] | undefined;
     const emitLiveTokenUsage = () => {
       const messagesForBreakdown = livePromptMessages;
       if (!messagesForBreakdown || livePromptTokens <= 0) return;
@@ -636,11 +1036,12 @@ export class ChatOrchestrator {
         livePromptTokens,
         displayPack.totalTokens,
         fullResponse,
-        this.buildTokenBreakdown(messagesForBreakdown, displayPack, compacted),
+        this.buildTokenBreakdown(messagesForBreakdown, displayPack, compacted, liveActiveTools),
         { final: false }
       );
     };
     const sharedLoopCallbacks = this.buildLoopCallbacks(emitLiveTokenUsage);
+    const planningDepth = resolvePlanningDepth(taskAnalysis);
     const sharedPlanOptions = {
       stepMaxRetries: agentConfig?.stepMaxRetries,
       finalValidationEnabled: agentConfig?.finalValidationEnabled,
@@ -648,6 +1049,12 @@ export class ChatOrchestrator {
       restrictRunCommandToReadOnly: auditMode,
       workspace: this.deps.workspace,
       sessionLog,
+      taskAnalysis,
+      planningDepth,
+      seedFileScope: (paths: string[]) => {
+        this.deps.taskState?.mergeFileScope(paths);
+      },
+      getTaskState: () => this.deps.taskState,
     };
     const planningContextBlock = mergePromptContexts(
       isAgentMode && actPlan ? actPlan.promptContext : undefined,
@@ -658,7 +1065,7 @@ export class ChatOrchestrator {
       ? `${planningContextBlock}\n\n## User request\n${userMessage}`
       : userMessage;
 
-    try {
+    {
       const activePlan = activePlanAtStart ?? this.deps.planPersistence?.getActive(session.id);
       if (
         !isApprovalContinuationMessage(userMessage) &&
@@ -681,15 +1088,27 @@ export class ChatOrchestrator {
           (updated) => this.onPlan?.(thunderPlanToView(updated, { status: 'running' })),
           signal,
           sharedLoopCallbacks,
-          sharedPlanOptions
+          {
+            ...sharedPlanOptions,
+            skillPlaybookContext: actPlan?.skillPlaybookContext,
+          }
         )) {
+          void chunk;
           if (signal.aborted) break;
+          if (isProgressChunk(chunk)) {
+            yield chunk;
+            continue;
+          }
           fullResponse += chunkContent(chunk);
           yield chunk;
         }
         sessionTiming.end('plan_execution', sessionLog, { resumed: true, stepCount: plan.steps.length });
 
-        await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted);
+        await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted, 0, undefined, {
+          allowResponseAutoApply: false,
+          auditStartIndex,
+          activeTools: tools,
+        });
         this.setLiveStatus(null);
         return;
       }
@@ -697,33 +1116,47 @@ export class ChatOrchestrator {
       if (
         plannerEnabled &&
         this.planExecutor &&
-        taskAnalysis.shouldPlan
+        taskAnalysis.shouldPlan &&
+        !shouldSkipStructuredPlanner(planningDepth, session.mode)
       ) {
+        this.deps.sessionLog?.append('info', 'Planning depth resolved', {
+          planningDepth,
+          mode: session.mode,
+        });
         const planningRoute = planPlan?.route ?? routePlanIntent(planningRequest, taskAnalysis);
-        const skillContext = planPlan
-          ? {
+        const suggestedPlanningSkills = planPlan?.suggestedSkills ??
+          resolvePlanningSkillNames(planningRoute.intent, taskAnalysis, {
+            sourceMode: session.mode === 'agent' ? 'agent' : 'plan',
+          });
+        const skillContext = (() => {
+          if (planPlan?.skillPlaybookContext) {
+            return {
               skillPlaybookContext: planPlan.skillPlaybookContext,
               appliedSkills: planPlan.appliedSkills,
-            }
-          : actPlan
-            ? {
-                skillPlaybookContext: actPlan.skillPlaybookContext,
-                appliedSkills: actPlan.appliedSkills,
-              }
-          : (() => {
-              const loaded = loadPlanningSkillPlaybooks(
-                this.deps.skillCatalog,
-                resolvePlanningSkillNames(planningRoute.intent, taskAnalysis)
-              );
-              return {
-                skillPlaybookContext: loaded.context,
-                appliedSkills: loaded.loaded,
-              };
-            })();
+            };
+          }
+          const loaded = loadPlanningSkillPlaybooks(
+            this.deps.skillCatalog,
+            suggestedPlanningSkills,
+            { style: tierPolicy.skillInjection, maxChars: tierPolicy.maxSkillChars, runtimeContext: skillRuntimeContext }
+          );
+          return {
+            skillPlaybookContext: loaded.context,
+            appliedSkills: loaded.loaded,
+          };
+        })();
 
         const planningSkillOptions = {
           skillPlaybookContext: skillContext.skillPlaybookContext,
         };
+        this.recordSkillInjectionTelemetry(
+          resolvedTier,
+          tierPolicy,
+          suggestedPlanningSkills,
+          pipeline.skills.injectSkills,
+          skillContext.appliedSkills,
+          skillContext.skillPlaybookContext.length
+        );
 
         let requirementAnalysisText = '';
         let planningDiscovery = '';
@@ -812,8 +1245,12 @@ export class ChatOrchestrator {
           yield questionNote;
           this.setLiveStatus('Waiting for planning answer', 'Choose an option below');
           this.emitActivity('approval', 'Planning paused for a clarifying question');
-          await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted);
-          this.setLiveStatus(null);
+          await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted, 0, undefined, {
+            allowResponseAutoApply: false,
+            auditStartIndex,
+            activeTools: tools,
+          });
+          preserveLiveStatus = true;
           return;
         }
 
@@ -841,11 +1278,10 @@ export class ChatOrchestrator {
             }
           }
         )) {
+          void chunk;
           if (signal.aborted) break;
-          if (session.mode !== 'plan') {
-            fullResponse += chunkContent(chunk);
-            yield chunk;
-          }
+          // Requirement analysis is planner-internal context. Persisting/streaming it
+          // as the answer pollutes Agent-mode output with stale goals and draft prose.
         }
         sessionTiming.end('requirement_analysis', sessionLog);
 
@@ -869,6 +1305,7 @@ export class ChatOrchestrator {
           {
             workspace: this.deps.workspace,
             useIsolatedPlanning: true,
+            planningDepth,
             ...planningSkillOptions,
             onPlanQualityIssues: (issues) => {
               planQualityIssues = issues;
@@ -931,9 +1368,16 @@ export class ChatOrchestrator {
               },
               signal,
               sharedLoopCallbacks,
-              sharedPlanOptions
+              {
+                ...sharedPlanOptions,
+                ...planningSkillOptions,
+              }
             )) {
               if (signal.aborted) break;
+              if (isProgressChunk(chunk)) {
+                yield chunk;
+                continue;
+              }
               fullResponse += chunkContent(chunk);
               yield chunk;
             }
@@ -941,7 +1385,10 @@ export class ChatOrchestrator {
               stepCount: plan.steps.length,
             });
 
-            if (this.agentLoop?.hadPendingApproval()) {
+            const pausedForApproval =
+              this.agentLoop?.hadPendingApproval() ||
+              plan.steps.some((s) => s.status === 'blocked');
+            if (pausedForApproval) {
               this.suspendContext = {
                 session,
                 provider,
@@ -950,6 +1397,14 @@ export class ChatOrchestrator {
                 agentMaxSteps: agentConfig?.maxSteps,
                 autoContinue: agentConfig?.autoContinue,
                 maxAutoContinues: agentConfig?.maxAutoContinues,
+                planResume: {
+                  plan,
+                  displayPack,
+                  tools,
+                  requirementAnalysis: requirementAnalysis || undefined,
+                  appliedSkills: skillContext.appliedSkills,
+                  skillPlaybookContext: skillContext.skillPlaybookContext,
+                },
               };
               const pauseBlock = this.savePauseState(session, taskForClassification, taskAnalysis.kind);
               const approvalNote =
@@ -958,8 +1413,12 @@ export class ChatOrchestrator {
               yield approvalNote;
               this.setLiveStatus('Waiting for approval', 'Review and approve below');
               this.emitActivity('approval', 'Paused — waiting for your approval', this.deps.taskState?.getPauseSummary());
-              await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted);
-              this.setLiveStatus(null);
+              await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted, 0, undefined, {
+                allowResponseAutoApply: false,
+                auditStartIndex,
+                activeTools: tools,
+              });
+              preserveLiveStatus = true;
               return;
             }
           } else {
@@ -969,7 +1428,11 @@ export class ChatOrchestrator {
             this.emitActivity('info', 'Plan ready — switch to Agent mode to execute steps');
           }
 
-          await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted);
+          await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted, 0, undefined, {
+            allowResponseAutoApply: false,
+            auditStartIndex,
+            activeTools: tools,
+          });
           this.setLiveStatus(null);
           return;
         }
@@ -981,7 +1444,11 @@ export class ChatOrchestrator {
           fullResponse += failureText;
           yield failureText;
           this.emitActivity('error', 'Planning failed quality gate', planQualityIssues.join('; '));
-          await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted);
+          await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted, 0, undefined, {
+            allowResponseAutoApply: false,
+            auditStartIndex,
+            activeTools: tools,
+          });
           this.setLiveStatus(null);
           return;
         }
@@ -999,25 +1466,74 @@ export class ChatOrchestrator {
 
       const isResume = isApprovalContinuationMessage(userMessage);
       const taskStateBlock = this.deps.taskState?.buildPromptBlock();
+      if (!this.skillInjectionTelemetry && (planPlan || actPlan)) {
+        const directSkillContext = planPlan ?? actPlan;
+        this.recordSkillInjectionTelemetry(
+          resolvedTier,
+          tierPolicy,
+          directSkillContext?.suggestedSkills ?? [],
+          pipeline.skills.injectSkills,
+          directSkillContext?.appliedSkills ?? [],
+          directSkillContext?.skillPlaybookContext.length ?? 0
+        );
+      }
+      const cleanupAuditMode =
+        auditMode &&
+        (!pipeline.route.auditSubtype ||
+          pipeline.route.auditSubtype === 'unused_deps' ||
+          pipeline.route.auditSubtype === 'dead_code' ||
+          pipeline.route.auditSubtype === 'vulnerability' ||
+          pipeline.route.auditSubtype === 'generic');
+      const docsSiteMode =
+        (planPlan?.route.intent === 'docs' || actPlan?.route.intent === 'docs') &&
+        pipeline.route.docsSubtype !== 'readme';
       const messages = attachImagesToLastUser(buildPrompt(
         session.mode,
-        pack,
+        displayPack,
         userMessage,
         compacted,
         toolsEnabled,
-        auditMode,
+        cleanupAuditMode,
         mdxRepairMode,
         mdxErrorFile,
         taskStateBlock,
         isResume,
-        explicitResult.formatted || undefined,
+        undefined,
         mergePromptContexts(
           askPlan?.promptContext,
           planPlan?.promptContext,
           actPlan?.promptContext,
+          buildRoutePolicyText(pipeline.route),
           ...taskEnrichment.contextBlocks
-        )
+        ),
+        mergePromptContexts(
+          planPlan?.skillPlaybookContext,
+          actPlan?.skillPlaybookContext
+        ),
+        {
+          docsMode: docsSiteMode,
+          mdxRepairMode,
+          askProfile: askPlan?.route.profile,
+          allowedToolNames: tools.map((tool) => tool.function.name),
+        }
       ), options?.attachments);
+      const promptSections = describePromptSections(
+        collectSystemPromptSections(session.mode, toolsEnabled, {
+          auditMode: cleanupAuditMode,
+          docsMode: docsSiteMode,
+          mdxRepairMode,
+          isContinuation: isResume,
+          askProfile: askPlan?.route.profile,
+          allowedToolNames: tools.map((tool) => tool.function.name),
+        })
+      );
+      this.deps.sessionLog?.append('info', 'Prompt sections', {
+        sections: promptSections,
+        planningDepth,
+        skillChars:
+          (planPlan?.skillPlaybookContext.length ?? 0) +
+          (actPlan?.skillPlaybookContext.length ?? 0),
+      });
       const promptTokens = estimateChatRequestTokens({
         messages,
         tools: tools.length > 0 ? tools : undefined,
@@ -1025,14 +1541,21 @@ export class ChatOrchestrator {
       livePromptTokens = promptTokens;
       livePromptMessages = messages;
       liveExplicitContextBlock = explicitResult.formatted || undefined;
+      liveActiveTools = tools;
       emitLiveTokenUsage();
 
       if (toolsEnabled && this.agentLoop) {
-        const directAgentTools = filterActModeTools(tools);
+        const directAgentTools = tools;
         this.setLiveStatus(isAskMode ? 'Answering' : 'Agent running');
         this.emitActivity(
           'info',
-          isAskMode ? 'Exploring codebase (read-only)…' : auditMode ? 'Scanning project with tools…' : 'Agent loop started'
+          isAskMode
+            ? 'Exploring codebase (read-only)…'
+            : logAuditMode
+              ? 'Analyzing log deterministically…'
+              : auditMode
+                ? 'Scanning project with tools…'
+                : 'Agent loop started'
         );
         sessionTiming.start('direct_agent');
 
@@ -1044,31 +1567,55 @@ export class ChatOrchestrator {
           sharedLoopCallbacks,
           {
             auditMode,
+            logAuditMode,
             askMode: isAskMode,
             planMode: isPlanMode,
             requiresAskGrounding: isAskMode && needsAskGrounding(userMessage),
             requiresPlanGrounding: isPlanMode && needsPlanGrounding(taskForClassification),
-            maxSteps: isAskMode
-              ? (askPlan?.maxSteps ?? agentConfig?.askMaxSteps ?? 18)
-              : isPlanMode
-                ? (planPlan?.discoveryMaxSteps ?? agentConfig?.maxSteps ?? 8)
-                : auditMode
-                  ? AUDIT_AGENT_MAX_STEPS
-                  : (actPlan?.maxSteps ?? agentConfig?.maxSteps),
+            maxSteps: resolveLoopMaxSteps({
+              isAskMode,
+              isPlanMode,
+              auditMode,
+              logAuditMode,
+              askSteps: askPlan?.maxSteps ?? agentConfig?.askMaxSteps,
+              planSteps: planPlan?.discoveryMaxSteps ?? (
+                agentConfig?.maxSteps ? scaleTierSteps(agentConfig.maxSteps, tierPolicy, 50) : undefined
+              ),
+              actSteps: actPlan?.maxSteps ?? (
+                agentConfig?.maxSteps ? scaleTierSteps(agentConfig.maxSteps, tierPolicy, 100) : undefined
+              ),
+              tierPolicy,
+            }),
             autoContinue: isAskMode
               ? (askPlan?.autoContinue ?? true)
               : isPlanMode
                 ? (planPlan?.autoContinue ?? agentConfig?.autoContinue ?? true)
-                : (actPlan?.autoContinue ?? agentConfig?.autoContinue ?? true),
+                : logAuditMode
+                  ? false
+                  : (actPlan?.autoContinue ?? agentConfig?.autoContinue ?? true),
             maxAutoContinues: isAskMode
               ? (askPlan?.maxAutoContinues ?? 1)
               : isPlanMode
                 ? (planPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues)
-                : (actPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues),
+                : logAuditMode
+                  ? 0
+                  : (actPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues),
             requiresWrite: requiresAgentWrite,
+            requiredOperation: toRequiredLoopOperation(pipeline.route.operationClass),
+            reasoningEffort: tierPolicy.reasoningEffort,
+            getTaskState: () => this.deps.taskState,
           }
         )) {
           if (signal.aborted) break;
+          if (isProgressChunk(chunk)) {
+            const progress = chunkContent(chunk).trim();
+            if (progress) {
+              this.emitActivity('info', progress.slice(0, 160));
+            }
+            // Stream to UI for live status, but do not persist into the final answer.
+            yield chunk;
+            continue;
+          }
           fullResponse += chunkContent(chunk);
           emitLiveTokenUsage();
           yield chunk;
@@ -1095,8 +1642,9 @@ export class ChatOrchestrator {
           yield approvalNote;
           this.setLiveStatus('Waiting for approval', 'Review and approve below');
           this.emitActivity('approval', 'Paused — waiting for your approval', this.deps.taskState?.getPauseSummary());
+          preserveLiveStatus = true;
         } else if (!this.agentLoop.hadPendingApproval() && !signal.aborted) {
-          const directTouchedFiles = getTouchedFilesFromAudit(this.deps.toolRuntime);
+          const directTouchedFiles = getTouchedFilesFromAudit(this.deps.toolRuntime, auditStartIndex);
           if (requiresAgentWrite && directTouchedFiles.length === 0) {
             const noWriteBlock =
               '\n\nStopped because the model did not change any files for this Agent-mode edit task. No files were changed.\n';
@@ -1155,6 +1703,10 @@ export class ChatOrchestrator {
               }
             )) {
               if (signal.aborted) break;
+              if (isProgressChunk(chunk)) {
+                yield chunk;
+                continue;
+              }
               fullResponse += chunkContent(chunk);
               emitLiveTokenUsage();
               yield chunk;
@@ -1164,7 +1716,11 @@ export class ChatOrchestrator {
       } else {
         this.setLiveStatus('Generating response');
         this.emitActivity('info', 'Streaming response…');
-        for await (const delta of provider.complete({ messages, stream: true })) {
+        for await (const delta of provider.complete({
+          messages,
+          stream: true,
+          reasoningEffort: tierPolicy.reasoningEffort,
+        })) {
           if (signal.aborted) break;
           if (delta.content) {
             fullResponse += delta.content;
@@ -1192,15 +1748,25 @@ export class ChatOrchestrator {
         compacted,
         promptTokens,
         messages,
-        liveExplicitContextBlock
+        {
+          allowResponseAutoApply: !toolsEnabled && isWriteAllowed(session.mode),
+          auditStartIndex,
+          activeTools: tools,
+          explicitContextBlock: liveExplicitContextBlock,
+        }
       );
-      this.onLiveStatus?.(null);
+    }
     } finally {
+      this.useSkillInvocationsThisTurn = 0;
+      this.skillInjectionTelemetry = undefined;
       sessionTiming.end('turn_total', sessionLog, {
         mode: session.mode,
         responseLength: fullResponse.length,
       });
-      log.info('Chat completed', { sessionId: session.id, tokens: displayPack.totalTokens });
+      log.info('Chat completed', { sessionId: session.id, tokens: completedContextTokens });
+      if (!preserveLiveStatus) {
+        this.setLiveStatus(null);
+      }
     }
   }
 
@@ -1213,13 +1779,13 @@ export class ChatOrchestrator {
     compacted: ChatMessage[],
     promptTokens = 0,
     promptMessages?: ChatMessage[],
-    explicitContextBlock?: string
+    options?: FinishTurnOptions
   ): Promise<void> {
     const usageMessages =
       promptMessages ??
-      buildPrompt(session.mode, pack, userMessage, compacted, false, false, false, undefined, undefined, false, explicitContextBlock);
+      buildPrompt(session.mode, pack, userMessage, compacted, false, false, false, undefined, undefined, false, options?.explicitContextBlock);
     const tokens = promptTokens || estimateChatRequestTokens({ messages: usageMessages });
-    this.emitTurnTokenUsage(tokens, pack, fullResponse, usageMessages, compacted);
+    this.emitTurnTokenUsage(tokens, pack, fullResponse, usageMessages, compacted, options?.activeTools);
 
     const normalizedResponse = normalizeAssistantResponse(fullResponse);
     fullResponse = normalizedResponse.content;
@@ -1233,7 +1799,7 @@ export class ChatOrchestrator {
       preview: fullResponse.slice(0, 200),
     });
 
-    const parsed = parsePlanFromText(fullResponse);
+    const parsed = session.mode === 'plan' ? parsePlanFromText(fullResponse) : null;
     if (parsed) {
       this.onPlan?.(thunderPlanToView(parsed, { status: 'ready' }));
       this.deps.planPersistence?.save(session.id, parsed);
@@ -1243,7 +1809,7 @@ export class ChatOrchestrator {
       });
     }
 
-    if (isWriteAllowed(session.mode)) {
+    if (options?.allowResponseAutoApply === true && isWriteAllowed(session.mode)) {
       const applyResults = await this.autoApply.applyFromResponse(fullResponse, userMessage);
       for (const result of applyResults) {
         this.emitActivity(
@@ -1255,7 +1821,7 @@ export class ChatOrchestrator {
     }
 
     if (this.deps.memoryExtractor && this.deps.memoryConfig?.enabled) {
-      const audit = this.deps.toolRuntime?.getAuditLog() ?? [];
+      const audit = (this.deps.toolRuntime?.getAuditLog() ?? []).slice(options?.auditStartIndex ?? 0);
       this.deps.memoryExtractor.extractAfterTask(
         session.id,
         userMessage,
@@ -1265,6 +1831,49 @@ export class ChatOrchestrator {
       );
     }
 
+    this.flushSkillInjectionTelemetry(provider);
+  }
+
+  private recordSkillInjectionTelemetry(
+    tier: AgenticTier,
+    tierPolicy: TierPolicy,
+    suggested: string[],
+    selected: string[],
+    loaded: string[],
+    injectedChars: number
+  ): void {
+    const loadedSet = new Set(loaded);
+    this.skillInjectionTelemetry = {
+      tier,
+      style: tierPolicy.skillInjection,
+      suggested,
+      selected,
+      loaded,
+      rejected: selected
+        .filter((name) => !loadedSet.has(name))
+        .map((name) => ({
+          name,
+          reason: tierPolicy.skillInjection === 'none' || tierPolicy.skillInjection === 'catalog'
+            ? `injection style ${tierPolicy.skillInjection}`
+            : 'skill missing or over injection budget',
+        })),
+      injectedChars,
+    };
+  }
+
+  private flushSkillInjectionTelemetry(provider: LlmProvider): void {
+    if (!this.skillInjectionTelemetry) return;
+    this.deps.sessionLog?.append('info', 'Skill injection summary', {
+      tier: this.skillInjectionTelemetry.tier ?? provider.capabilities.agenticTier,
+      style: this.skillInjectionTelemetry.style,
+      suggested: this.skillInjectionTelemetry.suggested,
+      selected: this.skillInjectionTelemetry.selected,
+      loaded: this.skillInjectionTelemetry.loaded,
+      rejected: this.skillInjectionTelemetry.rejected,
+      injectedChars: this.skillInjectionTelemetry.injectedChars,
+      useSkillCount: this.useSkillInvocationsThisTurn,
+    });
+    this.skillInjectionTelemetry = undefined;
   }
 
   private emitTurnTokenUsage(
@@ -1272,13 +1881,14 @@ export class ChatOrchestrator {
     pack: ContextPack,
     fullResponse: string,
     usageMessages: ChatMessage[],
-    compacted: ChatMessage[]
+    compacted: ChatMessage[],
+    activeTools?: ToolDefinition[]
   ): void {
     this.onTokenUsage?.(
       tokens,
       pack.totalTokens,
       fullResponse,
-      this.buildTokenBreakdown(usageMessages, pack, compacted),
+      this.buildTokenBreakdown(usageMessages, pack, compacted, activeTools),
       { final: true }
     );
     this.deps.sessionLog?.appendDebug('token_usage', 'Prompt assembly token estimate', {
@@ -1291,15 +1901,17 @@ export class ChatOrchestrator {
   private buildTokenBreakdown(
     messages: ChatMessage[],
     pack: ContextPack,
-    compacted: ChatMessage[]
+    compacted: ChatMessage[],
+    activeTools?: ToolDefinition[]
   ): TokenUsageBreakdownItem[] {
     const systemPrompt = messages.find((m) => m.role === 'system')?.content ?? '';
-    const allTools = this.deps.toolRuntime?.list() ?? [];
-    const builtinDefs = JSON.stringify(toolsToDefinitions(allTools.filter((t) => !t.name.startsWith('mcp__'))));
-    const mcpByServer = new Map<string, typeof allTools>();
+    const allTools = activeTools ?? toolsToDefinitions(this.deps.toolRuntime?.list() ?? []);
+    const builtinDefs = JSON.stringify(allTools.filter((t) => !t.function.name.startsWith('mcp__')));
+    const mcpByServer = new Map<string, ToolDefinition[]>();
     for (const tool of allTools) {
-      if (!tool.name.startsWith('mcp__')) continue;
-      const server = tool.name.split('__')[1] ?? 'mcp';
+      const toolName = tool.function.name;
+      if (!toolName.startsWith('mcp__')) continue;
+      const server = toolName.split('__')[1] ?? 'mcp';
       const list = mcpByServer.get(server) ?? [];
       list.push(tool);
       mcpByServer.set(server, list);
@@ -1328,7 +1940,7 @@ export class ChatOrchestrator {
     ];
 
     for (const [server, tools] of mcpByServer) {
-      const defs = JSON.stringify(toolsToDefinitions(tools));
+      const defs = JSON.stringify(tools);
       items.push({
         label: `MCP: ${server}`,
         tokens: Math.ceil(defs.length / 4),
@@ -1358,6 +1970,7 @@ export class ChatOrchestrator {
     const sessionLog = this.deps.sessionLog;
     return {
       onToolStart: (name, input) => {
+        if (name === 'use_skill') this.useSkillInvocationsThisTurn += 1;
         lastToolInputs.set(name, input);
         const activity = describeToolActivity(name, input, 'start');
         this.setLiveStatus(activity.liveLabel, activity.detail);
@@ -1373,12 +1986,12 @@ export class ChatOrchestrator {
           return;
         }
         if (!success && isSkippedToolOutput(output)) {
-          this.setLiveStatus('Skipped redundant tool', toolDisplayName(name));
+          this.setLiveStatus(describeSkipLabel(output), toolDisplayName(name));
           this.emitActivity('skipped', `${toolDisplayName(name)} skipped`, output?.slice(0, 240));
           return;
         }
         if (success && isSkippedToolOutput(output)) {
-          this.setLiveStatus('Skipped redundant tool', toolDisplayName(name));
+          this.setLiveStatus(describeSkipLabel(output), toolDisplayName(name));
           this.emitActivity('skipped', `${toolDisplayName(name)} skipped`, output?.slice(0, 240));
           return;
         }
@@ -1396,6 +2009,12 @@ export class ChatOrchestrator {
       onLlmStepComplete: (step, durationMs, toolCallCount) => {
         sessionLog?.appendTiming('llm_step', durationMs, { step, toolCallCount });
         sessionLog?.appendDebug('info', 'LLM step complete', { step, durationMs, toolCallCount });
+      },
+      onResponseCandidate: (candidate) => {
+        sessionLog?.appendDebug('llm_response_candidate', 'LLM response candidate', candidate);
+        if (candidate.rejectionReason?.endsWith('_missing_after_retry')) {
+          this.emitActivity('error', 'Required task side effect was not completed', candidate.rejectionReason);
+        }
       },
       onAutoContinue: (round) => {
         this.emitActivity('info', `Auto-continuing agent loop (round ${round})`);
@@ -1438,106 +2057,231 @@ export class ChatOrchestrator {
   }
 
   hasSuspendState(): boolean {
-    return Boolean(this.agentLoop?.getSuspendState() && this.suspendContext);
+    return Boolean(
+      this.suspendContext &&
+        (this.agentLoop?.getSuspendState() || this.suspendContext.planResume || this.suspendContext.planningResume)
+    );
+  }
+
+  getRoutingClarificationState(sessionId: string): RoutingClarificationState | undefined {
+    const state = this.routingClarifications.get(sessionId);
+    return state
+      ? {
+          ...state,
+          candidateIntents: [...state.candidateIntents],
+        }
+      : undefined;
   }
 
   clearRoutingState(): void {
     this.suspendContext = undefined;
+    this.routingClarifications.clear();
     this.agentLoop?.clearSuspendState();
   }
 
   async *resumeAfterApproval(approved: ApprovedToolResult[]): AsyncIterable<AssistantStreamChunk> {
-    if (!this.agentLoop || !this.suspendContext || approved.length === 0) return;
-
-    const baseState = this.agentLoop.getSuspendState();
-    if (!baseState) return;
+    if (!this.suspendContext || approved.length === 0) return;
 
     const { session, provider, userMessage } = this.suspendContext;
     const taskStateBlock = this.deps.taskState?.buildPromptBlock();
     const planningResume = this.suspendContext.planningResume;
+    const planResume = this.suspendContext.planResume;
+    const anyDenied = approved.some((result) => !result.success);
+    const anyApproved = approved.some((result) => result.success);
 
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
-    this.setLiveStatus('Resuming agent', 'Continuing after approval');
-    this.emitActivity('info', 'Resuming agent loop after approval');
-
-    const state: AgentLoopSuspendState = {
-      ...baseState,
-      messages: [
-        ...baseState.messages,
-        {
-          role: 'user',
-          content:
-            planningResume
-              ? [
-                  'User answered the pending planning clarification. Resume read-only planning discovery from the approved tool result.',
-                  baseState.checkpoint ? `\n## Approval checkpoint\n${baseState.checkpoint}` : '',
-                  '\nContinue with only the extra read-only discovery needed, then output DISCOVERY_SUMMARY.',
-                  'Do not execute edits. Do not compile the structured plan yourself; the orchestrator will compile it after discovery.',
-                ].filter(Boolean).join('\n')
-              : [
-                  'User approved the pending tool(s). Resume the existing task state machine from the approved tool result(s).',
-                  taskStateBlock ? `\n## Task progress\n${taskStateBlock}` : '',
-                  baseState.checkpoint ? `\n## Approval checkpoint\n${baseState.checkpoint}` : '',
-                  '\nContinue from the pending Execute/Verify step. Do not restart planning or diagnostics.',
-                  'Do not re-run audit-dependencies, audit-dead-code, depcheck, knip, eslint discovery, list_files, or memory_search unless the approved result proves the prior output is stale.',
-                  'If final verification reports unrelated TypeScript errors outside touched files, log them as remaining issues instead of derailing the cleanup task.',
-                ].filter(Boolean).join('\n'),
-        },
-      ],
-    };
+    this.setLiveStatus(
+      anyDenied && !anyApproved ? 'Resuming after denial' : 'Resuming agent',
+      anyDenied && !anyApproved ? 'Continuing without denied tool' : 'Continuing after approval'
+    );
+    this.emitActivity(
+      'info',
+      anyDenied && !anyApproved
+        ? 'Resuming after denial'
+        : 'Resuming agent loop after approval'
+    );
 
     let fullResponse = '';
     const sharedLoopCallbacks = this.buildLoopCallbacks();
+    const baseState = this.agentLoop?.getSuspendState();
 
     try {
-      for await (const chunk of this.agentLoop.resume(
-        provider,
-        state,
-        approved,
-        signal,
-        sharedLoopCallbacks
-      )) {
-        if (signal.aborted) break;
-        fullResponse += chunkContent(chunk);
-        yield chunk;
-      }
+      // Structured plans: reopen the blocked step and continue the DAG.
+      // Approved tools were already applied in resolveApproval; denied tools must not be retried.
+      if (planResume && this.planExecutor && session.mode === 'agent' && !planningResume) {
+        const plan = planResume.plan;
+        for (let i = 0; i < plan.steps.length; i++) {
+          if (plan.steps[i].status === 'blocked') {
+            plan.steps[i] = { ...plan.steps[i], status: 'pending' };
+          }
+        }
+        this.deps.planPersistence?.updatePlan(session.id, plan, 'running');
+        this.onPlan?.(
+          thunderPlanToView(plan, {
+            status: 'running',
+            requirementAnalysis: planResume.requirementAnalysis,
+            appliedSkills: planResume.appliedSkills,
+          })
+        );
 
-      if (this.agentLoop.hadPendingApproval()) {
-        const pauseBlock = planningResume ? '' : this.savePauseState(session, userMessage);
-        const approvalNote = planningResume
-          ? '\n\n**Planning paused for another clarification.** Choose an option below and I will continue the plan.\n'
-          : `\n\n${pauseBlock}\n\n⏸ **Waiting for your approval** — review the proposed changes above, then approve or deny in the panel below.\n`;
-        fullResponse += approvalNote;
-        yield approvalNote;
-        this.setLiveStatus(
-          planningResume ? 'Waiting for planning answer' : 'Waiting for approval',
-          planningResume ? 'Choose an option below' : 'Review and approve below'
-        );
-        this.emitActivity(
-          'approval',
-          planningResume ? 'Planning paused for a clarifying question' : 'Paused — waiting for your approval',
-          planningResume ? undefined : this.deps.taskState?.getPauseSummary()
-        );
-      } else if (planningResume) {
-        const planText = await this.compilePlanAfterPlanningDiscovery(
+        const decisionNote = anyDenied && !anyApproved
+          ? '\n\nDenied tool(s) will not be retried. Continuing remaining plan steps…\n\n'
+          : '\n\nApproval recorded. Continuing remaining plan steps…\n\n';
+        fullResponse += decisionNote;
+        yield decisionNote;
+
+        this.setLiveStatus('Continuing plan', plan.goal);
+        this.emitActivity('info', 'Continuing remaining plan steps after approval decision');
+
+        for await (const chunk of this.planExecutor.executePlan(
           session,
           provider,
-          planningResume.displayPack,
-          planningResume.planningRequest,
-          planningResume.taskAnalysis,
-          [planningResume.initialPlanningDiscovery, fullResponse].filter((part) => part.trim()).join('\n\n'),
-          planningResume.skillPlaybookContext,
-          planningResume.appliedSkills,
-          signal
-        );
-        fullResponse += planText;
-        yield planText;
-        this.suspendContext = undefined;
-        this.agentLoop.clearSuspendState();
+          plan,
+          planResume.displayPack,
+          planResume.tools,
+          (updated) => {
+            this.onPlan?.(
+              thunderPlanToView(updated, {
+                status: 'running',
+                requirementAnalysis: planResume.requirementAnalysis,
+                appliedSkills: planResume.appliedSkills,
+              })
+            );
+          },
+          signal,
+          sharedLoopCallbacks,
+          {
+            workspace: this.deps.workspace,
+            sessionLog: this.deps.sessionLog,
+            skillPlaybookContext: planResume.skillPlaybookContext,
+            agentMaxSteps: this.suspendContext.agentMaxSteps,
+            restrictRunCommandToReadOnly: this.suspendContext.auditMode,
+            seedFileScope: (paths: string[]) => {
+              this.deps.taskState?.mergeFileScope(paths);
+            },
+            getTaskState: () => this.deps.taskState,
+          }
+        )) {
+          if (signal.aborted) break;
+          if (isProgressChunk(chunk)) {
+            yield chunk;
+            continue;
+          }
+          fullResponse += chunkContent(chunk);
+          yield chunk;
+        }
+
+        if (this.agentLoop?.hadPendingApproval() || plan.steps.some((s) => s.status === 'blocked')) {
+          this.suspendContext = {
+            ...this.suspendContext,
+            planResume: {
+              ...planResume,
+              plan,
+            },
+          };
+          const pauseBlock = this.savePauseState(session, userMessage);
+          const approvalNote =
+            `\n\n${pauseBlock}\n\n⏸ **Waiting for your approval** — review the proposed changes above, then approve or deny in the panel below.\n`;
+          fullResponse += approvalNote;
+          yield approvalNote;
+          this.setLiveStatus('Waiting for approval', 'Review and approve below');
+          this.emitActivity('approval', 'Paused — waiting for your approval', this.deps.taskState?.getPauseSummary());
+        } else {
+          this.suspendContext = undefined;
+          this.agentLoop?.clearSuspendState();
+        }
+      } else if (this.agentLoop && baseState) {
+        const wakeUpContent = planningResume
+          ? [
+              'User answered the pending planning clarification. Resume read-only planning discovery from the approved tool result.',
+              baseState.checkpoint ? `\n## Approval checkpoint\n${baseState.checkpoint}` : '',
+              '\nContinue with only the extra read-only discovery needed, then output DISCOVERY_SUMMARY.',
+              'Do not execute edits. Do not compile the structured plan yourself; the orchestrator will compile it after discovery.',
+            ].filter(Boolean).join('\n')
+          : anyDenied && !anyApproved
+            ? [
+                'User denied the pending tool(s). Do not retry the denied tool. Continue the existing task another way.',
+                taskStateBlock ? `\n## Task progress\n${taskStateBlock}` : '',
+                baseState.checkpoint ? `\n## Approval checkpoint\n${baseState.checkpoint}` : '',
+                '\nContinue from the pending Execute/Verify step. Do not restart planning or diagnostics.',
+                'Skip incidental git_commit / GitHub publish tools unless the user explicitly asked for a commit or PR.',
+              ].filter(Boolean).join('\n')
+            : [
+                'User approved the pending tool(s). Resume the existing task state machine from the approved tool result(s).',
+                taskStateBlock ? `\n## Task progress\n${taskStateBlock}` : '',
+                baseState.checkpoint ? `\n## Approval checkpoint\n${baseState.checkpoint}` : '',
+                '\nContinue from the pending Execute/Verify step. Do not restart planning or diagnostics.',
+                'Do not re-run audit-dependencies, audit-dead-code, depcheck, knip, eslint discovery, list_files, or memory_search unless the approved result proves the prior output is stale.',
+                'If final verification reports unrelated TypeScript errors outside touched files, log them as remaining issues instead of derailing the cleanup task.',
+              ].filter(Boolean).join('\n');
+
+        const state: AgentLoopSuspendState = {
+          ...baseState,
+          messages: [
+            ...baseState.messages,
+            {
+              role: 'user',
+              content: wakeUpContent,
+            },
+          ],
+        };
+
+        for await (const chunk of this.agentLoop.resume(
+          provider,
+          state,
+          approved,
+          signal,
+          sharedLoopCallbacks
+        )) {
+          if (signal.aborted) break;
+          if (isProgressChunk(chunk)) {
+            yield chunk;
+            continue;
+          }
+          fullResponse += chunkContent(chunk);
+          yield chunk;
+        }
+
+        if (this.agentLoop.hadPendingApproval()) {
+          const pauseBlock = planningResume ? '' : this.savePauseState(session, userMessage);
+          const approvalNote = planningResume
+            ? '\n\n**Planning paused for another clarification.** Choose an option below and I will continue the plan.\n'
+            : `\n\n${pauseBlock}\n\n⏸ **Waiting for your approval** — review the proposed changes above, then approve or deny in the panel below.\n`;
+          fullResponse += approvalNote;
+          yield approvalNote;
+          this.setLiveStatus(
+            planningResume ? 'Waiting for planning answer' : 'Waiting for approval',
+            planningResume ? 'Choose an option below' : 'Review and approve below'
+          );
+          this.emitActivity(
+            'approval',
+            planningResume ? 'Planning paused for a clarifying question' : 'Paused — waiting for your approval',
+            planningResume ? undefined : this.deps.taskState?.getPauseSummary()
+          );
+        } else if (planningResume) {
+          const planText = await this.compilePlanAfterPlanningDiscovery(
+            session,
+            provider,
+            planningResume.displayPack,
+            planningResume.planningRequest,
+            planningResume.taskAnalysis,
+            [planningResume.initialPlanningDiscovery, fullResponse].filter((part) => part.trim()).join('\n\n'),
+            planningResume.skillPlaybookContext,
+            planningResume.appliedSkills,
+            signal
+          );
+          fullResponse += planText;
+          yield planText;
+          this.suspendContext = undefined;
+          this.agentLoop.clearSuspendState();
+        } else {
+          this.suspendContext = undefined;
+          this.agentLoop.clearSuspendState();
+        }
       } else {
         this.suspendContext = undefined;
-        this.agentLoop.clearSuspendState();
+        this.agentLoop?.clearSuspendState();
       }
 
       if (fullResponse) {
@@ -1819,8 +2563,8 @@ export function shouldExecuteSavedPlan(
   );
 }
 
-function getTouchedFilesFromAudit(toolRuntime?: ToolRuntime): string[] {
-  const audit = toolRuntime?.getAuditLog() ?? [];
+export function getTouchedFilesFromAudit(toolRuntime?: ToolRuntime, startIndex = 0): string[] {
+  const audit = (toolRuntime?.getAuditLog() ?? []).slice(Math.max(0, startIndex));
   const files = new Set<string>();
   for (const { toolName, input, result } of audit) {
     if (!result.success || !['write_file', 'apply_patch'].includes(toolName)) continue;
@@ -1830,12 +2574,42 @@ function getTouchedFilesFromAudit(toolRuntime?: ToolRuntime): string[] {
   return [...files];
 }
 
+export function calculateRetrievalContextBudget(
+  maxInputTokens: number,
+  explicitContextTokens: number,
+  userPathTokens: number
+): { requestedContextBudget: number; retrievalContextBudget: number } {
+  const requestedContextBudget = Math.floor(maxInputTokens * 0.65);
+  const retrievalContextBudget = Math.max(
+    0,
+    requestedContextBudget - Math.max(0, explicitContextTokens) - Math.max(0, userPathTokens)
+  );
+  return { requestedContextBudget, retrievalContextBudget };
+}
+
 function shouldRequireAgentWrite(
   mode: ThunderSession['mode'],
-  taskKind: ReturnType<typeof analyzeTask>['kind'],
-  auditMode: boolean
+  operationClass: PipelineResolution['route']['operationClass']
 ): boolean {
-  return mode === 'agent' && !auditMode && (taskKind === 'simple_edit' || taskKind === 'implementation');
+  return (
+    mode === 'agent' &&
+    (operationClass === 'workspace_write' || operationClass === 'execute_saved_plan')
+  );
+}
+
+function toRequiredLoopOperation(
+  operationClass: PipelineResolution['route']['operationClass']
+): import('../runtime/AgentLoop').AgentLoopOptions['requiredOperation'] {
+  if (
+    operationClass === 'workspace_write' ||
+    operationClass === 'local_git_write' ||
+    operationClass === 'remote_write' ||
+    operationClass === 'release' ||
+    operationClass === 'execute_saved_plan'
+  ) {
+    return operationClass;
+  }
+  return undefined;
 }
 
 function touchesDocs(files: string[]): boolean {
@@ -1869,6 +2643,57 @@ function attachImagesToLastUser(
     return next;
   }
   return [...next, { role: 'user', content: 'Attached image context.', attachments: images }];
+}
+
+function resolveTurnAgenticTier(provider: LlmProvider, agentConfig?: AgentConfig): AgenticTier {
+  const override = agentConfig?.agenticTierOverride;
+  if (override && override !== 'auto') return override;
+  return provider.capabilities.agenticTier ?? 'cloud-standard';
+}
+
+function resolveLoopMaxSteps(options: {
+  isAskMode: boolean;
+  isPlanMode: boolean;
+  auditMode: boolean;
+  logAuditMode?: boolean;
+  askSteps?: number;
+  planSteps?: number;
+  actSteps?: number;
+  tierPolicy: TierPolicy;
+}): number {
+  // Log audit is a short, tool-first route in any chat mode.
+  if (options.logAuditMode) {
+    return LOG_AUDIT_AGENT_MAX_STEPS;
+  }
+  if (options.isAskMode) {
+    return scaleTierSteps(options.askSteps ?? 18, options.tierPolicy, 50);
+  }
+  if (options.isPlanMode) {
+    return options.planSteps ?? scaleTierSteps(8, options.tierPolicy, 50);
+  }
+  if (options.auditMode) {
+    return AUDIT_AGENT_MAX_STEPS;
+  }
+  return options.actSteps ?? scaleTierSteps(15, options.tierPolicy, 100);
+}
+
+const MINIMAL_TIER_EXCLUDED_TOOLS = new Set([
+  'spawn_research_agent',
+  'spawn_subagent',
+  'memory_write',
+  'save_task_state',
+  'use_skill',
+  'fetch_web',
+]);
+
+function filterToolsForTier<T extends { function: { name: string } }>(tools: T[], policy: TierPolicy): T[] {
+  if (policy.toolExposure === 'full') return tools;
+  return tools.filter((tool) => {
+    const name = tool.function.name;
+    if (name.startsWith('mcp__')) return false;
+    if (policy.toolExposure === 'minimal' && MINIMAL_TIER_EXCLUDED_TOOLS.has(name)) return false;
+    return true;
+  });
 }
 
 function emptyContextPack(): ContextPack {

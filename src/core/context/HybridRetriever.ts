@@ -57,11 +57,13 @@ export class HybridRetriever {
     });
 
     const sourceById = new Map(this.sources.map((s) => [s.id, s]));
+    const skip = new Set(query.skipSources ?? []);
     const orderedSources: ContextSource[] = [];
     const seen = new Set<string>();
 
     for (const tier of SOURCE_TIERS) {
       for (const id of tier) {
+        if (skip.has(id)) continue;
         const source = sourceById.get(id);
         if (source && !seen.has(id)) {
           orderedSources.push(source);
@@ -70,6 +72,7 @@ export class HybridRetriever {
       }
     }
     for (const source of this.sources) {
+      if (skip.has(source.id)) continue;
       if (!seen.has(source.id)) {
         orderedSources.push(source);
       }

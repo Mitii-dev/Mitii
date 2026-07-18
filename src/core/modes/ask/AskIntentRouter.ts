@@ -1,4 +1,7 @@
 import type { AskRoute, AskIntent, AskResponseProfile } from './askTypes';
+import { ASK_INTENT_DESCRIPTIONS } from '../../runtime/intentClassifier';
+import { isLogAuditTask } from '../../runtime/logAudit';
+import { DIAGNOSTIC_REQUEST } from '../../runtime/diagnosticRequest';
 
 const LOCATE_RE = /\b(where|which file|what file|find|locate|defined|definition|lives?)\b/i;
 const ARCHITECTURE_RE = /\b(architecture|overview|flow|data flow|control flow|how does .+ work|walkthrough|trace|map out|pipeline|retrieval|orchestrat)\b/i;
@@ -11,9 +14,13 @@ const CODEBASE_RE = /\b(codebase|repo|repository|workspace|project|this app|this
 const SCM_CONTEXT_RE =
   /\b(commit message|commit msg|git commit|git diff|working tree|staged changes?|changes? in (?:stage|staging))\b|\b(?:commit|message|subject|summary)\b[\s\S]{0,80}\b(?:staged|stage|cached)\b|\b(?:staged|stage|cached)\b[\s\S]{0,80}\b(?:commit|message|subject|summary)\b/i;
 
-export function routeAskIntent(userMessage: string): AskRoute {
+export interface AskRouteOptions {
+  intent?: AskIntent;
+}
+
+export function routeAskIntent(userMessage: string, options: AskRouteOptions = {}): AskRoute {
   const text = userMessage.trim();
-  const intent = classifyAskIntent(text);
+  const intent = options.intent ?? classifyAskIntentFallback(text);
   const profile = chooseProfile(intent, text);
   const includeImpact = intent === 'implement_here' || /\b(affected files|what files would change|impact)\b/i.test(text);
   const allowWeb = intent === 'implement_here' || /\b(external docs?|api docs?|latest|current|library|sdk|oauth|stripe|openai|github)\b/i.test(text);
@@ -30,11 +37,12 @@ export function routeAskIntent(userMessage: string): AskRoute {
   };
 }
 
-function classifyAskIntent(text: string): AskIntent {
+function classifyAskIntentFallback(text: string): AskIntent {
   if (!text) return 'general_knowledge';
+  if (isLogAuditTask(text)) return 'log_analysis';
   if (CROSS_PROJECT_RE.test(text)) return 'cross_project';
   if (IMPLEMENT_RE.test(text)) return 'implement_here';
-  if (DEBUG_RE.test(text)) return 'debug_explain';
+  if (DEBUG_RE.test(text) || DIAGNOSTIC_REQUEST.test(text)) return 'debug_explain';
   if (COMPARE_RE.test(text)) return 'compare';
   if (ARCHITECTURE_RE.test(text)) return 'architecture';
   if (LOCATE_RE.test(text)) return 'locate';
@@ -52,21 +60,13 @@ function chooseProfile(intent: AskIntent, text: string): AskResponseProfile {
 }
 
 function shouldUseAskSubagents(intent: AskIntent, text: string): boolean {
+  if (intent === 'log_analysis') return false;
   if (intent === 'general_knowledge' || intent === 'locate') return false;
   if (intent === 'architecture' || intent === 'cross_project' || intent === 'implement_here') return true;
   return text.length > 160 || /\b(entire|whole|across|all files|deep dive|full)\b/i.test(text);
 }
 
 function summarizeRoute(intent: AskIntent, profile: AskResponseProfile): string {
-  const labels: Record<AskIntent, string> = {
-    explain_code: 'Explain code with grounded citations',
-    locate: 'Locate relevant code directly',
-    architecture: 'Explain architecture and flows',
-    compare: 'Compare code paths or concepts',
-    implement_here: 'Produce a read-only implementation guide with affected files',
-    debug_explain: 'Analyze likely root cause with diagnostics/context',
-    general_knowledge: 'Answer general knowledge without forcing repo tools',
-    cross_project: 'Resolve scope across projects and answer per project',
-  };
-  return `Ask mode — ${labels[intent]} (${profile} profile).`;
+  // Avoid the word "profile" — skillResolver used to false-match it as performance profiling.
+  return `Ask mode — ${ASK_INTENT_DESCRIPTIONS[intent]} (${profile}).`;
 }

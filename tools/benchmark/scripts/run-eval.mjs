@@ -14,6 +14,28 @@ const benchmarkDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageRoot = resolve(benchmarkDir, '../..');
 const args = normalizeArgs(process.argv.slice(2));
 
+// Fixtures are plain subdirectories of this repo (no nested .git), so their tracked files
+// live in the outer repo's git index. Without a reset, one task's edits leak into the next
+// task that reuses the same fixture, corrupting "don't touch X" style verify checks with
+// state from a prior run. Reset scoped to just that fixture before each task.
+function resetFixture(fixtureName) {
+  const fixturePath = `tools/benchmark/fixtures/${fixtureName}/`;
+  spawnSync('git', ['checkout', '--', fixturePath], { cwd: packageRoot, stdio: 'ignore' });
+  spawnSync('git', ['clean', '-fd', fixturePath], { cwd: packageRoot, stdio: 'ignore' });
+}
+
+// Serializes reset+run+verify per fixture so concurrent tasks sharing a fixture (concurrency
+// defaults to 4 here) can't reset out from under one another; different fixtures still run
+// fully in parallel.
+const fixtureLocks = new Map();
+function withFixtureLock(fixtureName, fn) {
+  if (!fixtureName) return fn();
+  const previous = fixtureLocks.get(fixtureName) ?? Promise.resolve();
+  const next = previous.then(fn, fn);
+  fixtureLocks.set(fixtureName, next.catch(() => {}));
+  return next;
+}
+
 const tasksPath = resolve(valueOf(args, '--tasks') ?? join(benchmarkDir, 'tasks/eval/generated/index.json'));
 const outputPath = resolve(valueOf(args, '--output') ?? join(packageRoot, '.mitii/eval/report.json'));
 const provider = valueOf(args, '--provider') ?? 'echo';
@@ -133,7 +155,12 @@ async function runPool(tasks, poolSize) {
 }
 
 function runTaskAsync(task, index, total) {
+  return withFixtureLock(task.fixture, () => runTaskAsyncOnce(task, index, total));
+}
+
+function runTaskAsyncOnce(task, index, total) {
   return new Promise((resolvePromise) => {
+    if (task.fixture) resetFixture(task.fixture);
     const label = `[${index + 1}/${total}]`;
     console.log(`${label} ▶ ${task.id} (${task.mode}${task.fixture ? `, ${task.fixture}` : ''})`);
     const fixtureCwd = task.fixture ? join(fixtureRoot, task.fixture) : cwd;

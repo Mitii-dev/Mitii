@@ -2,6 +2,7 @@ import type { LlmProvider, ChatRequest, ChatDelta, ModelCapabilities } from './t
 import { parseSseStream } from './sseParser';
 import { normalizeProviderError, ProviderError } from './errors';
 import { estimateTokensAsync } from './tokenEstimate';
+import { debugTrace } from '../telemetry/AsyncDebugTrace';
 
 export interface OpenAiCompatibleConfig {
   baseUrl: string;
@@ -76,6 +77,13 @@ export class OpenAiCompatibleProvider implements LlmProvider {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
+      });
+      debugTrace.trace('llm', 'transport_response', {
+        provider: this.id,
+        status: response.status,
+        ok: response.ok,
+        contentType: response.headers?.get?.('content-type'),
+        contentLength: response.headers?.get?.('content-length'),
       });
 
       if (!response.ok) {

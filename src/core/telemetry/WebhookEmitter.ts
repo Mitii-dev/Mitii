@@ -1,6 +1,7 @@
 import { createHmac } from 'crypto';
 import type { SessionLogEvent } from './SessionLogService';
 import { createLogger } from './Logger';
+import { debugTrace } from './AsyncDebugTrace';
 
 const log = createLogger('WebhookEmitter');
 
@@ -32,8 +33,14 @@ export class WebhookEmitter {
   emit(event: SessionLogEvent): void {
     if (!this.isEnabled()) return;
     const payload = JSON.stringify(event);
+    const deliveryId = `${event.sessionId}:${event.ts}:${Math.random().toString(36).slice(2, 8)}`;
+    debugTrace.trace('webhook', 'delivery_queued', {
+      deliveryId,
+      eventType: event.type,
+      bytes: Buffer.byteLength(payload),
+    }, event);
     this.queue = this.queue
-      .then(() => this.postWithRetry(payload))
+      .then(() => this.postWithRetry(payload, deliveryId, event.type))
       .catch((error) => {
         log.warn('Webhook delivery failed', {
           error: error instanceof Error ? error.message : String(error),
@@ -45,14 +52,36 @@ export class WebhookEmitter {
     await this.queue;
   }
 
-  private async postWithRetry(payload: string): Promise<void> {
+  private async postWithRetry(payload: string, deliveryId: string, eventType: string): Promise<void> {
     let lastError: unknown;
     for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
+      const startedAt = Date.now();
+      debugTrace.trace('webhook', 'request_send', {
+        deliveryId,
+        eventType,
+        attempt: attempt + 1,
+        bytes: Buffer.byteLength(payload),
+      });
       try {
-        await this.post(payload);
+        const status = await this.post(payload);
+        debugTrace.trace('webhook', 'response_receive', {
+          deliveryId,
+          eventType,
+          attempt: attempt + 1,
+          status,
+          durationMs: Date.now() - startedAt,
+        });
         return;
       } catch (error) {
         lastError = error;
+        debugTrace.trace('webhook', 'request_error', {
+          deliveryId,
+          eventType,
+          attempt: attempt + 1,
+          durationMs: Date.now() - startedAt,
+          willRetry: attempt < this.maxRetries,
+          error: error instanceof Error ? error.message : String(error),
+        });
         if (attempt < this.maxRetries) {
           await sleep(250 * (attempt + 1));
         }
@@ -61,7 +90,7 @@ export class WebhookEmitter {
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
-  private async post(payload: string): Promise<void> {
+  private async post(payload: string): Promise<number> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
@@ -81,6 +110,7 @@ export class WebhookEmitter {
       if (!response.ok) {
         throw new Error(`Webhook returned ${response.status}`);
       }
+      return response.status;
     } finally {
       clearTimeout(timer);
     }

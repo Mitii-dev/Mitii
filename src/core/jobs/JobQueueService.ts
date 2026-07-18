@@ -13,6 +13,7 @@ export interface MitiiJob {
   createdAt: number;
   updatedAt: number;
   leaseUntil?: number;
+  leasedBy?: string;
   attempts: number;
   resultPath?: string;
   error?: string;
@@ -59,8 +60,8 @@ export class JobQueueService {
     job.status = 'running';
     job.updatedAt = now;
     job.leaseUntil = now + leaseMs;
+    job.leasedBy = workerId;
     job.attempts += 1;
-    job.resultPath = workerId;
     this.writeQueue(jobs);
     return job;
   }
@@ -75,6 +76,7 @@ export class JobQueueService {
     job.status = 'completed';
     job.updatedAt = Date.now();
     job.leaseUntil = undefined;
+    job.leasedBy = undefined;
     job.resultPath = resultPath;
     this.writeQueue(jobs);
     return job;
@@ -87,7 +89,34 @@ export class JobQueueService {
     job.status = 'failed';
     job.updatedAt = Date.now();
     job.leaseUntil = undefined;
+    job.leasedBy = undefined;
     job.error = error;
+    this.writeQueue(jobs);
+    return job;
+  }
+
+  retry(id: string): MitiiJob | undefined {
+    const jobs = this.readQueue();
+    const job = jobs.find((item) => item.id === id);
+    if (!job) return undefined;
+    job.status = 'queued';
+    job.updatedAt = Date.now();
+    job.leaseUntil = undefined;
+    job.leasedBy = undefined;
+    job.error = undefined;
+    this.writeQueue(jobs);
+    return job;
+  }
+
+  cancel(id: string): MitiiJob | undefined {
+    const jobs = this.readQueue();
+    const job = jobs.find((item) => item.id === id);
+    if (!job || job.status === 'completed') return undefined;
+    job.status = 'failed';
+    job.updatedAt = Date.now();
+    job.leaseUntil = undefined;
+    job.leasedBy = undefined;
+    job.error = 'Canceled by user.';
     this.writeQueue(jobs);
     return job;
   }

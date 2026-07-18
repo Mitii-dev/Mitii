@@ -172,7 +172,7 @@ export async function testProviderConnection(
       message: `AWS Bedrock configured for ${region}. Mitii will use the AWS default credential chain and model "${model}".`,
     };
   }
-  if (isCloudProvider(providerType) && !apiKey?.trim()) {
+  if (isCloudProvider(providerType, { baseUrl, model }) && !apiKey?.trim()) {
     return { ok: false, message: `${providerType} requires an API key.` };
   }
   if (providerType === 'openrouter') {

@@ -1,10 +1,50 @@
-import { extractOriginalTaskMessage, isApprovalContinuationMessage } from './taskMessage';
+import { extractOriginalTaskMessage, isApprovalContinuationMessage, splitConversationContext } from './taskMessage';
 import { routeAskIntent } from '../modes/ask/AskIntentRouter';
 import { routePlanIntent } from '../modes/plan/PlanIntentRouter';
+import type { AskIntent } from '../modes/ask/askTypes';
+import type { PlanIntent } from '../modes/plan/planTypes';
+import type { ActIntent } from '../modes/agent/actTypes';
+import { isLogAuditTask } from './logAudit';
+import { resolveGitRoute, type GitRouteResolution } from '../git/intents';
+import { resolveAuditSubtype, resolveDocsSubtype } from '../pipeline/route/routeResolver';
+import { DIAGNOSTIC_REQUEST } from './diagnosticRequest';
 
-export type TaskKind = 'question' | 'audit' | 'simple_edit' | 'implementation' | 'explicit_plan' | 'debugging';
+export type TaskKind =
+  | 'question'
+  | 'audit'
+  | 'log_audit'
+  | 'simple_edit'
+  | 'implementation'
+  | 'docs'
+  | 'explicit_plan'
+  | 'debugging'
+  | 'git';
 
 export type TaskComplexity = 'low' | 'medium' | 'high';
+
+export type AuditSubtype =
+  | 'unused_deps'
+  | 'dead_code'
+  | 'vulnerability'
+  | 'log'
+  | 'prompt'
+  | 'security_config'
+  | 'git_history'
+  | 'ci'
+  | 'database'
+  | 'architecture'
+  | 'code_quality'
+  | 'generic';
+
+export type DocsSubtype =
+  | 'readme'
+  | 'api_reference'
+  | 'architecture'
+  | 'docusaurus'
+  | 'mdx_repair'
+  | 'changelog'
+  | 'examples'
+  | 'generic';
 
 export interface TaskAnalysis {
   kind: TaskKind;
@@ -13,12 +53,28 @@ export interface TaskAnalysis {
   shouldVerify: boolean;
   shouldUseSubagents: boolean;
   summary: string;
-  askIntent?: import('../modes/ask/askTypes').AskIntent;
+  askIntent?: AskIntent;
   askProfile?: import('../modes/ask/askTypes').AskResponseProfile;
+  planIntent?: PlanIntent;
+  actIntent?: ActIntent;
+  gitRoute?: GitRouteResolution;
+  /** Set by pipeline / TaskAnalyzer for audit framing. */
+  auditSubtype?: AuditSubtype;
+  /** Set for documentation tasks (README vs Docusaurus, etc.). */
+  docsSubtype?: DocsSubtype;
 }
 
-const ACTION_VERBS =
-  /\b(implement|build|create|add|fix|refactor|migrate|rewrite|update|remove|delete|integrate|wire|connect|setup|configure|optimize|improve|imporve|enhance|polish|redesign|debug|test|change|replace)\b/i;
+export interface TaskAnalysisOptions {
+  askIntent?: AskIntent;
+  planIntent?: PlanIntent;
+  actIntent?: ActIntent;
+}
+
+const ACTION_VERB_SOURCE =
+  String.raw`\b(?:implement|build|create|add|fix|refactor|migrate|rewrite|update|remove|delete|integrate|wire|connect|setup|configure|optimize|improve|imporve|enhance|polish|redesign|debug|test|change|replace)\b`;
+
+const ACTION_VERBS = new RegExp(ACTION_VERB_SOURCE, 'i');
+const ACTION_VERBS_GLOBAL = new RegExp(ACTION_VERB_SOURCE, 'gi');
 
 const IMPLEMENTATION_HINTS =
   /\b(need|change|replace|ui|ux|landing page|animated|animation|enterprise|implement|create|fix|docs?|documentation|docusaurus|examples?)\b/i;
@@ -33,10 +89,7 @@ const QUESTION =
   /^(what|how|why|where|when|who|which|explain|describe|tell me|show me|list|summarize|overview)\b/i;
 
 const DIRECT_ERROR_FIX =
-  /\b(syntax error|type error|referenceerror|cannot find module|missing semicolon|unexpected token|unexpected character|parse error|compilation (?:error|failed)|mdx compilation failed|could not parse expression|is not defined|enoent|can'?t resolve|module not found|compiled with problems)\b/i;
-
-const DIAGNOSTIC_REQUEST =
-  /\b(identify (?:the )?(?:issues?|problems?|bugs?|errors?)|find (?:the )?(?:issues?|problems?|bugs?|errors?)|what(?:'s| is) (?:wrong|broken)|why (?:doesn'?t|does ?n'?t|isn'?t|is ?n'?t|won'?t|can'?t|cannot)|diagnose|root cause|investigate why|figure out why|spot (?:the )?(?:issues?|bugs?|problems?)|doesn'?t (?:read|work|load|render|run|start)|does not (?:read|work|load|render|run|start))\b/i;
+  /\b(syntax error|type ?error|referenceerror|cannot find module|missing semicolon|unexpected token|unexpected character|parse error|compilation (?:error|failed)|build failed|failed to compile|failed to fetch|mdx compilation failed|could not parse expression|is not defined|enoent|can'?t resolve|module not found|compiled with problems)\b/i;
 
 const DIAGNOSTIC_SCOPE_EXPANDING =
   /\b(refactor|redesign|rewrite|migrate|implement (?:a|the) new|new feature|entire codebase|whole codebase|across (?:the )?(?:whole|entire)?\s*(?:codebase|project|repo))\b/i;
@@ -53,13 +106,16 @@ const SIMPLE_CONTENT_APPEND =
 const SIMPLE_FILE_TARGET =
   /\b(?:to|in|into|at (?:the )?end of)\b[\s\S]{0,80}\b[\w./-]+\.(txt|md|csv|json|yaml|yml)\b|\b(?:plan|roadmap|curriculum|schedule)\b/i;
 
-const AUDIT_CLEANUP =
-  /\b(unus[a-z]*|dead code|orphan|cleanup|clean up|remove\s+(?:all\s+)?(?:the\s+)?(?:(?:uns[a-z]*|unused)\s+)?(?:imports?|files?|dependenc(?:y|ies)?)|depcheck|dependencies audit|dependency audit|find unused|list unused|reduce bundle|tree[- ]shake)\b/i;
+const AUDIT_CLEANUP_TARGET =
+  /\b(?:un(?:used|sed)\s+(?:dependenc(?:y|ies)|deps?|imports?|exports?|files?)|dead\s+code|orphan(?:ed)?\s+(?:files?|exports?)|dependenc(?:y|ies)|deps?|depcheck|knip|ts-prune|tree[- ]shak(?:e|ing)|bundle)\b/i;
+
+const AUDIT_CLEANUP_ACTION =
+  /\b(?:audit|scan|check|find|detect|remove|clean(?:\s+up)?|cleanup|run|identify|list|reduce)\b/i;
 
 const DOCS_IMPLEMENTATION =
   /\b(add|create|write|update|generate|build)\b[\s\S]{0,80}\b(docs?|documentation|docusaurus|mdx?|examples?)\b|\b(docs?|documentation|docusaurus|mdx?|examples?)\b[\s\S]{0,80}\b(all|every|features?|components?|exports?|api|route|sidebar|navbar|installation|configuration)\b/i;
 
-export function analyzeTask(userMessage: string, mode: string): TaskAnalysis {
+export function analyzeTask(userMessage: string, mode: string, options: TaskAnalysisOptions = {}): TaskAnalysis {
   const text = userMessage.trim();
   const isContinuation = isApprovalContinuationMessage(text);
   const taskText = extractOriginalTaskMessage(text) ?? text;
@@ -77,8 +133,47 @@ export function analyzeTask(userMessage: string, mode: string): TaskAnalysis {
   }
 
   const classified = classifyTask(taskText);
+  const gitRoute = resolveGitRoute(taskText, mode);
+  // Prefer already-classified domain work (log audit / docs / implementation) over git.
+  const gitWouldOverrideDomain =
+    classified.kind === 'log_audit' ||
+    classified.kind === 'docs' ||
+    classified.kind === 'implementation' ||
+    isLogAuditTask(taskText);
+  if (gitRoute.isGitTask && gitRoute.classification.metadata && !gitWouldOverrideDomain) {
+    const gitAnalysis: TaskAnalysis = {
+      kind: 'git',
+      complexity: gitRoute.risk === 'critical' || gitRoute.risk === 'high' ? 'high' : gitRoute.risk === 'medium' ? 'medium' : 'low',
+      shouldPlan: gitRoute.requiredApproval !== 'none' || gitRoute.route === 'release_management',
+      shouldVerify: gitRoute.classification.requiresWorkspaceWrite || gitRoute.classification.requiresGitWrite || gitRoute.classification.requiresRemoteWrite,
+      shouldUseSubagents: false,
+      summary: `Git route ${gitRoute.route} — intent ${gitRoute.classification.primaryIntent}, approval ${gitRoute.requiredApproval}.`,
+      actIntent: options.actIntent,
+      gitRoute,
+    };
+    if (mode === 'ask') {
+      return { ...gitAnalysis, kind: 'question', shouldPlan: false, shouldVerify: false };
+    }
+    if (mode === 'plan') {
+      return { ...gitAnalysis, shouldPlan: true, shouldVerify: false };
+    }
+    if (mode === 'agent') return gitAnalysis;
+  }
   if (mode === 'ask') {
-    const askRoute = routeAskIntent(taskText);
+    const askRoute = routeAskIntent(taskText, options.askIntent ? { intent: options.askIntent } : undefined);
+    if (askRoute.intent === 'log_analysis' || isLogAuditTask(taskText)) {
+      return {
+        kind: 'log_audit',
+        complexity: 'low',
+        shouldPlan: false,
+        shouldVerify: false,
+        shouldUseSubagents: false,
+        summary: askRoute.summary,
+        askIntent: 'log_analysis',
+        askProfile: askRoute.profile,
+        actIntent: 'log_audit',
+      };
+    }
     return {
       kind: 'question',
       complexity: estimateAskComplexity(askRoute.intent, taskText),
@@ -92,7 +187,7 @@ export function analyzeTask(userMessage: string, mode: string): TaskAnalysis {
   }
 
   if (mode === 'plan') {
-    const planRoute = routePlanIntent(taskText, classified);
+    const planRoute = routePlanIntent(taskText, classified, options.planIntent ? { intent: options.planIntent } : undefined);
     return {
       ...classified,
       complexity: planRoute.complexity,
@@ -103,6 +198,7 @@ export function analyzeTask(userMessage: string, mode: string): TaskAnalysis {
         classified.shouldUseSubagents ||
         (classified.kind === 'audit' && !/\bdependenc/i.test(taskText)),
       summary: planRoute.summary,
+      planIntent: planRoute.intent,
     };
   }
 
@@ -117,7 +213,7 @@ export function analyzeTask(userMessage: string, mode: string): TaskAnalysis {
     };
   }
 
-  return classified;
+  return applyActIntent(classified, options.actIntent, taskText);
 }
 
 function estimateAskComplexity(
@@ -132,25 +228,53 @@ function estimateAskComplexity(
 
 function classifyTask(text: string): TaskAnalysis {
   const lower = text.toLowerCase();
+  // A quoted prior turn (appended by resolveConversationTaskMessage) can be a long
+  // pasted error/stack trace — great for pattern matches above, but it should not
+  // inflate complexity/scope scoring for what is actually a short new instruction.
+  const { primary } = splitConversationContext(text);
 
-  if (AUDIT_CLEANUP.test(text)) {
+  // Prefer log-audit before dependency-audit: both may match "audit" wording.
+  if (isLogAuditTask(text)) {
+    return {
+      kind: 'log_audit',
+      complexity: 'low',
+      shouldPlan: false,
+      shouldVerify: false,
+      shouldUseSubagents: false,
+      summary: 'Log audit — analyze_jsonl first; no repo RAG, subagents, or full-file reads.',
+      actIntent: 'log_audit',
+    };
+  }
+
+  // Dependency / dead-code cleanup only — bare "audit" is handled later as generic review.
+  if (isAuditCleanupRequest(text)) {
+    const auditSubtype = resolveAuditSubtype(text) ?? 'generic';
+    const isCleanup =
+      auditSubtype === 'unused_deps' ||
+      auditSubtype === 'dead_code' ||
+      auditSubtype === 'vulnerability' ||
+      auditSubtype === 'generic';
     return {
       kind: 'audit',
-      complexity: 'high',
-      shouldPlan: true,
+      complexity: isCleanup ? 'high' : 'medium',
+      shouldPlan: isCleanup,
       shouldVerify: true,
       shouldUseSubagents: false,
-      summary: 'Audit/cleanup task — run script catalog (depcheck/knip) first; avoid dependency subagents.',
+      auditSubtype,
+      summary: isCleanup
+        ? `Audit/cleanup (${auditSubtype}) — run script catalog (depcheck/knip/CVE) first; avoid dependency subagents.`
+        : `Audit (${auditSubtype}) — not a dependency/dead-code cleanup; scope tools to this subtype.`,
+      actIntent: 'audit',
     };
   }
 
   if (EXPLICIT_PLAN.test(text)) {
     return {
       kind: 'explicit_plan',
-      complexity: estimateComplexity(text),
+      complexity: estimateComplexity(primary),
       shouldPlan: true,
       shouldVerify: true,
-      shouldUseSubagents: text.length > 200,
+      shouldUseSubagents: primary.length > 200,
       summary: 'User requested explicit step-by-step plan.',
     };
   }
@@ -225,28 +349,35 @@ function classifyTask(text: string): TaskAnalysis {
     };
   }
 
-  if (DOCS_IMPLEMENTATION.test(text)) {
-    const docsComplexity = estimateComplexity(text) === 'low' ? 'medium' : estimateComplexity(text);
+  if (DOCS_IMPLEMENTATION.test(text) || /\b(readme|read\s*me|readfile)\b/i.test(text)) {
+    const docsSubtype = resolveDocsSubtype(text) ?? 'generic';
+    const docsComplexity = estimateComplexity(primary) === 'low' ? 'medium' : estimateComplexity(primary);
+    const isReadme = docsSubtype === 'readme';
     return {
-      kind: 'implementation',
+      kind: 'docs',
       complexity: docsComplexity,
-      shouldPlan: true,
-      shouldVerify: true,
-      shouldUseSubagents: docsComplexity === 'high',
-      summary: `Documentation implementation task (${docsComplexity} complexity) — inspect docs routing, existing docs patterns, source exports, then verify the docs build.`,
+      // README / package docs: execute directly; Docusaurus sites may still plan.
+      shouldPlan: !isReadme && docsComplexity !== 'low',
+      shouldVerify: docsSubtype === 'docusaurus' || docsSubtype === 'mdx_repair',
+      shouldUseSubagents: false,
+      docsSubtype,
+      actIntent: 'docs',
+      summary: isReadme
+        ? `README documentation (${docsComplexity}) — write/update README via discovery + write_file; skip full app builds.`
+        : `Documentation task (${docsSubtype}, ${docsComplexity}) — follow documentation skill; Docusaurus needs routing/sidebar checks.`,
     };
   }
 
-  const actionCount = (text.match(ACTION_VERBS) ?? []).length;
-  const connectorCount = (text.match(/\b(and|then|also|after that|next)\b/gi) ?? []).length;
-  const fileMentions = (text.match(/[`'"]?[\w./-]+\.(tsx?|jsx?|py|go|rs|json|md|css|scss|yaml|yml)[`'"]?/gi) ?? []).length;
-  const complexity = estimateComplexity(text);
+  const actionCount = primary.match(ACTION_VERBS_GLOBAL)?.length ?? 0;
+  const connectorCount = (primary.match(/\b(and|then|also|after that|next)\b/gi) ?? []).length;
+  const fileMentions = (primary.match(/[`'"]?[\w./-]+\.(tsx?|jsx?|py|go|rs|json|md|css|scss|yaml|yml)[`'"]?/gi) ?? []).length;
+  const complexity = estimateComplexity(primary);
 
-  const hasImplementationHint = IMPLEMENTATION_HINTS.test(text);
-  const isUiPolishTask = (ACTION_VERBS.test(text) || hasImplementationHint) && UI_POLISH_SCOPE.test(text);
+  const hasImplementationHint = IMPLEMENTATION_HINTS.test(primary);
+  const isUiPolishTask = (ACTION_VERBS.test(primary) || hasImplementationHint) && UI_POLISH_SCOPE.test(primary);
 
   const connectorImpliesMultiStep =
-    connectorCount >= 1 && (text.length > 140 || complexity !== 'low' || fileMentions >= 2);
+    connectorCount >= 1 && (primary.length > 140 || complexity !== 'low' || fileMentions >= 2);
 
   const isImplementation =
     isUiPolishTask ||
@@ -254,17 +385,32 @@ function classifyTask(text: string): TaskAnalysis {
       (hasImplementationHint ||
         connectorImpliesMultiStep ||
         fileMentions >= 2 ||
-        text.length > 140 ||
+        primary.length > 140 ||
         complexity !== 'low'));
 
   if (isImplementation) {
+    const hasMigration = /\b(migrat(?:e|ion)|schema change|data backfill|breaking change)\b/i.test(primary);
+    const hasDestructiveOperation = /\b(delete|drop|purge|rewrite history|force push|reset --hard)\b/i.test(primary);
+    const hasMaterialAmbiguity =
+      /\b(figure out|decide|choose the best|whatever is needed|as appropriate|unsure)\b/i.test(primary);
+    const hasDependentComponents =
+      fileMentions >= 5 ||
+      /\b(across (?:multiple|all)|(?:for|across)\s+all\s+(?:routes|packages|components|modules|files)|end[- ]to[- ]end|frontend and backend|client and server|child components?|dependent components?|separate\s+\w+\s+mode)\b/i.test(primary);
+    const shouldPlan =
+      complexity === 'high' ||
+      hasDependentComponents ||
+      hasMigration ||
+      hasDestructiveOperation ||
+      hasMaterialAmbiguity;
     return {
       kind: 'implementation',
       complexity,
-      shouldPlan: true,
+      shouldPlan,
       shouldVerify: true,
       shouldUseSubagents: complexity === 'high',
-      summary: `Implementation task (${complexity} complexity) — analyze, plan, execute step-by-step, verify.`,
+      summary: shouldPlan
+        ? `Implementation task (${complexity} complexity) — plan because risk, dependencies, or ambiguity require coordination.`
+        : `Implementation task (${complexity} complexity) — execute directly with focused verification.`,
     };
   }
 
@@ -287,6 +433,113 @@ function classifyTask(text: string): TaskAnalysis {
     shouldUseSubagents: false,
     summary: 'General request — respond with tools as needed.',
   };
+}
+
+function applyActIntent(
+  analysis: TaskAnalysis,
+  actIntent: ActIntent | undefined,
+  taskText: string
+): TaskAnalysis {
+  const effectiveIntent = actIntent ?? analysis.actIntent;
+  if (!effectiveIntent) return analysis;
+
+  if (!actIntent) {
+    return {
+      ...analysis,
+      actIntent: effectiveIntent,
+    };
+  }
+
+  switch (effectiveIntent) {
+    case 'question':
+      return {
+        ...analysis,
+        kind: 'question',
+        complexity: 'low',
+        shouldPlan: false,
+        shouldVerify: false,
+        shouldUseSubagents: false,
+        actIntent: effectiveIntent,
+      };
+
+    case 'diagnose':
+      return {
+        ...analysis,
+        kind: 'debugging',
+        shouldPlan: false,
+        shouldVerify: true,
+        actIntent: effectiveIntent,
+      };
+
+    case 'log_audit':
+      return {
+        ...analysis,
+        kind: 'log_audit',
+        complexity: 'low',
+        shouldPlan: false,
+        shouldVerify: false,
+        shouldUseSubagents: false,
+        actIntent: effectiveIntent,
+      };
+
+    case 'audit': {
+      const auditSubtype = analysis.auditSubtype ?? resolveAuditSubtype(taskText) ?? 'generic';
+      const isCleanup =
+        auditSubtype === 'unused_deps' ||
+        auditSubtype === 'dead_code' ||
+        auditSubtype === 'vulnerability';
+      return {
+        ...analysis,
+        kind: 'audit',
+        complexity: isCleanup ? 'high' : analysis.complexity === 'low' ? 'medium' : analysis.complexity,
+        shouldPlan: isCleanup,
+        shouldVerify: true,
+        shouldUseSubagents: false,
+        auditSubtype,
+        actIntent: effectiveIntent,
+      };
+    }
+
+    case 'docs': {
+      const docsSubtype = analysis.docsSubtype ?? resolveDocsSubtype(taskText) ?? 'generic';
+      const isReadme = docsSubtype === 'readme';
+      return {
+        ...analysis,
+        kind: 'docs',
+        complexity: analysis.complexity === 'low' && !isReadme ? 'medium' : analysis.complexity,
+        shouldPlan: !isReadme && analysis.shouldPlan,
+        shouldVerify: docsSubtype === 'docusaurus' || docsSubtype === 'mdx_repair',
+        shouldUseSubagents: false,
+        docsSubtype,
+        actIntent: effectiveIntent,
+      };
+    }
+
+    case 'bugfix':
+      return {
+        ...analysis,
+        kind:
+          analysis.kind === 'debugging' || analysis.kind === 'simple_edit'
+            ? analysis.kind
+            : 'implementation',
+        shouldVerify: true,
+        actIntent: effectiveIntent,
+      };
+
+    case 'feature':
+    case 'refactor':
+      return {
+        ...analysis,
+        kind: 'implementation',
+        shouldVerify: true,
+        actIntent: effectiveIntent,
+      };
+  }
+}
+
+function isAuditCleanupRequest(text: string): boolean {
+  if (isLogAuditTask(text)) return false;
+  return AUDIT_CLEANUP_TARGET.test(text) && AUDIT_CLEANUP_ACTION.test(text);
 }
 
 function estimateComplexity(text: string): TaskComplexity {

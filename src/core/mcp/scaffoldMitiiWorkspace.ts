@@ -46,7 +46,7 @@ Example:
 - \`mitii.sqlite\` — code index
 - \`logs/\` — session logs (when enabled)
 - \`tasks/\` — saved plans
-- \`skills/\` — bundled workspace skill playbooks (copied from the extension on first init)
+- \`skills/\` — bundled workspace skill playbooks (copied from the extension and refreshed when bundled sources change)
 - \`rules/\` — bundled workspace methodology rules (copied from the extension on first init)
 - \`MITTII.local.md\` — optional personal project instructions; copy from \`MITTII.local.md.example\`
 `;

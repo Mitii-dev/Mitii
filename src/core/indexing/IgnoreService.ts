@@ -62,7 +62,7 @@ export class IgnoreService {
   }
 
   isIgnored(relPath: string, options?: { forRead?: boolean }): boolean {
-    const normalized = normalizeIgnorePath(relPath, this.workspacePath);
+    const normalized = canonicalizeMitiiRelPath(normalizeIgnorePath(relPath, this.workspacePath));
     if (!normalized || normalized === '.') return false;
     if (normalized.startsWith('..')) return true;
     if (options?.forRead && /^packages\/[^/]+\/dist\//.test(normalized)) {
@@ -71,7 +71,8 @@ export class IgnoreService {
     // Session logs are written for the agent's own debugging/post-hoc analysis (see
     // SessionLogService) — reading them back must not be blocked by the blanket .mitii/
     // and logs/ ignores below, which exist to keep the indexer/search out of internal state.
-    if (options?.forRead && /^\.mitii\/logs(\/[^/]+\.jsonl)?$/.test(normalized)) {
+    // Allow the logs directory and any direct child file (jsonl or otherwise).
+    if (options?.forRead && isMitiiSessionLogPath(normalized)) {
       return false;
     }
     return this.ig.ignores(normalized);
@@ -98,4 +99,18 @@ function normalizeIgnorePath(path: string, workspacePath: string): string {
     .replace(/^\.\/+/, '')
     .replace(/\/+/g, '/')
     .trim();
+}
+
+/** Map common agent typos (.miti, .mitti, case variants) onto canonical `.mitii/`. */
+export function canonicalizeMitiiRelPath(relPath: string): string {
+  return relPath
+    .replace(/^\.miti\//i, '.mitii/')
+    .replace(/^\.mtii\//i, '.mitii/')
+    .replace(/^\.mitti\//i, '.mitii/')
+    .replace(/^\.mitii\b/i, '.mitii');
+}
+
+export function isMitiiSessionLogPath(relPath: string): boolean {
+  const normalized = canonicalizeMitiiRelPath(relPath.replace(/\\/g, '/')).replace(/\/+$/, '');
+  return /^\.mitii\/logs(?:\/[^/]+)?$/.test(normalized);
 }

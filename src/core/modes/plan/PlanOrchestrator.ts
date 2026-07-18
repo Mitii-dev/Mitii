@@ -2,12 +2,17 @@ import type { ProjectCatalog } from '../ask/askTypes';
 import { loadProjectCatalog } from '../ask/ProjectCatalog';
 import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import type { SkillCatalogService } from '../../skills/SkillCatalogService';
+import type { SkillRuntimeContext } from '../../skills/skillRuntimeContext';
+import type { TierPolicy } from '../../agentic/tierPolicy';
+import { scaleTierSteps } from '../../agentic/tierPolicy';
+import { normalizeAgentDepth } from '../../config/agentDepth';
 import { routePlanIntent } from './PlanIntentRouter';
 import { resolvePlanScope } from './PlanScopeResolver';
 import { buildPlanPromptContext } from './planPrompts';
 import { loadPlanningSkillPlaybooks, resolvePlanningSkillNames } from './planSkillRouting';
-import type { PlanDepth, PlanRunPlan } from './planTypes';
+import type { PlanDepth, PlanIntent, PlanRunPlan } from './planTypes';
 import { createLogger } from '../../telemetry/Logger';
+import type { SkillResolution } from '../../pipeline';
 
 const log = createLogger('PlanOrchestrator');
 
@@ -15,22 +20,28 @@ export interface PlanPrepareOptions {
   workspaceRoot?: string;
   catalog?: ProjectCatalog;
   skillCatalog?: SkillCatalogService;
+  tierPolicy?: TierPolicy;
   configuredMaxSteps?: number;
-  planDepth?: PlanDepth;
+  planDepth?: PlanDepth | string;
   planAutoContinue?: boolean;
   planMaxAutoContinues?: number;
   taskAnalysis?: TaskAnalysis;
+  intent?: PlanIntent;
+  runtimeContext?: SkillRuntimeContext;
+  /** Canonical pipeline skill decision. When present, do not reinterpret the request. */
+  skillResolution?: SkillResolution;
 }
 
 export class PlanOrchestrator {
   static prepare(userMessage: string, options: PlanPrepareOptions = {}): PlanRunPlan {
+    const planDepth = normalizeAgentDepth(options.planDepth);
     log.debug('Preparing plan', {
       messageLength: userMessage.length,
       workspaceRoot: options.workspaceRoot,
-      planDepth: options.planDepth,
+      planDepth,
     });
 
-    const route = routePlanIntent(userMessage, options.taskAnalysis);
+    const route = routePlanIntent(userMessage, options.taskAnalysis, options.intent ? { intent: options.intent } : undefined);
     log.debug('Plan route resolved', { route });
 
     const catalog = options.catalog ?? (options.workspaceRoot ? loadProjectCatalog(options.workspaceRoot) : undefined);
@@ -41,12 +52,17 @@ export class PlanOrchestrator {
       route.complexity,
       route.intent,
       options.configuredMaxSteps,
-      options.planDepth
+      planDepth,
+      options.tierPolicy
     );
-    const suggestedSkills = resolvePlanningSkillNames(route.intent, options.taskAnalysis);
+    const suggestedSkills = options.skillResolution?.suggestedSkills
+      ?? resolvePlanningSkillNames(route.intent, options.taskAnalysis);
+    const injectSkills = options.skillResolution?.injectSkills ?? suggestedSkills;
+    const policy = options.tierPolicy;
     const { context: skillPlaybookContext, loaded: appliedSkills } = loadPlanningSkillPlaybooks(
       options.skillCatalog,
-      suggestedSkills
+      injectSkills,
+      { style: policy?.skillInjection, maxChars: policy?.maxSkillChars, runtimeContext: options.runtimeContext ?? { mode: 'plan', depth: planDepth } }
     );
 
     const autoContinue = Boolean(options.planAutoContinue ?? (route.groundingRequired && route.complexity === 'high'));
@@ -82,11 +98,14 @@ function resolvePlanDiscoveryMaxSteps(
   complexity: string,
   intent: string,
   configuredMaxSteps: number | undefined,
-  planDepth: PlanDepth = 'auto'
+  planDepth: PlanDepth = 'auto',
+  policy?: TierPolicy
 ): number {
   const automatic = depthDefaultSteps(planDepth) ?? intentDefaultSteps(complexity, intent);
-  if (!configuredMaxSteps || configuredMaxSteps <= 0) return automatic;
-  return Math.max(1, Math.min(automatic, configuredMaxSteps, 50));
+  const bounded = !configuredMaxSteps || configuredMaxSteps <= 0
+    ? automatic
+    : Math.max(1, Math.min(automatic, configuredMaxSteps, 50));
+  return scaleTierSteps(bounded, policy, 50);
 }
 
 function resolvePlanMaxAutoContinues(
@@ -108,10 +127,7 @@ function intentDefaultSteps(complexity: string, intent: string): number {
 
 function depthDefaultSteps(planDepth: PlanDepth): number | undefined {
   if (planDepth === 'quick') return 5;
-  if (planDepth === 'standard') return 8;
   if (planDepth === 'deep') return 12;
-  if (planDepth === 'pilot') return 16;
-  if (planDepth === 'enterprise') return 20;
   return undefined;
 }
 

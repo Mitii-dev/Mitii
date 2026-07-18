@@ -25,11 +25,28 @@ export function buildActPromptContext(
     `Summary: ${route.summary}`,
     '',
     '## Act workflow contract',
+    '- propose_file_scope is the default Act file contract: call it before read_file/read_files/write_file/apply_patch with objective, candidate paths, intended read/write access, and a tight maxFilesRead budget.',
+    '- Only read or edit paths accepted by propose_file_scope. If the task discovers a new needed path, propose the revised scope before touching it.',
     '- Read or search relevant files before writing.',
     '- Keep edits scoped to the user request, active plan, and touched files.',
     '- Prefer targeted patches and preserve unrelated user changes.',
     '- Run project-appropriate verification after implementation (discovered from package.json, not hardcoded).',
+    '- The orchestrator advances plan steps automatically — do not call mark_step_complete or release_plan_controller unless those tools are explicitly offered.',
+    '- Prefer builtin read_file / write_file over MCP filesystem tools.',
   ];
+
+  if (route.executionPath === 'log_audit') {
+    lines.push(
+      '',
+      '## Log audit contract',
+      '- For a log directory, call analyze_log_directory first. For one .jsonl file, call analyze_jsonl first.',
+      '- Do not call read_file, MCP filesystem tools, run_command, or propose_file_scope.',
+      '- At most one query_log_events follow-up; then synthesize and stop.',
+      '- Report per-call inputTokens separately from cumulative/turn totals.',
+      '- Separate confirmed findings from hypotheses; cite event line numbers.',
+      '- User-explicit file paths override pinned context.'
+    );
+  }
 
   if (route.intent === 'diagnose') {
     lines.push(

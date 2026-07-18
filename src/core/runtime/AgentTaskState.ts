@@ -21,6 +21,7 @@ export interface ToolResultRecord {
 
 export interface AgentTaskLimits {
   maxSequentialThinkingCalls?: number;
+  maxFilesRead?: number;
 }
 
 export class AgentTaskState {
@@ -29,11 +30,19 @@ export class AgentTaskState {
   private taskSummary = '';
   private originalTask = '';
   private completedKeys = new Set<string>();
+  /** How many times each successful action signature was attempted (including soft-blocked retries). */
+  private actionAttemptCounts = new Map<string, number>();
+  private lastAttemptAt = new Map<string, number>();
   private toolResults: ToolResultRecord[] = [];
   private pauseSummary = '';
   private executionToolsUsed = false;
+  private verificationSucceeded = false;
   private sequentialThinkingCalls = 0;
   private maxSequentialThinkingCalls = 6;
+  private fileScope: Set<string> | null = null;
+  private maxFilesRead = Infinity;
+  private readPaths = new Set<string>();
+  private forceSynthesis = false;
 
   reset(): void {
     sendPhaseEvent(this.phaseActor, { type: 'RESET' });
@@ -41,15 +50,24 @@ export class AgentTaskState {
     this.taskSummary = '';
     this.originalTask = '';
     this.completedKeys.clear();
+    this.actionAttemptCounts.clear();
+    this.lastAttemptAt.clear();
     this.toolResults = [];
     this.pauseSummary = '';
     this.executionToolsUsed = false;
+    this.verificationSucceeded = false;
     this.sequentialThinkingCalls = 0;
+    this.fileScope = null;
+    this.readPaths.clear();
+    this.forceSynthesis = false;
   }
 
   setLimits(limits: AgentTaskLimits): void {
     if (typeof limits.maxSequentialThinkingCalls === 'number') {
       this.maxSequentialThinkingCalls = Math.max(0, limits.maxSequentialThinkingCalls);
+    }
+    if (typeof limits.maxFilesRead === 'number') {
+      this.maxFilesRead = limits.maxFilesRead > 0 ? limits.maxFilesRead : Infinity;
     }
   }
 
@@ -71,6 +89,68 @@ export class AgentTaskState {
     return this.pauseSummary;
   }
 
+  setFileScope(paths: string[], maxFilesRead?: number): void {
+    this.fileScope = new Set(paths.map(normalizeScopePath).filter(Boolean));
+    this.readPaths.clear();
+    if (typeof maxFilesRead === 'number') {
+      this.maxFilesRead = maxFilesRead > 0 ? maxFilesRead : Infinity;
+    }
+  }
+
+  /**
+   * Merge newly accepted paths into the existing scope without resetting the
+   * session-level read budget / already-read set. New proposals are additive
+   * unless `replace` is true.
+   */
+  mergeFileScope(paths: string[], maxFilesRead?: number, options?: { replace?: boolean }): void {
+    const normalized = paths.map(normalizeScopePath).filter(Boolean);
+    if (options?.replace || !this.fileScope) {
+      this.fileScope = new Set(normalized);
+      if (options?.replace) this.readPaths.clear();
+    } else {
+      for (const path of normalized) this.fileScope.add(path);
+    }
+    if (typeof maxFilesRead === 'number' && maxFilesRead > 0) {
+      // A scope proposal is permission to inspect its accepted read targets. Keep the
+      // caller's cap, but never strand newly accepted paths behind an older exhausted
+      // session budget (common in multi-step plans).
+      const minNeeded = Math.max(this.readPaths.size, this.fileScope?.size ?? 0);
+      this.maxFilesRead = Math.max(
+        maxFilesRead,
+        minNeeded,
+        this.maxFilesRead === Infinity ? maxFilesRead : this.maxFilesRead
+      );
+    }
+  }
+
+  /** Reset loop-local churn state while preserving useful evidence and file scope. */
+  beginAgentLoop(): void {
+    this.forceSynthesis = false;
+    this.actionAttemptCounts.clear();
+    this.lastAttemptAt.clear();
+  }
+
+  hasFileScope(): boolean {
+    return this.fileScope !== null;
+  }
+
+  isPathInScope(path: string): boolean {
+    return Boolean(this.fileScope?.has(normalizeScopePath(path)));
+  }
+
+  getFileScopeSnapshot(): { paths: string[]; maxFilesRead: number | 'unlimited'; filesReadCount: number; remainingReads: number | 'unlimited' } {
+    const filesReadCount = this.readPaths.size;
+    const remaining = Number.isFinite(this.maxFilesRead)
+      ? Math.max(0, this.maxFilesRead - filesReadCount)
+      : 'unlimited';
+    return {
+      paths: [...(this.fileScope ?? new Set<string>())],
+      maxFilesRead: Number.isFinite(this.maxFilesRead) ? this.maxFilesRead : 'unlimited',
+      filesReadCount,
+      remainingReads: remaining,
+    };
+  }
+
   recordToolSuccess(toolName: string, input: Record<string, unknown>, output: string): void {
     if (isSequentialThinkingTool(toolName)) {
       this.sequentialThinkingCalls += 1;
@@ -85,8 +165,22 @@ export class AgentTaskState {
       }
     }
 
+    if (toolName === 'read_file' && typeof input.path === 'string') {
+      this.readPaths.add(normalizeScopePath(input.path));
+    } else if (toolName === 'read_files') {
+      const paths = Array.isArray(input.paths)
+        ? input.paths.filter((p): p is string => typeof p === 'string')
+        : [];
+      for (const path of paths) {
+        this.readPaths.add(normalizeScopePath(path));
+      }
+    }
+
     if (toolName === 'run_command') {
       const key = toolKey(toolName, input);
+      if (this.executionToolsUsed && key && isPostEditVerificationKey(key)) {
+        this.verificationSucceeded = true;
+      }
       if (
         this.shouldDiagnosticAdvanceToExecute(key) &&
         this.getPhase() === 'analyze'
@@ -97,7 +191,7 @@ export class AgentTaskState {
 
     if (toolName === 'execute_workspace_script') {
       const script = typeof input.script === 'string' ? input.script : '';
-      if (this.isAuditTask() && /audit-dependencies|audit-dead-code/.test(script) && this.getPhase() === 'analyze') {
+      if (this.isAuditTask() && /audit-dependencies|audit-dead-code|audit-vulnerabilities/.test(script) && this.getPhase() === 'analyze') {
         sendPhaseEvent(this.phaseActor, { type: 'ADVANCE_EXECUTE' });
       }
     }
@@ -109,7 +203,7 @@ export class AgentTaskState {
     this.toolResults.push({
       tool: toolName,
       key,
-      summary: output.slice(0, 2000),
+      summary: summarizeEvidence(output),
       timestamp: Date.now(),
     });
     if (this.toolResults.length > 12) {
@@ -126,6 +220,16 @@ export class AgentTaskState {
 
   /** Returns block reason if this tool call should be rejected. */
   checkBlocked(toolName: string, input: Record<string, unknown>): string | null {
+    const scopeBlocked = this.checkFileScopeBlocked(toolName, input);
+    if (scopeBlocked) return scopeBlocked;
+
+    if (this.forceSynthesis) {
+      return (
+        'FORCE_SYNTHESIS: enough evidence is already cached. Do not call more tools — ' +
+        'write the final answer from prior tool results now.'
+      );
+    }
+
     if (this.getPhase() === 'verify') return null;
 
     if (toolName === 'memory_search' && this.getPhase() === 'execute') {
@@ -134,6 +238,22 @@ export class AgentTaskState {
 
     const key = toolKey(toolName, input);
     if (!key || !this.completedKeys.has(key)) return null;
+
+    // Count duplicate attempts once per blocked call chain (checkBlocked may be
+    // invoked again from buildSoftBlockResponse — ignore same-millisecond double hits).
+    const now = Date.now();
+    const last = this.lastAttemptAt.get(key) ?? 0;
+    if (now - last > 25) {
+      this.lastAttemptAt.set(key, now);
+      this.actionAttemptCounts.set(key, (this.actionAttemptCounts.get(key) ?? 0) + 1);
+    }
+    if ((this.actionAttemptCounts.get(key) ?? 0) >= 2) {
+      this.forceSynthesis = true;
+      return (
+        `already_completed:${key}. Do not retry. Synthesize from the cached result. ` +
+        'Controller will force final synthesis after this response.'
+      );
+    }
 
     if (toolName === 'run_command') {
       if (this.executionToolsUsed && isPostEditVerificationKey(key)) {
@@ -198,7 +318,74 @@ export class AgentTaskState {
       );
     }
 
+    if (toolName === 'analyze_jsonl') {
+      const path = typeof input.path === 'string' ? input.path : 'log';
+      return (
+        `already_completed: analyze_jsonl for \`${path}\`. ` +
+        'Do not retry. Synthesize from the cached report, or call query_log_events once if a narrow follow-up is required.'
+      );
+    }
+
+    if (toolName === 'query_log_events') {
+      return (
+        'already_completed: query_log_events with these filters. ' +
+        'Do not retry. Synthesize the final analysis from cached results now.'
+      );
+    }
+
+    if (toolName === 'propose_file_scope') {
+      return (
+        'File scope was already proposed this session. Use getFileScopeSnapshot paths from chat history; ' +
+        'only re-propose when adding genuinely new paths (merge is additive).'
+      );
+    }
+
     return null;
+  }
+
+  shouldForceSynthesis(): boolean {
+    return this.forceSynthesis;
+  }
+
+  markForceSynthesis(): void {
+    this.forceSynthesis = true;
+  }
+
+  checkFileScopeBlocked(toolName: string, input: Record<string, unknown>): string | null {
+    if (!isScopedFileTool(toolName)) return null;
+    const paths = extractScopedPaths(toolName, input);
+    if (paths.length === 0) return null;
+
+    if (!this.hasFileScope()) {
+      return 'Call propose_file_scope first to declare the candidate read/write paths for this task.';
+    }
+
+    const outOfScope = paths.filter((path) => !this.isPathInScope(path));
+    if (outOfScope.length > 0) {
+      return (
+        `Path(s) outside the accepted file scope: ${outOfScope.join(', ')}. ` +
+        'Call propose_file_scope again with the revised candidate paths before reading or editing them.'
+      );
+    }
+
+    if ((toolName === 'read_file' || toolName === 'read_files') && Number.isFinite(this.maxFilesRead)) {
+      const projected = new Set(this.readPaths);
+      for (const path of paths) {
+        projected.add(normalizeScopePath(path));
+      }
+      if (projected.size > this.maxFilesRead) {
+        return (
+          `File read budget exceeded (${this.readPaths.size}/${this.maxFilesRead} distinct files already used, ` +
+          `${projected.size - this.readPaths.size} new requested). Narrow the scope, use line ranges, or proceed from existing context.`
+        );
+      }
+    }
+
+    return null;
+  }
+
+  checkScopeGate(toolName: string, input: Record<string, unknown>): string | null {
+    return this.checkFileScopeBlocked(toolName, input);
   }
 
   /** Cap MCP sequential-thinking calls to reduce latency and token burn. */
@@ -213,10 +400,10 @@ export class AgentTaskState {
   }
 
   invalidateReadsForPath(relPath: string): void {
-    const normalized = relPath.replace(/\\/g, '/');
+    const normalized = normalizeScopePath(relPath);
     this.completedKeys.delete(`read_file:${normalized}`);
     for (const key of [...this.completedKeys]) {
-      if (key.startsWith('read_files:') && key.includes(normalized)) {
+      if ((key.startsWith('read_file:') || key.startsWith('read_files:')) && key.includes(normalized)) {
         this.completedKeys.delete(key);
       }
     }
@@ -231,16 +418,20 @@ export class AgentTaskState {
     const cached = key ? this.toolResults.find((r) => r.key === key) : undefined;
 
     const lines = [
-      `(Skipped redundant ${toolName} — phase: ${this.getPhase()})`,
+      `(Skipped ${toolName} — reason:${skipReasonCode(reason)} — phase: ${this.getPhase()})`,
       reason,
     ];
 
     if (cached) {
-      lines.push('', `Cached output from ${cached.key}:`, cached.summary);
+      lines.push(
+        '',
+        `Cached evidence reference: ${cached.key}`,
+        'Use the original tool result already present in this conversation; it is not replayed here.'
+      );
     } else if (this.toolResults.length > 0) {
-      lines.push('', 'Recent diagnostic results from this session:');
+      lines.push('', 'Recent evidence references from this session:');
       for (const r of this.toolResults.slice(-4)) {
-        lines.push(`### ${r.key}`, r.summary.slice(0, 1500), '');
+        lines.push(`- ${r.key}`);
       }
     }
 
@@ -267,7 +458,7 @@ export class AgentTaskState {
     if (this.toolResults.length > 0) {
       lines.push('', 'Completed steps:');
       for (const r of this.toolResults.slice(-6)) {
-        const preview = r.summary.split('\n').slice(0, 4).join(' ').slice(0, 200);
+        const preview = r.summary.split('\n').slice(0, 4).join(' ').slice(0, 500);
         lines.push(`- ${r.key}: ${preview}`);
       }
     }
@@ -295,6 +486,17 @@ export class AgentTaskState {
       for (const key of this.completedKeys) {
         lines.push(`- ${key}`);
       }
+    }
+
+    if (this.fileScope) {
+      const snapshot = this.getFileScopeSnapshot();
+      lines.push(
+        '',
+        `Accepted file scope (${snapshot.filesReadCount}/${snapshot.maxFilesRead} reads used):`,
+        ...snapshot.paths.map((path) => `- ${path}`)
+      );
+    } else {
+      lines.push('', 'File scope: not proposed yet. Call propose_file_scope before read_file/read_files/write_file/apply_patch.');
     }
 
     if (this.toolResults.length > 0) {
@@ -328,7 +530,7 @@ export class AgentTaskState {
   private shouldDiagnosticAdvanceToExecute(key: string | null): boolean {
     if (!key) return false;
     if (this.isAuditTask()) {
-      return key === 'depcheck' || key === 'eslint' || key === 'audit-dependencies' || key === 'audit-dead-code';
+      return key === 'depcheck' || key === 'eslint' || key === 'audit-dependencies' || key === 'audit-dead-code' || key === 'audit-vulnerabilities';
     }
     return key === 'eslint';
   }
@@ -345,6 +547,12 @@ export class AgentTaskState {
 
   private requiredNextActionLines(): string[] {
     if (this.executionToolsUsed) {
+      if (!this.verificationSucceeded) {
+        return [
+          'File edits succeeded, but post-edit verification has not succeeded yet.',
+          'Run the narrowest relevant typecheck, lint, test, or build command and fix any reported errors before finishing.',
+        ];
+      }
       return [
         'A post-edit verification command already succeeded.',
         'Stop using tools now and answer with the final summary: what changed, verification run, and remaining issues.',
@@ -410,6 +618,39 @@ export class AgentTaskState {
   }
 }
 
+/**
+ * Classifies a checkBlocked() reason string so the soft-block marker (and the UI label
+ * derived from it via describeSkipLabel) reflects the real cause instead of always saying
+ * "redundant" — e.g. a first-time read blocked by an undeclared file scope is not a duplicate.
+ */
+function skipReasonCode(reason: string): string {
+  if (/^Call propose_file_scope first|^Path\(s\) outside the accepted file scope/.test(reason)) {
+    return 'scope';
+  }
+  if (/^File read budget exceeded/.test(reason)) return 'budget';
+  if (/^FORCE_SYNTHESIS/.test(reason)) return 'synthesis';
+  return 'duplicate';
+}
+
+function summarizeEvidence(output: string): string {
+  const trimmed = output.trim();
+  if (!trimmed) return '(empty result)';
+
+  // Re-stringify JSON compactly (no pretty-print whitespace) so the length cap below
+  // is spent on data instead of indentation, and so summary fields near the end of a
+  // payload (e.g. audit "totals") aren't pushed past the cutoff by leading boilerplate
+  // (absolute workspace paths, scannedRoots, etc.) — see audit-vulnerabilities.mjs output.
+  let compact = trimmed.replace(/\s+/g, ' ');
+  try {
+    compact = JSON.stringify(JSON.parse(trimmed));
+  } catch {
+    // not JSON — keep whitespace-collapsed text
+  }
+
+  const MAX = 600;
+  return compact.length <= MAX ? compact : `${compact.slice(0, MAX - 3)}...`;
+}
+
 export function toolKey(toolName: string, input: Record<string, unknown>): string | null {
   if (toolName === 'git_diff') {
     const staged = input.staged === true || input.cached === true;
@@ -425,23 +666,82 @@ export function toolKey(toolName: string, input: Record<string, unknown>): strin
     return `list_files:${path}:${recursive}`;
   }
   if (toolName === 'read_file' && typeof input.path === 'string') {
-    return `read_file:${input.path.replace(/\\/g, '/')}`;
+    const range = formatLineRange(input);
+    return `read_file:${normalizeScopePath(input.path)}${range}`;
   }
   if (toolName === 'read_files' && Array.isArray(input.paths)) {
     const paths = input.paths
       .filter((p): p is string => typeof p === 'string')
-      .map((p) => p.replace(/\\/g, '/'))
+      .map(normalizeScopePath)
       .sort();
     if (paths.length === 0) return null;
     return `read_files:${paths.join('|')}`;
   }
   if (toolName === 'execute_workspace_script' && typeof input.script === 'string') {
-    return `script:${input.script}`;
+    const target = typeof input.target === 'string' ? normalizeScopePath(input.target) : '';
+    return target ? `script:${input.script}:${target}` : `script:${input.script}`;
   }
   if (toolName === 'spawn_research_agent' && typeof input.task === 'string') {
     return `research:${input.task.slice(0, 80)}`;
   }
+  if (toolName === 'analyze_jsonl' && typeof input.path === 'string') {
+    return `analyze_jsonl:${normalizeScopePath(input.path)}`;
+  }
+  if (toolName === 'query_log_events' && typeof input.path === 'string') {
+    const filter = input.filter && typeof input.filter === 'object'
+      ? JSON.stringify(sortKeys(input.filter as Record<string, unknown>))
+      : '';
+    return `query_log_events:${normalizeScopePath(input.path)}:${filter}`;
+  }
+  if (toolName === 'propose_file_scope') {
+    const candidates = Array.isArray(input.candidates)
+      ? input.candidates
+          .map((c) => (c && typeof c === 'object' && typeof (c as { path?: unknown }).path === 'string'
+            ? normalizeScopePath((c as { path: string }).path)
+            : ''))
+          .filter(Boolean)
+          .sort()
+          .join('|')
+      : '';
+    return candidates ? `propose_file_scope:${candidates}` : 'propose_file_scope';
+  }
   return null;
+}
+
+function sortKeys(value: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(value).sort()) {
+    out[key] = value[key];
+  }
+  return out;
+}
+
+function isScopedFileTool(toolName: string): boolean {
+  return toolName === 'read_file' ||
+    toolName === 'read_files' ||
+    toolName === 'write_file' ||
+    toolName === 'apply_patch';
+}
+
+function extractScopedPaths(toolName: string, input: Record<string, unknown>): string[] {
+  if ((toolName === 'read_file' || toolName === 'write_file' || toolName === 'apply_patch') && typeof input.path === 'string') {
+    return [normalizeScopePath(input.path)];
+  }
+  if (toolName === 'read_files' && Array.isArray(input.paths)) {
+    return input.paths.filter((p): p is string => typeof p === 'string').map(normalizeScopePath);
+  }
+  return [];
+}
+
+function normalizeScopePath(path: string): string {
+  return path.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+/g, '/');
+}
+
+function formatLineRange(input: Record<string, unknown>): string {
+  const start = typeof input.startLine === 'number' ? input.startLine : undefined;
+  const end = typeof input.endLine === 'number' ? input.endLine : undefined;
+  if (!start && !end) return '';
+  return `:${start ?? 1}-${end ?? 'end'}`;
 }
 
 export function normalizeDiagnosticKey(command: string): string | null {
@@ -450,6 +750,7 @@ export function normalizeDiagnosticKey(command: string): string | null {
   if (/\bdepcheck\b/.test(cmd)) return 'depcheck';
   if (/\bknip\b/.test(cmd)) return 'audit-dead-code';
   if (/audit-dependencies/.test(cmd)) return 'audit-dependencies';
+  if (/audit-vulnerabilities/.test(cmd) || /\b(?:npm|pnpm|yarn)\s+audit\b/.test(cmd)) return 'audit-vulnerabilities';
   if (/\beslint\b/.test(cmd)) return cmd.includes('--fix') ? 'eslint:fix' : 'eslint';
   if (/\bnpm\s+(ls|list)\b/.test(cmd)) return 'npm-ls';
   if (/\bdocusaurus\s+build\b/.test(cmd) || /\bnpm\s+run\s+build(?:\s|$)/.test(cmd)) return 'docs-build';
@@ -467,6 +768,7 @@ export function normalizeDiagnosticKey(command: string): string | null {
 
 function isPostEditVerificationKey(key: string): boolean {
   return key === 'docs-build' ||
+    key === 'tsc' ||
     key === 'eslint' ||
     key === 'eslint:fix' ||
     key === 'npm-ls' ||

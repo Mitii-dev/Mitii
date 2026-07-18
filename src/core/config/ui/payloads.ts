@@ -1,5 +1,7 @@
+import type { AgentDepth } from '../agentDepth';
+
 export type ApprovalMode = 'review_all' | 'ask_edits' | 'ask_deletes' | 'ask_commands' | 'auto';
-export type AgentDepthView = 'auto' | 'quick' | 'standard' | 'deep' | 'pilot' | 'enterprise';
+export type AgentDepthView = AgentDepth;
 
 export type ProviderTypeView =
   | 'echo'
@@ -36,6 +38,8 @@ export interface AgentSettingsPayload {
   maxAutoContinues: number;
   researchAgentMaxSteps: number;
   showDiffPreview: boolean;
+  askModel: string;
+  askBaseUrl: string;
   planModel: string;
   planBaseUrl: string;
   actModel: string;
@@ -80,6 +84,14 @@ export interface McpSettingsPayload {
 export interface TelemetrySettingsPayload {
   sessionLogging: boolean;
   debugMetrics: boolean;
+  traceEnabled: boolean;
+  traceIncludePayloads: boolean;
+  traceLlm: boolean;
+  traceMcp: boolean;
+  traceWebview: boolean;
+  traceDaemon: boolean;
+  traceWebhook: boolean;
+  traceMaxPayloadChars: number;
   webhookUrl?: string;
   webhookSecret?: string;
   webhookTimeoutMs?: number;

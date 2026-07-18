@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join, relative, resolve } from 'path';
 import type { ContextItem, ContextQuery, ContextSource } from '../context/types';
+import type { TierPolicy } from '../agentic/tierPolicy';
 import { createLogger } from '../telemetry/Logger';
 
 import { BUNDLED_DEFAULT_RULES } from './bundledDefaultRules';
@@ -29,6 +30,10 @@ export interface ProjectRuleFile {
   content: string;
 }
 
+/**
+ * Rules are always-on workspace policy and conventions injected every turn.
+ * Use SkillCatalogService for on-demand task workflows and playbooks instead.
+ */
 export class ProjectRulesService {
   constructor(private readonly workspace: string) {}
 
@@ -37,10 +42,13 @@ export class ProjectRulesService {
     const files: ProjectRuleFile[] = [];
     const budget = { remaining: Math.max(0, maxTotalChars) };
 
-    const bundled = BUNDLED_DEFAULT_RULES.slice(0, Math.min(maxCharsPerFile, budget.remaining)).trim();
-    if (bundled) {
-      files.push({ relPath: BUNDLED_RULES_REL_PATH, content: bundled });
-      budget.remaining -= bundled.length;
+    const onDiskPathRule = existsSync(join(this.workspace, '.mitii/rules/path-resolution.md'));
+    if (!onDiskPathRule) {
+      const bundled = BUNDLED_DEFAULT_RULES.slice(0, Math.min(maxCharsPerFile, budget.remaining)).trim();
+      if (bundled) {
+        files.push({ relPath: BUNDLED_RULES_REL_PATH, content: bundled });
+        budget.remaining -= bundled.length;
+      }
     }
 
     this.tryAddAbsFile(files, join(homedir(), '.mitii', 'MITTII.md'), '~/.mitii/MITTII.md', maxCharsPerFile, budget);
@@ -161,10 +169,14 @@ export class ProjectRulesService {
 export class ProjectRulesContextSource implements ContextSource {
   readonly id = 'project-rules';
 
-  constructor(private readonly rulesService: ProjectRulesService) {}
+  constructor(
+    private readonly rulesService: ProjectRulesService,
+    private readonly getTierPolicy?: () => TierPolicy | undefined
+  ) {}
 
-  async retrieve(_query: ContextQuery): Promise<ContextItem[]> {
-    return this.rulesService.load().map((rule, index) => ({
+  async retrieve(query: ContextQuery): Promise<ContextItem[]> {
+    const policy = query.tierPolicy ?? this.getTierPolicy?.();
+    return this.rulesService.load(policy?.rulesMaxCharsPerFile, policy?.rulesMaxTotalChars).map((rule, index) => ({
       id: `project-rule-${index}-${rule.relPath}`,
       source: 'project-rules',
       relPath: rule.relPath,

@@ -12,10 +12,10 @@ export const DOCS_URL = 'https://docs.mitii.dev';
 export const AGENT_TAGLINE =
   'Your local-first AI coding agent for complex work. Read files, write code, run commands — all with your approval.';
 export const AGENT_DESCRIPTION =
-  'Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow.';
+  'Local-first VS Code AI coding agent with repository-aware context and controlled execution.';
 
-export const GITHUB_URL = 'https://github.com/codewithshinde/thunder-ai-agent';
-export const GITHUB_ISSUES_URL = 'https://github.com/codewithshinde/thunder-ai-agent/issues';
+export const GITHUB_URL = 'https://github.com/Mitii-dev/Mitii';
+export const GITHUB_ISSUES_URL = 'https://github.com/Mitii-dev/Mitii/issues';
 export const DOCS_REPO_URL = 'https://github.com/codewithshinde/mitii-docs';
 export const WEBSITE_REPO_URL = 'https://github.com/codewithshinde/mitii-website';
 export const DISCORD_URL = 'https://discord.gg/sa8rubf6HH';

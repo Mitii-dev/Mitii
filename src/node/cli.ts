@@ -525,31 +525,77 @@ async function jobCommand(cwd: string, args: string[], json: boolean): Promise<n
     process.stdout.write(json ? JSON.stringify({ jobs }, null, 2) + '\n' : formatJobs(jobs));
     return 0;
   }
-  process.stderr.write('Usage: mitii job enqueue "prompt" [--mode ask|plan|agent|review] | mitii job list\n');
+  if (sub === 'show') {
+    const id = args[1];
+    const job = queue.list().find((item) => item.id === id);
+    if (!job) {
+      process.stderr.write(`Job not found: ${id ?? '(missing id)'}\n`);
+      return 2;
+    }
+    process.stdout.write(json ? JSON.stringify(job, null, 2) + '\n' : formatJob(job));
+    return 0;
+  }
+  if (sub === 'retry') {
+    const id = args[1];
+    const job = id ? queue.retry(id) : undefined;
+    if (!job) {
+      process.stderr.write(`Job not found: ${id ?? '(missing id)'}\n`);
+      return 2;
+    }
+    process.stdout.write(json ? JSON.stringify(job, null, 2) + '\n' : `Requeued ${job.id}\n`);
+    return 0;
+  }
+  if (sub === 'cancel') {
+    const id = args[1];
+    const job = id ? queue.cancel(id) : undefined;
+    if (!job) {
+      process.stderr.write(`Job not found or already completed: ${id ?? '(missing id)'}\n`);
+      return 2;
+    }
+    process.stdout.write(json ? JSON.stringify(job, null, 2) + '\n' : `Canceled ${job.id}\n`);
+    return 0;
+  }
+  process.stderr.write('Usage: mitii job enqueue "prompt" [--mode ask|plan|agent|review] | mitii job list|show <id>|retry <id>|cancel <id>\n');
   return 2;
 }
 
 async function workerCommand(cwd: string, args: string[], json: boolean): Promise<number> {
   const once = args.includes('--once');
   const intervalMs = Number(valueOf(args, '--interval-ms') ?? 5000);
+  const leaseMs = Number(valueOf(args, '--lease-ms') ?? 30 * 60 * 1000);
+  const maxJobs = Number(valueOf(args, '--max-jobs') ?? (once ? 1 : Number.POSITIVE_INFINITY));
   const queue = new JobQueueService(cwd);
   const workerId = `worker-${process.pid}`;
+  let completed = 0;
   do {
-    const job = queue.lease(workerId);
+    const job = queue.lease(workerId, Number.isFinite(leaseMs) ? leaseMs : 30 * 60 * 1000);
     if (job) {
       try {
+        if (json) {
+          process.stdout.write(JSON.stringify({ event: 'job_start', workerId, jobId: job.id, mode: job.mode }) + '\n');
+        } else {
+          process.stderr.write(`Started job ${job.id} (${job.mode})\n`);
+        }
         const output = await runQueuedJob(job, args, json);
         queue.complete(job.id, output);
+        completed += 1;
+        if (json) {
+          process.stdout.write(JSON.stringify({ event: 'job_complete', workerId, jobId: job.id }) + '\n');
+        }
         process.stderr.write(`Completed job ${job.id}\n`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         queue.fail(job.id, message);
+        completed += 1;
+        if (json) {
+          process.stdout.write(JSON.stringify({ event: 'job_failed', workerId, jobId: job.id, error: message }) + '\n');
+        }
         process.stderr.write(`Failed job ${job.id}: ${message}\n`);
       }
     } else if (once) {
       process.stderr.write('No queued jobs.\n');
     }
-    if (once) break;
+    if (once || completed >= maxJobs) break;
     await sleep(Number.isFinite(intervalMs) ? intervalMs : 5000);
   } while (true);
   return 0;
@@ -724,15 +770,38 @@ function formatIndexStatus(status: import('../core/indexing/IndexMaintenanceServ
     `Chunks: ${status.chunks}`,
     `Symbols: ${status.symbols}`,
     `Queue: ${status.queued} queued, running: ${status.running}, failed: ${status.failed}`,
+    `Phase: ${status.phase ?? (status.running ? 'indexing' : 'idle')}${status.partial ? ' (partial)' : ''}${status.degraded ? ' (degraded but usable)' : ''}`,
+    status.processed !== undefined && status.runTotal !== undefined ? `Progress: ${status.processed}/${status.runTotal}` : undefined,
+    status.detail ? `Detail: ${status.detail}` : undefined,
     `Database: ${status.dbPath ?? 'unknown'}${status.dbSizeBytes !== undefined ? ` (${status.dbSizeBytes} bytes)` : ''}`,
     `Health: ${status.health.ok ? 'ok' : `issues (${status.health.errors.join('; ') || status.health.missingTables.join(', ')})`}`,
     '',
-  ].join('\n');
+  ].filter((line): line is string => line !== undefined).join('\n');
 }
 
 function formatJobs(jobs: MitiiJob[]): string {
   if (jobs.length === 0) return 'No jobs.\n';
-  return jobs.map((job) => `${job.id}\t${job.status}\t${job.mode}\t${job.prompt.slice(0, 80)}`).join('\n') + '\n';
+  return jobs.map((job) => {
+    const lease = job.status === 'running' && job.leasedBy ? `\t${job.leasedBy}` : '';
+    return `${job.id}\t${job.status}\t${job.mode}${lease}\t${job.prompt.slice(0, 80)}`;
+  }).join('\n') + '\n';
+}
+
+function formatJob(job: MitiiJob): string {
+  return [
+    `ID: ${job.id}`,
+    `Status: ${job.status}`,
+    `Mode: ${job.mode}`,
+    `Workspace: ${job.cwd}`,
+    `Attempts: ${job.attempts}`,
+    job.leasedBy ? `Worker: ${job.leasedBy}` : undefined,
+    job.leaseUntil ? `Lease until: ${new Date(job.leaseUntil).toISOString()}` : undefined,
+    job.resultPath ? `Result: ${job.resultPath}` : undefined,
+    job.error ? `Error: ${job.error}` : undefined,
+    '',
+    job.prompt,
+    '',
+  ].filter((line): line is string => line !== undefined).join('\n');
 }
 
 function formatTeamStatus(status: NonNullable<ReturnType<TeamService['status']>>): string {
@@ -829,8 +898,8 @@ function printHelp(): void {
     '  mitii task list|start <id>|run [--parallel 2]|worktrees [--cwd <path>] [--json]',
     '  mitii index status|repair|enqueue|watch [paths...] [--cwd <path>] [--json]',
     '  mitii pr create --title "..." [--body-file .mitii/pr-body.md] [--repo owner/name] [--head branch] [--base main]',
-    '  mitii job enqueue "prompt" [--mode agent] | mitii job list [--json]',
-    '  mitii worker [--once] [--interval-ms 5000] [--runtime real|stub] [--provider echo|openai|...]',
+    '  mitii job enqueue "prompt" [--mode agent] | list|show <id>|retry <id>|cancel <id> [--json]',
+    '  mitii worker [--once] [--max-jobs 10] [--interval-ms 5000] [--lease-ms 1800000] [--runtime real|stub] [--provider echo|openai|...]',
     '  mitii team create <name> | status <name> | task "title" --team-name <name> | send "message" --team-name <name>',
     '  mitii connect telegram --token <bot-token> [--daemon-url http://127.0.0.1:4310]',
     '  mitii auth list',

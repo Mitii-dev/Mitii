@@ -3,22 +3,21 @@ import type { ThunderMode } from '../../session/ThunderSession';
 import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import { isApprovalContinuationMessage } from '../../runtime/taskMessage';
 import type { ActDepth, ActRoute } from './actTypes';
+import { ACT_INTENT_DESCRIPTIONS } from '../../runtime/intentClassifier';
+import { normalizeAgentDepth } from '../../config/agentDepth';
+import { resolvePlanningDepth } from '../../plans/planningDepth';
 
 export interface ActRouteOptions {
   mode?: ThunderMode;
   hasActivePlan?: boolean;
   orchestrationEnabled?: boolean;
   auditMode?: boolean;
+  logAuditMode?: boolean;
   mdxRepairMode?: boolean;
   githubIssueMode?: boolean;
-  actDepth?: ActDepth;
+  actDepth?: ActDepth | string;
+  intent?: ActRoute['intent'];
 }
-
-const DOCS_HINT = /\b(docs?|documentation|docusaurus|mdx?|examples?|readme|changelog)\b/i;
-const REFACTOR_HINT = /\b(refactor|rewrite|migrate|cleanup architecture|restructure)\b/i;
-const BUGFIX_HINT = /\b(fix|debug|repair|failing|failed|error|bug|regression|broken|crash|compile|test failure)\b/i;
-const INFRA_HINT = /\b(ci\/cd|pipeline|workflows?|github actions|docker|config|infrastructure|deployment|terraform)\b/i;
-const CREATE_HINT = /\b(write|create|build|generate|scaffold)\b/i;
 
 // Fixed: Added '?' to make quantifiers lazy and prevent backtracking stalls
 const ACTIVE_PLAN_NEW_TASK =
@@ -43,11 +42,12 @@ const PLANNED_WORK_REFERENCE =
 export function routeActIntent(userMessage: string, analysis: TaskAnalysis, options: ActRouteOptions = {}): ActRoute {
   const mode = options.mode ?? 'agent';
   const auditMode = Boolean(options.auditMode || analysis.kind === 'audit');
+  const logAuditMode = Boolean(options.logAuditMode || analysis.kind === 'log_audit');
   const mdxRepairMode = Boolean(options.mdxRepairMode);
   const githubIssueMode = Boolean(options.githubIssueMode);
   const hasActivePlan = Boolean(options.hasActivePlan);
   const orchestrationEnabled = options.orchestrationEnabled ?? true;
-  const actDepth = options.actDepth ?? 'auto';
+  const actDepth = normalizeAgentDepth(options.actDepth);
 
   if (mode !== 'agent') {
     return {
@@ -66,13 +66,25 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
 
   if (!isApprovalContinuationMessage(userMessage) && shouldResumeSavedPlan(userMessage, hasActivePlan, isDirectOverride, { actDepth })) {
     return {
-      intent: 'resume_plan',
+      intent: options.intent ?? fallbackActIntent(analysis),
       executionPath: 'resume_saved_plan',
       complexity: analysis.complexity,
       shouldUsePlanner: false,
       shouldUseSubagents: false,
       shouldVerify: true,
       summary: 'Resume the active saved plan instead of replanning or starting a direct task.',
+    };
+  }
+
+  if (logAuditMode) {
+    return {
+      intent: 'log_audit',
+      executionPath: 'log_audit',
+      complexity: 'low',
+      shouldUsePlanner: false,
+      shouldUseSubagents: false,
+      shouldVerify: false,
+      summary: 'Log audit Act route — analyze_log_directory/analyze_jsonl → optional query_log_events → synthesize (max 3 model calls).',
     };
   }
 
@@ -90,7 +102,7 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
 
   if (mdxRepairMode) {
     return {
-      intent: 'mdx_repair',
+      intent: 'bugfix',
       executionPath: 'mdx_repair',
       complexity: 'low',
       shouldUsePlanner: false,
@@ -100,7 +112,7 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
     };
   }
 
-  const shouldUsePlanner = shouldUsePlannerForAct(analysis, orchestrationEnabled, auditMode, actDepth, {
+  const shouldUsePlanner = shouldUsePlannerForAct(analysis, orchestrationEnabled, auditMode || logAuditMode, actDepth, {
     directOverride: isDirectOverride,
   });
   
@@ -118,7 +130,7 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
     };
   }
 
-  const intent = inferActIntent(userMessage, analysis);
+  const intent = options.intent ?? fallbackActIntent(analysis);
 
   return {
     intent,
@@ -137,14 +149,14 @@ export function shouldResumeSavedPlan(
   userMessage: string,
   hasActivePlan: boolean,
   isDirectOverride = false,
-  options: { actDepth?: ActDepth } = {}
+  options: { actDepth?: ActDepth | string } = {}
 ): boolean {
   if (!hasActivePlan) return false;
   const text = userMessage.trim();
   if (!text) return false;
   if (isDirectOverride) return false; // Use the boolean
   if (ACTIVE_PLAN_NEW_TASK.test(text)) return false;
-  if (options.actDepth === 'quick') {
+  if (normalizeAgentDepth(options.actDepth) === 'quick') {
     return EXPLICIT_PLAN_HANDOFF.test(text);
   }
   return (
@@ -159,15 +171,20 @@ export function shouldUsePlannerForAct(
   analysis: TaskAnalysis,
   orchestrationEnabled: boolean,
   auditMode = false,
-  actDepth: ActDepth = 'auto',
+  actDepth: ActDepth | string = 'auto',
   options: { directOverride?: boolean } = {}
 ): boolean {
   if (analysis.kind === 'simple_edit' || analysis.kind === 'question' || analysis.kind === 'debugging') return false;
+  // README / package docs execute directly unless high complexity.
+  if (analysis.kind === 'docs' && analysis.docsSubtype === 'readme' && analysis.complexity !== 'high') return false;
+  if (analysis.kind === 'docs' && !analysis.shouldPlan) return false;
   if (options.directOverride) return false;
-  if (actDepth === 'quick') return false;
+  if (normalizeAgentDepth(actDepth) === 'quick') return false;
   if (!analysis.shouldPlan) return false;
   if (!orchestrationEnabled) return false;
   if (auditMode) return false;
+  const depth = resolvePlanningDepth(analysis);
+  if (depth === 'none' || depth === 'micro') return false;
   return true;
 }
 
@@ -175,24 +192,16 @@ export function hasDirectRouteOverride(userMessage: string): boolean {
   return DIRECT_ROUTE_OVERRIDE.test(userMessage);
 }
 
-function inferActIntent(userMessage: string, analysis: TaskAnalysis): ActRoute['intent'] {
+function fallbackActIntent(analysis: TaskAnalysis): ActRoute['intent'] {
+  if (analysis.kind === 'log_audit') return 'log_audit';
   if (analysis.kind === 'audit') return 'audit';
+  if (analysis.kind === 'docs') return 'docs';
   if (analysis.kind === 'question') return 'question';
   if (analysis.kind === 'debugging') return 'diagnose';
-
-  if (DOCS_HINT.test(userMessage)) return 'docs';
-  if (REFACTOR_HINT.test(userMessage)) return 'refactor';
-
   if (analysis.kind === 'implementation' || analysis.kind === 'explicit_plan') return 'feature';
-  
-  // Catch workflows and "write/create" requests and elevate them to features
-  if (INFRA_HINT.test(userMessage) || CREATE_HINT.test(userMessage)) return 'feature'; 
-  
-  if (BUGFIX_HINT.test(userMessage) || analysis.kind === 'simple_edit') return 'bugfix';
-  
-  return 'direct';
+  return 'bugfix';
 }
 
 function intentLabel(intent: ActRoute['intent']): string {
-  return intent.replace(/_/g, ' ');
+  return ACT_INTENT_DESCRIPTIONS[intent] ?? intent.replace(/_/g, ' ');
 }

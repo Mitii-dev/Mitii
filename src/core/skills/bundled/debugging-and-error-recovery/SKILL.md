@@ -1,9 +1,16 @@
 ---
 name: debugging-and-error-recovery
-description: Guides systematic root-cause debugging. Use when tests fail, builds break, behavior doesn't match expectations, or you encounter any unexpected error. Use when you need a systematic approach to finding and fixing the root cause rather than guessing.
+description: Systematic root-cause debugging for failing tests, broken builds, and unexpected behavior. Use when you need evidence-based triage instead of guessing.
 ---
 
 # Debugging and Error Recovery
+
+## Quick Reference
+
+- Stop the line: preserve evidence, stop feature work, triage systematically.
+- Reproduce first; change one variable at a time; verify the fix with a failing→passing test.
+- Prefer logs, stack traces, and minimal repros over speculative rewrites.
+- Escalate to `log-audit` for large log corpora; to TDD for prove-it fixes.
 
 ## Overview
 

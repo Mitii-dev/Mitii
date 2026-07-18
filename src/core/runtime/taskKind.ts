@@ -1,6 +1,11 @@
+import { isLogAuditTask, LOG_AUDIT_AGENT_MAX_STEPS, NO_TOOLS_LOG_AUDIT_NUDGE } from './logAudit';
+
+export { isLogAuditTask, LOG_AUDIT_AGENT_MAX_STEPS, NO_TOOLS_LOG_AUDIT_NUDGE };
+
 /** Audit / cleanup / dependency analysis tasks (report-first, scripts-first). */
 export function isAuditCleanupTask(text: string): boolean {
-  return /\b(unus[a-z]*|dead code|orphan|cleanup|clean up|remove\s+(?:all\s+)?(?:the\s+)?(?:(?:uns[a-z]*|unused)\s+)?(?:imports?|files?|dependenc(?:y|ies)?)|depcheck|dependencies audit|dependency audit|find unused|list unused|reduce bundle|tree[- ]shake)\b/i.test(
+  if (isLogAuditTask(text)) return false;
+  return /\b(?:un(?:used|sed)\s+(?:dependencies|dependency|deps?|imports?|exports?|files?)|dead\s+code|orphan(?:ed)?\s+(?:files?|exports?)|dependency\s+(?:audit|cleanup)|depcheck|knip|ts-prune|remove\s+(?:all\s+)?(?:the\s+)?un(?:used|sed)\s+(?:imports?|files?|dependencies)|find\s+un(?:used|sed)|list\s+un(?:used|sed)|reduce\s+bundle|tree[- ]shake)\b/i.test(
     text
   );
 }

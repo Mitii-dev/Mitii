@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { AGENT_DEPTHS, normalizeAgentDepth } from './agentDepth';
+
+export type { AgentDepth } from './agentDepth';
 
 export const ProviderTypeSchema = z.enum([
   'openai-compatible',
@@ -68,7 +71,18 @@ export const EnterpriseConfigSchema = z.object({
   maxParallel: z.number().int().min(1).max(100).default(10),
 });
 
-export const AgentDepthSchema = z.enum(['auto', 'quick', 'standard', 'deep', 'pilot', 'enterprise']);
+/** Accepts legacy depth aliases and coerces them onto the canonical 3-option set. */
+export const AgentDepthSchema = z.preprocess(
+  (value) => normalizeAgentDepth(typeof value === 'string' ? value : undefined),
+  z.enum(AGENT_DEPTHS)
+);
+export const AgenticTierOverrideSchema = z.enum([
+  'auto',
+  'local-small',
+  'local-large',
+  'cloud-standard',
+  'cloud-frontier',
+]);
 
 export const SafetyConfigSchema = z.object({
   requireApprovalForWrites: z.boolean().default(true),
@@ -90,6 +104,7 @@ export const MemoryConfigSchema = z.object({
 });
 
 export const AgentConfigSchema = z.object({
+  agenticTierOverride: AgenticTierOverrideSchema.default('auto'),
   subagentsEnabled: z.boolean().default(true),
   teamsEnabled: z.boolean().default(false),
   subagentTypesEnabled: z.array(z.string()).default(['research']),
@@ -117,6 +132,9 @@ export const AgentConfigSchema = z.object({
   maxSequentialThinkingCallsPerTurn: z.number().int().min(0).max(50).default(6),
   verifyCommands: z.array(z.string()).default([]),
   verifyOnActComplete: z.boolean().default(true),
+  askModel: z.string().default(''),
+  askBaseUrl: z.string().default(''),
+  askProviderType: ProviderTypeSchema.optional(),
   planModel: z.string().default(''),
   planBaseUrl: z.string().default(''),
   planProviderType: ProviderTypeSchema.optional(),
@@ -178,6 +196,9 @@ export const GitHubConfigSchema = z.object({
   autoPrEnabled: z.boolean().default(false),
   defaultBaseBranch: z.string().default(''),
   webhookSecret: z.string().default(''),
+  lazyMcpActivation: z.boolean().default(true),
+  requireApprovalForRemoteWrites: z.boolean().default(true),
+  workflowDispatchEnabled: z.boolean().default(false),
 });
 
 export const TelemetryConfigSchema = z.object({
@@ -189,8 +210,20 @@ export const TelemetryConfigSchema = z.object({
   webhookTimeoutMs: z.number().int().min(1000).max(60_000).default(5000),
 });
 
+export const DebugTraceConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  includePayloads: z.boolean().default(false),
+  llm: z.boolean().default(true),
+  mcp: z.boolean().default(true),
+  webview: z.boolean().default(true),
+  daemon: z.boolean().default(true),
+  webhook: z.boolean().default(true),
+  maxPayloadChars: z.number().int().min(1_000).max(1_000_000).default(16_000),
+});
+
 export const ThunderConfigSchema = z.object({
   debug: z.boolean().default(false),
+  debugTrace: DebugTraceConfigSchema.default({}),
   provider: ProviderConfigSchema.default({}),
   indexing: IndexingConfigSchema.default({}),
   context: ContextConfigSchema.default({}),
@@ -216,7 +249,7 @@ export type UiConfig = z.infer<typeof UiConfigSchema>;
 export type EnterpriseConfig = z.infer<typeof EnterpriseConfigSchema>;
 export type SafetyConfig = z.infer<typeof SafetyConfigSchema>;
 export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
-export type AgentDepth = z.infer<typeof AgentDepthSchema>;
+export type AgenticTierOverride = z.infer<typeof AgenticTierOverrideSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 export type McpConfig = z.infer<typeof McpConfigSchema>;
@@ -224,4 +257,5 @@ export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
 export type ScmConfig = z.infer<typeof ScmConfigSchema>;
 export type GitHubConfig = z.infer<typeof GitHubConfigSchema>;
 export type TelemetryConfig = z.infer<typeof TelemetryConfigSchema>;
+export type DebugTraceConfig = z.infer<typeof DebugTraceConfigSchema>;
 export type ThunderConfig = z.infer<typeof ThunderConfigSchema>;

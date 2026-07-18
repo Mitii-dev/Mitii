@@ -36,12 +36,42 @@ import {
   createDiagnosticsTool, createWriteFileTool, createApplyPatchTool, createRunCommandTool,
   createMemorySearchTool, createMemoryWriteTool, createSaveTaskStateTool,
   createFetchWebTool, createAskQuestionTool, createProjectCatalogTool, createAnalyzeChangeImpactTool,
+  createProposeFileScopeTool,
   setSubagentTracker,
 } from '../tools/builtinTools';
+import {
+  createAnalyzeLogDirectoryTool,
+  createAnalyzeJsonlTool,
+  createListLogsTool,
+  createQueryLogEventsTool,
+} from '../tools/logAuditTools';
+import {
+  createChangelogTools,
+  createGitBlameTool,
+  createGitBranchCreateTool,
+  createGitBranchDeleteTool,
+  createGitBranchSwitchTool,
+  createGitCommitTool,
+  createGitCompareBranchesTool,
+  createGitHubTools,
+  createGitLogTool,
+  createGitMergeTool,
+  createGitRebaseTool,
+  createGitStageFilesTool,
+  createGitStatusTool,
+  createGitTagTools,
+  createGitUnstageFilesTool,
+  createReleasePlanControllerTool,
+  createStructuredGitDiffTool,
+  createWorkflowTools,
+  createGitShowTool,
+} from '../tools/gitTools';
 import { ProjectCatalogContextSource, discoverProjectCatalog, saveProjectCatalog } from '../modes/ask';
 import { createMarkStepCompleteTool, createProposePlanMutationTool } from '../tools/planTools';
 import type { AssistantStreamChunk, LlmProvider } from '../llm/types';
 import { createProvider } from '../llm/createProvider';
+import { resolveTierPolicy } from '../llm/agenticTier';
+import type { AgenticTier, TierPolicy } from '../agentic/tierPolicy';
 import { scaffoldMitiiWorkspace } from '../mcp/scaffoldMitiiWorkspace';
 import { AgentTaskState } from '../runtime/AgentTaskState';
 import {
@@ -67,6 +97,7 @@ import { ProjectRulesContextSource, ProjectRulesService } from '../rules/Project
 import { SkillCatalogContextSource, SkillCatalogService } from '../skills/SkillCatalogService';
 import { createLogger } from '../telemetry/Logger';
 import { SessionLogService } from '../telemetry/SessionLogService';
+import { debugTrace } from '../telemetry/AsyncDebugTrace';
 import { MicroTaskExecutor } from '../microtasks';
 import { HeadlessAgentRunner, type HeadlessPlan } from './AgentRunner';
 import {
@@ -233,7 +264,7 @@ export class HeadlessAgentHost {
 
     this.policyEngine = new ToolPolicyEngine(
       effectiveSafety,
-      (path) => this.ignoreService.isIgnored(path),
+      (path, options) => this.ignoreService.isIgnored(path, options),
       () => true,
       (path) => resolveWorkspaceRelPath(workspace, path)
     );
@@ -476,16 +507,40 @@ export class HeadlessAgentHost {
     this.toolRuntime.register(createRepoMapTool(repoMap));
     this.toolRuntime.register(createRetrieveContextTool(retriever, budgeter));
     this.toolRuntime.register(createGitDiffTool(this.gitService!));
+    this.toolRuntime.register(createGitStatusTool(workspace));
+    this.toolRuntime.register(createStructuredGitDiffTool(workspace));
+    this.toolRuntime.register(createGitLogTool(workspace));
+    this.toolRuntime.register(createGitShowTool(workspace));
+    this.toolRuntime.register(createGitBlameTool(workspace));
+    this.toolRuntime.register(createGitCompareBranchesTool(workspace));
+    this.toolRuntime.register(createGitStageFilesTool(workspace));
+    this.toolRuntime.register(createGitUnstageFilesTool(workspace));
+    this.toolRuntime.register(createGitCommitTool(workspace));
+    this.toolRuntime.register(createGitBranchCreateTool(workspace));
+    this.toolRuntime.register(createGitBranchSwitchTool(workspace));
+    this.toolRuntime.register(createGitBranchDeleteTool(workspace));
+    this.toolRuntime.register(createGitMergeTool(workspace));
+    this.toolRuntime.register(createGitRebaseTool(workspace));
+    for (const tool of createGitTagTools(workspace)) this.toolRuntime.register(tool);
+    for (const tool of createChangelogTools(workspace)) this.toolRuntime.register(tool);
+    for (const tool of createWorkflowTools(workspace)) this.toolRuntime.register(tool);
+    for (const tool of createGitHubTools(workspace)) this.toolRuntime.register(tool);
+    this.toolRuntime.register(createReleasePlanControllerTool());
     this.toolRuntime.register(createDiagnosticsTool(this.diagnosticsService as never));
     this.toolRuntime.register(createProjectCatalogTool(workspace));
     this.toolRuntime.register(createAnalyzeChangeImpactTool(workspace));
+    this.toolRuntime.register(createProposeFileScopeTool(workspace, this.ignoreService, db, () => this.agentTaskState));
+    this.toolRuntime.register(createAnalyzeLogDirectoryTool(workspace, this.ignoreService, () => this.sessionLog.getLogPath()));
+    this.toolRuntime.register(createAnalyzeJsonlTool(workspace, this.ignoreService));
+    this.toolRuntime.register(createQueryLogEventsTool(workspace, this.ignoreService));
+    this.toolRuntime.register(createListLogsTool(workspace));
     this.toolRuntime.register(createWriteFileTool(workspace, this.ignoreService));
     this.toolRuntime.register(createApplyPatchTool(workspace, this.ignoreService));
     this.toolRuntime.register(createRunCommandTool(workspace, () => this.session?.mode ?? 'plan'));
     this.toolRuntime.register(createMemorySearchTool(this.memoryService!));
     this.toolRuntime.register(createMemoryWriteTool(this.memoryService!, () => this.session?.id ?? ''));
     this.toolRuntime.register(createSaveTaskStateTool(this.memoryService!, () => this.session?.id ?? '', () => this.agentTaskState));
-    this.toolRuntime.register(createFetchWebTool(() => this.config.safety.allowNetwork));
+    this.toolRuntime.register(createFetchWebTool(() => resolveEffectiveSafety(this.config.safety).allowNetwork));
     this.toolRuntime.register(createAskQuestionTool());
 
     const sessionIdForPlans = () => this.session?.id ?? '';
@@ -512,7 +567,7 @@ export class HeadlessAgentHost {
   private buildRetriever(db: import('../indexing/ThunderDb').ThunderDb, workspace: string): HybridRetriever {
     const sources = [];
     const projectRulesService = new ProjectRulesService(workspace);
-    sources.push(new ProjectRulesContextSource(projectRulesService));
+    sources.push(new ProjectRulesContextSource(projectRulesService, () => this.currentTierPolicy()));
     if (this.skillCatalogService) {
       sources.push(new SkillCatalogContextSource(this.skillCatalogService));
     }
@@ -546,6 +601,14 @@ export class HeadlessAgentHost {
       candidatePool: this.config.context.rerankerCandidatePool,
       topK: this.config.context.rerankerTopK,
     });
+  }
+
+  private currentTierPolicy(): TierPolicy | undefined {
+    const override = this.config.agent.agenticTierOverride;
+    const tier: AgenticTier | undefined = override !== 'auto'
+      ? override
+      : this.provider?.capabilities.agenticTier;
+    return tier ? resolveTierPolicy(tier) : undefined;
   }
 
   private async indexWorkspace(workspace: string): Promise<void> {
@@ -594,6 +657,7 @@ export class HeadlessAgentHost {
       this.session = new ThunderSession(this.options.cwd, mode, { id: this.options.sessionId });
     }
     this.sessionLog.configure(this.options.cwd, this.session.id, true, this.config.telemetry.debugMetrics);
+    debugTrace.configure(this.options.cwd, this.session.id, this.config.debugTrace);
     this.sessionLog.writeSessionHeader({
       mode,
       workspace: this.options.cwd,
@@ -605,11 +669,14 @@ export class HeadlessAgentHost {
     this.agentTaskState.reset();
     this.agentTaskState.setLimits({
       maxSequentialThinkingCalls: this.config.agent.maxSequentialThinkingCallsPerTurn,
+      maxFilesRead: 12,
     });
 
     if (this.options.approval === 'auto') {
       for (const tool of AUTO_GRANT_TOOLS) {
-        this.approvalQueue?.grantForTask(this.session.id, tool);
+        this.approvalQueue?.grantForTask(this.session.id, tool, 'policy');
+        this.approvalQueue?.grantForTask(this.session.id, tool, 'mode');
+        this.approvalQueue?.grantForTask(this.session.id, tool, 'mode+policy');
       }
     }
 
@@ -631,7 +698,7 @@ export class HeadlessAgentHost {
   private autoResolvePendingApprovals(): void {
     if (this.options.approval !== 'auto' || !this.approvalQueue || !this.session) return;
     for (const request of this.approvalQueue.getPending()) {
-      this.approvalQueue.grantForTask(this.session.id, request.toolName);
+      this.approvalQueue.grantForTask(this.session.id, request.toolName, request.approvalKind);
       this.approvalQueue.resolve(request.id, 'approved');
       this.sessionLog.append('approval_decision', `auto-approved: ${request.toolName}`, {
         id: request.id,

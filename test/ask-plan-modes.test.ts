@@ -207,7 +207,7 @@ describe('Ask and Plan mode reliability', () => {
     });
 
     expect(quick.discoveryMaxSteps).toBeLessThan(deep.discoveryMaxSteps);
-    expect(enterprise.discoveryMaxSteps).toBeGreaterThan(deep.discoveryMaxSteps);
+    expect(enterprise.discoveryMaxSteps).toBe(deep.discoveryMaxSteps);
     expect(quick.promptContext).toContain('Plan routing');
   });
 
@@ -262,6 +262,7 @@ description: "Measure-first performance work for LCP, INP, CLS, API latency, and
     const { AgentConfigSchema } = await import('../src/core/config/schema');
     const parsed = AgentConfigSchema.parse({});
     expect(parsed.planDepth).toBe('auto');
+    expect(parsed.agenticTierOverride).toBe('auto');
   });
 
   it('installs bundled skills from the extension into the workspace', async () => {
@@ -290,6 +291,40 @@ description: "Measure-first performance work for LCP, INP, CLS, API latency, and
       expect(entries.some((entry) => entry.name === 'audit-cleanup')).toBe(true);
       expect(entries.some((entry) => entry.name === 'using-agent-skills')).toBe(true);
     } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('refreshes workspace bundled skills when the extension copy changes', async () => {
+    const { installBundledSkills } = await import('../src/core/skills/installBundledSkills');
+    const extensionRoot = mkdtempSync(join(tmpdir(), 'thunder-extension-skills-'));
+    const workspace = mkdtempSync(join(tmpdir(), 'thunder-refresh-skills-'));
+    const skillDir = join(extensionRoot, 'src', 'core', 'skills', 'bundled', 'demo-skill');
+    const workspaceSkill = join(workspace, '.mitii', 'skills', 'demo-skill', 'SKILL.md');
+    try {
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(
+        join(skillDir, 'SKILL.md'),
+        '---\nname: demo-skill\ndescription: Demo skill\n---\n\n# Demo\n\nv1\n',
+        'utf8'
+      );
+
+      const first = installBundledSkills(workspace, extensionRoot);
+      expect(first.installed).toEqual(['demo-skill']);
+      expect(readFileSync(workspaceSkill, 'utf8')).toContain('v1');
+
+      writeFileSync(
+        join(skillDir, 'SKILL.md'),
+        '---\nname: demo-skill\ndescription: Demo skill\n---\n\n# Demo\n\nv2\n',
+        'utf8'
+      );
+
+      const second = installBundledSkills(workspace, extensionRoot);
+      expect(second.installed).toEqual(['demo-skill']);
+      expect(second.skipped).toEqual([]);
+      expect(readFileSync(workspaceSkill, 'utf8')).toContain('v2');
+    } finally {
+      rmSync(extensionRoot, { recursive: true, force: true });
       rmSync(workspace, { recursive: true, force: true });
     }
   });

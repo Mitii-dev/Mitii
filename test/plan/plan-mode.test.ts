@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatMessage } from '../../src/core/llm/types';
 import type { ToolDefinition } from '../../src/core/llm/toolTypes';
+import type { SkillCatalogService } from '../../src/core/skills/SkillCatalogService';
 
 describe('Plan mode orchestration', () => {
   it('forces structured planning for non-trivial codebase questions', async () => {
@@ -59,7 +60,48 @@ describe('Plan mode orchestration', () => {
     expect(createSdkCompatibilityNote()).toContain('Agent.plan()');
   });
 
-  it('filters Plan mode tools to read-only planning capabilities', async () => {
+  it('uses catalog-only skill discovery for lean Plan tiers', async () => {
+    const { PlanOrchestrator } = await import('../../src/core/modes/plan/PlanOrchestrator');
+    const prepared = PlanOrchestrator.prepare('Implement the SDK plan runner', {
+      skillCatalog: createSkillCatalog({
+        'using-agent-skills': '# Agent Skills\n\nFull playbook.',
+        'planning-and-task-breakdown': '# Planning\n\nFull playbook.',
+      }),
+      tierPolicy: {
+        skillInjection: 'catalog',
+        maxSkillChars: 0,
+        rulesMaxTotalChars: 6_000,
+        rulesMaxCharsPerFile: 2_000,
+      },
+    });
+
+    expect(prepared.skillPlaybookContext).toBe('');
+    expect(prepared.appliedSkills).toEqual([]);
+  });
+
+  it('fully injects Plan skills within the tier budget', async () => {
+    const { PlanOrchestrator } = await import('../../src/core/modes/plan/PlanOrchestrator');
+    const prepared = PlanOrchestrator.prepare('Implement the SDK plan runner', {
+      skillCatalog: createSkillCatalog({
+        'using-agent-skills': '# Agent Skills\n\nShort playbook.',
+        'planning-and-task-breakdown': '# Planning\n\nShort planning playbook.',
+        'agent-plan': '# Agent Plan\n\n'.repeat(80),
+      }),
+      tierPolicy: {
+        skillInjection: 'full',
+        maxSkillChars: 180,
+        rulesMaxTotalChars: 20_000,
+        rulesMaxCharsPerFile: 5_000,
+      },
+    });
+
+    expect(prepared.skillPlaybookContext).toContain('Planning skill playbooks');
+    expect(prepared.appliedSkills).toEqual(['planning-and-task-breakdown']);
+    expect(prepared.skillPlaybookContext).toContain('Short planning playbook');
+    expect(prepared.skillPlaybookContext.match(/### Skill:/g)).toHaveLength(1);
+  });
+
+  it('filters Plan mode tools to planning capabilities with approval-gated mutators', async () => {
     const { filterPlanModeTools, PLAN_ALLOWED_TOOLS } = await import('../../src/core/modes/plan/planMode');
     const tools = [
       tool('read_file'),
@@ -75,7 +117,16 @@ describe('Plan mode orchestration', () => {
     const filtered = filterPlanModeTools(tools).map((t) => t.function.name);
 
     expect(PLAN_ALLOWED_TOOLS.has('read_file')).toBe(true);
-    expect(filtered).toEqual(['read_file', 'search_batch', 'execute_workspace_script', 'mcp__github__search']);
+    expect(PLAN_ALLOWED_TOOLS.has('write_file')).toBe(true);
+    expect(PLAN_ALLOWED_TOOLS.has('apply_patch')).toBe(true);
+    expect(filtered).toEqual([
+      'read_file',
+      'search_batch',
+      'execute_workspace_script',
+      'write_file',
+      'apply_patch',
+      'mcp__github__search',
+    ]);
   });
 
   it('passes planning discovery into isolated plan compilation', async () => {
@@ -268,4 +319,21 @@ function tool(name: string): ToolDefinition {
       parameters: {},
     },
   };
+}
+
+function createSkillCatalog(contents: Record<string, string>): SkillCatalogService {
+  return {
+    get(name: string) {
+      const content = contents[name];
+      if (!content) return undefined;
+      return {
+        entry: {
+          name,
+          description: `${name} description`,
+          relPath: `.mitii/skills/${name}/SKILL.md`,
+        },
+        content,
+      };
+    },
+  } as unknown as SkillCatalogService;
 }

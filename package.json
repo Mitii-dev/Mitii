@@ -1,8 +1,8 @@
 {
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
-  "description": "Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow",
-  "version": "2.7.51",
+  "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
+  "version": "2.7.70",
   "publisher": "mitii",
   "icon": "media/mitii-short-logo.png",
   "license": "AGPL-3.0-or-later",
@@ -12,13 +12,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/codewithshinde/thunder-ai-agent.git"
+    "url": "https://github.com/Mitii-dev/Mitii.git"
   },
   "bugs": {
-    "url": "https://github.com/codewithshinde/thunder-ai-agent/issues"
+    "url": "https://github.com/Mitii-dev/Mitii/issues"
   },
   "homepage": "https://mitii.dev",
-  "qna": "https://github.com/codewithshinde/thunder-ai-agent/issues",
+  "qna": "https://github.com/Mitii-dev/Mitii/issues",
   "galleryBanner": {
     "color": "#111111",
     "theme": "dark"
@@ -32,13 +32,15 @@
   ],
   "keywords": [
     "ai",
-    "agent",
     "coding agent",
+    "vscode extension",
     "local-first",
     "ollama",
     "openai-compatible",
     "mcp",
-    "workspace indexing"
+    "repo indexing",
+    "developer tools",
+    "typescript"
   ],
   "activationEvents": [
     "onView:thunder.sidebar",
@@ -588,6 +590,19 @@
           "description": "Enable subagent tools for typed delegation.",
           "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
+        "thunder.agent.agenticTierOverride": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "local-small",
+            "local-large",
+            "cloud-standard",
+            "cloud-frontier"
+          ],
+          "default": "auto",
+          "description": "Force the agentic capability tier for testing or managed enterprise policy. Auto uses provider/model capabilities.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
         "thunder.agent.subagentTypesEnabled": {
           "type": "array",
           "default": [
@@ -641,10 +656,7 @@
           "enum": [
             "auto",
             "quick",
-            "standard",
-            "deep",
-            "pilot",
-            "enterprise"
+            "deep"
           ],
           "default": "auto",
           "description": "Ask-mode exploration depth. Auto chooses by intent; quick is concise; deep explores more before answering.",
@@ -655,10 +667,7 @@
           "enum": [
             "auto",
             "quick",
-            "standard",
-            "deep",
-            "pilot",
-            "enterprise"
+            "deep"
           ],
           "default": "auto",
           "description": "Plan-mode discovery depth before structured plan compilation. Auto chooses by intent; deep explores more of the codebase.",
@@ -669,10 +678,7 @@
           "enum": [
             "auto",
             "quick",
-            "standard",
-            "deep",
-            "pilot",
-            "enterprise"
+            "deep"
           ],
           "default": "auto",
           "description": "Agent/Act execution depth. Auto chooses by task route; quick caps direct work, deep allows up to 16 tool steps.",
@@ -751,6 +757,18 @@
           "type": "boolean",
           "default": true,
           "description": "After Act-mode runs, discover and run project-appropriate verification (package.json scripts). Uses verifyCommands when set; otherwise auto-discovers.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
+        "thunder.agent.askModel": {
+          "type": "string",
+          "default": "",
+          "description": "Optional model override for Ask mode. Empty uses thunder.provider.model.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
+        "thunder.agent.askBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional base URL override for Ask mode.",
           "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.planModel": {
@@ -841,6 +859,48 @@
           "type": "boolean",
           "default": false,
           "description": "Enable debug logging and show stack traces in UI"
+        },
+        "mitii.debugOptions.trace.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Asynchronously trace LLM, MCP, and webview send/receive boundaries to .mitii/logs/<session>.trace.jsonl."
+        },
+        "mitii.debugOptions.trace.includePayloads": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include sanitized request and response payloads in trace logs. May record prompts, source code, and tool output."
+        },
+        "mitii.debugOptions.trace.llm": {
+          "type": "boolean",
+          "default": true,
+          "description": "Trace LLM requests, streamed deltas, completion summaries, and failures when tracing is enabled."
+        },
+        "mitii.debugOptions.trace.mcp": {
+          "type": "boolean",
+          "default": true,
+          "description": "Trace MCP connection, discovery, tool requests, responses, failures, and shutdown."
+        },
+        "mitii.debugOptions.trace.webview": {
+          "type": "boolean",
+          "default": true,
+          "description": "Trace extension-to-webview and webview-to-extension messages."
+        },
+        "mitii.debugOptions.trace.daemon": {
+          "type": "boolean",
+          "default": true,
+          "description": "Trace daemon HTTP requests, responses, errors, and SSE events."
+        },
+        "mitii.debugOptions.trace.webhook": {
+          "type": "boolean",
+          "default": true,
+          "description": "Trace telemetry webhook delivery attempts, responses, retries, and failures."
+        },
+        "mitii.debugOptions.trace.maxPayloadChars": {
+          "type": "number",
+          "default": 16000,
+          "minimum": 1000,
+          "maximum": 1000000,
+          "description": "Maximum characters retained for each string in payload trace logs."
         },
         "mitii.telemetry.sessionLogging": {
           "type": "boolean",
@@ -1148,6 +1208,18 @@
           "default": true,
           "description": "Enable subagent tools for typed delegation."
         },
+        "mitii.agent.agenticTierOverride": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "local-small",
+            "local-large",
+            "cloud-standard",
+            "cloud-frontier"
+          ],
+          "default": "auto",
+          "description": "Force the agentic capability tier for testing or managed enterprise policy. Auto uses provider/model capabilities."
+        },
         "mitii.agent.subagentTypesEnabled": {
           "type": "array",
           "default": [
@@ -1195,10 +1267,7 @@
           "enum": [
             "auto",
             "quick",
-            "standard",
-            "deep",
-            "pilot",
-            "enterprise"
+            "deep"
           ],
           "default": "auto",
           "description": "Ask-mode exploration depth. Auto chooses by intent; quick is concise; deep explores more before answering."
@@ -1208,10 +1277,7 @@
           "enum": [
             "auto",
             "quick",
-            "standard",
-            "deep",
-            "pilot",
-            "enterprise"
+            "deep"
           ],
           "default": "auto",
           "description": "Plan-mode discovery depth before structured plan compilation. Auto chooses by intent; deep explores more of the codebase."
@@ -1221,10 +1287,7 @@
           "enum": [
             "auto",
             "quick",
-            "standard",
-            "deep",
-            "pilot",
-            "enterprise"
+            "deep"
           ],
           "default": "auto",
           "description": "Agent/Act execution depth. Auto chooses by task route; quick caps direct work, deep allows up to 16 tool steps."
@@ -1292,6 +1355,16 @@
           "type": "boolean",
           "default": true,
           "description": "After Act-mode runs, discover and run project-appropriate verification (package.json scripts). Uses verifyCommands when set; otherwise auto-discovers."
+        },
+        "mitii.agent.askModel": {
+          "type": "string",
+          "default": "",
+          "description": "Optional model override for Ask mode. Empty uses mitii.provider.model."
+        },
+        "mitii.agent.askBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional base URL override for Ask mode."
         },
         "mitii.agent.planModel": {
           "type": "string",
@@ -1395,6 +1468,21 @@
           "default": "",
           "description": "Shared secret used to verify GitHub webhook requests before enqueueing async jobs."
         },
+        "mitii.github.lazyMcpActivation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start GitHub MCP integrations only for requests that need current GitHub data or remote writes."
+        },
+        "mitii.github.requireApprovalForRemoteWrites": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require explicit approval before Mitii creates or mutates GitHub pull requests, issues, workflows, or releases."
+        },
+        "mitii.github.workflowDispatchEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow GitHub Actions workflow dispatch when explicitly requested and approved."
+        },
         "mitii.agent.teamsEnabled": {
           "type": "boolean",
           "default": false,
@@ -1445,6 +1533,24 @@
           "type": "string",
           "default": "",
           "description": "Shared secret used to verify GitHub webhook requests before enqueueing async jobs.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
+        "thunder.github.lazyMcpActivation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start GitHub MCP integrations only for requests that need current GitHub data or remote writes.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
+        "thunder.github.requireApprovalForRemoteWrites": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require explicit approval before Mitii creates or mutates GitHub pull requests, issues, workflows, or releases.",
+          "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
+        },
+        "thunder.github.workflowDispatchEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow GitHub Actions workflow dispatch when explicitly requested and approved.",
           "deprecationMessage": "Use the mitii.* setting. thunder.* is kept temporarily for backward compatibility and is planned for removal in v3.0."
         },
         "thunder.agent.teamsEnabled": {
@@ -1515,6 +1621,7 @@
     "lint": "tsc --noEmit",
     "scripts:search": "node scripts/search-script-catalog.mjs",
     "skills:sync-bundled": "bash scripts/sync-bundled-skills.sh",
+    "skills:validate": "node scripts/validate-skills.mjs",
     "skills:install-recommended": "bash scripts/install-recommended-skills.sh",
     "audit:dead-code": "bash scripts/audit-dead-code.sh",
     "audit:dependencies": "node scripts/audit-dependencies.mjs",
@@ -1545,7 +1652,7 @@
     "sync:versions": "node scripts/sync-versions.mjs"
   },
   "devDependencies": {
-    "@electron/rebuild": "^3.7.2",
+    "@electron/rebuild": "^4.2.0",
     "@types/better-sqlite3": "^7.6.12",
     "@types/diff": "^7.0.2",
     "@types/node": "^20.14.0",
@@ -1553,14 +1660,14 @@
     "@types/react-dom": "^18.3.0",
     "@types/vscode": "^1.85.0",
     "@vitejs/plugin-react": "^4.3.1",
-    "@vscode/vsce": "^2.32.0",
+    "@vscode/vsce": "^3.9.2",
     "concurrently": "^8.2.2",
-    "esbuild": "^0.21.5",
+    "esbuild": "^0.25.12",
     "knip": "^6.21.0",
     "madge": "^8.0.0",
     "typescript": "^5.5.2",
-    "vite": "^5.3.1",
-    "vitest": "^1.6.0"
+    "vite": "^6.4.3",
+    "vitest": "^3.2.7"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1078.0",
@@ -1592,6 +1699,11 @@
     "ignoreDependencies": [
       "madge"
     ]
+  },
+  "pnpm": {
+    "overrides": {
+      "protobufjs": "^7.6.3"
+    }
   },
   "packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad"
 }

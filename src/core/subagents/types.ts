@@ -1,6 +1,8 @@
 import type { LlmProvider } from '../llm/types';
 import type { ToolDefinition } from '../llm/toolTypes';
 import type { ToolExecutor } from '../safety/ToolExecutor';
+import type { TierPolicy } from '../agentic/tierPolicy';
+import type { SkillCatalogService } from '../skills/SkillCatalogService';
 
 export type SubagentType = 'research' | 'implementer' | 'reviewer' | 'verifier' | string;
 export type SubagentRisk = 'low' | 'medium' | 'high';
@@ -37,4 +39,6 @@ export interface SubagentRuntime {
   enabledTypes?: string[];
   maxConcurrent?: number;
   workspace?: string;
+  tierPolicy?: TierPolicy;
+  skillCatalog?: SkillCatalogService;
 }

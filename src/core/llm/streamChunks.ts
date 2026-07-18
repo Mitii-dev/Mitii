@@ -8,8 +8,21 @@ export function chunkReasoning(chunk: AssistantStreamChunk): string {
   return typeof chunk === 'string' ? '' : (chunk.reasoning ?? '');
 }
 
-export function toAssistantStreamChunk(content?: string, reasoning?: string): AssistantStreamChunk | undefined {
-  if (reasoning) return { content, reasoning };
-  if (content) return content;
+/** True for intermediate step narration that must not be concatenated into the final answer. */
+export function isProgressChunk(chunk: AssistantStreamChunk): boolean {
+  return typeof chunk !== 'string' && chunk.kind === 'progress';
+}
+
+export function toAssistantStreamChunk(
+  content?: string,
+  reasoning?: string,
+  kind?: 'progress' | 'final'
+): AssistantStreamChunk | undefined {
+  if (kind === 'progress') {
+    if (!content && !reasoning) return undefined;
+    return { content, reasoning, kind: 'progress' };
+  }
+  if (reasoning) return { content, reasoning, kind };
+  if (content) return kind === 'final' ? { content, kind: 'final' } : content;
   return undefined;
 }

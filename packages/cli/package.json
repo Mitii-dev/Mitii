@@ -1,6 +1,6 @@
 {
-  "name": "mitii",
-  "version": "2.7.32",
+  "name": "@mitii/cli",
+  "version": "2.7.67",
   "description": "Mitii native CLI launcher",
   "license": "AGPL-3.0-or-later",
   "type": "module",

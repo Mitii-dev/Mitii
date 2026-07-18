@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import type { ProviderType } from '../config/schema';
 
 export type ThunderMode = 'ask' | 'plan' | 'agent' | 'review';
 
@@ -21,6 +22,18 @@ export interface ThunderSessionState {
   title: string | null;
   createdAt: number;
   updatedAt: number;
+  providerOverride: ThunderSessionProviderOverride | null;
+}
+
+export interface ThunderSessionProviderOverride {
+  providerType: ProviderType;
+  model: string;
+  baseUrl: string;
+  profile: string | null;
+  profileId?: string;
+  apiVersion?: string;
+  region?: string;
+  contextWindow?: number;
 }
 
 export class ThunderSession {
@@ -30,11 +43,18 @@ export class ThunderSession {
   title: string | null;
   readonly createdAt: number;
   updatedAt: number;
+  providerOverride: ThunderSessionProviderOverride | null;
 
   constructor(
     workspace: string,
     mode: ThunderMode = 'plan',
-    restored?: { id?: string; title?: string | null; createdAt?: number; updatedAt?: number }
+    restored?: {
+      id?: string;
+      title?: string | null;
+      createdAt?: number;
+      updatedAt?: number;
+      providerOverride?: ThunderSessionProviderOverride | null;
+    }
   ) {
     this.id = restored?.id?.trim() || randomUUID();
     this.workspace = workspace;
@@ -42,6 +62,7 @@ export class ThunderSession {
     this.title = restored?.title ?? null;
     this.createdAt = restored?.createdAt ?? Date.now();
     this.updatedAt = restored?.updatedAt ?? this.createdAt;
+    this.providerOverride = restored?.providerOverride ?? null;
   }
 
   touch(): void {
@@ -53,6 +74,11 @@ export class ThunderSession {
     this.touch();
   }
 
+  setProviderOverride(override: ThunderSessionProviderOverride | null): void {
+    this.providerOverride = override;
+    this.touch();
+  }
+
   toState(): ThunderSessionState {
     return {
       id: this.id,
@@ -61,6 +87,7 @@ export class ThunderSession {
       title: this.title,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
+      providerOverride: this.providerOverride,
     };
   }
 }

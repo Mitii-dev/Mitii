@@ -10,7 +10,7 @@ Maintainer: **codewithshinde** — [codewithshinde@gmail.com](mailto:codewithshi
 
 Mitii is released under [AGPL-3.0-or-later](LICENSE). By contributing code, you agree that your contributions will be licensed under the same terms. If that doesn't work for your employer or use case, reach out before investing a large amount of time.
 
-For bugs and feature ideas, open an [issue](https://github.com/codewithshinde/thunder-ai-agent/issues) first when the change is non-trivial — saves everyone a rework loop.
+For bugs and feature ideas, open an [issue](https://github.com/Mitii-dev/Mitii/issues) first when the change is non-trivial — saves everyone a rework loop.
 
 ---
 
@@ -34,8 +34,8 @@ Optional but useful for full feature coverage:
 ## Getting set up
 
 ```bash
-git clone https://github.com/codewithshinde/thunder-ai-agent.git
-cd thunder-ai-agent
+git clone https://github.com/Mitii-dev/Mitii.git
+cd Mitii
 pnpm install
 pnpm run rebuild:native   # required for better-sqlite3 in VS Code
 pnpm run compile
@@ -47,7 +47,7 @@ Git hooks are installed automatically via `pnpm install` -> `prepare` -> `script
 
 1. Open the repo root in VS Code
 2. Press **F5** — this opens an Extension Development Host
-3. In the new window, open a project folder (not the thunder-ai-agent repo itself, unless you're dogfooding)
+3. In the new window, open a project folder (not the mitii-ai-agent repo itself, unless you're dogfooding)
 4. Click the Mitii icon in the activity bar
 
 ### Watch mode (day-to-day dev)
@@ -91,7 +91,8 @@ mitii-ai-agent/
 ├── scripts/                      # Build, audit, hook helpers
 ├── tools/benchmark/              # @mitii/benchmark — fixtures, enterprise + eval harness
 ├── dist/                         # Compiled output (gitignored)
-├── pnpm-workspace.yaml           # Workspace: tools/*
+├── packages/                     # SDK, daemon, CLI, channels, and board packages
+├── pnpm-workspace.yaml           # Workspace: tools/* and packages/*
 └── package.json                  # Extension manifest + settings schema
 ```
 
@@ -140,7 +141,7 @@ pnpm run lint           # tsc --noEmit
 
 ```bash
 pnpm run compile
-pnpm run package        # outputs thunder-ai-agent-<version>.vsix
+pnpm run package        # outputs mitii-ai-agent-<version>.vsix
 ```
 
 Install locally: **Extensions → ... → Install from VSIX**.
@@ -150,7 +151,7 @@ Install locally: **Extensions → ... → Install from VSIX**.
 | Scenario | Command |
 |----------|---------|
 | F5 / VS Code extension host | `pnpm run rebuild:native` |
-| Cursor extension host | `THUNDER_EDITOR=cursor pnpm run rebuild:native` |
+| Cursor extension host | `MITII_EDITOR=cursor pnpm run rebuild:native` |
 | Local vitest | `pnpm run rebuild:node` |
 | Both | `pnpm run rebuild:all` |
 

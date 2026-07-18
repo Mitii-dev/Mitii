@@ -1,6 +1,6 @@
 {
   "name": "@mitii/daemon",
-  "version": "2.7.32",
+  "version": "2.7.67",
   "description": "HTTP/SSE daemon runtime for Mitii sessions.",
   "license": "AGPL-3.0-or-later",
   "type": "module",

@@ -14,6 +14,7 @@ import { applyMcpToggles, type McpToggles } from './mcpToggles';
 import { loadWorkspaceMcpServers } from './mcpWorkspaceConfig';
 import { resolveMcpAuthProvider } from './McpOAuthProvider';
 import { createLogger } from '../telemetry/Logger';
+import { debugTrace } from '../telemetry/AsyncDebugTrace';
 
 const log = createLogger('McpManager');
 const MCP_TOOL_PREFIX = 'mcp__';
@@ -79,7 +80,19 @@ export class McpManager {
       }
 
       try {
+        const startedAt = Date.now();
+        debugTrace.trace('mcp', 'connect_send', {
+          server: name,
+          transport: transportType,
+          timeoutMs: serverConfig.timeoutMs,
+        });
         const connected = await this.connectServer(name, serverConfig, workspace);
+        debugTrace.trace('mcp', 'connect_receive', {
+          server: name,
+          transport: transportType,
+          durationMs: Date.now() - startedAt,
+          toolCount: connected.tools.length,
+        });
         this.servers.set(name, connected);
         this.statuses.set(name, {
           name,
@@ -93,6 +106,11 @@ export class McpManager {
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        debugTrace.trace('mcp', 'connect_error', {
+          server: name,
+          transport: transportType,
+          error: message,
+        });
         this.statuses.set(name, { name, connected: false, toolCount: 0, builtin, transport: transportType, error: message });
         log.warn('MCP server failed', { server: name, error: message });
       }
@@ -101,13 +119,25 @@ export class McpManager {
 
   async closeAll(): Promise<void> {
     const closing = Array.from(this.servers.values()).map(async (server) => {
+      const startedAt = Date.now();
+      debugTrace.trace('mcp', 'close_send', { server: server.name });
       try {
         await server.client.close();
+        debugTrace.trace('mcp', 'close_receive', {
+          server: server.name,
+          durationMs: Date.now() - startedAt,
+        });
       } catch {
         try {
           await server.transport.close();
+          debugTrace.trace('mcp', 'close_receive', {
+            server: server.name,
+            durationMs: Date.now() - startedAt,
+            fallbackTransportClose: true,
+          });
         } catch {
           // Best effort shutdown.
+          debugTrace.trace('mcp', 'close_error', { server: server.name });
         }
       }
     });
@@ -127,7 +157,14 @@ export class McpManager {
     );
 
     await client.connect(transport, { timeout: config.timeoutMs });
+    const listStartedAt = Date.now();
+    debugTrace.trace('mcp', 'list_tools_send', { server: name, timeoutMs: config.timeoutMs });
     const listed = await client.listTools(undefined, { timeout: config.timeoutMs });
+    debugTrace.trace('mcp', 'list_tools_receive', {
+      server: name,
+      durationMs: Date.now() - listStartedAt,
+      toolCount: listed.tools.length,
+    }, listed.tools);
     return { name, client, transport, tools: listed.tools };
   }
 
@@ -174,20 +211,53 @@ export class McpManager {
       inputSchema: z.record(z.unknown()),
       parametersJsonSchema: normalizeToolSchema(mcpTool.inputSchema),
       execute: async (input): Promise<ToolResult> => {
+        const callId = `${serverName}:${mcpTool.name}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+        const startedAt = Date.now();
         const server = this.servers.get(serverName);
         if (!server) {
+          debugTrace.trace('mcp', 'tool_call_error', {
+            callId,
+            server: serverName,
+            tool: mcpTool.name,
+            error: 'server_not_connected',
+          });
           return { success: false, output: '', error: `MCP server not connected: ${serverName}` };
         }
-        const result = await server.client.callTool({
-          name: mcpTool.name,
-          arguments: input,
-        });
-        const output = formatMcpResult(result);
-        return {
-          success: !('isError' in result && result.isError),
-          output,
-          error: 'isError' in result && result.isError ? output : undefined,
-        };
+        debugTrace.trace('mcp', 'tool_call_send', {
+          callId,
+          server: serverName,
+          tool: mcpTool.name,
+        }, input);
+        try {
+          const result = await server.client.callTool({
+            name: mcpTool.name,
+            arguments: input,
+          });
+          const output = formatMcpResult(result);
+          const success = !('isError' in result && result.isError);
+          debugTrace.trace('mcp', 'tool_call_receive', {
+            callId,
+            server: serverName,
+            tool: mcpTool.name,
+            durationMs: Date.now() - startedAt,
+            success,
+            outputChars: output.length,
+          }, result);
+          return {
+            success,
+            output,
+            error: success ? undefined : output,
+          };
+        } catch (error) {
+          debugTrace.trace('mcp', 'tool_call_error', {
+            callId,
+            server: serverName,
+            tool: mcpTool.name,
+            durationMs: Date.now() - startedAt,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          throw error;
+        }
       },
     };
   }

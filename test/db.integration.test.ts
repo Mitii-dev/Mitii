@@ -9,6 +9,7 @@ import { WorkspaceScanner } from '../src/core/indexing/WorkspaceScanner';
 import { ChunkingService } from '../src/core/indexing/ChunkingService';
 import { FtsIndex, sanitizeFtsQuery } from '../src/core/indexing/FtsIndex';
 import { tsExtractor } from '../src/core/indexing/SymbolExtractor';
+import { IndexQueue } from '../src/core/indexing/IndexQueue';
 
 describe('DB integration', () => {
   let tempDir: string;
@@ -95,5 +96,28 @@ describe('DB integration', () => {
     const results = fts.search('hello');
     expect(results.length).toBeGreaterThan(0);
     expect(results[0].relPath).toBe('src/index.ts');
+  });
+
+  it('reports partial and cancelled index queue status without losing usable counts', () => {
+    const queue = new IndexQueue(db);
+    queue.setVectorService(tempDir, undefined);
+    queue.setRunMetadata({
+      phase: 'scanning',
+      partial: true,
+      degraded: true,
+      detail: 'Priority files are indexed first.',
+    });
+
+    const scanning = queue.getStatus();
+    expect(scanning.phase).toBe('scanning');
+    expect(scanning.partial).toBe(true);
+    expect(scanning.degraded).toBe(true);
+    expect(scanning.detail).toContain('Priority files');
+
+    queue.cancel();
+    const cancelled = queue.getStatus();
+    expect(cancelled.phase).toBe('cancelled');
+    expect(cancelled.queued).toBe(0);
+    expect(cancelled.detail).toContain('completed index remains usable');
   });
 });

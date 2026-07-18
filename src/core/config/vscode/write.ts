@@ -11,8 +11,18 @@ import type {
 import { updateMcpSettings } from './mcpWrite';
 import { CONFIG_SECTION } from '../keys';
 
-export async function updateProviderSettings(settings: ProviderSettingsPayload): Promise<void> {
+export type ProviderSettingsWriteReason = 'settings' | 'save-as-default';
+
+export async function updateProviderSettings(
+  settings: ProviderSettingsPayload,
+  reason: ProviderSettingsWriteReason | string = 'settings'
+): Promise<void> {
   const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
+  // Provider writes are permanent. Session model switches must stay in session state and
+  // reach this path only through an explicit Settings save or composer "Save as default".
+  if (reason !== 'settings' && reason !== 'save-as-default') {
+    throw new Error('Refusing to write provider settings without an explicit permanent-save reason.');
+  }
   const target = vscode.ConfigurationTarget.Global;
 
   await config.update('provider.type', settings.providerType, target);
@@ -43,6 +53,8 @@ export async function updateAgentSettings(settings: AgentSettingsPayload): Promi
   await config.update('agent.maxAutoContinues', settings.maxAutoContinues, target);
   await config.update('agent.researchAgentMaxSteps', settings.researchAgentMaxSteps, target);
   await config.update('agent.showDiffPreview', settings.showDiffPreview, target);
+  await config.update('agent.askModel', settings.askModel.trim(), target);
+  await config.update('agent.askBaseUrl', settings.askBaseUrl.trim(), target);
   await config.update('agent.planModel', settings.planModel.trim(), target);
   await config.update('agent.planBaseUrl', settings.planBaseUrl.trim(), target);
   await config.update('agent.actModel', settings.actModel.trim(), target);
@@ -87,6 +99,14 @@ export async function updateTelemetrySettings(settings: TelemetrySettingsPayload
   const target = vscode.ConfigurationTarget.Global;
   await config.update('telemetry.sessionLogging', settings.sessionLogging, target);
   await config.update('telemetry.debugMetrics', settings.debugMetrics, target);
+  await config.update('debugOptions.trace.enabled', settings.traceEnabled, target);
+  await config.update('debugOptions.trace.includePayloads', settings.traceIncludePayloads, target);
+  await config.update('debugOptions.trace.llm', settings.traceLlm, target);
+  await config.update('debugOptions.trace.mcp', settings.traceMcp, target);
+  await config.update('debugOptions.trace.webview', settings.traceWebview, target);
+  await config.update('debugOptions.trace.daemon', settings.traceDaemon, target);
+  await config.update('debugOptions.trace.webhook', settings.traceWebhook, target);
+  await config.update('debugOptions.trace.maxPayloadChars', settings.traceMaxPayloadChars, target);
   if (settings.webhookUrl !== undefined) {
     await config.update('telemetry.webhookUrl', settings.webhookUrl.trim(), target);
   }

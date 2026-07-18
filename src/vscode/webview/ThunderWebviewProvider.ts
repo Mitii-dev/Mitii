@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ThunderController } from '../../core/app/ThunderController';
 import { createLogger } from '../../core/telemetry/Logger';
 import { normalizeError, formatUserError } from '../../core/telemetry/errors';
+import { debugTrace } from '../../core/telemetry/AsyncDebugTrace';
 import { chunkContent, chunkReasoning } from '../../core/llm/streamChunks';
 import { AGENT_FULL_NAME, AGENT_NAME, brandMessage } from '../../shared/brand';
 import {
@@ -105,6 +106,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.html = this.getHtml(webviewView.webview);
 
     webviewView.webview.onDidReceiveMessage((message: WebviewToExtensionMessage) => {
+      debugTrace.trace('webview', 'receive', { type: message.type }, message);
       void this.handleMessage(message);
     });
 
@@ -137,6 +139,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         payload: this.withBranding(message.payload, this.view.webview),
       };
     }
+    debugTrace.trace('webview', 'send', { type: message.type }, message);
     void this.view?.webview.postMessage(message);
   }
 
@@ -231,6 +234,39 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         break;
       }
 
+      case 'deleteChatThread': {
+        this.archivedThreads.delete(message.payload.id);
+        if (this.state.currentSessionId === message.payload.id) {
+          this.controller.startNewChat();
+          this.state = {
+            ...this.state,
+            tab: 'history',
+            loading: false,
+            error: null,
+            messages: [],
+            currentSessionId: this.controller.getSession()?.id ?? '',
+            pinnedContext: this.controller.getPinnedContext(),
+            contextPreview: [],
+            contextTokenEstimate: 0,
+            contextBudget: null,
+            agentActivity: [],
+            agentLiveStatus: null,
+            plan: null,
+          };
+        }
+        this.persistArchivedThreads();
+        this.state = { ...this.state, chatHistory: this.historySummaries() };
+        this.postMessage({ type: 'state', payload: this.state });
+        break;
+      }
+
+      case 'clearChatHistory':
+        this.archivedThreads.clear();
+        this.persistArchivedThreads();
+        this.state = { ...this.state, chatHistory: [] };
+        this.postMessage({ type: 'state', payload: this.state });
+        break;
+
       case 'setMode': {
         this.state = { ...this.state, mode: message.payload };
         this.controller.handleModeChange(message.payload);
@@ -273,12 +309,11 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
           message.payload.scope
         );
         await this.syncState();
-        if (message.payload.decision === 'approved') {
-          if (this.state.loading || this.isStreaming) {
-            this.resumeAfterCurrentStream = true;
-          } else {
-            await this.continueAfterApproval();
-          }
+        // Approve and deny both resume — denial must unblock the planner / agent loop.
+        if (this.state.loading || this.isStreaming) {
+          this.resumeAfterCurrentStream = true;
+        } else {
+          await this.continueAfterApproval();
         }
         break;
 
@@ -308,6 +343,16 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
 
       case 'saveProviderSettings':
         await this.controller.saveProviderSettings(message.payload);
+        await this.syncState();
+        break;
+
+      case 'selectSessionModel':
+        await this.controller.selectSessionModel(message.payload);
+        await this.syncState();
+        break;
+
+      case 'saveSessionModelAsDefault':
+        await this.controller.saveSessionModelAsDefault();
         await this.syncState();
         break;
 
@@ -367,6 +412,11 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
 
       case 'indexWorkspace':
         await this.controller.indexWorkspace();
+        await this.syncState();
+        break;
+
+      case 'cancelIndexing':
+        this.controller.cancelIndexing();
         await this.syncState();
         break;
 
@@ -612,6 +662,10 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       (this.controller.getPendingApprovalContext().length > 0);
     if (!paused) return;
 
+    // If the planner is stuck on an approval-blocked step with no agent suspend
+    // state, ask Agent mode to resume the saved plan rather than a vague continue.
+    const plan = this.state.plan;
+    const hasBlockedPlanStep = Boolean(plan?.steps.some((s) => s.status === 'blocked'));
     const originalUser = [...this.state.messages]
       .filter((m) => m.role === 'user')
       .reverse()
@@ -619,17 +673,27 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
     if (!originalUser?.content) return;
 
     const approvalContext = this.controller.consumePendingApprovalContext();
-    const continuation = [
-      approvalContext,
-      'Continue the current approved task from where it paused.',
-      'Current phase: EXECUTE — apply file edits and dependency removals based on the approved command output above.',
-      'Do not recreate the requirement analysis or plan.',
-      'Do not call memory_search first — read the sections above and recent chat messages.',
-      'Do not re-run depcheck, eslint, or list_files already marked complete in Task progress.',
-      '',
-      'Original user request:',
-      originalUser.content,
-    ].filter(Boolean).join('\n');
+    const continuation = hasBlockedPlanStep
+      ? [
+          approvalContext,
+          'Resume the saved plan from the step that was awaiting approval.',
+          'If a tool was denied, do not retry it — continue the remaining plan steps another way.',
+          'Do not recreate the requirement analysis or recompile the plan from scratch.',
+          '',
+          'Original user request:',
+          originalUser.content,
+        ].filter(Boolean).join('\n')
+      : [
+          approvalContext,
+          'Continue the current approved task from where it paused.',
+          'Current phase: EXECUTE — apply file edits and dependency removals based on the approved command output above.',
+          'Do not recreate the requirement analysis or plan.',
+          'Do not call memory_search first — read the sections above and recent chat messages.',
+          'Do not re-run depcheck, eslint, or list_files already marked complete in Task progress.',
+          '',
+          'Original user request:',
+          originalUser.content,
+        ].filter(Boolean).join('\n');
 
     await this.runChatCompletion(continuation, false);
   }

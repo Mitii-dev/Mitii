@@ -18,6 +18,27 @@ const manualTasksDir = join(benchmarkDir, 'tasks/manual');
 const fixtureRoot = join(benchmarkDir, 'fixtures');
 const resultsDir = join(benchmarkDir, 'results/manual');
 
+// Fixtures are plain subdirectories of this repo (no nested .git), so their tracked files
+// live in the outer repo's git index. Without a reset, a task's edits (e.g. fixing orders.js)
+// leak into the next task that reuses the same fixture, corrupting "don't touch X" style
+// verify checks with state from a prior run. Reset scoped to just that fixture before each task.
+function resetFixture(fixtureName) {
+  const fixturePath = `tools/benchmark/fixtures/${fixtureName}/`;
+  spawnSync('git', ['checkout', '--', fixturePath], { cwd: packageRoot, stdio: 'ignore' });
+  spawnSync('git', ['clean', '-fd', fixturePath], { cwd: packageRoot, stdio: 'ignore' });
+}
+
+// Serializes reset+run+verify per fixture so concurrent tasks sharing a fixture can't reset
+// out from under one another; tasks on different fixtures still run fully in parallel.
+const fixtureLocks = new Map();
+function withFixtureLock(fixtureName, fn) {
+  if (!fixtureName) return fn();
+  const previous = fixtureLocks.get(fixtureName) ?? Promise.resolve();
+  const next = previous.then(fn, fn);
+  fixtureLocks.set(fixtureName, next.catch(() => {}));
+  return next;
+}
+
 const args = process.argv.slice(2);
 const provider = valueOf(args, '--provider') ?? 'echo';
 const runtime = valueOf(args, '--runtime') ?? (provider === 'echo' ? 'stub' : 'real');
@@ -85,36 +106,15 @@ console.log(
 );
 
 const startedAt = new Date();
-const results = await runPool(selectedTasks, concurrency);
+const results = await runPool(selectedTasks, concurrency, startedAt);
 const passed = results.filter((r) => r.passed).length;
 
-const summary = {
-  total: results.length,
-  passed,
-  failed: results.length - passed,
-  score: results.length ? Math.round((passed / results.length) * 100) : 0,
-  avgDurationMs: avg(results.map((r) => r.durationMs)),
-  totalTokens: sum(results.map((r) => r.tokens.total)),
-  avgTokens: avg(results.map((r) => r.tokens.total)),
-};
-
-const report = {
-  packageRoot,
-  provider,
-  runtime,
-  startedAt: startedAt.toISOString(),
-  finishedAt: new Date().toISOString(),
-  summary,
-  matrix: buildMatrix(results),
-  categoryBreakdown: summarizeByKey(results, (r) => r.category),
-  verificationSummary: summarizeVerifications(results),
-  results,
-};
-
-writeReport(report, startedAt);
+const report = buildReport(results, startedAt, new Date());
+writeReport(report, startedAt, { log: true });
+appendHistory(report, startedAt);
 
 console.log(
-  `\n${passed}/${results.length} manual tasks passed (${summary.score}%) — avg ${summary.avgDurationMs}ms, avg ${summary.avgTokens} tokens/task`
+  `\n${passed}/${results.length} manual tasks passed (${report.summary.score}%) — avg ${report.summary.avgDurationMs}ms, avg ${report.summary.avgTokens} tokens/task`
 );
 if (passed !== results.length) process.exitCode = 1;
 
@@ -142,7 +142,7 @@ function findTaskFiles(dir) {
   return out;
 }
 
-async function runPool(tasks, poolSize) {
+async function runPool(tasks, poolSize, startedAt) {
   const results = new Array(tasks.length);
   let next = 0;
   let completed = 0;
@@ -164,6 +164,11 @@ async function runPool(tasks, poolSize) {
         if (failedChecks.length) console.log(`    failed checks: ${failedChecks.join(', ')}`);
         if (result.stderr.trim()) console.log(`    stderr: ${result.stderr.trim().slice(0, 500)}`);
       }
+
+      // Write the report after every task, not just once at the end, so a run that's killed
+      // partway through (timeout, ctrl-c, crash) still leaves a report reflecting what ran.
+      const completedResults = results.filter(Boolean);
+      writeReport(buildReport(completedResults, startedAt, new Date()), startedAt);
     }
   }
 
@@ -171,8 +176,39 @@ async function runPool(tasks, poolSize) {
   return results;
 }
 
+function buildReport(results, startedAt, finishedAt) {
+  const passed = results.filter((r) => r.passed).length;
+  const summary = {
+    total: results.length,
+    passed,
+    failed: results.length - passed,
+    score: results.length ? Math.round((passed / results.length) * 100) : 0,
+    avgDurationMs: avg(results.map((r) => r.durationMs)),
+    totalTokens: sum(results.map((r) => r.tokens.total)),
+    avgTokens: avg(results.map((r) => r.tokens.total)),
+  };
+
+  return {
+    packageRoot,
+    provider,
+    runtime,
+    startedAt: startedAt.toISOString(),
+    finishedAt: finishedAt.toISOString(),
+    summary,
+    matrix: buildMatrix(results),
+    categoryBreakdown: summarizeByKey(results, (r) => r.category),
+    verificationSummary: summarizeVerifications(results),
+    results,
+  };
+}
+
 function runTask(task, index, total) {
+  return withFixtureLock(task.fixture, () => runTaskOnce(task, index, total));
+}
+
+function runTaskOnce(task, index, total) {
   return new Promise((resolvePromise) => {
+    if (task.fixture) resetFixture(task.fixture);
     const fixtureCwd = task.fixture ? join(fixtureRoot, task.fixture) : packageRoot;
     const cliArgs = [
       cliPath, task.mode, task.prompt,
@@ -328,7 +364,9 @@ function summarizeByKey(results, keyFn) {
   return map;
 }
 
-function writeReport(report, startedAt) {
+// Safe to call repeatedly (e.g. after every task) — always overwrites the same
+// report-<timeStamp>.{json,md} and latest.{json,md} files for this run.
+function writeReport(report, startedAt, { log = false } = {}) {
   mkdirSync(resultsDir, { recursive: true });
 
   const dateStamp = startedAt.toISOString().slice(0, 10); // YYYY-MM-DD
@@ -344,6 +382,18 @@ function writeReport(report, startedAt) {
   writeFileSync(join(resultsDir, 'latest.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   writeFileSync(join(resultsDir, 'latest.md'), toMarkdown(report, resultsDir), 'utf8');
 
+  if (log) {
+    console.log(`\nReports written:`);
+    console.log(`  ${relative(packageRoot, jsonPath)}`);
+    console.log(`  ${relative(packageRoot, mdPath)}`);
+    console.log(`  ${relative(packageRoot, join(resultsDir, 'latest.md'))}`);
+  }
+}
+
+// Appends exactly one row per run — call only once, after the whole run finishes.
+function appendHistory(report, startedAt) {
+  const dateStamp = startedAt.toISOString().slice(0, 10);
+  const timeStamp = startedAt.toISOString().slice(11, 19).replace(/:/g, '');
   const historyPath = join(resultsDir, 'history.md');
   if (!existsSync(historyPath)) {
     writeFileSync(
@@ -357,11 +407,6 @@ function writeReport(report, startedAt) {
     `| ${dateStamp} ${timeStamp} | ${report.provider} | ${report.summary.total} | ${report.summary.passed} | ${report.summary.failed} | ${report.summary.score}% | ${report.summary.avgTokens} | ${report.summary.avgDurationMs}ms |\n`,
     'utf8'
   );
-
-  console.log(`\nReports written:`);
-  console.log(`  ${relative(packageRoot, jsonPath)}`);
-  console.log(`  ${relative(packageRoot, mdPath)}`);
-  console.log(`  ${relative(packageRoot, join(resultsDir, 'latest.md'))}`);
   console.log(`  ${relative(packageRoot, historyPath)} (appended)`);
 }
 
@@ -398,18 +443,18 @@ function toMarkdown(report, fromDir) {
     '',
     '## Per-test-case results',
     '',
-    '| Task | Mode | Severity | Category | Result | Duration | Tokens | Tool calls | Log |',
-    '|---|---|---|---|---:|---:|---:|---:|---|'
+    '| # | Task | Mode | Severity | Category | Result | Duration | Input tok | Output tok | Total tok | Tool calls | Log |',
+    '|---:|---|---|---|---|---:|---:|---:|---:|---:|---:|---|'
   );
-  for (const r of report.results) {
+  report.results.forEach((r, index) => {
     const status = r.timedOut ? 'timeout' : r.passed ? 'pass' : 'fail';
     const log = r.sessionLogPath
       ? `[log](${relative(fromDir, join(packageRoot, r.sessionLogPath)).split('\\').join('/')})`
       : '-';
     lines.push(
-      `| ${r.id} | ${r.mode} | ${r.severity} | ${r.category} | ${status} | ${r.durationMs} ms | ${r.tokens.total} | ${r.toolCalls} | ${log} |`
+      `| ${index + 1} | ${r.id} | ${r.mode} | ${r.severity} | ${r.category} | ${status} | ${r.durationMs} ms | ${r.tokens.input} | ${r.tokens.output} | ${r.tokens.total} | ${r.toolCalls} | ${log} |`
     );
-  }
+  });
   lines.push('');
   return lines.join('\n');
 }

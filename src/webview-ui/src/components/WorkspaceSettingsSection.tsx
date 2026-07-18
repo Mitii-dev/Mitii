@@ -34,9 +34,21 @@ export function WorkspaceSettingsSection({
   const runTotal = indexing.runTotal ?? 0;
   const processed = Math.min(indexing.processed ?? 0, runTotal);
   const progressPct = runTotal > 0 ? Math.round((processed / runTotal) * 100) : 0;
+  const indexBusy = indexing.running || indexing.phase === 'scanning' || indexing.queued > 0;
   const indexLabel = indexing.running
     ? `${processed}/${runTotal} files`
+    : indexing.phase === 'cancelled'
+      ? `${indexing.indexed}${indexing.total > 0 ? ` / ${indexing.total}` : ''} indexed, canceled`
     : `${indexing.indexed}${indexing.total > 0 ? ` / ${indexing.total}` : ''} indexed`;
+  const statusText = indexing.phase === 'scanning'
+    ? 'Scanning'
+    : indexing.running
+      ? `Indexing ${progressPct}%`
+      : indexing.partial || indexing.degraded
+        ? 'Degraded but usable'
+        : workspaceOpen
+          ? 'Ready'
+          : 'No workspace';
 
   useEffect(() => {
     setOverrideInput(workspaceOverride);
@@ -54,7 +66,10 @@ export function WorkspaceSettingsSection({
         <div className="workspace-stat">
           <span className="workspace-stat__label">Indexed files</span>
           <strong className="workspace-stat__value">{indexLabel}</strong>
-          {indexing.failed > 0 && !indexing.running && (
+          {indexing.detail && (
+            <span className="workspace-stat__meta" title={indexing.detail}>{indexing.detail}</span>
+          )}
+          {indexing.failed > 0 && !indexBusy && (
             <span className="workspace-stat__meta">{indexing.failed} failed</span>
           )}
         </div>
@@ -115,28 +130,28 @@ export function WorkspaceSettingsSection({
           type="button"
           className="btn btn--secondary btn--small"
           onClick={onIndex}
-          disabled={!workspaceOpen || indexing.running}
+          disabled={!workspaceOpen || indexBusy}
         >
-          {indexing.running ? 'Indexing…' : 'Reindex'}
+          {indexBusy ? 'Indexing...' : 'Reindex'}
         </button>
       </div>
 
       <div
-        className={`settings-index-progress${indexing.running ? ' settings-index-progress--active' : ''}`}
-        role={indexing.running ? 'progressbar' : 'status'}
+        className={`settings-index-progress${indexBusy ? ' settings-index-progress--active' : ''}`}
+        role={indexBusy ? 'progressbar' : 'status'}
         aria-valuemin={0}
         aria-valuemax={runTotal || 100}
-        aria-valuenow={indexing.running ? processed : undefined}
+        aria-valuenow={indexBusy ? processed : undefined}
         aria-label="Workspace indexing progress"
       >
         <div className="settings-index-progress__track">
           <div
             className="settings-index-progress__bar"
-            style={{ width: `${indexing.running && runTotal > 0 ? progressPct : indexing.indexed > 0 ? 100 : 0}%` }}
+            style={{ width: `${indexBusy && runTotal > 0 ? progressPct : indexing.indexed > 0 ? 100 : 0}%` }}
           />
         </div>
         <div className="settings-index-progress__meta">
-          <span>{indexing.running ? `Indexing ${progressPct}%` : workspaceOpen ? 'Ready' : 'No workspace'}</span>
+          <span>{statusText}</span>
           <span>{indexLabel}</span>
         </div>
       </div>

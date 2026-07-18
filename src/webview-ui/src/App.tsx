@@ -3,7 +3,6 @@ import { AGENT_NAME } from '../../shared/brand';
 import { useVsCodeMessaging } from './state/useVsCodeMessaging';
 import { MessageList } from './components/MessageList';
 import { ChatInput } from './components/ChatInput';
-import { ContextPanel } from './components/ContextPanel';
 import { ContextWarningBanner } from './components/ContextWarningBanner';
 import { ErrorBanner } from './components/ErrorBanner';
 import { SettingsPanel } from './components/SettingsPanel';
@@ -17,22 +16,23 @@ import { PlanPanel } from './components/PlanPanel';
 import { IconButton } from './components/IconButton';
 import { IconChat, IconHistory, IconPlus, IconSettings } from './components/Icons';
 import { deriveSafetySettings } from './utils/approvalMode';
+import { normalizeAgentDepth } from '../../core/config/agentDepth';
 import type { AgentDepthView, AgentSettingsPayload, ApprovalMode, SettingsView } from '../../vscode/webview/messages';
 import type { ThunderMode } from '../../core/session/ThunderSession';
 
 function activeDepthForMode(settings: SettingsView, mode: ThunderMode): AgentDepthView {
-  if (mode === 'ask') return settings.askDepth;
-  if (mode === 'agent') return settings.actDepth;
-  return settings.planDepth;
+  if (mode === 'ask') return normalizeAgentDepth(settings.askDepth);
+  if (mode === 'agent') return normalizeAgentDepth(settings.actDepth);
+  return normalizeAgentDepth(settings.planDepth);
 }
 
 function buildAgentSettingsPayload(settings: SettingsView, depthPatch: Partial<Pick<AgentSettingsPayload, 'askDepth' | 'planDepth' | 'actDepth'>> = {}): AgentSettingsPayload {
   return {
     subagentsEnabled: settings.subagentsEnabled,
     maxSteps: settings.agentMaxSteps,
-    askDepth: settings.askDepth,
-    planDepth: settings.planDepth,
-    actDepth: settings.actDepth,
+    askDepth: normalizeAgentDepth(depthPatch.askDepth ?? settings.askDepth),
+    planDepth: normalizeAgentDepth(depthPatch.planDepth ?? settings.planDepth),
+    actDepth: normalizeAgentDepth(depthPatch.actDepth ?? settings.actDepth),
     askMaxSteps: settings.askMaxSteps,
     askAutoContinue: settings.askAutoContinue,
     askMaxAutoContinues: settings.askMaxAutoContinues,
@@ -40,6 +40,8 @@ function buildAgentSettingsPayload(settings: SettingsView, depthPatch: Partial<P
     maxAutoContinues: settings.agentMaxAutoContinues,
     researchAgentMaxSteps: settings.researchAgentMaxSteps,
     showDiffPreview: settings.showDiffPreview,
+    askModel: settings.askModel,
+    askBaseUrl: settings.askBaseUrl,
     planModel: settings.planModel,
     planBaseUrl: settings.planBaseUrl,
     actModel: settings.actModel,
@@ -118,6 +120,7 @@ export function App() {
           <IndexingStatusBar
             status={state.indexing}
             onIndex={() => postMessage({ type: 'indexWorkspace' })}
+            onCancel={() => postMessage({ type: 'cancelIndexing' })}
           />
         </div>
       </header>
@@ -211,6 +214,8 @@ export function App() {
               activeDepth={activeDepth}
               tokenUsage={state.tokenUsage}
               modelLabel={state.providerLabel.split(' / ').pop() || state.providerLabel}
+              modelOptions={state.modelOptions}
+              sessionProviderOverride={state.sessionProviderOverride}
               pinnedContext={state.pinnedContext}
               canRetry={canRetry}
               onSend={(content, pinnedContext, attachments) =>
@@ -236,6 +241,8 @@ export function App() {
                   payload: buildAgentSettingsPayload(state.settings, depthPatch),
                 });
               }}
+              onModelChange={(selection) => postMessage({ type: 'selectSessionModel', payload: selection })}
+              onSaveModelDefault={() => postMessage({ type: 'saveSessionModelAsDefault' })}
               onRetry={() => postMessage({ type: 'retryLastMessage' })}
               onCopyResponse={() => postMessage({ type: 'copyLastResponse' })}
               onCopyChatHistory={() => postMessage({ type: 'copyChatHistoryMarkdown' })}
@@ -243,6 +250,10 @@ export function App() {
               onAddPinned={(path, kind) =>
                 postMessage({ type: 'addPinnedContext', payload: { path, kind } })
               }
+              onRemovePinned={(path) =>
+                postMessage({ type: 'removePinnedContext', payload: { path } })
+              }
+              onClearPinned={() => postMessage({ type: 'clearPinnedContext' })}
               onSearchPaths={(query, requestId) => {
                 postMessage({ type: 'searchContextPaths', payload: { query, requestId } });
               }}
@@ -259,18 +270,14 @@ export function App() {
                 postMessage({ type: 'showInlineDiff', payload: { approvalId } })
               }
             />
-            <ContextPanel
-              items={state.pinnedContext}
-              onRemove={(path) => postMessage({ type: 'removePinnedContext', payload: { path } })}
-              onClear={() => postMessage({ type: 'clearPinnedContext' })}
-              onPick={() => postMessage({ type: 'pickContextPath' })}
-            />
           </footer>
         </div>
       ) : state.tab === 'history' ? (
         <HistoryPanel
           threads={state.chatHistory}
           onOpen={(id) => postMessage({ type: 'openChatThread', payload: { id } })}
+          onDelete={(id) => postMessage({ type: 'deleteChatThread', payload: { id } })}
+          onClear={() => postMessage({ type: 'clearChatHistory' })}
         />
       ) : (
         <main className="thunder-main settings-view">

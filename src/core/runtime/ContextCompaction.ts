@@ -40,7 +40,11 @@ export async function compactMessagesWithLlm(
         { role: 'user', content: transcript },
       ],
       stream: false,
-      maxTokens: Math.min(800, Math.floor(maxTokens * 0.4)),
+      // See intentClassifier.ts: reasoning models burn tokens on hidden thinking before
+      // content, so a tight budget here can silently return an empty summary and fall
+      // back to deterministic compaction on every call for those backends.
+      maxTokens: Math.max(800, Math.min(1600, Math.floor(maxTokens * 0.4))),
+      reasoningEffort: 'low',
     })) {
       if (delta.content) summary += delta.content;
       if (delta.error) throw new Error(delta.error);

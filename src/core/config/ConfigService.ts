@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { AGENT_NAME } from '../../shared/brand';
-import { createLogger } from '../telemetry/Logger';
+import { createLogger, setDebugLoggingEnabled } from '../telemetry/Logger';
 import { readThunderConfigFromSettings } from './vscode/read';
 import {
   updateProviderSettings,
@@ -10,6 +10,7 @@ import {
   updateAllSettings,
   updateWorkspaceOverride,
   clearWorkspaceOverride,
+  type ProviderSettingsWriteReason,
 } from './vscode/write';
 import { updateCustomMcpServers } from './vscode/mcpWrite';
 import type { ThunderConfig } from './schema';
@@ -34,9 +35,11 @@ export class ConfigService {
 
   async initialize(): Promise<void> {
     this.config = readThunderConfigFromSettings();
+    setDebugLoggingEnabled(this.config.debug);
     this.disposable = vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('thunder')) {
+      if (e.affectsConfiguration('mitii') || e.affectsConfiguration('thunder')) {
         this.config = readThunderConfigFromSettings();
+        setDebugLoggingEnabled(this.config.debug);
         log.info('Configuration reloaded');
       }
     });
@@ -86,8 +89,11 @@ export class ConfigService {
     log.info('API key stored securely', { ref: keyRef });
   }
 
-  async updateProviderSettings(settings: ProviderSettingsPayload): Promise<void> {
-    await updateProviderSettings(settings);
+  async updateProviderSettings(
+    settings: ProviderSettingsPayload,
+    reason: ProviderSettingsWriteReason = 'settings'
+  ): Promise<void> {
+    await updateProviderSettings(settings, reason);
     this.config = readThunderConfigFromSettings();
     log.info('Provider settings updated');
   }
@@ -119,6 +125,7 @@ export class ConfigService {
   async updateAllSettings(settings: ThunderSettingsPayload): Promise<void> {
     await updateAllSettings(settings);
     this.config = readThunderConfigFromSettings();
+    setDebugLoggingEnabled(this.config.debug);
     log.info(`All ${AGENT_NAME} settings updated`);
   }
 

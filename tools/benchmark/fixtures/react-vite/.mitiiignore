@@ -1,0 +1,11 @@
+# Mitii workspace indexing ignores
+node_modules/
+dist/
+build/
+.next/
+coverage/
+vendor/
+tmp/
+logs/
+*.lock
+*.map

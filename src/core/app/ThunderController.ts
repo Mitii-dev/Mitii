@@ -2,8 +2,13 @@ import * as vscode from 'vscode';
 import { AGENT_NAME, brandMessage } from '../../shared/brand';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
-import { ThunderSession, type ThunderMode } from '../session/ThunderSession';
+import {
+  ThunderSession,
+  type ThunderMode,
+  type ThunderSessionProviderOverride,
+} from '../session/ThunderSession';
 import { ConfigService } from '../config/ConfigService';
+import { normalizeAgentDepth } from '../config/agentDepth';
 import { LlmProviderRegistry } from '../llm/LlmProviderRegistry';
 import { IndexService } from '../indexing/IndexService';
 import { IgnoreService } from '../indexing/IgnoreService';
@@ -19,6 +24,7 @@ import {
 import { initTreeSitter, preloadCommonLanguages } from '../indexing/TreeSitterService';
 import { setTreeSitterEnabled } from '../indexing/SymbolExtractor';
 import { FtsIndex } from '../indexing/FtsIndex';
+import { detectLanguage, isBinaryByExtension } from '../indexing/fileUtils';
 import { HybridRetriever } from '../context/HybridRetriever';
 import { createContextReranker } from '../context/ContextReranker';
 import { ContextBudgeter } from '../context/ContextBudgeter';
@@ -41,8 +47,36 @@ import {
   createDiagnosticsTool, createWriteFileTool, createApplyPatchTool, createRunCommandTool,
   createMemorySearchTool, createMemoryWriteTool, createSaveTaskStateTool,
   createFetchWebTool, createAskQuestionTool, createProjectCatalogTool, createAnalyzeChangeImpactTool,
+  createProposeFileScopeTool,
   setSubagentTracker,
 } from '../tools/builtinTools';
+import {
+  createAnalyzeLogDirectoryTool,
+  createAnalyzeJsonlTool,
+  createQueryLogEventsTool,
+  createListLogsTool,
+} from '../tools/logAuditTools';
+import {
+  createChangelogTools,
+  createGitBlameTool,
+  createGitBranchCreateTool,
+  createGitBranchDeleteTool,
+  createGitBranchSwitchTool,
+  createGitCommitTool,
+  createGitCompareBranchesTool,
+  createGitHubTools,
+  createGitLogTool,
+  createGitMergeTool,
+  createGitRebaseTool,
+  createGitStageFilesTool,
+  createGitStatusTool,
+  createGitTagTools,
+  createGitUnstageFilesTool,
+  createReleasePlanControllerTool,
+  createStructuredGitDiffTool,
+  createWorkflowTools,
+  createGitShowTool,
+} from '../tools/gitTools';
 import { ProjectCatalogContextSource, discoverProjectCatalog, saveProjectCatalog } from '../modes/ask';
 import { createMarkStepCompleteTool, createProposePlanMutationTool } from '../tools/planTools';
 import type { AssistantStreamChunk, LlmProvider } from '../llm/types';
@@ -50,7 +84,9 @@ import { UsageTrackingProvider, type ModelCallUsage } from '../llm/UsageTracking
 import { scaffoldMitiiWorkspace } from '../mcp/scaffoldMitiiWorkspace';
 import { AgentTaskState } from '../runtime/AgentTaskState';
 import { resolveProjectVerifyCommands, formatVerifyPlanForAgent, suggestInstallCommandsForVerifyFailure, isModuleResolutionVerifyFailure } from '../runtime/verifyCommandDiscovery';
+import { formatDocumentationVerification, verifyDocumentationFiles } from '../runtime/docsVerification';
 import { isApprovalContinuationMessage } from '../runtime/taskMessage';
+import { resolveControlIntent } from '../runtime/controlIntent';
 import { ToolPolicyEngine } from '../safety/ToolPolicyEngine';
 import { resolveEffectiveSafety } from '../safety/autonomyPresets';
 import { ApprovalQueue } from '../safety/ApprovalQueue';
@@ -79,6 +115,7 @@ import { McpManager } from '../mcp/McpManager';
 import { ProjectRulesContextSource, ProjectRulesService } from '../rules/ProjectRulesService';
 import {
   ProviderProfilesService,
+  type ProviderProfileView as StoredProviderProfileView,
   providerSecretRef,
 } from '../providers/ProviderProfilesService';
 import { SkillCatalogContextSource, SkillCatalogService } from '../skills/SkillCatalogService';
@@ -86,6 +123,7 @@ import { InlineDiffManager } from '../../vscode/inlineDiffManager';
 import { testProviderConnection } from '../llm/testConnection';
 import { createLogger } from '../telemetry/Logger';
 import { SessionLogService } from '../telemetry/SessionLogService';
+import { debugTrace } from '../telemetry/AsyncDebugTrace';
 import { normalizeError } from '../telemetry/errors';
 import type { IndexingStatus } from '../indexing/IndexQueue';
 import type {
@@ -99,6 +137,8 @@ import type {
   TokenUsageView,
   TokenUsageBreakdownItem,
   McpCustomServerView,
+  ModelOptionView,
+  SessionProviderOverrideView,
 } from '../../vscode/webview/messages';
 import {
   initialWebviewState,
@@ -128,6 +168,10 @@ import type {
   SafetySettingsPayload,
   ThunderSettingsPayload,
 } from '../config/ui/payloads';
+import { PROVIDER_PRESETS, isCloudProvider } from '../llm/providerPresets';
+import { resolveTierPolicy } from '../llm/agenticTier';
+import type { AgenticTier, TierPolicy } from '../agentic/tierPolicy';
+import type { ProviderType } from '../config/schema';
 
 const log = createLogger('ThunderController');
 const ONBOARDING_STATE_KEY = 'thunder.onboarding.completed.v1';
@@ -173,7 +217,7 @@ export class ThunderController {
   private sessionLog = new SessionLogService();
   private lastAutoAuditExportSignature = '';
   private lastSubagentSnapshot = new Map<string, string>();
-  private indexingStatus: IndexingStatus = { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0, processed: 0, runTotal: 0 };
+  private indexingStatus: IndexingStatus = { indexed: 0, queued: 0, running: false, failed: 0, total: 0, activeWorkers: 0, processed: 0, runTotal: 0, phase: 'idle' };
   private contextToggles: ContextToggles = defaultContextToggles();
   private mcpToggles: McpToggles = defaultMcpToggles();
   private pendingWatchJobs = new Map<string, import('../indexing/IndexQueue').IndexJob>();
@@ -220,6 +264,7 @@ export class ThunderController {
   private pendingTokenUsage: TokenUsageView | undefined;
   private settingsSaving = false;
   private testingConnection = false;
+  private recentProviderOverrides: ThunderSessionProviderOverride[] = [];
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.configService = new ConfigService(context);
@@ -302,6 +347,9 @@ export class ThunderController {
       activeWorkers: status.activeWorkers ?? 0,
       processed: status.processed ?? 0,
       runTotal: status.runTotal ?? 0,
+      phase: status.phase ?? (status.running ? 'indexing' : 'idle'),
+      partial: status.partial ?? false,
+      degraded: status.degraded ?? false,
     };
     this.indexingStatus = normalized;
     this.pendingIndexStatus = normalized;
@@ -326,8 +374,14 @@ export class ThunderController {
   }
 
   private configureSessionLogging(session: ThunderSession, workspace: string): void {
-    const telemetry = this.configService.getConfig().telemetry;
+    const config = this.configService.getConfig();
+    const telemetry = config.telemetry;
     this.sessionLog.configure(workspace, session.id, telemetry.sessionLogging, telemetry.debugMetrics);
+    debugTrace.configure(workspace, session.id, {
+      ...config.debugTrace,
+      enabled: telemetry.sessionLogging && config.debugTrace.enabled,
+    });
+    this.toolRuntime.setWorkspace(workspace);
     this.sessionLog.configureWebhook({
       url: telemetry.webhookUrl,
       secret: telemetry.webhookSecret || process.env.MITII_TELEMETRY_WEBHOOK_SECRET,
@@ -456,7 +510,7 @@ export class ThunderController {
     this.skillCatalogService.refresh();
     const retriever = new HybridRetriever(
       [
-        new ProjectRulesContextSource(this.projectRulesService),
+        new ProjectRulesContextSource(this.projectRulesService, () => this.currentTierPolicy()),
         new SkillCatalogContextSource(this.skillCatalogService),
         new ProjectCatalogContextSource(workspace),
         new MentionedFileContextSource(workspace),
@@ -597,7 +651,7 @@ export class ThunderController {
 
     this.policyEngine = new ToolPolicyEngine(
       effectiveSafety,
-      (path) => this.ignoreService.isIgnored(path),
+      (path, options) => this.ignoreService.isIgnored(path, options),
       () => this.isWorkspaceTrusted(),
       (path) => resolveWorkspaceRelPath(workspace, path)
     );
@@ -645,22 +699,46 @@ export class ThunderController {
     this.toolRuntime.register(createSearchBatchTool(fts, workspace));
     this.toolRuntime.register(createSearchScriptCatalogTool(workspace, this.context.extensionPath));
     this.toolRuntime.register(createExecuteWorkspaceScriptTool(workspace, this.context.extensionPath, this.ignoreService));
-    this.toolRuntime.register(createUseSkillTool(this.skillCatalogService));
+    this.toolRuntime.register(createUseSkillTool(this.skillCatalogService, () => this.getSkillRuntimeContext()));
     this.toolRuntime.register(createSpawnSubagentTool());
     this.toolRuntime.register(createSpawnResearchAgentTool());
     this.toolRuntime.register(createRepoMapTool(repoMap));
     this.toolRuntime.register(createRetrieveContextTool(retriever, budgeter));
     this.toolRuntime.register(createGitDiffTool(this.gitService));
+    this.toolRuntime.register(createGitStatusTool(workspace));
+    this.toolRuntime.register(createStructuredGitDiffTool(workspace));
+    this.toolRuntime.register(createGitLogTool(workspace));
+    this.toolRuntime.register(createGitShowTool(workspace));
+    this.toolRuntime.register(createGitBlameTool(workspace));
+    this.toolRuntime.register(createGitCompareBranchesTool(workspace));
+    this.toolRuntime.register(createGitStageFilesTool(workspace));
+    this.toolRuntime.register(createGitUnstageFilesTool(workspace));
+    this.toolRuntime.register(createGitCommitTool(workspace));
+    this.toolRuntime.register(createGitBranchCreateTool(workspace));
+    this.toolRuntime.register(createGitBranchSwitchTool(workspace));
+    this.toolRuntime.register(createGitBranchDeleteTool(workspace));
+    this.toolRuntime.register(createGitMergeTool(workspace));
+    this.toolRuntime.register(createGitRebaseTool(workspace));
+    for (const tool of createGitTagTools(workspace)) this.toolRuntime.register(tool);
+    for (const tool of createChangelogTools(workspace)) this.toolRuntime.register(tool);
+    for (const tool of createWorkflowTools(workspace)) this.toolRuntime.register(tool);
+    for (const tool of createGitHubTools(workspace)) this.toolRuntime.register(tool);
+    this.toolRuntime.register(createReleasePlanControllerTool());
     this.toolRuntime.register(createDiagnosticsTool(this.diagnosticsService));
     this.toolRuntime.register(createProjectCatalogTool(workspace));
     this.toolRuntime.register(createAnalyzeChangeImpactTool(workspace));
+    this.toolRuntime.register(createProposeFileScopeTool(workspace, this.ignoreService, db, () => this.agentTaskState));
+    this.toolRuntime.register(createAnalyzeLogDirectoryTool(workspace, this.ignoreService, () => this.sessionLog.getLogPath()));
+    this.toolRuntime.register(createAnalyzeJsonlTool(workspace, this.ignoreService));
+    this.toolRuntime.register(createQueryLogEventsTool(workspace, this.ignoreService));
+    this.toolRuntime.register(createListLogsTool(workspace));
     this.toolRuntime.register(createWriteFileTool(workspace, this.ignoreService));
     this.toolRuntime.register(createApplyPatchTool(workspace, this.ignoreService));
     this.toolRuntime.register(createRunCommandTool(workspace, () => this.session?.mode ?? 'plan'));
     this.toolRuntime.register(createMemorySearchTool(this.memoryService));
     this.toolRuntime.register(createMemoryWriteTool(this.memoryService, () => this.session?.id ?? ''));
     this.toolRuntime.register(createSaveTaskStateTool(this.memoryService, () => this.session?.id ?? '', () => this.agentTaskState));
-    this.toolRuntime.register(createFetchWebTool(() => this.configService.getConfig().safety.allowNetwork));
+    this.toolRuntime.register(createFetchWebTool(() => resolveEffectiveSafety(this.configService.getConfig().safety).allowNetwork));
     this.toolRuntime.register(createAskQuestionTool());
 
     const sessionIdForPlans = () => this.session?.id ?? '';
@@ -862,10 +940,19 @@ export class ThunderController {
     };
   }
 
+  private currentTierPolicy(): TierPolicy | undefined {
+    const config = this.configService.getConfig();
+    const override = config.agent.agenticTierOverride;
+    const tier: AgenticTier | undefined = override !== 'auto'
+      ? override
+      : this.providerRegistry.getActive()?.capabilities.agenticTier;
+    return tier ? resolveTierPolicy(tier) : undefined;
+  }
+
   private buildRetriever(db: import('../indexing/ThunderDb').ThunderDb, workspace: string): HybridRetriever {
     const sources = [];
     if (this.projectRulesService) {
-      sources.push(new ProjectRulesContextSource(this.projectRulesService));
+      sources.push(new ProjectRulesContextSource(this.projectRulesService, () => this.currentTierPolicy()));
     }
     if (this.skillCatalogService) {
       sources.push(new SkillCatalogContextSource(this.skillCatalogService));
@@ -921,6 +1008,7 @@ export class ThunderController {
       log.info('Skipping VS Code file watcher — workspace override is outside open folders');
       return;
     }
+    const config = this.configService.getConfig();
 
     try {
       const watcher = vscode.workspace.createFileSystemWatcher(
@@ -933,19 +1021,40 @@ export class ThunderController {
         if (!relPath || this.ignoreService.isIgnored(relPath)) return;
         if (isTsLikeFile(relPath)) this.languageService?.syncFileFromDisk(relPath);
         if (!this.indexQueue || !this.scanner) return;
-        const fileId = this.scanner.getFileId(relPath);
+        let fileId = this.scanner.getFileId(relPath);
+        if (!fileId) {
+          try {
+            const stat = statSync(uri.fsPath);
+            if (!stat.isFile() || stat.size > config.indexing.hardSkipSizeBytes || isBinaryByExtension(relPath)) return;
+            const discovered = [{
+              absPath: uri.fsPath,
+              relPath,
+              size: stat.size,
+              mtime: stat.mtimeMs,
+              language: detectLanguage(relPath),
+            }];
+            const diff = this.scanner.computeDiff(discovered, { includeDeleted: false });
+            this.scanner.persistScan(diff);
+            fileId = this.scanner.getFileId(relPath);
+          } catch {
+            return;
+          }
+        }
         if (fileId) {
           this.pendingWatchJobs.set(relPath, {
             fileId,
             relPath,
             absPath: uri.fsPath,
-            language: null,
+            language: detectLanguage(relPath),
           });
           if (this.watchDebounceTimer) clearTimeout(this.watchDebounceTimer);
           this.watchDebounceTimer = setTimeout(() => {
             const jobs = [...this.pendingWatchJobs.values()];
             this.pendingWatchJobs.clear();
-            this.indexQueue?.enqueue(jobs);
+            this.indexQueue?.enqueue(jobs, {
+              partial: true,
+              detail: `Incrementally indexing ${jobs.length} changed file${jobs.length === 1 ? '' : 's'} from the file watcher.`,
+            });
           }, 5000);
         }
       };
@@ -957,6 +1066,17 @@ export class ThunderController {
         const relPath = toWorkspaceRelPath(uri, workspace);
         if (relPath && isTsLikeFile(relPath) && !this.ignoreService.isIgnored(relPath)) {
           this.languageService?.syncFileFromDisk(relPath);
+        }
+        if (relPath && !this.ignoreService.isIgnored(relPath)) {
+          const db = this.indexService?.getDb();
+          if (db?.isOpen()) {
+            new FtsIndex(db).deleteByFile(relPath);
+            db.raw.prepare('DELETE FROM files WHERE workspace = ? AND rel_path = ?').run(workspace, relPath);
+            RepoMapService.invalidateWorkspace(workspace);
+            this.debouncedRebuildRetriever?.();
+            this.indexingStatus = this.indexQueue?.getStatus() ?? this.indexingStatus;
+            this.notifyUi({ indexing: this.indexingStatus });
+          }
         }
       });
       this.context.subscriptions.push(watcher);
@@ -994,6 +1114,7 @@ export class ThunderController {
     const providerConfigured = config.provider.type !== 'echo' || Boolean(apiKey);
 
     const approvals: ApprovalRequestView[] = (this.approvalQueue?.getPending() ?? []).map(toApprovalView);
+    const effectiveProvider = this.resolveEffectiveProviderSelection(this.session?.mode ?? 'plan');
 
     return {
       ...initialWebviewState(),
@@ -1026,7 +1147,7 @@ export class ThunderController {
       vectorIndex: buildVectorIndexStatusView(config.indexing, workspacePath, this.vectorIndexService),
       tokenUsage: base.tokenUsage ?? {
         ...this.tokenUsage,
-        contextWindow: config.provider.contextWindow,
+        contextWindow: effectiveProvider.contextWindow ?? config.provider.contextWindow,
       },
       mode: base.mode ?? this.session?.mode ?? 'plan',
       indexing: this.indexingStatus,
@@ -1070,9 +1191,9 @@ export class ThunderController {
         autoMemoryScope: config.memory.autoMemoryScope,
         subagentsEnabled: config.agent.subagentsEnabled,
         agentMaxSteps: config.agent.maxSteps,
-        askDepth: config.agent.askDepth,
-        planDepth: config.agent.planDepth,
-        actDepth: config.agent.actDepth,
+        askDepth: normalizeAgentDepth(config.agent.askDepth),
+        planDepth: normalizeAgentDepth(config.agent.planDepth),
+        actDepth: normalizeAgentDepth(config.agent.actDepth),
         askMaxSteps: config.agent.askMaxSteps,
         askAutoContinue: config.agent.askAutoContinue,
         askMaxAutoContinues: config.agent.askMaxAutoContinues,
@@ -1107,6 +1228,14 @@ export class ThunderController {
         projectRules: this.projectRulesService?.count() ?? 0,
         sessionLogging: config.telemetry.sessionLogging,
         debugMetrics: config.telemetry.debugMetrics,
+        traceEnabled: config.debugTrace.enabled,
+        traceIncludePayloads: config.debugTrace.includePayloads,
+        traceLlm: config.debugTrace.llm,
+        traceMcp: config.debugTrace.mcp,
+        traceWebview: config.debugTrace.webview,
+        traceDaemon: config.debugTrace.daemon,
+        traceWebhook: config.debugTrace.webhook,
+        traceMaxPayloadChars: config.debugTrace.maxPayloadChars,
         localDebugAvailable: this.context.extensionMode === vscode.ExtensionMode.Development,
         vectorsEnabled: config.indexing.vectorsEnabled,
         embeddingProvider: config.indexing.embeddingProvider,
@@ -1115,6 +1244,8 @@ export class ThunderController {
         minilmAvailable: isMinilmAvailable(),
         lancedbAvailable: isLanceDbAvailable(),
         autonomyPreset: config.safety.autonomyPreset,
+        askModel: config.agent.askModel,
+        askBaseUrl: config.agent.askBaseUrl,
         planModel: config.agent.planModel,
         planBaseUrl: config.agent.planBaseUrl,
         actModel: config.agent.actModel,
@@ -1127,7 +1258,9 @@ export class ThunderController {
       },
       contextToggles: this.contextToggles,
       mcpToggles: this.mcpToggles,
-      providerLabel: `${config.provider.type} / ${config.provider.model}`,
+      providerLabel: `${effectiveProvider.providerType} / ${effectiveProvider.model}`,
+      modelOptions: this.buildModelOptions(effectiveProvider),
+      sessionProviderOverride: this.session?.providerOverride ?? null,
       workspaceOpen: Boolean(workspacePath),
       workspacePath,
       vscodeWorkspaceFolders: vscodeFolders,
@@ -1178,6 +1311,16 @@ export class ThunderController {
 
     const lines: string[] = [];
     const touchedFiles = this.getTouchedFilesFromAudit();
+    const docsVerification = verifyDocumentationFiles(workspace, touchedFiles);
+    const docsVerificationOutput = formatDocumentationVerification(docsVerification);
+    if (docsVerificationOutput) {
+      lines.push(docsVerificationOutput);
+      this.pushActivity(
+        docsVerification.issues.length > 0 ? 'error' : 'info',
+        'Markdown verification',
+        docsVerificationOutput.slice(0, 500)
+      );
+    }
     const plan = resolveProjectVerifyCommands(workspace, commands, { touchedFiles, userMessage });
     const discoveryBlock = formatVerifyPlanForAgent(plan);
     lines.push(discoveryBlock);
@@ -1316,6 +1459,7 @@ export class ThunderController {
     this.agentTaskState.reset();
     this.agentTaskState.setLimits({
       maxSequentialThinkingCalls: this.configService.getConfig().agent.maxSequentialThinkingCallsPerTurn,
+      maxFilesRead: 12,
     });
     this.chatOrchestrator?.clearRoutingState();
 
@@ -1393,48 +1537,248 @@ export class ThunderController {
     };
   }
 
-  private async resolveProviderForMode(mode: string): Promise<LlmProvider> {
+  private resolveEffectiveProviderSelection(mode: string): ThunderSessionProviderOverride & { source: 'session' | 'mode' | 'global' } {
     const config = this.configService.getConfig();
-    const apiKey = await this.configService.getApiKey();
+    const sessionOverride = this.session?.providerOverride;
+    if (sessionOverride?.model.trim()) {
+      return {
+        ...sessionOverride,
+        source: 'session',
+        contextWindow: sessionOverride.contextWindow ?? config.provider.contextWindow,
+        apiVersion: sessionOverride.apiVersion ?? config.provider.apiVersion,
+        region: sessionOverride.region ?? config.provider.region,
+      };
+    }
+
+    if (mode === 'ask') {
+      const askModel = config.agent.askModel?.trim();
+      if (askModel) {
+        return {
+          providerType: config.agent.askProviderType ?? config.provider.type,
+          baseUrl: config.agent.askBaseUrl?.trim() || config.provider.baseUrl,
+          model: askModel,
+          profile: 'Ask override',
+          apiVersion: config.provider.apiVersion,
+          region: config.provider.region,
+          contextWindow: config.provider.contextWindow,
+          source: 'mode',
+        };
+      }
+    }
 
     if (mode === 'plan') {
       const planModel = config.agent.planModel?.trim();
       if (planModel) {
-        enforceEnterpriseProviderPolicy(
-          config.enterprise.localProvidersOnly,
-          config.agent.planProviderType ?? config.provider.type,
-          config.agent.planBaseUrl?.trim() || config.provider.baseUrl
-        );
-        return this.providerRegistry.resolveFromOptions({
-          type: config.agent.planProviderType ?? config.provider.type,
+        return {
+          providerType: config.agent.planProviderType ?? config.provider.type,
           baseUrl: config.agent.planBaseUrl?.trim() || config.provider.baseUrl,
           model: planModel,
+          profile: 'Plan override',
+          apiVersion: config.provider.apiVersion,
+          region: config.provider.region,
           contextWindow: config.provider.contextWindow,
-          supportsStreaming: config.provider.supportsStreaming,
-          supportsTools: config.provider.supportsTools,
-          supportsEmbeddings: config.provider.supportsEmbeddings,
-        }, apiKey);
+          source: 'mode',
+        };
       }
     }
 
     if (mode === 'agent') {
       const actModel = config.agent.actModel?.trim();
       if (actModel) {
-        enforceEnterpriseProviderPolicy(
-          config.enterprise.localProvidersOnly,
-          config.agent.actProviderType ?? config.provider.type,
-          config.agent.actBaseUrl?.trim() || config.provider.baseUrl
-        );
-        return this.providerRegistry.resolveFromOptions({
-          type: config.agent.actProviderType ?? config.provider.type,
+        return {
+          providerType: config.agent.actProviderType ?? config.provider.type,
           baseUrl: config.agent.actBaseUrl?.trim() || config.provider.baseUrl,
           model: actModel,
+          profile: 'Agent override',
+          apiVersion: config.provider.apiVersion,
+          region: config.provider.region,
           contextWindow: config.provider.contextWindow,
-          supportsStreaming: config.provider.supportsStreaming,
-          supportsTools: config.provider.supportsTools,
-          supportsEmbeddings: config.provider.supportsEmbeddings,
-        }, apiKey);
+          source: 'mode',
+        };
       }
+    }
+
+    return {
+      providerType: config.provider.type,
+      baseUrl: config.provider.baseUrl,
+      model: config.provider.model,
+      profile: 'Global default',
+      apiVersion: config.provider.apiVersion,
+      region: config.provider.region,
+      contextWindow: config.provider.contextWindow,
+      source: 'global',
+    };
+  }
+
+  private getSkillRuntimeContext(): import('../skills/skillRuntimeContext').SkillRuntimeContext {
+    const config = this.configService.getConfig();
+    const mode = this.session?.mode ?? 'agent';
+    const askDepth = normalizeAgentDepth(config.agent.askDepth);
+    const planDepth = normalizeAgentDepth(config.agent.planDepth);
+    const actDepth = normalizeAgentDepth(config.agent.actDepth);
+    const depth = mode === 'ask' ? askDepth : mode === 'plan' ? planDepth : actDepth;
+    const provider = this.resolveEffectiveProviderSelection(mode);
+    return {
+      mode,
+      depth,
+      askDepth,
+      planDepth,
+      actDepth,
+      model: provider.model,
+      modelSource: provider.source,
+    };
+  }
+
+  private buildModelOptions(effectiveProvider: ThunderSessionProviderOverride & { source: 'session' | 'mode' | 'global' }): ModelOptionView[] {
+    const config = this.configService.getConfig();
+    const options: ModelOptionView[] = [];
+    const push = (option: ModelOptionView) => {
+      options.push(option);
+    };
+
+    push(this.toModelOption(
+      {
+        providerType: effectiveProvider.providerType,
+        baseUrl: effectiveProvider.baseUrl,
+        model: effectiveProvider.model,
+        profile: effectiveProvider.profile,
+        profileId: effectiveProvider.profileId,
+        apiVersion: effectiveProvider.apiVersion,
+        region: effectiveProvider.region,
+        contextWindow: effectiveProvider.contextWindow,
+      },
+      'recent',
+      effectiveProvider.source === 'session' ? 'This chat' : effectiveProvider.source === 'mode' ? 'Mode override' : 'Global default',
+      `current:${effectiveProvider.source}:${this.providerOverrideKey(effectiveProvider)}`
+    ));
+
+    for (const [index, recent] of this.recentProviderOverrides.entries()) {
+      push(this.toModelOption(recent, 'recent', recent.profile ?? 'Recent model', `recent:${index}:${this.providerOverrideKey(recent)}`));
+    }
+
+    const globalDefault: ThunderSessionProviderOverride = {
+      providerType: config.provider.type,
+      baseUrl: config.provider.baseUrl,
+      model: config.provider.model,
+      profile: 'Global default',
+      apiVersion: config.provider.apiVersion,
+      region: config.provider.region,
+      contextWindow: config.provider.contextWindow,
+    };
+    push(this.toModelOption(globalDefault, 'recent', 'Global default', `global:${this.providerOverrideKey(globalDefault)}`));
+
+    for (const preset of PROVIDER_PRESETS) {
+      const category = isCloudProvider(preset.type, {
+        baseUrl: preset.baseUrl,
+        model: preset.model,
+        contextWindow: preset.contextWindow,
+      }) ? 'cloud' : 'local';
+      push(this.toModelOption({
+        providerType: preset.type,
+        baseUrl: preset.baseUrl,
+        model: preset.model,
+        profile: preset.label,
+        contextWindow: preset.contextWindow,
+        apiVersion: config.provider.apiVersion,
+        region: config.provider.region,
+      }, category, preset.label, `preset:${preset.type}`));
+    }
+
+    push(this.toModelOption({
+      providerType: 'echo',
+      baseUrl: '',
+      model: 'echo',
+      profile: 'Echo',
+      contextWindow: 8192,
+      apiVersion: config.provider.apiVersion,
+      region: config.provider.region,
+    }, 'local', 'Echo provider', 'preset:echo'));
+
+    for (const profile of this.providerProfilesService?.list() ?? []) {
+      push(this.profileToModelOption(profile));
+    }
+
+    return options;
+  }
+
+  private profileToModelOption(profile: StoredProviderProfileView): ModelOptionView {
+    return this.toModelOption({
+      providerType: profile.providerType,
+      baseUrl: profile.baseUrl,
+      model: profile.model,
+      profile: profile.name,
+      profileId: profile.id,
+      apiVersion: profile.apiVersion,
+      region: profile.region,
+      contextWindow: profile.contextWindow,
+    }, 'custom', profile.name, `profile:${profile.id}`);
+  }
+
+  private toModelOption(
+    override: ThunderSessionProviderOverride,
+    category: ModelOptionView['category'],
+    profile: string,
+    id: string
+  ): ModelOptionView {
+    const model = override.model.trim() || 'model';
+    const provider = override.providerType;
+    return {
+      id,
+      category,
+      providerType: provider,
+      baseUrl: override.baseUrl,
+      model,
+      profile,
+      profileId: override.profileId,
+      apiVersion: override.apiVersion,
+      region: override.region,
+      contextWindow: override.contextWindow,
+      label: model,
+      description: `${profile} · ${provider}${override.baseUrl ? ` · ${override.baseUrl}` : ''}`,
+    };
+  }
+
+  private providerOverrideKey(override: Pick<ThunderSessionProviderOverride, 'providerType' | 'baseUrl' | 'model' | 'profileId'>): string {
+    return [
+      override.providerType,
+      override.baseUrl,
+      override.model,
+      override.profileId ?? '',
+    ].join('\u0000');
+  }
+
+  private rememberProviderOverride(override: ThunderSessionProviderOverride): void {
+    const key = this.providerOverrideKey(override);
+    this.recentProviderOverrides = [
+      override,
+      ...this.recentProviderOverrides.filter((item) => this.providerOverrideKey(item) !== key),
+    ].slice(0, 6);
+  }
+
+  private async resolveProviderForMode(mode: string): Promise<LlmProvider> {
+    const config = this.configService.getConfig();
+    const selection = this.resolveEffectiveProviderSelection(mode);
+    const apiKey = selection.profileId
+      ? ((await this.configService.getApiKey(providerSecretRef(selection.profileId))) ?? (await this.configService.getApiKey()))
+      : await this.configService.getApiKey();
+
+    if (selection.source === 'session' || selection.source === 'mode') {
+      enforceEnterpriseProviderPolicy(
+        config.enterprise.localProvidersOnly,
+        selection.providerType,
+        selection.baseUrl
+      );
+      return this.providerRegistry.resolveFromOptions({
+        type: selection.providerType,
+        baseUrl: selection.baseUrl,
+        model: selection.model,
+        apiVersion: selection.apiVersion ?? config.provider.apiVersion,
+        region: selection.region ?? config.provider.region,
+        contextWindow: selection.contextWindow ?? config.provider.contextWindow,
+        supportsStreaming: config.provider.supportsStreaming,
+        supportsTools: config.provider.supportsTools,
+        supportsEmbeddings: config.provider.supportsEmbeddings,
+      }, apiKey);
     }
 
     const active = this.providerRegistry.getActive();
@@ -1613,14 +1957,22 @@ export class ThunderController {
     this.tokenUsage.estimated = usage.estimated;
 
     this.sessionLog.append('token_usage', 'AI call token usage', {
-      provider: usage.providerId,
+      // Per-call metrics (do not confuse with cumulative totals below).
+      call_input_tokens: usage.inputTokens,
+      call_output_tokens: usage.outputTokens,
+      call_total_tokens: usage.totalTokens,
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
       totalTokens: usage.totalTokens,
+      // Cumulative across the turn / session.
+      turn_cumulative_tokens: this.tokenUsage.currentTurnTotal,
       currentTurnTotal: this.tokenUsage.currentTurnTotal,
+      currentTurnInputTokens: this.tokenUsage.currentTurnInputTokens,
+      currentTurnOutputTokens: this.tokenUsage.currentTurnOutputTokens,
       sessionTotal: this.tokenUsage.sessionTotal,
       aiCallCount: this.tokenUsage.aiCallCount,
       estimated: usage.estimated,
+      provider: usage.providerId,
     });
 
     this.scheduleTokenUsageUiUpdate({
@@ -1704,7 +2056,20 @@ export class ThunderController {
     this.resetCurrentTurnUsage();
     const meteredProvider = this.trackProvider(provider);
 
-    const isContinuation = isApprovalContinuationMessage(content.trim());
+    const approvalContinuation = isApprovalContinuationMessage(content.trim());
+    const previousAssistantMessage = [...recentMessages].reverse().find((message) => message.role === 'assistant');
+    const control = resolveControlIntent(content, {
+      hasActiveTask: recentMessages.length > 0,
+      hasPendingApproval: approvalContinuation || (this.approvalQueue?.getPending().length ?? 0) > 0,
+      previousTurnAskedQuestion: Boolean(previousAssistantMessage?.content.trim().endsWith('?')),
+    });
+    const isContinuation =
+      approvalContinuation ||
+      control.intent === 'continue_task' ||
+      control.intent === 'approve_pending' ||
+      control.intent === 'reject_pending' ||
+      control.intent === 'clarify_previous' ||
+      control.intent === 'acknowledgement';
     this.sessionService?.ensureSession(this.session, content.slice(0, 64));
     const workspace = this.resolveWorkspacePath();
     if (workspace) {
@@ -1722,6 +2087,7 @@ export class ThunderController {
       this.agentTaskState.reset();
       this.agentTaskState.setLimits({
         maxSequentialThinkingCalls: this.configService.getConfig().agent.maxSequentialThinkingCallsPerTurn,
+        maxFilesRead: 12,
       });
       this.notifyUi({ agentActivity: [], agentLiveStatus: null, subagents: [] });
     }
@@ -1766,7 +2132,6 @@ export class ThunderController {
 
   clearPinnedContext(): void {
     this.pinnedContext = [];
-    this.syncActiveEditorPin();
     this.notifyUi({ pinnedContext: this.pinnedContext });
   }
 
@@ -1930,8 +2295,7 @@ export class ThunderController {
       hadError,
       tools: audit.map((a) => a.toolName),
     });
-    this.sessionLog.append('session_end', hadError ? 'Session completed with issues' : 'Session completed', {
-      sessionId: this.session?.id,
+    this.sessionLog.endTurn(hadError ? 'failed' : 'completed', {
       hadError,
       toolCalls: audit.length,
     });
@@ -2278,7 +2642,7 @@ export class ThunderController {
     }
 
     if (scope === 'task') {
-      this.approvalQueue?.grantForTask(request.sessionId, request.toolName);
+      this.approvalQueue?.grantForTask(request.sessionId, request.toolName, request.approvalKind);
       this.pushActivity('info', `Approved ${request.toolName} for this task`, request.files.join(', ') || undefined);
     }
 
@@ -2299,7 +2663,7 @@ export class ThunderController {
       }
     }
 
-    const result = await this.toolExecutor.executeApproved(request.toolName, fullInput);
+    const result = await this.toolExecutor.executeApproved(id);
 
     if (result.success) {
       const isExternalRead = ['read_file', 'read_files'].includes(request.toolName);
@@ -2361,6 +2725,88 @@ export class ThunderController {
     for (const req of [...pending]) {
       await this.resolveApproval(req.id, 'approved', undefined, 'task');
     }
+  }
+
+  async selectSessionModel(selection: SessionProviderOverrideView | null): Promise<void> {
+    if (!this.session) return;
+    if (!selection) {
+      this.session.setProviderOverride(null);
+      const state = await this.buildUiState(this.getPreservedUiBase());
+      this.notifyUi({
+        providerLabel: state.providerLabel,
+        modelOptions: state.modelOptions,
+        sessionProviderOverride: null,
+        tokenUsage: state.tokenUsage,
+      });
+      return;
+    }
+
+    const config = this.configService.getConfig();
+    const override: ThunderSessionProviderOverride = {
+      providerType: selection.providerType as ProviderType,
+      model: selection.model.trim(),
+      baseUrl: selection.baseUrl.trim(),
+      profile: selection.profile?.trim() || null,
+      profileId: selection.profileId,
+      apiVersion: selection.apiVersion?.trim() || config.provider.apiVersion,
+      region: selection.region?.trim() || config.provider.region,
+      contextWindow: selection.contextWindow ?? config.provider.contextWindow,
+    };
+
+    const validation = validateProviderSettings({
+      providerType: override.providerType,
+      baseUrl: override.baseUrl,
+      model: override.model,
+      apiVersion: override.apiVersion,
+      region: override.region,
+      contextWindow: override.contextWindow ?? config.provider.contextWindow,
+    });
+    if (!validation.ok) {
+      void vscode.window.showErrorMessage(`${AGENT_NAME}: ${validation.errors.join(' ')}`);
+      return;
+    }
+
+    try {
+      enforceEnterpriseProviderPolicy(config.enterprise.localProvidersOnly, override.providerType, override.baseUrl);
+    } catch (error) {
+      const safe = normalizeError(error);
+      void vscode.window.showErrorMessage(`${AGENT_NAME}: ${safe.message}`);
+      return;
+    }
+
+    this.session.setProviderOverride(override);
+    this.rememberProviderOverride(override);
+    const state = await this.buildUiState(this.getPreservedUiBase());
+    this.notifyUi({
+      providerLabel: state.providerLabel,
+      modelOptions: state.modelOptions,
+      sessionProviderOverride: state.sessionProviderOverride,
+      tokenUsage: state.tokenUsage,
+    });
+  }
+
+  async saveSessionModelAsDefault(): Promise<void> {
+    const override = this.session?.providerOverride;
+    if (!override) return;
+
+    const config = this.configService.getConfig();
+    await this.saveProviderSettings({
+      providerType: override.providerType,
+      baseUrl: override.baseUrl,
+      model: override.model,
+      apiVersion: override.apiVersion ?? config.provider.apiVersion,
+      region: override.region ?? config.provider.region,
+      contextWindow: override.contextWindow ?? config.provider.contextWindow,
+    }, 'save-as-default');
+    this.session?.setProviderOverride(null);
+    const state = await this.buildUiState(this.getPreservedUiBase());
+    this.notifyUi({
+      providerLabel: state.providerLabel,
+      modelOptions: state.modelOptions,
+      sessionProviderOverride: null,
+      tokenUsage: state.tokenUsage,
+      settings: state.settings,
+    });
   }
 
   async testProviderConnection(settings?: ProviderSettingsPayload): Promise<void> {
@@ -2475,7 +2921,10 @@ export class ThunderController {
     this.notifyUi({ settings: (await this.buildUiState()).settings });
   }
 
-  async saveProviderSettings(settings: ProviderSettingsPayload): Promise<void> {
+  async saveProviderSettings(
+    settings: ProviderSettingsPayload,
+    reason: import('../config/vscode/write').ProviderSettingsWriteReason = 'settings'
+  ): Promise<void> {
     const validation = validateProviderSettings(settings);
     if (!validation.ok) {
       void vscode.window.showErrorMessage(`${AGENT_NAME}: ${validation.errors.join(' ')}`);
@@ -2489,7 +2938,8 @@ export class ThunderController {
       return;
     }
     await this.configService.updateProviderSettings(
-      normalizeProviderSettings(settings, this.configService.getConfig().provider.contextWindow)
+      normalizeProviderSettings(settings, this.configService.getConfig().provider.contextWindow),
+      reason
     );
     const config = this.configService.getConfig();
     const apiKey = await this.configService.getApiKey();
@@ -2821,6 +3271,16 @@ export class ThunderController {
     const priorityRoots = firstAutoRun ? priorityDiscoveryRoots(workspace) : [];
     const isPartialDiscovery = firstAutoRun;
     const discovery = new FileDiscoveryService(workspace, this.ignoreService, config.indexing);
+    this.indexQueue.setRunMetadata({
+      phase: 'scanning',
+      partial: isPartialDiscovery,
+      degraded: isPartialDiscovery || this.indexingStatus.degraded,
+      detail: isPartialDiscovery
+        ? 'Scanning priority files first. Existing indexed context stays usable while the full repository is discovered in the background.'
+        : options.background
+          ? 'Scanning the remaining repository for incremental indexing.'
+          : 'Scanning workspace for changed files.',
+    });
     const files = sortIndexCandidates(
       await discovery.discoverAsync({
         roots: isPartialDiscovery && priorityRoots.length > 0 ? priorityRoots : undefined,
@@ -2828,6 +3288,11 @@ export class ThunderController {
       }),
       config.indexing.priorityPaths
     );
+    if (this.indexQueue.getStatus().phase === 'cancelled') {
+      this.indexingStatus = this.indexQueue.getStatus();
+      this.notifyUi({ indexing: this.indexingStatus, workspaceNotice: this.workspaceNotice });
+      return;
+    }
 
     const diff = this.scanner.computeDiff(files, { includeDeleted: !isPartialDiscovery });
     this.scanner.persistScan(diff);
@@ -2845,6 +3310,13 @@ export class ThunderController {
 
     if (jobs.length === 0) {
       this.indexingStatus = this.indexQueue.getStatus();
+      this.indexQueue.setRunMetadata({
+        phase: 'complete',
+        partial: false,
+        degraded: false,
+        detail: 'Index is up to date.',
+      });
+      this.indexingStatus = this.indexQueue.getStatus();
       this.setWorkspaceNotice('ok', 'Index is up to date');
       this.sessionLog.append('index_complete', 'Index up to date', { workspace, jobCount: 0 });
       this.notifyUi({ indexing: this.indexingStatus, workspaceNotice: this.workspaceNotice });
@@ -2852,7 +3324,15 @@ export class ThunderController {
       return;
     }
 
-    this.indexQueue.enqueue(jobs);
+    this.indexQueue.enqueue(jobs, {
+      partial: isPartialDiscovery,
+      degraded: isPartialDiscovery,
+      detail: isPartialDiscovery
+        ? `Indexing ${jobs.length} priority file${jobs.length === 1 ? '' : 's'} first. Ask and Plan remain usable with partial context.`
+        : options.background
+          ? `Background indexing ${jobs.length} changed file${jobs.length === 1 ? '' : 's'} for full repository coverage.`
+          : `Indexing ${jobs.length} changed file${jobs.length === 1 ? '' : 's'}.`,
+    });
     this.indexingStatus = this.indexQueue.getStatus();
     const label = options.background
       ? 'Background indexing'
@@ -2875,6 +3355,21 @@ export class ThunderController {
 
     if (firstAutoRun) this.scheduleBackgroundIndex(workspace);
     void this.waitForIndexingComplete(workspace, jobs.length);
+  }
+
+  cancelIndexing(): void {
+    if (!this.indexQueue) return;
+    this.indexQueue.cancel();
+    this.indexingStatus = this.indexQueue.getStatus();
+    this.setWorkspaceNotice('warn', 'Indexing canceled. Existing indexed context is still usable.');
+    this.sessionLog.append('info', 'Indexing canceled by user', {
+      workspace: this.resolveWorkspacePath(),
+      indexed: this.indexingStatus.indexed,
+      queued: this.indexingStatus.queued,
+      processed: this.indexingStatus.processed,
+      runTotal: this.indexingStatus.runTotal,
+    });
+    this.notifyUi({ indexing: this.indexingStatus, workspaceNotice: this.workspaceNotice });
   }
 
   private scheduleBackgroundIndex(workspace: string): void {
@@ -2907,13 +3402,26 @@ export class ThunderController {
       failed: status.failed,
       durationMs: Date.now() - start,
     });
-    this.setWorkspaceNotice('ok', `Indexed ${status.indexed} files`);
+    if (status.phase === 'cancelled') return;
+    this.setWorkspaceNotice(
+      status.failed > 0 ? 'warn' : 'ok',
+      status.failed > 0
+        ? `Indexed ${status.indexed} files; ${status.failed} failed`
+        : status.partial
+          ? `Indexed ${status.indexed} priority files; background indexing continues`
+          : `Indexed ${status.indexed} files`
+    );
     this.notifyUi({ indexing: status, workspaceNotice: this.workspaceNotice });
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    // Abort active provider/tool loops before recording the terminal lifecycle
+    // event; otherwise in-flight work can append events after session_end.
+    this.chatOrchestrator?.stop();
+    this.sessionLog.endSession({ reason: 'controller_disposed' });
+    void debugTrace.flush();
     this.configService.dispose();
     void this.mcpManager.closeAll();
     if (this.backgroundIndexTimer) clearTimeout(this.backgroundIndexTimer);

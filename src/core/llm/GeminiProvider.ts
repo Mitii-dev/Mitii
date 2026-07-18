@@ -2,6 +2,7 @@ import type { LlmProvider, ChatRequest, ChatDelta, ModelCapabilities, ChatMessag
 import type { ToolDefinition } from './toolTypes';
 import { normalizeProviderError, ProviderError } from './errors';
 import { estimateTokensAsync } from './tokenEstimate';
+import { debugTrace } from '../telemetry/AsyncDebugTrace';
 
 export interface GeminiConfig {
   baseUrl: string;
@@ -51,6 +52,13 @@ export class GeminiProvider implements LlmProvider {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+      });
+      debugTrace.trace('llm', 'transport_response', {
+        provider: this.id,
+        status: response.status,
+        ok: response.ok,
+        contentType: response.headers?.get?.('content-type'),
+        contentLength: response.headers?.get?.('content-length'),
       });
 
       if (!response.ok) {

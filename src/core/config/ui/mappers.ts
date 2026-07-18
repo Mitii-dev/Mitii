@@ -1,3 +1,4 @@
+import { normalizeAgentDepth } from '../agentDepth';
 import type {
   AgentSettingsPayload,
   McpToggles,
@@ -83,18 +84,29 @@ export function validateProviderSettings(settings: ProviderSettingsPayload): Pro
   return { ok: errors.length === 0, errors };
 }
 
-export function normalizeAgentSettings(settings: AgentSettingsPayload): AgentSettingsPayload {
+export function normalizeAgentSettings(
+  settings: Omit<AgentSettingsPayload, 'askDepth' | 'planDepth' | 'actDepth'> & {
+    askDepth: string;
+    planDepth: string;
+    actDepth: string;
+  }
+): AgentSettingsPayload {
   return {
     ...settings,
+    askDepth: normalizeAgentDepth(settings.askDepth),
+    planDepth: normalizeAgentDepth(settings.planDepth),
+    actDepth: normalizeAgentDepth(settings.actDepth),
     maxSteps: clampInteger(settings.maxSteps, 1, 100),
     askMaxSteps: clampInteger(settings.askMaxSteps, 1, 50),
     askMaxAutoContinues: clampInteger(settings.askMaxAutoContinues, 0, 10),
     maxAutoContinues: clampInteger(settings.maxAutoContinues, 0, 10),
     researchAgentMaxSteps: clampInteger(settings.researchAgentMaxSteps, 1, 50),
-    planModel: settings.planModel.trim(),
-    planBaseUrl: settings.planBaseUrl.trim(),
-    actModel: settings.actModel.trim(),
-    actBaseUrl: settings.actBaseUrl.trim(),
+    askModel: (settings.askModel ?? '').trim(),
+    askBaseUrl: (settings.askBaseUrl ?? '').trim(),
+    planModel: (settings.planModel ?? '').trim(),
+    planBaseUrl: (settings.planBaseUrl ?? '').trim(),
+    actModel: (settings.actModel ?? '').trim(),
+    actBaseUrl: (settings.actBaseUrl ?? '').trim(),
   };
 }
 
@@ -120,6 +132,14 @@ export function normalizeThunderSettings(
     telemetry: {
       sessionLogging: settings.telemetry.sessionLogging,
       debugMetrics: settings.telemetry.debugMetrics,
+      traceEnabled: settings.telemetry.traceEnabled,
+      traceIncludePayloads: settings.telemetry.traceIncludePayloads,
+      traceLlm: settings.telemetry.traceLlm,
+      traceMcp: settings.telemetry.traceMcp,
+      traceWebview: settings.telemetry.traceWebview,
+      traceDaemon: settings.telemetry.traceDaemon,
+      traceWebhook: settings.telemetry.traceWebhook,
+      traceMaxPayloadChars: clampInteger(settings.telemetry.traceMaxPayloadChars, 1_000, 1_000_000),
     },
   };
 }

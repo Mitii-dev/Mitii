@@ -16,6 +16,7 @@ import type { ContextPack } from '../context/types';
 import type { PostEditValidator } from '../apply/PostEditValidator';
 import type { ToolExecutor, ToolExecutionResult } from '../safety/ToolExecutor';
 import type { TaskAnalysis } from './TaskAnalyzer';
+import type { AgentTaskState } from './AgentTaskState';
 import { formatVerifyPlanForAgent, resolveProjectVerifyCommands } from './verifyCommandDiscovery';
 import {
   buildStepPrompt,
@@ -27,6 +28,12 @@ import {
   buildIsolatedPlanPrompt,
 } from '../plans/promptBuilder';
 import { PlanFileStore } from '../plans/PlanFileStore';
+import {
+  maxStepsForPlanningDepth,
+  minStepsForPlanningDepth,
+  resolvePlanningDepth,
+  type PlanningDepth,
+} from '../plans/planningDepth';
 import { applyDependencyLocks, getNextExecutableStep, PLANNING_DISCOVERY_TOOLS } from '../tools/planTools';
 import { needsPlanGrounding } from '../modes/plan/planMode';
 import { filterDirectAgentTools } from '../tools/toolAliases';
@@ -35,6 +42,8 @@ import { createLogger } from '../telemetry/Logger';
 const log = createLogger('PlanExecutor');
 
 export type PlanUpdateCallback = (plan: ThunderPlan) => void;
+export type { PlanningDepth };
+export { resolvePlanningDepth } from '../plans/planningDepth';
 
 export interface PlanExecutorOptions {
   stepMaxRetries?: number;
@@ -48,6 +57,12 @@ export interface PlanExecutorOptions {
   planAutoContinue?: boolean;
   planMaxAutoContinues?: number;
   skillPlaybookContext?: string;
+  taskAnalysis?: TaskAnalysis;
+  planningDepth?: PlanningDepth;
+  /** Auto-approve step file paths into the session file scope before the step runs. */
+  seedFileScope?: (paths: string[]) => void;
+  /** Shared per-turn state used for scope and loop-local churn guards. */
+  getTaskState?: () => AgentTaskState | undefined;
   onRequirementAnalysisDelta?: (text: string) => void;
   onPlanQualityIssues?: (issues: string[]) => void;
 }
@@ -133,6 +148,7 @@ export class PlanExecutor {
       hasDiscovery: Boolean(planningDiscovery),
       taskKind: taskAnalysis?.kind,
     });
+    const planningDepth = options?.planningDepth ?? resolvePlanningDepth(taskAnalysis);
 
     for (let attempt = 0; attempt < 2; attempt++) {
       log.debug('Plan generation attempt', { attempt: attempt + 1 });
@@ -147,7 +163,7 @@ export class PlanExecutor {
             userMessage,
             effectiveAnalysis,
             planningDiscovery,
-            taskAnalysis,
+            taskAnalysis ? { ...taskAnalysis, planningDepth } : undefined,
             options?.skillPlaybookContext
           )
         : buildPlanGenerationPrompt(
@@ -156,7 +172,7 @@ export class PlanExecutor {
             userMessage,
             effectiveAnalysis,
             planningDiscovery,
-            taskAnalysis,
+            taskAnalysis ? { ...taskAnalysis, planningDepth } : undefined,
             options?.skillPlaybookContext
           );
       let response = '';
@@ -173,7 +189,7 @@ export class PlanExecutor {
         continue;
       }
 
-      const issues = validatePlanQuality(plan, taskAnalysis);
+      const issues = validatePlanQuality(plan, taskAnalysis, planningDepth);
       if (issues.length === 0) {
         applyDependencyLocks(plan);
         if (sessionId && options?.workspace) {
@@ -228,9 +244,15 @@ export class PlanExecutor {
       pack,
       userMessage,
       analysis,
-      options?.skillPlaybookContext
+      {
+        skillPlaybookContext: options?.skillPlaybookContext,
+        docsMode: isDocumentationPlan(analysis),
+        subagentsEnabled: analysis.shouldUseSubagents,
+      }
     );
-    const readOnlyTools = tools.filter((tool) => PLANNING_DISCOVERY_TOOLS.has(tool.function.name));
+    const readOnlyTools = tools
+      .filter((tool) => PLANNING_DISCOVERY_TOOLS.has(tool.function.name))
+      .filter((tool) => analysis.shouldUseSubagents || !['spawn_research_agent', 'spawn_subagent'].includes(tool.function.name));
     let output = '';
 
     log.debug('Running planning discovery', {
@@ -282,23 +304,35 @@ export class PlanExecutor {
     this.touchedFiles.clear();
     const maxRetries = options?.stepMaxRetries ?? 2;
     let hasSuccessfulVerification = false;
+    let stalledByDependencies = false;
 
     log.debug('Starting plan execution', { goal: plan.goal, steps: plan.steps.length, maxRetries });
 
-    this.planPersistence.save(session.id, plan, 'running');
-    onPlanUpdate?.(plan);
-
-    if (options?.workspace) {
-      const fileStore = new PlanFileStore(options.workspace, session.id);
-      fileStore.save(plan, 'running');
+    // Re-open steps left blocked/running by an interrupted execution so the DAG
+    // selector can resume them as executable pending work.
+    for (let si = 0; si < plan.steps.length; si++) {
+      if (plan.steps[si].status === 'blocked' || plan.steps[si].status === 'running') {
+        plan.steps[si] = { ...plan.steps[si], status: 'pending' };
+      }
     }
+
+    this.planPersistence.save(session.id, plan, 'running');
+    this.syncPlanFile(options?.workspace, session.id, plan, 'running');
+    onPlanUpdate?.(plan);
 
     applyDependencyLocks(plan);
 
     for (let i = 0; i < plan.steps.length; i++) {
       if (signal?.aborted) break;
 
-      const step = getNextExecutableStep(plan) ?? plan.steps[i];
+      const step = getNextExecutableStep(plan);
+      if (!step) {
+        if (!plan.steps.every((candidate) => candidate.status === 'done')) {
+          stalledByDependencies = true;
+          yield '\n\n⚠️ Plan stopped because no executable step remains; pending steps have failed or unmet dependencies.\n';
+        }
+        break;
+      }
       const stepIndex = plan.steps.findIndex((s) => s.id === step.id);
       if (stepIndex < 0 || step.status === 'done') continue;
       i = stepIndex;
@@ -320,6 +354,7 @@ export class PlanExecutor {
 
         plan.steps[i] = { ...step, status: 'running' };
         this.planPersistence.updatePlan(session.id, plan, 'running');
+        this.syncPlanFile(options?.workspace, session.id, plan, 'running');
         onPlanUpdate?.(plan);
 
         const stepStartedAt = Date.now();
@@ -336,7 +371,11 @@ export class PlanExecutor {
             : undefined;
         const messages =
           attempt === 0
-            ? buildStepPrompt(session.mode, pack, plan, step, this.stepSummaries, verifyContextBlock)
+            ? buildStepPrompt(session.mode, pack, plan, step, this.stepSummaries, verifyContextBlock, {
+                skillPlaybookContext: options?.skillPlaybookContext,
+                auditMode: options?.restrictRunCommandToReadOnly,
+                docsMode: isDocumentationPlan(options?.taskAnalysis, plan.goal),
+              })
             : buildStepRetryPrompt(
                 session.mode,
                 pack,
@@ -344,11 +383,21 @@ export class PlanExecutor {
                 step,
                 this.stepSummaries,
                 lastValidationErrors,
-                verifyContextBlock
+                verifyContextBlock,
+                {
+                  skillPlaybookContext: options?.skillPlaybookContext,
+                  auditMode: options?.restrictRunCommandToReadOnly,
+                  docsMode: isDocumentationPlan(options?.taskAnalysis, plan.goal),
+                }
               );
+
+        if (attempt === 0 && step.files?.length && options?.seedFileScope) {
+          options.seedFileScope(step.files);
+        }
 
         let stepOutput = '';
         let successfulWrites = 0;
+        let successfulVerifyCommands = 0;
         let failedVerifyCommands = 0;
         let pendingApproval = false;
         const explicitToolCall = getExplicitStepToolCall(step);
@@ -370,6 +419,7 @@ export class PlanExecutor {
             log.debug('Step blocked pending approval', { stepId: step.id, tool: explicitToolCall.name });
             plan.steps[i] = { ...plan.steps[i], status: 'blocked' };
             this.planPersistence.updatePlan(session.id, plan, 'blocked');
+            this.syncPlanFile(options?.workspace, session.id, plan, 'blocked');
             onPlanUpdate?.(plan);
             yield '\n\n⏸ Waiting for approval before continuing…\n';
             return;
@@ -397,12 +447,13 @@ export class PlanExecutor {
           }
           if (isVerifyStep && isVerificationTool(explicitToolCall.name)) {
             hasSuccessfulVerification = true;
+            successfulVerifyCommands += 1;
           }
         } else {
           for await (const chunk of this.agentLoop.run(
             provider,
             messages,
-            filterDirectAgentTools(tools),
+            filterToolsForPlanPhase(filterDirectAgentTools(tools), phaseLock),
             signal,
             {
               ...loopCallbacks,
@@ -411,8 +462,14 @@ export class PlanExecutor {
                 if (success && ['write_file', 'apply_patch'].includes(name)) {
                   successfulWrites += 1;
                 }
-                if (isVerifyStep && success && isVerificationTool(name)) {
+                if (
+                  isVerifyStep &&
+                  success &&
+                  isVerificationTool(name) &&
+                  !/\bSkipped redundant\b/i.test(output ?? '')
+                ) {
                   hasSuccessfulVerification = true;
+                  successfulVerifyCommands += 1;
                 }
                 if (
                   isVerifyStep &&
@@ -429,6 +486,7 @@ export class PlanExecutor {
               phaseLock,
               restrictRunCommandToReadOnly: options?.restrictRunCommandToReadOnly,
               planTracker: plan,
+              getTaskState: options?.getTaskState,
             }
           )) {
             yield chunk;
@@ -441,12 +499,13 @@ export class PlanExecutor {
           log.debug('Step blocked pending approval', { stepId: step.id });
           plan.steps[i] = { ...plan.steps[i], status: 'blocked' };
           this.planPersistence.updatePlan(session.id, plan, 'blocked');
+          this.syncPlanFile(options?.workspace, session.id, plan, 'blocked');
           onPlanUpdate?.(plan);
           yield '\n\n⏸ Waiting for approval before continuing…\n';
           return;
         }
 
-        if (step.files?.length) {
+        if (successfulWrites > 0 && step.files?.length) {
           for (const f of step.files) this.touchedFiles.add(f);
         }
 
@@ -496,6 +555,24 @@ export class PlanExecutor {
           onPlanUpdate?.(plan);
           log.warn('Verification step failed after max retries', { stepId: step.id, failedVerifyCommands });
           yield `\n\n❌ Verification step failed after ${maxRetries + 1} attempts.\n`;
+          break;
+        }
+
+        if (isVerifyStep && successfulVerifyCommands === 0) {
+          lastValidationErrors = [
+            'This verification step did not run a successful diagnostics, typecheck, lint, test, or build tool.',
+            'Do not complete verification from prose alone; run the narrowest relevant command.',
+          ];
+          attempt += 1;
+          if (attempt <= maxRetries) {
+            yield `\n\n⚠️ No verification command completed — retrying step ${i + 1}/${plan.steps.length} (${attempt + 1}/${maxRetries + 1})…\n`;
+            plan.steps[i] = { ...plan.steps[i], status: 'pending' };
+            continue;
+          }
+          plan.steps[i] = { ...plan.steps[i], status: 'failed' };
+          this.planPersistence.updatePlan(session.id, plan, 'running');
+          onPlanUpdate?.(plan);
+          yield `\n\n❌ Verification step failed after ${maxRetries + 1} attempts without a successful verification command.\n`;
           break;
         }
 
@@ -549,7 +626,7 @@ export class PlanExecutor {
       this.planPersistence.complete(session.id);
       onPlanUpdate?.(plan);
       yield '\n\n✅ All steps completed.\n';
-    } else if (failed) {
+    } else if (failed || stalledByDependencies) {
       yield '\n\n⚠️ Plan finished with failed steps. Review errors above and retry failed steps.\n';
     }
 
@@ -559,6 +636,20 @@ export class PlanExecutor {
       done: plan.steps.filter((s) => s.status === 'done').length,
       failed: plan.steps.filter((s) => s.status === 'failed').length,
     });
+  }
+
+  private syncPlanFile(
+    workspace: string | undefined,
+    sessionId: string,
+    plan: ThunderPlan,
+    status: 'planning' | 'running' | 'blocked' | 'completed' | 'failed'
+  ): void {
+    if (!workspace) return;
+    try {
+      new PlanFileStore(workspace, sessionId).save(plan, status);
+    } catch (error) {
+      log.warn('Failed to sync plan file', { error: String(error) });
+    }
   }
 
   private async validateStepFiles(files: string[]): Promise<string[]> {
@@ -601,19 +692,25 @@ export class PlanExecutor {
       this.stepSummaries,
       touchedFiles,
       workspaceErrors,
-      verifyContextBlock
+      verifyContextBlock,
+      {
+        skillPlaybookContext: options?.skillPlaybookContext,
+        auditMode: options?.restrictRunCommandToReadOnly,
+        docsMode: isDocumentationPlan(undefined, plan.goal),
+      }
     );
 
     for await (const chunk of this.agentLoop.run(
       provider,
       messages,
-      tools,
+      filterToolsForPlanPhase(tools, 'verify'),
       signal,
       loopCallbacks,
       {
         maxSteps: Math.min(options?.agentMaxSteps ?? 10, 10),
         phaseLock: 'verify',
         restrictRunCommandToReadOnly: options?.restrictRunCommandToReadOnly,
+        getTaskState: options?.getTaskState,
       }
     )) {
       yield chunk;
@@ -723,22 +820,40 @@ function parseGeneratedPlan(response: string, mode: ThunderSession['mode'] = 'pl
   return null;
 }
 
-function validatePlanQuality(plan: ThunderPlan, taskAnalysis?: TaskAnalysis): string[] {
+function validatePlanQuality(
+  plan: ThunderPlan,
+  taskAnalysis?: TaskAnalysis,
+  planningDepth: PlanningDepth = resolvePlanningDepth(taskAnalysis)
+): string[] {
   const issues: string[] = [];
   const stepCount = plan.steps.length;
   const phases = new Set(plan.steps.map((step) => step.phase).filter(Boolean));
 
   if (stepCount < 1) issues.push('Plan must contain at least one step.');
+  const maxSteps = maxStepsForPlanningDepth(planningDepth, taskAnalysis);
+  if (maxSteps && stepCount > maxSteps) {
+    issues.push(`Plan has ${stepCount} steps, but ${planningDepth} planning allows at most ${maxSteps} steps. Merge duplicate discovery/verification work.`);
+  }
 
-  if (taskAnalysis?.kind === 'audit') {
-    if (stepCount < 8) issues.push('Audit/cleanup plans must contain at least 8 granular steps.');
+  const minSteps = minStepsForPlanningDepth(planningDepth, taskAnalysis);
+  if (stepCount < minSteps) {
+    issues.push(
+      `Plans at ${planningDepth} depth must contain at least ${minSteps} step${minSteps === 1 ? '' : 's'}.`
+    );
+  }
+
+  const cleanupAudit =
+    taskAnalysis?.kind === 'audit' &&
+    (!taskAnalysis.auditSubtype ||
+      taskAnalysis.auditSubtype === 'unused_deps' ||
+      taskAnalysis.auditSubtype === 'dead_code' ||
+      taskAnalysis.auditSubtype === 'vulnerability' ||
+      taskAnalysis.auditSubtype === 'generic');
+
+  if (cleanupAudit) {
     for (const phase of ['diagnostics', 'review', 'execute', 'verify'] as const) {
-      if (!phases.has(phase)) issues.push(`Audit/cleanup plans must include a ${phase} phase.`);
+      if (!phases.has(phase)) issues.push(`Dependency/dead-code audit plans must include a ${phase} phase.`);
     }
-  } else if (taskAnalysis?.complexity === 'high' && stepCount < 4) {
-    issues.push('High-complexity plans must contain at least 4 steps.');
-  } else if (taskAnalysis?.shouldPlan && stepCount < 2) {
-    issues.push('Planned tasks must contain at least 2 steps.');
   }
 
   if (isDocumentationPlan(taskAnalysis)) {
@@ -753,11 +868,29 @@ function validatePlanQuality(plan: ThunderPlan, taskAnalysis?: TaskAnalysis): st
       .join('\n')
       .toLowerCase();
 
-    if (!/(docusaurus\.config|sidebars?|navbar|routebasepath|sidebarpath|docspluginid|docs plugin|docs routing)/i.test(planText)) {
-      issues.push('Documentation plans must inspect/update docs routing/config such as docusaurus.config.ts, sidebars, navbar, or docs plugin settings.');
-    }
-    if (!phases.has('verify') && !/\b(build|validate|verify|test)\b/.test(planText)) {
-      issues.push('Documentation plans must include a verification step, such as running the docs build.');
+    const docsSubtype = taskAnalysis?.docsSubtype;
+    const isReadme = docsSubtype === 'readme' || /\breadme\b/i.test(taskAnalysis?.summary ?? '');
+    const isDocusaurus =
+      docsSubtype === 'docusaurus' ||
+      docsSubtype === 'mdx_repair' ||
+      /\b(docusaurus|mdx)\b/i.test(taskAnalysis?.summary ?? '');
+
+    if (isDocusaurus) {
+      if (!/(docusaurus\.config|sidebars?|navbar|routebasepath|sidebarpath|docspluginid|docs plugin|docs routing)/i.test(planText)) {
+        issues.push('Docusaurus documentation plans must inspect/update docs routing/config such as docusaurus.config.ts, sidebars, navbar, or docs plugin settings.');
+      }
+      if (!phases.has('verify') && !/\b(build|validate|verify|test)\b/.test(planText)) {
+        issues.push('Docusaurus documentation plans must include a verification step, such as running the docs build.');
+      }
+    } else if (isReadme) {
+      if (!/\b(readme|structure|api|architecture|payload)\b/i.test(planText)) {
+        issues.push('README documentation plans must cover structure/API/architecture content discovery and writing.');
+      }
+      // README plans must NOT require Docusaurus routing or full app builds.
+    } else {
+      if (!phases.has('verify') && !/\b(build|validate|verify|read|review)\b/.test(planText)) {
+        issues.push('Documentation plans must include a verification or review step.');
+      }
     }
   }
 
@@ -787,11 +920,44 @@ function validatePlanQuality(plan: ThunderPlan, taskAnalysis?: TaskAnalysis): st
   return issues;
 }
 
-function isDocumentationPlan(taskAnalysis?: TaskAnalysis): boolean {
+function isDocumentationPlan(taskAnalysis?: TaskAnalysis, fallbackText = ''): boolean {
+  const text = `${taskAnalysis?.summary ?? ''} ${fallbackText}`;
   return Boolean(
-    taskAnalysis?.kind === 'implementation' &&
-    /\b(documentation|docs?|docusaurus)\b/i.test(taskAnalysis.summary)
+    taskAnalysis?.kind === 'docs' ||
+    taskAnalysis?.planIntent === 'docs' ||
+    taskAnalysis?.actIntent === 'docs' ||
+    (taskAnalysis?.kind === 'implementation' && /\b(documentation|docs?|docusaurus|mdx|readme)\b/i.test(text))
   );
+}
+
+function filterToolsForPlanPhase<T extends { function: { name: string } }>(
+  tools: T[],
+  phase: PlanPhase | undefined
+): T[] {
+  if (!phase) return tools;
+  const hiddenInReadOnly = new Set([
+    'write_file',
+    'apply_patch',
+    'memory_write',
+    'save_task_state',
+  ]);
+  const hiddenMcpWrite = /^mcp__filesystem__(create_directory|move_file|write_file|edit_file)$/i;
+
+  return tools.filter((tool) => {
+    const name = tool.function.name;
+    if (phase === 'diagnostics' || phase === 'review') {
+      if (hiddenInReadOnly.has(name)) return false;
+      if (hiddenMcpWrite.test(name)) return false;
+    }
+    if (phase === 'verify' && hiddenMcpWrite.test(name)) return false;
+    // Plan-control and release tools are orchestrator-owned / git-route-only.
+    if (name === 'mark_step_complete' || name === 'propose_plan_mutation' || name === 'release_plan_controller') {
+      return false;
+    }
+    // Prefer builtin FS over MCP duplicates during plan execution.
+    if (name.startsWith('mcp__filesystem__')) return false;
+    return true;
+  });
 }
 
 function normalizeRisk(risk: unknown): 'low' | 'medium' | 'high' {

@@ -2,7 +2,7 @@
 set -eu
 
 VERSION="${MITII_VERSION:-latest}"
-BASE_URL="${MITII_RELEASE_BASE_URL:-https://github.com/codewithshinde/thunder-ai-agent/releases/download}"
+BASE_URL="${MITII_RELEASE_BASE_URL:-https://github.com/Mitii-dev/Mitii/releases/download}"
 INSTALL_DIR="${MITII_INSTALL_DIR:-$HOME/.mitii/bin}"
 
 os="$(uname -s | tr '[:upper:]' '[:lower:]')"
@@ -15,8 +15,8 @@ esac
 
 asset="mitii-${os}-${arch}.tar.gz"
 if [ "$VERSION" = "latest" ]; then
-  url="https://github.com/codewithshinde/thunder-ai-agent/releases/latest/download/$asset"
-  sums_url="https://github.com/codewithshinde/thunder-ai-agent/releases/latest/download/SHA256SUMS"
+  url="https://github.com/Mitii-dev/Mitii/releases/latest/download/$asset"
+  sums_url="https://github.com/Mitii-dev/Mitii/releases/latest/download/SHA256SUMS"
 else
   url="$BASE_URL/$VERSION/$asset"
   sums_url="$BASE_URL/$VERSION/SHA256SUMS"

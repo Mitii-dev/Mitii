@@ -11,8 +11,9 @@ export function ContextWarningBanner({ budget, indexing, onDismiss }: ContextWar
   const indexPct =
     indexing.total > 0 ? Math.round((indexing.indexed / indexing.total) * 100) : 100;
   const indexIncomplete = indexing.total > 0 && indexPct < 90;
+  const degradedUsable = Boolean(indexing.partial || indexing.degraded || indexing.phase === 'cancelled');
 
-  if (dropped === 0 && !indexIncomplete) return null;
+  if (dropped === 0 && !indexIncomplete && !degradedUsable) return null;
 
   const messages: string[] = [];
   if (dropped > 0) {
@@ -21,7 +22,9 @@ export function ContextWarningBanner({ budget, indexing, onDismiss }: ContextWar
     );
   }
   if (indexIncomplete) {
-    messages.push(`Indexing ${indexPct}% — context may be incomplete until indexing finishes.`);
+    messages.push(`Indexing ${indexPct}% - context may be incomplete until indexing finishes.`);
+  } else if (degradedUsable) {
+    messages.push(indexing.detail || 'The index is degraded but usable. Results may miss files that have not been indexed yet.');
   }
 
   return (

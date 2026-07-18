@@ -43,9 +43,55 @@ describe('IgnoreService', () => {
     ig.load('/tmp');
     expect(ig.isIgnored('.mitii/logs/2026-07-08_23-10-52-abc.jsonl', { forRead: true })).toBe(false);
     expect(ig.isIgnored('.mitii/logs', { forRead: true })).toBe(false);
+    expect(ig.isIgnored('.mitii/logs/', { forRead: true })).toBe(false);
+    expect(ig.isIgnored('.miti/logs/2026-07-08_23-10-52-abc.jsonl', { forRead: true })).toBe(false);
     expect(ig.isIgnored('.mitii/logs/2026-07-08_23-10-52-abc.jsonl')).toBe(true);
     expect(ig.isIgnored('.mitii/config.json', { forRead: true })).toBe(true);
     expect(ig.isIgnored('.mitii/logs/nested/other.jsonl', { forRead: true })).toBe(true);
+  });
+
+  it('list_files can recursively list .mitii/logs despite default .mitii ignore', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'mitii-list-logs-'));
+    try {
+      const logsDir = join(tempDir, '.mitii', 'logs');
+      mkdirSync(logsDir, { recursive: true });
+      writeFileSync(join(logsDir, 'session-a.jsonl'), '{"type":"session_start"}\n');
+      writeFileSync(join(tempDir, '.mitii', 'config.json'), '{}');
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      const { createListFilesTool } = await import('../src/core/tools/builtinTools');
+      const tool = createListFilesTool(tempDir, ig);
+      const recursive = await tool.execute({ path: '.mitii', recursive: true });
+      expect(recursive.success).toBe(true);
+      expect(recursive.output).toContain('.mitii/logs/session-a.jsonl');
+      expect(recursive.output).not.toContain('.mitii/config.json');
+      const logsOnly = await tool.execute({ path: '.mitii/logs', recursive: true });
+      expect(logsOnly.success).toBe(true);
+      expect(logsOnly.output).toContain('.mitii/logs/session-a.jsonl');
+      const nonRecursive = await tool.execute({ path: '.mitii', recursive: false });
+      expect(nonRecursive.success).toBe(true);
+      expect(nonRecursive.output.split('\n')).toContain('logs');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('policy allows list_files/read on session logs when forRead is wired', () => {
+    const ig = new IgnoreService();
+    ig.load('/tmp');
+    const engine = new ToolPolicyEngine(
+      defaultThunderConfig().safety,
+      (path, options) => ig.isIgnored(path, options)
+    );
+    expect(engine.evaluate('list_files', { path: '.mitii/logs' }).decision).toBe('allow');
+    expect(engine.evaluate('read_file', { path: '.mitii/logs/session.jsonl' }).decision).toBe('allow');
+    expect(engine.evaluate('list_files', { path: '.miti/logs' }).decision).toBe('allow');
+    expect(engine.evaluate('analyze_jsonl', { path: '.mitii/logs/session.jsonl' }).decision).toBe('allow');
+    expect(engine.evaluate('analyze_jsonl', { path: '.miti/logs/session.jsonl' }).decision).toBe('allow');
+    expect(engine.evaluate('analyze_jsonl', { path: 'logs/session.jsonl' }).decision).toBe('allow');
+    expect(engine.evaluate('query_log_events', { path: '.mitii/logs/session.jsonl' }).decision).toBe('allow');
+    expect(engine.evaluate('read_file', { path: '.mitii/config.json' }).decision).toBe('block');
+    expect(engine.evaluate('mcp__filesystem__read_text_file', { path: '.mitii/logs/session.jsonl' }).decision).toBe('allow');
   });
 
   it('normalizes absolute workspace paths before ignore checks', () => {
@@ -113,6 +159,124 @@ describe('IgnoreService', () => {
 
       expect(result.success).toBe(true);
       expect(result.output).toContain('FormikRenderer');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('read_file returns a requested line slice with file line metadata', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-read-slice-test-'));
+    try {
+      const { createReadFileTool } = await import('../src/core/tools/builtinTools');
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      const relPath = 'src/sliced.ts';
+      mkdirSync(dirname(join(tempDir, relPath)), { recursive: true });
+      writeFileSync(join(tempDir, relPath), ['line 1', 'line 2', 'line 3', 'line 4'].join('\n'));
+
+      const result = await createReadFileTool(tempDir, ig).execute({
+        path: relPath,
+        startLine: 2,
+        endLine: 3,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('// lines 2-3 of 4');
+      expect(result.output).toContain('line 2\nline 3');
+      expect(result.output).not.toContain('line 1');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('propose_file_scope validates candidates and stores accepted scope', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-file-scope-test-'));
+    try {
+      const { createProposeFileScopeTool } = await import('../src/core/tools/builtinTools');
+      const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      mkdirSync(join(tempDir, 'src'), { recursive: true });
+      writeFileSync(join(tempDir, 'src/foo.ts'), 'export const foo = 1;\n');
+      const state = new AgentTaskState();
+      const tool = createProposeFileScopeTool(tempDir, ig, undefined, () => state);
+
+      const result = await tool.execute({
+        objective: 'inspect foo',
+        candidates: [
+          { path: 'src/foo.ts', reason: 'target file', intent: 'read' },
+          { path: '../outside.ts', reason: 'invalid path', intent: 'read' },
+        ],
+        maxFilesRead: 2,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('src/foo.ts');
+      expect(result.output).toContain('outside.ts');
+      expect(state.isPathInScope('src/foo.ts')).toBe(true);
+      expect(state.checkFileScopeBlocked('read_file', { path: 'src/foo.ts' })).toBeNull();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('propose_file_scope accepts access aliases and rejects missing read targets', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-file-scope-access-test-'));
+    try {
+      const { createProposeFileScopeTool } = await import('../src/core/tools/builtinTools');
+      const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      mkdirSync(join(tempDir, 'src'), { recursive: true });
+      writeFileSync(join(tempDir, 'src/foo.ts'), 'export const foo = 1;\n');
+      const state = new AgentTaskState();
+      const tool = createProposeFileScopeTool(tempDir, ig, undefined, () => state);
+
+      const result = await tool.execute({
+        objective: 'inspect and add files',
+        candidates: [
+          { path: 'src/foo.ts', access: 'read' },
+          { path: 'src/missing.ts', access: 'read' },
+          { path: 'src/new.ts', access: 'write' },
+        ],
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('src/foo.ts');
+      expect(result.output).toContain('src/new.ts');
+      expect(result.output).toContain('src/missing.ts');
+      expect(state.isPathInScope('src/foo.ts')).toBe(true);
+      expect(state.isPathInScope('src/new.ts')).toBe(true);
+      expect(state.isPathInScope('src/missing.ts')).toBe(false);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('propose_file_scope repairs common model argument variants', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-file-scope-coerce-test-'));
+    try {
+      const { createProposeFileScopeTool } = await import('../src/core/tools/builtinTools');
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      mkdirSync(join(tempDir, 'src'), { recursive: true });
+      writeFileSync(join(tempDir, 'src/foo.ts'), 'export const foo = 1;\n');
+      const tool = createProposeFileScopeTool(tempDir, ig);
+      const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
+      const runtime = new ToolRuntime();
+      runtime.register(tool);
+
+      const result = await runtime.execute('propose_file_scope', {
+        objective: 'inspect routing and create a page',
+        candidates: JSON.stringify([
+          { path: 'src/foo.ts', intent: 'routing' },
+          { path: 'src/new.ts', access: 'create' },
+        ]),
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('"intent": "read"');
+      expect(result.output).toContain('"intent": "write"');
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -709,19 +873,26 @@ describe('Plan/Act task analysis', () => {
 });
 
 describe('Ask mode helpers', () => {
-  it('filters tools to the Ask allowlist', async () => {
+  it('filters tools to the Ask allowlist (writes are approval-gated)', async () => {
     const { filterAskModeTools, ASK_ALLOWED_TOOLS } = await import('../src/core/runtime/askMode');
     const tools = [
       { type: 'function' as const, function: { name: 'read_file', description: '', parameters: {} } },
       { type: 'function' as const, function: { name: 'write_file', description: '', parameters: {} } },
       { type: 'function' as const, function: { name: 'analyze_change_impact', description: '', parameters: {} } },
       { type: 'function' as const, function: { name: 'mcp__fs__read', description: '', parameters: {} } },
+      { type: 'function' as const, function: { name: 'mark_step_complete', description: '', parameters: {} } },
     ];
     const filtered = filterAskModeTools(tools);
-    expect(filtered.map((t) => t.function.name)).toEqual(['read_file', 'analyze_change_impact', 'mcp__fs__read']);
+    expect(filtered.map((t) => t.function.name)).toEqual([
+      'read_file',
+      'write_file',
+      'analyze_change_impact',
+      'mcp__fs__read',
+    ]);
     expect(ASK_ALLOWED_TOOLS.has('spawn_research_agent')).toBe(true);
     expect(ASK_ALLOWED_TOOLS.has('project_catalog')).toBe(true);
-    expect(ASK_ALLOWED_TOOLS.has('write_file')).toBe(false);
+    expect(ASK_ALLOWED_TOOLS.has('write_file')).toBe(true);
+    expect(ASK_ALLOWED_TOOLS.has('analyze_jsonl')).toBe(true);
   });
 
   it('detects when Ask answers need grounding', async () => {
@@ -761,6 +932,65 @@ describe('Ask mode helpers', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('not available in Ask mode');
   });
+
+  it('requests approval for writes in Ask mode instead of hard-blocking', async () => {
+    const { ToolExecutor } = await import('../src/core/safety/ToolExecutor');
+    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
+    const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
+    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
+    const { createWriteFileTool } = await import('../src/core/tools/builtinTools');
+    const { IgnoreService } = await import('../src/core/indexing/IgnoreService');
+
+    const queue = new ApprovalQueue();
+    const runtime = new ToolRuntime();
+    runtime.register(createWriteFileTool(process.cwd(), new IgnoreService()));
+    const executor = new ToolExecutor(
+      runtime,
+      new ToolPolicyEngine({
+        requireApprovalForWrites: true,
+        requireApprovalForShell: true,
+        allowNetwork: false,
+        blockDangerousCommands: true,
+      }, () => false),
+      queue,
+      () => 'session-ask-write',
+      () => 'ask'
+    );
+
+    const result = await executor.execute('write_file', { path: 'README.md', content: 'x' });
+    expect(result.pendingApproval).toBe(true);
+    expect(result.error).toBe('Awaiting approval');
+    expect(queue.getPending()).toHaveLength(1);
+    expect(queue.getPending()[0]?.toolName).toBe('write_file');
+  });
+
+  it('requests approval for mutating shell in Ask mode', async () => {
+    const { ToolExecutor } = await import('../src/core/safety/ToolExecutor');
+    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
+    const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
+    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
+    const { createRunCommandTool } = await import('../src/core/tools/builtinTools');
+
+    const queue = new ApprovalQueue();
+    const runtime = new ToolRuntime();
+    runtime.register(createRunCommandTool(process.cwd(), () => 'ask'));
+    const executor = new ToolExecutor(
+      runtime,
+      new ToolPolicyEngine({
+        requireApprovalForWrites: true,
+        requireApprovalForShell: true,
+        allowNetwork: false,
+        blockDangerousCommands: true,
+      }, () => false),
+      queue,
+      () => 'session-ask-shell',
+      () => 'ask'
+    );
+
+    const result = await executor.execute('run_command', { command: 'npm install lodash' });
+    expect(result.pendingApproval).toBe(true);
+    expect(queue.getPending()[0]?.reason).toMatch(/approval/i);
+  });
 });
 
 describe('ThunderMode normalization', () => {
@@ -773,6 +1003,26 @@ describe('ThunderMode normalization', () => {
 });
 
 describe('ChatOrchestrator response handling', () => {
+  const classifierProvider = (intent: 'question' | 'explain_code' = 'question') => ({
+    id: 'classifier',
+    capabilities: {
+      contextWindow: 8192,
+      supportsStreaming: true,
+      supportsTools: false,
+      supportsEmbeddings: false,
+    },
+    async *complete() {
+      yield {
+        content: JSON.stringify({
+          intent,
+          confidence: 0.9,
+          alternatives: [],
+          needsClarification: false,
+        }),
+      };
+    },
+  });
+
   it('turns empty model output into an explicit assistant message', async () => {
     const { EMPTY_ASSISTANT_RESPONSE_MESSAGE, normalizeAssistantResponse } =
       await import('../src/core/orchestration/ChatOrchestrator');
@@ -786,6 +1036,269 @@ describe('ChatOrchestrator response handling', () => {
       wasEmpty: true,
     });
     expect(normalizeAssistantResponse('ok')).toEqual({ content: 'ok', wasEmpty: false });
+  });
+
+  it('passes resolved tier policy into context retrieval', async () => {
+    const { ChatOrchestrator } = await import('../src/core/orchestration/ChatOrchestrator');
+    const { ContextBudgeter } = await import('../src/core/context/ContextBudgeter');
+    const { ThunderSession } = await import('../src/core/session/ThunderSession');
+    let capturedQuery: import('../src/core/context/types').ContextQuery | undefined;
+    const retriever = {
+      retrieve: async (query: import('../src/core/context/types').ContextQuery) => {
+        capturedQuery = query;
+        return [];
+      },
+    };
+    const provider = {
+      id: 'fake-local',
+      capabilities: {
+        contextWindow: 8192,
+        supportsStreaming: true,
+        supportsTools: false,
+        supportsEmbeddings: false,
+        agenticTier: 'local-small' as const,
+      },
+      async *complete() {
+        yield { content: 'done', done: true };
+      },
+    };
+
+    const orchestrator = new ChatOrchestrator(
+      retriever as unknown as import('../src/core/context/HybridRetriever').HybridRetriever,
+      new ContextBudgeter()
+    );
+    const session = new ThunderSession('/tmp/mitii-test', 'ask');
+    for await (const chunk of orchestrator.send(session, provider, 'Explain this repo', [])) {
+      expect(chunk).toBeDefined();
+    }
+
+    expect(capturedQuery?.tierPolicy?.skillInjection).toBe('none');
+    expect(capturedQuery?.tierPolicy?.rulesMaxTotalChars).toBe(6_000);
+    expect(capturedQuery?.maxItems).toBeLessThanOrEqual(18);
+  });
+
+  it('scopes touched-file audit lookups to the current turn', async () => {
+    const { getTouchedFilesFromAudit } = await import('../src/core/orchestration/ChatOrchestrator');
+    const audit = [
+      {
+        toolName: 'write_file',
+        input: { path: 'src/stale.ts' },
+        result: { success: true, output: '' },
+        timestamp: 1,
+      },
+      {
+        toolName: 'read_file',
+        input: { path: 'src/read.ts' },
+        result: { success: true, output: '' },
+        timestamp: 2,
+      },
+      {
+        toolName: 'apply_patch',
+        input: { path: 'src/current.ts' },
+        result: { success: true, output: '' },
+        timestamp: 3,
+      },
+    ];
+    const runtime = { getAuditLog: () => audit };
+
+    expect(getTouchedFilesFromAudit(runtime as never, 2)).toEqual(['src/current.ts']);
+  });
+
+  it('subtracts explicit context before budgeting retrieved snippets', async () => {
+    const { calculateRetrievalContextBudget } = await import('../src/core/orchestration/ChatOrchestrator');
+
+    expect(calculateRetrievalContextBudget(10_000, 1_200, 300)).toEqual({
+      requestedContextBudget: 6_500,
+      retrievalContextBudget: 5_000,
+    });
+    expect(calculateRetrievalContextBudget(10_000, 8_000, 100)).toEqual({
+      requestedContextBudget: 6_500,
+      retrievalContextBudget: 0,
+    });
+  });
+
+  it('passes only current-turn audit entries to memory extraction', async () => {
+    const { ChatOrchestrator } = await import('../src/core/orchestration/ChatOrchestrator');
+    const { ContextBudgeter } = await import('../src/core/context/ContextBudgeter');
+    const { ThunderSession } = await import('../src/core/session/ThunderSession');
+    const capturedAudits: unknown[] = [];
+    const staleAudit = [{
+      toolName: 'write_file',
+      input: { path: 'src/previous.ts' },
+      result: { success: true, output: '' },
+      timestamp: Date.now(),
+    }];
+    const provider = {
+      id: 'fake',
+      capabilities: {
+        contextWindow: 8192,
+        supportsStreaming: true,
+        supportsTools: false,
+        supportsEmbeddings: false,
+      },
+      async *complete() {
+        yield { content: 'done' };
+      },
+    };
+    const orchestrator = new ChatOrchestrator(
+      { retrieve: async () => [] } as unknown as import('../src/core/context/HybridRetriever').HybridRetriever,
+      new ContextBudgeter()
+    );
+    orchestrator.configure({
+      toolRuntime: { getAuditLog: () => staleAudit } as never,
+      memoryConfig: { enabled: true, summarizeAfterTask: false } as never,
+      memoryExtractor: {
+        extractAfterTask: (_sessionId: string, _user: string, _assistant: string, audit: unknown[]) => {
+          capturedAudits.push(audit);
+        },
+      } as never,
+      intentClassifierProvider: classifierProvider('explain_code') as never,
+    });
+
+    for await (const chunk of orchestrator.send(new ThunderSession('/tmp/mitii-memory-test', 'ask'), provider, 'Explain this', [])) {
+      expect(chunk).toBeDefined();
+    }
+
+    expect(capturedAudits).toEqual([[]]);
+  });
+
+  it('does not auto-apply final response code blocks after tool-capable agent turns', async () => {
+    const { z } = await import('zod');
+    const { ChatOrchestrator } = await import('../src/core/orchestration/ChatOrchestrator');
+    const { ContextBudgeter } = await import('../src/core/context/ContextBudgeter');
+    const { ThunderSession } = await import('../src/core/session/ThunderSession');
+    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
+    const writes: unknown[] = [];
+    const toolRuntime = new ToolRuntime();
+    toolRuntime.register({
+      name: 'write_file',
+      description: 'Write file',
+      risk: 'medium',
+      inputSchema: z.object({ path: z.string(), content: z.string() }),
+      execute: async () => ({ success: true, output: '' }),
+    });
+    const provider = {
+      id: 'fake-tools',
+      capabilities: {
+        contextWindow: 8192,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsEmbeddings: false,
+      },
+      async *complete() {
+        yield {
+          content: 'Example only:\n```ts|CODE_EDIT_BLOCK|src/example.ts\nexport const example = true;\n```',
+        };
+      },
+    };
+    const orchestrator = new ChatOrchestrator(
+      { retrieve: async () => [] } as unknown as import('../src/core/context/HybridRetriever').HybridRetriever,
+      new ContextBudgeter()
+    );
+    orchestrator.configure({
+      toolRuntime,
+      toolExecutor: {
+        execute: async (name: string, input: Record<string, unknown>) => {
+          writes.push({ name, input });
+          return { success: true, output: '' };
+        },
+      } as never,
+      intentClassifierProvider: classifierProvider('question') as never,
+    });
+
+    for await (const chunk of orchestrator.send(new ThunderSession('/tmp/mitii-tools-test', 'agent'), provider, 'Show an example for src/example.ts', [])) {
+      expect(chunk).toBeDefined();
+    }
+
+    expect(writes).toEqual([]);
+  });
+
+  it('keeps legacy response auto-apply for agent turns without tool-capable model calls', async () => {
+    const { ChatOrchestrator } = await import('../src/core/orchestration/ChatOrchestrator');
+    const { ContextBudgeter } = await import('../src/core/context/ContextBudgeter');
+    const { ThunderSession } = await import('../src/core/session/ThunderSession');
+    const writes: unknown[] = [];
+    const provider = {
+      id: 'fake-no-tools',
+      capabilities: {
+        contextWindow: 8192,
+        supportsStreaming: true,
+        supportsTools: false,
+        supportsEmbeddings: false,
+      },
+      async *complete() {
+        yield {
+          content: '```ts|CODE_EDIT_BLOCK|src/example.ts\nexport const example = true;\n```',
+        };
+      },
+    };
+    const orchestrator = new ChatOrchestrator(
+      { retrieve: async () => [] } as unknown as import('../src/core/context/HybridRetriever').HybridRetriever,
+      new ContextBudgeter()
+    );
+    orchestrator.configure({
+      toolExecutor: {
+        execute: async (name: string, input: Record<string, unknown>) => {
+          writes.push({ name, input });
+          return { success: true, output: '' };
+        },
+      } as never,
+      intentClassifierProvider: classifierProvider('question') as never,
+    });
+
+    for await (const chunk of orchestrator.send(new ThunderSession('/tmp/mitii-no-tools-test', 'agent'), provider, 'Update src/example.ts', [])) {
+      expect(chunk).toBeDefined();
+    }
+
+    expect(writes).toEqual([
+      {
+        name: 'write_file',
+        input: {
+          path: 'src/example.ts',
+          content: 'export const example = true;',
+        },
+      },
+    ]);
+  });
+
+  it('does not save plan-shaped ask responses as active plans', async () => {
+    const { ChatOrchestrator } = await import('../src/core/orchestration/ChatOrchestrator');
+    const { ContextBudgeter } = await import('../src/core/context/ContextBudgeter');
+    const { ThunderSession } = await import('../src/core/session/ThunderSession');
+    const save = vi.fn();
+    const provider = {
+      id: 'fake',
+      capabilities: {
+        contextWindow: 8192,
+        supportsStreaming: true,
+        supportsTools: false,
+        supportsEmbeddings: false,
+      },
+      async *complete() {
+        yield {
+          content: [
+            'Here is illustrative JSON:',
+            '```json',
+            '{"goal":"Explain plan","assumptions":[],"steps":[],"requiredApprovals":[]}',
+            '```',
+          ].join('\n'),
+        };
+      },
+    };
+    const orchestrator = new ChatOrchestrator(
+      { retrieve: async () => [] } as unknown as import('../src/core/context/HybridRetriever').HybridRetriever,
+      new ContextBudgeter()
+    );
+    orchestrator.configure({
+      planPersistence: { save, getActive: () => undefined } as never,
+      intentClassifierProvider: classifierProvider('explain_code') as never,
+    });
+
+    for await (const chunk of orchestrator.send(new ThunderSession('/tmp/mitii-plan-shape-test', 'ask'), provider, 'Explain this plan JSON', [])) {
+      expect(chunk).toBeDefined();
+    }
+
+    expect(save).not.toHaveBeenCalled();
   });
 });
 
@@ -933,6 +1446,61 @@ describe('Plan parser', () => {
 
     expect(plan.steps[0].status).toBe('failed');
     expect(output).toContain('lint failed');
+  });
+
+  it('does not complete a verification step from prose without running a verifier', async () => {
+    const { PlanExecutor } = await import('../src/core/runtime/PlanExecutor');
+    const plan = {
+      goal: 'Verify package',
+      assumptions: [],
+      requiredApprovals: [],
+      steps: [{
+        id: 'verify',
+        title: 'Verify Compilation',
+        status: 'pending' as const,
+        risk: 'low' as const,
+        phase: 'verify' as const,
+      }],
+    };
+    const persistence = {
+      save: () => 'plan-id',
+      updatePlan: () => undefined,
+      complete: () => undefined,
+    };
+    const agentLoop = {
+      hadPendingApproval: () => false,
+      async *run() {
+        // Weak model stopped without calling diagnostics/run_command.
+      },
+    };
+    const executor = new PlanExecutor(agentLoop as never, persistence as never);
+    const pack = {
+      items: [],
+      totalTokens: 0,
+      formatted: '',
+      budgetLimit: 100,
+      retrievedCount: 0,
+      truncatedCount: 0,
+      dropped: [],
+    };
+    let output = '';
+
+    for await (const chunk of executor.executePlan(
+      { id: 's1', mode: 'agent' } as never,
+      {} as never,
+      plan,
+      pack,
+      [],
+      undefined,
+      undefined,
+      undefined,
+      { stepMaxRetries: 0 }
+    )) {
+      output += chunk;
+    }
+
+    expect(plan.steps[0].status).toBe('failed');
+    expect(output).toContain('without a successful verification command');
   });
 
   it('does not reuse stale agent-loop approval state after an explicit step succeeds', async () => {
@@ -1179,7 +1747,7 @@ describe('TaskAnalyzer', () => {
 
     const impl = analyzeTask('implement login and then add tests for the auth module', 'agent');
     expect(impl.kind).toBe('implementation');
-    expect(impl.shouldPlan).toBe(true);
+    expect(impl.shouldPlan).toBe(false);
     expect(impl.shouldVerify).toBe(true);
   });
 
@@ -1191,7 +1759,7 @@ describe('TaskAnalyzer', () => {
     );
 
     expect(result.kind).toBe('implementation');
-    expect(result.shouldPlan).toBe(true);
+    expect(result.shouldPlan).toBe(false);
     expect(result.shouldVerify).toBe(true);
   });
 
@@ -1200,7 +1768,7 @@ describe('TaskAnalyzer', () => {
     const result = analyzeTask('need animated enterprise landing page UI', 'agent');
 
     expect(result.kind).toBe('implementation');
-    expect(result.shouldPlan).toBe(true);
+    expect(result.shouldPlan).toBe(false);
     expect(result.shouldVerify).toBe(true);
   });
 
@@ -1208,10 +1776,10 @@ describe('TaskAnalyzer', () => {
     const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
     const result = analyzeTask('add docs for all ffb-mui features', 'agent');
 
-    expect(result.kind).toBe('implementation');
+    expect(result.kind).toBe('docs');
     expect(result.complexity).toBe('medium');
     expect(result.shouldPlan).toBe(true);
-    expect(result.shouldVerify).toBe(true);
+    expect(result.shouldVerify).toBe(false);
   });
 
   it('routes single-file day/row appends as direct simple edits', async () => {
@@ -1339,6 +1907,19 @@ describe('auditRouting', () => {
       'Audit unused npm dependencies in this project. For each dependency in package.json, search whether it is actually imported';
     expect(isDependencyEnumerationTask(task)).toBe(true);
   });
+
+  it('routes vulnerability / CVE tasks to audit-vulnerabilities script', async () => {
+    const {
+      isVulnerabilityAuditTask,
+      buildScriptFirstAuditMessage,
+    } = await import('../src/core/runtime/auditRouting');
+    expect(isVulnerabilityAuditTask('Can you check the vulnerabilities in my package.json?')).toBe(true);
+    expect(isVulnerabilityAuditTask('Find unused dependencies')).toBe(false);
+    const msg = buildScriptFirstAuditMessage('check vulnerabilities and use web to check online');
+    expect(msg).toContain('audit-vulnerabilities.mjs');
+    expect(msg).toContain('fetch_web');
+    expect(msg).not.toMatch(/Preferred:\n1\. `execute_workspace_script\(\{ script: "audit-dependencies\.mjs" \}\)`/);
+  });
 });
 
 describe('shouldUsePlanner', () => {
@@ -1417,7 +1998,8 @@ describe('AgentTaskState', () => {
 
     expect(soft).toContain('already succeeded after edits');
     expect(soft).toContain('Stop using tools now');
-    expect(soft).toContain('No errors');
+    expect(soft).toContain('Cached evidence reference');
+    expect(soft).not.toContain('\nNo errors\n');
     expect(normalizeDiagnosticKey('cd packages/ffb-mui && npm run build:types')).toBeNull();
     expect(normalizeDiagnosticKey('cd apps/docs && npm run build')).toBe('docs-build');
   });
@@ -1438,8 +2020,9 @@ describe('AgentTaskState', () => {
     state.recordToolSuccess('run_command', { command: 'npx eslint src/' }, 'no-unused-vars: 3 errors');
     expect(state.getPhase()).toBe('execute');
     const soft = state.buildSoftBlockResponse('run_command', { command: 'npx eslint src/' });
-    expect(soft).toContain('Skipped redundant');
-    expect(soft).toContain('no-unused-vars');
+    expect(soft).toContain('(Skipped run_command — reason:duplicate — phase: execute)');
+    expect(soft).toContain('Cached evidence reference');
+    expect(soft).not.toContain('no-unused-vars');
     expect(soft).toContain('smallest exact next action');
     expect(soft).not.toContain('package.json');
   });
@@ -1467,20 +2050,293 @@ describe('AgentTaskState', () => {
   it('blocks repeated read_file after first successful read', async () => {
     const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
     const state = new AgentTaskState();
+    state.setFileScope(['apps/docs/docusaurus.config.ts']);
     state.recordToolSuccess('read_file', { path: 'apps/docs/docusaurus.config.ts' }, 'export default {}');
     const blocked = state.checkBlocked('read_file', { path: 'apps/docs/docusaurus.config.ts' });
     expect(blocked).toContain('Already read');
     const soft = state.buildSoftBlockResponse('read_file', { path: 'apps/docs/docusaurus.config.ts' });
-    expect(soft).toContain('Cached output');
-    expect(soft).toContain('export default');
+    expect(soft).toContain('Cached evidence reference');
+    expect(soft).not.toContain('export default');
   });
 
   it('invalidates read cache after apply_patch', async () => {
     const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
     const state = new AgentTaskState();
+    state.setFileScope(['src/foo.ts']);
     state.recordToolSuccess('read_file', { path: 'src/foo.ts' }, 'const x = 1');
     state.recordToolSuccess('apply_patch', { path: 'src/foo.ts' }, 'Patched');
     expect(state.checkBlocked('read_file', { path: 'src/foo.ts' })).toBeNull();
+  });
+
+  it('requires proposed file scope before reads and edits', async () => {
+    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const state = new AgentTaskState();
+    expect(state.checkFileScopeBlocked('read_file', { path: 'src/foo.ts' })).toContain('propose_file_scope');
+    state.setFileScope(['src/foo.ts', 'src/other.ts'], 1);
+    expect(state.checkFileScopeBlocked('read_file', { path: 'src/foo.ts' })).toBeNull();
+    expect(state.checkFileScopeBlocked('write_file', { path: 'src/bar.ts' })).toContain('outside the accepted file scope');
+    state.recordToolSuccess('read_file', { path: 'src/foo.ts' }, 'const x = 1');
+    expect(state.checkFileScopeBlocked('read_file', { path: 'src/foo.ts' })).toBeNull();
+    expect(state.checkFileScopeBlocked('read_file', { path: 'src/other.ts' })).toContain('File read budget exceeded');
+  });
+
+  it('expands an exhausted read budget when a later plan step adds valid scope', async () => {
+    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const state = new AgentTaskState();
+    state.setFileScope(['src/a.ts'], 1);
+    state.recordToolSuccess('read_file', { path: 'src/a.ts' }, 'a');
+    state.mergeFileScope(['src/b.ts', 'src/c.ts'], 2);
+
+    expect(state.checkFileScopeBlocked('read_file', { path: 'src/b.ts' })).toBeNull();
+    expect(state.getFileScopeSnapshot().maxFilesRead).toBeGreaterThanOrEqual(3);
+  });
+
+  it('clears forced synthesis between structured plan step loops', async () => {
+    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const state = new AgentTaskState();
+    state.markForceSynthesis();
+    expect(state.shouldForceSynthesis()).toBe(true);
+    state.beginAgentLoop();
+    expect(state.shouldForceSynthesis()).toBe(false);
+  });
+
+  it('parses and gates JSON intent classifications', async () => {
+    const {
+      classifyIntent,
+      classifyIntentFastPath,
+      gateIntentClassification,
+      parseIntentClassification,
+      safeDefaultIntent,
+    } = await import('../src/core/runtime/intentClassifier');
+    const parsed = parseIntentClassification(
+      '{"intent":"docs","confidence":0.82,"alternatives":[{"intent":"feature","confidence":0.4},{"intent":"feature","confidence":0.6}]}',
+      ['bugfix', 'feature', 'docs'] as const
+    );
+    expect(parsed).toMatchObject({ intent: 'docs', confidence: 0.82, source: 'llm' });
+    expect(parsed.alternatives).toEqual([{ intent: 'feature', confidence: 0.6 }]);
+
+    const gated = gateIntentClassification(
+      {
+        intent: 'feature' as const,
+        confidence: 0.3,
+        alternatives: [],
+        needsClarification: false,
+        source: 'llm' as const,
+      },
+      'agent',
+      'question' as const
+    );
+    expect(gated.intent).toBe('feature');
+    expect(gated.needsClarification).toBe(true);
+
+    const fallback = gateIntentClassification(
+      {
+        intent: 'docs' as const,
+        confidence: 0.6,
+        alternatives: [{ intent: 'feature' as const, confidence: 0.35 }],
+        needsClarification: false,
+        source: 'llm' as const,
+      },
+      'agent',
+      'question' as const
+    );
+    expect(fallback).toMatchObject({
+      intent: 'question',
+      confidence: 0,
+      source: 'fallback',
+      originalIntent: 'docs',
+      originalConfidence: 0.6,
+      gated: true,
+    });
+
+    const clarification = gateIntentClassification(
+      {
+        intent: 'docs' as const,
+        confidence: 0.98,
+        alternatives: [],
+        needsClarification: true,
+        source: 'llm' as const,
+      },
+      'agent',
+      'question' as const
+    );
+    expect(clarification).toMatchObject({
+      intent: 'docs',
+      needsClarification: true,
+      gated: false,
+    });
+
+    const logPath = classifyIntentFastPath(
+      'agent',
+      String.raw`Analyze C:\project\.mitii\logs`,
+      ['bugfix', 'log_audit', 'audit'] as const
+    );
+    expect(logPath).toMatchObject({
+      intent: 'log_audit',
+      source: 'fast_path',
+      matchedRule: 'log target + analysis verb',
+    });
+
+    expect(classifyIntentFastPath(
+      'agent',
+      'Audit authentication security',
+      ['audit', 'question'] as const
+    )).toBeNull();
+    expect(classifyIntentFastPath(
+      'agent',
+      'Execute the saved plan',
+      ['feature', 'question'] as const
+    )).toBeNull();
+
+    expect(() => parseIntentClassification(
+      '{"intent":"docs","confidence":0.9} {"intent":"feature","confidence":0.8}',
+      ['docs', 'feature'] as const
+    )).not.toThrow();
+    const finalJson = parseIntentClassification(
+      '<think>Maybe {"intent":"feature","confidence":0.91}</think>\n{"intent":"bugfix","confidence":0.92,"alternatives":[]}',
+      ['bugfix', 'feature', 'docs'] as const
+    );
+    expect(finalJson).toMatchObject({ intent: 'bugfix', confidence: 0.92 });
+    expect(() => parseIntentClassification(
+      '{"intent":"docs","confidence":0.9,"unexpected":true}',
+      ['docs', 'feature'] as const
+    )).toThrow();
+    expect(() => parseIntentClassification(
+      '{"intent":"docs","confidence":0.9',
+      ['docs', 'feature'] as const
+    )).toThrow(/complete JSON object/);
+    expect(() => safeDefaultIntent('ask', [])).toThrow(/at least one allowed intent/);
+
+    let providerCalled = false;
+    const blank = await classifyIntent(
+      {
+        id: 'test',
+        capabilities: {
+          contextWindow: 8_192,
+          supportsTools: false,
+          supportsVision: false,
+          supportsReasoning: false,
+          supportsStreaming: true,
+          supportsEmbeddings: false,
+        },
+        async *complete() {
+          providerCalled = true;
+          yield { content: '{}' };
+        },
+      },
+      'ask',
+      '   ',
+      ['explain_code', 'general_knowledge'] as const,
+      {
+        explain_code: 'Explain code.',
+        general_knowledge: 'Answer general knowledge.',
+      }
+    );
+    expect(providerCalled).toBe(false);
+    expect(blank).toMatchObject({
+      intent: 'explain_code',
+      confidence: 0,
+      needsClarification: true,
+      source: 'fallback',
+      gateReason: 'empty_message',
+    });
+
+    await expect(classifyIntent(
+      {
+        id: 'test',
+        capabilities: {
+          contextWindow: 8_192,
+          supportsTools: false,
+          supportsVision: false,
+          supportsReasoning: false,
+          supportsStreaming: true,
+          supportsEmbeddings: false,
+        },
+        async *complete() {
+          yield { content: '{}' };
+        },
+      },
+      'ask',
+      'Explain this',
+      ['explain_code'] as const,
+      {} as never
+    )).rejects.toThrow(/Missing intent description: explain_code/);
+  });
+
+  it('keeps intent-classifier fast paths narrow and punctuation-safe', async () => {
+    const { classifyIntentFastPath } = await import('../src/core/runtime/intentClassifier');
+
+    expect(classifyIntentFastPath(
+      'plan',
+      'okay',
+      ['question', 'bugfix'] as const
+    )).toMatchObject({
+      intent: 'question',
+      matchedRule: 'short acknowledgement or greeting',
+    });
+    expect(classifyIntentFastPath(
+      'plan',
+      'okay fix the test',
+      ['question', 'bugfix'] as const
+    )).toBeNull();
+
+    for (const message of [
+      'What is knip?',
+      'Explain how depcheck works.',
+      'Is ts-prune reliable?',
+      'Remove unused variable from this function.',
+    ]) {
+      expect(classifyIntentFastPath(
+        'agent',
+        message,
+        ['audit', 'question'] as const
+      )).toBeNull();
+    }
+
+    for (const message of [
+      'Run knip',
+      'Find unused imports',
+      'Scan dead code',
+      'Audit dependencies',
+    ]) {
+      expect(classifyIntentFastPath(
+        'agent',
+        message,
+        ['audit', 'question'] as const
+      )).toMatchObject({
+        intent: 'audit',
+        source: 'fast_path',
+        matchedRule: 'explicit dependency or dead-code cleanup',
+      });
+    }
+
+    for (const message of [
+      'Analyze session.jsonl.',
+      'Review agent.jsonl,',
+      'Inspect .mitii/logs/session.jsonl:',
+    ]) {
+      expect(classifyIntentFastPath(
+        'agent',
+        message,
+        ['bugfix', 'log_audit', 'audit'] as const
+      )).toMatchObject({
+        intent: 'log_audit',
+        source: 'fast_path',
+        matchedRule: 'log target + analysis verb',
+      });
+    }
+  });
+
+  it('resolves state-aware control intent before domain routing', async () => {
+    const { resolveControlIntent } = await import('../src/core/runtime/controlIntent');
+
+    expect(resolveControlIntent('yes', { hasPendingApproval: true }).intent).toBe('approve_pending');
+    expect(resolveControlIntent('yes').intent).toBe('acknowledgement');
+    expect(resolveControlIntent('continue', { hasActiveTask: true }).intent).toBe('continue_task');
+    expect(resolveControlIntent('continue').intent).toBe('clarify_previous');
+    expect(resolveControlIntent('?', { hasActiveTask: true }).intent).toBe('clarify_previous');
+    expect(resolveControlIntent('cancel', { hasActiveTask: true }).intent).toBe('cancel_task');
+    expect(resolveControlIntent('Update README.md').intent).toBe('new_task');
   });
 
   it('caps sequential-thinking MCP calls', async () => {
@@ -1535,9 +2391,19 @@ describe('PlanActEngine read-only shell', () => {
     expect(isReadOnlyCommand('npm run verify')).toBe(true);
     expect(isReadOnlyCommand('npm run doctor')).toBe(true);
     expect(isReadOnlyCommand('pnpm validate')).toBe(true);
+    expect(isReadOnlyCommand('pnpm audit --json')).toBe(true);
+    expect(isReadOnlyCommand('pnpm outdated --filter frontend')).toBe(true);
+    expect(isReadOnlyCommand('cd frontend && pnpm audit --json 2>&1 | head -300')).toBe(true);
+    expect(isReadOnlyCommand('yarn outdated')).toBe(true);
+    expect(isReadOnlyCommand('yarn audit --json')).toBe(true);
+    expect(isReadOnlyCommand('cat .mitii/logs/a.jsonl | python3 -c "import sys; print(sys.stdin.read()[:10])"')).toBe(true);
+    expect(isReadOnlyCommand('python3 -c "open(\'x\',\'w\').write(\'nope\')"')).toBe(false);
+    expect(isReadOnlyCommand('for f in logs/*.jsonl; do grep error "$f"; done')).toBe(true);
     expect(stripLeadingCd('cd /home/user && npm ls')).toBe('npm ls');
     expect(isShellAllowed('plan', 'npx depcheck')).toBe(true);
     expect(isShellAllowed('ask', 'npx depcheck')).toBe(true);
+    expect(isShellAllowed('ask', 'pnpm audit --json')).toBe(true);
+    expect(isShellAllowed('plan', 'pnpm outdated')).toBe(true);
     expect(isShellAllowed('plan', 'npm install lodash')).toBe(false);
     expect(isShellAllowed('ask', 'npm install lodash')).toBe(false);
     expect(isToolAllowedInPlanPhase('execute', 'run_command', { command: 'npm run build' }).allowed).toBe(true);
@@ -1753,9 +2619,13 @@ describe('toolAliases', () => {
 });
 
 describe('promptBuilder', () => {
-  it('includes cause-specific MDX generic repair guidance', async () => {
+  it('includes cause-specific MDX generic repair guidance only for MDX repair mode', async () => {
     const { buildSystemPrompt } = await import('../src/core/plans/promptBuilder');
-    const prompt = buildSystemPrompt('agent', true);
+    const defaultPrompt = buildSystemPrompt('agent', true);
+    expect(defaultPrompt).not.toContain('Unexpected character `,` in name');
+    expect(defaultPrompt).not.toContain('LiveCodeBlock');
+
+    const prompt = buildSystemPrompt('agent', true, { mdxRepairMode: true });
 
     expect(prompt).toContain('Unexpected character `,` in name');
     expect(prompt).toContain('Record<string, any>');
@@ -2024,6 +2894,39 @@ describe('SubagentTracker', () => {
 });
 
 describe('SessionLogService', () => {
+  it('separates turn lifecycle from session lifecycle', async () => {
+    const { mkdtempSync, readFileSync, rmSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const { SessionLogService } = await import('../src/core/telemetry/SessionLogService');
+
+    const dir = mkdtempSync(join(tmpdir(), 'mitii-turn-log-'));
+    try {
+      const log = new SessionLogService();
+      log.configure(dir, 'turn-session', true);
+      log.writeSessionHeader({ mode: 'agent' });
+      const turnId = log.beginTurn({ mode: 'agent' });
+      log.append('user_message', 'Update README');
+      log.endTurn('completed', { toolCalls: 1 });
+
+      let events = readFileSync(log.getLogPath(), 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+      expect(events.map((event) => event.type)).toEqual([
+        'session_start',
+        'turn_start',
+        'user_message',
+        'turn_end',
+      ]);
+      expect(events[2].data.turnId).toBe(turnId);
+      expect(events.some((event) => event.type === 'session_end')).toBe(false);
+
+      log.endSession({ reason: 'test_complete' });
+      events = readFileSync(log.getLogPath(), 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+      expect(events.at(-1)?.type).toBe('session_end');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('writes JSONL events and builds a summary', async () => {
     const { mkdtempSync, readFileSync, rmSync } = await import('fs');
     const { join } = await import('path');
@@ -2149,7 +3052,7 @@ describe('UserExplicitContextBuilder', () => {
 });
 
 describe('buildPrompt explicit context', () => {
-  it('places user_explicit_context before codebase context', async () => {
+  it('places user_explicit_context inside the untrusted workspace context', async () => {
     const { buildPrompt } = await import('../src/core/plans/promptBuilder');
     const pack = {
       items: [],
@@ -2174,7 +3077,13 @@ describe('buildPrompt explicit context', () => {
       '<user_explicit_context><file path="a.ts">code</file></user_explicit_context>'
     );
     const user = messages.find((m) => m.role === 'user');
-    expect(user?.content.startsWith('<user_explicit_context>')).toBe(true);
+    const content = user?.content ?? '';
+    const workspaceStart = content.indexOf('<workspace_context trust="untrusted-data">');
+    const explicitStart = content.indexOf('<user_explicit_context>');
+    const workspaceEnd = content.indexOf('</workspace_context>');
+    expect(workspaceStart).toBeGreaterThanOrEqual(0);
+    expect(explicitStart).toBeGreaterThan(workspaceStart);
+    expect(explicitStart).toBeLessThan(workspaceEnd);
     expect(user?.content).toContain('## Codebase Context');
   });
 });
@@ -2350,6 +3259,48 @@ describe('run_command exit codes', () => {
 
       const npm = await tool.execute({ command: 'npm test' });
       expect(npm.success).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not treat historical "not found" in stdout as a shell failure', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const { createRunCommandTool } = await import('../src/core/tools/builtinTools');
+
+    const dir = mkdtempSync(join(tmpdir(), 'thunder-cmd-log-'));
+    try {
+      writeFileSync(
+        join(dir, 'sample.jsonl'),
+        '{"error":"File not found: missing.md","message":"read file failed"}\n'
+      );
+      const tool = createRunCommandTool(dir, () => 'ask');
+      const result = await tool.execute({
+        command: 'grep -h "failure\\|not found\\|error" sample.jsonl | head -5',
+      });
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('File not found');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('detects compiler errors hidden by a successful trailing pipeline command', async () => {
+    const { mkdtempSync, rmSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const { createRunCommandTool } = await import('../src/core/tools/builtinTools');
+
+    const dir = mkdtempSync(join(tmpdir(), 'thunder-cmd-tsc-pipe-'));
+    try {
+      const tool = createRunCommandTool(dir, () => 'agent');
+      const result = await tool.execute({
+        command: 'printf "src/index.ts(1,1): error TS18046: bad type\\n" | tail -20 # tsc --noEmit',
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('error TS18046');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -2597,13 +3548,16 @@ describe('Ask v2 routing, scope, and impact', () => {
     expect(contextResult.output).toContain('apps/docs/src/index.ts');
   });
 
-  it('injects deep Ask instructions into prompts without applying concise global prose rules', async () => {
+  it('injects Ask routing instructions without forcing deep prose on concise profiles', async () => {
     const { buildPrompt, buildSystemPrompt } = await import('../src/core/plans/promptBuilder');
 
     const system = buildSystemPrompt('ask', true);
-    expect(system).toContain('technical blog post');
+    expect(system).not.toContain('technical blog post');
     expect(system).toContain('analyze_change_impact');
     expect(system).not.toContain('Keep prose concise. Avoid filler');
+
+    const deepSystem = buildSystemPrompt('ask', true, { askProfile: 'deep' });
+    expect(deepSystem).toContain('technical blog post');
 
     const messages = buildPrompt(
       'ask',
@@ -2617,7 +3571,9 @@ describe('Ask v2 routing, scope, and impact', () => {
       undefined,
       false,
       undefined,
-      '## Ask routing\nIntent: architecture'
+      '## Ask routing\nIntent: architecture',
+      undefined,
+      { askProfile: 'deep' }
     );
 
     expect(messages.at(-1)?.content).toContain('## Ask routing');

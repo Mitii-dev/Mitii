@@ -55,9 +55,18 @@ describe('Phase 3 platform services', () => {
 
     const leased = queue.lease('worker-a');
     expect(leased?.id).toBe(job.id);
+    expect(leased?.leasedBy).toBe('worker-a');
+    expect(leased?.resultPath).toBeUndefined();
     expect(queue.lease('worker-b')).toBeUndefined();
     queue.complete(job.id, 'done');
     expect(queue.list()[0]).toMatchObject({ status: 'completed' });
+    expect(queue.list()[0]).not.toHaveProperty('leasedBy');
+
+    const failed = queue.enqueue({ prompt: 'try again', mode: 'plan' });
+    queue.fail(failed.id, 'temporary provider error');
+    expect(queue.retry(failed.id)).toMatchObject({ status: 'queued' });
+    expect(queue.list().find((item) => item.id === failed.id)).not.toHaveProperty('error');
+    expect(queue.cancel(failed.id)).toMatchObject({ status: 'failed', error: 'Canceled by user.' });
   });
 
   it('persists teams, tasks, and mailbox messages', () => {

@@ -5,7 +5,9 @@ import type {
   ApprovalMode,
   ChatImageAttachment,
   ContextPathSuggestion,
+  ModelOptionView,
   PinnedContextView,
+  SessionProviderOverrideView,
   TokenUsageView,
 } from '../../../vscode/webview/messages';
 import { IconButton } from './IconButton';
@@ -23,6 +25,7 @@ import {
 } from './Icons';
 import { TokenMeter } from './TokenMeter';
 import { APPROVAL_MODE_OPTIONS } from '../utils/approvalMode';
+import { AGENT_DEPTH_OPTIONS, normalizeAgentDepth } from '../../../core/config/agentDepth';
 
 interface ChatInputProps {
   loading: boolean;
@@ -31,6 +34,8 @@ interface ChatInputProps {
   activeDepth: AgentDepthView;
   tokenUsage: TokenUsageView;
   modelLabel?: string;
+  modelOptions: ModelOptionView[];
+  sessionProviderOverride: SessionProviderOverrideView | null;
   pinnedContext: PinnedContextView[];
   canRetry: boolean;
   onSend: (content: string, pinnedContext: PinnedContextView[], attachments: ChatImageAttachment[]) => void;
@@ -38,17 +43,21 @@ interface ChatInputProps {
   onModeChange: (mode: ThunderMode) => void;
   onApprovalModeChange: (approvalMode: ApprovalMode) => void;
   onDepthChange: (depth: AgentDepthView) => void;
+  onModelChange: (selection: SessionProviderOverrideView | null) => void;
+  onSaveModelDefault: () => void;
   onRetry?: () => void;
   onCopyResponse?: () => void;
   onCopyChatHistory?: () => void;
   canCopyChatHistory?: boolean;
   onAddPinned: (path: string, kind: 'file' | 'folder') => void;
+  onRemovePinned: (path: string) => void;
+  onClearPinned: () => void;
   onSearchPaths: (query: string, requestId: string) => void;
   pathSuggestions: ContextPathSuggestion[];
   pathSearchRequestId: string | null;
 }
 
-type ComposerSelectId = 'mode' | 'approval' | 'depth';
+type ComposerSelectId = 'mode' | 'approval' | 'depth' | 'model';
 type ComposerOption<T extends string> = {
   id: T;
   label: string;
@@ -97,14 +106,32 @@ const APPROVAL_OPTIONS: Array<ComposerOption<ApprovalMode>> = APPROVAL_MODE_OPTI
   };
 });
 
-const DEPTH_OPTIONS: Array<ComposerOption<AgentDepthView>> = [
-  { id: 'auto', label: 'Auto', description: 'Choose depth from the request', color: '#38bdf8' },
-  { id: 'quick', label: 'Quick', description: 'Use a smaller exploration or execution budget', color: '#22c55e' },
-  { id: 'standard', label: 'Standard', description: 'Use the normal exploration or execution budget', color: '#60a5fa' },
-  { id: 'deep', label: 'Deep', description: 'Use a larger budget for complex work', color: '#f59e0b' },
-  { id: 'pilot', label: 'Pilot', description: 'Use an expanded budget for broad implementation or investigation', color: '#a78bfa' },
-  { id: 'enterprise', label: 'Enterprise', description: 'Use the largest built-in budget for exhaustive work', color: '#ef4444' },
-];
+const DEPTH_OPTIONS: Array<ComposerOption<AgentDepthView>> = AGENT_DEPTH_OPTIONS.map((option) => ({
+  id: option.id,
+  label: option.label,
+  description: option.description,
+  color: option.color,
+}));
+
+const MODEL_CATEGORY_LABELS: Record<ModelOptionView['category'], string> = {
+  recent: 'Recent',
+  local: 'Local',
+  cloud: 'Cloud',
+  custom: 'Custom',
+};
+
+const MODEL_CATEGORY_ORDER: ModelOptionView['category'][] = ['recent', 'local', 'cloud', 'custom'];
+
+function sameModelSelection(a: SessionProviderOverrideView | null | undefined, b: SessionProviderOverrideView | null | undefined): boolean {
+  if (!a || !b) return false;
+  return (
+    a.providerType === b.providerType &&
+    a.model === b.model &&
+    a.baseUrl === b.baseUrl &&
+    (a.profileId ?? '') === (b.profileId ?? '') &&
+    (a.profile ?? '') === (b.profile ?? '')
+  );
+}
 
 export function ChatInput({
   loading,
@@ -113,6 +140,8 @@ export function ChatInput({
   activeDepth,
   tokenUsage,
   modelLabel,
+  modelOptions,
+  sessionProviderOverride,
   pinnedContext,
   canRetry,
   onSend,
@@ -120,11 +149,15 @@ export function ChatInput({
   onModeChange,
   onApprovalModeChange,
   onDepthChange,
+  onModelChange,
+  onSaveModelDefault,
   onRetry,
   onCopyResponse,
   onCopyChatHistory,
   canCopyChatHistory = false,
   onAddPinned,
+  onRemovePinned,
+  onClearPinned,
   onSearchPaths,
   pathSuggestions,
   pathSearchRequestId,
@@ -142,7 +175,19 @@ export function ChatInput({
   const visibleMode = mode === 'review' ? 'plan' : mode;
   const activeMode = MODES.find((m) => m.id === visibleMode) ?? MODES[1];
   const activeApproval = APPROVAL_OPTIONS.find((option) => option.id === approvalMode) ?? APPROVAL_OPTIONS[0];
-  const selectedDepth = DEPTH_OPTIONS.find((option) => option.id === activeDepth) ?? DEPTH_OPTIONS[0];
+  const selectedDepth = DEPTH_OPTIONS.find((option) => option.id === normalizeAgentDepth(activeDepth)) ?? DEPTH_OPTIONS[0];
+  const selectedModel = modelOptions.find((option) => sameModelSelection(option, sessionProviderOverride))
+    ?? modelOptions[0]
+    ?? {
+      id: 'current',
+      label: modelLabel ?? 'Model',
+      description: 'Current model',
+      category: 'recent' as const,
+      providerType: 'echo' as const,
+      model: modelLabel ?? 'echo',
+      baseUrl: '',
+      profile: null,
+    };
 
   useEffect(() => {
     if (!searchRequestId || searchRequestId !== pathSearchRequestId) return;
@@ -339,6 +384,107 @@ export function ChatInput({
     );
   };
 
+  const renderModelDropdown = () => {
+    const isOpen = openSelect === 'model';
+    const groups = MODEL_CATEGORY_ORDER
+      .map((category) => ({
+        category,
+        options: modelOptions.filter((option) => option.category === category),
+      }))
+      .filter((group) => group.options.length > 0);
+
+    return (
+      <div
+        className="composer__dropdown composer__dropdown--model"
+        style={{ '--composer-control-color': sessionProviderOverride ? '#a78bfa' : '#38bdf8' } as CSSProperties}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            setOpenSelect((current) => (current === 'model' ? null : current));
+          }
+        }}
+      >
+        <button
+          type="button"
+          className="composer__dropdown-button has-tooltip"
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+          aria-label="Model"
+          data-tooltip={`Model: ${selectedModel.description}`}
+          onClick={() => setOpenSelect((current) => (current === 'model' ? null : 'model'))}
+        >
+          <span className="composer__dropdown-value">
+            <span className="composer__dropdown-dot" aria-hidden />
+            <span>{selectedModel.label}</span>
+          </span>
+          <IconChevronDown className="composer__mode-chevron" width={12} height={12} aria-hidden />
+        </button>
+        {isOpen && (
+          <div className="composer__dropdown-menu composer__dropdown-menu--model" role="listbox" aria-label="Model">
+            {sessionProviderOverride && (
+              <button
+                type="button"
+                className="composer__dropdown-option composer__dropdown-option--clear"
+                role="option"
+                aria-selected={false}
+                onClick={() => {
+                  onModelChange(null);
+                  setOpenSelect(null);
+                }}
+              >
+                <span className="composer__dropdown-option-dot" aria-hidden />
+                <span className="composer__dropdown-option-text">
+                  <span>Use mode/default</span>
+                  <small>Clear this chat's model override</small>
+                </span>
+              </button>
+            )}
+            {groups.map((group) => (
+              <div className="composer__model-group" key={group.category}>
+                <div className="composer__model-group-label">{MODEL_CATEGORY_LABELS[group.category]}</div>
+                {group.options.map((option) => {
+                  const selectedOption = option.id === selectedModel.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={`composer__dropdown-option has-tooltip${selectedOption ? ' composer__dropdown-option--selected' : ''}`}
+                      style={{ '--composer-option-color': option.category === 'local' ? '#22c55e' : option.category === 'cloud' ? '#60a5fa' : option.category === 'custom' ? '#a78bfa' : '#38bdf8' } as CSSProperties}
+                      role="option"
+                      aria-selected={selectedOption}
+                      data-tooltip={`Model: ${option.description}`}
+                      onClick={() => {
+                        onModelChange(option);
+                        setOpenSelect(null);
+                      }}
+                    >
+                      <span className="composer__dropdown-option-dot" aria-hidden />
+                      <span className="composer__dropdown-option-text">
+                        <span>{option.label}</span>
+                        <small>{option.description}</small>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+            {sessionProviderOverride && (
+              <button
+                type="button"
+                className="composer__model-default-button"
+                onClick={() => {
+                  onSaveModelDefault();
+                  setOpenSelect(null);
+                }}
+              >
+                Save as default
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div
       className="composer"
@@ -375,6 +521,32 @@ export function ChatInput({
                   <span className="mention-picker__label">{suggestion.label}</span>
                 </button>
               ))
+            )}
+          </div>
+        )}
+        {pinnedContext.length > 0 && (
+          <div className="composer__context-pills" aria-label="Pinned chat context">
+            {pinnedContext.map((item) => (
+              <button
+                key={`${item.kind}:${item.path}`}
+                type="button"
+                className="composer__context-pill"
+                onClick={() => onRemovePinned(item.path)}
+                title={`Remove ${item.path}`}
+              >
+                <span className="composer__context-kind">{item.kind === 'folder' ? 'DIR' : 'FILE'}</span>
+                <span className="composer__context-path">{item.path}</span>
+                <span className="composer__context-remove" aria-hidden>×</span>
+              </button>
+            ))}
+            {pinnedContext.length > 1 && (
+              <button
+                type="button"
+                className="composer__context-clear"
+                onClick={onClearPinned}
+              >
+                Clear
+              </button>
             )}
           </div>
         )}
@@ -420,7 +592,7 @@ export function ChatInput({
           </div>
         )}
         <div className="composer__footer">
-          <div className="composer__left">
+          <div className="composer__dropdown-row" aria-label="Chat controls">
             {renderDropdown({
               id: 'mode',
               label: 'Mode',
@@ -440,72 +612,72 @@ export function ChatInput({
             {renderDropdown({
               id: 'depth',
               label: 'Depth',
-              value: activeDepth,
+              value: normalizeAgentDepth(activeDepth),
               selected: selectedDepth,
               options: DEPTH_OPTIONS,
-              onChange: (nextDepth) => onDepthChange(nextDepth),
+              onChange: (nextDepth) => onDepthChange(normalizeAgentDepth(nextDepth)),
             })}
-            <TokenMeter usage={tokenUsage} compact placement="above" />
-            {modelLabel && (
-              <span className="model-chip" title={modelLabel}>
-                {modelLabel}
-              </span>
-            )}
+            {renderModelDropdown()}
           </div>
-          <div className="composer__actions">
-            <input
-              ref={fileInputRef}
-              className="composer__file-input"
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(e) => {
-                if (e.target.files) addImageFiles(e.target.files);
-                e.currentTarget.value = '';
-              }}
-            />
-            <IconButton
-              label="Attach image"
-              variant="ghost"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={loading}
-            >
-              <IconImage />
-            </IconButton>
-            {onRetry && (
-              <IconButton label="Retry last message" variant="ghost" onClick={onRetry} disabled={loading || !canRetry}>
-                <IconRetry />
-              </IconButton>
-            )}
-            {onCopyResponse && (
-              <IconButton label="Copy last response" variant="ghost" onClick={onCopyResponse} disabled={loading}>
-                <IconCopy />
-              </IconButton>
-            )}
-            {onCopyChatHistory && (
+          <div className="composer__utility-row">
+            <div className="composer__left">
+              <TokenMeter usage={tokenUsage} compact placement="above" />
+            </div>
+            <div className="composer__actions">
+              <input
+                ref={fileInputRef}
+                className="composer__file-input"
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => {
+                  if (e.target.files) addImageFiles(e.target.files);
+                  e.currentTarget.value = '';
+                }}
+              />
               <IconButton
-                label="Copy chat as Markdown"
+                label="Attach image"
                 variant="ghost"
-                onClick={onCopyChatHistory}
-                disabled={!canCopyChatHistory}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading}
               >
-                <IconMarkdown />
+                <IconImage />
               </IconButton>
-            )}
-            {loading ? (
-              <IconButton label="Stop generation" variant="accent" onClick={onStop}>
-                <IconStop />
-              </IconButton>
-            ) : (
-              <IconButton
-                label="Send message"
-                variant="accent"
-                onClick={handleSend}
-                disabled={!value.trim() && attachments.length === 0}
-              >
-                <IconSend />
-              </IconButton>
-            )}
+              {onRetry && (
+                <IconButton label="Retry last message" variant="ghost" onClick={onRetry} disabled={loading || !canRetry}>
+                  <IconRetry />
+                </IconButton>
+              )}
+              {onCopyResponse && (
+                <IconButton label="Copy last response" variant="ghost" onClick={onCopyResponse} disabled={loading}>
+                  <IconCopy />
+                </IconButton>
+              )}
+              {onCopyChatHistory && (
+                <IconButton
+                  label="Copy chat as Markdown"
+                  variant="ghost"
+                  onClick={onCopyChatHistory}
+                  disabled={!canCopyChatHistory}
+                >
+                  <IconMarkdown />
+                </IconButton>
+              )}
+              {loading ? (
+                <IconButton label="Stop generation" variant="accent" onClick={onStop}>
+                  <IconStop />
+                </IconButton>
+              ) : (
+                <IconButton
+                  label="Send message"
+                  variant="accent"
+                  onClick={handleSend}
+                  disabled={!value.trim() && attachments.length === 0}
+                >
+                  <IconSend />
+                </IconButton>
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -1,3 +1,5 @@
+import type { TierPolicy } from '../agentic/tierPolicy';
+
 export interface ContextItem {
   id: string;
   source: string;
@@ -24,6 +26,9 @@ export interface ContextQuery {
   pinnedContext?: PinnedContextRef[];
   scopeRoot?: string;
   maxItems?: number;
+  tierPolicy?: TierPolicy;
+  /** Source ids to skip for this retrieval (e.g. log_audit disables repo RAG). */
+  skipSources?: string[];
 }
 
 export interface ContextPack {

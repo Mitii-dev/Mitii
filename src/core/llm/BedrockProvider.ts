@@ -8,6 +8,7 @@ import {
 import type { ChatDelta, ChatMessage, ChatRequest, LlmProvider, ModelCapabilities } from './types';
 import { normalizeProviderError } from './errors';
 import { estimateTokensAsync } from './tokenEstimate';
+import { debugTrace } from '../telemetry/AsyncDebugTrace';
 
 export interface BedrockProviderConfig {
   region: string;
@@ -45,6 +46,12 @@ export class BedrockProvider implements LlmProvider {
     try {
       if (request.stream === false) {
         const response = await this.client.send(new ConverseCommand(input));
+        debugTrace.trace('llm', 'transport_response', {
+          provider: this.id,
+          transport: 'aws-bedrock',
+          streaming: false,
+          stopReason: response.stopReason,
+        });
         const content = response.output?.message?.content
           ?.map((block) => block.text ?? '')
           .join('') ?? '';
@@ -54,6 +61,12 @@ export class BedrockProvider implements LlmProvider {
       }
 
       const response = await this.client.send(new ConverseStreamCommand(input));
+      debugTrace.trace('llm', 'transport_response', {
+        provider: this.id,
+        transport: 'aws-bedrock',
+        streaming: true,
+        streamAvailable: Boolean(response.stream),
+      });
       for await (const event of response.stream ?? []) {
         const text = event.contentBlockDelta?.delta?.text;
         if (text) yield { content: text };

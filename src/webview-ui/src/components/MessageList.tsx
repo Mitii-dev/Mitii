@@ -116,7 +116,7 @@ export function MessageList({
   }
 
   return (
-    <div className="message-list" role="log" aria-live="polite">
+    <div className={`message-list message-list--mode-${mode}`} role="log" aria-live="polite">
       {messages.map((msg, index) => (
         <article key={msg.id} className={`message message--${msg.role}`}>
           <div className="message-content">

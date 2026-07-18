@@ -54,7 +54,7 @@ export class PlanPersistence {
     const row = db
       .prepare(`
         SELECT id, plan_json, status FROM task_plans
-        WHERE session_id = ? AND status IN ('active', 'running')
+        WHERE session_id = ? AND status IN ('active', 'running', 'blocked')
         ORDER BY updated_at DESC LIMIT 1
       `)
       .get(sessionId) as { id: string; plan_json: string; status: string } | undefined;
@@ -67,7 +67,7 @@ export class PlanPersistence {
     const db = this.db.tryRaw();
     if (!db) return;
     db
-      .prepare(`UPDATE task_plans SET status = 'completed', updated_at = ? WHERE session_id = ? AND status IN ('active', 'running')`)
+      .prepare(`UPDATE task_plans SET status = 'completed', updated_at = ? WHERE session_id = ? AND status IN ('active', 'running', 'blocked')`)
       .run(Date.now(), sessionId);
   }
 }

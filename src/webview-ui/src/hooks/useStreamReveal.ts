@@ -10,7 +10,8 @@ export function useStreamReveal(content: string, streaming: boolean): string {
   targetRef.current = content;
 
   useEffect(() => {
-    if (!streaming) {
+    const isAppend = content.length >= revealed.length && content.startsWith(revealed);
+    if (!isAppend) {
       setRevealed(content);
       return;
     }
@@ -35,5 +36,5 @@ export function useStreamReveal(content: string, streaming: boolean): string {
     return () => window.clearInterval(timer);
   }, [content, streaming, revealed.length]);
 
-  return streaming ? revealed : content;
+  return streaming || revealed.length < content.length ? revealed : content;
 }

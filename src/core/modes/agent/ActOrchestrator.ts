@@ -3,56 +3,75 @@ import { loadProjectCatalog } from '../ask/ProjectCatalog';
 import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import { analyzeTask } from '../../runtime/TaskAnalyzer';
 import { AUDIT_AGENT_MAX_STEPS } from '../../runtime/taskKind';
+import { LOG_AUDIT_AGENT_MAX_STEPS } from '../../runtime/logAudit';
 import type { SkillCatalogService } from '../../skills/SkillCatalogService';
+import type { SkillRuntimeContext } from '../../skills/skillRuntimeContext';
+import type { TierPolicy } from '../../agentic/tierPolicy';
+import { scaleTierSteps } from '../../agentic/tierPolicy';
+import { normalizeAgentDepth } from '../../config/agentDepth';
 import { resolvePlanScope } from '../plan/PlanScopeResolver';
 import { routeActIntent } from './ActIntentRouter';
 import { buildActPromptContext } from './actPrompts';
-import { loadActSkillPlaybooks, resolveActSkillNames } from './actSkillRouting';
-import type { ActDepth, ActRunPlan } from './actTypes';
+import { loadActSkillPlaybooks, resolveActSkillResolution } from './actSkillRouting';
+import type { ActDepth, ActIntent, ActRunPlan } from './actTypes';
+import type { SkillResolution } from '../../pipeline';
 
 export interface ActPrepareOptions {
   workspaceRoot?: string;
   catalog?: ProjectCatalog;
   skillCatalog?: SkillCatalogService;
+  tierPolicy?: TierPolicy;
   configuredMaxSteps?: number;
-  actDepth?: ActDepth;
+  actDepth?: ActDepth | string;
   actAutoContinue?: boolean;
   actMaxAutoContinues?: number;
   taskAnalysis?: TaskAnalysis;
   orchestrationEnabled?: boolean;
   auditMode?: boolean;
+  logAuditMode?: boolean;
   mdxRepairMode?: boolean;
   githubIssueMode?: boolean;
   hasActivePlan?: boolean;
   savedPlanId?: string;
   /** Empty = discover verify commands from project manifests at runtime */
   verifyCommands?: string[];
+  intent?: ActIntent;
+  runtimeContext?: SkillRuntimeContext;
+  /** Canonical pipeline skill decision. When present, do not reinterpret the request. */
+  skillResolution?: SkillResolution;
 }
 
 export class ActOrchestrator {
   static prepare(userMessage: string, options: ActPrepareOptions = {}): ActRunPlan {
+    const actDepth = normalizeAgentDepth(options.actDepth);
     const taskAnalysis = options.taskAnalysis ?? analyzeTask(userMessage, 'agent');
     const route = routeActIntent(userMessage, taskAnalysis, {
       mode: 'agent',
       hasActivePlan: options.hasActivePlan,
       orchestrationEnabled: options.orchestrationEnabled,
       auditMode: options.auditMode,
+      logAuditMode: options.logAuditMode,
       mdxRepairMode: options.mdxRepairMode,
       githubIssueMode: options.githubIssueMode,
-      actDepth: options.actDepth,
+      actDepth,
+      intent: options.intent,
     });
     const catalog = options.catalog ?? (options.workspaceRoot ? loadProjectCatalog(options.workspaceRoot) : undefined);
     const scope = resolvePlanScope(userMessage, catalog);
-    const suggestedSkills = resolveActSkillNames(route.intent, taskAnalysis);
+    const skillResolution = options.skillResolution ?? resolveActSkillResolution(route.intent, taskAnalysis);
+    const suggestedSkills = skillResolution.suggestedSkills;
+    const policy = options.tierPolicy;
     const { context: skillPlaybookContext, loaded: appliedSkills } = loadActSkillPlaybooks(
       options.skillCatalog,
-      suggestedSkills
+      skillResolution.injectSkills,
+      { style: policy?.skillInjection, maxChars: policy?.maxSkillChars, runtimeContext: options.runtimeContext ?? { mode: 'agent', depth: actDepth } }
     );
     const maxSteps = resolveActMaxSteps(
       route.executionPath,
       route.complexity,
       options.configuredMaxSteps,
-      options.actDepth
+      actDepth,
+      policy
     );
     const autoContinue = options.actAutoContinue ?? route.executionPath !== 'resume_saved_plan';
     const maxAutoContinues = resolveActMaxAutoContinues(
@@ -91,11 +110,14 @@ function resolveActMaxSteps(
   executionPath: string,
   complexity: string,
   configured: number | undefined,
-  actDepth: ActDepth = 'auto'
+  actDepth: ActDepth = 'auto',
+  policy?: TierPolicy
 ): number {
   const automatic = depthDefaultSteps(actDepth) ?? pathDefaultSteps(executionPath, complexity);
-  if (!configured || configured <= 0) return automatic;
-  return Math.max(1, Math.min(automatic, configured, 60));
+  const bounded = !configured || configured <= 0
+    ? automatic
+    : Math.max(1, Math.min(automatic, configured, 60));
+  return scaleTierSteps(bounded, policy, 60);
 }
 
 function resolveActMaxAutoContinues(
@@ -109,6 +131,7 @@ function resolveActMaxAutoContinues(
 }
 
 function pathDefaultSteps(executionPath: string, complexity: string): number {
+  if (executionPath === 'log_audit') return LOG_AUDIT_AGENT_MAX_STEPS;
   if (executionPath === 'audit') return AUDIT_AGENT_MAX_STEPS;
   if (executionPath === 'resume_saved_plan') return 15;
   if (executionPath === 'orchestrated') return complexity === 'high' ? 12 : 10;
@@ -120,10 +143,7 @@ function pathDefaultSteps(executionPath: string, complexity: string): number {
 
 function depthDefaultSteps(actDepth: ActDepth): number | undefined {
   if (actDepth === 'quick') return 6;
-  if (actDepth === 'standard') return 10;
   if (actDepth === 'deep') return 16;
-  if (actDepth === 'pilot') return 24;
-  if (actDepth === 'enterprise') return 32;
   return undefined;
 }
 

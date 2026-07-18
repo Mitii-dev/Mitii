@@ -1,6 +1,6 @@
 {
   "name": "@mitii/channels",
-  "version": "2.7.32",
+  "version": "2.7.67",
   "private": true,
   "type": "module",
   "main": "src/index.ts",

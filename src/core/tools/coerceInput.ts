@@ -33,6 +33,28 @@ export function coerceStringArray(value: unknown): string[] | unknown {
 export const stringArray = (min = 1, max = 12) =>
   z.preprocess(coerceStringArray, z.array(z.string()).min(min).max(max));
 
+/**
+ * Some models send numeric params as strings ("3" instead of 3), or pass 0/negative
+ * meaning "no limit" instead of omitting the field. Coerce to a number and drop
+ * non-positive values so the schema default applies instead of hard-failing the call.
+ */
+export function coercePositiveInt(value: unknown): number | unknown {
+  let normalized = value;
+  if (typeof normalized === 'string') {
+    const parsed = Number(normalized.trim());
+    if (Number.isFinite(parsed)) normalized = parsed;
+  }
+  if (typeof normalized === 'number' && (!Number.isFinite(normalized) || normalized <= 0)) {
+    return undefined;
+  }
+  return normalized;
+}
+
+export const positiveInt = (max?: number) => {
+  const schema = max ? z.number().int().positive().max(max) : z.number().int().positive();
+  return z.preprocess(coercePositiveInt, schema.optional());
+};
+
 export function normalizeToolInput(toolName: string, input: unknown): unknown {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
     return input;

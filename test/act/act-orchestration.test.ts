@@ -37,7 +37,7 @@ describe('Act orchestration boundary', () => {
       orchestrationEnabled: true,
     });
 
-    expect(route.intent).toBe('resume_plan');
+    expect(route.intent).toBe('feature');
     expect(route.executionPath).toBe('resume_saved_plan');
     expect(route.shouldUsePlanner).toBe(false);
   });
@@ -79,6 +79,7 @@ describe('Act orchestration boundary', () => {
       mode: 'agent',
       hasActivePlan: false,
       orchestrationEnabled: true,
+      intent: 'docs',
     });
 
     expect(route.executionPath).toBe('orchestrated');
@@ -108,6 +109,7 @@ describe('Act orchestration boundary', () => {
       mode: 'agent',
       hasActivePlan: false,
       orchestrationEnabled: true,
+      intent: 'docs',
     });
 
     expect(route.intent).toBe('docs');
@@ -134,6 +136,7 @@ describe('Act orchestration boundary', () => {
       skillCatalog,
       verifyCommands: ['npm test'],
       taskAnalysis: analyzeTask('fix the failing test in src/core/foo.ts', 'agent'),
+      intent: 'bugfix',
     });
 
     expect(plan.executionPath).toBe('resume_saved_plan');
@@ -141,7 +144,51 @@ describe('Act orchestration boundary', () => {
     expect(plan.verifyCommands).toEqual(['npm test']);
     expect(plan.promptContext).toContain('Saved plan handoff');
     expect(plan.promptContext).toContain('plan-123');
+    expect(plan.promptContext).toContain('propose_file_scope is the default Act file contract');
     expect(plan.appliedSkills).toContain('debugging-and-error-recovery');
+  });
+
+  it('uses catalog-only skill discovery for lean Act tiers', () => {
+    const skillCatalog = createSkillCatalog({
+      'using-agent-skills': '# Agent Skills\n\nFull playbook.',
+    });
+
+    const plan = ActOrchestrator.prepare('Implement the new settings flow', {
+      skillCatalog,
+      tierPolicy: {
+        skillInjection: 'catalog',
+        maxSkillChars: 0,
+        rulesMaxTotalChars: 6_000,
+        rulesMaxCharsPerFile: 2_000,
+      },
+      taskAnalysis: analyzeTask('Implement the new settings flow', 'agent'),
+    });
+
+    expect(plan.skillPlaybookContext).toBe('');
+    expect(plan.appliedSkills).toEqual([]);
+  });
+
+  it('fully injects Act skills within the tier budget', () => {
+    const skillCatalog = createSkillCatalog({
+      'using-agent-skills': '# Agent Skills\n\nShort playbook.',
+      'test-driven-development': '# TDD\n\nShort TDD playbook.',
+      'debugging-and-error-recovery': '# Debug\n\n'.repeat(80),
+    });
+
+    const plan = ActOrchestrator.prepare('Implement the new settings flow', {
+      skillCatalog,
+      tierPolicy: {
+        skillInjection: 'full',
+        maxSkillChars: 220,
+        rulesMaxTotalChars: 20_000,
+        rulesMaxCharsPerFile: 5_000,
+      },
+      taskAnalysis: analyzeTask('Implement the new settings flow', 'agent'),
+    });
+
+    expect(plan.skillPlaybookContext).toContain('Act skill playbooks');
+    expect(plan.appliedSkills.length).toBeLessThanOrEqual(1);
+    expect(plan.appliedSkills).not.toContain('using-agent-skills');
   });
 
   it('honors deep Act depth as a 16-step execution budget', () => {
@@ -154,7 +201,7 @@ describe('Act orchestration boundary', () => {
     expect(plan.maxSteps).toBe(16);
   });
 
-  it('honors pilot and enterprise Act depths as larger execution budgets', () => {
+  it('maps legacy pilot/enterprise Act depths onto deep budgets', () => {
     const pilot = ActOrchestrator.prepare('Implement the new settings flow', {
       actDepth: 'pilot',
       configuredMaxSteps: 100,
@@ -166,8 +213,8 @@ describe('Act orchestration boundary', () => {
       taskAnalysis: analyzeTask('Implement the new settings flow', 'agent'),
     });
 
-    expect(pilot.maxSteps).toBe(24);
-    expect(enterprise.maxSteps).toBe(32);
+    expect(pilot.maxSteps).toBe(16);
+    expect(enterprise.maxSteps).toBe(16);
   });
 
   it('includes configured verification commands in the Act prompt contract', () => {
@@ -211,6 +258,7 @@ describe('Act orchestration boundary', () => {
     const prompt = buildSystemPrompt('agent', true);
     expect(prompt).toContain('ACT SKILLS:');
     expect(prompt).toContain('Call use_skill');
+    expect(prompt).toContain('File scope contract: call propose_file_scope when no scope is approved yet');
   });
 
   it('scales retrieved context item count with context window and Act depth', () => {
@@ -247,4 +295,21 @@ function tool(name: string): ToolDefinition {
       parameters: {},
     },
   };
+}
+
+function createSkillCatalog(contents: Record<string, string>): SkillCatalogService {
+  return {
+    get(name: string) {
+      const content = contents[name];
+      if (!content) return undefined;
+      return {
+        entry: {
+          name,
+          description: `${name} description`,
+          relPath: `.mitii/skills/${name}/SKILL.md`,
+        },
+        content,
+      };
+    },
+  } as unknown as SkillCatalogService;
 }
