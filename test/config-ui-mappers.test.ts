@@ -149,6 +149,14 @@ describe('config UI mappers', () => {
       telemetry: {
         sessionLogging: true,
         debugMetrics: false,
+        traceEnabled: false,
+        traceIncludePayloads: false,
+        traceLlm: true,
+        traceMcp: true,
+        traceWebview: true,
+        traceDaemon: true,
+        traceWebhook: true,
+        traceMaxPayloadChars: 16_000,
       },
     };
 

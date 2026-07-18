@@ -210,8 +210,20 @@ export const TelemetryConfigSchema = z.object({
   webhookTimeoutMs: z.number().int().min(1000).max(60_000).default(5000),
 });
 
+export const DebugTraceConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  includePayloads: z.boolean().default(false),
+  llm: z.boolean().default(true),
+  mcp: z.boolean().default(true),
+  webview: z.boolean().default(true),
+  daemon: z.boolean().default(true),
+  webhook: z.boolean().default(true),
+  maxPayloadChars: z.number().int().min(1_000).max(1_000_000).default(16_000),
+});
+
 export const ThunderConfigSchema = z.object({
   debug: z.boolean().default(false),
+  debugTrace: DebugTraceConfigSchema.default({}),
   provider: ProviderConfigSchema.default({}),
   indexing: IndexingConfigSchema.default({}),
   context: ContextConfigSchema.default({}),
@@ -245,4 +257,5 @@ export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
 export type ScmConfig = z.infer<typeof ScmConfigSchema>;
 export type GitHubConfig = z.infer<typeof GitHubConfigSchema>;
 export type TelemetryConfig = z.infer<typeof TelemetryConfigSchema>;
+export type DebugTraceConfig = z.infer<typeof DebugTraceConfigSchema>;
 export type ThunderConfig = z.infer<typeof ThunderConfigSchema>;

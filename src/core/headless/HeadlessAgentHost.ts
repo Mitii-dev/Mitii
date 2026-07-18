@@ -97,6 +97,7 @@ import { ProjectRulesContextSource, ProjectRulesService } from '../rules/Project
 import { SkillCatalogContextSource, SkillCatalogService } from '../skills/SkillCatalogService';
 import { createLogger } from '../telemetry/Logger';
 import { SessionLogService } from '../telemetry/SessionLogService';
+import { debugTrace } from '../telemetry/AsyncDebugTrace';
 import { MicroTaskExecutor } from '../microtasks';
 import { HeadlessAgentRunner, type HeadlessPlan } from './AgentRunner';
 import {
@@ -656,6 +657,7 @@ export class HeadlessAgentHost {
       this.session = new ThunderSession(this.options.cwd, mode, { id: this.options.sessionId });
     }
     this.sessionLog.configure(this.options.cwd, this.session.id, true, this.config.telemetry.debugMetrics);
+    debugTrace.configure(this.options.cwd, this.session.id, this.config.debugTrace);
     this.sessionLog.writeSessionHeader({
       mode,
       workspace: this.options.cwd,

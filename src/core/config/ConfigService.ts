@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { AGENT_NAME } from '../../shared/brand';
-import { createLogger } from '../telemetry/Logger';
+import { createLogger, setDebugLoggingEnabled } from '../telemetry/Logger';
 import { readThunderConfigFromSettings } from './vscode/read';
 import {
   updateProviderSettings,
@@ -35,9 +35,11 @@ export class ConfigService {
 
   async initialize(): Promise<void> {
     this.config = readThunderConfigFromSettings();
+    setDebugLoggingEnabled(this.config.debug);
     this.disposable = vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('thunder')) {
+      if (e.affectsConfiguration('mitii') || e.affectsConfiguration('thunder')) {
         this.config = readThunderConfigFromSettings();
+        setDebugLoggingEnabled(this.config.debug);
         log.info('Configuration reloaded');
       }
     });
@@ -123,6 +125,7 @@ export class ConfigService {
   async updateAllSettings(settings: ThunderSettingsPayload): Promise<void> {
     await updateAllSettings(settings);
     this.config = readThunderConfigFromSettings();
+    setDebugLoggingEnabled(this.config.debug);
     log.info(`All ${AGENT_NAME} settings updated`);
   }
 

@@ -3,6 +3,7 @@ import type { ToolDefinition } from './toolTypes';
 import { parseAnthropicSseStream } from './anthropicSseParser';
 import { normalizeProviderError, ProviderError } from './errors';
 import { estimateTokensAsync } from './tokenEstimate';
+import { debugTrace } from '../telemetry/AsyncDebugTrace';
 
 export interface AnthropicConfig {
   baseUrl: string;
@@ -59,6 +60,13 @@ export class AnthropicProvider implements LlmProvider {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
+      });
+      debugTrace.trace('llm', 'transport_response', {
+        provider: this.id,
+        status: response.status,
+        ok: response.ok,
+        contentType: response.headers?.get?.('content-type'),
+        contentLength: response.headers?.get?.('content-length'),
       });
 
       if (!response.ok) {

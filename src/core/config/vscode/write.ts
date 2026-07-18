@@ -99,6 +99,14 @@ export async function updateTelemetrySettings(settings: TelemetrySettingsPayload
   const target = vscode.ConfigurationTarget.Global;
   await config.update('telemetry.sessionLogging', settings.sessionLogging, target);
   await config.update('telemetry.debugMetrics', settings.debugMetrics, target);
+  await config.update('debugOptions.trace.enabled', settings.traceEnabled, target);
+  await config.update('debugOptions.trace.includePayloads', settings.traceIncludePayloads, target);
+  await config.update('debugOptions.trace.llm', settings.traceLlm, target);
+  await config.update('debugOptions.trace.mcp', settings.traceMcp, target);
+  await config.update('debugOptions.trace.webview', settings.traceWebview, target);
+  await config.update('debugOptions.trace.daemon', settings.traceDaemon, target);
+  await config.update('debugOptions.trace.webhook', settings.traceWebhook, target);
+  await config.update('debugOptions.trace.maxPayloadChars', settings.traceMaxPayloadChars, target);
   if (settings.webhookUrl !== undefined) {
     await config.update('telemetry.webhookUrl', settings.webhookUrl.trim(), target);
   }

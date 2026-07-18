@@ -9,6 +9,7 @@ import { getProviderPreset } from './providerPresets';
 import { normalizeProviderModel } from './modelNormalize';
 import { detectModelCapabilities } from './modelCapabilities';
 import { createLogger } from '../telemetry/Logger';
+import { withLlmTracing } from './TracingLlmProvider';
 
 const log = createLogger('createProvider');
 
@@ -28,6 +29,13 @@ export interface ProviderResolveOptions {
 }
 
 export function createProvider(
+  config: ProviderConfig | ProviderResolveOptions,
+  apiKey?: string
+): LlmProvider {
+  return withLlmTracing(createRawProvider(config, apiKey));
+}
+
+function createRawProvider(
   config: ProviderConfig | ProviderResolveOptions,
   apiKey?: string
 ): LlmProvider {

@@ -17,8 +17,14 @@ export interface Logger {
   error(message: string, meta?: Record<string, unknown>): void;
 }
 
+let runtimeDebugEnabled = false;
+
+export function setDebugLoggingEnabled(enabled: boolean): void {
+  runtimeDebugEnabled = enabled;
+}
+
 function isDebugEnabled(): boolean {
-  return process.env.MITII_DEBUG === '1';
+  return runtimeDebugEnabled || process.env.MITII_DEBUG === '1';
 }
 
 function redactSecrets(value: string): string {

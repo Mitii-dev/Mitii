@@ -1,5 +1,6 @@
 import { DaemonClient, DaemonSessionClient } from '../../../packages/sdk/src/daemon';
 import type { MitiiApprovalDecision, MitiiEvent, MitiiMode } from '../../../packages/sdk/src/types';
+import { debugTrace } from '../telemetry/AsyncDebugTrace';
 
 export interface DaemonRuntimeAdapterOptions {
   cwd: string;
@@ -16,6 +17,9 @@ export class DaemonRuntimeAdapter {
     this.client = new DaemonClient({
       baseUrl: options.daemonUrl ?? 'http://127.0.0.1:4310',
       token: options.daemonToken,
+      trace: ({ payload, ...event }) => {
+        debugTrace.trace('daemon', `${event.transport}_${event.direction}`, event, payload);
+      },
     });
   }
 

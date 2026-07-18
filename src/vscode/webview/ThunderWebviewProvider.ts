@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ThunderController } from '../../core/app/ThunderController';
 import { createLogger } from '../../core/telemetry/Logger';
 import { normalizeError, formatUserError } from '../../core/telemetry/errors';
+import { debugTrace } from '../../core/telemetry/AsyncDebugTrace';
 import { chunkContent, chunkReasoning } from '../../core/llm/streamChunks';
 import { AGENT_FULL_NAME, AGENT_NAME, brandMessage } from '../../shared/brand';
 import {
@@ -105,6 +106,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.html = this.getHtml(webviewView.webview);
 
     webviewView.webview.onDidReceiveMessage((message: WebviewToExtensionMessage) => {
+      debugTrace.trace('webview', 'receive', { type: message.type }, message);
       void this.handleMessage(message);
     });
 
@@ -137,6 +139,7 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         payload: this.withBranding(message.payload, this.view.webview),
       };
     }
+    debugTrace.trace('webview', 'send', { type: message.type }, message);
     void this.view?.webview.postMessage(message);
   }
 

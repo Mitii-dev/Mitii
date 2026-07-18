@@ -132,6 +132,14 @@ export function normalizeThunderSettings(
     telemetry: {
       sessionLogging: settings.telemetry.sessionLogging,
       debugMetrics: settings.telemetry.debugMetrics,
+      traceEnabled: settings.telemetry.traceEnabled,
+      traceIncludePayloads: settings.telemetry.traceIncludePayloads,
+      traceLlm: settings.telemetry.traceLlm,
+      traceMcp: settings.telemetry.traceMcp,
+      traceWebview: settings.telemetry.traceWebview,
+      traceDaemon: settings.telemetry.traceDaemon,
+      traceWebhook: settings.telemetry.traceWebhook,
+      traceMaxPayloadChars: clampInteger(settings.telemetry.traceMaxPayloadChars, 1_000, 1_000_000),
     },
   };
 }

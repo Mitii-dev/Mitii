@@ -1059,6 +1059,7 @@ export class AgentLoop {
           const toolStartedAt = Date.now();
           const execResult = allowedToolNames.has(tc.function.name)
             ? await this.toolExecutor.execute(tc.function.name, input, {
+                toolCallId: tc.id,
                 phaseLock: options?.phaseLock,
                 restrictRunCommandToReadOnly: options?.restrictRunCommandToReadOnly,
               })

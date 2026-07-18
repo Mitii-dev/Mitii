@@ -5,6 +5,20 @@ export interface DaemonClientOptions {
   token?: string;
   timeoutMs?: number;
   fetch?: typeof fetch;
+  trace?: (event: DaemonTraceEvent) => void;
+}
+
+export interface DaemonTraceEvent {
+  direction: 'send' | 'receive' | 'error';
+  transport: 'http' | 'sse';
+  method?: string;
+  path: string;
+  status?: number;
+  durationMs?: number;
+  eventId?: number;
+  eventType?: string;
+  error?: string;
+  payload?: unknown;
 }
 
 export interface DaemonSessionCreateOptions {
@@ -41,12 +55,14 @@ export class DaemonClient {
   private readonly token?: string;
   private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
+  private readonly trace?: (event: DaemonTraceEvent) => void;
 
   constructor(options: DaemonClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? 'http://127.0.0.1:4310').replace(/\/$/, '');
     this.token = options.token;
     this.timeoutMs = options.timeoutMs ?? 30_000;
     this.fetchImpl = options.fetch ?? fetch;
+    this.trace = options.trace;
   }
 
   health(): Promise<Record<string, unknown>> {
@@ -91,14 +107,28 @@ export class DaemonClient {
   events(id: string, lastSeenEventId?: number): AsyncIterable<ParsedSseEvent<MitiiEvent>> {
     const headers: Record<string, string> = this.headers();
     if (lastSeenEventId) headers['last-event-id'] = String(lastSeenEventId);
+    const path = `/session/${encodeURIComponent(id)}/events`;
+    const startedAt = Date.now();
+    this.emitTrace({ direction: 'send', transport: 'sse', method: 'GET', path });
     return parseSseStream<MitiiEvent>(
-      this.fetchImpl(`${this.baseUrl}/session/${encodeURIComponent(id)}/events`, { headers })
+      this.fetchImpl(`${this.baseUrl}${path}`, { headers }),
+      (event) => this.emitTrace({
+        direction: 'receive',
+        transport: 'sse',
+        path,
+        durationMs: Date.now() - startedAt,
+        eventId: event.id,
+        eventType: event.event,
+        payload: event.data,
+      })
     );
   }
 
   private async request<T = Record<string, unknown>>(method: string, path: string, body?: unknown): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const startedAt = Date.now();
+    this.emitTrace({ direction: 'send', transport: 'http', method, path, payload: body });
     try {
       const res = await this.fetchImpl(`${this.baseUrl}${path}`, {
         method,
@@ -111,13 +141,40 @@ export class DaemonClient {
       });
       const text = await res.text();
       const parsed = text ? JSON.parse(text) : {};
+      this.emitTrace({
+        direction: 'receive',
+        transport: 'http',
+        method,
+        path,
+        status: res.status,
+        durationMs: Date.now() - startedAt,
+        payload: parsed,
+      });
       if (!res.ok) {
         const message = parsed?.error?.message ?? `${method} ${path} failed with ${res.status}`;
         throw new Error(message);
       }
       return parsed as T;
+    } catch (error) {
+      this.emitTrace({
+        direction: 'error',
+        transport: 'http',
+        method,
+        path,
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     } finally {
       clearTimeout(timer);
+    }
+  }
+
+  private emitTrace(event: DaemonTraceEvent): void {
+    try {
+      this.trace?.(event);
+    } catch {
+      // Debug tracing must never affect daemon requests.
     }
   }
 
@@ -162,7 +219,10 @@ export interface ParsedSseEvent<T> {
   data: T;
 }
 
-export async function* parseSseStream<T>(responsePromise: Promise<Response>): AsyncIterable<ParsedSseEvent<T>> {
+export async function* parseSseStream<T>(
+  responsePromise: Promise<Response>,
+  onEvent?: (event: ParsedSseEvent<T>) => void
+): AsyncIterable<ParsedSseEvent<T>> {
   const response = await responsePromise;
   if (!response.ok || !response.body) {
     throw new Error(`SSE connection failed with ${response.status}`);
@@ -181,7 +241,10 @@ export async function* parseSseStream<T>(responsePromise: Promise<Response>): As
         const skip = buffer.slice(boundary, boundary + 4).startsWith('\r\n\r\n') ? 4 : 2;
         buffer = buffer.slice(boundary + skip);
         const parsed = parseSseFrame<T>(raw);
-        if (parsed) yield parsed;
+        if (parsed) {
+          onEvent?.(parsed);
+          yield parsed;
+        }
         boundary = findFrameBoundary(buffer);
       }
     }

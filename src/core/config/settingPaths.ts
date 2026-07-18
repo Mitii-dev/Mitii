@@ -1,5 +1,13 @@
 export const MITII_SETTING_PATHS = [
   'debug',
+  'debugOptions.trace.enabled',
+  'debugOptions.trace.includePayloads',
+  'debugOptions.trace.llm',
+  'debugOptions.trace.mcp',
+  'debugOptions.trace.webview',
+  'debugOptions.trace.daemon',
+  'debugOptions.trace.webhook',
+  'debugOptions.trace.maxPayloadChars',
   'telemetry.sessionLogging',
   'telemetry.debugMetrics',
   'telemetry.webhookUrl',

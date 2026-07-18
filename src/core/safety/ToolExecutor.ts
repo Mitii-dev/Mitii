@@ -184,7 +184,7 @@ export class ToolExecutor {
       }
     }
 
-    const result: ToolExecutionResult = await this.toolRuntime.execute(resolvedName, input);
+    const result: ToolExecutionResult = await this.toolRuntime.execute(resolvedName, input, context?.toolCallId);
     log.info('Tool executed via executor', { tool: resolvedName, success: result.success });
     if (result.success) {
       if (['write_file', 'apply_patch'].includes(resolvedName)) {

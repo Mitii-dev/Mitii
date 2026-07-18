@@ -314,6 +314,14 @@ export interface SettingsView {
   projectRules: number;
   sessionLogging: boolean;
   debugMetrics: boolean;
+  traceEnabled: boolean;
+  traceIncludePayloads: boolean;
+  traceLlm: boolean;
+  traceMcp: boolean;
+  traceWebview: boolean;
+  traceDaemon: boolean;
+  traceWebhook: boolean;
+  traceMaxPayloadChars: number;
   localDebugAvailable: boolean;
   vectorsEnabled: boolean;
   embeddingProvider: 'minilm' | 'hash';
@@ -562,6 +570,14 @@ export const defaultSettingsView = (): SettingsView => ({
   projectRules: 0,
   sessionLogging: true,
   debugMetrics: false,
+  traceEnabled: false,
+  traceIncludePayloads: false,
+  traceLlm: true,
+  traceMcp: true,
+  traceWebview: true,
+  traceDaemon: true,
+  traceWebhook: true,
+  traceMaxPayloadChars: 16000,
   localDebugAvailable: false,
   vectorsEnabled: true,
   embeddingProvider: 'minilm',

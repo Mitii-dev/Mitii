@@ -268,6 +268,14 @@ export function SettingsPanel({
   const [mcpEnabled, setMcpEnabled] = useState(settings.mcpEnabled);
   const [sessionLogging, setSessionLogging] = useState(settings.sessionLogging);
   const [debugMetrics, setDebugMetrics] = useState(settings.debugMetrics);
+  const [traceEnabled, setTraceEnabled] = useState(settings.traceEnabled);
+  const [traceIncludePayloads, setTraceIncludePayloads] = useState(settings.traceIncludePayloads);
+  const [traceLlm, setTraceLlm] = useState(settings.traceLlm);
+  const [traceMcp, setTraceMcp] = useState(settings.traceMcp);
+  const [traceWebview, setTraceWebview] = useState(settings.traceWebview);
+  const [traceDaemon, setTraceDaemon] = useState(settings.traceDaemon);
+  const [traceWebhook, setTraceWebhook] = useState(settings.traceWebhook);
+  const [traceMaxPayloadChars, setTraceMaxPayloadChars] = useState(settings.traceMaxPayloadChars);
   const [vectorsEnabled, setVectorsEnabled] = useState(settings.vectorsEnabled);
   const [embeddingProvider, setEmbeddingProvider] = useState<'minilm' | 'hash'>(settings.embeddingProvider);
   const [vectorBackend, setVectorBackend] = useState<'sqlite' | 'lancedb'>(settings.vectorBackend);
@@ -306,6 +314,14 @@ export function SettingsPanel({
     setMcpEnabled(settings.mcpEnabled);
     setSessionLogging(settings.sessionLogging);
     setDebugMetrics(settings.debugMetrics);
+    setTraceEnabled(settings.traceEnabled);
+    setTraceIncludePayloads(settings.traceIncludePayloads);
+    setTraceLlm(settings.traceLlm);
+    setTraceMcp(settings.traceMcp);
+    setTraceWebview(settings.traceWebview);
+    setTraceDaemon(settings.traceDaemon);
+    setTraceWebhook(settings.traceWebhook);
+    setTraceMaxPayloadChars(settings.traceMaxPayloadChars);
     setVectorsEnabled(settings.vectorsEnabled);
     setEmbeddingProvider(settings.embeddingProvider);
     setVectorBackend(settings.vectorBackend);
@@ -384,7 +400,15 @@ export function SettingsPanel({
       },
       telemetry: {
         sessionLogging,
-        debugMetrics: settings.localDebugAvailable && sessionLogging ? debugMetrics : false,
+        debugMetrics: sessionLogging ? debugMetrics : false,
+        traceEnabled: sessionLogging ? traceEnabled : false,
+        traceIncludePayloads: sessionLogging && traceEnabled ? traceIncludePayloads : false,
+        traceLlm,
+        traceMcp,
+        traceWebview,
+        traceDaemon,
+        traceWebhook,
+        traceMaxPayloadChars,
       },
     };
   };
@@ -472,9 +496,7 @@ export function SettingsPanel({
 
   const isLocalProvider = providerType !== 'echo';
   const showSaveBar = activeTab !== 'workspace';
-  const visibleTabs = settings.localDebugAvailable
-    ? TABS
-    : TABS.filter((tab) => tab.id !== 'debug');
+  const visibleTabs = TABS;
   const activeModeMeta = MODE_TABS.find((tab) => tab.id === activeModeTab) ?? MODE_TABS[0];
   const activeDepthMeta = MODE_TABS.find((tab) => tab.id === activeDepthTab) ?? MODE_TABS[0];
 
@@ -1380,11 +1402,11 @@ export function SettingsPanel({
           </>
         )}
 
-        {activeTab === 'debug' && settings.localDebugAvailable && (
+        {activeTab === 'debug' && (
           <>
             <SettingsCard
-              title="Local debug"
-              description="Development-only diagnostics for inspecting agent prompts, context, tool calls, and UI traces."
+              title="Debug logging"
+              description="Local diagnostics for inspecting agent prompts, context, tools, transports, and UI messages."
             >
               <SettingSwitch
                 label="JSONL session log"
@@ -1392,7 +1414,10 @@ export function SettingsPanel({
                 checked={sessionLogging}
                 onChange={(v) => {
                   setSessionLogging(v);
-                  if (!v) setDebugMetrics(false);
+                  if (!v) {
+                    setDebugMetrics(false);
+                    setTraceEnabled(false);
+                  }
                   markDirty();
                 }}
               />
@@ -1406,9 +1431,97 @@ export function SettingsPanel({
                   markDirty();
                 }}
               />
+              <SettingSwitch
+                label="Async send/receive tracing"
+                description="Trace every LLM delta, MCP operation, and webview message to a separate session trace file."
+                checked={traceEnabled && sessionLogging}
+                disabled={!sessionLogging}
+                onChange={(v) => {
+                  setTraceEnabled(v);
+                  markDirty();
+                }}
+              />
+              <SettingSwitch
+                label="Include sanitized payloads"
+                description="Include prompts, responses, tool arguments, and UI payloads. Sensitive values are redacted and strings are capped."
+                checked={traceIncludePayloads && traceEnabled && sessionLogging}
+                disabled={!sessionLogging || !traceEnabled}
+                onChange={(v) => {
+                  setTraceIncludePayloads(v);
+                  markDirty();
+                }}
+              />
+              <SettingSwitch
+                label="Trace LLM traffic"
+                description="Requests, first-token timing, network chunks, streamed deltas, completions, and errors."
+                checked={traceLlm}
+                disabled={!sessionLogging || !traceEnabled}
+                onChange={(v) => {
+                  setTraceLlm(v);
+                  markDirty();
+                }}
+              />
+              <SettingSwitch
+                label="Trace MCP traffic"
+                description="Connections, tool discovery, calls, responses, failures, and shutdown."
+                checked={traceMcp}
+                disabled={!sessionLogging || !traceEnabled}
+                onChange={(v) => {
+                  setTraceMcp(v);
+                  markDirty();
+                }}
+              />
+              <SettingSwitch
+                label="Trace webview traffic"
+                description="Every message sent between the extension host and Mitii sidebar."
+                checked={traceWebview}
+                disabled={!sessionLogging || !traceEnabled}
+                onChange={(v) => {
+                  setTraceWebview(v);
+                  markDirty();
+                }}
+              />
+              <SettingSwitch
+                label="Trace daemon traffic"
+                description="Daemon HTTP requests, responses, errors, and streamed SSE events."
+                checked={traceDaemon}
+                disabled={!sessionLogging || !traceEnabled}
+                onChange={(v) => {
+                  setTraceDaemon(v);
+                  markDirty();
+                }}
+              />
+              <SettingSwitch
+                label="Trace webhook traffic"
+                description="Telemetry webhook delivery attempts, responses, retries, and failures."
+                checked={traceWebhook}
+                disabled={!sessionLogging || !traceEnabled}
+                onChange={(v) => {
+                  setTraceWebhook(v);
+                  markDirty();
+                }}
+              />
+              <label className="settings-field">
+                <span className="settings-label">Maximum payload string length</span>
+                <input
+                  type="number"
+                  className="settings-input"
+                  min={1_000}
+                  max={1_000_000}
+                  step={1_000}
+                  value={traceMaxPayloadChars}
+                  disabled={!sessionLogging || !traceEnabled || !traceIncludePayloads}
+                  onChange={(event) => {
+                    const parsed = Number(event.target.value);
+                    if (Number.isFinite(parsed)) {
+                      setTraceMaxPayloadChars(Math.max(1_000, Math.min(1_000_000, Math.floor(parsed))));
+                      markDirty();
+                    }
+                  }}
+                />
+              </label>
               <p className="settings-inline-note">
-                This panel only appears in the Extension Development Host. Logs are local files under{' '}
-                <code>.mitii/logs</code>.
+                Trace writes are batched asynchronously. Logs stay local under <code>.mitii/logs</code>.
               </p>
             </SettingsCard>
           </>

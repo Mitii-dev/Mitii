@@ -10,6 +10,16 @@ export function readThunderConfigFromSettings(): ThunderConfig {
   const config = createMitiiConfigReader();
   const raw = {
     debug: config.get<boolean>('debug'),
+    debugTrace: {
+      enabled: config.get<boolean>('debugOptions.trace.enabled'),
+      includePayloads: config.get<boolean>('debugOptions.trace.includePayloads'),
+      llm: config.get<boolean>('debugOptions.trace.llm'),
+      mcp: config.get<boolean>('debugOptions.trace.mcp'),
+      webview: config.get<boolean>('debugOptions.trace.webview'),
+      daemon: config.get<boolean>('debugOptions.trace.daemon'),
+      webhook: config.get<boolean>('debugOptions.trace.webhook'),
+      maxPayloadChars: config.get<number>('debugOptions.trace.maxPayloadChars'),
+    },
     provider: {
       type: config.get<string>('provider.type'),
       baseUrl: config.get<string>('provider.baseUrl'),

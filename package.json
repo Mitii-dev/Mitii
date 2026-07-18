@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.7.63",
+  "version": "2.7.64",
   "publisher": "mitii",
   "icon": "media/mitii-short-logo.png",
   "license": "AGPL-3.0-or-later",
@@ -859,6 +859,48 @@
           "type": "boolean",
           "default": false,
           "description": "Enable debug logging and show stack traces in UI"
+        },
+        "mitii.debugOptions.trace.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Asynchronously trace LLM, MCP, and webview send/receive boundaries to .mitii/logs/<session>.trace.jsonl."
+        },
+        "mitii.debugOptions.trace.includePayloads": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include sanitized request and response payloads in trace logs. May record prompts, source code, and tool output."
+        },
+        "mitii.debugOptions.trace.llm": {
+          "type": "boolean",
+          "default": true,
+          "description": "Trace LLM requests, streamed deltas, completion summaries, and failures when tracing is enabled."
+        },
+        "mitii.debugOptions.trace.mcp": {
+          "type": "boolean",
+          "default": true,
+          "description": "Trace MCP connection, discovery, tool requests, responses, failures, and shutdown."
+        },
+        "mitii.debugOptions.trace.webview": {
+          "type": "boolean",
+          "default": true,
+          "description": "Trace extension-to-webview and webview-to-extension messages."
+        },
+        "mitii.debugOptions.trace.daemon": {
+          "type": "boolean",
+          "default": true,
+          "description": "Trace daemon HTTP requests, responses, errors, and SSE events."
+        },
+        "mitii.debugOptions.trace.webhook": {
+          "type": "boolean",
+          "default": true,
+          "description": "Trace telemetry webhook delivery attempts, responses, retries, and failures."
+        },
+        "mitii.debugOptions.trace.maxPayloadChars": {
+          "type": "number",
+          "default": 16000,
+          "minimum": 1000,
+          "maximum": 1000000,
+          "description": "Maximum characters retained for each string in payload trace logs."
         },
         "mitii.telemetry.sessionLogging": {
           "type": "boolean",

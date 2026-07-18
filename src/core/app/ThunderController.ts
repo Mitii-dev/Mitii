@@ -123,6 +123,7 @@ import { InlineDiffManager } from '../../vscode/inlineDiffManager';
 import { testProviderConnection } from '../llm/testConnection';
 import { createLogger } from '../telemetry/Logger';
 import { SessionLogService } from '../telemetry/SessionLogService';
+import { debugTrace } from '../telemetry/AsyncDebugTrace';
 import { normalizeError } from '../telemetry/errors';
 import type { IndexingStatus } from '../indexing/IndexQueue';
 import type {
@@ -373,8 +374,13 @@ export class ThunderController {
   }
 
   private configureSessionLogging(session: ThunderSession, workspace: string): void {
-    const telemetry = this.configService.getConfig().telemetry;
+    const config = this.configService.getConfig();
+    const telemetry = config.telemetry;
     this.sessionLog.configure(workspace, session.id, telemetry.sessionLogging, telemetry.debugMetrics);
+    debugTrace.configure(workspace, session.id, {
+      ...config.debugTrace,
+      enabled: telemetry.sessionLogging && config.debugTrace.enabled,
+    });
     this.toolRuntime.setWorkspace(workspace);
     this.sessionLog.configureWebhook({
       url: telemetry.webhookUrl,
@@ -1222,6 +1228,14 @@ export class ThunderController {
         projectRules: this.projectRulesService?.count() ?? 0,
         sessionLogging: config.telemetry.sessionLogging,
         debugMetrics: config.telemetry.debugMetrics,
+        traceEnabled: config.debugTrace.enabled,
+        traceIncludePayloads: config.debugTrace.includePayloads,
+        traceLlm: config.debugTrace.llm,
+        traceMcp: config.debugTrace.mcp,
+        traceWebview: config.debugTrace.webview,
+        traceDaemon: config.debugTrace.daemon,
+        traceWebhook: config.debugTrace.webhook,
+        traceMaxPayloadChars: config.debugTrace.maxPayloadChars,
         localDebugAvailable: this.context.extensionMode === vscode.ExtensionMode.Development,
         vectorsEnabled: config.indexing.vectorsEnabled,
         embeddingProvider: config.indexing.embeddingProvider,
@@ -3407,6 +3421,7 @@ export class ThunderController {
     // event; otherwise in-flight work can append events after session_end.
     this.chatOrchestrator?.stop();
     this.sessionLog.endSession({ reason: 'controller_disposed' });
+    void debugTrace.flush();
     this.configService.dispose();
     void this.mcpManager.closeAll();
     if (this.backgroundIndexTimer) clearTimeout(this.backgroundIndexTimer);

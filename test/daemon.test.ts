@@ -3,7 +3,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { startMitiiDaemon, type MitiiDaemonServerHandle } from '../packages/daemon/src/server';
-import { DaemonClient } from '../packages/sdk/src/daemon';
+import { DaemonClient, type DaemonTraceEvent } from '../packages/sdk/src/daemon';
 
 const handles: MitiiDaemonServerHandle[] = [];
 const dirs: string[] = [];
@@ -20,7 +20,11 @@ describe('mitii daemon', () => {
     handles.push(handle);
     const address = handle.server.address();
     const port = typeof address === 'object' && address ? address.port : 0;
-    const client = new DaemonClient({ baseUrl: `http://127.0.0.1:${port}` });
+    const traces: DaemonTraceEvent[] = [];
+    const client = new DaemonClient({
+      baseUrl: `http://127.0.0.1:${port}`,
+      trace: (event) => traces.push(event),
+    });
 
     await expect(client.health()).resolves.toMatchObject({ ok: true, cwd });
     await expect(client.capabilities()).resolves.toMatchObject({ eventReplay: true });
@@ -40,6 +44,12 @@ describe('mitii daemon', () => {
       if (replayed.length >= events.length) break;
     }
     expect(replayed.length).toBeGreaterThan(0);
+    expect(traces).toEqual(expect.arrayContaining([
+      expect.objectContaining({ direction: 'send', transport: 'http', path: '/health' }),
+      expect.objectContaining({ direction: 'receive', transport: 'http', status: 200 }),
+      expect.objectContaining({ direction: 'send', transport: 'sse' }),
+      expect.objectContaining({ direction: 'receive', transport: 'sse' }),
+    ]));
   });
 
   it('requires token for authenticated requests and enforces session limit', async () => {

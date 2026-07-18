@@ -84,6 +84,14 @@ export interface McpSettingsPayload {
 export interface TelemetrySettingsPayload {
   sessionLogging: boolean;
   debugMetrics: boolean;
+  traceEnabled: boolean;
+  traceIncludePayloads: boolean;
+  traceLlm: boolean;
+  traceMcp: boolean;
+  traceWebview: boolean;
+  traceDaemon: boolean;
+  traceWebhook: boolean;
+  traceMaxPayloadChars: number;
   webhookUrl?: string;
   webhookSecret?: string;
   webhookTimeoutMs?: number;

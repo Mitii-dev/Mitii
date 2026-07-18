@@ -45,10 +45,10 @@ export class ToolRuntime {
     return Array.from(this.tools.values());
   }
 
-  async execute(name: string, input: unknown): Promise<ToolResult> {
+  async execute(name: string, input: unknown, providerToolCallId?: string): Promise<ToolResult> {
     const startedAt = Date.now();
     const resolvedName = resolveToolName(name);
-    const toolCallId = createToolCallId(resolvedName);
+    const toolCallId = providerToolCallId || createToolCallId(resolvedName);
     const normalized = normalizeToolInput(resolvedName, input);
     this.logToolStart(resolvedName, normalized, toolCallId);
 
