@@ -31,6 +31,8 @@ export function buildActPromptContext(
     '- Keep edits scoped to the user request, active plan, and touched files.',
     '- Prefer targeted patches and preserve unrelated user changes.',
     '- Run project-appropriate verification after implementation (discovered from package.json, not hardcoded).',
+    '- The orchestrator advances plan steps automatically — do not call mark_step_complete or release_plan_controller unless those tools are explicitly offered.',
+    '- Prefer builtin read_file / write_file over MCP filesystem tools.',
   ];
 
   if (route.executionPath === 'log_audit') {

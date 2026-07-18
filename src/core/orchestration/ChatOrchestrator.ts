@@ -39,6 +39,12 @@ import { PlanExecutor } from '../runtime/PlanExecutor';
 import { resolvePlanningDepth, shouldSkipStructuredPlanner } from '../plans/planningDepth';
 import { analyzeTask, type TaskAnalysis } from '../runtime/TaskAnalyzer';
 import {
+  resolveTurnPipeline,
+  filterToolsByCapabilities,
+  buildRoutePolicyText,
+  type PipelineResolution,
+} from '../pipeline';
+import {
   ACT_INTENT_DESCRIPTIONS,
   ASK_INTENT_DESCRIPTIONS,
   PLAN_INTENT_DESCRIPTIONS,
@@ -810,6 +816,30 @@ export class ChatOrchestrator {
     }
     tools = filterToolsForTier(tools, tierPolicy);
 
+    const pipeline: PipelineResolution = resolveTurnPipeline(userMessage, taskAnalysis, {
+      mode: session.mode,
+      userDepth: isAskMode ? askDepth : isPlanMode ? planDepth : actDepth,
+      toolExposure: tierPolicy.toolExposure,
+      mdxRepairMode,
+      resumeSavedPlan: Boolean(actPlan?.savedPlanId),
+      planning: isPlanMode || Boolean(plannerEnabled && !isAskMode),
+      planExecution: false,
+      orchestrationEnabled,
+      forceDirect: actPlan?.executionPath === 'direct',
+    });
+    tools = filterToolsByCapabilities(tools, pipeline.capabilities);
+    this.deps.sessionLog?.append('info', 'Pipeline resolution', {
+      intent: pipeline.route.intent,
+      auditSubtype: pipeline.route.auditSubtype,
+      docsSubtype: pipeline.route.docsSubtype,
+      depthAxis: pipeline.depthAxis,
+      activeSkill: pipeline.skills.activeSkill,
+      injectSkills: pipeline.skills.injectSkills,
+      excludedToolCount: pipeline.capabilities.excludedTools.size,
+      mcpPolicy: pipeline.capabilities.mcpPolicy,
+      shouldUsePlanner: pipeline.shouldUsePlanner,
+    });
+
     if (toolsEnabled && this.deps.toolExecutor) {
       setSubagentRuntime({
         toolExecutor: this.deps.toolExecutor,
@@ -1288,13 +1318,23 @@ export class ChatOrchestrator {
           directSkillContext?.skillPlaybookContext.length ?? 0
         );
       }
+      const cleanupAuditMode =
+        auditMode &&
+        (!pipeline.route.auditSubtype ||
+          pipeline.route.auditSubtype === 'unused_deps' ||
+          pipeline.route.auditSubtype === 'dead_code' ||
+          pipeline.route.auditSubtype === 'vulnerability' ||
+          pipeline.route.auditSubtype === 'generic');
+      const docsSiteMode =
+        (planPlan?.route.intent === 'docs' || actPlan?.route.intent === 'docs') &&
+        pipeline.route.docsSubtype !== 'readme';
       const messages = attachImagesToLastUser(buildPrompt(
         session.mode,
         pack,
         userMessage,
         compacted,
         toolsEnabled,
-        auditMode,
+        cleanupAuditMode,
         mdxRepairMode,
         mdxErrorFile,
         taskStateBlock,
@@ -1304,6 +1344,7 @@ export class ChatOrchestrator {
           askPlan?.promptContext,
           planPlan?.promptContext,
           actPlan?.promptContext,
+          buildRoutePolicyText(pipeline.route),
           ...taskEnrichment.contextBlocks
         ),
         mergePromptContexts(
@@ -1312,15 +1353,15 @@ export class ChatOrchestrator {
           logAuditSkillContext?.skillPlaybookContext
         ),
         {
-          docsMode: planPlan?.route.intent === 'docs' || actPlan?.route.intent === 'docs',
+          docsMode: docsSiteMode,
           mdxRepairMode,
           askProfile: askPlan?.route.profile,
         }
       ), options?.attachments);
       const promptSections = describePromptSections(
         collectSystemPromptSections(session.mode, toolsEnabled, {
-          auditMode,
-          docsMode: planPlan?.route.intent === 'docs' || actPlan?.route.intent === 'docs',
+          auditMode: cleanupAuditMode,
+          docsMode: docsSiteMode,
           mdxRepairMode,
           isContinuation: isResume,
           askProfile: askPlan?.route.profile,

@@ -67,7 +67,8 @@ TOOLS: You have tools to read files, search code, run commands, write files, and
 - Use ask_question when a key decision is ambiguous — provide 2-5 options to reduce wrong-direction work.
 - Use fetch_web for external docs, API references, advisory pages, or debugging when local context is insufficient. For "check online" / CVE lookups, fetch advisory URLs from audit output or https://osv.dev / npm advisory pages.
 - Session logs: use analyze_log_directory for directories or analyze_jsonl for one file. Use bounded read_file only when the user explicitly asks to inspect raw log lines.
-- Use mark_step_complete when finishing a plan step; use propose_plan_mutation if you hit a major roadblock.
+- Plan step advancement is orchestrator-owned — do not call mark_step_complete or release_plan_controller unless those tools are listed for this turn.
+- Prefer builtin read_file / write_file / apply_patch over MCP filesystem tools.
 - In Agent mode, you may call write_file/apply_patch/run_command tools directly.
 - If a tool returns "awaiting approval", stop and inform the user.
 - NEVER say "I will search…" without calling tools in the same turn.`;
@@ -514,8 +515,15 @@ export function buildIsolatedPlanPrompt(
   const analysisBlock = requirementAnalysis ? `\n\n## Requirement analysis\n${requirementAnalysis}` : '';
   const discoveryBlock = planningDiscovery ? `\n\n## Tool-assisted planning discovery\n${planningDiscovery}` : '';
   const skillBlock = skillPlaybookContext?.trim() ? `\n\n${skillPlaybookContext.trim()}` : '';
-  const isAudit = task?.kind === 'audit';
+  const isCleanupAudit =
+    task?.kind === 'audit' &&
+    (!task.auditSubtype ||
+      task.auditSubtype === 'unused_deps' ||
+      task.auditSubtype === 'dead_code' ||
+      task.auditSubtype === 'vulnerability' ||
+      task.auditSubtype === 'generic');
   const isDocs = isDocumentationTask(task);
+  const isReadmeDocs = isDocs && (task?.docsSubtype === 'readme' || /\breadme\b/i.test(task?.summary ?? ''));
 
   return [
     {
@@ -534,7 +542,17 @@ Output a strict JSON DAG plan with dependsOn edges. Each step must declare:
 
 When planning skill playbooks are present, use them for step boundaries, acceptance criteria, and verification.
 
-${isAudit ? 'Audit tasks need 8+ granular steps across diagnostics/review/execute/verify phases. Diagnostics must run knip or ts-prune for unused exports.' : `${resolveStepBudgetText(task)}${isDocs ? ' Documentation tasks must include docs routing/sidebar/navbar discovery before writing pages, and docs build verification.' : ' Do not add documentation-only routing steps for non-docs tasks.'}`}
+${
+  isCleanupAudit
+    ? 'Dependency/dead-code audit plans need diagnostics/review/execute/verify phases (about 4+ steps). Diagnostics should run knip/depcheck scripts — not for non-cleanup audits.'
+    : `${resolveStepBudgetText(task)}${
+        isReadmeDocs
+          ? ' README documentation plans should stay short (discover → write → review). Do NOT require Docusaurus routing or full app builds.'
+          : isDocs
+            ? ' Docusaurus/docs-site tasks must include docs routing/sidebar/navbar discovery before writing pages, and docs build verification.'
+            : ' Do not add documentation-only routing steps for non-docs tasks.'
+      }`
+}
 
 Output ONLY a JSON code block:
 \`\`\`json
@@ -644,13 +662,16 @@ type PromptTaskShape = {
   planIntent?: string;
   actIntent?: string;
   planningDepth?: PlanningDepth;
+  auditSubtype?: string;
+  docsSubtype?: string;
 };
 
 function isDocumentationTask(task?: PromptTaskShape): boolean {
   return Boolean(
+    task?.kind === 'docs' ||
     task?.planIntent === 'docs' ||
     task?.actIntent === 'docs' ||
-    (task?.summary && /\b(documentation|docs?|docusaurus|mdx)\b/i.test(task.summary))
+    (task?.summary && /\b(documentation|docs?|docusaurus|mdx|readme)\b/i.test(task.summary))
   );
 }
 

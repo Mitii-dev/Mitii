@@ -49,7 +49,8 @@ Output a concise DISCOVERY_SUMMARY NOW in plain text:
 export const NO_TOOLS_PLAN_NUDGE = `You are in Plan mode and answered without reading or searching the codebase. Plan mode MUST be grounded before compiling steps.
 
 In this turn, call at least one read-only discovery tool:
-- use_skill — load planning-and-task-breakdown or using-agent-skills when playbooks are not pre-loaded
+- use_skill — load documentation, planning-and-task-breakdown, or another deferred skill when playbooks are not pre-loaded
+- Prefer builtin read tools; MCP filesystem duplicates are usually excluded
 - read_file / read_files — inspect specific files
 - search / search_batch — find symbols, routes, or patterns
 - retrieve_context / repo_map / project_catalog — widen project context

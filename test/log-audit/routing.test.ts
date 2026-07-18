@@ -38,6 +38,13 @@ describe('logAudit routing', () => {
     expect(extractLogAuditTargetPath('Please inspect .mitii/logs')).toBe('.mitii/logs/');
   });
 
+  it('does not treat building a Log viewer UI as log audit', () => {
+    const text =
+      'What all things needs for build a Log viewer UI for\n/Users/karthikshinde/Applications/resumeAI/.mitii/logs\n- Should be developed in React';
+    expect(isLogAuditTask(text)).toBe(false);
+    expect(routeAskIntent(text).intent).not.toBe('log_analysis');
+  });
+
   it('uses a dedicated Ask intent for log analysis', () => {
     expect(routeAskIntent('Review .mitii/logs and summarize failures')).toMatchObject({
       intent: 'log_analysis',

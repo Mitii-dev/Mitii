@@ -6,58 +6,44 @@ import { formatSkillRuntimeContext, type SkillRuntimeContext } from '../../skill
 import type { SkillInjectionStyle } from '../../agentic/tierPolicy';
 import type { PlanIntent } from './planTypes';
 import { createLogger } from '../../telemetry/Logger';
+import { resolveRoute, resolveSkillsForRoute } from '../../pipeline';
 
 const log = createLogger('PlanSkillRouting');
 
 const MAX_SKILL_CHARS = MAX_SKILL_INJECTION_CHARS;
 
-function appendGitSkills(names: string[], taskAnalysis?: TaskAnalysis): void {
-  const git = taskAnalysis?.gitRoute;
-  if (!git?.isGitTask) return;
-  const injected =
-    git.selectedSkills.injected.length > 0
-      ? git.selectedSkills.injected
-      : git.selectedSkills.primarySkill
-        ? [git.selectedSkills.primarySkill, ...git.selectedSkills.additionalSkills]
-        : [];
-  for (const skill of injected) names.push(skill);
-}
-
-/** Skills to load for planning, ordered by priority. */
+/** Skills to pre-inject for planning (0–1 active). Meta skill is not auto-injected. */
 export function resolvePlanningSkillNames(
   intent: PlanIntent,
   taskAnalysis?: TaskAnalysis,
   options: { sourceMode?: 'plan' | 'agent' } = {}
 ): string[] {
-  const names: string[] = ['using-agent-skills'];
-  if (options.sourceMode === 'agent') {
-    names.push('agent-plan');
-  }
-  names.push('planning-and-task-breakdown');
-  appendGitSkills(names, taskAnalysis);
-
-  if (intent === 'audit' || taskAnalysis?.kind === 'audit') {
-    names.push('audit-cleanup');
-  }
-  if (/\b(console\.log|inline style|missing types?|type annotations?|eslint|lint|tech debt|code smells?)\b/i.test(taskAnalysis?.summary ?? '')) {
-    names.push('code-smells-and-tech-debt');
-  }
-  if (/\b(\.env|environment variable|missing keys?|secrets?|api keys?|tokens?)\b/i.test(taskAnalysis?.summary ?? '')) {
-    names.push('environment-and-secrets');
-  }
-  if (intent === 'bugfix' || taskAnalysis?.kind === 'question') {
-    names.push('debugging-and-error-recovery');
-  }
-  if (/\b(code review|review (this|the|my) (pr|pull request|diff|change)|quality gate)\b/i.test(taskAnalysis?.summary ?? '')) {
-    names.push('code-review-and-quality');
-  }
-  if (/\b(performance|slow|latency|core web vitals|bundle size|profil(e|ing))\b/i.test(taskAnalysis?.summary ?? '')) {
-    names.push('performance-optimization');
-  }
-
-  const resolved = [...new Set(names)];
-  log.debug('Resolved planning skill names', { intent, taskKind: taskAnalysis?.kind, resolved });
-  return resolved;
+  const summary = taskAnalysis?.summary ?? intent;
+  const analysis: TaskAnalysis = taskAnalysis
+    ? { ...taskAnalysis, planIntent: taskAnalysis.planIntent ?? intent }
+    : {
+        kind: intent === 'docs' ? 'docs' : intent === 'audit' ? 'audit' : 'explicit_plan',
+        complexity: 'medium',
+        shouldPlan: true,
+        shouldVerify: false,
+        shouldUseSubagents: false,
+        summary,
+        planIntent: intent,
+      };
+  const route = resolveRoute(summary, analysis);
+  if (intent === 'docs') route.intent = 'docs';
+  if (intent === 'audit') route.intent = 'audit';
+  const skills = resolveSkillsForRoute(route, analysis, {
+    sourceMode: options.sourceMode ?? 'plan',
+    planning: true,
+  });
+  log.debug('Resolved planning skill names', {
+    intent,
+    taskKind: taskAnalysis?.kind,
+    active: skills.activeSkill,
+    inject: skills.injectSkills,
+  });
+  return skills.injectSkills;
 }
 
 export function loadPlanningSkillPlaybooks(
@@ -141,10 +127,9 @@ function extractQuickRef(content: string, description?: string): string {
 
 export const PLAN_SKILL_TOOL_GUIDANCE = `
 PLANNING SKILLS:
-- Follow injected planning playbooks first. Call use_skill only when you need a specific workspace playbook that is not already injected below.
-- For Agent-mode structured planning, use the injected agent-plan playbook when present; otherwise use_skill("agent-plan").
-- For task breakdown and phased plans, use the injected planning-and-task-breakdown playbook when present; otherwise use_skill("planning-and-task-breakdown").
-- For skill discovery/routing, use the injected using-agent-skills playbook when present; otherwise use_skill("using-agent-skills").
-- For Git/GitHub plans, follow the injected git-* / github-* skills; do not invent remote write steps without approval.
-- For tech-debt and env/secrets tasks, prefer the bundled script-backed skills before manual inspection.
-- Follow loaded skill workflows for planning structure, acceptance criteria, and verification commands per step.`;
+- Follow the single injected planning playbook first (0–1 active). Call use_skill only for deferred skills.
+- Do not auto-load using-agent-skills; call use_skill("using-agent-skills") only if you need meta routing help.
+- For README/package docs, prefer the documentation skill — never release_plan_controller.
+- For dependency/dead-code cleanup only, use audit-cleanup. Other audit subtypes are not knip/depcheck tasks.
+- Prefer builtin read tools over MCP filesystem during discovery.
+- Follow loaded skill workflows for planning structure, acceptance criteria, and verification.`;

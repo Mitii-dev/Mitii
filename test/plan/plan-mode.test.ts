@@ -84,7 +84,8 @@ describe('Plan mode orchestration', () => {
     const prepared = PlanOrchestrator.prepare('Implement the SDK plan runner', {
       skillCatalog: createSkillCatalog({
         'using-agent-skills': '# Agent Skills\n\nShort playbook.',
-        'planning-and-task-breakdown': '# Planning\n\n'.repeat(80),
+        'planning-and-task-breakdown': '# Planning\n\nShort planning playbook.',
+        'agent-plan': '# Agent Plan\n\n'.repeat(80),
       }),
       tierPolicy: {
         skillInjection: 'full',
@@ -95,8 +96,8 @@ describe('Plan mode orchestration', () => {
     });
 
     expect(prepared.skillPlaybookContext).toContain('Planning skill playbooks');
-    expect(prepared.appliedSkills).toEqual(['using-agent-skills']);
-    expect(prepared.skillPlaybookContext).toContain('Short playbook');
+    expect(prepared.appliedSkills).toEqual(['planning-and-task-breakdown']);
+    expect(prepared.skillPlaybookContext).toContain('Short planning playbook');
     expect(prepared.skillPlaybookContext.match(/### Skill:/g)).toHaveLength(1);
   });
 

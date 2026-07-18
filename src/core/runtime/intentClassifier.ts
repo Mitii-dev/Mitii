@@ -38,7 +38,7 @@ export const PLAN_INTENT_DESCRIPTIONS = {
   feature: 'Plan a new feature or capability.',
   refactor: 'Plan a restructuring, migration, simplification, or rename.',
   bugfix: 'Plan an error, regression, failing test, or broken behavior fix.',
-  audit: 'Plan cleanup of unused dependencies, files, imports, or dead code.',
+  audit: 'Plan an audit. Only unused-deps/dead-code/CVE cleanup uses depcheck/knip; other audit subtypes (prompt, security config, architecture, etc.) stay scoped to that subtype.',
   docs: 'Plan documentation, examples, README, changelog, or MDX work.',
   spike: 'Plan read-only discovery for broad architecture or implementation questions.',
   question: 'Plan a grounded investigation or answer for an informational request.',

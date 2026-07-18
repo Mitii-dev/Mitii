@@ -3,10 +3,10 @@ import { resolveActSkillNames } from '../src/core/modes/agent/actSkillRouting';
 import { resolveGitRoute } from '../src/core/git/intents';
 
 describe('actSkillRouting', () => {
-  it('injects Git route skills for commit message requests', () => {
+  it('injects Git route skill (0–1) for commit message requests', () => {
     const gitRoute = resolveGitRoute('generate a commit message for my staged changes', 'agent');
     const names = resolveActSkillNames('feature', {
-      kind: 'implementation',
+      kind: 'git',
       complexity: 'low',
       summary: 'generate a commit message for my staged changes',
       shouldPlan: false,
@@ -15,7 +15,8 @@ describe('actSkillRouting', () => {
       gitRoute,
     });
     expect(names).toContain('git-commit-message');
-    expect(names).toContain('using-agent-skills');
+    expect(names).toHaveLength(1);
+    expect(names).not.toContain('using-agent-skills');
   });
 
   it('keeps log-audit exclusive for log audits', () => {
@@ -30,7 +31,7 @@ describe('actSkillRouting', () => {
     expect(names).toEqual(['log-audit']);
   });
 
-  it('routes code review and performance intents', () => {
+  it('routes code review and performance as active skills', () => {
     expect(
       resolveActSkillNames('feature', {
         kind: 'implementation',
@@ -54,16 +55,18 @@ describe('actSkillRouting', () => {
     ).toContain('performance-optimization');
   });
 
-  it('does not inject TDD for documentation-only work', () => {
+  it('injects documentation skill for docs, not meta or TDD', () => {
     const names = resolveActSkillNames('docs', {
-      kind: 'implementation',
+      kind: 'docs',
       complexity: 'medium',
       summary: 'Create enterprise-level README files for ai-service and frontend',
       shouldPlan: true,
       shouldVerify: true,
       shouldUseSubagents: false,
+      docsSubtype: 'readme',
     });
-    expect(names).toContain('using-agent-skills');
+    expect(names).toEqual(['documentation']);
+    expect(names).not.toContain('using-agent-skills');
     expect(names).not.toContain('test-driven-development');
   });
 });

@@ -38,6 +38,23 @@ describe('Git intent metadata and routing', () => {
     expect(classification.requiresRemoteWrite).toBe(requiresRemoteWrite);
   });
 
+  it('does not treat Log viewer / app logs as git history analysis', () => {
+    const message =
+      'What all things needs for build a Log viewer UI for\n/Users/karthikshinde/Applications/resumeAI/.mitii/logs';
+    const classification = classifyGitIntent(message);
+    expect(classification.primaryIntent).not.toBe('git_history_analysis');
+    const route = resolveGitRoute(message, 'plan');
+    expect(route.isGitTask).toBe(false);
+    expect(route.selectedSkills.injected).not.toContain('git-history-analysis');
+  });
+
+  it('still classifies explicit git log / history requests', () => {
+    expect(classifyGitIntent('show git log for the last 10 commits').primaryIntent).toBe(
+      'git_history_analysis'
+    );
+    expect(resolveGitRoute('show git log for the last 10 commits').isGitTask).toBe(true);
+  });
+
   it('selects route-specific tool exposure without draft tools mutating remotes', () => {
     const draftRoute = resolveGitRoute('Draft a PR for this branch');
     expect(draftRoute.route).toBe('github_remote_write');

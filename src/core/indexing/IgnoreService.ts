@@ -111,6 +111,6 @@ export function canonicalizeMitiiRelPath(relPath: string): string {
 }
 
 export function isMitiiSessionLogPath(relPath: string): boolean {
-  const normalized = canonicalizeMitiiRelPath(relPath.replace(/\\/g, '/'));
+  const normalized = canonicalizeMitiiRelPath(relPath.replace(/\\/g, '/')).replace(/\/+$/, '');
   return /^\.mitii\/logs(?:\/[^/]+)?$/.test(normalized);
 }

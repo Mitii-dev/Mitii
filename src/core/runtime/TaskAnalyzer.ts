@@ -6,6 +6,7 @@ import type { PlanIntent } from '../modes/plan/planTypes';
 import type { ActIntent } from '../modes/agent/actTypes';
 import { isLogAuditTask } from './logAudit';
 import { resolveGitRoute, type GitRouteResolution } from '../git/intents';
+import { resolveAuditSubtype, resolveDocsSubtype } from '../pipeline/route/routeResolver';
 
 export type TaskKind =
   | 'question'
@@ -13,11 +14,36 @@ export type TaskKind =
   | 'log_audit'
   | 'simple_edit'
   | 'implementation'
+  | 'docs'
   | 'explicit_plan'
   | 'debugging'
   | 'git';
 
 export type TaskComplexity = 'low' | 'medium' | 'high';
+
+export type AuditSubtype =
+  | 'unused_deps'
+  | 'dead_code'
+  | 'vulnerability'
+  | 'log'
+  | 'prompt'
+  | 'security_config'
+  | 'git_history'
+  | 'ci'
+  | 'database'
+  | 'architecture'
+  | 'code_quality'
+  | 'generic';
+
+export type DocsSubtype =
+  | 'readme'
+  | 'api_reference'
+  | 'architecture'
+  | 'docusaurus'
+  | 'mdx_repair'
+  | 'changelog'
+  | 'examples'
+  | 'generic';
 
 export interface TaskAnalysis {
   kind: TaskKind;
@@ -31,6 +57,10 @@ export interface TaskAnalysis {
   planIntent?: PlanIntent;
   actIntent?: ActIntent;
   gitRoute?: GitRouteResolution;
+  /** Set by pipeline / TaskAnalyzer for audit framing. */
+  auditSubtype?: AuditSubtype;
+  /** Set for documentation tasks (README vs Docusaurus, etc.). */
+  docsSubtype?: DocsSubtype;
 }
 
 export interface TaskAnalysisOptions {
@@ -100,7 +130,13 @@ export function analyzeTask(userMessage: string, mode: string, options: TaskAnal
 
   const classified = classifyTask(taskText);
   const gitRoute = resolveGitRoute(taskText, mode);
-  if (gitRoute.isGitTask && gitRoute.classification.metadata) {
+  // Prefer already-classified domain work (log audit / docs / implementation) over git.
+  const gitWouldOverrideDomain =
+    classified.kind === 'log_audit' ||
+    classified.kind === 'docs' ||
+    classified.kind === 'implementation' ||
+    isLogAuditTask(taskText);
+  if (gitRoute.isGitTask && gitRoute.classification.metadata && !gitWouldOverrideDomain) {
     const gitAnalysis: TaskAnalysis = {
       kind: 'git',
       complexity: gitRoute.risk === 'critical' || gitRoute.risk === 'high' ? 'high' : gitRoute.risk === 'medium' ? 'medium' : 'low',
@@ -121,6 +157,19 @@ export function analyzeTask(userMessage: string, mode: string, options: TaskAnal
   }
   if (mode === 'ask') {
     const askRoute = routeAskIntent(taskText, options.askIntent ? { intent: options.askIntent } : undefined);
+    if (askRoute.intent === 'log_analysis' || isLogAuditTask(taskText)) {
+      return {
+        kind: 'log_audit',
+        complexity: 'low',
+        shouldPlan: false,
+        shouldVerify: false,
+        shouldUseSubagents: false,
+        summary: askRoute.summary,
+        askIntent: 'log_analysis',
+        askProfile: askRoute.profile,
+        actIntent: 'log_audit',
+      };
+    }
     return {
       kind: 'question',
       complexity: estimateAskComplexity(askRoute.intent, taskText),
@@ -192,14 +241,25 @@ function classifyTask(text: string): TaskAnalysis {
     };
   }
 
+  // Dependency / dead-code cleanup only — bare "audit" is handled later as generic review.
   if (AUDIT_CLEANUP.test(text)) {
+    const auditSubtype = resolveAuditSubtype(text) ?? 'generic';
+    const isCleanup =
+      auditSubtype === 'unused_deps' ||
+      auditSubtype === 'dead_code' ||
+      auditSubtype === 'vulnerability' ||
+      auditSubtype === 'generic';
     return {
       kind: 'audit',
-      complexity: 'high',
-      shouldPlan: true,
+      complexity: isCleanup ? 'high' : 'medium',
+      shouldPlan: isCleanup,
       shouldVerify: true,
       shouldUseSubagents: false,
-      summary: 'Audit/cleanup task — run script catalog (depcheck/knip) first; avoid dependency subagents.',
+      auditSubtype,
+      summary: isCleanup
+        ? `Audit/cleanup (${auditSubtype}) — run script catalog (depcheck/knip/CVE) first; avoid dependency subagents.`
+        : `Audit (${auditSubtype}) — not a dependency/dead-code cleanup; scope tools to this subtype.`,
+      actIntent: 'audit',
     };
   }
 
@@ -284,15 +344,22 @@ function classifyTask(text: string): TaskAnalysis {
     };
   }
 
-  if (DOCS_IMPLEMENTATION.test(text)) {
+  if (DOCS_IMPLEMENTATION.test(text) || /\b(readme|read\s*me|readfile)\b/i.test(text)) {
+    const docsSubtype = resolveDocsSubtype(text) ?? 'generic';
     const docsComplexity = estimateComplexity(text) === 'low' ? 'medium' : estimateComplexity(text);
+    const isReadme = docsSubtype === 'readme';
     return {
-      kind: 'implementation',
+      kind: 'docs',
       complexity: docsComplexity,
-      shouldPlan: true,
-      shouldVerify: true,
-      shouldUseSubagents: docsComplexity === 'high',
-      summary: `Documentation implementation task (${docsComplexity} complexity) — inspect docs routing, existing docs patterns, source exports, then verify the docs build.`,
+      // README / package docs: execute directly; Docusaurus sites may still plan.
+      shouldPlan: !isReadme && docsComplexity !== 'low',
+      shouldVerify: docsSubtype === 'docusaurus' || docsSubtype === 'mdx_repair',
+      shouldUseSubagents: false,
+      docsSubtype,
+      actIntent: 'docs',
+      summary: isReadme
+        ? `README documentation (${docsComplexity}) — write/update README via discovery + write_file; skip full app builds.`
+        : `Documentation task (${docsSubtype}, ${docsComplexity}) — follow documentation skill; Docusaurus needs routing/sidebar checks.`,
     };
   }
 

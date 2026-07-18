@@ -5,85 +5,53 @@ import { MAX_SKILL_INJECTION_CHARS, QUICK_REF_FALLBACK_CHARS } from '../../skill
 import { formatSkillRuntimeContext, type SkillRuntimeContext } from '../../skills/skillRuntimeContext';
 import type { SkillInjectionStyle } from '../../agentic/tierPolicy';
 import type { ActIntent } from './actTypes';
+import { resolveRoute, resolveSkillsForRoute, type SkillResolution } from '../../pipeline';
 
 const MAX_SKILL_CHARS = MAX_SKILL_INJECTION_CHARS;
 
-function appendGitSkills(names: string[], taskAnalysis?: TaskAnalysis): void {
-  const git = taskAnalysis?.gitRoute;
-  if (!git?.isGitTask) return;
-  const injected =
-    git.selectedSkills.injected.length > 0
-      ? git.selectedSkills.injected
-      : git.selectedSkills.primarySkill
-        ? [git.selectedSkills.primarySkill, ...git.selectedSkills.additionalSkills]
-        : [];
-  for (const skill of injected) names.push(skill);
-}
-
+/**
+ * Skills to pre-inject (0–1 active). Uses pipeline skill resolver.
+ * `using-agent-skills` is never auto-injected.
+ */
 export function resolveActSkillNames(intent: ActIntent, taskAnalysis?: TaskAnalysis): string[] {
-  if (intent === 'log_audit' || taskAnalysis?.kind === 'log_audit') {
-    return ['log-audit'];
-  }
-
-  const names: string[] = ['using-agent-skills'];
-  appendGitSkills(names, taskAnalysis);
-
-  if (intent === 'audit' || taskAnalysis?.kind === 'audit') {
-    names.push('audit-cleanup');
-  }
-
-  if (/\b(console\.log|inline style|missing types?|type annotations?|eslint|lint|tech debt|code smells?)\b/i.test(taskAnalysis?.summary ?? '')) {
-    names.push('code-smells-and-tech-debt');
-  }
-
-  if (/\b(\.env|environment variable|missing keys?|secrets?|api keys?|tokens?)\b/i.test(taskAnalysis?.summary ?? '')) {
-    names.push('environment-and-secrets');
-  }
-
-  if (
-    intent === 'bugfix' ||
-    intent === 'diagnose' ||
-    /\b(error|failing|failed|debug|repair|fix)\b/i.test(taskAnalysis?.summary ?? '')
-  ) {
-    names.push('debugging-and-error-recovery');
-  }
-
-  if (shouldLoadTddSkill(intent, taskAnalysis)) {
-    names.push('test-driven-development');
-  }
-
-  if (/\b(code review|review (this|the|my) (pr|pull request|diff|change)|quality gate)\b/i.test(taskAnalysis?.summary ?? '')) {
-    names.push('code-review-and-quality');
-  }
-
-  if (/\b(performance|slow|latency|core web vitals|bundle size|profil(e|ing))\b/i.test(taskAnalysis?.summary ?? '')) {
-    names.push('performance-optimization');
-  }
-
-  if (/\b(browser|puppeteer|screenshot|ui (test|verif)|devtools)\b/i.test(taskAnalysis?.summary ?? '')) {
-    names.push('browser-testing-with-devtools');
-  }
-
-  return [...new Set(names)];
+  return resolveActSkillResolution(intent, taskAnalysis).injectSkills;
 }
 
-function shouldLoadTddSkill(intent: ActIntent, taskAnalysis?: TaskAnalysis): boolean {
-  const summary = taskAnalysis?.summary ?? '';
-  if (intent === 'docs') return false;
-  if (
-    /\b(readme|documentation|docs?|static content|pure config|configuration only)\b/i.test(summary) &&
-    !/\b(behavior|logic|runtime|bug|fix|regression|component|api|route|service)\b/i.test(summary)
-  ) {
-    return false;
+/** Full skill resolution for telemetry / prompt catalog hints. */
+export function resolveActSkillResolution(intent: ActIntent, taskAnalysis?: TaskAnalysis): SkillResolution {
+  const summary = taskAnalysis?.summary ?? intent;
+  const analysis: TaskAnalysis = taskAnalysis
+    ? {
+        ...taskAnalysis,
+        actIntent: taskAnalysis.actIntent ?? intent,
+        kind:
+          intent === 'docs' && taskAnalysis.kind === 'implementation'
+            ? 'docs'
+            : taskAnalysis.kind,
+      }
+    : {
+        kind:
+          intent === 'docs'
+            ? 'docs'
+            : intent === 'log_audit'
+              ? 'log_audit'
+              : intent === 'audit'
+                ? 'audit'
+                : 'implementation',
+        complexity: 'medium',
+        shouldPlan: false,
+        shouldVerify: true,
+        shouldUseSubagents: false,
+        summary,
+        actIntent: intent,
+      };
+  const route = resolveRoute(summary, analysis);
+  if (intent === 'docs') route.intent = 'docs';
+  if (intent === 'log_audit') {
+    route.intent = 'log_audit';
+    route.executionPath = 'log_audit';
   }
-  return (
-    intent === 'bugfix' ||
-    intent === 'diagnose' ||
-    intent === 'feature' ||
-    intent === 'refactor' ||
-    taskAnalysis?.kind === 'implementation' ||
-    taskAnalysis?.kind === 'explicit_plan'
-  );
+  return resolveSkillsForRoute(route, analysis, { sourceMode: 'agent', planning: false });
 }
 
 export function loadActSkillPlaybooks(
@@ -150,11 +118,8 @@ function extractQuickRef(content: string, description?: string): string {
 
 export const ACT_SKILL_TOOL_GUIDANCE = `
 ACT SKILLS:
-- Follow injected act playbooks first. Call use_skill only when the task needs a specific workspace playbook that is not already injected.
-- For Git/GitHub tasks, prefer the injected git-* / github-* / release-management / changelog-maintenance skills.
-- For bug fixes and failed verification, use debugging-and-error-recovery.
-- For implementation and refactors, use test-driven-development when tests or verification strategy are unclear.
-- For cleanup tasks, use audit-cleanup and prefer repository audit scripts over manual grep.
-- For console logs, inline styles, missing types, lint hygiene, or tech debt, use code-smells-and-tech-debt.
-- For .env files, environment variables, keys, tokens, or secrets, use environment-and-secrets and never print secret values.
-- For PR/code review, use code-review-and-quality. For perf work, use performance-optimization. For UI smoke checks, use browser-testing-with-devtools.`;
+- Follow the single injected playbook first (0–1 active skill). Call use_skill only for a deferred/catalog skill that is not already injected.
+- Do not load using-agent-skills unless you need meta skill-routing help.
+- For documentation / README work, use the documentation skill — never release_plan_controller or audit-cleanup.
+- For dependency/dead-code cleanup only, use audit-cleanup. Other "audit" subtypes are not knip/depcheck tasks.
+- Prefer builtin read_file / write_file over MCP filesystem tools.`;

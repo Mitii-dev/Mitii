@@ -9,21 +9,32 @@ AGENT_SKILLS_SOURCE_DIR=/path/to/agent-skills/skills bash scripts/sync-bundled-s
 pnpm run skills:validate
 ```
 
-Edit Mitii-owned skills (e.g. `audit-cleanup/`, `git-*`, `log-audit/`) directly in this folder, then commit and publish a new extension version.
+Edit Mitii-owned skills (e.g. `audit-cleanup/`, `documentation/`, `git-*`, `log-audit/`) directly in this folder, then commit and publish a new extension version.
+
+## Skill layout
+
+```text
+bundled/<skill-name>/
+├── SKILL.md
+├── scripts/          # optional helpers
+└── references/       # optional schemas / guides
+```
 
 ## Rules vs Skills
 
 | Kind | Purpose | Where to author |
 | --- | --- | --- |
 | Rules | Always-on policy/conventions injected every turn by `ProjectRulesService` with high context priority. | `.mitii/rules/*.md`, `MITII.md`, `AGENTS.md` |
-| Skills | On-demand procedures/playbooks cataloged by `SkillCatalogService`, then loaded with `use_skill` or pre-injected by tier. | `.mitii/skills/*/SKILL.md` |
+| Skills | On-demand procedures/playbooks cataloged by `SkillCatalogService`, then loaded with `use_skill` or pre-injected by the pipeline (0–1 active). | `.mitii/skills/*/SKILL.md` |
 
 Decision rule: holds on every task => Rule; workflow for a task type => Skill.
+
+Turn policy for which skill is active lives in `src/core/pipeline/skills/` (see `src/core/STRUCTURE.md`).
 
 ## Invocation
 
 1. **Catalog** — every skill appears as `name: description` (description capped at **240** chars).
-2. **Tier pre-injection** — Plan/Act routers resolve skill names (including Git route selections) and inject `full` or `quick-ref` bodies under a character budget (`local-large` 6k, `cloud-standard` 18k, `cloud-frontier` 24k).
+2. **Pipeline pre-injection** — `resolveSkillsForRoute` picks **at most one** active playbook (`injectSkills`). Meta skill `using-agent-skills` is deferred (load via `use_skill` only).
 3. **`use_skill`** — on-demand full playbook load, capped at **24k** chars.
 
 For `quick-ref` tiers, include a top-level `## Quick Reference` (or `## Overview`) section.

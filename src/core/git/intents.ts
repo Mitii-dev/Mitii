@@ -194,8 +194,15 @@ const intentMatchers: Array<{ intent: GitIntent; patterns: RegExp[]; confidence:
   { intent: 'git_branch_create', confidence: 0.91, patterns: [/\b(create|new|make)\b[\s\S]{0,30}\bbranch\b/i] },
   { intent: 'git_branch_compare', confidence: 0.88, patterns: [/\b(compare)\b[\s\S]{0,40}\b(branch|branches)\b/i] },
   { intent: 'git_blame_analysis', confidence: 0.9, patterns: [/\b(blame|who changed|when was.*changed)\b/i] },
-  { intent: 'git_history_analysis', confidence: 0.86, patterns: [/\b(history|log|last \d+ commits|recent commits|hotspots?)\b/i] },
-  { intent: 'git_diff_analysis', confidence: 0.88, patterns: [/\b(diff|review my diff|review the changes|what changed)\b/i] },
+  // Require git-domain cues — bare "log"/"history" false-positive on "Log viewer" / app logs.
+  {
+    intent: 'git_history_analysis',
+    confidence: 0.86,
+    patterns: [
+      /\b(git\s+(?:log|history)|commit\s+history|history\s+of\s+(?:this|the)\s+(?:file|repo|codebase|project)|last\s+\d+\s+commits|recent\s+commits|hotspots?)\b/i,
+    ],
+  },
+  { intent: 'git_diff_analysis', confidence: 0.88, patterns: [/\b(git\s+diff|review my diff|review the changes|what changed)\b/i] },
   { intent: 'git_status_summary', confidence: 0.86, patterns: [/\b(git status|status summary|repo status|working tree)\b/i] },
 ];
 
@@ -239,14 +246,39 @@ export function classifyGitIntent(message: string, mode: string = 'agent'): GitI
   };
 }
 
+/** Intents whose matchers can fire on non-git language without an explicit git cue. */
+const AMBIGUOUS_GIT_INTENTS = new Set<GitIntent>([
+  'git_history_analysis',
+  'git_diff_analysis',
+  'git_status_summary',
+  'git_blame_analysis',
+]);
+
 export function resolveGitRoute(message: string, mode: string = 'agent'): GitRouteResolution {
-  const classification = classifyGitIntent(message, mode);
-  const meta = classification.metadata;
+  let classification = classifyGitIntent(message, mode);
+  let meta = classification.metadata;
+
+  // Drop weak/ambiguous hits when the message is not actually git-domain (e.g. "Log viewer UI").
+  if (meta && AMBIGUOUS_GIT_INTENTS.has(meta.intent) && !looksGitRelated(message)) {
+    classification = {
+      ...classification,
+      primaryIntent: 'unknown_git',
+      secondaryIntents: [],
+      confidence: 0,
+      requiresWorkspaceWrite: false,
+      requiresGitWrite: false,
+      requiresRemoteWrite: false,
+      requiresApproval: false,
+      metadata: undefined,
+    };
+    meta = undefined;
+  }
+
   const route = meta ? routeForIntent(meta.intent) : 'general_agent';
   const selectedSkills = selectGitSkills(classification);
   const telemetry = buildGitIntentTelemetry(classification, route);
   return {
-    isGitTask: Boolean(meta) || classification.confidence > 0,
+    isGitTask: Boolean(meta),
     route,
     classification,
     risk: meta?.risk ?? 'low',

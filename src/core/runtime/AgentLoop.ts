@@ -1223,14 +1223,11 @@ function resolveToolOutput(execResult: import('../safety/ToolExecutor').ToolExec
 
 /**
  * Keys a failed tool call by tool name + normalized error text so identical failures can be
- * counted across steps. Phase-lock failures are excluded — they already have their own
- * graduated escalation (nudge, then hard stop) and would otherwise get short-circuited here
- * before that instructional message ever reaches the model.
+ * counted across steps. Phase-lock failures ARE included after the first instructional nudge
+ * so the model cannot loop forever on write_file / run_command / mark_step_complete.
  */
 function repeatedToolFailureKey(toolName: string, output: string): string | undefined {
   if (!output) return undefined;
-  if (['write_file', 'apply_patch'].includes(toolName) && isPhaseLockWriteError(output)) return undefined;
-  if (toolName === 'run_command' && isPhaseLockRunCommandError(output)) return undefined;
   return `${toolName}:${normalizeToolFailure(output)}`;
 }
 
@@ -1248,9 +1245,12 @@ function buildRepeatedToolInputFailureMessage(toolName: string, output: string, 
   } else if (/Shell blocked|Mutating shell commands in Ask\/Plan\/Review require your approval/i.test(detail)) {
     recovery =
       'Ask/Plan allow read-only shell without approval. For installs/edits, call the mutating tool again so the user can approve — or use `execute_workspace_script` / read-only `grep`/`ls`/`cat`.';
-  } else if (/not available in this mode|Writes blocked|Patch apply blocked|MCP filesystem writes|require your approval/i.test(detail)) {
+  } else if (/not available in this mode|Writes blocked|Patch apply blocked|MCP filesystem writes|require your approval|file writes are locked|Phase 4 \(Verify\)/i.test(detail)) {
     recovery =
-      'Ask/Plan prefer read-only analysis. For writes, call `write_file` / `apply_patch` so the user can approve the action; do not keep retrying the identical blocked call.';
+      'This tool is blocked for the current mode/phase. Do not retry it. Synthesize from evidence already gathered, or wait for the orchestrator to advance the plan phase.';
+  } else if (/release_plan_controller/i.test(toolName)) {
+    recovery =
+      'release_plan_controller is for git/release workflows only — not for marking documentation plan steps complete. Continue without it.';
   }
   return [
     `\n\n### ${REPEATED_TOOL_INPUT_FAILURE_PREFIX}`,

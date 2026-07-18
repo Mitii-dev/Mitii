@@ -798,15 +798,21 @@ function validatePlanQuality(
   const minSteps = minStepsForPlanningDepth(planningDepth, taskAnalysis);
   if (stepCount < minSteps) {
     issues.push(
-      taskAnalysis?.kind === 'audit'
-        ? 'Audit/cleanup plans must contain at least 8 granular steps.'
-        : `Plans at ${planningDepth} depth must contain at least ${minSteps} step${minSteps === 1 ? '' : 's'}.`
+      `Plans at ${planningDepth} depth must contain at least ${minSteps} step${minSteps === 1 ? '' : 's'}.`
     );
   }
 
-  if (taskAnalysis?.kind === 'audit') {
+  const cleanupAudit =
+    taskAnalysis?.kind === 'audit' &&
+    (!taskAnalysis.auditSubtype ||
+      taskAnalysis.auditSubtype === 'unused_deps' ||
+      taskAnalysis.auditSubtype === 'dead_code' ||
+      taskAnalysis.auditSubtype === 'vulnerability' ||
+      taskAnalysis.auditSubtype === 'generic');
+
+  if (cleanupAudit) {
     for (const phase of ['diagnostics', 'review', 'execute', 'verify'] as const) {
-      if (!phases.has(phase)) issues.push(`Audit/cleanup plans must include a ${phase} phase.`);
+      if (!phases.has(phase)) issues.push(`Dependency/dead-code audit plans must include a ${phase} phase.`);
     }
   }
 
@@ -822,11 +828,29 @@ function validatePlanQuality(
       .join('\n')
       .toLowerCase();
 
-    if (!/(docusaurus\.config|sidebars?|navbar|routebasepath|sidebarpath|docspluginid|docs plugin|docs routing)/i.test(planText)) {
-      issues.push('Documentation plans must inspect/update docs routing/config such as docusaurus.config.ts, sidebars, navbar, or docs plugin settings.');
-    }
-    if (!phases.has('verify') && !/\b(build|validate|verify|test)\b/.test(planText)) {
-      issues.push('Documentation plans must include a verification step, such as running the docs build.');
+    const docsSubtype = taskAnalysis?.docsSubtype;
+    const isReadme = docsSubtype === 'readme' || /\breadme\b/i.test(taskAnalysis?.summary ?? '');
+    const isDocusaurus =
+      docsSubtype === 'docusaurus' ||
+      docsSubtype === 'mdx_repair' ||
+      /\b(docusaurus|mdx)\b/i.test(taskAnalysis?.summary ?? '');
+
+    if (isDocusaurus) {
+      if (!/(docusaurus\.config|sidebars?|navbar|routebasepath|sidebarpath|docspluginid|docs plugin|docs routing)/i.test(planText)) {
+        issues.push('Docusaurus documentation plans must inspect/update docs routing/config such as docusaurus.config.ts, sidebars, navbar, or docs plugin settings.');
+      }
+      if (!phases.has('verify') && !/\b(build|validate|verify|test)\b/.test(planText)) {
+        issues.push('Docusaurus documentation plans must include a verification step, such as running the docs build.');
+      }
+    } else if (isReadme) {
+      if (!/\b(readme|structure|api|architecture|payload)\b/i.test(planText)) {
+        issues.push('README documentation plans must cover structure/API/architecture content discovery and writing.');
+      }
+      // README plans must NOT require Docusaurus routing or full app builds.
+    } else {
+      if (!phases.has('verify') && !/\b(build|validate|verify|read|review)\b/.test(planText)) {
+        issues.push('Documentation plans must include a verification or review step.');
+      }
     }
   }
 
@@ -859,8 +883,10 @@ function validatePlanQuality(
 function isDocumentationPlan(taskAnalysis?: TaskAnalysis, fallbackText = ''): boolean {
   const text = `${taskAnalysis?.summary ?? ''} ${fallbackText}`;
   return Boolean(
-    (taskAnalysis?.kind === 'implementation' || taskAnalysis?.planIntent === 'docs' || taskAnalysis?.actIntent === 'docs') &&
-    /\b(documentation|docs?|docusaurus|mdx)\b/i.test(text)
+    taskAnalysis?.kind === 'docs' ||
+    taskAnalysis?.planIntent === 'docs' ||
+    taskAnalysis?.actIntent === 'docs' ||
+    (taskAnalysis?.kind === 'implementation' && /\b(documentation|docs?|docusaurus|mdx|readme)\b/i.test(text))
   );
 }
 
@@ -884,6 +910,12 @@ function filterToolsForPlanPhase<T extends { function: { name: string } }>(
       if (hiddenMcpWrite.test(name)) return false;
     }
     if (phase === 'verify' && hiddenMcpWrite.test(name)) return false;
+    // Plan-control and release tools are orchestrator-owned / git-route-only.
+    if (name === 'mark_step_complete' || name === 'propose_plan_mutation' || name === 'release_plan_controller') {
+      return false;
+    }
+    // Prefer builtin FS over MCP duplicates during plan execution.
+    if (name.startsWith('mcp__filesystem__')) return false;
     return true;
   });
 }

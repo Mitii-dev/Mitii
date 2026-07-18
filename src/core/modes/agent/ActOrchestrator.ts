@@ -12,7 +12,7 @@ import { normalizeAgentDepth } from '../../config/agentDepth';
 import { resolvePlanScope } from '../plan/PlanScopeResolver';
 import { routeActIntent } from './ActIntentRouter';
 import { buildActPromptContext } from './actPrompts';
-import { loadActSkillPlaybooks, resolveActSkillNames } from './actSkillRouting';
+import { loadActSkillPlaybooks, resolveActSkillResolution } from './actSkillRouting';
 import type { ActDepth, ActIntent, ActRunPlan } from './actTypes';
 
 export interface ActPrepareOptions {
@@ -55,11 +55,12 @@ export class ActOrchestrator {
     });
     const catalog = options.catalog ?? (options.workspaceRoot ? loadProjectCatalog(options.workspaceRoot) : undefined);
     const scope = resolvePlanScope(userMessage, catalog);
-    const suggestedSkills = resolveActSkillNames(route.intent, taskAnalysis);
+    const skillResolution = resolveActSkillResolution(route.intent, taskAnalysis);
+    const suggestedSkills = skillResolution.suggestedSkills;
     const policy = options.tierPolicy;
     const { context: skillPlaybookContext, loaded: appliedSkills } = loadActSkillPlaybooks(
       options.skillCatalog,
-      suggestedSkills,
+      skillResolution.injectSkills,
       { style: policy?.skillInjection, maxChars: policy?.maxSkillChars, runtimeContext: options.runtimeContext ?? { mode: 'agent', depth: actDepth } }
     );
     const maxSteps = resolveActMaxSteps(

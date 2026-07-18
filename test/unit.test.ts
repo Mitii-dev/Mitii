@@ -43,10 +43,37 @@ describe('IgnoreService', () => {
     ig.load('/tmp');
     expect(ig.isIgnored('.mitii/logs/2026-07-08_23-10-52-abc.jsonl', { forRead: true })).toBe(false);
     expect(ig.isIgnored('.mitii/logs', { forRead: true })).toBe(false);
+    expect(ig.isIgnored('.mitii/logs/', { forRead: true })).toBe(false);
     expect(ig.isIgnored('.miti/logs/2026-07-08_23-10-52-abc.jsonl', { forRead: true })).toBe(false);
     expect(ig.isIgnored('.mitii/logs/2026-07-08_23-10-52-abc.jsonl')).toBe(true);
     expect(ig.isIgnored('.mitii/config.json', { forRead: true })).toBe(true);
     expect(ig.isIgnored('.mitii/logs/nested/other.jsonl', { forRead: true })).toBe(true);
+  });
+
+  it('list_files can recursively list .mitii/logs despite default .mitii ignore', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'mitii-list-logs-'));
+    try {
+      const logsDir = join(tempDir, '.mitii', 'logs');
+      mkdirSync(logsDir, { recursive: true });
+      writeFileSync(join(logsDir, 'session-a.jsonl'), '{"type":"session_start"}\n');
+      writeFileSync(join(tempDir, '.mitii', 'config.json'), '{}');
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      const { createListFilesTool } = await import('../src/core/tools/builtinTools');
+      const tool = createListFilesTool(tempDir, ig);
+      const recursive = await tool.execute({ path: '.mitii', recursive: true });
+      expect(recursive.success).toBe(true);
+      expect(recursive.output).toContain('.mitii/logs/session-a.jsonl');
+      expect(recursive.output).not.toContain('.mitii/config.json');
+      const logsOnly = await tool.execute({ path: '.mitii/logs', recursive: true });
+      expect(logsOnly.success).toBe(true);
+      expect(logsOnly.output).toContain('.mitii/logs/session-a.jsonl');
+      const nonRecursive = await tool.execute({ path: '.mitii', recursive: false });
+      expect(nonRecursive.success).toBe(true);
+      expect(nonRecursive.output.split('\n')).toContain('logs');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it('policy allows list_files/read on session logs when forRead is wired', () => {

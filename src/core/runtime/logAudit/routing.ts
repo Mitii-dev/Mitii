@@ -93,6 +93,16 @@ export function isLogAuditTask(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
 
+  // Building a log viewer / UI around logs is implementation work, not log audit.
+  if (
+    /\b(build|implement|create|design|develop|architect)\b[\s\S]{0,120}\b(log\s*viewer|viewer\s+ui|ui\s+for)\b/i.test(
+      trimmed
+    ) ||
+    /\b(log\s*viewer|viewer\s+(?:ui|for\s+(?:the\s+)?logs?))\b/i.test(trimmed)
+  ) {
+    return false;
+  }
+
   const pointsAtSessionLogs = SESSION_LOG_DIR.test(trimmed) || SESSION_LOG_HINT.test(trimmed);
   const wantsAnalysis =
     hasLogAnalysisIntent(trimmed) ||

@@ -66,5 +66,6 @@ function shouldUseAskSubagents(intent: AskIntent, text: string): boolean {
 }
 
 function summarizeRoute(intent: AskIntent, profile: AskResponseProfile): string {
-  return `Ask mode — ${ASK_INTENT_DESCRIPTIONS[intent]} (${profile} profile).`;
+  // Avoid the word "profile" — skillResolver used to false-match it as performance profiling.
+  return `Ask mode — ${ASK_INTENT_DESCRIPTIONS[intent]} (${profile}).`;
 }

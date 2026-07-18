@@ -592,7 +592,8 @@ function walkDir(
     for (const entry of entries) {
       if (results.length >= maxFiles) return;
       const childRel = currentRel === '.' ? entry : `${currentRel}/${entry}`;
-      if (ignoreService.isIgnored(childRel)) continue;
+      // list_files is a read tool — honor session-log forRead exceptions (.mitii/logs).
+      if (ignoreService.isIgnored(childRel, { forRead: true })) continue;
       const childAbs = join(workspace, childRel);
       let st;
       try {
