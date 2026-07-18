@@ -1,6 +1,6 @@
 {
   "name": "@mitii/sdk",
-  "version": "2.7.64",
+  "version": "2.7.65",
   "description": "Node SDK for running Mitii headless ask, plan, and agent sessions.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
