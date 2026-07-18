@@ -938,10 +938,14 @@ describe('Ask mode helpers', () => {
     const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
     const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
     const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
+    const { createWriteFileTool } = await import('../src/core/tools/builtinTools');
+    const { IgnoreService } = await import('../src/core/indexing/IgnoreService');
 
     const queue = new ApprovalQueue();
+    const runtime = new ToolRuntime();
+    runtime.register(createWriteFileTool(process.cwd(), new IgnoreService()));
     const executor = new ToolExecutor(
-      new ToolRuntime(),
+      runtime,
       new ToolPolicyEngine({
         requireApprovalForWrites: true,
         requireApprovalForShell: true,
@@ -965,10 +969,13 @@ describe('Ask mode helpers', () => {
     const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
     const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
     const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
+    const { createRunCommandTool } = await import('../src/core/tools/builtinTools');
 
     const queue = new ApprovalQueue();
+    const runtime = new ToolRuntime();
+    runtime.register(createRunCommandTool(process.cwd(), () => 'ask'));
     const executor = new ToolExecutor(
-      new ToolRuntime(),
+      runtime,
       new ToolPolicyEngine({
         requireApprovalForWrites: true,
         requireApprovalForShell: true,

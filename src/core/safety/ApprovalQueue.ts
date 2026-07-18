@@ -1,11 +1,14 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type { PolicyResult } from './ToolPolicyEngine';
 import type { ThunderDb } from '../indexing/ThunderDb';
+
+export type ApprovalKind = 'mode' | 'policy' | 'mode+policy';
 
 export interface ApprovalRequest {
   id: string;
   sessionId: string;
   toolName: string;
+  inputFingerprint: string;
   inputPreview: string;
   files: string[];
   risk: 'low' | 'medium' | 'high';
@@ -15,14 +18,20 @@ export interface ApprovalRequest {
   contentLength?: number;
   toolCallId?: string;
   kind?: 'approval' | 'question';
+  approvalKind?: ApprovalKind;
   question?: string;
   options?: string[];
 }
 
 export type ApprovalDecision = 'approved' | 'denied';
 
+export interface ApprovedRequest extends ApprovalRequest {
+  input: Record<string, unknown>;
+}
+
 export class ApprovalQueue {
   private pending = new Map<string, ApprovalRequest>();
+  private approved = new Map<string, ApprovalRequest>();
   private fullInputs = new Map<string, Record<string, unknown>>();
   private allowOnce = new Set<string>();
   private taskGrants = new Set<string>();
@@ -34,7 +43,7 @@ export class ApprovalQueue {
     toolName: string,
     input: Record<string, unknown>,
     policy: PolicyResult,
-    metadata?: { toolCallId?: string }
+    metadata?: { toolCallId?: string; approvalKind?: ApprovalKind }
   ): ApprovalRequest {
     const path = typeof input.path === 'string' ? input.path : undefined;
     const paths = Array.isArray(input.paths) ? input.paths.filter((p): p is string => typeof p === 'string') : undefined;
@@ -44,6 +53,7 @@ export class ApprovalQueue {
       id: randomUUID(),
       sessionId,
       toolName,
+      inputFingerprint: fingerprintApprovalInput(toolName, input),
       inputPreview: buildDisplayPreview(toolName, input),
       files: path ? [path] : paths ?? [],
       risk: toolName.includes('write') || toolName.includes('patch') || toolName === 'run_command' ? 'high' : 'medium',
@@ -53,6 +63,7 @@ export class ApprovalQueue {
       contentLength: contentLen,
       toolCallId: metadata?.toolCallId,
       kind: toolName === 'ask_question' ? 'question' : 'approval',
+      approvalKind: metadata?.approvalKind ?? 'policy',
       question: toolName === 'ask_question' && typeof input.question === 'string' ? input.question : undefined,
       options: toolName === 'ask_question' && Array.isArray(input.options)
         ? input.options.filter((o): o is string => typeof o === 'string')
@@ -74,7 +85,12 @@ export class ApprovalQueue {
 
     this.pending.delete(id);
     const fullInput = this.fullInputs.get(id);
-    this.fullInputs.delete(id);
+    if (decision === 'approved' && request.kind !== 'question' && fullInput) {
+      this.approved.set(id, request);
+    } else {
+      this.fullInputs.delete(id);
+      this.approved.delete(id);
+    }
 
     if (this.db?.tryRaw() && fullInput) {
       this.db.tryRaw()!.prepare(`
@@ -94,6 +110,15 @@ export class ApprovalQueue {
     return request;
   }
 
+  consumeApprovedRequest(id: string): ApprovedRequest | undefined {
+    const request = this.approved.get(id);
+    const input = this.fullInputs.get(id);
+    if (!request || !input) return undefined;
+    this.approved.delete(id);
+    this.fullInputs.delete(id);
+    return { ...request, input };
+  }
+
   isAllowOnce(sessionId: string, toolName: string): boolean {
     const key = `${sessionId}:${toolName}`;
     if (this.allowOnce.has(key)) {
@@ -103,14 +128,20 @@ export class ApprovalQueue {
     return false;
   }
 
-  grantForTask(sessionId: string, toolName: string): void {
+  grantForTask(sessionId: string, toolName: string, approvalKind: ApprovalKind = 'policy'): void {
     if (!sessionId || !toolName) return;
-    this.taskGrants.add(`${sessionId}:${toolName}`);
+    this.taskGrants.add(buildGrantKey(sessionId, toolName, approvalKind));
   }
 
-  hasApprovalGrant(sessionId: string, toolName: string): boolean {
+  hasApprovalGrant(
+    sessionId: string,
+    toolName: string,
+    input?: Record<string, unknown>,
+    approvalKind: ApprovalKind = 'policy'
+  ): boolean {
     if (!sessionId || !toolName) return false;
-    if (this.taskGrants.has(`${sessionId}:${toolName}`)) return true;
+    void input;
+    if (this.taskGrants.has(buildGrantKey(sessionId, toolName, approvalKind))) return true;
     return this.isAllowOnce(sessionId, toolName);
   }
 
@@ -130,6 +161,25 @@ export class ApprovalQueue {
   getPending(): ApprovalRequest[] {
     return Array.from(this.pending.values());
   }
+}
+
+export function fingerprintApprovalInput(toolName: string, input: Record<string, unknown>): string {
+  return createHash('sha256')
+    .update(`${toolName}:${stableStringify(input)}`)
+    .digest('hex');
+}
+
+function buildGrantKey(sessionId: string, toolName: string, approvalKind: ApprovalKind): string {
+  return `${sessionId}:${toolName}:${approvalKind}`;
+}
+
+function stableStringify(value: unknown): string {
+  if (value === undefined) return '"__undefined__"';
+  if (typeof value === 'number' && !Number.isFinite(value)) return JSON.stringify(String(value));
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(',')}}`;
 }
 
 function buildDisplayPreview(toolName: string, input: Record<string, unknown>): string {

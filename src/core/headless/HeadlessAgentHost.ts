@@ -674,7 +674,9 @@ export class HeadlessAgentHost {
 
     if (this.options.approval === 'auto') {
       for (const tool of AUTO_GRANT_TOOLS) {
-        this.approvalQueue?.grantForTask(this.session.id, tool);
+        this.approvalQueue?.grantForTask(this.session.id, tool, 'policy');
+        this.approvalQueue?.grantForTask(this.session.id, tool, 'mode');
+        this.approvalQueue?.grantForTask(this.session.id, tool, 'mode+policy');
       }
     }
 
@@ -696,7 +698,7 @@ export class HeadlessAgentHost {
   private autoResolvePendingApprovals(): void {
     if (this.options.approval !== 'auto' || !this.approvalQueue || !this.session) return;
     for (const request of this.approvalQueue.getPending()) {
-      this.approvalQueue.grantForTask(this.session.id, request.toolName);
+      this.approvalQueue.grantForTask(this.session.id, request.toolName, request.approvalKind);
       this.approvalQueue.resolve(request.id, 'approved');
       this.sessionLog.append('approval_decision', `auto-approved: ${request.toolName}`, {
         id: request.id,

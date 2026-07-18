@@ -18,6 +18,7 @@ import { isAskAllowedTool } from '../runtime/askMode';
 import { isMcpFilesystemWriteTool } from './ToolPolicyEngine';
 import { createLogger } from '../telemetry/Logger';
 import type { SessionLogService } from '../telemetry/SessionLogService';
+import { fingerprintApprovalInput, type ApprovalKind, type ApprovalRequest } from './ApprovalQueue';
 
 const log = createLogger('ToolExecutor');
 
@@ -34,11 +35,17 @@ export interface ToolExecuteContext {
   toolCallId?: string;
   phaseLock?: PlanPhase;
   restrictRunCommandToReadOnly?: boolean;
+  allowedToolNames?: ReadonlySet<string>;
 }
 
+type PhaseState = {
+  override?: PlanPhase;
+  lastEffectivePhase?: PlanPhase;
+  writeBlocks: number;
+};
+
 export class ToolExecutor {
-  private planPhaseLockOverride?: PlanPhase;
-  private phaseLockWriteBlocks = 0;
+  private phaseStates = new Map<string, PhaseState>();
 
   constructor(
     private readonly toolRuntime: ToolRuntime,
@@ -53,11 +60,15 @@ export class ToolExecutor {
   ) {}
 
   setPlanPhaseLock(phase?: PlanPhase): void {
-    this.planPhaseLockOverride = phase;
+    const sessionId = this.getSessionId();
+    if (!sessionId) return;
+    this.phaseStates.set(sessionId, { override: phase, writeBlocks: 0 });
   }
 
   clearPlanPhaseLock(): void {
-    this.planPhaseLockOverride = undefined;
+    const sessionId = this.getSessionId();
+    if (!sessionId) return;
+    this.phaseStates.set(sessionId, { writeBlocks: 0 });
   }
 
   async execute(
@@ -67,27 +78,47 @@ export class ToolExecutor {
   ): Promise<ToolExecutionResult> {
     const resolvedName = resolveToolName(toolName);
     const mode = this.getMode();
+    const normalizedMode = normalizeThunderMode(mode);
+    const sessionId = this.getSessionId();
 
-    const effectivePhaseLock = context?.phaseLock ?? this.planPhaseLockOverride;
-    let phaseCheck = isToolAllowedInPlanPhase(effectivePhaseLock, resolvedName, input);
+    if (
+      context?.allowedToolNames &&
+      !context.allowedToolNames.has(toolName) &&
+      !context.allowedToolNames.has(resolvedName)
+    ) {
+      return this.finishBlocked(resolvedName, input, `Tool ${resolvedName} was not offered for this turn`, context?.toolCallId);
+    }
+
+    if (normalizedMode === 'ask' && !isAskAllowedTool(resolvedName)) {
+      return this.finishBlocked(resolvedName, input, `Tool ${resolvedName} is not available in Ask mode`, context?.toolCallId);
+    }
+
+    if (!this.isRegisteredTool(resolvedName)) {
+      return this.finishBlocked(resolvedName, input, `Unknown tool: ${resolvedName}`, context?.toolCallId);
+    }
+
+    const phaseState = this.getPhaseState(sessionId);
+    const effectivePhaseLock = context?.phaseLock ?? phaseState.override;
+    this.resetPhaseCounterIfChanged(phaseState, effectivePhaseLock);
+    const phaseCheck = isToolAllowedInPlanPhase(effectivePhaseLock, resolvedName, input);
     if (!phaseCheck.allowed) {
       if (
         ['write_file', 'apply_patch'].includes(resolvedName) &&
         isPhaseLockWriteError(phaseCheck.reason)
       ) {
-        this.phaseLockWriteBlocks += 1;
-        if (this.phaseLockWriteBlocks >= 3 && this.onPhaseLockEscalate) {
-          this.onPhaseLockEscalate();
-          this.phaseLockWriteBlocks = 0;
-          phaseCheck = isToolAllowedInPlanPhase(
-            context?.phaseLock ?? this.planPhaseLockOverride,
-            resolvedName,
-            input
-          );
+        phaseState.writeBlocks += 1;
+        if (phaseState.writeBlocks >= 3) {
+          this.onPhaseLockEscalate?.();
+          phaseState.writeBlocks = 0;
         }
       }
       if (!phaseCheck.allowed) {
-        return this.finishBlocked(resolvedName, input, phaseCheck.reason ?? 'Tool blocked by current plan phase');
+        return this.finishBlocked(
+          resolvedName,
+          input,
+          phaseCheck.reason ?? 'Tool blocked by current plan phase',
+          context?.toolCallId
+        );
       }
     }
 
@@ -123,65 +154,25 @@ export class ToolExecutor {
       return this.finishSoftBlock(resolvedName, input, output);
     }
 
-    const sessionId = this.getSessionId();
-    const normalizedMode = normalizeThunderMode(mode);
-
-    // Ask/Plan/Review: mutating actions request user approval instead of hard-blocking.
-    // After the user approves (once or for the task), grants allow the call to proceed.
-    if (['write_file', 'apply_patch', 'memory_write', 'save_task_state'].includes(resolvedName) && !isWriteAllowed(mode)) {
-      const gated = this.requestModeEscalationApproval(
-        sessionId,
-        resolvedName,
-        input,
-        'File writes in Ask/Plan/Review require your approval',
-        context?.toolCallId
-      );
-      if (gated) return gated;
-    }
-    if (resolvedName === 'apply_patch' && !isPatchAllowed(mode)) {
-      const gated = this.requestModeEscalationApproval(
-        sessionId,
-        resolvedName,
-        input,
-        'Patch apply in Ask/Plan/Review requires your approval',
-        context?.toolCallId
-      );
-      if (gated) return gated;
-    }
-    if ((readOnlyMode || normalizedMode === 'review') && isMcpFilesystemWriteTool(resolvedName)) {
-      const gated = this.requestModeEscalationApproval(
-        sessionId,
-        resolvedName,
-        input,
-        'MCP filesystem writes in Ask/Plan/Review require your approval',
-        context?.toolCallId
-      );
-      if (gated) return gated;
-    }
-    if (resolvedName === 'run_command' && !isShellAllowed(mode, typeof input.command === 'string' ? input.command : undefined)) {
-      const gated = this.requestModeEscalationApproval(
-        sessionId,
-        resolvedName,
-        input,
-        'Mutating shell commands in Ask/Plan/Review require your approval (read-only grep/rg/ls/etc. are allowed without approval)',
-        context?.toolCallId
-      );
-      if (gated) return gated;
-    }
-
-    if (normalizedMode === 'ask' && !isAskAllowedTool(resolvedName)) {
-      return this.finishBlocked(resolvedName, input, `Tool ${resolvedName} is not available in Ask mode`);
-    }
-
     const policy = this.policyEngine.evaluate(resolvedName, input);
 
     if (policy.decision === 'block') {
-      return this.finishBlocked(resolvedName, input, policy.reason);
+      return this.finishBlocked(resolvedName, input, policy.reason, context?.toolCallId);
     }
 
-    if (policy.decision === 'require_approval') {
-      if (!this.approvalQueue.hasApprovalGrant(sessionId, resolvedName)) {
-        return this.enqueueApproval(sessionId, resolvedName, input, policy, context?.toolCallId);
+    const modeApprovalReason = this.getModeApprovalReason(resolvedName, input, mode, readOnlyMode, normalizedMode);
+    const approvalKind = getApprovalKind(Boolean(modeApprovalReason), policy.decision === 'require_approval');
+    if (approvalKind) {
+      const reason = combineApprovalReasons(modeApprovalReason, policy.decision === 'require_approval' ? policy.reason : undefined);
+      if (!this.approvalQueue.hasApprovalGrant(sessionId, resolvedName, input, approvalKind)) {
+        return this.enqueueApproval(
+          sessionId,
+          resolvedName,
+          input,
+          { decision: 'require_approval', reason },
+          context?.toolCallId,
+          approvalKind
+        );
       }
     }
 
@@ -189,7 +180,7 @@ export class ToolExecutor {
     log.info('Tool executed via executor', { tool: resolvedName, success: result.success });
     if (result.success) {
       if (['write_file', 'apply_patch'].includes(resolvedName)) {
-        this.phaseLockWriteBlocks = 0;
+        phaseState.writeBlocks = 0;
       }
       this.getTaskState?.()?.recordToolSuccess(resolvedName, input, result.output);
     } else if (!result.pendingApproval && !result.skipped) {
@@ -198,17 +189,43 @@ export class ToolExecutor {
     return result;
   }
 
-  private requestModeEscalationApproval(
-    sessionId: string,
-    toolName: string,
-    input: Record<string, unknown>,
-    reason: string,
-    toolCallId?: string
-  ): ToolExecutionResult | null {
-    if (this.approvalQueue.hasApprovalGrant(sessionId, toolName)) {
-      return null;
+  private getPhaseState(sessionId: string): PhaseState {
+    const key = sessionId || '__default__';
+    let state = this.phaseStates.get(key);
+    if (!state) {
+      state = { writeBlocks: 0 };
+      this.phaseStates.set(key, state);
     }
-    return this.enqueueApproval(sessionId, toolName, input, { decision: 'require_approval', reason }, toolCallId);
+    return state;
+  }
+
+  private resetPhaseCounterIfChanged(state: PhaseState, phase?: PlanPhase): void {
+    if (state.lastEffectivePhase !== phase) {
+      state.lastEffectivePhase = phase;
+      state.writeBlocks = 0;
+    }
+  }
+
+  private getModeApprovalReason(
+    resolvedName: string,
+    input: Record<string, unknown>,
+    mode: string,
+    readOnlyMode: boolean,
+    normalizedMode: string
+  ): string | undefined {
+    if (['write_file', 'apply_patch', 'memory_write', 'save_task_state'].includes(resolvedName) && !isWriteAllowed(mode)) {
+      return 'File writes in Ask/Plan/Review require your approval';
+    }
+    if (resolvedName === 'apply_patch' && !isPatchAllowed(mode)) {
+      return 'Patch apply in Ask/Plan/Review requires your approval';
+    }
+    if ((readOnlyMode || normalizedMode === 'review') && isMcpFilesystemWriteTool(resolvedName)) {
+      return 'MCP filesystem writes in Ask/Plan/Review require your approval';
+    }
+    if (resolvedName === 'run_command' && !isShellAllowed(mode, typeof input.command === 'string' ? input.command : undefined)) {
+      return 'Mutating shell commands in Ask/Plan/Review require your approval (read-only grep/rg/ls/etc. are allowed without approval)';
+    }
+    return undefined;
   }
 
   private enqueueApproval(
@@ -216,15 +233,19 @@ export class ToolExecutor {
     toolName: string,
     input: Record<string, unknown>,
     policy: PolicyResult,
-    toolCallId?: string
+    toolCallId?: string,
+    approvalKind: ApprovalKind = 'policy'
   ): ToolExecutionResult {
     const request = this.approvalQueue.createRequest(sessionId, toolName, input, policy, {
       toolCallId,
+      approvalKind,
     });
     this.sessionLog?.append('approval_request', `${request.kind ?? 'approval'}: ${toolName}`, {
       id: request.id,
       toolName: request.toolName,
       kind: request.kind,
+      approvalKind: request.approvalKind,
+      inputFingerprint: request.inputFingerprint,
       risk: request.risk,
       reason: request.reason,
       files: request.files,
@@ -244,8 +265,8 @@ export class ToolExecutor {
     return { success: false, skipped: true, output, error: 'Skipped redundant tool call' };
   }
 
-  private finishBlocked(toolName: string, input: Record<string, unknown>, error: string): ToolExecutionResult {
-    this.logRejectedToolCall(toolName, input, false, error, error);
+  private finishBlocked(toolName: string, input: Record<string, unknown>, error: string, toolCallId?: string): ToolExecutionResult {
+    this.logRejectedToolCall(toolName, input, false, error, error, toolCallId);
     return { success: false, output: '', error };
   }
 
@@ -294,9 +315,10 @@ export class ToolExecutor {
     input: Record<string, unknown>,
     success: boolean,
     output: string,
-    error?: string
+    error?: string,
+    providerToolCallId?: string
   ): void {
-    const toolCallId = createToolCallId(toolName);
+    const toolCallId = providerToolCallId ?? createToolCallId(toolName);
     const inputPreview = previewInput(input);
     this.sessionLog?.append('tool_start', toolName, {
       toolCallId,
@@ -337,7 +359,85 @@ export class ToolExecutor {
     });
   }
 
-  async executeApproved(toolName: string, input: Record<string, unknown>): Promise<ToolExecutionResult> {
+  async executeApproved(approvalRequestId: string): Promise<ToolExecutionResult> {
+    const request = this.approvalQueue.consumeApprovedRequest(approvalRequestId);
+    if (!request) {
+      return {
+        success: false,
+        output: '',
+        error: 'Approval request is missing, expired, or already consumed.',
+      };
+    }
+
+    const result = await this.executeApprovedRequest(request);
+    if (!result.success && !result.pendingApproval && !result.skipped) {
+      this.getTaskState?.()?.recordToolFailure(request.toolName, request.input);
+    }
+    return result;
+  }
+
+  private async executeApprovedRequest(request: ApprovalRequest & { input: Record<string, unknown> }): Promise<ToolExecutionResult> {
+    const toolName = resolveToolName(request.toolName);
+    const input = request.input;
+    const sessionId = this.getSessionId();
+    if (request.sessionId !== sessionId) {
+      return this.finishBlocked(toolName, input, 'Approval request does not belong to the active session', request.toolCallId);
+    }
+    if (request.toolName !== toolName && resolveToolName(request.toolName) !== toolName) {
+      return this.finishBlocked(toolName, input, 'Approval request tool identity mismatch', request.toolCallId);
+    }
+    if (request.inputFingerprint !== fingerprintApprovalInput(toolName, input)) {
+      return this.finishBlocked(toolName, input, 'Approval request input changed before execution', request.toolCallId);
+    }
+
+    const mode = this.getMode();
+    const normalizedMode = normalizeThunderMode(mode);
+    if (normalizedMode === 'ask' && !isAskAllowedTool(toolName)) {
+      return this.finishBlocked(toolName, input, `Tool ${toolName} is not available in Ask mode`, request.toolCallId);
+    }
+
+    const phaseState = this.getPhaseState(sessionId);
+    this.resetPhaseCounterIfChanged(phaseState, phaseState.override);
+    const phaseCheck = isToolAllowedInPlanPhase(phaseState.override, toolName, input);
+    if (!phaseCheck.allowed) {
+      return this.finishBlocked(toolName, input, phaseCheck.reason ?? 'Tool blocked by current plan phase', request.toolCallId);
+    }
+
+    const readOnlyMode = normalizedMode === 'ask' || normalizedMode === 'plan';
+    const scopeBlocked = this.getTaskState?.()?.checkScopeGate(toolName, input);
+    if (scopeBlocked) {
+      const soft = this.getTaskState?.()?.buildSoftBlockResponse(toolName, input);
+      return this.finishSoftBlock(toolName, input, soft ?? scopeBlocked);
+    }
+
+    const mcpCap = readOnlyMode ? null : this.getTaskState?.()?.checkMcpCap(toolName);
+    if (mcpCap) {
+      return this.finishSoftBlock(toolName, input, mcpCap);
+    }
+
+    const shouldCheckTaskBlock = !readOnlyMode || toolName === 'execute_workspace_script';
+    const blocked = shouldCheckTaskBlock ? this.getTaskState?.()?.checkBlocked(toolName, input) : null;
+    if (blocked) {
+      const soft = this.getTaskState?.()?.buildSoftBlockResponse(toolName, input);
+      return this.finishSoftBlock(toolName, input, soft ?? blocked);
+    }
+
+    const policy = this.policyEngine.evaluate(toolName, input);
+    if (policy.decision === 'block') {
+      return this.finishBlocked(toolName, input, policy.reason, request.toolCallId);
+    }
+
+    const modeApprovalReason = this.getModeApprovalReason(toolName, input, mode, readOnlyMode, normalizedMode);
+    const requiredKind = getApprovalKind(Boolean(modeApprovalReason), policy.decision === 'require_approval');
+    if (requiredKind && !approvalKindCovers(request.approvalKind, requiredKind)) {
+      return this.finishBlocked(
+        toolName,
+        input,
+        'Approved request does not cover the currently required approval gate',
+        request.toolCallId
+      );
+    }
+
     // read_file/read_files only ever land here via approval when the target path is
     // outside the workspace (see ToolPolicyEngine.findExternalFilePath) — the tools'
     // own implementations always refuse those paths outright as a defense-in-depth
@@ -354,12 +454,41 @@ export class ToolExecutor {
       return result;
     }
 
-    const result = await this.toolRuntime.execute(toolName, input);
+    if (!this.isRegisteredTool(toolName)) {
+      return this.finishBlocked(toolName, input, `Unknown tool: ${toolName}`, request.toolCallId);
+    }
+
+    const result = await this.toolRuntime.execute(toolName, input, request.toolCallId);
     if (result.success) {
       this.getTaskState?.()?.recordToolSuccess(toolName, input, result.output);
     }
     return result;
   }
+
+  private isRegisteredTool(toolName: string): boolean {
+    const runtime = this.toolRuntime as ToolRuntime & { get?: (name: string) => unknown };
+    return typeof runtime.get !== 'function' || Boolean(runtime.get(toolName));
+  }
+}
+
+function getApprovalKind(modeRequired: boolean, policyRequired: boolean): ApprovalKind | undefined {
+  if (modeRequired && policyRequired) return 'mode+policy';
+  if (modeRequired) return 'mode';
+  if (policyRequired) return 'policy';
+  return undefined;
+}
+
+function approvalKindCovers(actual: ApprovalKind | undefined, required: ApprovalKind): boolean {
+  if (actual === required) return true;
+  if (actual === 'mode+policy') return true;
+  return false;
+}
+
+function combineApprovalReasons(modeReason?: string, policyReason?: string): string {
+  if (modeReason && policyReason && modeReason !== policyReason) {
+    return `${modeReason}. Policy: ${policyReason}`;
+  }
+  return modeReason ?? policyReason ?? 'Tool execution requires approval';
 }
 
 function previewInput(input: Record<string, unknown>): string {

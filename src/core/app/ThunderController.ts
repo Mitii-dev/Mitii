@@ -2642,7 +2642,7 @@ export class ThunderController {
     }
 
     if (scope === 'task') {
-      this.approvalQueue?.grantForTask(request.sessionId, request.toolName);
+      this.approvalQueue?.grantForTask(request.sessionId, request.toolName, request.approvalKind);
       this.pushActivity('info', `Approved ${request.toolName} for this task`, request.files.join(', ') || undefined);
     }
 
@@ -2663,7 +2663,7 @@ export class ThunderController {
       }
     }
 
-    const result = await this.toolExecutor.executeApproved(request.toolName, fullInput);
+    const result = await this.toolExecutor.executeApproved(id);
 
     if (result.success) {
       const isExternalRead = ['read_file', 'read_files'].includes(request.toolName);

@@ -864,6 +864,7 @@ export class AgentLoop {
             toolCallId: tc.id,
             phaseLock: options?.phaseLock,
             restrictRunCommandToReadOnly,
+            allowedToolNames,
           })
         : notOfferedToolResult(tc.function.name);
 
