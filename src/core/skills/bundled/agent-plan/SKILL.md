@@ -1,7 +1,7 @@
 ---
 
 name: agent-plan
-description: Guide Agent mode when structured planning is needed before execution. Supports Auto, Quick, and Deep planning depths, creates executable plans, continues directly into implementation, verifies results, and prevents unnecessary discovery or replanning loops.
+description: Guide Agent mode when structured planning is needed before execution. Supports Auto, Quick, and Deep depths, creates executable plans, continues into implementation, verifies results, and prevents unnecessary discovery or replanning loops.
 ---
 
 # Agent Plan

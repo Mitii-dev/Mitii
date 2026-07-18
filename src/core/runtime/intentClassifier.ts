@@ -31,6 +31,9 @@ const rawClassificationSchema = z.object({
   needsClarification: z.boolean().optional(),
 });
 
+const ACKNOWLEDGEMENT_ONLY_PATTERN =
+  /^(?:hi|hello|hey|thanks|thank you|ok|okay)[\s.!?,]*$/i;
+  
 export const ASK_INTENT_DESCRIPTIONS = {
   explain_code: 'Explain repository code with grounded file citations.',
   log_analysis: 'Analyze JSONL / session logs with deterministic log-analysis tools.',
@@ -131,7 +134,7 @@ export function classifyIntentFastPath<T extends string>(
   const has = (intent: string): intent is T => intents.includes(intent as T);
   if (!text) return null;
 
-  if (mode === 'plan' && /^(hi|hello|hey|thanks|thank you|ok|okay)\b/i.test(text) && text.length < 48 && has('question')) {
+  if (mode === 'plan' && ACKNOWLEDGEMENT_ONLY_PATTERN.test(text) && text.length < 48 && has('question')) {
     return high('question' as T, 'short acknowledgement or greeting');
   }
 
@@ -302,7 +305,9 @@ function buildClassifierSystemPrompt<T extends string>(
     '{"intent":"one_enum_value","confidence":0.0,"alternatives":[],"needsClarification":false}',
     '',
     'Use high confidence only when both the action and target clearly support the intent.',
-    'Set needsClarification=true for short, referential, contradictory, or materially ambiguous messages.',
+    'Set needsClarification=true only when missing information prevents reliably choosing between two or more allowed intents.',
+    'Do not request clarification merely because the message is short.',
+    'Short but explicit commands should be classified normally.',
     '',
     'Allowed intents:',
     ...lines,

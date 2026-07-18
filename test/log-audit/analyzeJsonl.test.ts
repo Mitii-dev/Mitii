@@ -163,6 +163,62 @@ describe('analyzeJsonlFile', () => {
     }
   });
 
+  it('does not flag a turn that closed with an explicit turn_end status as truncated, even if the assistant message ends in raw command output', async () => {
+    // Regression: a verify-report style assistant_message (ending in unpunctuated command
+    // output, e.g. "Command failed with exit code 2") was misclassified as truncated even
+    // though the orchestrator's own turn_end event says the turn fully closed.
+    const dir = mkdtempSync(join(tmpdir(), 'mitii-jsonl-verify-report-'));
+    try {
+      const path = join(dir, 'verify-report.jsonl');
+      const lines = [
+        JSON.stringify({
+          type: 'session_start',
+          time: '2026-07-16T14:41:14.000Z',
+          sessionId: 'verify',
+          message: 'start',
+          data: { model: 'qwen', mode: 'ask' },
+        }),
+        JSON.stringify({
+          type: 'turn_start',
+          time: '2026-07-16T14:41:15.000Z',
+          sessionId: 'verify',
+          message: 'turn one',
+          data: { turnId: 'one' },
+        }),
+        JSON.stringify({
+          type: 'assistant_message',
+          time: '2026-07-16T14:41:16.000Z',
+          sessionId: 'verify',
+          message:
+            'Now I need to rewrite the module.\n\n### Verify\n\n$ npm run build\nCommand failed with exit code 2\n',
+          data: {},
+        }),
+        JSON.stringify({
+          type: 'turn_complete',
+          time: '2026-07-16T14:41:17.000Z',
+          sessionId: 'verify',
+          message: 'Completed with issues',
+          data: { turnId: 'one', hadError: true },
+        }),
+        JSON.stringify({
+          type: 'turn_end',
+          time: '2026-07-16T14:41:17.000Z',
+          sessionId: 'verify',
+          message: 'Turn failed',
+          data: { turnId: 'one', status: 'failed', hadError: true },
+        }),
+      ];
+      writeFileSync(path, `${lines.join('\n')}\n`, 'utf-8');
+
+      const report = await analyzeJsonlFile(path, 'verify-report.jsonl');
+      expect(report.session.completionStatus).toBe('complete');
+      expect(report.session.completed).toBe(true);
+      expect(report.anomalies.some((a) => a.includes('appears truncated'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('analyzes a log directory in one call with aggregate totals and inclusion reasons', async () => {
     const workspace = mkdtempSync(join(tmpdir(), 'mitii-log-dir-'));
     try {

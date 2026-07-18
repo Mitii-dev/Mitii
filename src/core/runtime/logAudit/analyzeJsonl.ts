@@ -60,6 +60,7 @@ export async function analyzeJsonlFile(
   let terminalEventSeen = false;
   let sawTurnStart = false;
   let latestTurnEnded = false;
+  let lastTurnEndStatus: string | undefined;
   let toolEndCount = 0;
   let failedCount = 0;
   let skippedCount = 0;
@@ -121,6 +122,7 @@ export async function analyzeJsonlFile(
 
     if (type === 'turn_end') {
       latestTurnEnded = true;
+      if (typeof data.status === 'string') lastTurnEndStatus = data.status;
     }
 
     if (type === 'assistant_message' && message.trim().length > 80) {
@@ -263,6 +265,7 @@ export async function analyzeJsonlFile(
     finalAssistantMessage,
     parseErrors,
     lastEventType: session.lastEventType,
+    lastTurnEndStatus,
   });
   session.completed = completion.status === 'complete';
   session.completionStatus = completion.status;
@@ -347,6 +350,7 @@ function inferCompletionStatus(input: {
   finalAssistantMessage: string;
   parseErrors: number;
   lastEventType?: string;
+  lastTurnEndStatus?: string;
 }): { status: 'complete' | 'incomplete' | 'truncated'; reason: string } {
   if (input.parseErrors > 0) {
     return { status: 'truncated', reason: 'one or more JSONL records could not be parsed' };
@@ -356,6 +360,12 @@ function inferCompletionStatus(input: {
       status: 'incomplete',
       reason: `missing terminal session_end/turn_complete event; last event=${input.lastEventType ?? 'unknown'}`,
     };
+  }
+  // turn_end carries an explicit status ('completed'/'failed') set by the orchestrator itself —
+  // trust it over the text heuristic below. A turn that failed (e.g. a verify command exited
+  // non-zero) still fully closed and was fully captured in the log; that's not truncation.
+  if (input.lastTurnEndStatus === 'completed' || input.lastTurnEndStatus === 'failed') {
+    return { status: 'complete', reason: `turn_end reported status=${input.lastTurnEndStatus}` };
   }
   if (input.finalAssistantMessage && !looksLikeCompleteAssistantMessage(input.finalAssistantMessage)) {
     return { status: 'truncated', reason: 'last assistant_message ends mid-sentence or inside an open code fence' };
