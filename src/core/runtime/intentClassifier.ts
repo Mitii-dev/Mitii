@@ -21,15 +21,17 @@ export type IntentClassificationSource = 'fast_path' | 'llm' | 'fallback';
 export const INTENT_CONFIDENCE_HIGH = 0.74;
 export const INTENT_CONFIDENCE_LOW = 0.35;
 
-const rawClassificationSchema = z.object({
-  intent: z.string(),
+const rawAlternativeSchema = z.object({
+  intent: z.string().min(1),
   confidence: z.number().min(0).max(1),
-  alternatives: z.array(z.object({
-    intent: z.string(),
-    confidence: z.number().min(0).max(1),
-  })).optional(),
+}).strict();
+
+const rawClassificationSchema = z.object({
+  intent: z.string().min(1),
+  confidence: z.number().min(0).max(1),
+  alternatives: z.array(rawAlternativeSchema).max(8).optional(),
   needsClarification: z.boolean().optional(),
-});
+}).strict();
 
 const ACKNOWLEDGEMENT_ONLY_PATTERN =
   /^(?:hi|hello|hey|thanks|thank you|ok|okay)[\s.!?,]*$/i;
@@ -82,6 +84,9 @@ export async function classifyIntent<T extends string>(
   intents: readonly T[],
   descriptions: IntentDescriptionMap<T>
 ): Promise<IntentClassification<T>> {
+  assertNonEmptyIntents(intents);
+  assertIntentDescriptions(intents, descriptions);
+
   if (!userMessage.trim()) {
     return {
       intent: safeDefaultIntent(mode, intents),
@@ -113,7 +118,12 @@ export async function classifyIntent<T extends string>(
       },
     ],
     temperature: 0,
-    maxTokens: 240,
+    // Reasoning-capable models (e.g. local Qwen3/R1 builds) emit hidden <think> tokens
+    // before the JSON payload, and those tokens count against maxTokens on most
+    // OpenAI-compatible backends. A tight budget here starves the actual answer and
+    // makes classification fail with "did not return a complete JSON object" every time.
+    maxTokens: 1000,
+    reasoningEffort: 'low',
     stream: false,
     toolChoice: 'none',
   });
@@ -149,10 +159,10 @@ export function classifyIntentFastPath<T extends string>(
 
   if (
     mode === 'agent' &&
-    DEPENDENCY_CLEANUP_PATTERN.test(text) &&
+    requestsDependencyCleanup(text) &&
     has('audit')
   ) {
-    return high('audit' as T, 'dependency or dead-code cleanup');
+    return high('audit' as T, 'explicit dependency or dead-code cleanup');
   }
 
   return null;
@@ -171,8 +181,18 @@ export function classifyIntentFastPath<T extends string>(
   }
 }
 
-const DEPENDENCY_CLEANUP_PATTERN =
-  /\b(?:un(?:used|sed)\s+(?:dependencies|dependency|deps?|imports?|exports?|files?)|dead\s+code|dependency\s+(?:audit|cleanup)|depcheck|knip|ts-prune|remove\s+un(?:used|sed))\b/i;
+const DEPENDENCY_TARGET_PATTERN =
+  /\b(?:unused\s+(?:dependencies?|deps?|imports?|exports?|files?)|dead\s+code|dependencies?|deps?|depcheck|knip|ts-prune)\b/i;
+
+const DEPENDENCY_ACTION_PATTERN =
+  /\b(?:audit|scan|check|find|detect|remove|clean(?:\s+up)?|cleanup|run)\b/i;
+
+function requestsDependencyCleanup(text: string): boolean {
+  return (
+    DEPENDENCY_TARGET_PATTERN.test(text) &&
+    DEPENDENCY_ACTION_PATTERN.test(text)
+  );
+}
 
 function normalizeClassifierText(text: string): string {
   return text.trim().replace(/\\/g, '/');
@@ -181,8 +201,8 @@ function normalizeClassifierText(text: string): string {
 function containsLogTarget(text: string): boolean {
   const normalized = normalizeClassifierText(text);
   return (
-    /(?:^|[\s"'`])(?:[a-z]:)?[^\s"'`]*\.jsonl(?=$|[\s"'`])/i.test(normalized) ||
-    /(?:^|[\s"'`])(?:[a-z]:)?[^\s"'`]*\.mitii\/logs(?:\/[^\s"'`]*)?(?=$|[\s"'`])/i.test(normalized) ||
+    /(?:^|[\s"'`])(?:[a-z]:)?[^\s"'`]*\.jsonl(?=$|[\s"'`,.;:!?)\]}])/i.test(normalized) ||
+    /(?:^|[\s"'`])(?:[a-z]:)?[^\s"'`]*\.mitii\/logs(?:\/[^\s"'`]*)?(?=$|[\s"'`,.;:!?)\]}])/i.test(normalized) ||
     /\b(?:mitii|agent|session)\s+logs?\b/i.test(normalized)
   );
 }
@@ -252,6 +272,8 @@ export function gateIntentClassification<T extends string>(
 }
 
 export function safeDefaultIntent<T extends string>(mode: ThunderMode, intents: readonly T[]): T {
+  assertNonEmptyIntents(intents);
+
   const preferred = mode === 'ask'
     ? 'explain_code'
     : mode === 'plan'
@@ -289,7 +311,10 @@ function buildClassifierSystemPrompt<T extends string>(
   intents: readonly T[],
   descriptions: IntentDescriptionMap<T>
 ): string {
-  const lines = intents.map((intent) => `- ${intent}: ${descriptions[intent]}`);
+  assertNonEmptyIntents(intents);
+  assertIntentDescriptions(intents, descriptions);
+
+  const lines = intents.map((intent) => `- ${intent}: ${descriptions[intent].trim()}`);
   return [
     'You are a small intent classifier for a coding assistant.',
     `Classify the request for mode "${mode}".`,
@@ -330,9 +355,37 @@ export function parseIntentClassification<T extends string>(
   rawText: string,
   intents: readonly T[]
 ): IntentClassification<T> {
-  const jsonText = extractJsonObject(rawText);
-  const parsed = rawClassificationSchema.parse(JSON.parse(jsonText));
+  assertNonEmptyIntents(intents);
+
+  const candidates = extractJsonObjects(rawText);
+  if (candidates.length === 0) {
+    throw new Error('Intent classifier did not return a complete JSON object');
+  }
+
   const allowed = new Set<string>(intents);
+  let lastError: unknown;
+
+  for (let index = candidates.length - 1; index >= 0; index -= 1) {
+    try {
+      const parsed = rawClassificationSchema.parse(JSON.parse(candidates[index]));
+      if (!allowed.has(parsed.intent)) {
+        throw new Error(`Intent classifier returned unsupported intent: ${parsed.intent}`);
+      }
+
+      return toIntentClassification(parsed, allowed);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (lastError instanceof Error) throw lastError;
+  throw new Error('Intent classifier did not return a valid JSON classification');
+}
+
+function toIntentClassification<T extends string>(
+  parsed: z.infer<typeof rawClassificationSchema>,
+  allowed: Set<string>
+): IntentClassification<T> {
   if (!allowed.has(parsed.intent)) {
     throw new Error(`Intent classifier returned unsupported intent: ${parsed.intent}`);
   }
@@ -360,7 +413,8 @@ export function parseIntentClassification<T extends string>(
   };
 }
 
-function extractJsonObject(text: string): string {
+function extractJsonObjects(text: string): string[] {
+  const objects: string[] = [];
   const trimmed = text.trim();
   let start = -1;
   let depth = 0;
@@ -390,12 +444,32 @@ function extractJsonObject(text: string): string {
     if (char !== '}') continue;
     depth -= 1;
     if (depth === 0 && start >= 0) {
-      return trimmed.slice(start, index + 1);
+      objects.push(trimmed.slice(start, index + 1));
+      start = -1;
     }
     if (depth < 0) break;
   }
 
-  throw new Error('Intent classifier did not return a complete JSON object');
+  return objects;
+}
+
+function assertNonEmptyIntents<T extends string>(
+  intents: readonly T[]
+): asserts intents is readonly [T, ...T[]] {
+  if (intents.length === 0) {
+    throw new Error('Intent classifier requires at least one allowed intent');
+  }
+}
+
+function assertIntentDescriptions<T extends string>(
+  intents: readonly T[],
+  descriptions: IntentDescriptionMap<T>
+): void {
+  for (const intent of intents) {
+    if (!descriptions[intent]?.trim()) {
+      throw new Error(`Missing intent description: ${intent}`);
+    }
+  }
 }
 
 function humanizeIntent(intent: string): string {

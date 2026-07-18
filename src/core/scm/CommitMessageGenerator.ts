@@ -18,7 +18,10 @@ export async function generateCommitMessage(
     ],
     stream: true,
     toolChoice: 'none',
-    maxTokens: 240,
+    // See intentClassifier.ts: reasoning models burn tokens on hidden thinking before
+    // content, so a tight budget here can return an empty message on those backends.
+    maxTokens: 900,
+    reasoningEffort: 'low',
   });
 
   const validation = validateCommitMessage(text);

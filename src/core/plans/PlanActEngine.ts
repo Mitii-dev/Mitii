@@ -118,9 +118,12 @@ function isReadOnlyCommandSegment(cmd: string, extraPatterns: string[] = []): bo
   if (/^(npx\s+(--yes\s+)?)?vitest\s+(run\b|--run\b)/i.test(cmd)) return true;
   if (/^(npx\s+(--yes\s+)?)?jest\b/i.test(cmd)) return true;
   // Align npm/pnpm/yarn: audit + outdated are read-only advisory lookups (no lockfile mutation).
-  if (/^npm\s+(ls|list|outdated|audit|why|view|info|run\s+(lint|test|typecheck|check|build|compile|verify|validate|doctor))\b/i.test(cmd)) return true;
-  if (/^yarn\s+(why|list|info|outdated|audit|lint|test|build|compile|typecheck|check|verify|validate|doctor)\b/i.test(cmd)) return true;
-  if (/^pnpm\s+(why|list|outdated|audit|lint|test|build|compile|typecheck|check|verify|validate|doctor)\b/i.test(cmd)) return true;
+  // Also tolerate workspace-scoping flags (pnpm --filter/-F, npm --workspace/-w, yarn workspace)
+  // between the binary and the subcommand — otherwise monorepo-scoped invocations like
+  // `pnpm --filter <pkg> audit` get misclassified as mutating and force an approval prompt.
+  if (/^npm\s+(?:(?:--workspace|-w)=?\s*\S+\s+)?(ls|list|outdated|audit|why|view|info|run\s+(lint|test|typecheck|check|build|compile|verify|validate|doctor))\b/i.test(cmd)) return true;
+  if (/^yarn\s+(?:workspace\s+\S+\s+)?(why|list|info|outdated|audit|lint|test|build|compile|typecheck|check|verify|validate|doctor)\b/i.test(cmd)) return true;
+  if (/^pnpm\s+(?:(?:--filter|-F)\s+\S+\s+)?(?:-r\s+|--recursive\s+)?(why|list|ls|outdated|audit|lint|test|build|compile|typecheck|check|verify|validate|doctor)\b/i.test(cmd)) return true;
   if (/^(?:\.\/mvnw|mvn)\s+test\b/i.test(cmd)) return true;
   if (/^(?:\.\/gradlew|gradle)\s+test\b/i.test(cmd)) return true;
   if (/^cargo\s+test\b/i.test(cmd)) return true;

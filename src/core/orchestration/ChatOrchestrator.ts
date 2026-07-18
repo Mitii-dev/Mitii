@@ -34,7 +34,7 @@ import type { ToolRuntime } from '../tools/ToolRuntime';
 import type { ToolDefinition } from '../llm/toolTypes';
 import { toolsToDefinitions } from '../tools/toolSchema';
 import { AgentLoop, type ApprovedToolResult, type AgentLoopSuspendState } from '../runtime/AgentLoop';
-import { isSkippedToolOutput } from '../runtime/toolSkip';
+import { describeSkipLabel, isSkippedToolOutput } from '../runtime/toolSkip';
 import { PlanExecutor } from '../runtime/PlanExecutor';
 import { resolvePlanningDepth, shouldSkipStructuredPlanner } from '../plans/planningDepth';
 import { analyzeTask, type TaskAnalysis } from '../runtime/TaskAnalyzer';
@@ -143,6 +143,19 @@ type ModeIntentRouting =
   | { mode: 'plan'; classification: IntentClassification<PlanIntent>; needsClarification: boolean; useClassification?: boolean }
   | { mode: 'agent'; classification: IntentClassification<ActIntent>; needsClarification: boolean; useClassification?: boolean };
 
+interface FinishTurnOptions {
+  allowResponseAutoApply?: boolean;
+  auditStartIndex?: number;
+  activeTools?: ToolDefinition[];
+  explicitContextBlock?: string;
+}
+
+interface RoutingClarificationState {
+  originalMessage: string;
+  mode: ThunderSession['mode'];
+  candidateIntents: string[];
+}
+
 export interface ChatOrchestratorDeps {
   toolRuntime?: ToolRuntime;
   toolExecutor?: ToolExecutor;
@@ -219,6 +232,7 @@ export class ChatOrchestrator {
       skillPlaybookContext?: string;
     };
   } | undefined;
+  private routingClarifications = new Map<string, RoutingClarificationState>();
   private retrievalCache: { key: string; items: ContextItem[]; at: number } | null = null;
 
   constructor(
@@ -427,6 +441,12 @@ export class ChatOrchestrator {
     const sessionLog = this.deps.sessionLog;
     const sessionTiming = new SessionTiming();
     sessionTiming.start('turn_total');
+    const auditStartIndex = this.deps.toolRuntime?.getAuditLog().length ?? 0;
+    let preserveLiveStatus = false;
+    let fullResponse = '';
+    let completedContextTokens = 0;
+
+    try {
     this.setLiveStatus('Starting', `Mode: ${session.mode}`);
     this.emitActivity('info', `Mode: ${session.mode} · Provider: ${provider.id}`);
 
@@ -468,11 +488,19 @@ export class ChatOrchestrator {
       sessionTiming.end('microtask', sessionLog, result.metadata);
       const normalizedResult = normalizeAssistantResponse(result.content);
       const content = normalizedResult.content;
+      fullResponse = content;
       if (normalizedResult.wasEmpty) {
         this.emitEmptyResponse(provider.id);
       }
       this.saveTurn(session.id, 'user', userMessage);
       const emptyPack = emptyContextPack();
+      const microTaskMessages: ChatMessage[] = [
+        { role: 'system', content: `Mitii micro-task: ${microTaskId}` },
+        { role: 'user', content: userMessage },
+      ];
+      const microTaskPromptTokens = estimateChatRequestTokens({
+        messages: microTaskMessages,
+      });
       await this.finishTurn(
         session,
         provider,
@@ -480,11 +508,13 @@ export class ChatOrchestrator {
         content,
         emptyPack,
         [],
-        Math.ceil(content.length / 4),
-        [
-          { role: 'system', content: `Mitii micro-task: ${microTaskId}` },
-          { role: 'user', content: userMessage },
-        ]
+        microTaskPromptTokens,
+        microTaskMessages,
+        {
+          allowResponseAutoApply: false,
+          auditStartIndex,
+          activeTools: [],
+        }
       );
       yield content;
       this.setLiveStatus(null);
@@ -552,6 +582,7 @@ export class ChatOrchestrator {
       );
     }
 
+    const classifierText = conversationTaskMessage;
     const taskForClassification = taskEnrichment.classificationText;
     const isAskMode = session.mode === 'ask';
     const isPlanMode = session.mode === 'plan';
@@ -577,13 +608,39 @@ export class ChatOrchestrator {
     const activePlanAtStart = isAgentMode
       ? this.deps.planPersistence?.getActive(session.id)
       : undefined;
-    const intentRouting = await this.resolveIntentRouting(session.mode, taskForClassification, provider);
+    let intentRouting = await this.resolveIntentRouting(session.mode, classifierText, provider);
+    if (intentRouting.needsClarification && (!this.deps.toolExecutor || isApprovalContinuationMessage(userMessage))) {
+      this.deps.sessionLog?.append('info', 'Intent clarification skipped; using deterministic analyzer fallback', {
+        mode: session.mode,
+        hasToolExecutor: Boolean(this.deps.toolExecutor),
+        isApprovalContinuation: isApprovalContinuationMessage(userMessage),
+        classifierIntent: intentRouting.classification.intent,
+      });
+      intentRouting = {
+        ...intentRouting,
+        needsClarification: false,
+        useClassification: false,
+        classification: {
+          ...intentRouting.classification,
+          needsClarification: false,
+        },
+      } as ModeIntentRouting;
+    }
     if (intentRouting.needsClarification && this.deps.toolExecutor && !isApprovalContinuationMessage(userMessage)) {
       const clarification = this.buildRoutingClarification(session.mode, intentRouting);
       const questionResult = await this.deps.toolExecutor.execute('ask_question', clarification);
       if (questionResult.pendingApproval) {
+        this.routingClarifications.set(session.id, {
+          originalMessage: classifierText,
+          mode: session.mode,
+          candidateIntents: [
+            intentRouting.classification.intent,
+            ...intentRouting.classification.alternatives.map((item) => item.intent),
+          ],
+        });
         this.saveTurn(session.id, 'user', userMessage);
         this.setLiveStatus('Waiting for clarification', clarification.question);
+        preserveLiveStatus = true;
         return;
       }
     }
@@ -721,6 +778,25 @@ export class ChatOrchestrator {
         pinnedContext.map((p) => p.path).join(', ')
       );
     }
+    // Explicit path blocks are appended after retrieval, so reserve those tokens before budgeting retrieved context.
+    const userPathBlock = logAuditMode
+      ? [
+          '## User-explicit target (highest priority — overrides pinned context)',
+          logAuditTarget ? `\`${logAuditTarget}\`` : 'Session logs under `.mitii/logs/`',
+          buildLogAuditBootstrapBlock(logAuditTarget),
+        ].join('\n')
+      : userMentions.length > 0
+        ? [
+            '## User-explicit paths (highest priority — overrides pinned context)',
+            ...userMentions.map((p) => `- \`${p}\``),
+          ].join('\n')
+        : '';
+    const userPathTokens = Math.ceil(userPathBlock.length / 4);
+    const contextBudget = calculateRetrievalContextBudget(
+      maxInputTokens,
+      explicitResult.totalTokens,
+      userPathTokens
+    );
 
     const retrievalText = expandContextQuery(taskEnrichment.retrievalText);
     let items;
@@ -806,29 +882,18 @@ export class ChatOrchestrator {
       this.emitActivity('info', 'UserPromptSubmit hook injected context');
     }
 
-    const contextBudget = Math.floor(maxInputTokens * 0.65);
-    const pack = this.budgeter.budget(items, contextBudget);
+    const pack = this.budgeter.budget(items, contextBudget.retrievalContextBudget);
     // Precedence: user-explicit path / mentions first, then pinned, then retrieved.
-    const userPathBlock = logAuditMode
-      ? [
-          '## User-explicit target (highest priority — overrides pinned context)',
-          logAuditTarget ? `\`${logAuditTarget}\`` : 'Session logs under `.mitii/logs/`',
-          buildLogAuditBootstrapBlock(logAuditTarget),
-        ].join('\n')
-      : userMentions.length > 0
-        ? [
-            '## User-explicit paths (highest priority — overrides pinned context)',
-            ...userMentions.map((p) => `- \`${p}\``),
-          ].join('\n')
-        : '';
     const displayPack: ContextPack = {
       ...pack,
       items: [...explicitResult.items, ...pack.items],
-      totalTokens: pack.totalTokens + explicitResult.totalTokens + Math.ceil(userPathBlock.length / 4),
+      totalTokens: pack.totalTokens + explicitResult.totalTokens + userPathTokens,
+      budgetLimit: contextBudget.requestedContextBudget,
       formatted: [userPathBlock, explicitResult.formatted, pack.formatted]
         .filter(Boolean)
         .join('\n\n---\n\n'),
     };
+    completedContextTokens = displayPack.totalTokens;
     const views = contextItemsToViews(displayPack.items);
     const budgetView = contextPackToBudgetView(displayPack);
 
@@ -960,10 +1025,10 @@ export class ChatOrchestrator {
 
     this.saveTurn(session.id, 'user', userMessage);
 
-    let fullResponse = '';
     let livePromptTokens = 0;
     let livePromptMessages: ChatMessage[] | undefined;
     let liveExplicitContextBlock = explicitResult.formatted || undefined;
+    let liveActiveTools: ToolDefinition[] | undefined;
     const emitLiveTokenUsage = () => {
       const messagesForBreakdown = livePromptMessages;
       if (!messagesForBreakdown || livePromptTokens <= 0) return;
@@ -971,7 +1036,7 @@ export class ChatOrchestrator {
         livePromptTokens,
         displayPack.totalTokens,
         fullResponse,
-        this.buildTokenBreakdown(messagesForBreakdown, displayPack, compacted),
+        this.buildTokenBreakdown(messagesForBreakdown, displayPack, compacted, liveActiveTools),
         { final: false }
       );
     };
@@ -1000,7 +1065,7 @@ export class ChatOrchestrator {
       ? `${planningContextBlock}\n\n## User request\n${userMessage}`
       : userMessage;
 
-    try {
+    {
       const activePlan = activePlanAtStart ?? this.deps.planPersistence?.getActive(session.id);
       if (
         !isApprovalContinuationMessage(userMessage) &&
@@ -1039,7 +1104,11 @@ export class ChatOrchestrator {
         }
         sessionTiming.end('plan_execution', sessionLog, { resumed: true, stepCount: plan.steps.length });
 
-        await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted);
+        await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted, 0, undefined, {
+          allowResponseAutoApply: false,
+          auditStartIndex,
+          activeTools: tools,
+        });
         this.setLiveStatus(null);
         return;
       }
@@ -1176,8 +1245,12 @@ export class ChatOrchestrator {
           yield questionNote;
           this.setLiveStatus('Waiting for planning answer', 'Choose an option below');
           this.emitActivity('approval', 'Planning paused for a clarifying question');
-          await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted);
-          this.setLiveStatus(null);
+          await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted, 0, undefined, {
+            allowResponseAutoApply: false,
+            auditStartIndex,
+            activeTools: tools,
+          });
+          preserveLiveStatus = true;
           return;
         }
 
@@ -1340,8 +1413,12 @@ export class ChatOrchestrator {
               yield approvalNote;
               this.setLiveStatus('Waiting for approval', 'Review and approve below');
               this.emitActivity('approval', 'Paused — waiting for your approval', this.deps.taskState?.getPauseSummary());
-              await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted);
-              this.setLiveStatus(null);
+              await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted, 0, undefined, {
+                allowResponseAutoApply: false,
+                auditStartIndex,
+                activeTools: tools,
+              });
+              preserveLiveStatus = true;
               return;
             }
           } else {
@@ -1351,7 +1428,11 @@ export class ChatOrchestrator {
             this.emitActivity('info', 'Plan ready — switch to Agent mode to execute steps');
           }
 
-          await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted);
+          await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted, 0, undefined, {
+            allowResponseAutoApply: false,
+            auditStartIndex,
+            activeTools: tools,
+          });
           this.setLiveStatus(null);
           return;
         }
@@ -1363,7 +1444,11 @@ export class ChatOrchestrator {
           fullResponse += failureText;
           yield failureText;
           this.emitActivity('error', 'Planning failed quality gate', planQualityIssues.join('; '));
-          await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted);
+          await this.finishTurn(session, provider, userMessage, fullResponse, displayPack, compacted, 0, undefined, {
+            allowResponseAutoApply: false,
+            auditStartIndex,
+            activeTools: tools,
+          });
           this.setLiveStatus(null);
           return;
         }
@@ -1456,6 +1541,7 @@ export class ChatOrchestrator {
       livePromptTokens = promptTokens;
       livePromptMessages = messages;
       liveExplicitContextBlock = explicitResult.formatted || undefined;
+      liveActiveTools = tools;
       emitLiveTokenUsage();
 
       if (toolsEnabled && this.agentLoop) {
@@ -1556,8 +1642,9 @@ export class ChatOrchestrator {
           yield approvalNote;
           this.setLiveStatus('Waiting for approval', 'Review and approve below');
           this.emitActivity('approval', 'Paused — waiting for your approval', this.deps.taskState?.getPauseSummary());
+          preserveLiveStatus = true;
         } else if (!this.agentLoop.hadPendingApproval() && !signal.aborted) {
-          const directTouchedFiles = getTouchedFilesFromAudit(this.deps.toolRuntime);
+          const directTouchedFiles = getTouchedFilesFromAudit(this.deps.toolRuntime, auditStartIndex);
           if (requiresAgentWrite && directTouchedFiles.length === 0) {
             const noWriteBlock =
               '\n\nStopped because the model did not change any files for this Agent-mode edit task. No files were changed.\n';
@@ -1661,9 +1748,14 @@ export class ChatOrchestrator {
         compacted,
         promptTokens,
         messages,
-        liveExplicitContextBlock
+        {
+          allowResponseAutoApply: !toolsEnabled && isWriteAllowed(session.mode),
+          auditStartIndex,
+          activeTools: tools,
+          explicitContextBlock: liveExplicitContextBlock,
+        }
       );
-      this.onLiveStatus?.(null);
+    }
     } finally {
       this.useSkillInvocationsThisTurn = 0;
       this.skillInjectionTelemetry = undefined;
@@ -1671,7 +1763,10 @@ export class ChatOrchestrator {
         mode: session.mode,
         responseLength: fullResponse.length,
       });
-      log.info('Chat completed', { sessionId: session.id, tokens: displayPack.totalTokens });
+      log.info('Chat completed', { sessionId: session.id, tokens: completedContextTokens });
+      if (!preserveLiveStatus) {
+        this.setLiveStatus(null);
+      }
     }
   }
 
@@ -1684,13 +1779,13 @@ export class ChatOrchestrator {
     compacted: ChatMessage[],
     promptTokens = 0,
     promptMessages?: ChatMessage[],
-    explicitContextBlock?: string
+    options?: FinishTurnOptions
   ): Promise<void> {
     const usageMessages =
       promptMessages ??
-      buildPrompt(session.mode, pack, userMessage, compacted, false, false, false, undefined, undefined, false, explicitContextBlock);
+      buildPrompt(session.mode, pack, userMessage, compacted, false, false, false, undefined, undefined, false, options?.explicitContextBlock);
     const tokens = promptTokens || estimateChatRequestTokens({ messages: usageMessages });
-    this.emitTurnTokenUsage(tokens, pack, fullResponse, usageMessages, compacted);
+    this.emitTurnTokenUsage(tokens, pack, fullResponse, usageMessages, compacted, options?.activeTools);
 
     const normalizedResponse = normalizeAssistantResponse(fullResponse);
     fullResponse = normalizedResponse.content;
@@ -1704,7 +1799,7 @@ export class ChatOrchestrator {
       preview: fullResponse.slice(0, 200),
     });
 
-    const parsed = parsePlanFromText(fullResponse);
+    const parsed = session.mode === 'plan' ? parsePlanFromText(fullResponse) : null;
     if (parsed) {
       this.onPlan?.(thunderPlanToView(parsed, { status: 'ready' }));
       this.deps.planPersistence?.save(session.id, parsed);
@@ -1714,7 +1809,7 @@ export class ChatOrchestrator {
       });
     }
 
-    if (isWriteAllowed(session.mode)) {
+    if (options?.allowResponseAutoApply === true && isWriteAllowed(session.mode)) {
       const applyResults = await this.autoApply.applyFromResponse(fullResponse, userMessage);
       for (const result of applyResults) {
         this.emitActivity(
@@ -1726,7 +1821,7 @@ export class ChatOrchestrator {
     }
 
     if (this.deps.memoryExtractor && this.deps.memoryConfig?.enabled) {
-      const audit = this.deps.toolRuntime?.getAuditLog() ?? [];
+      const audit = (this.deps.toolRuntime?.getAuditLog() ?? []).slice(options?.auditStartIndex ?? 0);
       this.deps.memoryExtractor.extractAfterTask(
         session.id,
         userMessage,
@@ -1786,13 +1881,14 @@ export class ChatOrchestrator {
     pack: ContextPack,
     fullResponse: string,
     usageMessages: ChatMessage[],
-    compacted: ChatMessage[]
+    compacted: ChatMessage[],
+    activeTools?: ToolDefinition[]
   ): void {
     this.onTokenUsage?.(
       tokens,
       pack.totalTokens,
       fullResponse,
-      this.buildTokenBreakdown(usageMessages, pack, compacted),
+      this.buildTokenBreakdown(usageMessages, pack, compacted, activeTools),
       { final: true }
     );
     this.deps.sessionLog?.appendDebug('token_usage', 'Prompt assembly token estimate', {
@@ -1805,15 +1901,17 @@ export class ChatOrchestrator {
   private buildTokenBreakdown(
     messages: ChatMessage[],
     pack: ContextPack,
-    compacted: ChatMessage[]
+    compacted: ChatMessage[],
+    activeTools?: ToolDefinition[]
   ): TokenUsageBreakdownItem[] {
     const systemPrompt = messages.find((m) => m.role === 'system')?.content ?? '';
-    const allTools = this.deps.toolRuntime?.list() ?? [];
-    const builtinDefs = JSON.stringify(toolsToDefinitions(allTools.filter((t) => !t.name.startsWith('mcp__'))));
-    const mcpByServer = new Map<string, typeof allTools>();
+    const allTools = activeTools ?? toolsToDefinitions(this.deps.toolRuntime?.list() ?? []);
+    const builtinDefs = JSON.stringify(allTools.filter((t) => !t.function.name.startsWith('mcp__')));
+    const mcpByServer = new Map<string, ToolDefinition[]>();
     for (const tool of allTools) {
-      if (!tool.name.startsWith('mcp__')) continue;
-      const server = tool.name.split('__')[1] ?? 'mcp';
+      const toolName = tool.function.name;
+      if (!toolName.startsWith('mcp__')) continue;
+      const server = toolName.split('__')[1] ?? 'mcp';
       const list = mcpByServer.get(server) ?? [];
       list.push(tool);
       mcpByServer.set(server, list);
@@ -1842,7 +1940,7 @@ export class ChatOrchestrator {
     ];
 
     for (const [server, tools] of mcpByServer) {
-      const defs = JSON.stringify(toolsToDefinitions(tools));
+      const defs = JSON.stringify(tools);
       items.push({
         label: `MCP: ${server}`,
         tokens: Math.ceil(defs.length / 4),
@@ -1888,12 +1986,12 @@ export class ChatOrchestrator {
           return;
         }
         if (!success && isSkippedToolOutput(output)) {
-          this.setLiveStatus('Skipped redundant tool', toolDisplayName(name));
+          this.setLiveStatus(describeSkipLabel(output), toolDisplayName(name));
           this.emitActivity('skipped', `${toolDisplayName(name)} skipped`, output?.slice(0, 240));
           return;
         }
         if (success && isSkippedToolOutput(output)) {
-          this.setLiveStatus('Skipped redundant tool', toolDisplayName(name));
+          this.setLiveStatus(describeSkipLabel(output), toolDisplayName(name));
           this.emitActivity('skipped', `${toolDisplayName(name)} skipped`, output?.slice(0, 240));
           return;
         }
@@ -1965,8 +2063,19 @@ export class ChatOrchestrator {
     );
   }
 
+  getRoutingClarificationState(sessionId: string): RoutingClarificationState | undefined {
+    const state = this.routingClarifications.get(sessionId);
+    return state
+      ? {
+          ...state,
+          candidateIntents: [...state.candidateIntents],
+        }
+      : undefined;
+  }
+
   clearRoutingState(): void {
     this.suspendContext = undefined;
+    this.routingClarifications.clear();
     this.agentLoop?.clearSuspendState();
   }
 
@@ -2454,8 +2563,8 @@ export function shouldExecuteSavedPlan(
   );
 }
 
-function getTouchedFilesFromAudit(toolRuntime?: ToolRuntime): string[] {
-  const audit = toolRuntime?.getAuditLog() ?? [];
+export function getTouchedFilesFromAudit(toolRuntime?: ToolRuntime, startIndex = 0): string[] {
+  const audit = (toolRuntime?.getAuditLog() ?? []).slice(Math.max(0, startIndex));
   const files = new Set<string>();
   for (const { toolName, input, result } of audit) {
     if (!result.success || !['write_file', 'apply_patch'].includes(toolName)) continue;
@@ -2463,6 +2572,19 @@ function getTouchedFilesFromAudit(toolRuntime?: ToolRuntime): string[] {
     if (typeof path === 'string') files.add(path);
   }
   return [...files];
+}
+
+export function calculateRetrievalContextBudget(
+  maxInputTokens: number,
+  explicitContextTokens: number,
+  userPathTokens: number
+): { requestedContextBudget: number; retrievalContextBudget: number } {
+  const requestedContextBudget = Math.floor(maxInputTokens * 0.65);
+  const retrievalContextBudget = Math.max(
+    0,
+    requestedContextBudget - Math.max(0, explicitContextTokens) - Math.max(0, userPathTokens)
+  );
+  return { requestedContextBudget, retrievalContextBudget };
 }
 
 function shouldRequireAgentWrite(

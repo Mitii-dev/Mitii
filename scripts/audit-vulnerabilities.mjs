@@ -7,21 +7,22 @@
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 const cwd = process.cwd();
+const requestedTarget = process.argv[2]?.trim();
 const MAX_OSV = 12;
 const OSV_TIMEOUT_MS = 8_000;
 
-function detectPackageManager() {
-  if (existsSync(join(cwd, 'pnpm-lock.yaml')) || existsSync(join(cwd, 'pnpm-workspace.yaml'))) {
+function detectPackageManager(root = cwd) {
+  if (existsSync(join(root, 'pnpm-lock.yaml')) || existsSync(join(root, 'pnpm-workspace.yaml'))) {
     return 'pnpm';
   }
-  if (existsSync(join(cwd, 'yarn.lock'))) return 'yarn';
-  if (existsSync(join(cwd, 'package-lock.json'))) return 'npm';
-  if (existsSync(join(cwd, 'package.json'))) {
+  if (existsSync(join(root, 'yarn.lock'))) return 'yarn';
+  if (existsSync(join(root, 'package-lock.json'))) return 'npm';
+  if (existsSync(join(root, 'package.json'))) {
     try {
-      const pkg = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf8'));
+      const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
       const pm = pkg.packageManager;
       if (typeof pm === 'string') {
         if (pm.startsWith('pnpm')) return 'pnpm';
@@ -33,6 +34,15 @@ function detectPackageManager() {
     }
   }
   return 'npm';
+}
+
+function resolveScanRoot() {
+  if (!requestedTarget) return cwd;
+  const target = isAbsolute(requestedTarget) ? requestedTarget : resolve(cwd, requestedTarget);
+  if (!existsSync(target)) {
+    throw new Error(`Audit target does not exist: ${requestedTarget}`);
+  }
+  return statSync(target).isDirectory() ? target : dirname(target);
 }
 
 function findPackageRoots(root) {
@@ -137,6 +147,11 @@ function collectAdvisoryIds(report) {
   return [...ids].slice(0, MAX_OSV);
 }
 
+function advisoryPackageName(advisory) {
+  const name = advisory?.module_name ?? advisory?.moduleName ?? advisory?.name;
+  return typeof name === 'string' && name.trim() ? name.trim() : undefined;
+}
+
 function summarizeReport(report) {
   if (!report || typeof report !== 'object') {
     return { total: 0, bySeverity: {}, packages: [] };
@@ -170,7 +185,17 @@ function summarizeReport(report) {
           ? info.via.slice(0, 5).map((v) => (typeof v === 'string' ? v : v?.title || v?.url || v))
           : info?.via,
       }))
-    : [];
+    : Object.values(report.advisories ?? {})
+        .map((info) => ({
+          name: advisoryPackageName(info),
+          severity: info?.severity,
+          range: info?.vulnerable_versions,
+          patchedVersions: info?.patched_versions,
+          recommendation: info?.recommendation,
+          via: info?.title || info?.url,
+        }))
+        .filter((info) => info.name)
+        .slice(0, 40);
 
   return { total, bySeverity, packages };
 }
@@ -246,10 +271,11 @@ function runOutdated(pm, dir) {
 }
 
 async function main() {
-  const pm = detectPackageManager();
-  const roots = findPackageRoots(cwd);
+  const scanRoot = resolveScanRoot();
+  const pm = detectPackageManager(cwd);
+  const roots = findPackageRoots(scanRoot);
   // Prefer root + first-level packages to keep runtime bounded
-  const targets = roots.length <= 6 ? roots : [cwd, ...roots.filter((r) => r !== cwd).slice(0, 5)];
+  const targets = roots.length <= 6 ? roots : [scanRoot, ...roots.filter((r) => r !== scanRoot).slice(0, 5)];
 
   const audits = targets.map((dir) => runAudit(pm, dir));
   const outdated = targets.slice(0, 3).map((dir) => runOutdated(pm, dir));
@@ -266,6 +292,13 @@ async function main() {
     if (a.report?.vulnerabilities) {
       vulnerablePackages.push(...Object.keys(a.report.vulnerabilities));
     }
+    if (a.report?.advisories) {
+      vulnerablePackages.push(
+        ...Object.values(a.report.advisories)
+          .map(advisoryPackageName)
+          .filter(Boolean)
+      );
+    }
   }
 
   const uniquePkgs = [...new Set(vulnerablePackages)].slice(0, MAX_OSV);
@@ -281,6 +314,7 @@ async function main() {
     kind: 'vulnerability-audit',
     packageManager: pm,
     workspace: cwd,
+    requestedTarget: requestedTarget ? relative(cwd, scanRoot) || '.' : undefined,
     scannedRoots: targets.map((d) => relative(cwd, d) || '.'),
     totals: {
       vulnerabilityFindings: totalVulns,

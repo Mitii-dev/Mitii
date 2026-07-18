@@ -75,7 +75,7 @@ describe('microtasks', () => {
 
     expect(result.content).toBe('feat: add audit pack export');
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({ toolChoice: 'none', maxTokens: 240 });
+    expect(calls[0]).toMatchObject({ toolChoice: 'none', maxTokens: 900 });
   });
 
   it('redacts standalone sensitive diff helper output', () => {

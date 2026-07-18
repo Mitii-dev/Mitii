@@ -418,7 +418,7 @@ export class AgentTaskState {
     const cached = key ? this.toolResults.find((r) => r.key === key) : undefined;
 
     const lines = [
-      `(Skipped redundant ${toolName} — phase: ${this.getPhase()})`,
+      `(Skipped ${toolName} — reason:${skipReasonCode(reason)} — phase: ${this.getPhase()})`,
       reason,
     ];
 
@@ -458,7 +458,7 @@ export class AgentTaskState {
     if (this.toolResults.length > 0) {
       lines.push('', 'Completed steps:');
       for (const r of this.toolResults.slice(-6)) {
-        const preview = r.summary.split('\n').slice(0, 4).join(' ').slice(0, 200);
+        const preview = r.summary.split('\n').slice(0, 4).join(' ').slice(0, 500);
         lines.push(`- ${r.key}: ${preview}`);
       }
     }
@@ -618,10 +618,37 @@ export class AgentTaskState {
   }
 }
 
+/**
+ * Classifies a checkBlocked() reason string so the soft-block marker (and the UI label
+ * derived from it via describeSkipLabel) reflects the real cause instead of always saying
+ * "redundant" — e.g. a first-time read blocked by an undeclared file scope is not a duplicate.
+ */
+function skipReasonCode(reason: string): string {
+  if (/^Call propose_file_scope first|^Path\(s\) outside the accepted file scope/.test(reason)) {
+    return 'scope';
+  }
+  if (/^File read budget exceeded/.test(reason)) return 'budget';
+  if (/^FORCE_SYNTHESIS/.test(reason)) return 'synthesis';
+  return 'duplicate';
+}
+
 function summarizeEvidence(output: string): string {
-  const compact = output.replace(/\s+/g, ' ').trim();
-  if (!compact) return '(empty result)';
-  return compact.length <= 240 ? compact : `${compact.slice(0, 237)}...`;
+  const trimmed = output.trim();
+  if (!trimmed) return '(empty result)';
+
+  // Re-stringify JSON compactly (no pretty-print whitespace) so the length cap below
+  // is spent on data instead of indentation, and so summary fields near the end of a
+  // payload (e.g. audit "totals") aren't pushed past the cutoff by leading boilerplate
+  // (absolute workspace paths, scannedRoots, etc.) — see audit-vulnerabilities.mjs output.
+  let compact = trimmed.replace(/\s+/g, ' ');
+  try {
+    compact = JSON.stringify(JSON.parse(trimmed));
+  } catch {
+    // not JSON — keep whitespace-collapsed text
+  }
+
+  const MAX = 600;
+  return compact.length <= MAX ? compact : `${compact.slice(0, MAX - 3)}...`;
 }
 
 export function toolKey(toolName: string, input: Record<string, unknown>): string | null {
@@ -651,7 +678,8 @@ export function toolKey(toolName: string, input: Record<string, unknown>): strin
     return `read_files:${paths.join('|')}`;
   }
   if (toolName === 'execute_workspace_script' && typeof input.script === 'string') {
-    return `script:${input.script}`;
+    const target = typeof input.target === 'string' ? normalizeScopePath(input.target) : '';
+    return target ? `script:${input.script}:${target}` : `script:${input.script}`;
   }
   if (toolName === 'spawn_research_agent' && typeof input.task === 'string') {
     return `research:${input.task.slice(0, 80)}`;

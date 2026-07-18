@@ -1773,13 +1773,13 @@ export function createFetchWebTool(allowNetwork: () => boolean): Tool<{
   return {
     name: 'fetch_web',
     description:
-      'Fetch content from a URL for documentation, API research, advisory pages, or debugging. Supports GET (default) and POST (for APIs like OSV). Returns page text (HTML stripped). Use when the user asks to check online or local context is insufficient.',
+      'Fetch content from a URL for documentation, API research, advisory pages, or debugging. Supports GET (default) and JSON POST. OSV package queries require POST https://api.osv.dev/v1/query with body {"package":{"name":"fastify","ecosystem":"npm"}}; OSV ID lookups use GET /v1/vulns/{id}. GitHub GHSA lookups use GET https://api.github.com/advisories/{GHSA-id}. Returns page text (HTML stripped).',
     risk: 'low',
     inputSchema: z.object({
       url: z.string().url(),
       prompt: z.string().optional(),
-      method: z.enum(['GET', 'POST']).optional(),
-      body: z.string().max(32_000).optional(),
+      method: z.enum(['GET', 'POST']).optional().describe('HTTP method. Defaults to GET; use POST for OSV /v1/query.'),
+      body: z.string().max(32_000).optional().describe('JSON request body for POST requests.'),
     }),
     async execute(input): Promise<ToolResult> {
       if (!allowNetwork()) {
@@ -1787,13 +1787,36 @@ export function createFetchWebTool(allowNetwork: () => boolean): Tool<{
       }
 
       const method = input.method ?? 'GET';
+      const parsedUrl = new URL(input.url);
+      if (
+        method === 'GET' &&
+        parsedUrl.hostname === 'api.osv.dev' &&
+        parsedUrl.pathname === '/v1/query'
+      ) {
+        return {
+          success: false,
+          output: '',
+          error:
+            'OSV /v1/query requires POST with a JSON body such as {"package":{"name":"fastify","ecosystem":"npm"}}. For an advisory ID, use GET https://api.osv.dev/v1/vulns/{id}.',
+        };
+      }
+      if (
+        parsedUrl.hostname === 'api.github.com' &&
+        parsedUrl.pathname === '/advisories' &&
+        /^GHSA-/i.test(parsedUrl.search.slice(1))
+      ) {
+        const advisoryId = parsedUrl.search.slice(1);
+        return {
+          success: false,
+          output: '',
+          error: `GitHub advisory ID lookups use https://api.github.com/advisories/${advisoryId}, not a bare query string.`,
+        };
+      }
       if (method === 'POST' && !input.body) {
         return { success: false, output: '', error: 'POST requests require a body' };
       }
 
       try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
         const headers: Record<string, string> = {
           'User-Agent': 'Mitii-AI-Agent/0.1',
           Accept: 'text/html,application/json,text/plain,*/*',
@@ -1801,13 +1824,37 @@ export function createFetchWebTool(allowNetwork: () => boolean): Tool<{
         if (method === 'POST') {
           headers['Content-Type'] = 'application/json';
         }
-        const response = await fetch(input.url, {
-          method,
-          signal: controller.signal,
-          headers,
-          body: method === 'POST' ? input.body : undefined,
-        });
-        clearTimeout(timer);
+
+        // Advisory/registry APIs (OSV, GitHub advisories) occasionally return a transient
+        // 5xx under load; one short retry avoids surfacing a hard failure for those cases
+        // while still failing fast on 4xx (client error — retrying won't help).
+        let response: Response | undefined;
+        let lastNetworkError: unknown;
+        const maxAttempts = 2;
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+          try {
+            response = await fetch(input.url, {
+              method,
+              signal: controller.signal,
+              headers,
+              body: method === 'POST' ? input.body : undefined,
+            });
+          } catch (error) {
+            lastNetworkError = error;
+          } finally {
+            clearTimeout(timer);
+          }
+
+          const isRetryableStatus = response ? response.status >= 500 && response.status < 600 : false;
+          if ((response && !isRetryableStatus) || attempt === maxAttempts) break;
+          await new Promise((resolve) => setTimeout(resolve, 400 * attempt));
+        }
+
+        if (!response) {
+          throw lastNetworkError instanceof Error ? lastNetworkError : new Error(String(lastNetworkError));
+        }
 
         if (!response.ok) {
           return { success: false, output: '', error: `HTTP ${response.status}: ${response.statusText}` };

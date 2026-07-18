@@ -115,7 +115,8 @@ export class ToolExecutor {
       return this.finishSoftBlock(resolvedName, input, mcpCap);
     }
 
-    const blocked = readOnlyMode ? null : this.getTaskState?.()?.checkBlocked(resolvedName, input);
+    const shouldCheckTaskBlock = !readOnlyMode || resolvedName === 'execute_workspace_script';
+    const blocked = shouldCheckTaskBlock ? this.getTaskState?.()?.checkBlocked(resolvedName, input) : null;
     if (blocked) {
       const soft = this.getTaskState?.()?.buildSoftBlockResponse(resolvedName, input);
       const output = soft ?? blocked;

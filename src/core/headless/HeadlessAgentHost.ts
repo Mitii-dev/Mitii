@@ -540,7 +540,7 @@ export class HeadlessAgentHost {
     this.toolRuntime.register(createMemorySearchTool(this.memoryService!));
     this.toolRuntime.register(createMemoryWriteTool(this.memoryService!, () => this.session?.id ?? ''));
     this.toolRuntime.register(createSaveTaskStateTool(this.memoryService!, () => this.session?.id ?? '', () => this.agentTaskState));
-    this.toolRuntime.register(createFetchWebTool(() => this.config.safety.allowNetwork));
+    this.toolRuntime.register(createFetchWebTool(() => resolveEffectiveSafety(this.config.safety).allowNetwork));
     this.toolRuntime.register(createAskQuestionTool());
 
     const sessionIdForPlans = () => this.session?.id ?? '';

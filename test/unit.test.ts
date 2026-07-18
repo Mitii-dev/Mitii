@@ -996,6 +996,26 @@ describe('ThunderMode normalization', () => {
 });
 
 describe('ChatOrchestrator response handling', () => {
+  const classifierProvider = (intent: 'question' | 'explain_code' = 'question') => ({
+    id: 'classifier',
+    capabilities: {
+      contextWindow: 8192,
+      supportsStreaming: true,
+      supportsTools: false,
+      supportsEmbeddings: false,
+    },
+    async *complete() {
+      yield {
+        content: JSON.stringify({
+          intent,
+          confidence: 0.9,
+          alternatives: [],
+          needsClarification: false,
+        }),
+      };
+    },
+  });
+
   it('turns empty model output into an explicit assistant message', async () => {
     const { EMPTY_ASSISTANT_RESPONSE_MESSAGE, normalizeAssistantResponse } =
       await import('../src/core/orchestration/ChatOrchestrator');
@@ -1048,6 +1068,230 @@ describe('ChatOrchestrator response handling', () => {
     expect(capturedQuery?.tierPolicy?.skillInjection).toBe('none');
     expect(capturedQuery?.tierPolicy?.rulesMaxTotalChars).toBe(6_000);
     expect(capturedQuery?.maxItems).toBeLessThanOrEqual(18);
+  });
+
+  it('scopes touched-file audit lookups to the current turn', async () => {
+    const { getTouchedFilesFromAudit } = await import('../src/core/orchestration/ChatOrchestrator');
+    const audit = [
+      {
+        toolName: 'write_file',
+        input: { path: 'src/stale.ts' },
+        result: { success: true, output: '' },
+        timestamp: 1,
+      },
+      {
+        toolName: 'read_file',
+        input: { path: 'src/read.ts' },
+        result: { success: true, output: '' },
+        timestamp: 2,
+      },
+      {
+        toolName: 'apply_patch',
+        input: { path: 'src/current.ts' },
+        result: { success: true, output: '' },
+        timestamp: 3,
+      },
+    ];
+    const runtime = { getAuditLog: () => audit };
+
+    expect(getTouchedFilesFromAudit(runtime as never, 2)).toEqual(['src/current.ts']);
+  });
+
+  it('subtracts explicit context before budgeting retrieved snippets', async () => {
+    const { calculateRetrievalContextBudget } = await import('../src/core/orchestration/ChatOrchestrator');
+
+    expect(calculateRetrievalContextBudget(10_000, 1_200, 300)).toEqual({
+      requestedContextBudget: 6_500,
+      retrievalContextBudget: 5_000,
+    });
+    expect(calculateRetrievalContextBudget(10_000, 8_000, 100)).toEqual({
+      requestedContextBudget: 6_500,
+      retrievalContextBudget: 0,
+    });
+  });
+
+  it('passes only current-turn audit entries to memory extraction', async () => {
+    const { ChatOrchestrator } = await import('../src/core/orchestration/ChatOrchestrator');
+    const { ContextBudgeter } = await import('../src/core/context/ContextBudgeter');
+    const { ThunderSession } = await import('../src/core/session/ThunderSession');
+    const capturedAudits: unknown[] = [];
+    const staleAudit = [{
+      toolName: 'write_file',
+      input: { path: 'src/previous.ts' },
+      result: { success: true, output: '' },
+      timestamp: Date.now(),
+    }];
+    const provider = {
+      id: 'fake',
+      capabilities: {
+        contextWindow: 8192,
+        supportsStreaming: true,
+        supportsTools: false,
+        supportsEmbeddings: false,
+      },
+      async *complete() {
+        yield { content: 'done' };
+      },
+    };
+    const orchestrator = new ChatOrchestrator(
+      { retrieve: async () => [] } as unknown as import('../src/core/context/HybridRetriever').HybridRetriever,
+      new ContextBudgeter()
+    );
+    orchestrator.configure({
+      toolRuntime: { getAuditLog: () => staleAudit } as never,
+      memoryConfig: { enabled: true, summarizeAfterTask: false } as never,
+      memoryExtractor: {
+        extractAfterTask: (_sessionId: string, _user: string, _assistant: string, audit: unknown[]) => {
+          capturedAudits.push(audit);
+        },
+      } as never,
+      intentClassifierProvider: classifierProvider('explain_code') as never,
+    });
+
+    for await (const chunk of orchestrator.send(new ThunderSession('/tmp/mitii-memory-test', 'ask'), provider, 'Explain this', [])) {
+      expect(chunk).toBeDefined();
+    }
+
+    expect(capturedAudits).toEqual([[]]);
+  });
+
+  it('does not auto-apply final response code blocks after tool-capable agent turns', async () => {
+    const { z } = await import('zod');
+    const { ChatOrchestrator } = await import('../src/core/orchestration/ChatOrchestrator');
+    const { ContextBudgeter } = await import('../src/core/context/ContextBudgeter');
+    const { ThunderSession } = await import('../src/core/session/ThunderSession');
+    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
+    const writes: unknown[] = [];
+    const toolRuntime = new ToolRuntime();
+    toolRuntime.register({
+      name: 'write_file',
+      description: 'Write file',
+      risk: 'medium',
+      inputSchema: z.object({ path: z.string(), content: z.string() }),
+      execute: async () => ({ success: true, output: '' }),
+    });
+    const provider = {
+      id: 'fake-tools',
+      capabilities: {
+        contextWindow: 8192,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsEmbeddings: false,
+      },
+      async *complete() {
+        yield {
+          content: 'Example only:\n```ts|CODE_EDIT_BLOCK|src/example.ts\nexport const example = true;\n```',
+        };
+      },
+    };
+    const orchestrator = new ChatOrchestrator(
+      { retrieve: async () => [] } as unknown as import('../src/core/context/HybridRetriever').HybridRetriever,
+      new ContextBudgeter()
+    );
+    orchestrator.configure({
+      toolRuntime,
+      toolExecutor: {
+        execute: async (name: string, input: Record<string, unknown>) => {
+          writes.push({ name, input });
+          return { success: true, output: '' };
+        },
+      } as never,
+      intentClassifierProvider: classifierProvider('question') as never,
+    });
+
+    for await (const chunk of orchestrator.send(new ThunderSession('/tmp/mitii-tools-test', 'agent'), provider, 'Show an example for src/example.ts', [])) {
+      expect(chunk).toBeDefined();
+    }
+
+    expect(writes).toEqual([]);
+  });
+
+  it('keeps legacy response auto-apply for agent turns without tool-capable model calls', async () => {
+    const { ChatOrchestrator } = await import('../src/core/orchestration/ChatOrchestrator');
+    const { ContextBudgeter } = await import('../src/core/context/ContextBudgeter');
+    const { ThunderSession } = await import('../src/core/session/ThunderSession');
+    const writes: unknown[] = [];
+    const provider = {
+      id: 'fake-no-tools',
+      capabilities: {
+        contextWindow: 8192,
+        supportsStreaming: true,
+        supportsTools: false,
+        supportsEmbeddings: false,
+      },
+      async *complete() {
+        yield {
+          content: '```ts|CODE_EDIT_BLOCK|src/example.ts\nexport const example = true;\n```',
+        };
+      },
+    };
+    const orchestrator = new ChatOrchestrator(
+      { retrieve: async () => [] } as unknown as import('../src/core/context/HybridRetriever').HybridRetriever,
+      new ContextBudgeter()
+    );
+    orchestrator.configure({
+      toolExecutor: {
+        execute: async (name: string, input: Record<string, unknown>) => {
+          writes.push({ name, input });
+          return { success: true, output: '' };
+        },
+      } as never,
+      intentClassifierProvider: classifierProvider('question') as never,
+    });
+
+    for await (const chunk of orchestrator.send(new ThunderSession('/tmp/mitii-no-tools-test', 'agent'), provider, 'Update src/example.ts', [])) {
+      expect(chunk).toBeDefined();
+    }
+
+    expect(writes).toEqual([
+      {
+        name: 'write_file',
+        input: {
+          path: 'src/example.ts',
+          content: 'export const example = true;',
+        },
+      },
+    ]);
+  });
+
+  it('does not save plan-shaped ask responses as active plans', async () => {
+    const { ChatOrchestrator } = await import('../src/core/orchestration/ChatOrchestrator');
+    const { ContextBudgeter } = await import('../src/core/context/ContextBudgeter');
+    const { ThunderSession } = await import('../src/core/session/ThunderSession');
+    const save = vi.fn();
+    const provider = {
+      id: 'fake',
+      capabilities: {
+        contextWindow: 8192,
+        supportsStreaming: true,
+        supportsTools: false,
+        supportsEmbeddings: false,
+      },
+      async *complete() {
+        yield {
+          content: [
+            'Here is illustrative JSON:',
+            '```json',
+            '{"goal":"Explain plan","assumptions":[],"steps":[],"requiredApprovals":[]}',
+            '```',
+          ].join('\n'),
+        };
+      },
+    };
+    const orchestrator = new ChatOrchestrator(
+      { retrieve: async () => [] } as unknown as import('../src/core/context/HybridRetriever').HybridRetriever,
+      new ContextBudgeter()
+    );
+    orchestrator.configure({
+      planPersistence: { save, getActive: () => undefined } as never,
+      intentClassifierProvider: classifierProvider('explain_code') as never,
+    });
+
+    for await (const chunk of orchestrator.send(new ThunderSession('/tmp/mitii-plan-shape-test', 'ask'), provider, 'Explain this plan JSON', [])) {
+      expect(chunk).toBeDefined();
+    }
+
+    expect(save).not.toHaveBeenCalled();
   });
 });
 
@@ -1769,7 +2013,7 @@ describe('AgentTaskState', () => {
     state.recordToolSuccess('run_command', { command: 'npx eslint src/' }, 'no-unused-vars: 3 errors');
     expect(state.getPhase()).toBe('execute');
     const soft = state.buildSoftBlockResponse('run_command', { command: 'npx eslint src/' });
-    expect(soft).toContain('Skipped redundant');
+    expect(soft).toContain('(Skipped run_command — reason:duplicate — phase: execute)');
     expect(soft).toContain('Cached evidence reference');
     expect(soft).not.toContain('no-unused-vars');
     expect(soft).toContain('smallest exact next action');
@@ -1855,6 +2099,7 @@ describe('AgentTaskState', () => {
       classifyIntentFastPath,
       gateIntentClassification,
       parseIntentClassification,
+      safeDefaultIntent,
     } = await import('../src/core/runtime/intentClassifier');
     const parsed = parseIntentClassification(
       '{"intent":"docs","confidence":0.82,"alternatives":[{"intent":"feature","confidence":0.4},{"intent":"feature","confidence":0.6}]}',
@@ -1940,10 +2185,20 @@ describe('AgentTaskState', () => {
       '{"intent":"docs","confidence":0.9} {"intent":"feature","confidence":0.8}',
       ['docs', 'feature'] as const
     )).not.toThrow();
+    const finalJson = parseIntentClassification(
+      '<think>Maybe {"intent":"feature","confidence":0.91}</think>\n{"intent":"bugfix","confidence":0.92,"alternatives":[]}',
+      ['bugfix', 'feature', 'docs'] as const
+    );
+    expect(finalJson).toMatchObject({ intent: 'bugfix', confidence: 0.92 });
+    expect(() => parseIntentClassification(
+      '{"intent":"docs","confidence":0.9,"unexpected":true}',
+      ['docs', 'feature'] as const
+    )).toThrow();
     expect(() => parseIntentClassification(
       '{"intent":"docs","confidence":0.9',
       ['docs', 'feature'] as const
     )).toThrow(/complete JSON object/);
+    expect(() => safeDefaultIntent('ask', [])).toThrow(/at least one allowed intent/);
 
     let providerCalled = false;
     const blank = await classifyIntent(
@@ -1978,6 +2233,91 @@ describe('AgentTaskState', () => {
       source: 'fallback',
       gateReason: 'empty_message',
     });
+
+    await expect(classifyIntent(
+      {
+        id: 'test',
+        capabilities: {
+          contextWindow: 8_192,
+          supportsTools: false,
+          supportsVision: false,
+          supportsReasoning: false,
+          supportsStreaming: true,
+          supportsEmbeddings: false,
+        },
+        async *complete() {
+          yield { content: '{}' };
+        },
+      },
+      'ask',
+      'Explain this',
+      ['explain_code'] as const,
+      {} as never
+    )).rejects.toThrow(/Missing intent description: explain_code/);
+  });
+
+  it('keeps intent-classifier fast paths narrow and punctuation-safe', async () => {
+    const { classifyIntentFastPath } = await import('../src/core/runtime/intentClassifier');
+
+    expect(classifyIntentFastPath(
+      'plan',
+      'okay',
+      ['question', 'bugfix'] as const
+    )).toMatchObject({
+      intent: 'question',
+      matchedRule: 'short acknowledgement or greeting',
+    });
+    expect(classifyIntentFastPath(
+      'plan',
+      'okay fix the test',
+      ['question', 'bugfix'] as const
+    )).toBeNull();
+
+    for (const message of [
+      'What is knip?',
+      'Explain how depcheck works.',
+      'Is ts-prune reliable?',
+      'Remove unused variable from this function.',
+    ]) {
+      expect(classifyIntentFastPath(
+        'agent',
+        message,
+        ['audit', 'question'] as const
+      )).toBeNull();
+    }
+
+    for (const message of [
+      'Run knip',
+      'Find unused imports',
+      'Scan dead code',
+      'Audit dependencies',
+    ]) {
+      expect(classifyIntentFastPath(
+        'agent',
+        message,
+        ['audit', 'question'] as const
+      )).toMatchObject({
+        intent: 'audit',
+        source: 'fast_path',
+        matchedRule: 'explicit dependency or dead-code cleanup',
+      });
+    }
+
+    for (const message of [
+      'Analyze session.jsonl.',
+      'Review agent.jsonl,',
+      'Inspect .mitii/logs/session.jsonl:',
+    ]) {
+      expect(classifyIntentFastPath(
+        'agent',
+        message,
+        ['bugfix', 'log_audit', 'audit'] as const
+      )).toMatchObject({
+        intent: 'log_audit',
+        source: 'fast_path',
+        matchedRule: 'log target + analysis verb',
+      });
+    }
   });
 
   it('resolves state-aware control intent before domain routing', async () => {
@@ -2705,7 +3045,7 @@ describe('UserExplicitContextBuilder', () => {
 });
 
 describe('buildPrompt explicit context', () => {
-  it('places user_explicit_context before codebase context', async () => {
+  it('places user_explicit_context inside the untrusted workspace context', async () => {
     const { buildPrompt } = await import('../src/core/plans/promptBuilder');
     const pack = {
       items: [],
@@ -2730,7 +3070,13 @@ describe('buildPrompt explicit context', () => {
       '<user_explicit_context><file path="a.ts">code</file></user_explicit_context>'
     );
     const user = messages.find((m) => m.role === 'user');
-    expect(user?.content.startsWith('<user_explicit_context>')).toBe(true);
+    const content = user?.content ?? '';
+    const workspaceStart = content.indexOf('<workspace_context trust="untrusted-data">');
+    const explicitStart = content.indexOf('<user_explicit_context>');
+    const workspaceEnd = content.indexOf('</workspace_context>');
+    expect(workspaceStart).toBeGreaterThanOrEqual(0);
+    expect(explicitStart).toBeGreaterThan(workspaceStart);
+    expect(explicitStart).toBeLessThan(workspaceEnd);
     expect(user?.content).toContain('## Codebase Context');
   });
 });

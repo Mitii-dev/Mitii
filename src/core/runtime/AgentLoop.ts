@@ -167,6 +167,21 @@ export interface AgentLoopResult {
   pendingApproval: boolean;
 }
 
+interface ExecutedToolCall {
+  tc: ToolCall;
+  input: Record<string, unknown>;
+  execResult: ToolExecutionResult;
+  durationMs: number;
+}
+
+interface AgentLoopRuntimeState {
+  groundingToolCallsMade?: boolean;
+  requiredSideEffectMade?: boolean;
+  writeToolCallsMade?: boolean;
+}
+
+type AgentLoopExecutionSource = 'run' | 'resume';
+
 export class AgentLoop {
   private lastPendingApproval = false;
   private lastSuspendState: AgentLoopSuspendState | undefined;
@@ -196,11 +211,32 @@ export class AgentLoop {
     callbacks?: AgentLoopCallbacks,
     options?: AgentLoopOptions
   ): AsyncIterable<AssistantStreamChunk> {
-    const messages: ChatMessage[] = [...initialMessages];
-    const allowedToolNames = new Set(tools.map((t) => t.function.name));
-    let pendingApproval = false;
     this.lastPendingApproval = false;
     this.lastSuspendState = undefined;
+
+    const messages: ChatMessage[] = [...initialMessages];
+    // Churn/forced-synthesis state is local to one agent loop. A structured plan
+    // invokes a fresh loop per step, so a duplicate read in one step must not disable
+    // every tool in all later execute and verify steps.
+    options?.getTaskState?.()?.beginAgentLoop();
+    this.toolExecutor.clearPlanPhaseLock?.();
+    injectFileScopeContract(messages);
+
+    yield* this.executeLoop(provider, messages, tools, signal, callbacks, options, 'run');
+  }
+
+  private async *executeLoop(
+    provider: LlmProvider,
+    messages: ChatMessage[],
+    tools: ToolDefinition[],
+    signal?: AbortSignal,
+    callbacks?: AgentLoopCallbacks,
+    options?: AgentLoopOptions,
+    source: AgentLoopExecutionSource = 'run',
+    initialState: AgentLoopRuntimeState = {}
+  ): AsyncIterable<AssistantStreamChunk> {
+    const allowedToolNames = new Set(tools.map((t) => t.function.name));
+    let pendingApproval = false;
     const maxSteps = options?.maxSteps ?? this.defaultMaxSteps;
     const auditMode = options?.auditMode ?? false;
     const logAuditMode = options?.logAuditMode ?? false;
@@ -210,7 +246,7 @@ export class AgentLoop {
     let logAuditNudgeUsed = false;
     let askNudgeUsed = false;
     let planNudgeUsed = false;
-    let groundingToolCallsMade = false;
+    let groundingToolCallsMade = initialState.groundingToolCallsMade ?? false;
     let autoContinuesUsed = 0;
     let totalSteps = 0;
     let phaseLockWriteFailures = 0;
@@ -218,8 +254,8 @@ export class AgentLoop {
     let phaseLockWriteEscalated = false;
     let lastInputFailureKey = '';
     let repeatedInputFailureCount = 0;
-    let writeToolCallsMade = false;
-    let requiredSideEffectMade = false;
+    let writeToolCallsMade = initialState.writeToolCallsMade ?? false;
+    let requiredSideEffectMade = initialState.requiredSideEffectMade ?? false;
     let noWriteNudgeUsed = false;
     let noWriteToolRounds = 0;
     let writeChurnNudgeUsed = false;
@@ -227,17 +263,11 @@ export class AgentLoop {
     const recentToolAttempts: ToolAttemptRecord[] = [];
     const hardLimit = maxSteps + maxAutoContinues * maxSteps;
 
-    const readOnlyMode = Boolean(options?.askMode || options?.planMode);
+    const isReadOnlyRoute = Boolean(options?.askMode || options?.planMode || options?.logAuditMode);
+    const needsGroundedSynthesis = Boolean(options?.askMode || options?.planMode);
     const requiredOperation = options?.requiredOperation ?? (options?.requiresWrite ? 'workspace_write' : undefined);
     const isGroundingTool = (toolName: string): boolean =>
       options?.planMode ? isPlanGroundingToolCall(toolName) : isGroundingToolCall(toolName);
-
-    // Churn/forced-synthesis state is local to one agent loop. A structured plan
-    // invokes a fresh loop per step, so a duplicate read in one step must not disable
-    // every tool in all later execute and verify steps.
-    options?.getTaskState?.()?.beginAgentLoop();
-    this.toolExecutor.clearPlanPhaseLock?.();
-    injectFileScopeContract(messages);
 
     for (let step = 0; step < hardLimit; step++) {
       totalSteps = step + 1;
@@ -312,9 +342,7 @@ export class AgentLoop {
       if (!toolCalls || toolCalls.length === 0) {
         if (
           requiredOperation &&
-          !readOnlyMode &&
-          !auditMode &&
-          !logAuditMode &&
+          !isReadOnlyRoute &&
           stepContent &&
           !requiredSideEffectMade &&
           !noWriteNudgeUsed
@@ -327,9 +355,7 @@ export class AgentLoop {
         }
         if (
           requiredOperation &&
-          !readOnlyMode &&
-          !auditMode &&
-          !logAuditMode &&
+          !isReadOnlyRoute &&
           stepContent &&
           !requiredSideEffectMade &&
           noWriteNudgeUsed
@@ -402,25 +428,13 @@ export class AgentLoop {
         tool_calls: toolCalls,
       });
 
-      const executions = await Promise.all(
-        toolCalls.map(async (tc) => {
-          let input: Record<string, unknown> = {};
-          try {
-            input = JSON.parse(tc.function.arguments || '{}') as Record<string, unknown>;
-          } catch {
-            input = {};
-          }
-          callbacks?.onToolStart?.(tc.function.name, input);
-          const toolStartedAt = Date.now();
-          const execResult = allowedToolNames.has(tc.function.name)
-            ? await this.toolExecutor.execute(tc.function.name, input, {
-                toolCallId: tc.id,
-                phaseLock: options?.phaseLock,
-                restrictRunCommandToReadOnly: auditMode || options?.restrictRunCommandToReadOnly,
-              })
-            : notOfferedToolResult(tc.function.name);
-          return { tc, input, execResult, durationMs: Date.now() - toolStartedAt };
-        })
+      const executions = await this.executeToolCalls(
+        toolCalls,
+        allowedToolNames,
+        options,
+        auditMode || options?.restrictRunCommandToReadOnly,
+        signal,
+        callbacks
       );
 
       let phaseLockFailuresThisTurn = 0;
@@ -431,24 +445,6 @@ export class AgentLoop {
 
       for (const { tc, input, execResult, durationMs } of executions) {
         if (signal?.aborted) break;
-
-        if (['write_file', 'apply_patch'].includes(tc.function.name)) {
-          nonWriteOnlyTurn = false;
-          if (execResult.success || execResult.pendingApproval) {
-            writeToolCallsMade = true;
-          }
-        }
-        if (
-          (execResult.success || execResult.pendingApproval) &&
-          requiredOperation &&
-          isOperationSideEffectTool(requiredOperation, tc.function.name)
-        ) {
-          requiredSideEffectMade = true;
-        }
-
-        if (execResult.success && isGroundingTool(tc.function.name)) {
-          groundingToolCallsMade = true;
-        }
 
         if (execResult.pendingApproval) {
           pendingApproval = true;
@@ -463,6 +459,26 @@ export class AgentLoop {
         }
 
         const { isSkipped, output, success: toolSuccess } = resolveToolOutput(execResult);
+        const completedRealSideEffect = execResult.success && !isSkipped && !execResult.pendingApproval;
+
+        if (['write_file', 'apply_patch'].includes(tc.function.name)) {
+          nonWriteOnlyTurn = false;
+          if (completedRealSideEffect) {
+            writeToolCallsMade = true;
+          }
+        }
+        if (
+          completedRealSideEffect &&
+          requiredOperation &&
+          isOperationSideEffectTool(requiredOperation, tc.function.name)
+        ) {
+          requiredSideEffectMade = true;
+        }
+
+        if (completedRealSideEffect && isGroundingTool(tc.function.name)) {
+          groundingToolCallsMade = true;
+        }
+
         recentToolAttempts.push({
           toolName: tc.function.name,
           fingerprint: fingerprintToolCall(
@@ -507,6 +523,7 @@ export class AgentLoop {
 
         if (
           execResult.success &&
+          !isSkipped &&
           callbacks?.onPostWriteValidation &&
           ['write_file', 'apply_patch'].includes(tc.function.name)
         ) {
@@ -628,6 +645,16 @@ export class AgentLoop {
       }
 
       if (repeatedInputFailureStop) {
+        if (isReadOnlyRoute) {
+          synthesizeOnly = true;
+          messages.push({
+            role: 'user',
+            content:
+              `${repeatedInputFailureStop}\n\n` +
+              'Tools are now disabled. Answer the original request using the successful evidence already gathered, and briefly identify any online verification that could not be completed.',
+          });
+          continue;
+        }
         messages.push({ role: 'assistant', content: repeatedInputFailureStop });
         yield repeatedInputFailureStop;
         break;
@@ -635,8 +662,7 @@ export class AgentLoop {
 
       if (
         options?.requiresWrite &&
-        !readOnlyMode &&
-        !auditMode &&
+        !isReadOnlyRoute &&
         !pendingApproval &&
         !writeToolCallsMade &&
         nonWriteOnlyTurn
@@ -659,7 +685,9 @@ export class AgentLoop {
           messages: [...messages],
           tools,
           options: {
+            ...options,
             auditMode,
+            logAuditMode,
             maxSteps,
             autoContinue,
             maxAutoContinues,
@@ -684,12 +712,14 @@ export class AgentLoop {
           role: 'user',
           content: 'Continue the task from where you left off. Use tools as needed until complete.',
         });
-        log.info('Auto-continuing agent loop', { continueRound: autoContinuesUsed });
+        log.info(source === 'resume' ? 'Auto-continuing agent loop after resume' : 'Auto-continuing agent loop', {
+          continueRound: autoContinuesUsed,
+        });
       }
     }
 
     if (
-      readOnlyMode &&
+      needsGroundedSynthesis &&
       groundingToolCallsMade &&
       !pendingApproval &&
       !signal?.aborted &&
@@ -715,7 +745,7 @@ export class AgentLoop {
     }
 
     this.lastPendingApproval = pendingApproval;
-    log.info('Agent loop finished', { pendingApproval, totalSteps });
+    log.info(source === 'resume' ? 'Agent loop resume finished' : 'Agent loop finished', { pendingApproval, totalSteps });
   }
 
   async *resume(
@@ -727,9 +757,7 @@ export class AgentLoop {
   ): AsyncIterable<AssistantStreamChunk> {
     const messages: ChatMessage[] = state.messages.map((m) => ({ ...m }));
     const tools = state.tools;
-    const allowedToolNames = new Set(tools.map((t) => t.function.name));
     const options = state.options;
-    let pendingApproval = false;
     this.lastPendingApproval = false;
     this.lastSuspendState = undefined;
 
@@ -738,6 +766,15 @@ export class AgentLoop {
     }
 
     let resumeValidationFailed = false;
+    const requiredOperation = options.requiredOperation ?? (options.requiresWrite ? 'workspace_write' : undefined);
+    const isGroundingTool = (toolName: string): boolean =>
+      options.planMode ? isPlanGroundingToolCall(toolName) : isGroundingToolCall(toolName);
+    const initialState: AgentLoopRuntimeState = {
+      groundingToolCallsMade: false,
+      requiredSideEffectMade: false,
+      writeToolCallsMade: false,
+    };
+
     for (const result of approved) {
       const idx = messages.findIndex(
         (m) => m.role === 'tool' && m.tool_call_id === result.toolCallId
@@ -756,6 +793,18 @@ export class AgentLoop {
             output: result.output,
           })
         : `User denied ${result.toolName}. Do not retry the same command; choose another approach.`;
+
+      if (result.success) {
+        if (['write_file', 'apply_patch'].includes(result.toolName)) {
+          initialState.writeToolCallsMade = true;
+        }
+        if (requiredOperation && isOperationSideEffectTool(requiredOperation, result.toolName)) {
+          initialState.requiredSideEffectMade = true;
+        }
+        if (isGroundingTool(result.toolName)) {
+          initialState.groundingToolCallsMade = true;
+        }
+      }
 
       if (
         result.success &&
@@ -785,226 +834,47 @@ export class AgentLoop {
       messages.push({ role: 'user', content: VALIDATION_BLOCK_MESSAGE });
     }
 
-    const maxSteps = options.maxSteps ?? this.defaultMaxSteps;
-    const auditMode = options.auditMode ?? false;
-    const autoContinue = options.autoContinue ?? true;
-    const maxAutoContinues = options.maxAutoContinues ?? 2;
-    let auditNudgeUsed = false;
-    let autoContinuesUsed = 0;
-    let phaseLockRunCommandFailures = 0;
-    const hardLimit = maxSteps + maxAutoContinues * maxSteps;
+    yield* this.executeLoop(provider, messages, tools, signal, callbacks, options, 'resume', initialState);
+  }
 
-    for (let step = 0; step < hardLimit; step++) {
+  private async executeToolCalls(
+    toolCalls: ToolCall[],
+    allowedToolNames: Set<string>,
+    options: AgentLoopOptions | undefined,
+    restrictRunCommandToReadOnly: boolean | undefined,
+    signal?: AbortSignal,
+    callbacks?: AgentLoopCallbacks
+  ): Promise<ExecutedToolCall[]> {
+    const executions: ExecutedToolCall[] = [];
+
+    for (const tc of toolCalls) {
       if (signal?.aborted) break;
-      const displayStep = ((step % maxSteps) + 1);
-      callbacks?.onStep?.(displayStep, maxSteps);
 
-      injectPlanTracker(messages, options.planTracker);
-
-      let stepContent = '';
-      const toolCallsMap = new Map<number, ToolCall>();
-      const llmStartedAt = Date.now();
-
-      for await (const delta of provider.complete({
-        messages,
-        tools,
-        toolChoice: 'auto',
-        stream: true,
-        reasoningEffort: options.reasoningEffort,
-      })) {
-        if (signal?.aborted) break;
-        if (delta.error) throw new Error(delta.error);
-        if (delta.content) {
-          stepContent += delta.content;
-        }
-        if (delta.reasoning) {
-          const reasoningChunk = toAssistantStreamChunk(undefined, delta.reasoning, 'progress');
-          if (reasoningChunk) yield reasoningChunk;
-        }
-        if (delta.tool_calls) {
-          for (const partial of delta.tool_calls) {
-            const existing = toolCallsMap.get(partial.index);
-            if (!existing) {
-              toolCallsMap.set(partial.index, {
-                id: partial.id ?? `call_${partial.index}`,
-                type: 'function',
-                function: {
-                  name: partial.function?.name ?? '',
-                  arguments: partial.function?.arguments ?? '',
-                },
-              });
-            } else {
-              if (partial.id) existing.id = partial.id;
-              if (partial.function?.name) existing.function.name += partial.function.name;
-              if (partial.function?.arguments) existing.function.arguments += partial.function.arguments;
-            }
-          }
-        }
-        if (delta.done) break;
+      let input: Record<string, unknown> = {};
+      try {
+        input = JSON.parse(tc.function.arguments || '{}') as Record<string, unknown>;
+      } catch {
+        input = {};
       }
 
-      const toolCalls = toolCallsMap.size > 0
-        ? Array.from(toolCallsMap.entries()).sort(([a], [b]) => a - b).map(([, tc]) => tc)
-        : undefined;
+      callbacks?.onToolStart?.(tc.function.name, input);
+      const toolStartedAt = Date.now();
+      const execResult = allowedToolNames.has(tc.function.name)
+        ? await this.toolExecutor.execute(tc.function.name, input, {
+            toolCallId: tc.id,
+            phaseLock: options?.phaseLock,
+            restrictRunCommandToReadOnly,
+          })
+        : notOfferedToolResult(tc.function.name);
 
-      callbacks?.onLlmStepComplete?.(displayStep, Date.now() - llmStartedAt, toolCalls?.length ?? 0);
+      executions.push({ tc, input, execResult, durationMs: Date.now() - toolStartedAt });
 
-      if (!toolCalls || toolCalls.length === 0) {
-        if (auditMode && stepContent && !auditNudgeUsed) {
-          auditNudgeUsed = true;
-          messages.push({ role: 'assistant', content: stepContent });
-          messages.push({ role: 'user', content: NO_TOOLS_AUDIT_NUDGE });
-          continue;
-        }
-        if (stepContent) {
-          messages.push({ role: 'assistant', content: stepContent });
-          const finalChunk = toAssistantStreamChunk(stepContent, undefined, 'final');
-          if (finalChunk) yield finalChunk;
-        }
+      if (execResult.pendingApproval) {
         break;
-      }
-
-      if (stepContent) {
-        const progressChunk = toAssistantStreamChunk(stepContent, undefined, 'progress');
-        if (progressChunk) yield progressChunk;
-      }
-      messages.push({
-        role: 'assistant',
-        content: stepContent,
-        tool_calls: toolCalls,
-      });
-
-      const executions = await Promise.all(
-        toolCalls.map(async (tc) => {
-          let input: Record<string, unknown> = {};
-          try {
-            input = JSON.parse(tc.function.arguments || '{}') as Record<string, unknown>;
-          } catch {
-            input = {};
-          }
-          callbacks?.onToolStart?.(tc.function.name, input);
-          const toolStartedAt = Date.now();
-          const execResult = allowedToolNames.has(tc.function.name)
-            ? await this.toolExecutor.execute(tc.function.name, input, {
-                toolCallId: tc.id,
-                phaseLock: options.phaseLock,
-                restrictRunCommandToReadOnly: options.restrictRunCommandToReadOnly,
-              })
-            : notOfferedToolResult(tc.function.name);
-          return { tc, input, execResult, durationMs: Date.now() - toolStartedAt };
-        })
-      );
-
-      let phaseLockRunCommandFailuresThisTurn = 0;
-      let resumeStepValidationFailed = false;
-
-      for (const { tc, input, execResult, durationMs } of executions) {
-        if (signal?.aborted) break;
-
-        if (execResult.pendingApproval) {
-          pendingApproval = true;
-          callbacks?.onToolEnd?.(tc.function.name, false, 'Awaiting approval', durationMs);
-          messages.push({
-            role: 'tool',
-            tool_call_id: tc.id,
-            name: tc.function.name,
-            content: `Tool ${tc.function.name} is awaiting user approval. Stop and wait for the user to approve.`,
-          });
-          continue;
-        }
-
-        const { isSkipped, output, success: toolSuccess } = resolveToolOutput(execResult);
-
-        if (
-          !execResult.success &&
-          !isSkipped &&
-          tc.function.name === 'run_command' &&
-          isPhaseLockRunCommandError(execResult.error)
-        ) {
-          phaseLockRunCommandFailuresThisTurn += 1;
-        }
-
-        callbacks?.onToolEnd?.(
-          tc.function.name,
-          toolSuccess,
-          isSkipped ? output : output.slice(0, 500),
-          durationMs
-        );
-
-        let toolContent = formatToolResult(tc.function.name, {
-          success: toolSuccess,
-          output: isSkipped ? output : execResult.output,
-          error: isSkipped ? undefined : execResult.error,
-        });
-
-        if (
-          execResult.success &&
-          callbacks?.onPostWriteValidation &&
-          ['write_file', 'apply_patch'].includes(tc.function.name)
-        ) {
-          const relPath = typeof input.path === 'string' ? input.path : '';
-          if (relPath) {
-            const validation = await callbacks.onPostWriteValidation(relPath, execResult.output);
-            if (validation?.message) {
-              toolContent += `\n\n${validation.message}`;
-            }
-            if (validation?.hasErrors) {
-              resumeStepValidationFailed = true;
-            }
-          }
-        }
-
-        messages.push({
-          role: 'tool',
-          tool_call_id: tc.id,
-          name: tc.function.name,
-          content: toolContent,
-        });
-      }
-
-      if (resumeStepValidationFailed) {
-        messages.push({ role: 'user', content: VALIDATION_BLOCK_MESSAGE });
-      }
-
-      if (phaseLockRunCommandFailuresThisTurn > 0) {
-        phaseLockRunCommandFailures += phaseLockRunCommandFailuresThisTurn;
-        if (phaseLockRunCommandFailures >= 2) {
-          messages.push({ role: 'assistant', content: PHASE_LOCK_RUN_COMMAND_HARD_STOP });
-          yield PHASE_LOCK_RUN_COMMAND_HARD_STOP;
-          break;
-        }
-      }
-
-      if (pendingApproval) {
-        const checkpoint = await createApprovalCheckpoint(provider, messages, options.phaseLock, signal);
-        this.lastSuspendState = {
-          messages: [...messages],
-          tools,
-          options,
-          checkpoint,
-        };
-        break;
-      }
-
-      if (
-        autoContinue &&
-        autoContinuesUsed < maxAutoContinues &&
-        step > 0 &&
-        (step + 1) % maxSteps === 0 &&
-        !pendingApproval
-      ) {
-        autoContinuesUsed += 1;
-        callbacks?.onAutoContinue?.(autoContinuesUsed);
-        messages.push({
-          role: 'user',
-          content: 'Continue the task from where you left off. Use tools as needed until complete.',
-        });
-        log.info('Auto-continuing agent loop after resume', { continueRound: autoContinuesUsed });
       }
     }
 
-    this.lastPendingApproval = pendingApproval;
-    log.info('Agent loop resume finished', { pendingApproval });
+    return executions;
   }
 
   async runToCompletion(
@@ -1047,27 +917,15 @@ export class AgentLoop {
         tool_calls: collected.toolCalls,
       });
 
-      const executions = await Promise.all(
-        collected.toolCalls.map(async (tc) => {
-          let input: Record<string, unknown> = {};
-          try {
-            input = JSON.parse(tc.function.arguments || '{}') as Record<string, unknown>;
-          } catch {
-            input = {};
-          }
-          callbacks?.onToolStart?.(tc.function.name, input);
-          const toolStartedAt = Date.now();
-          const execResult = allowedToolNames.has(tc.function.name)
-            ? await this.toolExecutor.execute(tc.function.name, input, {
-                toolCallId: tc.id,
-                phaseLock: options?.phaseLock,
-                restrictRunCommandToReadOnly: options?.restrictRunCommandToReadOnly,
-              })
-            : notOfferedToolResult(tc.function.name);
-          toolCallsMade += 1;
-          return { tc, execResult, durationMs: Date.now() - toolStartedAt };
-        })
+      const executions = await this.executeToolCalls(
+        collected.toolCalls,
+        allowedToolNames,
+        options,
+        options?.restrictRunCommandToReadOnly,
+        signal,
+        callbacks
       );
+      toolCallsMade += executions.length;
 
       let phaseLockRunCommandFailuresThisTurn = 0;
 
@@ -1076,7 +934,7 @@ export class AgentLoop {
 
         if (execResult.pendingApproval) {
           pendingApproval = true;
-          callbacks?.onToolEnd?.(tc.function.name, false, 'Awaiting approval');
+          callbacks?.onToolEnd?.(tc.function.name, false, 'Awaiting approval', durationMs);
           messages.push({
             role: 'tool',
             tool_call_id: tc.id,

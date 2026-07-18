@@ -136,6 +136,144 @@ describe('AgentLoop E2E', () => {
     )).toBe(true);
   });
 
+  it('executes tool calls in model order and waits before running dependent tools', async () => {
+    let writeFinished = false;
+    const executor = {
+      execute: vi.fn(async (name: string) => {
+        if (name === 'write_file') {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          writeFinished = true;
+          return { success: true, output: 'written' };
+        }
+        expect(writeFinished).toBe(true);
+        return { success: true, output: 'verified' };
+      }),
+    } as unknown as ToolExecutor;
+
+    const provider = mockProvider([
+      {
+        tool_calls: [
+          {
+            index: 0,
+            id: 'call_write',
+            function: { name: 'write_file', arguments: '{"path":"README.md","content":"x"}' },
+          },
+          {
+            index: 1,
+            id: 'call_verify',
+            function: { name: 'run_command', arguments: '{"command":"pnpm test"}' },
+          },
+        ],
+      },
+      { content: 'Verified.' },
+    ]);
+
+    const loop = new AgentLoop(executor, 5);
+    for await (const _chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Patch then verify' }],
+      [
+        { type: 'function', function: { name: 'write_file', description: 'write', parameters: {} } },
+        { type: 'function', function: { name: 'run_command', description: 'run', parameters: {} } },
+      ],
+      undefined,
+      undefined,
+      { maxSteps: 3 }
+    )) {
+      // consume
+    }
+
+    expect(executor.execute).toHaveBeenNthCalledWith(
+      1,
+      'write_file',
+      expect.any(Object),
+      expect.any(Object)
+    );
+    expect(executor.execute).toHaveBeenNthCalledWith(
+      2,
+      'run_command',
+      expect.any(Object),
+      expect.any(Object)
+    );
+  });
+
+  it('does not execute later tool calls after one tool waits for approval', async () => {
+    const executor = createMockExecutor();
+    (executor.execute as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      success: false,
+      output: '',
+      pendingApproval: true,
+      error: 'Awaiting approval',
+    });
+
+    const plan: ThunderPlan = {
+      goal: 'Update docs',
+      assumptions: [],
+      requiredApprovals: [],
+      steps: [{ id: 'step_1', title: 'Write docs', status: 'running', risk: 'medium' }],
+    };
+    const provider = mockProvider([
+      {
+        tool_calls: [
+          {
+            index: 0,
+            id: 'call_write',
+            function: { name: 'write_file', arguments: '{"path":"README.md","content":"x"}' },
+          },
+          {
+            index: 1,
+            id: 'call_verify',
+            function: { name: 'run_command', arguments: '{"command":"pnpm test"}' },
+          },
+        ],
+      },
+      { content: 'checkpoint' },
+    ]);
+
+    const loop = new AgentLoop(executor, 5);
+    for await (const _chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Write docs then verify' }],
+      [
+        { type: 'function', function: { name: 'write_file', description: 'write', parameters: {} } },
+        { type: 'function', function: { name: 'run_command', description: 'run', parameters: {} } },
+      ],
+      undefined,
+      undefined,
+      {
+        maxSteps: 3,
+        maxAutoContinues: 4,
+        autoContinue: false,
+        requiresWrite: true,
+        requiredOperation: 'workspace_write',
+        logAuditMode: true,
+        askMode: true,
+        requiresAskGrounding: true,
+        planMode: true,
+        requiresPlanGrounding: true,
+        reasoningEffort: 'high',
+        planTracker: plan,
+      }
+    )) {
+      // consume
+    }
+
+    expect(executor.execute).toHaveBeenCalledTimes(1);
+    expect(loop.getSuspendState()?.options).toEqual(expect.objectContaining({
+      autoContinue: false,
+      maxAutoContinues: 4,
+      requiresWrite: true,
+      requiredOperation: 'workspace_write',
+      logAuditMode: true,
+      askMode: true,
+      requiresAskGrounding: true,
+      planMode: true,
+      requiresPlanGrounding: true,
+      reasoningEffort: 'high',
+      planTracker: plan,
+    }));
+  });
+
   it('nudges agent edit tasks when the model stops before writing', async () => {
     const executor = createMockExecutor();
     const seenMessages: Array<Array<{ role: string; content: string }>> = [];
@@ -371,6 +509,114 @@ describe('AgentLoop E2E', () => {
     ]);
   });
 
+  it('enforces required writes in audit mode when the route requested a workspace write', async () => {
+    const loop = new AgentLoop(createMockExecutor(), 4);
+    const provider = mockProvider([
+      { content: 'I found unused dependency cleanup work.' },
+      { content: 'Here is the cleanup summary.' },
+    ]);
+    const chunks: string[] = [];
+
+    for await (const chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Remove unused dependencies' }],
+      [{ type: 'function', function: { name: 'write_file', description: 'write', parameters: {} } }],
+      undefined,
+      undefined,
+      { maxSteps: 4, auditMode: true, requiredOperation: 'workspace_write' }
+    )) {
+      chunks.push(chunkContent(chunk));
+    }
+
+    expect(chunks.join('')).toContain('without calling apply_patch or write_file');
+  });
+
+  it('does not count skipped writes as completed required side effects', async () => {
+    const executor = createMockExecutor();
+    (executor.execute as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      success: true,
+      output: 'Skipped redundant tool call: write_file README.md',
+    });
+
+    const provider = mockProvider([
+      {
+        tool_calls: [{
+          index: 0,
+          id: 'call_write',
+          function: { name: 'write_file', arguments: '{"path":"README.md","content":"x"}' },
+        }],
+      },
+      { content: 'The README is updated.' },
+      { content: 'Still done.' },
+    ]);
+
+    const loop = new AgentLoop(executor, 5);
+    const chunks: string[] = [];
+    for await (const chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Update README' }],
+      [{ type: 'function', function: { name: 'write_file', description: 'write', parameters: {} } }],
+      undefined,
+      undefined,
+      { maxSteps: 5, requiresWrite: true }
+    )) {
+      chunks.push(chunkContent(chunk));
+    }
+
+    expect(chunks.join('')).toContain('tried to finish an Agent-mode edit task without calling apply_patch or write_file');
+  });
+
+  it('resumes with the same required-write enforcement after denied approval', async () => {
+    const executor = createMockExecutor();
+    (executor.execute as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      success: false,
+      output: '',
+      pendingApproval: true,
+      error: 'Awaiting approval',
+    });
+
+    const initialProvider = mockProvider([
+      {
+        tool_calls: [{
+          index: 0,
+          id: 'call_write',
+          function: { name: 'write_file', arguments: '{"path":"README.md","content":"x"}' },
+        }],
+      },
+      { content: 'checkpoint' },
+    ]);
+
+    const loop = new AgentLoop(executor, 5);
+    for await (const _chunk of loop.run(
+      initialProvider,
+      [{ role: 'user', content: 'Update README' }],
+      [{ type: 'function', function: { name: 'write_file', description: 'write', parameters: {} } }],
+      undefined,
+      undefined,
+      { maxSteps: 5, requiresWrite: true }
+    )) {
+      // consume
+    }
+
+    const state = loop.getSuspendState();
+    expect(state).toBeDefined();
+
+    const resumeProvider = mockProvider([
+      { content: 'The README is updated.' },
+      { content: 'Still done.' },
+    ]);
+    const chunks: string[] = [];
+    for await (const chunk of loop.resume(
+      resumeProvider,
+      state!,
+      [{ toolCallId: 'call_write', toolName: 'write_file', output: 'Denied', success: false }],
+    )) {
+      chunks.push(chunkContent(chunk));
+    }
+
+    expect(chunks.join('')).toContain('tried to finish an Agent-mode edit task without calling apply_patch or write_file');
+  });
+
   it('hard-stops after repeated phase-blocked run_command calls', async () => {
     const executor = createMockExecutor();
     (executor.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -504,6 +750,62 @@ describe('AgentLoop E2E', () => {
     expect(executor.execute).toHaveBeenCalledTimes(2);
     expect(chunks.join('')).toContain('Stopped after repeated identical tool failure');
     expect(chunks.join('')).not.toContain('Should not get here');
+  });
+
+  it('synthesizes gathered evidence after repeated tool failures in Ask mode', async () => {
+    const executor = createMockExecutor();
+    (executor.execute as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ success: true, output: '44 vulnerabilities found' })
+      .mockResolvedValue({
+        success: false,
+        output: '',
+        error: 'HTTP 405: Method Not Allowed',
+      });
+
+    const provider = mockProvider([
+      {
+        tool_calls: [{
+          index: 0,
+          id: 'call_audit',
+          function: { name: 'execute_workspace_script', arguments: '{"script":"audit-vulnerabilities.mjs"}' },
+        }],
+      },
+      {
+        tool_calls: [{
+          index: 0,
+          id: 'call_web_1',
+          function: { name: 'fetch_web', arguments: '{"url":"https://api.osv.dev/v1/query"}' },
+        }],
+      },
+      {
+        tool_calls: [{
+          index: 0,
+          id: 'call_web_2',
+          function: { name: 'fetch_web', arguments: '{"url":"https://api.osv.dev/v1/query?package=fastify"}' },
+        }],
+      },
+      { content: 'The local audit found 44 vulnerabilities; online verification failed with HTTP 405.' },
+    ]);
+
+    const loop = new AgentLoop(executor, 6);
+    const chunks: string[] = [];
+    for await (const chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Audit vulnerabilities and verify online' }],
+      [
+        { type: 'function', function: { name: 'execute_workspace_script', description: 'audit', parameters: {} } },
+        { type: 'function', function: { name: 'fetch_web', description: 'fetch', parameters: {} } },
+      ],
+      undefined,
+      undefined,
+      { maxSteps: 6, askMode: true }
+    )) {
+      chunks.push(chunkContent(chunk));
+    }
+
+    expect(executor.execute).toHaveBeenCalledTimes(3);
+    expect(chunks.join('')).toContain('local audit found 44 vulnerabilities');
+    expect(chunks.join('')).not.toContain('### Stopped after repeated identical tool failure');
   });
 
   it('resumes after approval with checkpoint injection', async () => {

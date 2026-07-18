@@ -70,8 +70,11 @@ export interface TaskAnalysisOptions {
   actIntent?: ActIntent;
 }
 
-const ACTION_VERBS =
-  /\b(implement|build|create|add|fix|refactor|migrate|rewrite|update|remove|delete|integrate|wire|connect|setup|configure|optimize|improve|imporve|enhance|polish|redesign|debug|test|change|replace)\b/i;
+const ACTION_VERB_SOURCE =
+  String.raw`\b(?:implement|build|create|add|fix|refactor|migrate|rewrite|update|remove|delete|integrate|wire|connect|setup|configure|optimize|improve|imporve|enhance|polish|redesign|debug|test|change|replace)\b`;
+
+const ACTION_VERBS = new RegExp(ACTION_VERB_SOURCE, 'i');
+const ACTION_VERBS_GLOBAL = new RegExp(ACTION_VERB_SOURCE, 'gi');
 
 const IMPLEMENTATION_HINTS =
   /\b(need|change|replace|ui|ux|landing page|animated|animation|enterprise|implement|create|fix|docs?|documentation|docusaurus|examples?)\b/i;
@@ -103,8 +106,11 @@ const SIMPLE_CONTENT_APPEND =
 const SIMPLE_FILE_TARGET =
   /\b(?:to|in|into|at (?:the )?end of)\b[\s\S]{0,80}\b[\w./-]+\.(txt|md|csv|json|yaml|yml)\b|\b(?:plan|roadmap|curriculum|schedule)\b/i;
 
-const AUDIT_CLEANUP =
-  /\b(?:un(?:used|sed)\s+(?:dependencies|dependency|deps?|imports?|exports?|files?)|dead\s+code|orphan(?:ed)?\s+(?:files?|exports?)|dependency\s+(?:audit|cleanup)|depcheck|knip|ts-prune|remove\s+(?:all\s+)?(?:the\s+)?un(?:used|sed)\s+(?:imports?|files?|dependencies)|find\s+un(?:used|sed)|list\s+un(?:used|sed)|reduce\s+bundle|tree[- ]shake)\b/i;
+const AUDIT_CLEANUP_TARGET =
+  /\b(?:un(?:used|sed)\s+(?:dependenc(?:y|ies)|deps?|imports?|exports?|files?)|dead\s+code|orphan(?:ed)?\s+(?:files?|exports?)|dependenc(?:y|ies)|deps?|depcheck|knip|ts-prune|tree[- ]shak(?:e|ing)|bundle)\b/i;
+
+const AUDIT_CLEANUP_ACTION =
+  /\b(?:audit|scan|check|find|detect|remove|clean(?:\s+up)?|cleanup|run|identify|list|reduce)\b/i;
 
 const DOCS_IMPLEMENTATION =
   /\b(add|create|write|update|generate|build)\b[\s\S]{0,80}\b(docs?|documentation|docusaurus|mdx?|examples?)\b|\b(docs?|documentation|docusaurus|mdx?|examples?)\b[\s\S]{0,80}\b(all|every|features?|components?|exports?|api|route|sidebar|navbar|installation|configuration)\b/i;
@@ -207,10 +213,7 @@ export function analyzeTask(userMessage: string, mode: string, options: TaskAnal
     };
   }
 
-  return {
-    ...classified,
-    actIntent: options.actIntent,
-  };
+  return applyActIntent(classified, options.actIntent, taskText);
 }
 
 function estimateAskComplexity(
@@ -244,7 +247,7 @@ function classifyTask(text: string): TaskAnalysis {
   }
 
   // Dependency / dead-code cleanup only — bare "audit" is handled later as generic review.
-  if (AUDIT_CLEANUP.test(text)) {
+  if (isAuditCleanupRequest(text)) {
     const auditSubtype = resolveAuditSubtype(text) ?? 'generic';
     const isCleanup =
       auditSubtype === 'unused_deps' ||
@@ -365,7 +368,7 @@ function classifyTask(text: string): TaskAnalysis {
     };
   }
 
-  const actionCount = (primary.match(ACTION_VERBS) ?? []).length;
+  const actionCount = primary.match(ACTION_VERBS_GLOBAL)?.length ?? 0;
   const connectorCount = (primary.match(/\b(and|then|also|after that|next)\b/gi) ?? []).length;
   const fileMentions = (primary.match(/[`'"]?[\w./-]+\.(tsx?|jsx?|py|go|rs|json|md|css|scss|yaml|yml)[`'"]?/gi) ?? []).length;
   const complexity = estimateComplexity(primary);
@@ -430,6 +433,113 @@ function classifyTask(text: string): TaskAnalysis {
     shouldUseSubagents: false,
     summary: 'General request — respond with tools as needed.',
   };
+}
+
+function applyActIntent(
+  analysis: TaskAnalysis,
+  actIntent: ActIntent | undefined,
+  taskText: string
+): TaskAnalysis {
+  const effectiveIntent = actIntent ?? analysis.actIntent;
+  if (!effectiveIntent) return analysis;
+
+  if (!actIntent) {
+    return {
+      ...analysis,
+      actIntent: effectiveIntent,
+    };
+  }
+
+  switch (effectiveIntent) {
+    case 'question':
+      return {
+        ...analysis,
+        kind: 'question',
+        complexity: 'low',
+        shouldPlan: false,
+        shouldVerify: false,
+        shouldUseSubagents: false,
+        actIntent: effectiveIntent,
+      };
+
+    case 'diagnose':
+      return {
+        ...analysis,
+        kind: 'debugging',
+        shouldPlan: false,
+        shouldVerify: true,
+        actIntent: effectiveIntent,
+      };
+
+    case 'log_audit':
+      return {
+        ...analysis,
+        kind: 'log_audit',
+        complexity: 'low',
+        shouldPlan: false,
+        shouldVerify: false,
+        shouldUseSubagents: false,
+        actIntent: effectiveIntent,
+      };
+
+    case 'audit': {
+      const auditSubtype = analysis.auditSubtype ?? resolveAuditSubtype(taskText) ?? 'generic';
+      const isCleanup =
+        auditSubtype === 'unused_deps' ||
+        auditSubtype === 'dead_code' ||
+        auditSubtype === 'vulnerability';
+      return {
+        ...analysis,
+        kind: 'audit',
+        complexity: isCleanup ? 'high' : analysis.complexity === 'low' ? 'medium' : analysis.complexity,
+        shouldPlan: isCleanup,
+        shouldVerify: true,
+        shouldUseSubagents: false,
+        auditSubtype,
+        actIntent: effectiveIntent,
+      };
+    }
+
+    case 'docs': {
+      const docsSubtype = analysis.docsSubtype ?? resolveDocsSubtype(taskText) ?? 'generic';
+      const isReadme = docsSubtype === 'readme';
+      return {
+        ...analysis,
+        kind: 'docs',
+        complexity: analysis.complexity === 'low' && !isReadme ? 'medium' : analysis.complexity,
+        shouldPlan: !isReadme && analysis.shouldPlan,
+        shouldVerify: docsSubtype === 'docusaurus' || docsSubtype === 'mdx_repair',
+        shouldUseSubagents: false,
+        docsSubtype,
+        actIntent: effectiveIntent,
+      };
+    }
+
+    case 'bugfix':
+      return {
+        ...analysis,
+        kind:
+          analysis.kind === 'debugging' || analysis.kind === 'simple_edit'
+            ? analysis.kind
+            : 'implementation',
+        shouldVerify: true,
+        actIntent: effectiveIntent,
+      };
+
+    case 'feature':
+    case 'refactor':
+      return {
+        ...analysis,
+        kind: 'implementation',
+        shouldVerify: true,
+        actIntent: effectiveIntent,
+      };
+  }
+}
+
+function isAuditCleanupRequest(text: string): boolean {
+  if (isLogAuditTask(text)) return false;
+  return AUDIT_CLEANUP_TARGET.test(text) && AUDIT_CLEANUP_ACTION.test(text);
 }
 
 function estimateComplexity(text: string): TaskComplexity {

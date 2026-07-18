@@ -90,7 +90,10 @@ export class MemoryExtractor {
           { role: 'user', content: prompt },
         ],
         stream: false,
-        maxTokens: 200,
+        // See intentClassifier.ts: reasoning models spend tokens on hidden thinking
+        // before content, so a tight budget here silently yields an empty summary.
+        maxTokens: 800,
+        reasoningEffort: 'low',
       })) {
         if (delta.content) summary += delta.content;
       }
