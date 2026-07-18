@@ -28,14 +28,38 @@ export type DocsSubtype =
   | 'generic';
 
 export type OperationClass =
-  | 'read'
-  | 'edit'
+  | 'inspect'
+  | 'workspace_write'
   | 'shell'
-  | 'git_write'
+  | 'local_git_write'
+  | 'remote_write'
   | 'release'
-  | 'log_analyze';
+  | 'log_analyze'
+  | 'execute_saved_plan';
 
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+export type ArtifactKind =
+  | 'source_file'
+  | 'readme'
+  | 'documentation'
+  | 'jsonl_file'
+  | 'log_directory'
+  | 'configuration'
+  | 'test'
+  | 'git_repository'
+  | 'unknown';
+
+export interface ArtifactSignal {
+  kind: ArtifactKind;
+  path?: string;
+  source: 'explicit' | 'conversation' | 'inferred';
+  confidence: number;
+}
+
+export interface ArtifactClassification {
+  artifacts: ArtifactSignal[];
+}
 
 /** User-facing / product planning axis. */
 export type PlanningDepthAxis = 'direct' | 'quick' | 'deep';
@@ -110,6 +134,7 @@ export interface CapabilityResolution {
 
 export interface PipelineResolution {
   classification: TaskClassification;
+  artifact: ArtifactClassification;
   route: RouteResolution;
   depthAxis: PlanningDepthAxis;
   internalDepth: InternalPlanningDepth;

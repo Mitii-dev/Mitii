@@ -65,6 +65,7 @@ describe('analyzeJsonlFile', () => {
     expect(report.tools.counts.read_file).toBeGreaterThanOrEqual(1);
     expect(report.tools.duplicateSignatures.length).toBeGreaterThan(0);
     expect(report.hasEnoughEvidence).toBe(true);
+    expect(report.evidenceSufficiency.sufficientForSummary).toBe(true);
     expect(JSON.stringify(report).length).toBeLessThan(12_000);
 
     unlinkSync(path);
@@ -96,6 +97,29 @@ describe('analyzeJsonlFile', () => {
       expect(report.tools.counts.read_file).toBe(1);
       expect(report.tools.duplicateSignatures).toEqual([]);
       expect(report.anomalies.some((item) => item.includes('Repeated tool signature'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('classifies completion from the latest turn rather than an older terminal event', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mitii-jsonl-turns-'));
+    try {
+      const path = join(dir, 'multi-turn.jsonl');
+      const lines = [
+        { type: 'session_start', sessionId: 'abc', message: 'start' },
+        { type: 'turn_start', sessionId: 'abc', message: 'turn one', data: { turnId: 'one' } },
+        { type: 'assistant_message', sessionId: 'abc', message: 'A complete first-turn response with enough detail to be considered useful by the analyzer.' },
+        { type: 'turn_end', sessionId: 'abc', message: 'done', data: { turnId: 'one', status: 'completed' } },
+        { type: 'turn_start', sessionId: 'abc', message: 'turn two', data: { turnId: 'two' } },
+        { type: 'token_usage', sessionId: 'abc', message: 'tokens', data: { inputTokens: 10 } },
+      ];
+      writeFileSync(path, `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`, 'utf8');
+
+      const report = await analyzeJsonlFile(path, 'multi-turn.jsonl');
+      expect(report.session.completed).toBe(false);
+      expect(report.session.completionStatus).toBe('incomplete');
+      expect(report.evidenceSufficiency.sufficientForCompletionAssessment).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -203,7 +227,7 @@ describe('analyzeJsonlFile', () => {
       const toolResult = await tool.execute({ path: '.mitii/logs/' });
       expect(toolResult.success).toBe(true);
       expect(toolResult.output).toContain('"filesListed": 2');
-      expect(toolResult.output).toContain('[hasEnoughEvidence=true]');
+      expect(toolResult.output).toContain('[evidenceSufficientForSummary=true]');
 
       const typoToolResult = await tool.execute({ path: '.mtii/logs' });
       expect(typoToolResult.success).toBe(true);

@@ -129,25 +129,48 @@ function mapIntent(
 function resolveOperationClass(
   intent: PipelineIntent,
   isGitTask: boolean,
-  gitRoute?: TaskAnalysis['gitRoute']
+  gitRoute: TaskAnalysis['gitRoute'] | undefined,
+  taskAnalysis: TaskAnalysis | undefined,
+  text: string,
+  resumeSavedPlan: boolean,
+  auditSubtype?: AuditSubtype
 ): OperationClass {
+  if (resumeSavedPlan) return 'execute_saved_plan';
   if (intent === 'log_audit') return 'log_analyze';
-  if (intent === 'question') return 'read';
+  if (intent === 'question') return 'inspect';
   if (isGitTask) {
     const route = gitRoute?.route;
     if (route === 'release_management') return 'release';
-    if (
-      route === 'git_local_write' ||
-      route === 'git_workspace_edit' ||
-      route === 'github_remote_write' ||
-      route === 'github_actions'
-    ) {
-      return 'git_write';
+    if (gitRoute?.classification.requiresRemoteWrite) return 'remote_write';
+    if (gitRoute?.classification.requiresGitWrite) return 'local_git_write';
+    if (gitRoute?.classification.requiresWorkspaceWrite || route === 'git_workspace_edit') {
+      return 'workspace_write';
     }
-    return 'read';
+    return 'inspect';
+  }
+  if (
+    taskAnalysis?.kind === 'question' ||
+    taskAnalysis?.askIntent ||
+    /\b(explain|describe|summarize|review|inspect|analy[sz]e|find|locate|where|what|why|how)\b/i.test(text) &&
+      !/\b(update|edit|write|create|add|remove|fix|implement|change|refactor|migrate)\b/i.test(text)
+  ) {
+    return 'inspect';
+  }
+  if (
+    intent === 'audit' &&
+    isDependencyCleanupAudit(auditSubtype) &&
+    /\b(remove|delete|clean\s*up|cleanup|fix|update)\b/i.test(text)
+  ) {
+    return 'workspace_write';
+  }
+  if (
+    intent === 'diagnose' &&
+    /\b(fix|repair|update|change|patch)\b/i.test(text)
+  ) {
+    return 'workspace_write';
   }
   if (intent === 'audit' || intent === 'diagnose') return 'shell';
-  return 'edit';
+  return 'workspace_write';
 }
 
 function resolveRisk(
@@ -158,7 +181,7 @@ function resolveRisk(
 ): RiskLevel {
   if (gitRoute?.risk) return gitRoute.risk as RiskLevel;
   if (operationClass === 'release') return 'high';
-  if (operationClass === 'git_write') return 'medium';
+  if (operationClass === 'local_git_write' || operationClass === 'remote_write') return 'medium';
   if (intent === 'audit' && complexity === 'high') return 'medium';
   if (complexity === 'high') return 'medium';
   if (intent === 'question' || intent === 'log_audit' || intent === 'docs') return 'low';
@@ -215,7 +238,15 @@ export function resolveRoute(
 
   const intent = mapIntent(taskAnalysis, text, auditSubtype, docsSubtype);
   const isGitTask = Boolean(taskAnalysis?.gitRoute?.isGitTask);
-  const operationClass = resolveOperationClass(intent, isGitTask, taskAnalysis?.gitRoute);
+  const operationClass = resolveOperationClass(
+    intent,
+    isGitTask,
+    taskAnalysis?.gitRoute,
+    taskAnalysis,
+    text,
+    Boolean(options.resumeSavedPlan),
+    auditSubtype
+  );
   const risk = resolveRisk(intent, operationClass, taskAnalysis?.complexity, taskAnalysis?.gitRoute);
 
   const shouldPlan =

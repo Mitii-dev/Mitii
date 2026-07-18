@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $Version = if ($env:MITII_VERSION) { $env:MITII_VERSION } else { "latest" }
 $InstallDir = if ($env:MITII_INSTALL_DIR) { $env:MITII_INSTALL_DIR } else { Join-Path $HOME ".mitii\\bin" }
 $Asset = "mitii-win32-x64.zip"
-$Base = "https://github.com/codewithshinde/thunder-ai-agent/releases"
+$Base = "https://github.com/Mitii-dev/Mitii/releases"
 $Url = if ($Version -eq "latest") { "$Base/latest/download/$Asset" } else { "$Base/download/$Version/$Asset" }
 $SumsUrl = if ($Version -eq "latest") { "$Base/latest/download/SHA256SUMS" } else { "$Base/download/$Version/SHA256SUMS" }
 

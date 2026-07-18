@@ -184,6 +184,24 @@ export async function analyzeLogDirectory(
     .sort((a, b) => b.score - a.score || (a.file ?? '').localeCompare(b.file ?? '') || a.message.localeCompare(b.message))
     .slice(0, MAX_RANKED_ANOMALIES)
     .map((item, index) => ({ rank: index + 1, ...item }));
+  const sufficientForSummary = totals.filesIncluded > 0;
+  const sufficientForCompletionAssessment =
+    sufficientForSummary && totals.incompleteLogs === 0;
+  const hasFailureSignals = totals.failedToolCalls > 0 || errorCategories.length > 0;
+  const sufficientForRootCause = !hasFailureSignals || rankedAnomalies.length > 0;
+  const missingEvidenceFor = [
+    !sufficientForSummary ? 'summary' : undefined,
+    !sufficientForCompletionAssessment ? 'completion assessment' : undefined,
+    !sufficientForRootCause ? 'root cause' : undefined,
+  ].filter((value): value is string => Boolean(value));
+  const evidenceSufficiency = {
+    sufficientForInventory: names.length > 0,
+    sufficientForSummary,
+    sufficientForCompletionAssessment,
+    sufficientForRootCause,
+    missingEvidenceFor,
+    followupBudget: missingEvidenceFor.length > 0 ? 1 : 0,
+  };
 
   return {
     directory: {
@@ -200,7 +218,8 @@ export async function analyzeLogDirectory(
     },
     errorCategories,
     rankedAnomalies,
-    hasEnoughEvidence: names.length > 0,
+    evidenceSufficiency,
+    hasEnoughEvidence: sufficientForSummary,
   };
 }
 

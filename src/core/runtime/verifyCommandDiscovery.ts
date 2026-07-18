@@ -84,6 +84,14 @@ export function resolveProjectVerifyCommands(
     notes.push(`Scanned ${packageDirs.length} package(s) from touched files and workspace layout.`);
   }
 
+  const readmeOnly =
+    touchedFiles.length > 0 &&
+    touchedFiles.every((file) => /(?:^|\/)readme(?:\.[^/]+)?\.md$/i.test(file));
+  if (readmeOnly && trimmed.length === 0) {
+    notes.push('README-only change — use deterministic Markdown/link validation; skip application production builds.');
+    return finalizePlan(workspace, commands, skipped, notes, installCommands, discoveredScripts);
+  }
+
   // Docs touches: prefer docs build when no explicit commands matched
   const shouldPreferDocs = touchesDocs(touchedFiles) || /\b(docs?|docusaurus|mdx|preview)\b/i.test(options.userMessage ?? '');
   if (shouldPreferDocs && commands.length === 0) {

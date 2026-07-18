@@ -18,6 +18,7 @@ import { validateMdxContent } from '../apply/mdxValidation';
 import { isDangerousCommand } from '../safety/ToolPolicyEngine';
 import { stripLeadingCd } from '../plans/PlanActEngine';
 import { normalizeWorkspaceRoot, resolveWorkspaceRelPath, formatPathNotFoundHint } from '../util/paths';
+import { positiveInt } from './coerceInput';
 import type { ThunderDb } from '../indexing/ThunderDb';
 import { createWorkspacePathResolver } from '../paths/WorkspacePathResolver';
 import { BaseSubagent, createDefaultSubagentRegistry, loadWorkspaceAgents, type SubagentRuntime } from '../subagents';
@@ -170,8 +171,11 @@ function resolveToolPath(workspace: string, rawPath: string, ignoreService: Igno
 
 
 const SOURCE_FILE_PATTERN = /\.(?:tsx?|jsx?|mjs|cjs|css|scss|sass|less|json|ya?ml)$/i;
-const READ_FILE_MAX_CHARS = 50000;
+const READ_FILE_MAX_CHARS = 12_000;
+const READ_FILES_PER_FILE_MAX_CHARS = 4_000;
+const READ_FILES_TOTAL_MAX_CHARS = 12_000;
 const READ_FILES_MAX_PATHS = 12;
+const LIST_FILES_MAX_ENTRIES = 150;
 const MAX_SCOPE_CANDIDATES = 12;
 
 interface ReadFileInput {
@@ -333,12 +337,21 @@ export function createReadFilesTool(
       })));
       for (const { path, result } of results) {
         parts.push(result.success
-          ? `### ${path}\n${result.output}`
+          ? `### ${path}\n${truncateToolEvidence(result.output, READ_FILES_PER_FILE_MAX_CHARS)}`
           : `### ${path}\nERROR: ${result.error}`);
       }
-      return { success: true, output: parts.join('\n\n') };
+      return {
+        success: true,
+        output: truncateToolEvidence(parts.join('\n\n'), READ_FILES_TOTAL_MAX_CHARS),
+      };
     },
   };
+}
+
+function truncateToolEvidence(content: string, maxChars: number): string {
+  if (content.length <= maxChars) return content;
+  const remaining = content.length - maxChars;
+  return `${content.slice(0, maxChars)}\n...(evidence truncated, ${remaining} more characters; request a narrower range)`;
 }
 
 async function readWorkspaceFileContent(
@@ -482,17 +495,42 @@ export function createResolvePathTool(
   workspace: string,
   ignoreService: IgnoreService,
   db?: ThunderDb
-): Tool<{ path: string; scopeRoot?: string }> {
+): Tool<{ path: string; scopeRoot?: string; intent?: 'read' | 'write' }> {
   return {
     name: 'resolve_path',
     description:
-      'Resolve a workspace file path using the SQLite index, layout heuristics, and filesystem search. Returns ranked candidates and auto-resolution when confidence is high. Use before read_file when the exact path is uncertain.',
+      'Resolve an existing workspace path, or validate a creatable new path with intent:"write". Returns ranked candidates for reads and a creatable path for writes.',
     risk: 'low',
     inputSchema: z.object({
       path: z.string(),
       scopeRoot: z.string().optional(),
+      intent: z.enum(['read', 'write']).optional(),
     }),
     async execute(input): Promise<ToolResult> {
+      if (input.intent === 'write') {
+        const relPath = resolveWorkspaceRelPath(workspace, input.path);
+        if (
+          relPath !== null &&
+          relPath.length > 0 &&
+          !ignoreService.isIgnored(relPath) &&
+          hasExistingWorkspaceAncestor(workspace, relPath)
+        ) {
+          return {
+            success: true,
+            output: [
+              `Requested: ${input.path}`,
+              `Normalized: ${relPath}`,
+              `Creatable: ${relPath}`,
+              'Confidence: high',
+            ].join('\n'),
+          };
+        }
+        return {
+          success: false,
+          output: '',
+          error: `Write path is outside the workspace, ignored, or has no valid parent: ${input.path}`,
+        };
+      }
       const resolver = createWorkspacePathResolver({
         workspace,
         db,
@@ -523,6 +561,20 @@ export function createResolvePathTool(
   };
 }
 
+function hasExistingWorkspaceAncestor(workspace: string, relPath: string): boolean {
+  let parent = dirname(relPath);
+  while (parent && parent !== '.' && parent !== '/') {
+    try {
+      const stat = statSync(join(workspace, parent));
+      if (stat.isDirectory()) return true;
+      return false;
+    } catch {
+      parent = dirname(parent);
+    }
+  }
+  return true;
+}
+
 export function createListFilesTool(
   workspace: string,
   ignoreService: IgnoreService
@@ -544,7 +596,7 @@ export function createListFilesTool(
       try {
         const base = relPath ? join(workspace, relPath) : workspace;
         if (!input.recursive) {
-          const entries = readdirSync(base).filter((entry) => {
+          const allEntries = readdirSync(base).filter((entry) => {
             const entryRel = relPath ? join(listRel, entry).replace(/\\/g, '/') : entry;
             try {
               const stat = statSync(join(base, entry));
@@ -553,9 +605,13 @@ export function createListFilesTool(
               return false;
             }
           });
-          return { success: true, output: entries.join('\n') };
+          const entries = allEntries.slice(0, LIST_FILES_MAX_ENTRIES);
+          const note = allEntries.length > entries.length
+            ? `\n...(truncated, ${allEntries.length - entries.length} more entries)`
+            : '';
+          return { success: true, output: `${entries.join('\n')}${note}` };
         }
-        const files = walkDir(workspace, listRel, ignoreService, 8, 500);
+        const files = walkDir(workspace, listRel, ignoreService, 8, LIST_FILES_MAX_ENTRIES);
         return { success: true, output: files.join('\n') || '(empty)' };
       } catch (e) {
         const err = String(e);
@@ -1040,6 +1096,23 @@ export function createAnalyzeChangeImpactTool(
   };
 }
 
+function normalizeFileScopeIntent(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const normalized = value.trim().toLowerCase();
+  if (['write', 'edit', 'create', 'modify', 'delete'].includes(normalized)) return 'write';
+  if (['read', 'list', 'search', 'routing', 'inspect', 'analyze'].includes(normalized)) return 'read';
+  return value;
+}
+
+function parseFileScopeCandidates(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
 export function createProposeFileScopeTool(
   workspace: string,
   ignoreService: IgnoreService,
@@ -1058,19 +1131,24 @@ export function createProposeFileScopeTool(
     risk: 'low',
     inputSchema: z.object({
       objective: z.string().min(3),
-      candidates: z.array(z.object({
+      candidates: z.preprocess(parseFileScopeCandidates, z.array(z.object({
         path: z.string(),
         reason: z.string().optional(),
-        intent: z.enum(['read', 'write']).optional(),
-        access: z.enum(['read', 'write']).optional(),
+        intent: z.preprocess(normalizeFileScopeIntent, z.enum(['read', 'write']).optional()),
+        access: z.preprocess(normalizeFileScopeIntent, z.enum(['read', 'write']).optional()),
         startLine: z.number().int().positive().optional(),
         endLine: z.number().int().positive().optional(),
       }).refine((candidate) => !candidate.startLine || !candidate.endLine || candidate.endLine >= candidate.startLine, {
         message: 'endLine must be greater than or equal to startLine',
-      })).min(1).max(MAX_SCOPE_CANDIDATES),
+      })).min(1).max(MAX_SCOPE_CANDIDATES)),
       scopeRoot: z.string().optional(),
-      maxFilesRead: z.number().int().positive().optional(),
-    }),
+      maxFilesRead: positiveInt(),
+    }) as unknown as z.ZodType<{
+      objective: string;
+      candidates: FileScopeCandidateInput[];
+      scopeRoot?: string;
+      maxFilesRead?: number;
+    }>,
     parametersJsonSchema: {
       type: 'object',
       properties: {
@@ -1360,7 +1438,7 @@ export function createRunCommandTool(workspace: string, getMode: () => string): 
         });
         const output = [normalized.note, stdout, stderr].filter(Boolean).join('\n').slice(0, 50000);
         // Exit 0 is not enough — BSD grep etc. can still emit "invalid option" on stderr.
-        if (looksLikeShellFailure(stderr, stdout)) {
+        if (looksLikeShellFailure(stderr, stdout, input.command)) {
           log.info('Command exit 0 treated as failure (error signature in output)', {
             command: normalized.command.slice(0, 80),
           });
@@ -1375,7 +1453,7 @@ export function createRunCommandTool(workspace: string, getMode: () => string): 
       } catch (e) {
         const err = e as { code?: number; stdout?: string; stderr?: string; message?: string };
         const output = [err.stdout, err.stderr].filter(Boolean).join('\n').slice(0, 50000);
-        if (isBenignNonZeroExit(input.command, err.code, output) && !looksLikeShellFailure(err.stderr, err.stdout)) {
+        if (isBenignNonZeroExit(input.command, err.code, output) && !looksLikeShellFailure(err.stderr, err.stdout, input.command)) {
           log.info('Command non-zero exit treated as success (no matches / pipe closed)', {
             command: input.command.slice(0, 80),
             code: err.code,
@@ -1389,7 +1467,7 @@ export function createRunCommandTool(workspace: string, getMode: () => string): 
 }
 
 /** Prefer stderr — grepping logs often prints historical "not found" / "permission denied" in stdout. */
-function looksLikeShellFailure(stderr?: string, stdout?: string): boolean {
+function looksLikeShellFailure(stderr?: string, stdout?: string, command = ''): boolean {
   const errText = stderr ?? '';
   if (
     /\b(invalid option|illegal option|permission denied|command not found|usage:)\b/i.test(errText) ||
@@ -1400,6 +1478,15 @@ function looksLikeShellFailure(stderr?: string, stdout?: string): boolean {
   // Only treat stdout as a shell failure when it looks like a usage/help dump, not data.
   const out = (stdout ?? '').trim();
   if (!errText && /^(usage:|grep:\s)/i.test(out) && out.length < 800) {
+    return true;
+  }
+  // Pipelines such as `tsc 2>&1 | tail` inherit tail's exit code (0), even when
+  // the compiler failed. Only inspect stdout this way for verification commands,
+  // so grepping historical logs that contain "error" remains a successful read.
+  if (
+    /\b(tsc|typescript|eslint|vitest|jest|pytest|cargo\s+(?:test|check)|(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:test|lint|build|typecheck|check))\b/i.test(command) &&
+    /(?:\berror TS\d+\b|\bFound \d+ errors?\b|\bTests?:?\s+\d+ failed\b|\bELIFECYCLE\b|(?:^|\n)\s*(?:ERROR|FAIL)\b)/i.test(out)
+  ) {
     return true;
   }
   return false;

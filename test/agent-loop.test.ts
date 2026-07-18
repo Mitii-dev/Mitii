@@ -318,6 +318,7 @@ describe('AgentLoop E2E', () => {
 
     const loop = new AgentLoop(executor, 8);
     const chunks: string[] = [];
+    const candidates: Array<{ accepted: boolean; rejectionReason?: string }> = [];
     for await (const chunk of loop.run(
       provider,
       [{ role: 'user', content: 'Update the README with Ollama config details' }],
@@ -327,7 +328,9 @@ describe('AgentLoop E2E', () => {
         { type: 'function', function: { name: 'write_file', description: 'write', parameters: {} } },
       ],
       undefined,
-      undefined,
+      {
+        onResponseCandidate: (candidate) => candidates.push(candidate),
+      },
       { maxSteps: 8, requiresWrite: true }
     )) {
       chunks.push(chunkContent(chunk));
@@ -335,6 +338,37 @@ describe('AgentLoop E2E', () => {
 
     expect(executedTools).toEqual(['read_file', 'search']);
     expect(chunks.join('')).toContain('tried to finish an Agent-mode edit task without calling apply_patch or write_file');
+    expect(candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ accepted: false, rejectionReason: 'workspace_write_required' }),
+      expect.objectContaining({ accepted: false, rejectionReason: 'workspace_write_missing_after_retry' }),
+    ]));
+  });
+
+  it('rejects progress-only answers for remote writes until a remote tool succeeds', async () => {
+    const loop = new AgentLoop(createMockExecutor(), 4);
+    const provider = mockProvider([
+      { content: 'I will create the pull request now.' },
+      { content: 'I am going to do that next.' },
+    ]);
+    const candidates: Array<{ accepted: boolean; rejectionReason?: string }> = [];
+    const chunks: string[] = [];
+
+    for await (const chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Create the pull request' }],
+      [{ type: 'function', function: { name: 'github_create_pull_request', description: 'create PR', parameters: {} } }],
+      undefined,
+      { onResponseCandidate: (candidate) => candidates.push(candidate) },
+      { maxSteps: 4, requiredOperation: 'remote_write' }
+    )) {
+      chunks.push(chunkContent(chunk));
+    }
+
+    expect(chunks.join('')).toContain('without completing the requested remote write');
+    expect(candidates).toEqual([
+      expect.objectContaining({ accepted: false, rejectionReason: 'remote_write_required' }),
+      expect.objectContaining({ accepted: false, rejectionReason: 'remote_write_missing_after_retry' }),
+    ]);
   });
 
   it('hard-stops after repeated phase-blocked run_command calls', async () => {

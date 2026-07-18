@@ -1,4 +1,4 @@
-import { extractOriginalTaskMessage, isApprovalContinuationMessage } from './taskMessage';
+import { extractOriginalTaskMessage, isApprovalContinuationMessage, splitConversationContext } from './taskMessage';
 import { routeAskIntent } from '../modes/ask/AskIntentRouter';
 import { routePlanIntent } from '../modes/plan/PlanIntentRouter';
 import type { AskIntent } from '../modes/ask/askTypes';
@@ -7,6 +7,7 @@ import type { ActIntent } from '../modes/agent/actTypes';
 import { isLogAuditTask } from './logAudit';
 import { resolveGitRoute, type GitRouteResolution } from '../git/intents';
 import { resolveAuditSubtype, resolveDocsSubtype } from '../pipeline/route/routeResolver';
+import { DIAGNOSTIC_REQUEST } from './diagnosticRequest';
 
 export type TaskKind =
   | 'question'
@@ -85,10 +86,7 @@ const QUESTION =
   /^(what|how|why|where|when|who|which|explain|describe|tell me|show me|list|summarize|overview)\b/i;
 
 const DIRECT_ERROR_FIX =
-  /\b(syntax error|type error|referenceerror|cannot find module|missing semicolon|unexpected token|unexpected character|parse error|compilation (?:error|failed)|mdx compilation failed|could not parse expression|is not defined|enoent|can'?t resolve|module not found|compiled with problems)\b/i;
-
-const DIAGNOSTIC_REQUEST =
-  /\b(identify (?:the )?(?:issues?|problems?|bugs?|errors?)|find (?:the )?(?:issues?|problems?|bugs?|errors?)|what(?:'s| is) (?:wrong|broken)|why (?:doesn'?t|does ?n'?t|isn'?t|is ?n'?t|won'?t|can'?t|cannot)|diagnose|root cause|investigate why|figure out why|spot (?:the )?(?:issues?|bugs?|problems?)|doesn'?t (?:read|work|load|render|run|start)|does not (?:read|work|load|render|run|start))\b/i;
+  /\b(syntax error|type ?error|referenceerror|cannot find module|missing semicolon|unexpected token|unexpected character|parse error|compilation (?:error|failed)|build failed|failed to compile|failed to fetch|mdx compilation failed|could not parse expression|is not defined|enoent|can'?t resolve|module not found|compiled with problems)\b/i;
 
 const DIAGNOSTIC_SCOPE_EXPANDING =
   /\b(refactor|redesign|rewrite|migrate|implement (?:a|the) new|new feature|entire codebase|whole codebase|across (?:the )?(?:whole|entire)?\s*(?:codebase|project|repo))\b/i;
@@ -106,7 +104,7 @@ const SIMPLE_FILE_TARGET =
   /\b(?:to|in|into|at (?:the )?end of)\b[\s\S]{0,80}\b[\w./-]+\.(txt|md|csv|json|yaml|yml)\b|\b(?:plan|roadmap|curriculum|schedule)\b/i;
 
 const AUDIT_CLEANUP =
-  /\b(unus[a-z]*|dead code|orphan|cleanup|clean up|remove\s+(?:all\s+)?(?:the\s+)?(?:(?:uns[a-z]*|unused)\s+)?(?:imports?|files?|dependenc(?:y|ies)?)|depcheck|dependencies audit|dependency audit|find unused|list unused|reduce bundle|tree[- ]shake)\b/i;
+  /\b(?:un(?:used|sed)\s+(?:dependencies|dependency|deps?|imports?|exports?|files?)|dead\s+code|orphan(?:ed)?\s+(?:files?|exports?)|dependency\s+(?:audit|cleanup)|depcheck|knip|ts-prune|remove\s+(?:all\s+)?(?:the\s+)?un(?:used|sed)\s+(?:imports?|files?|dependencies)|find\s+un(?:used|sed)|list\s+un(?:used|sed)|reduce\s+bundle|tree[- ]shake)\b/i;
 
 const DOCS_IMPLEMENTATION =
   /\b(add|create|write|update|generate|build)\b[\s\S]{0,80}\b(docs?|documentation|docusaurus|mdx?|examples?)\b|\b(docs?|documentation|docusaurus|mdx?|examples?)\b[\s\S]{0,80}\b(all|every|features?|components?|exports?|api|route|sidebar|navbar|installation|configuration)\b/i;
@@ -227,6 +225,10 @@ function estimateAskComplexity(
 
 function classifyTask(text: string): TaskAnalysis {
   const lower = text.toLowerCase();
+  // A quoted prior turn (appended by resolveConversationTaskMessage) can be a long
+  // pasted error/stack trace — great for pattern matches above, but it should not
+  // inflate complexity/scope scoring for what is actually a short new instruction.
+  const { primary } = splitConversationContext(text);
 
   // Prefer log-audit before dependency-audit: both may match "audit" wording.
   if (isLogAuditTask(text)) {
@@ -266,10 +268,10 @@ function classifyTask(text: string): TaskAnalysis {
   if (EXPLICIT_PLAN.test(text)) {
     return {
       kind: 'explicit_plan',
-      complexity: estimateComplexity(text),
+      complexity: estimateComplexity(primary),
       shouldPlan: true,
       shouldVerify: true,
-      shouldUseSubagents: text.length > 200,
+      shouldUseSubagents: primary.length > 200,
       summary: 'User requested explicit step-by-step plan.',
     };
   }
@@ -346,7 +348,7 @@ function classifyTask(text: string): TaskAnalysis {
 
   if (DOCS_IMPLEMENTATION.test(text) || /\b(readme|read\s*me|readfile)\b/i.test(text)) {
     const docsSubtype = resolveDocsSubtype(text) ?? 'generic';
-    const docsComplexity = estimateComplexity(text) === 'low' ? 'medium' : estimateComplexity(text);
+    const docsComplexity = estimateComplexity(primary) === 'low' ? 'medium' : estimateComplexity(primary);
     const isReadme = docsSubtype === 'readme';
     return {
       kind: 'docs',
@@ -363,16 +365,16 @@ function classifyTask(text: string): TaskAnalysis {
     };
   }
 
-  const actionCount = (text.match(ACTION_VERBS) ?? []).length;
-  const connectorCount = (text.match(/\b(and|then|also|after that|next)\b/gi) ?? []).length;
-  const fileMentions = (text.match(/[`'"]?[\w./-]+\.(tsx?|jsx?|py|go|rs|json|md|css|scss|yaml|yml)[`'"]?/gi) ?? []).length;
-  const complexity = estimateComplexity(text);
+  const actionCount = (primary.match(ACTION_VERBS) ?? []).length;
+  const connectorCount = (primary.match(/\b(and|then|also|after that|next)\b/gi) ?? []).length;
+  const fileMentions = (primary.match(/[`'"]?[\w./-]+\.(tsx?|jsx?|py|go|rs|json|md|css|scss|yaml|yml)[`'"]?/gi) ?? []).length;
+  const complexity = estimateComplexity(primary);
 
-  const hasImplementationHint = IMPLEMENTATION_HINTS.test(text);
-  const isUiPolishTask = (ACTION_VERBS.test(text) || hasImplementationHint) && UI_POLISH_SCOPE.test(text);
+  const hasImplementationHint = IMPLEMENTATION_HINTS.test(primary);
+  const isUiPolishTask = (ACTION_VERBS.test(primary) || hasImplementationHint) && UI_POLISH_SCOPE.test(primary);
 
   const connectorImpliesMultiStep =
-    connectorCount >= 1 && (text.length > 140 || complexity !== 'low' || fileMentions >= 2);
+    connectorCount >= 1 && (primary.length > 140 || complexity !== 'low' || fileMentions >= 2);
 
   const isImplementation =
     isUiPolishTask ||
@@ -380,17 +382,32 @@ function classifyTask(text: string): TaskAnalysis {
       (hasImplementationHint ||
         connectorImpliesMultiStep ||
         fileMentions >= 2 ||
-        text.length > 140 ||
+        primary.length > 140 ||
         complexity !== 'low'));
 
   if (isImplementation) {
+    const hasMigration = /\b(migrat(?:e|ion)|schema change|data backfill|breaking change)\b/i.test(primary);
+    const hasDestructiveOperation = /\b(delete|drop|purge|rewrite history|force push|reset --hard)\b/i.test(primary);
+    const hasMaterialAmbiguity =
+      /\b(figure out|decide|choose the best|whatever is needed|as appropriate|unsure)\b/i.test(primary);
+    const hasDependentComponents =
+      fileMentions >= 5 ||
+      /\b(across (?:multiple|all)|(?:for|across)\s+all\s+(?:routes|packages|components|modules|files)|end[- ]to[- ]end|frontend and backend|client and server|child components?|dependent components?|separate\s+\w+\s+mode)\b/i.test(primary);
+    const shouldPlan =
+      complexity === 'high' ||
+      hasDependentComponents ||
+      hasMigration ||
+      hasDestructiveOperation ||
+      hasMaterialAmbiguity;
     return {
       kind: 'implementation',
       complexity,
-      shouldPlan: true,
+      shouldPlan,
       shouldVerify: true,
       shouldUseSubagents: complexity === 'high',
-      summary: `Implementation task (${complexity} complexity) — analyze, plan, execute step-by-step, verify.`,
+      summary: shouldPlan
+        ? `Implementation task (${complexity} complexity) — plan because risk, dependencies, or ambiguity require coordination.`
+        : `Implementation task (${complexity} complexity) — execute directly with focused verification.`,
     };
   }
 

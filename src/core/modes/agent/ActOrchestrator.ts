@@ -14,6 +14,7 @@ import { routeActIntent } from './ActIntentRouter';
 import { buildActPromptContext } from './actPrompts';
 import { loadActSkillPlaybooks, resolveActSkillResolution } from './actSkillRouting';
 import type { ActDepth, ActIntent, ActRunPlan } from './actTypes';
+import type { SkillResolution } from '../../pipeline';
 
 export interface ActPrepareOptions {
   workspaceRoot?: string;
@@ -36,6 +37,8 @@ export interface ActPrepareOptions {
   verifyCommands?: string[];
   intent?: ActIntent;
   runtimeContext?: SkillRuntimeContext;
+  /** Canonical pipeline skill decision. When present, do not reinterpret the request. */
+  skillResolution?: SkillResolution;
 }
 
 export class ActOrchestrator {
@@ -55,7 +58,7 @@ export class ActOrchestrator {
     });
     const catalog = options.catalog ?? (options.workspaceRoot ? loadProjectCatalog(options.workspaceRoot) : undefined);
     const scope = resolvePlanScope(userMessage, catalog);
-    const skillResolution = resolveActSkillResolution(route.intent, taskAnalysis);
+    const skillResolution = options.skillResolution ?? resolveActSkillResolution(route.intent, taskAnalysis);
     const suggestedSkills = skillResolution.suggestedSkills;
     const policy = options.tierPolicy;
     const { context: skillPlaybookContext, loaded: appliedSkills } = loadActSkillPlaybooks(

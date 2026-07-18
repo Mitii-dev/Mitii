@@ -163,10 +163,16 @@ TRUST BOUNDARY:
 export function collectSystemPromptSections(
   mode: ThunderMode,
   toolsEnabled: boolean,
-  options: ReturnType<typeof normalizeSystemPromptOptions>
+  options: Required<Pick<SystemPromptOptions, 'auditMode' | 'docsMode' | 'mdxRepairMode' | 'isContinuation'>> &
+    Pick<SystemPromptOptions, 'askProfile' | 'allowedToolNames'>
 ): PromptSectionMap {
   const modeInstructions = buildModeInstructions(mode, options);
-  const toolGuidance = toolsEnabled ? (mode === 'ask' ? ASK_TOOL_GUIDANCE : TOOL_GUIDANCE) : '';
+  const baseToolGuidance = toolsEnabled ? (mode === 'ask' ? ASK_TOOL_GUIDANCE : TOOL_GUIDANCE) : '';
+  const allowedToolNames = options.allowedToolNames ?? [];
+  const toolGuidance =
+    toolsEnabled && allowedToolNames.length > 0
+      ? `${baseToolGuidance}\n\nTOOLS AVAILABLE FOR THIS TURN:\n${allowedToolNames.map((name) => `- ${name}`).join('\n')}\nOnly these tool names are available. Do not plan or claim calls to any other tool.`
+      : baseToolGuidance;
   const skillGuidance = toolsEnabled && mode === 'agent' ? ACT_SKILL_TOOL_GUIDANCE : '';
   const routeParts: string[] = [];
   if (toolsEnabled && options.docsMode) routeParts.push(DOCS_TASK_GUIDANCE);
@@ -250,7 +256,7 @@ export function describePromptSections(sections: PromptSectionMap): string[] {
 
 function buildModeInstructions(
   mode: ThunderMode,
-  options: ReturnType<typeof normalizeSystemPromptOptions>
+  options: Pick<SystemPromptOptions, 'askProfile'>
 ): string {
   const modeInstructions: Record<ThunderMode, string> = {
     ask: `You are in ASK mode. Answer questions about the codebase using read-only exploration by default.
@@ -305,19 +311,21 @@ export interface SystemPromptOptions {
   mdxRepairMode?: boolean;
   isContinuation?: boolean;
   askProfile?: AskResponseProfile;
+  allowedToolNames?: string[];
 }
 
 function normalizeSystemPromptOptions(
   auditModeOrOptions: boolean | SystemPromptOptions,
   isContinuation: boolean
 ): Required<Pick<SystemPromptOptions, 'auditMode' | 'docsMode' | 'mdxRepairMode' | 'isContinuation'>> &
-  Pick<SystemPromptOptions, 'askProfile'> {
+  Pick<SystemPromptOptions, 'askProfile'> & { allowedToolNames: string[] } {
   if (typeof auditModeOrOptions === 'boolean') {
     return {
       auditMode: auditModeOrOptions,
       docsMode: false,
       mdxRepairMode: false,
       isContinuation,
+      allowedToolNames: [],
     };
   }
   return {
@@ -326,6 +334,7 @@ function normalizeSystemPromptOptions(
     mdxRepairMode: Boolean(auditModeOrOptions.mdxRepairMode),
     isContinuation: Boolean(auditModeOrOptions.isContinuation),
     askProfile: auditModeOrOptions.askProfile,
+    allowedToolNames: auditModeOrOptions.allowedToolNames ?? [],
   };
 }
 

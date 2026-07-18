@@ -16,6 +16,7 @@ import type { ContextPack } from '../context/types';
 import type { PostEditValidator } from '../apply/PostEditValidator';
 import type { ToolExecutor, ToolExecutionResult } from '../safety/ToolExecutor';
 import type { TaskAnalysis } from './TaskAnalyzer';
+import type { AgentTaskState } from './AgentTaskState';
 import { formatVerifyPlanForAgent, resolveProjectVerifyCommands } from './verifyCommandDiscovery';
 import {
   buildStepPrompt,
@@ -60,6 +61,8 @@ export interface PlanExecutorOptions {
   planningDepth?: PlanningDepth;
   /** Auto-approve step file paths into the session file scope before the step runs. */
   seedFileScope?: (paths: string[]) => void;
+  /** Shared per-turn state used for scope and loop-local churn guards. */
+  getTaskState?: () => AgentTaskState | undefined;
   onRequirementAnalysisDelta?: (text: string) => void;
   onPlanQualityIssues?: (issues: string[]) => void;
 }
@@ -301,12 +304,14 @@ export class PlanExecutor {
     this.touchedFiles.clear();
     const maxRetries = options?.stepMaxRetries ?? 2;
     let hasSuccessfulVerification = false;
+    let stalledByDependencies = false;
 
     log.debug('Starting plan execution', { goal: plan.goal, steps: plan.steps.length, maxRetries });
 
-    // Re-open steps left blocked by an approval pause so execution can continue.
+    // Re-open steps left blocked/running by an interrupted execution so the DAG
+    // selector can resume them as executable pending work.
     for (let si = 0; si < plan.steps.length; si++) {
-      if (plan.steps[si].status === 'blocked') {
+      if (plan.steps[si].status === 'blocked' || plan.steps[si].status === 'running') {
         plan.steps[si] = { ...plan.steps[si], status: 'pending' };
       }
     }
@@ -320,7 +325,14 @@ export class PlanExecutor {
     for (let i = 0; i < plan.steps.length; i++) {
       if (signal?.aborted) break;
 
-      const step = getNextExecutableStep(plan) ?? plan.steps[i];
+      const step = getNextExecutableStep(plan);
+      if (!step) {
+        if (!plan.steps.every((candidate) => candidate.status === 'done')) {
+          stalledByDependencies = true;
+          yield '\n\n⚠️ Plan stopped because no executable step remains; pending steps have failed or unmet dependencies.\n';
+        }
+        break;
+      }
       const stepIndex = plan.steps.findIndex((s) => s.id === step.id);
       if (stepIndex < 0 || step.status === 'done') continue;
       i = stepIndex;
@@ -385,6 +397,7 @@ export class PlanExecutor {
 
         let stepOutput = '';
         let successfulWrites = 0;
+        let successfulVerifyCommands = 0;
         let failedVerifyCommands = 0;
         let pendingApproval = false;
         const explicitToolCall = getExplicitStepToolCall(step);
@@ -434,6 +447,7 @@ export class PlanExecutor {
           }
           if (isVerifyStep && isVerificationTool(explicitToolCall.name)) {
             hasSuccessfulVerification = true;
+            successfulVerifyCommands += 1;
           }
         } else {
           for await (const chunk of this.agentLoop.run(
@@ -448,8 +462,14 @@ export class PlanExecutor {
                 if (success && ['write_file', 'apply_patch'].includes(name)) {
                   successfulWrites += 1;
                 }
-                if (isVerifyStep && success && isVerificationTool(name)) {
+                if (
+                  isVerifyStep &&
+                  success &&
+                  isVerificationTool(name) &&
+                  !/\bSkipped redundant\b/i.test(output ?? '')
+                ) {
                   hasSuccessfulVerification = true;
+                  successfulVerifyCommands += 1;
                 }
                 if (
                   isVerifyStep &&
@@ -466,6 +486,7 @@ export class PlanExecutor {
               phaseLock,
               restrictRunCommandToReadOnly: options?.restrictRunCommandToReadOnly,
               planTracker: plan,
+              getTaskState: options?.getTaskState,
             }
           )) {
             yield chunk;
@@ -484,7 +505,7 @@ export class PlanExecutor {
           return;
         }
 
-        if (step.files?.length) {
+        if (successfulWrites > 0 && step.files?.length) {
           for (const f of step.files) this.touchedFiles.add(f);
         }
 
@@ -534,6 +555,24 @@ export class PlanExecutor {
           onPlanUpdate?.(plan);
           log.warn('Verification step failed after max retries', { stepId: step.id, failedVerifyCommands });
           yield `\n\n❌ Verification step failed after ${maxRetries + 1} attempts.\n`;
+          break;
+        }
+
+        if (isVerifyStep && successfulVerifyCommands === 0) {
+          lastValidationErrors = [
+            'This verification step did not run a successful diagnostics, typecheck, lint, test, or build tool.',
+            'Do not complete verification from prose alone; run the narrowest relevant command.',
+          ];
+          attempt += 1;
+          if (attempt <= maxRetries) {
+            yield `\n\n⚠️ No verification command completed — retrying step ${i + 1}/${plan.steps.length} (${attempt + 1}/${maxRetries + 1})…\n`;
+            plan.steps[i] = { ...plan.steps[i], status: 'pending' };
+            continue;
+          }
+          plan.steps[i] = { ...plan.steps[i], status: 'failed' };
+          this.planPersistence.updatePlan(session.id, plan, 'running');
+          onPlanUpdate?.(plan);
+          yield `\n\n❌ Verification step failed after ${maxRetries + 1} attempts without a successful verification command.\n`;
           break;
         }
 
@@ -587,7 +626,7 @@ export class PlanExecutor {
       this.planPersistence.complete(session.id);
       onPlanUpdate?.(plan);
       yield '\n\n✅ All steps completed.\n';
-    } else if (failed) {
+    } else if (failed || stalledByDependencies) {
       yield '\n\n⚠️ Plan finished with failed steps. Review errors above and retry failed steps.\n';
     }
 
@@ -671,6 +710,7 @@ export class PlanExecutor {
         maxSteps: Math.min(options?.agentMaxSteps ?? 10, 10),
         phaseLock: 'verify',
         restrictRunCommandToReadOnly: options?.restrictRunCommandToReadOnly,
+        getTaskState: options?.getTaskState,
       }
     )) {
       yield chunk;

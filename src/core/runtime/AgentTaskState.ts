@@ -36,6 +36,7 @@ export class AgentTaskState {
   private toolResults: ToolResultRecord[] = [];
   private pauseSummary = '';
   private executionToolsUsed = false;
+  private verificationSucceeded = false;
   private sequentialThinkingCalls = 0;
   private maxSequentialThinkingCalls = 6;
   private fileScope: Set<string> | null = null;
@@ -54,6 +55,7 @@ export class AgentTaskState {
     this.toolResults = [];
     this.pauseSummary = '';
     this.executionToolsUsed = false;
+    this.verificationSucceeded = false;
     this.sequentialThinkingCalls = 0;
     this.fileScope = null;
     this.readPaths.clear();
@@ -109,10 +111,23 @@ export class AgentTaskState {
       for (const path of normalized) this.fileScope.add(path);
     }
     if (typeof maxFilesRead === 'number' && maxFilesRead > 0) {
-      // Never shrink an already-consumed budget below files already read.
-      const minNeeded = this.readPaths.size;
-      this.maxFilesRead = Math.max(maxFilesRead, minNeeded, this.maxFilesRead === Infinity ? maxFilesRead : this.maxFilesRead);
+      // A scope proposal is permission to inspect its accepted read targets. Keep the
+      // caller's cap, but never strand newly accepted paths behind an older exhausted
+      // session budget (common in multi-step plans).
+      const minNeeded = Math.max(this.readPaths.size, this.fileScope?.size ?? 0);
+      this.maxFilesRead = Math.max(
+        maxFilesRead,
+        minNeeded,
+        this.maxFilesRead === Infinity ? maxFilesRead : this.maxFilesRead
+      );
     }
+  }
+
+  /** Reset loop-local churn state while preserving useful evidence and file scope. */
+  beginAgentLoop(): void {
+    this.forceSynthesis = false;
+    this.actionAttemptCounts.clear();
+    this.lastAttemptAt.clear();
   }
 
   hasFileScope(): boolean {
@@ -163,6 +178,9 @@ export class AgentTaskState {
 
     if (toolName === 'run_command') {
       const key = toolKey(toolName, input);
+      if (this.executionToolsUsed && key && isPostEditVerificationKey(key)) {
+        this.verificationSucceeded = true;
+      }
       if (
         this.shouldDiagnosticAdvanceToExecute(key) &&
         this.getPhase() === 'analyze'
@@ -185,7 +203,7 @@ export class AgentTaskState {
     this.toolResults.push({
       tool: toolName,
       key,
-      summary: output.slice(0, 2000),
+      summary: summarizeEvidence(output),
       timestamp: Date.now(),
     });
     if (this.toolResults.length > 12) {
@@ -405,11 +423,15 @@ export class AgentTaskState {
     ];
 
     if (cached) {
-      lines.push('', `Cached output from ${cached.key}:`, cached.summary);
+      lines.push(
+        '',
+        `Cached evidence reference: ${cached.key}`,
+        'Use the original tool result already present in this conversation; it is not replayed here.'
+      );
     } else if (this.toolResults.length > 0) {
-      lines.push('', 'Recent diagnostic results from this session:');
+      lines.push('', 'Recent evidence references from this session:');
       for (const r of this.toolResults.slice(-4)) {
-        lines.push(`### ${r.key}`, r.summary.slice(0, 1500), '');
+        lines.push(`- ${r.key}`);
       }
     }
 
@@ -525,6 +547,12 @@ export class AgentTaskState {
 
   private requiredNextActionLines(): string[] {
     if (this.executionToolsUsed) {
+      if (!this.verificationSucceeded) {
+        return [
+          'File edits succeeded, but post-edit verification has not succeeded yet.',
+          'Run the narrowest relevant typecheck, lint, test, or build command and fix any reported errors before finishing.',
+        ];
+      }
       return [
         'A post-edit verification command already succeeded.',
         'Stop using tools now and answer with the final summary: what changed, verification run, and remaining issues.',
@@ -588,6 +616,12 @@ export class AgentTaskState {
   private isMdxRepairTask(): boolean {
     return isMdxRepairTaskText(`${this.originalTask}\n${this.taskSummary}`);
   }
+}
+
+function summarizeEvidence(output: string): string {
+  const compact = output.replace(/\s+/g, ' ').trim();
+  if (!compact) return '(empty result)';
+  return compact.length <= 240 ? compact : `${compact.slice(0, 237)}...`;
 }
 
 export function toolKey(toolName: string, input: Record<string, unknown>): string | null {
@@ -706,6 +740,7 @@ export function normalizeDiagnosticKey(command: string): string | null {
 
 function isPostEditVerificationKey(key: string): boolean {
   return key === 'docs-build' ||
+    key === 'tsc' ||
     key === 'eslint' ||
     key === 'eslint:fix' ||
     key === 'npm-ls' ||

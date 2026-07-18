@@ -13,6 +13,11 @@ import type { PlanPhase, ThunderPlan } from '../plans/PlanActEngine';
 import { isPhaseLockRunCommandError, isPhaseLockWriteError } from '../plans/PlanActEngine';
 import { buildPlanTrackerPacket } from '../plans/PlanFileStore';
 import { createLogger } from '../telemetry/Logger';
+import {
+  evaluateNoProgress,
+  fingerprintToolCall,
+  type ToolAttemptRecord,
+} from '../pipeline/loop/noProgressDetector';
 
 const log = createLogger('AgentLoop');
 
@@ -58,6 +63,40 @@ Do NOT call read_file, read_files, list_files, diagnostics, memory_search, use_s
 const WRITE_REQUIRED_CHURN_STOP =
   'Stopped because the model kept using read-only tools for an edit task and never called apply_patch or write_file. Try a stronger coding model or reduce the prompt scope.';
 
+function buildRequiredOperationNudge(
+  operation: NonNullable<AgentLoopOptions['requiredOperation']>
+): string {
+  if (operation === 'workspace_write') return NO_WRITE_AGENT_NUDGE;
+  return `SYSTEM: The requested ${operation.replace(/_/g, ' ')} has not happened. Call one of the offered tools that performs this operation now. Do not finish with progress-only prose.`;
+}
+
+function buildRequiredOperationStop(
+  operation: NonNullable<AgentLoopOptions['requiredOperation']>
+): string {
+  if (operation === 'workspace_write') return NO_WRITE_AGENT_STOP;
+  return `Stopped because the model tried to finish without completing the requested ${operation.replace(/_/g, ' ')}.`;
+}
+
+function isOperationSideEffectTool(
+  operation: NonNullable<AgentLoopOptions['requiredOperation']>,
+  toolName: string
+): boolean {
+  if (operation === 'workspace_write' || operation === 'execute_saved_plan') {
+    return ['write_file', 'apply_patch'].includes(toolName);
+  }
+  if (operation === 'local_git_write') {
+    return /^git_(?:stage|unstage|commit|branch|merge|rebase|tag)/.test(toolName);
+  }
+  if (operation === 'remote_write') {
+    return /^github_(?:create|dispatch)/.test(toolName) || toolName === 'git_push';
+  }
+  return operation === 'release' && (
+    toolName === 'release_plan_controller' ||
+    toolName === 'github_create_release' ||
+    toolName === 'git_tag_create'
+  );
+}
+
 export interface PostWriteValidationResult {
   message?: string;
   hasErrors: boolean;
@@ -68,6 +107,15 @@ export interface AgentLoopCallbacks {
   onToolEnd?: (name: string, success: boolean, output: string, durationMs?: number) => void;
   onStep?: (step: number, maxSteps: number) => void;
   onLlmStepComplete?: (step: number, durationMs: number, toolCallCount: number) => void;
+  onResponseCandidate?: (candidate: {
+    callId: string;
+    step: number;
+    characters: number;
+    toolCalls: number;
+    finishReason?: string;
+    accepted: boolean;
+    rejectionReason?: string;
+  }) => void;
   onAutoContinue?: (step: number) => void;
   onPostWriteValidation?: (relPath: string, output: string) => PostWriteValidationResult | undefined | Promise<PostWriteValidationResult | undefined>;
 }
@@ -90,6 +138,8 @@ export interface AgentLoopOptions {
   requiresPlanGrounding?: boolean;
   /** Agent mode edit tasks: retry once if the model tries to stop before writing. */
   requiresWrite?: boolean;
+  /** Canonical operation whose observable side effect must occur before completion. */
+  requiredOperation?: 'workspace_write' | 'local_git_write' | 'remote_write' | 'release' | 'execute_saved_plan';
   reasoningEffort?: ReasoningEffort;
   /** Optional task-state for duplicate-action forced synthesis. */
   getTaskState?: () => AgentTaskState | undefined;
@@ -169,16 +219,23 @@ export class AgentLoop {
     let lastInputFailureKey = '';
     let repeatedInputFailureCount = 0;
     let writeToolCallsMade = false;
+    let requiredSideEffectMade = false;
     let noWriteNudgeUsed = false;
     let noWriteToolRounds = 0;
     let writeChurnNudgeUsed = false;
     let synthesizeOnly = false;
+    const recentToolAttempts: ToolAttemptRecord[] = [];
     const hardLimit = maxSteps + maxAutoContinues * maxSteps;
 
     const readOnlyMode = Boolean(options?.askMode || options?.planMode);
+    const requiredOperation = options?.requiredOperation ?? (options?.requiresWrite ? 'workspace_write' : undefined);
     const isGroundingTool = (toolName: string): boolean =>
       options?.planMode ? isPlanGroundingToolCall(toolName) : isGroundingToolCall(toolName);
 
+    // Churn/forced-synthesis state is local to one agent loop. A structured plan
+    // invokes a fresh loop per step, so a duplicate read in one step must not disable
+    // every tool in all later execute and verify steps.
+    options?.getTaskState?.()?.beginAgentLoop();
     this.toolExecutor.clearPlanPhaseLock?.();
     injectFileScopeContract(messages);
 
@@ -191,6 +248,7 @@ export class AgentLoop {
       injectPlanTracker(messages, options?.planTracker);
 
       let stepContent = '';
+      let finishReason: string | undefined;
       const toolCallsMap = new Map<number, ToolCall>();
       const llmStartedAt = Date.now();
 
@@ -230,6 +288,7 @@ export class AgentLoop {
             }
           }
         }
+        if (delta.finish_reason) finishReason = delta.finish_reason;
         if (delta.done) break;
       }
 
@@ -238,42 +297,58 @@ export class AgentLoop {
         : undefined;
 
       callbacks?.onLlmStepComplete?.(displayStep, Date.now() - llmStartedAt, toolCalls?.length ?? 0);
+      const emitCandidate = (accepted: boolean, rejectionReason?: string): void => {
+        callbacks?.onResponseCandidate?.({
+          callId: `step_${totalSteps}`,
+          step: displayStep,
+          characters: stepContent.length,
+          toolCalls: toolCalls?.length ?? 0,
+          finishReason,
+          accepted,
+          rejectionReason,
+        });
+      };
 
       if (!toolCalls || toolCalls.length === 0) {
         if (
-          options?.requiresWrite &&
+          requiredOperation &&
           !readOnlyMode &&
           !auditMode &&
           !logAuditMode &&
           stepContent &&
-          !writeToolCallsMade &&
+          !requiredSideEffectMade &&
           !noWriteNudgeUsed
         ) {
+          emitCandidate(false, `${requiredOperation}_required`);
           noWriteNudgeUsed = true;
           messages.push({ role: 'assistant', content: stepContent });
-          messages.push({ role: 'user', content: NO_WRITE_AGENT_NUDGE });
+          messages.push({ role: 'user', content: buildRequiredOperationNudge(requiredOperation) });
           continue;
         }
         if (
-          options?.requiresWrite &&
+          requiredOperation &&
           !readOnlyMode &&
           !auditMode &&
           !logAuditMode &&
           stepContent &&
-          !writeToolCallsMade &&
+          !requiredSideEffectMade &&
           noWriteNudgeUsed
         ) {
-          messages.push({ role: 'assistant', content: NO_WRITE_AGENT_STOP });
-          yield NO_WRITE_AGENT_STOP;
+          emitCandidate(false, `${requiredOperation}_missing_after_retry`);
+          const stop = buildRequiredOperationStop(requiredOperation);
+          messages.push({ role: 'assistant', content: stop });
+          yield stop;
           break;
         }
         if (logAuditMode && stepContent && !logAuditNudgeUsed) {
+          emitCandidate(false, 'log_analysis_tool_required');
           logAuditNudgeUsed = true;
           messages.push({ role: 'assistant', content: stepContent });
           messages.push({ role: 'user', content: NO_TOOLS_LOG_AUDIT_NUDGE });
           continue;
         }
         if (auditMode && stepContent && !auditNudgeUsed) {
+          emitCandidate(false, 'audit_grounding_tool_required');
           auditNudgeUsed = true;
           messages.push({ role: 'assistant', content: stepContent });
           messages.push({ role: 'user', content: NO_TOOLS_AUDIT_NUDGE });
@@ -286,6 +361,7 @@ export class AgentLoop {
           !askNudgeUsed &&
           !groundingToolCallsMade
         ) {
+          emitCandidate(false, 'ask_grounding_required');
           askNudgeUsed = true;
           messages.push({ role: 'assistant', content: stepContent });
           messages.push({ role: 'user', content: NO_TOOLS_ASK_NUDGE });
@@ -298,19 +374,22 @@ export class AgentLoop {
           !planNudgeUsed &&
           !groundingToolCallsMade
         ) {
+          emitCandidate(false, 'plan_grounding_required');
           planNudgeUsed = true;
           messages.push({ role: 'assistant', content: stepContent });
           messages.push({ role: 'user', content: NO_TOOLS_PLAN_NUDGE });
           continue;
         }
         if (stepContent) {
+          emitCandidate(true);
           messages.push({ role: 'assistant', content: stepContent });
           const finalChunk = toAssistantStreamChunk(stepContent, undefined, 'final');
           if (finalChunk) yield finalChunk;
-        }
+        } else emitCandidate(false, 'empty_response');
         break;
       }
 
+      emitCandidate(true);
       // Intermediate narration → progress only (not persisted as the final answer).
       if (stepContent) {
         const progressChunk = toAssistantStreamChunk(stepContent, undefined, 'progress');
@@ -359,6 +438,13 @@ export class AgentLoop {
             writeToolCallsMade = true;
           }
         }
+        if (
+          (execResult.success || execResult.pendingApproval) &&
+          requiredOperation &&
+          isOperationSideEffectTool(requiredOperation, tc.function.name)
+        ) {
+          requiredSideEffectMade = true;
+        }
 
         if (execResult.success && isGroundingTool(tc.function.name)) {
           groundingToolCallsMade = true;
@@ -377,6 +463,17 @@ export class AgentLoop {
         }
 
         const { isSkipped, output, success: toolSuccess } = resolveToolOutput(execResult);
+        recentToolAttempts.push({
+          toolName: tc.function.name,
+          fingerprint: fingerprintToolCall(
+            tc.function.name,
+            input,
+            execResult.success && !isSkipped ? undefined : output
+          ),
+          success: execResult.success && !isSkipped,
+          error: execResult.success && !isSkipped ? undefined : output,
+        });
+        if (recentToolAttempts.length > 12) recentToolAttempts.splice(0, recentToolAttempts.length - 12);
 
         if (
           !execResult.success &&
@@ -441,7 +538,10 @@ export class AgentLoop {
             lastInputFailureKey = inputFailureKey;
             repeatedInputFailureCount = 1;
           }
-          if (repeatedInputFailureCount >= 2) {
+          const phaseLockFailure =
+            isPhaseLockWriteError(execResult.error) ||
+            isPhaseLockRunCommandError(execResult.error);
+          if (repeatedInputFailureCount >= 2 && !phaseLockFailure) {
             repeatedInputFailureStop = buildRepeatedToolInputFailureMessage(
               tc.function.name,
               output,
@@ -458,7 +558,19 @@ export class AgentLoop {
         messages.push({ role: 'user', content: VALIDATION_BLOCK_MESSAGE });
       }
 
+      const noProgress = evaluateNoProgress(recentToolAttempts);
+      if (noProgress.stuck) {
+        synthesizeOnly = true;
+        messages.push({
+          role: 'user',
+          content:
+            `NO_PROGRESS_STOP: ${noProgress.reason ?? 'Repeated tool activity is not advancing the task.'} ` +
+            'Tools are disabled for this loop. Summarize the exact blocker or completed evidence now; the plan executor may retry the step with fresh state.',
+        });
+      }
+
       if (options?.getTaskState?.()?.shouldForceSynthesis()) {
+        synthesizeOnly = true;
         messages.push({
           role: 'user',
           content:
@@ -473,14 +585,17 @@ export class AgentLoop {
         if (
           lastTool?.role === 'tool' &&
           typeof lastTool.content === 'string' &&
-          lastTool.content.includes('[hasEnoughEvidence=true]')
+          (
+            lastTool.content.includes('[evidenceSufficientForSummary=true]') ||
+            lastTool.content.includes('[hasEnoughEvidence=true]')
+          )
         ) {
           options?.getTaskState?.()?.markForceSynthesis();
           synthesizeOnly = true;
           messages.push({
             role: 'user',
             content:
-              'Log analysis returned hasEnoughEvidence=true. Tools are now disabled for this route. Write the final analysis now.',
+              'Log analysis returned sufficient evidence for a summary. Tools are now disabled for this route. Write the final analysis now.',
           });
         }
       }
@@ -702,8 +817,10 @@ export class AgentLoop {
         if (delta.content) {
           stepContent += delta.content;
         }
-        const chunk = toAssistantStreamChunk(delta.content, delta.reasoning);
-        if (chunk) yield chunk;
+        if (delta.reasoning) {
+          const reasoningChunk = toAssistantStreamChunk(undefined, delta.reasoning, 'progress');
+          if (reasoningChunk) yield reasoningChunk;
+        }
         if (delta.tool_calls) {
           for (const partial of delta.tool_calls) {
             const existing = toolCallsMap.get(partial.index);
@@ -741,10 +858,16 @@ export class AgentLoop {
         }
         if (stepContent) {
           messages.push({ role: 'assistant', content: stepContent });
+          const finalChunk = toAssistantStreamChunk(stepContent, undefined, 'final');
+          if (finalChunk) yield finalChunk;
         }
         break;
       }
 
+      if (stepContent) {
+        const progressChunk = toAssistantStreamChunk(stepContent, undefined, 'progress');
+        if (progressChunk) yield progressChunk;
+      }
       messages.push({
         role: 'assistant',
         content: stepContent,

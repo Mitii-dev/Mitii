@@ -1,6 +1,7 @@
 import type { AskRoute, AskIntent, AskResponseProfile } from './askTypes';
 import { ASK_INTENT_DESCRIPTIONS } from '../../runtime/intentClassifier';
 import { isLogAuditTask } from '../../runtime/logAudit';
+import { DIAGNOSTIC_REQUEST } from '../../runtime/diagnosticRequest';
 
 const LOCATE_RE = /\b(where|which file|what file|find|locate|defined|definition|lives?)\b/i;
 const ARCHITECTURE_RE = /\b(architecture|overview|flow|data flow|control flow|how does .+ work|walkthrough|trace|map out|pipeline|retrieval|orchestrat)\b/i;
@@ -41,7 +42,7 @@ function classifyAskIntentFallback(text: string): AskIntent {
   if (isLogAuditTask(text)) return 'log_analysis';
   if (CROSS_PROJECT_RE.test(text)) return 'cross_project';
   if (IMPLEMENT_RE.test(text)) return 'implement_here';
-  if (DEBUG_RE.test(text)) return 'debug_explain';
+  if (DEBUG_RE.test(text) || DIAGNOSTIC_REQUEST.test(text)) return 'debug_explain';
   if (COMPARE_RE.test(text)) return 'compare';
   if (ARCHITECTURE_RE.test(text)) return 'architecture';
   if (LOCATE_RE.test(text)) return 'locate';

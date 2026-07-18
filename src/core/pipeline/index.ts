@@ -4,6 +4,7 @@
  */
 
 export * from './types';
+export { classifyArtifacts, classifyArtifactPath } from './classify/artifactClassifier';
 
 export {
   classifyTaskSignals,
@@ -53,6 +54,7 @@ import {
 } from './depth/planningDepthResolver';
 import { resolveSkillsForRoute } from './skills/skillResolver';
 import { resolveCapabilities } from './capabilities/capabilityResolver';
+import { classifyArtifacts } from './classify/artifactClassifier';
 
 export interface ResolvePipelineOptions {
   mode: string;
@@ -75,6 +77,7 @@ export function resolveTurnPipeline(
   options: ResolvePipelineOptions
 ): PipelineResolution {
   const classification = classifyTaskSignals(userMessage, taskAnalysis);
+  const artifact = classifyArtifacts(userMessage);
   const route = resolveRoute(userMessage, taskAnalysis, {
     mdxRepairMode: options.mdxRepairMode,
     resumeSavedPlan: options.resumeSavedPlan,
@@ -100,6 +103,7 @@ export function resolveTurnPipeline(
 
   return {
     classification,
+    artifact,
     route,
     depthAxis,
     internalDepth,

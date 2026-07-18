@@ -85,15 +85,19 @@ export function resolveCapabilities(
   }
 
   // Never expose release/git-write tools on non-git routes (docs README bug).
-  if (!route.isGitTask || route.operationClass === 'edit' || route.operationClass === 'read') {
-    if (route.operationClass !== 'git_write' && route.operationClass !== 'release') {
+  if (!route.isGitTask || route.operationClass === 'workspace_write' || route.operationClass === 'inspect') {
+    if (
+      route.operationClass !== 'local_git_write' &&
+      route.operationClass !== 'remote_write' &&
+      route.operationClass !== 'release'
+    ) {
       for (const name of GIT_WRITE_AND_RELEASE_TOOLS) excluded.add(name);
     }
   }
 
   if (route.operationClass === 'release') {
     // release path keeps release tools; still hide unrelated github issue tools? keep allow-all git set via git intents
-  } else if (route.isGitTask && route.operationClass === 'read') {
+  } else if (route.isGitTask && route.operationClass === 'inspect') {
     for (const name of GIT_WRITE_AND_RELEASE_TOOLS) excluded.add(name);
   }
 
@@ -115,7 +119,7 @@ export function resolveCapabilities(
 
   let approvalProfile: CapabilityResolution['approvalProfile'] = 'default';
   if (route.operationClass === 'release') approvalProfile = 'release';
-  else if (route.operationClass === 'git_write') approvalProfile = 'git';
+  else if (route.operationClass === 'local_git_write' || route.operationClass === 'remote_write') approvalProfile = 'git';
   else if (options.mode === 'ask' || options.mode === 'plan') approvalProfile = 'read_only';
 
   return {

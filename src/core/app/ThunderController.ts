@@ -84,7 +84,9 @@ import { UsageTrackingProvider, type ModelCallUsage } from '../llm/UsageTracking
 import { scaffoldMitiiWorkspace } from '../mcp/scaffoldMitiiWorkspace';
 import { AgentTaskState } from '../runtime/AgentTaskState';
 import { resolveProjectVerifyCommands, formatVerifyPlanForAgent, suggestInstallCommandsForVerifyFailure, isModuleResolutionVerifyFailure } from '../runtime/verifyCommandDiscovery';
+import { formatDocumentationVerification, verifyDocumentationFiles } from '../runtime/docsVerification';
 import { isApprovalContinuationMessage } from '../runtime/taskMessage';
+import { resolveControlIntent } from '../runtime/controlIntent';
 import { ToolPolicyEngine } from '../safety/ToolPolicyEngine';
 import { resolveEffectiveSafety } from '../safety/autonomyPresets';
 import { ApprovalQueue } from '../safety/ApprovalQueue';
@@ -1295,6 +1297,16 @@ export class ThunderController {
 
     const lines: string[] = [];
     const touchedFiles = this.getTouchedFilesFromAudit();
+    const docsVerification = verifyDocumentationFiles(workspace, touchedFiles);
+    const docsVerificationOutput = formatDocumentationVerification(docsVerification);
+    if (docsVerificationOutput) {
+      lines.push(docsVerificationOutput);
+      this.pushActivity(
+        docsVerification.issues.length > 0 ? 'error' : 'info',
+        'Markdown verification',
+        docsVerificationOutput.slice(0, 500)
+      );
+    }
     const plan = resolveProjectVerifyCommands(workspace, commands, { touchedFiles, userMessage });
     const discoveryBlock = formatVerifyPlanForAgent(plan);
     lines.push(discoveryBlock);
@@ -2030,7 +2042,20 @@ export class ThunderController {
     this.resetCurrentTurnUsage();
     const meteredProvider = this.trackProvider(provider);
 
-    const isContinuation = isApprovalContinuationMessage(content.trim());
+    const approvalContinuation = isApprovalContinuationMessage(content.trim());
+    const previousAssistantMessage = [...recentMessages].reverse().find((message) => message.role === 'assistant');
+    const control = resolveControlIntent(content, {
+      hasActiveTask: recentMessages.length > 0,
+      hasPendingApproval: approvalContinuation || (this.approvalQueue?.getPending().length ?? 0) > 0,
+      previousTurnAskedQuestion: Boolean(previousAssistantMessage?.content.trim().endsWith('?')),
+    });
+    const isContinuation =
+      approvalContinuation ||
+      control.intent === 'continue_task' ||
+      control.intent === 'approve_pending' ||
+      control.intent === 'reject_pending' ||
+      control.intent === 'clarify_previous' ||
+      control.intent === 'acknowledgement';
     this.sessionService?.ensureSession(this.session, content.slice(0, 64));
     const workspace = this.resolveWorkspacePath();
     if (workspace) {
@@ -2256,8 +2281,7 @@ export class ThunderController {
       hadError,
       tools: audit.map((a) => a.toolName),
     });
-    this.sessionLog.append('session_end', hadError ? 'Session completed with issues' : 'Session completed', {
-      sessionId: this.session?.id,
+    this.sessionLog.endTurn(hadError ? 'failed' : 'completed', {
       hadError,
       toolCalls: audit.length,
     });
@@ -3379,6 +3403,10 @@ export class ThunderController {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    // Abort active provider/tool loops before recording the terminal lifecycle
+    // event; otherwise in-flight work can append events after session_end.
+    this.chatOrchestrator?.stop();
+    this.sessionLog.endSession({ reason: 'controller_disposed' });
     this.configService.dispose();
     void this.mcpManager.closeAll();
     if (this.backgroundIndexTimer) clearTimeout(this.backgroundIndexTimer);

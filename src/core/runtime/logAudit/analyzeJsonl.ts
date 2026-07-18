@@ -58,6 +58,8 @@ export async function analyzeJsonlFile(
   let usefulAssistantFinal = false;
   let finalAssistantMessage = '';
   let terminalEventSeen = false;
+  let sawTurnStart = false;
+  let latestTurnEnded = false;
   let toolEndCount = 0;
   let failedCount = 0;
   let skippedCount = 0;
@@ -110,12 +112,23 @@ export async function analyzeJsonlFile(
       increment(errorCategories, categorizeError(message || String(data.error ?? 'error')));
     }
 
+    if (type === 'turn_start') {
+      sawTurnStart = true;
+      latestTurnEnded = false;
+      usefulAssistantFinal = false;
+      finalAssistantMessage = '';
+    }
+
+    if (type === 'turn_end') {
+      latestTurnEnded = true;
+    }
+
     if (type === 'assistant_message' && message.trim().length > 80) {
       usefulAssistantFinal = true;
       finalAssistantMessage = message.trim();
     }
 
-    if (type === 'session_end' || type === 'turn_complete') {
+    if (!sawTurnStart && (type === 'session_end' || type === 'turn_complete')) {
       terminalEventSeen = true;
     }
 
@@ -243,6 +256,8 @@ export async function analyzeJsonlFile(
     );
   }
 
+  if (sawTurnStart) terminalEventSeen = latestTurnEnded;
+
   const completion = inferCompletionStatus({
     terminalEventSeen,
     finalAssistantMessage,
@@ -261,6 +276,25 @@ export async function analyzeJsonlFile(
   const hasEnoughEvidence =
     Object.keys(eventCounts).length > 0 &&
     (Object.keys(toolCounts).length > 0 || tokens.modelCalls > 0 || anomalies.length > 0);
+  const sufficientForCompletionAssessment =
+    terminalEventSeen || Boolean(finalAssistantMessage) || parseErrors > 0;
+  const hasFailureSignals = failedCount > 0 || Object.keys(errorCategories).length > 0;
+  const sufficientForRootCause =
+    !hasFailureSignals ||
+    failed.some((failure) => Boolean(failure.error || failure.summary));
+  const missingEvidenceFor = [
+    !hasEnoughEvidence ? 'summary' : undefined,
+    !sufficientForCompletionAssessment ? 'completion assessment' : undefined,
+    !sufficientForRootCause ? 'root cause' : undefined,
+  ].filter((value): value is string => Boolean(value));
+  const evidenceSufficiency = {
+    sufficientForInventory: Object.keys(eventCounts).length > 0,
+    sufficientForSummary: hasEnoughEvidence,
+    sufficientForCompletionAssessment,
+    sufficientForRootCause,
+    missingEvidenceFor,
+    followupBudget: missingEvidenceFor.length > 0 ? 1 : 0,
+  };
 
   return {
     file: {
@@ -288,6 +322,7 @@ export async function analyzeJsonlFile(
     },
     anomalies: anomalies.slice(0, MAX_ANOMALIES),
     evidence: evidence.slice(0, maxEvidence * 2),
+    evidenceSufficiency,
     hasEnoughEvidence,
   };
 }

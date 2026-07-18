@@ -19,6 +19,8 @@ const agentSettings = (overrides: Partial<AgentSettingsPayload> = {}): AgentSett
   maxAutoContinues: 2,
   researchAgentMaxSteps: 10,
   showDiffPreview: false,
+  askModel: '',
+  askBaseUrl: '',
   planModel: '',
   planBaseUrl: '',
   actModel: '',

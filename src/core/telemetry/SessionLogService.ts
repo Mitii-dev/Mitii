@@ -30,6 +30,9 @@ export type SessionLogEventType =
   | 'index_start'
   | 'index_complete'
   | 'turn_complete'
+  | 'turn_start'
+  | 'turn_end'
+  | 'llm_response_candidate'
   | 'ui_trace'
   | 'microtask_context'
   | 'audit_export';
@@ -55,6 +58,7 @@ export class SessionLogService {
   private sessionId = '';
   private logPath = '';
   private logStartedAt = 0;
+  private activeTurnId = '';
   private webhookEmitter = new WebhookEmitter();
   private listeners = new Set<(event: SessionLogEvent) => void>();
 
@@ -68,6 +72,7 @@ export class SessionLogService {
     if (sessionChanged || !this.logStartedAt) {
       this.logStartedAt = Date.now();
       this.logPath = '';
+      this.activeTurnId = '';
     }
 
     const dir = join(workspace, '.mitii', 'logs');
@@ -98,6 +103,32 @@ export class SessionLogService {
   append(type: SessionLogEventType, message: string, data?: Record<string, unknown>): void {
     if (!this.isEnabled()) return;
     this.writeEvent(type, message, data);
+  }
+
+  beginTurn(data?: Record<string, unknown>): string {
+    if (this.activeTurnId) return this.activeTurnId;
+    this.activeTurnId = `${this.sessionId}:${Date.now()}`;
+    this.writeEvent('turn_start', 'Turn started', {
+      turnId: this.activeTurnId,
+      ...data,
+    });
+    return this.activeTurnId;
+  }
+
+  endTurn(status: 'completed' | 'blocked' | 'awaiting_approval' | 'failed', data?: Record<string, unknown>): void {
+    if (!this.activeTurnId) return;
+    this.writeEvent('turn_end', `Turn ${status}`, {
+      turnId: this.activeTurnId,
+      status,
+      ...data,
+    });
+    this.activeTurnId = '';
+  }
+
+  endSession(data?: Record<string, unknown>): void {
+    if (!this.isEnabled()) return;
+    if (this.activeTurnId) this.endTurn('blocked', { reason: 'session_closed' });
+    this.writeEvent('session_end', 'Session ended', data);
   }
 
   onEvent(listener: (event: SessionLogEvent) => void): () => void {
@@ -135,7 +166,11 @@ export class SessionLogService {
       sessionId: this.sessionId,
       type,
       message,
-      data: sanitizeLogData(data),
+      data: sanitizeLogData(
+        this.activeTurnId && !data?.turnId
+          ? { ...(data ?? {}), turnId: this.activeTurnId }
+          : data
+      ),
     };
 
     try {

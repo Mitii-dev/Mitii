@@ -7,6 +7,7 @@ import type { Tool, ToolResult } from './types';
 import type { IgnoreService } from '../indexing/IgnoreService';
 import { normalizeWorkspaceRoot, resolveWorkspaceRelPath } from '../util/paths';
 import { analyzeJsonlFile, analyzeLogDirectory, queryLogEvents } from '../runtime/logAudit';
+import { positiveInt } from './coerceInput';
 
 const MAX_REPORT_CHARS = 14_000;
 const MAX_DIRECTORY_REPORT_CHARS = 24_000;
@@ -27,8 +28,12 @@ export function createAnalyzeJsonlTool(
     inputSchema: z.object({
       path: z.string().min(1),
       includeEvidence: z.boolean().optional(),
-      maxEvidencePerCategory: z.number().int().positive().max(50).optional(),
-    }),
+      maxEvidencePerCategory: positiveInt(50),
+    }) as unknown as z.ZodType<{
+      path: string;
+      includeEvidence?: boolean;
+      maxEvidencePerCategory?: number;
+    }>,
     parametersJsonSchema: {
       type: 'object',
       properties: {
@@ -61,9 +66,9 @@ export function createAnalyzeJsonlTool(
           maxEvidencePerCategory: input.maxEvidencePerCategory,
         });
         const output = JSON.stringify(report, null, 2);
-        const note = report.hasEnoughEvidence
-          ? '\n\n[hasEnoughEvidence=true] Synthesize the final analysis now. Do not re-read the log.'
-          : '\n\n[hasEnoughEvidence=false] You may call query_log_events once for a narrow follow-up.';
+        const note = report.evidenceSufficiency.sufficientForSummary
+          ? '\n\n[evidenceSufficientForSummary=true] Synthesize the final analysis now. Do not re-read the log.'
+          : `\n\n[evidenceSufficientForSummary=false] Missing evidence for: ${report.evidenceSufficiency.missingEvidenceFor.join(', ') || 'summary'}. Follow-up budget: ${report.evidenceSufficiency.followupBudget}.`;
         return {
           success: true,
           output: `${output.slice(0, MAX_REPORT_CHARS)}${note}`,
@@ -106,9 +111,19 @@ export function createQueryLogEventsTool(
         success: z.boolean().optional(),
       }).optional(),
       fields: z.array(z.string()).optional(),
-      limit: z.number().int().positive().max(100).optional(),
-      maxChars: z.number().int().positive().max(24000).optional(),
-    }),
+      limit: positiveInt(100),
+      maxChars: positiveInt(24000),
+    }) as unknown as z.ZodType<{
+      path: string;
+      filter?: {
+        type?: string[];
+        tool?: string;
+        success?: boolean;
+      };
+      fields?: string[];
+      limit?: number;
+      maxChars?: number;
+    }>,
     parametersJsonSchema: {
       type: 'object',
       properties: {
@@ -213,9 +228,9 @@ export function createAnalyzeLogDirectoryTool(
         });
         const output = JSON.stringify(report, null, 2);
         const truncated = output.length > MAX_DIRECTORY_REPORT_CHARS;
-        const note = report.hasEnoughEvidence
-          ? '\n\n[hasEnoughEvidence=true] Directory analysis is complete. Synthesize the final analysis now. Do not list or re-read logs.'
-          : '\n\n[hasEnoughEvidence=false] No JSONL logs were found in this directory.';
+        const note = report.evidenceSufficiency.sufficientForSummary
+          ? '\n\n[evidenceSufficientForSummary=true] Directory analysis is complete. Synthesize the final analysis now. Do not list or re-read logs.'
+          : `\n\n[evidenceSufficientForSummary=false] Missing evidence for: ${report.evidenceSufficiency.missingEvidenceFor.join(', ') || 'summary'}. Follow-up budget: ${report.evidenceSufficiency.followupBudget}.`;
         return {
           success: true,
           output: `${output.slice(0, MAX_DIRECTORY_REPORT_CHARS)}${truncated ? '\n...[directory report truncated by character cap]' : ''}${note}`,
@@ -238,8 +253,8 @@ export function createListLogsTool(workspace: string): Tool<{ limit?: number }> 
       'List recent Mitii session logs under .mitii/logs/. Use when the user asks to analyze a log but did not name a file.',
     risk: 'low',
     inputSchema: z.object({
-      limit: z.number().int().positive().max(50).optional(),
-    }),
+      limit: positiveInt(50),
+    }) as unknown as z.ZodType<{ limit?: number }>,
     parametersJsonSchema: {
       type: 'object',
       properties: {

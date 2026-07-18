@@ -3,7 +3,6 @@ import { AGENT_NAME } from '../../shared/brand';
 import { useVsCodeMessaging } from './state/useVsCodeMessaging';
 import { MessageList } from './components/MessageList';
 import { ChatInput } from './components/ChatInput';
-import { ContextPanel } from './components/ContextPanel';
 import { ContextWarningBanner } from './components/ContextWarningBanner';
 import { ErrorBanner } from './components/ErrorBanner';
 import { SettingsPanel } from './components/SettingsPanel';
@@ -194,12 +193,6 @@ export function App() {
             mode={state.mode}
             loading={state.loading}
             liveStatus={state.agentLiveStatus}
-          />
-          <ContextPanel
-            items={state.pinnedContext}
-            onRemove={(path) => postMessage({ type: 'removePinnedContext', payload: { path } })}
-            onClear={() => postMessage({ type: 'clearPinnedContext' })}
-            onPick={() => postMessage({ type: 'pickContextPath' })}
           />
           <div className="chat-body">
             <MessageList

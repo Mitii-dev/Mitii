@@ -77,10 +77,8 @@ import { loadPlanningSkillPlaybooks, resolvePlanningSkillNames } from '../modes/
 import { routePlanIntent } from '../modes/plan/PlanIntentRouter';
 import {
   ActOrchestrator,
-  filterActModeTools,
   filterLogAuditModeTools,
   hasDirectRouteOverride,
-  loadActSkillPlaybooks,
   shouldResumeSavedPlan,
   shouldUsePlannerForAct,
 } from '../modes/agent';
@@ -90,6 +88,7 @@ import {
   suggestDocsVerifyCommands,
 } from '../runtime/mdxRepairRouting';
 import { setSubagentRuntime } from '../tools/builtinTools';
+import { resolveControlIntent } from '../runtime/controlIntent';
 import type { SessionService } from '../session/SessionService';
 import type { PlanPersistence } from '../plans/PlanPersistence';
 import type { MemoryExtractor } from '../runtime/MemoryExtractor';
@@ -190,6 +189,9 @@ export class ChatOrchestrator {
     tier?: AgenticTier;
     style: TierPolicy['skillInjection'];
     suggested: string[];
+    selected: string[];
+    loaded: string[];
+    rejected: Array<{ name: string; reason: string }>;
     injectedChars: number;
   } | undefined;
   private suspendContext: {
@@ -332,12 +334,51 @@ export class ChatOrchestrator {
 
   private fallbackIntentRouting(mode: ThunderSession['mode']): ModeIntentRouting {
     if (mode === 'ask') {
-      return { mode, classification: { intent: 'explain_code', confidence: 0, alternatives: [] }, needsClarification: false, useClassification: false };
+      return {
+        mode,
+        classification: {
+          intent: 'explain_code',
+          confidence: 0,
+          alternatives: [],
+          needsClarification: false,
+          source: 'fallback',
+          gated: true,
+          gateReason: 'classifier_unavailable',
+        },
+        needsClarification: false,
+        useClassification: false,
+      };
     }
     if (mode === 'plan') {
-      return { mode, classification: { intent: 'question', confidence: 0, alternatives: [] }, needsClarification: false, useClassification: false };
+      return {
+        mode,
+        classification: {
+          intent: 'question',
+          confidence: 0,
+          alternatives: [],
+          needsClarification: false,
+          source: 'fallback',
+          gated: true,
+          gateReason: 'classifier_unavailable',
+        },
+        needsClarification: false,
+        useClassification: false,
+      };
     }
-    return { mode: 'agent', classification: { intent: 'question', confidence: 0, alternatives: [] }, needsClarification: false, useClassification: false };
+    return {
+      mode: 'agent',
+      classification: {
+        intent: 'question',
+        confidence: 0,
+        alternatives: [],
+        needsClarification: false,
+        source: 'fallback',
+        gated: true,
+        gateReason: 'classifier_unavailable',
+      },
+      needsClarification: false,
+      useClassification: false,
+    };
   }
 
   private buildRoutingClarification(
@@ -364,7 +405,13 @@ export class ChatOrchestrator {
       confidence: classification.confidence,
       alternatives: classification.alternatives,
       needsClarification: classification.needsClarification,
-      gated,
+      source: classification.source,
+      matchedRule: classification.matchedRule,
+      confidenceMargin: classification.confidenceMargin,
+      originalIntent: classification.originalIntent,
+      originalConfidence: classification.originalConfidence,
+      gated: classification.gated ?? gated,
+      gateReason: classification.gateReason,
     });
   }
 
@@ -384,6 +431,10 @@ export class ChatOrchestrator {
     this.emitActivity('info', `Mode: ${session.mode} · Provider: ${provider.id}`);
 
     this.deps.sessionService?.ensureSession(session, userMessage.slice(0, 64));
+    this.deps.sessionLog?.beginTurn({
+      mode: session.mode,
+      provider: provider.id,
+    });
     this.deps.sessionLog?.append('user_message', userMessage.slice(0, 200), {
       mode: session.mode,
       provider: provider.id,
@@ -391,7 +442,22 @@ export class ChatOrchestrator {
       auditMode: isAuditCleanupTask(userMessage),
     });
 
-    const microTaskId = this.deps.microTaskRoutingEnabled === false || isApprovalContinuationMessage(userMessage)
+    const previousAssistantMessage = [...recentMessages].reverse().find((message) => message.role === 'assistant');
+    const control = resolveControlIntent(userMessage, {
+      hasActiveTask: recentMessages.length > 0,
+      hasPendingApproval: isApprovalContinuationMessage(userMessage),
+      previousTurnAskedQuestion: Boolean(previousAssistantMessage?.content.trim().endsWith('?')),
+    });
+    this.deps.sessionLog?.appendDebug('info', 'Control intent resolved', {
+      intent: control.intent,
+      matchedRule: control.matchedRule,
+      requiresConversationContext: control.requiresConversationContext,
+    });
+
+    const microTaskId =
+      this.deps.microTaskRoutingEnabled === false ||
+      isApprovalContinuationMessage(userMessage) ||
+      control.intent !== 'new_task'
       ? null
       : detectMicroTask(userMessage);
     if (microTaskId && this.deps.microTaskExecutorFactory) {
@@ -526,6 +592,37 @@ export class ChatOrchestrator {
       planIntent: intentRouting.mode === 'plan' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
       actIntent: intentRouting.mode === 'agent' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
     });
+    const resumeSavedPlan = shouldExecuteSavedPlan(
+      session.mode,
+      taskForClassification,
+      Boolean(activePlanAtStart?.plan),
+      actDepth
+    );
+    const pipeline: PipelineResolution = resolveTurnPipeline(taskForClassification, taskAnalysis, {
+      mode: session.mode,
+      userDepth: isAskMode ? askDepth : isPlanMode ? planDepth : actDepth,
+      toolExposure: tierPolicy.toolExposure,
+      mdxRepairMode,
+      resumeSavedPlan,
+      planning: isPlanMode || taskAnalysis.shouldPlan,
+      planExecution: false,
+      orchestrationEnabled,
+      forceDirect: isAgentMode && hasDirectRouteOverride(taskForClassification),
+    });
+    this.deps.sessionLog?.append('info', 'Pipeline resolution', {
+      intent: pipeline.route.intent,
+      auditSubtype: pipeline.route.auditSubtype,
+      docsSubtype: pipeline.route.docsSubtype,
+      operationClass: pipeline.route.operationClass,
+      artifacts: pipeline.artifact.artifacts,
+      executionPath: pipeline.route.executionPath,
+      depthAxis: pipeline.depthAxis,
+      activeSkill: pipeline.skills.activeSkill,
+      injectSkills: pipeline.skills.injectSkills,
+      excludedToolCount: pipeline.capabilities.excludedTools.size,
+      mcpPolicy: pipeline.capabilities.mcpPolicy,
+      shouldUsePlanner: pipeline.shouldUsePlanner,
+    });
     const askPlan = isAskMode
       ? AskOrchestrator.prepare(taskForClassification, {
           workspaceRoot: this.deps.workspace,
@@ -551,6 +648,7 @@ export class ChatOrchestrator {
           taskAnalysis,
           intent: intentRouting.mode === 'plan' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
           runtimeContext: skillRuntimeContext,
+          skillResolution: pipeline.skills,
         })
       : undefined;
     const actPlan = isAgentMode
@@ -573,23 +671,9 @@ export class ChatOrchestrator {
           verifyCommands: agentConfig?.verifyCommands,
           intent: intentRouting.mode === 'agent' && intentRouting.useClassification !== false ? intentRouting.classification.intent : undefined,
           runtimeContext: skillRuntimeContext,
+          skillResolution: pipeline.skills,
         })
       : undefined;
-    const logAuditSkillContext =
-      logAuditMode && !actPlan?.appliedSkills.includes('log-audit')
-        ? (() => {
-            const loaded = loadActSkillPlaybooks(this.deps.skillCatalog, ['log-audit'], {
-              style: tierPolicy.skillInjection,
-              maxChars: tierPolicy.maxSkillChars,
-              runtimeContext: skillRuntimeContext,
-            });
-            return {
-              skillPlaybookContext: loaded.context,
-              appliedSkills: loaded.loaded,
-              suggestedSkills: ['log-audit'],
-            };
-          })()
-        : undefined;
     const scopedRoot =
       askPlan?.scope.status === 'matched'
         ? askPlan.scope.scopeRoot
@@ -789,9 +873,7 @@ export class ChatOrchestrator {
       this.suspendContext = undefined;
       this.agentLoop?.clearSuspendState();
     }
-    const plannerEnabled = actPlan?.route.shouldUsePlanner
-      ?? shouldUsePlanner(session.mode, taskAnalysis, orchestrationEnabled, auditMode, agentConfig?.actDepth);
-    const requiresAgentWrite = shouldRequireAgentWrite(session.mode, taskAnalysis.kind, auditMode);
+    const plannerEnabled = pipeline.shouldUsePlanner;
     const subagentsEnabled =
       (agentConfig?.subagentsEnabled ?? true) &&
       !auditMode &&
@@ -816,29 +898,8 @@ export class ChatOrchestrator {
     }
     tools = filterToolsForTier(tools, tierPolicy);
 
-    const pipeline: PipelineResolution = resolveTurnPipeline(userMessage, taskAnalysis, {
-      mode: session.mode,
-      userDepth: isAskMode ? askDepth : isPlanMode ? planDepth : actDepth,
-      toolExposure: tierPolicy.toolExposure,
-      mdxRepairMode,
-      resumeSavedPlan: Boolean(actPlan?.savedPlanId),
-      planning: isPlanMode || Boolean(plannerEnabled && !isAskMode),
-      planExecution: false,
-      orchestrationEnabled,
-      forceDirect: actPlan?.executionPath === 'direct',
-    });
+    const requiresAgentWrite = shouldRequireAgentWrite(session.mode, pipeline.route.operationClass);
     tools = filterToolsByCapabilities(tools, pipeline.capabilities);
-    this.deps.sessionLog?.append('info', 'Pipeline resolution', {
-      intent: pipeline.route.intent,
-      auditSubtype: pipeline.route.auditSubtype,
-      docsSubtype: pipeline.route.docsSubtype,
-      depthAxis: pipeline.depthAxis,
-      activeSkill: pipeline.skills.activeSkill,
-      injectSkills: pipeline.skills.injectSkills,
-      excludedToolCount: pipeline.capabilities.excludedTools.size,
-      mcpPolicy: pipeline.capabilities.mcpPolicy,
-      shouldUsePlanner: pipeline.shouldUsePlanner,
-    });
 
     if (toolsEnabled && this.deps.toolExecutor) {
       setSubagentRuntime({
@@ -928,6 +989,7 @@ export class ChatOrchestrator {
       seedFileScope: (paths: string[]) => {
         this.deps.taskState?.mergeFileScope(paths);
       },
+      getTaskState: () => this.deps.taskState,
     };
     const planningContextBlock = mergePromptContexts(
       isAgentMode && actPlan ? actPlan.promptContext : undefined,
@@ -966,7 +1028,12 @@ export class ChatOrchestrator {
             skillPlaybookContext: actPlan?.skillPlaybookContext,
           }
         )) {
+          void chunk;
           if (signal.aborted) break;
+          if (isProgressChunk(chunk)) {
+            yield chunk;
+            continue;
+          }
           fullResponse += chunkContent(chunk);
           yield chunk;
         }
@@ -1017,6 +1084,8 @@ export class ChatOrchestrator {
           resolvedTier,
           tierPolicy,
           suggestedPlanningSkills,
+          pipeline.skills.injectSkills,
+          skillContext.appliedSkills,
           skillContext.skillPlaybookContext.length
         );
 
@@ -1136,11 +1205,10 @@ export class ChatOrchestrator {
             }
           }
         )) {
+          void chunk;
           if (signal.aborted) break;
-          if (session.mode !== 'plan') {
-            fullResponse += chunkContent(chunk);
-            yield chunk;
-          }
+          // Requirement analysis is planner-internal context. Persisting/streaming it
+          // as the answer pollutes Agent-mode output with stale goals and draft prose.
         }
         sessionTiming.end('requirement_analysis', sessionLog);
 
@@ -1233,6 +1301,10 @@ export class ChatOrchestrator {
               }
             )) {
               if (signal.aborted) break;
+              if (isProgressChunk(chunk)) {
+                yield chunk;
+                continue;
+              }
               fullResponse += chunkContent(chunk);
               yield chunk;
             }
@@ -1309,12 +1381,14 @@ export class ChatOrchestrator {
 
       const isResume = isApprovalContinuationMessage(userMessage);
       const taskStateBlock = this.deps.taskState?.buildPromptBlock();
-      if (!this.skillInjectionTelemetry && (planPlan || actPlan || logAuditSkillContext)) {
-        const directSkillContext = logAuditSkillContext ?? planPlan ?? actPlan;
+      if (!this.skillInjectionTelemetry && (planPlan || actPlan)) {
+        const directSkillContext = planPlan ?? actPlan;
         this.recordSkillInjectionTelemetry(
           resolvedTier,
           tierPolicy,
           directSkillContext?.suggestedSkills ?? [],
+          pipeline.skills.injectSkills,
+          directSkillContext?.appliedSkills ?? [],
           directSkillContext?.skillPlaybookContext.length ?? 0
         );
       }
@@ -1330,7 +1404,7 @@ export class ChatOrchestrator {
         pipeline.route.docsSubtype !== 'readme';
       const messages = attachImagesToLastUser(buildPrompt(
         session.mode,
-        pack,
+        displayPack,
         userMessage,
         compacted,
         toolsEnabled,
@@ -1339,7 +1413,7 @@ export class ChatOrchestrator {
         mdxErrorFile,
         taskStateBlock,
         isResume,
-        explicitResult.formatted || undefined,
+        undefined,
         mergePromptContexts(
           askPlan?.promptContext,
           planPlan?.promptContext,
@@ -1349,13 +1423,13 @@ export class ChatOrchestrator {
         ),
         mergePromptContexts(
           planPlan?.skillPlaybookContext,
-          actPlan?.skillPlaybookContext,
-          logAuditSkillContext?.skillPlaybookContext
+          actPlan?.skillPlaybookContext
         ),
         {
           docsMode: docsSiteMode,
           mdxRepairMode,
           askProfile: askPlan?.route.profile,
+          allowedToolNames: tools.map((tool) => tool.function.name),
         }
       ), options?.attachments);
       const promptSections = describePromptSections(
@@ -1365,6 +1439,7 @@ export class ChatOrchestrator {
           mdxRepairMode,
           isContinuation: isResume,
           askProfile: askPlan?.route.profile,
+          allowedToolNames: tools.map((tool) => tool.function.name),
         })
       );
       this.deps.sessionLog?.append('info', 'Prompt sections', {
@@ -1372,8 +1447,7 @@ export class ChatOrchestrator {
         planningDepth,
         skillChars:
           (planPlan?.skillPlaybookContext.length ?? 0) +
-          (actPlan?.skillPlaybookContext.length ?? 0) +
-          (logAuditSkillContext?.skillPlaybookContext.length ?? 0),
+          (actPlan?.skillPlaybookContext.length ?? 0),
       });
       const promptTokens = estimateChatRequestTokens({
         messages,
@@ -1385,9 +1459,7 @@ export class ChatOrchestrator {
       emitLiveTokenUsage();
 
       if (toolsEnabled && this.agentLoop) {
-        const directAgentTools = logAuditMode
-          ? filterLogAuditModeTools(tools)
-          : filterActModeTools(tools);
+        const directAgentTools = tools;
         this.setLiveStatus(isAskMode ? 'Answering' : 'Agent running');
         this.emitActivity(
           'info',
@@ -1443,6 +1515,7 @@ export class ChatOrchestrator {
                   ? 0
                   : (actPlan?.maxAutoContinues ?? agentConfig?.maxAutoContinues),
             requiresWrite: requiresAgentWrite,
+            requiredOperation: toRequiredLoopOperation(pipeline.route.operationClass),
             reasoningEffort: tierPolicy.reasoningEffort,
             getTaskState: () => this.deps.taskState,
           }
@@ -1543,6 +1616,10 @@ export class ChatOrchestrator {
               }
             )) {
               if (signal.aborted) break;
+              if (isProgressChunk(chunk)) {
+                yield chunk;
+                continue;
+              }
               fullResponse += chunkContent(chunk);
               emitLiveTokenUsage();
               yield chunk;
@@ -1666,12 +1743,25 @@ export class ChatOrchestrator {
     tier: AgenticTier,
     tierPolicy: TierPolicy,
     suggested: string[],
+    selected: string[],
+    loaded: string[],
     injectedChars: number
   ): void {
+    const loadedSet = new Set(loaded);
     this.skillInjectionTelemetry = {
       tier,
       style: tierPolicy.skillInjection,
       suggested,
+      selected,
+      loaded,
+      rejected: selected
+        .filter((name) => !loadedSet.has(name))
+        .map((name) => ({
+          name,
+          reason: tierPolicy.skillInjection === 'none' || tierPolicy.skillInjection === 'catalog'
+            ? `injection style ${tierPolicy.skillInjection}`
+            : 'skill missing or over injection budget',
+        })),
       injectedChars,
     };
   }
@@ -1682,6 +1772,9 @@ export class ChatOrchestrator {
       tier: this.skillInjectionTelemetry.tier ?? provider.capabilities.agenticTier,
       style: this.skillInjectionTelemetry.style,
       suggested: this.skillInjectionTelemetry.suggested,
+      selected: this.skillInjectionTelemetry.selected,
+      loaded: this.skillInjectionTelemetry.loaded,
+      rejected: this.skillInjectionTelemetry.rejected,
       injectedChars: this.skillInjectionTelemetry.injectedChars,
       useSkillCount: this.useSkillInvocationsThisTurn,
     });
@@ -1819,6 +1912,12 @@ export class ChatOrchestrator {
         sessionLog?.appendTiming('llm_step', durationMs, { step, toolCallCount });
         sessionLog?.appendDebug('info', 'LLM step complete', { step, durationMs, toolCallCount });
       },
+      onResponseCandidate: (candidate) => {
+        sessionLog?.appendDebug('llm_response_candidate', 'LLM response candidate', candidate);
+        if (candidate.rejectionReason?.endsWith('_missing_after_retry')) {
+          this.emitActivity('error', 'Required task side effect was not completed', candidate.rejectionReason);
+        }
+      },
       onAutoContinue: (round) => {
         this.emitActivity('info', `Auto-continuing agent loop (round ${round})`);
         this.setLiveStatus('Auto-continuing', `Round ${round}`);
@@ -1952,9 +2051,14 @@ export class ChatOrchestrator {
             seedFileScope: (paths: string[]) => {
               this.deps.taskState?.mergeFileScope(paths);
             },
+            getTaskState: () => this.deps.taskState,
           }
         )) {
           if (signal.aborted) break;
+          if (isProgressChunk(chunk)) {
+            yield chunk;
+            continue;
+          }
           fullResponse += chunkContent(chunk);
           yield chunk;
         }
@@ -2022,6 +2126,10 @@ export class ChatOrchestrator {
           sharedLoopCallbacks
         )) {
           if (signal.aborted) break;
+          if (isProgressChunk(chunk)) {
+            yield chunk;
+            continue;
+          }
           fullResponse += chunkContent(chunk);
           yield chunk;
         }
@@ -2359,15 +2467,27 @@ function getTouchedFilesFromAudit(toolRuntime?: ToolRuntime): string[] {
 
 function shouldRequireAgentWrite(
   mode: ThunderSession['mode'],
-  taskKind: ReturnType<typeof analyzeTask>['kind'],
-  auditMode: boolean
+  operationClass: PipelineResolution['route']['operationClass']
 ): boolean {
   return (
     mode === 'agent' &&
-    !auditMode &&
-    taskKind !== 'log_audit' &&
-    (taskKind === 'simple_edit' || taskKind === 'implementation')
+    (operationClass === 'workspace_write' || operationClass === 'execute_saved_plan')
   );
+}
+
+function toRequiredLoopOperation(
+  operationClass: PipelineResolution['route']['operationClass']
+): import('../runtime/AgentLoop').AgentLoopOptions['requiredOperation'] {
+  if (
+    operationClass === 'workspace_write' ||
+    operationClass === 'local_git_write' ||
+    operationClass === 'remote_write' ||
+    operationClass === 'release' ||
+    operationClass === 'execute_saved_plan'
+  ) {
+    return operationClass;
+  }
+  return undefined;
 }
 
 function touchesDocs(files: string[]): boolean {

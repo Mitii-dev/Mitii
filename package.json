@@ -1,8 +1,8 @@
 {
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
-  "description": "Local-first VS Code AI coding agent with precise repo context and safe Plan/Act workflow",
-  "version": "2.7.62",
+  "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
+  "version": "2.7.63",
   "publisher": "mitii",
   "icon": "media/mitii-short-logo.png",
   "license": "AGPL-3.0-or-later",
@@ -12,13 +12,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/codewithshinde/thunder-ai-agent.git"
+    "url": "https://github.com/Mitii-dev/Mitii.git"
   },
   "bugs": {
-    "url": "https://github.com/codewithshinde/thunder-ai-agent/issues"
+    "url": "https://github.com/Mitii-dev/Mitii/issues"
   },
   "homepage": "https://mitii.dev",
-  "qna": "https://github.com/codewithshinde/thunder-ai-agent/issues",
+  "qna": "https://github.com/Mitii-dev/Mitii/issues",
   "galleryBanner": {
     "color": "#111111",
     "theme": "dark"
@@ -32,13 +32,15 @@
   ],
   "keywords": [
     "ai",
-    "agent",
     "coding agent",
+    "vscode extension",
     "local-first",
     "ollama",
     "openai-compatible",
     "mcp",
-    "workspace indexing"
+    "repo indexing",
+    "developer tools",
+    "typescript"
   ],
   "activationEvents": [
     "onView:thunder.sidebar",

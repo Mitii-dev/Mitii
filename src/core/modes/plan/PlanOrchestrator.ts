@@ -12,6 +12,7 @@ import { buildPlanPromptContext } from './planPrompts';
 import { loadPlanningSkillPlaybooks, resolvePlanningSkillNames } from './planSkillRouting';
 import type { PlanDepth, PlanIntent, PlanRunPlan } from './planTypes';
 import { createLogger } from '../../telemetry/Logger';
+import type { SkillResolution } from '../../pipeline';
 
 const log = createLogger('PlanOrchestrator');
 
@@ -27,6 +28,8 @@ export interface PlanPrepareOptions {
   taskAnalysis?: TaskAnalysis;
   intent?: PlanIntent;
   runtimeContext?: SkillRuntimeContext;
+  /** Canonical pipeline skill decision. When present, do not reinterpret the request. */
+  skillResolution?: SkillResolution;
 }
 
 export class PlanOrchestrator {
@@ -52,11 +55,13 @@ export class PlanOrchestrator {
       planDepth,
       options.tierPolicy
     );
-    const suggestedSkills = resolvePlanningSkillNames(route.intent, options.taskAnalysis);
+    const suggestedSkills = options.skillResolution?.suggestedSkills
+      ?? resolvePlanningSkillNames(route.intent, options.taskAnalysis);
+    const injectSkills = options.skillResolution?.injectSkills ?? suggestedSkills;
     const policy = options.tierPolicy;
     const { context: skillPlaybookContext, loaded: appliedSkills } = loadPlanningSkillPlaybooks(
       options.skillCatalog,
-      suggestedSkills,
+      injectSkills,
       { style: policy?.skillInjection, maxChars: policy?.maxSkillChars, runtimeContext: options.runtimeContext ?? { mode: 'plan', depth: planDepth } }
     );
 

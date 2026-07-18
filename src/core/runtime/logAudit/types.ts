@@ -54,6 +54,15 @@ export interface JsonlEvidenceItem {
   summary: string;
 }
 
+export interface EvidenceSufficiency {
+  sufficientForInventory: boolean;
+  sufficientForSummary: boolean;
+  sufficientForCompletionAssessment: boolean;
+  sufficientForRootCause: boolean;
+  missingEvidenceFor: string[];
+  followupBudget: number;
+}
+
 export interface JsonlAnalysisReport {
   file: JsonlFileMeta;
   session: JsonlSessionMeta;
@@ -64,6 +73,8 @@ export interface JsonlAnalysisReport {
   context: JsonlContextMetrics;
   anomalies: string[];
   evidence: JsonlEvidenceItem[];
+  evidenceSufficiency: EvidenceSufficiency;
+  /** @deprecated Use evidenceSufficiency.sufficientForSummary. */
   hasEnoughEvidence: boolean;
 }
 
@@ -115,6 +126,8 @@ export interface LogDirectoryAnalysisReport {
   };
   errorCategories: Array<{ category: string; count: number; files: string[] }>;
   rankedAnomalies: Array<{ rank: number; severity: 'high' | 'medium' | 'low'; score: number; file?: string; message: string }>;
+  evidenceSufficiency: EvidenceSufficiency;
+  /** @deprecated Use evidenceSufficiency.sufficientForSummary. */
   hasEnoughEvidence: boolean;
 }
 

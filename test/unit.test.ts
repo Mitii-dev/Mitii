@@ -253,6 +253,35 @@ describe('IgnoreService', () => {
     }
   });
 
+  it('propose_file_scope repairs common model argument variants', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-file-scope-coerce-test-'));
+    try {
+      const { createProposeFileScopeTool } = await import('../src/core/tools/builtinTools');
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      mkdirSync(join(tempDir, 'src'), { recursive: true });
+      writeFileSync(join(tempDir, 'src/foo.ts'), 'export const foo = 1;\n');
+      const tool = createProposeFileScopeTool(tempDir, ig);
+      const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
+      const runtime = new ToolRuntime();
+      runtime.register(tool);
+
+      const result = await runtime.execute('propose_file_scope', {
+        objective: 'inspect routing and create a page',
+        candidates: JSON.stringify([
+          { path: 'src/foo.ts', intent: 'routing' },
+          { path: 'src/new.ts', access: 'create' },
+        ]),
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('"intent": "read"');
+      expect(result.output).toContain('"intent": "write"');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('serves repeat file reads from cache across read_file and read_files', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-read-cache-test-'));
     const targetRelPath = 'src/cache-target.ts';
@@ -1168,6 +1197,61 @@ describe('Plan parser', () => {
     expect(output).toContain('lint failed');
   });
 
+  it('does not complete a verification step from prose without running a verifier', async () => {
+    const { PlanExecutor } = await import('../src/core/runtime/PlanExecutor');
+    const plan = {
+      goal: 'Verify package',
+      assumptions: [],
+      requiredApprovals: [],
+      steps: [{
+        id: 'verify',
+        title: 'Verify Compilation',
+        status: 'pending' as const,
+        risk: 'low' as const,
+        phase: 'verify' as const,
+      }],
+    };
+    const persistence = {
+      save: () => 'plan-id',
+      updatePlan: () => undefined,
+      complete: () => undefined,
+    };
+    const agentLoop = {
+      hadPendingApproval: () => false,
+      async *run() {
+        // Weak model stopped without calling diagnostics/run_command.
+      },
+    };
+    const executor = new PlanExecutor(agentLoop as never, persistence as never);
+    const pack = {
+      items: [],
+      totalTokens: 0,
+      formatted: '',
+      budgetLimit: 100,
+      retrievedCount: 0,
+      truncatedCount: 0,
+      dropped: [],
+    };
+    let output = '';
+
+    for await (const chunk of executor.executePlan(
+      { id: 's1', mode: 'agent' } as never,
+      {} as never,
+      plan,
+      pack,
+      [],
+      undefined,
+      undefined,
+      undefined,
+      { stepMaxRetries: 0 }
+    )) {
+      output += chunk;
+    }
+
+    expect(plan.steps[0].status).toBe('failed');
+    expect(output).toContain('without a successful verification command');
+  });
+
   it('does not reuse stale agent-loop approval state after an explicit step succeeds', async () => {
     const { PlanExecutor } = await import('../src/core/runtime/PlanExecutor');
     const plan = {
@@ -1412,7 +1496,7 @@ describe('TaskAnalyzer', () => {
 
     const impl = analyzeTask('implement login and then add tests for the auth module', 'agent');
     expect(impl.kind).toBe('implementation');
-    expect(impl.shouldPlan).toBe(true);
+    expect(impl.shouldPlan).toBe(false);
     expect(impl.shouldVerify).toBe(true);
   });
 
@@ -1424,7 +1508,7 @@ describe('TaskAnalyzer', () => {
     );
 
     expect(result.kind).toBe('implementation');
-    expect(result.shouldPlan).toBe(true);
+    expect(result.shouldPlan).toBe(false);
     expect(result.shouldVerify).toBe(true);
   });
 
@@ -1433,7 +1517,7 @@ describe('TaskAnalyzer', () => {
     const result = analyzeTask('need animated enterprise landing page UI', 'agent');
 
     expect(result.kind).toBe('implementation');
-    expect(result.shouldPlan).toBe(true);
+    expect(result.shouldPlan).toBe(false);
     expect(result.shouldVerify).toBe(true);
   });
 
@@ -1441,10 +1525,10 @@ describe('TaskAnalyzer', () => {
     const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
     const result = analyzeTask('add docs for all ffb-mui features', 'agent');
 
-    expect(result.kind).toBe('implementation');
+    expect(result.kind).toBe('docs');
     expect(result.complexity).toBe('medium');
     expect(result.shouldPlan).toBe(true);
-    expect(result.shouldVerify).toBe(true);
+    expect(result.shouldVerify).toBe(false);
   });
 
   it('routes single-file day/row appends as direct simple edits', async () => {
@@ -1663,7 +1747,8 @@ describe('AgentTaskState', () => {
 
     expect(soft).toContain('already succeeded after edits');
     expect(soft).toContain('Stop using tools now');
-    expect(soft).toContain('No errors');
+    expect(soft).toContain('Cached evidence reference');
+    expect(soft).not.toContain('\nNo errors\n');
     expect(normalizeDiagnosticKey('cd packages/ffb-mui && npm run build:types')).toBeNull();
     expect(normalizeDiagnosticKey('cd apps/docs && npm run build')).toBe('docs-build');
   });
@@ -1685,7 +1770,8 @@ describe('AgentTaskState', () => {
     expect(state.getPhase()).toBe('execute');
     const soft = state.buildSoftBlockResponse('run_command', { command: 'npx eslint src/' });
     expect(soft).toContain('Skipped redundant');
-    expect(soft).toContain('no-unused-vars');
+    expect(soft).toContain('Cached evidence reference');
+    expect(soft).not.toContain('no-unused-vars');
     expect(soft).toContain('smallest exact next action');
     expect(soft).not.toContain('package.json');
   });
@@ -1718,8 +1804,8 @@ describe('AgentTaskState', () => {
     const blocked = state.checkBlocked('read_file', { path: 'apps/docs/docusaurus.config.ts' });
     expect(blocked).toContain('Already read');
     const soft = state.buildSoftBlockResponse('read_file', { path: 'apps/docs/docusaurus.config.ts' });
-    expect(soft).toContain('Cached output');
-    expect(soft).toContain('export default');
+    expect(soft).toContain('Cached evidence reference');
+    expect(soft).not.toContain('export default');
   });
 
   it('invalidates read cache after apply_patch', async () => {
@@ -1743,25 +1829,167 @@ describe('AgentTaskState', () => {
     expect(state.checkFileScopeBlocked('read_file', { path: 'src/other.ts' })).toContain('File read budget exceeded');
   });
 
+  it('expands an exhausted read budget when a later plan step adds valid scope', async () => {
+    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const state = new AgentTaskState();
+    state.setFileScope(['src/a.ts'], 1);
+    state.recordToolSuccess('read_file', { path: 'src/a.ts' }, 'a');
+    state.mergeFileScope(['src/b.ts', 'src/c.ts'], 2);
+
+    expect(state.checkFileScopeBlocked('read_file', { path: 'src/b.ts' })).toBeNull();
+    expect(state.getFileScopeSnapshot().maxFilesRead).toBeGreaterThanOrEqual(3);
+  });
+
+  it('clears forced synthesis between structured plan step loops', async () => {
+    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const state = new AgentTaskState();
+    state.markForceSynthesis();
+    expect(state.shouldForceSynthesis()).toBe(true);
+    state.beginAgentLoop();
+    expect(state.shouldForceSynthesis()).toBe(false);
+  });
+
   it('parses and gates JSON intent classifications', async () => {
     const {
+      classifyIntent,
+      classifyIntentFastPath,
       gateIntentClassification,
       parseIntentClassification,
     } = await import('../src/core/runtime/intentClassifier');
     const parsed = parseIntentClassification(
-      '{"intent":"docs","confidence":0.82,"alternatives":[{"intent":"feature","confidence":0.4}]}',
+      '{"intent":"docs","confidence":0.82,"alternatives":[{"intent":"feature","confidence":0.4},{"intent":"feature","confidence":0.6}]}',
       ['bugfix', 'feature', 'docs'] as const
     );
-    expect(parsed).toMatchObject({ intent: 'docs', confidence: 0.82 });
-    expect(parsed.alternatives?.[0]).toMatchObject({ intent: 'feature', confidence: 0.4 });
+    expect(parsed).toMatchObject({ intent: 'docs', confidence: 0.82, source: 'llm' });
+    expect(parsed.alternatives).toEqual([{ intent: 'feature', confidence: 0.6 }]);
 
     const gated = gateIntentClassification(
-      { intent: 'feature' as const, confidence: 0.3, alternatives: [] },
+      {
+        intent: 'feature' as const,
+        confidence: 0.3,
+        alternatives: [],
+        needsClarification: false,
+        source: 'llm' as const,
+      },
       'agent',
       'question' as const
     );
-    expect(gated.intent).toBe('question');
+    expect(gated.intent).toBe('feature');
     expect(gated.needsClarification).toBe(true);
+
+    const fallback = gateIntentClassification(
+      {
+        intent: 'docs' as const,
+        confidence: 0.6,
+        alternatives: [{ intent: 'feature' as const, confidence: 0.35 }],
+        needsClarification: false,
+        source: 'llm' as const,
+      },
+      'agent',
+      'question' as const
+    );
+    expect(fallback).toMatchObject({
+      intent: 'question',
+      confidence: 0,
+      source: 'fallback',
+      originalIntent: 'docs',
+      originalConfidence: 0.6,
+      gated: true,
+    });
+
+    const clarification = gateIntentClassification(
+      {
+        intent: 'docs' as const,
+        confidence: 0.98,
+        alternatives: [],
+        needsClarification: true,
+        source: 'llm' as const,
+      },
+      'agent',
+      'question' as const
+    );
+    expect(clarification).toMatchObject({
+      intent: 'docs',
+      needsClarification: true,
+      gated: false,
+    });
+
+    const logPath = classifyIntentFastPath(
+      'agent',
+      String.raw`Analyze C:\project\.mitii\logs`,
+      ['bugfix', 'log_audit', 'audit'] as const
+    );
+    expect(logPath).toMatchObject({
+      intent: 'log_audit',
+      source: 'fast_path',
+      matchedRule: 'log target + analysis verb',
+    });
+
+    expect(classifyIntentFastPath(
+      'agent',
+      'Audit authentication security',
+      ['audit', 'question'] as const
+    )).toBeNull();
+    expect(classifyIntentFastPath(
+      'agent',
+      'Execute the saved plan',
+      ['feature', 'question'] as const
+    )).toBeNull();
+
+    expect(() => parseIntentClassification(
+      '{"intent":"docs","confidence":0.9} {"intent":"feature","confidence":0.8}',
+      ['docs', 'feature'] as const
+    )).not.toThrow();
+    expect(() => parseIntentClassification(
+      '{"intent":"docs","confidence":0.9',
+      ['docs', 'feature'] as const
+    )).toThrow(/complete JSON object/);
+
+    let providerCalled = false;
+    const blank = await classifyIntent(
+      {
+        id: 'test',
+        capabilities: {
+          contextWindow: 8_192,
+          supportsTools: false,
+          supportsVision: false,
+          supportsReasoning: false,
+          supportsStreaming: true,
+          supportsEmbeddings: false,
+        },
+        async *complete() {
+          providerCalled = true;
+          yield { content: '{}' };
+        },
+      },
+      'ask',
+      '   ',
+      ['explain_code', 'general_knowledge'] as const,
+      {
+        explain_code: 'Explain code.',
+        general_knowledge: 'Answer general knowledge.',
+      }
+    );
+    expect(providerCalled).toBe(false);
+    expect(blank).toMatchObject({
+      intent: 'explain_code',
+      confidence: 0,
+      needsClarification: true,
+      source: 'fallback',
+      gateReason: 'empty_message',
+    });
+  });
+
+  it('resolves state-aware control intent before domain routing', async () => {
+    const { resolveControlIntent } = await import('../src/core/runtime/controlIntent');
+
+    expect(resolveControlIntent('yes', { hasPendingApproval: true }).intent).toBe('approve_pending');
+    expect(resolveControlIntent('yes').intent).toBe('acknowledgement');
+    expect(resolveControlIntent('continue', { hasActiveTask: true }).intent).toBe('continue_task');
+    expect(resolveControlIntent('continue').intent).toBe('clarify_previous');
+    expect(resolveControlIntent('?', { hasActiveTask: true }).intent).toBe('clarify_previous');
+    expect(resolveControlIntent('cancel', { hasActiveTask: true }).intent).toBe('cancel_task');
+    expect(resolveControlIntent('Update README.md').intent).toBe('new_task');
   });
 
   it('caps sequential-thinking MCP calls', async () => {
@@ -2319,6 +2547,39 @@ describe('SubagentTracker', () => {
 });
 
 describe('SessionLogService', () => {
+  it('separates turn lifecycle from session lifecycle', async () => {
+    const { mkdtempSync, readFileSync, rmSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const { SessionLogService } = await import('../src/core/telemetry/SessionLogService');
+
+    const dir = mkdtempSync(join(tmpdir(), 'mitii-turn-log-'));
+    try {
+      const log = new SessionLogService();
+      log.configure(dir, 'turn-session', true);
+      log.writeSessionHeader({ mode: 'agent' });
+      const turnId = log.beginTurn({ mode: 'agent' });
+      log.append('user_message', 'Update README');
+      log.endTurn('completed', { toolCalls: 1 });
+
+      let events = readFileSync(log.getLogPath(), 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+      expect(events.map((event) => event.type)).toEqual([
+        'session_start',
+        'turn_start',
+        'user_message',
+        'turn_end',
+      ]);
+      expect(events[2].data.turnId).toBe(turnId);
+      expect(events.some((event) => event.type === 'session_end')).toBe(false);
+
+      log.endSession({ reason: 'test_complete' });
+      events = readFileSync(log.getLogPath(), 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+      expect(events.at(-1)?.type).toBe('session_end');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('writes JSONL events and builds a summary', async () => {
     const { mkdtempSync, readFileSync, rmSync } = await import('fs');
     const { join } = await import('path');
@@ -2668,6 +2929,25 @@ describe('run_command exit codes', () => {
       });
       expect(result.success).toBe(true);
       expect(result.output).toContain('File not found');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('detects compiler errors hidden by a successful trailing pipeline command', async () => {
+    const { mkdtempSync, rmSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const { createRunCommandTool } = await import('../src/core/tools/builtinTools');
+
+    const dir = mkdtempSync(join(tmpdir(), 'thunder-cmd-tsc-pipe-'));
+    try {
+      const tool = createRunCommandTool(dir, () => 'agent');
+      const result = await tool.execute({
+        command: 'printf "src/index.ts(1,1): error TS18046: bad type\\n" | tail -20 # tsc --noEmit',
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('error TS18046');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

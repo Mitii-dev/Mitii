@@ -9,6 +9,7 @@ import {
   filterToolsByCapabilities,
   minStepsForAxis,
   resolvePlanningDepthAxis,
+  classifyArtifacts,
 } from '../../src/core/pipeline/index';
 import { analyzeTask } from '../../src/core/runtime/TaskAnalyzer';
 import { resolveActSkillNames } from '../../src/core/modes/agent/actSkillRouting';
@@ -17,6 +18,17 @@ import { minStepsForPlanningDepth } from '../../src/core/plans/planningDepth';
 import { resolveGitRoute } from '../../src/core/git/intents';
 
 describe('pipeline route + subtypes', () => {
+  it('extracts multiple explicit artifacts with normalized paths', () => {
+    const result = classifyArtifacts(
+      String.raw`Update C:\project\README.md and src/auth.ts, then inspect .mitii/logs`
+    );
+    expect(result.artifacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'readme', path: 'C:/project/README.md', source: 'explicit' }),
+      expect.objectContaining({ kind: 'source_file', path: 'src/auth.ts', source: 'explicit' }),
+      expect.objectContaining({ kind: 'log_directory', path: '.mitii/logs', source: 'explicit' }),
+    ]));
+  });
+
   it('classifies README requests as docs/readme and skips heavy planner', () => {
     const msg =
       'I need Readfile added for this project, which should include all the details, like structure, apis, payloads, Architecture';
@@ -29,14 +41,36 @@ describe('pipeline route + subtypes', () => {
     const route = resolveRoute(msg, analysis);
     expect(route.intent).toBe('docs');
     expect(route.docsSubtype).toBe('readme');
+    expect(route.operationClass).toBe('workspace_write');
     expect(route.executionPath).toBe('direct');
     expect(resolvePlanningDepthAxis(route, analysis)).toBe('direct');
+  });
+
+  it('separates README inspection from README writes', () => {
+    const explain = 'Explain the architecture described in README.md';
+    const explainRoute = resolveRoute(explain, analyzeTask(explain, 'ask', {
+      askIntent: 'explain_code',
+    }));
+    expect(explainRoute.intent).toBe('docs');
+    expect(explainRoute.operationClass).toBe('inspect');
+
+    const update = 'Update README.md with the current architecture';
+    const updateRoute = resolveRoute(update, analyzeTask(update, 'agent', {
+      actIntent: 'docs',
+    }));
+    expect(updateRoute.intent).toBe('docs');
+    expect(updateRoute.operationClass).toBe('workspace_write');
   });
 
   it('does not treat prompt/security audits as depcheck cleanup', () => {
     expect(resolveAuditSubtype('Please run a prompt audit on our system prompts')).toBe('prompt');
     expect(resolveAuditSubtype('Security configuration review of CORS and auth')).toBe('security_config');
     expect(resolveAuditSubtype('Find unused dependencies with depcheck')).toBe('unused_deps');
+  });
+
+  it('does not treat unusual architecture as unused-code cleanup', async () => {
+    const { isAuditCleanupTask } = await import('../../src/core/runtime/taskKind');
+    expect(isAuditCleanupTask('Review this unusual architecture')).toBe(false);
   });
 
   it('resolves docs subtypes', () => {
@@ -117,6 +151,34 @@ describe('pipeline skills 0-1', () => {
 });
 
 describe('pipeline capabilities + MCP', () => {
+  it('preserves local versus remote Git write classes', () => {
+    const commitMessage = 'Commit these changes';
+    const commitGitRoute = resolveGitRoute(commitMessage, 'agent');
+    const commitRoute = resolveRoute(commitMessage, {
+      kind: 'git',
+      complexity: 'low',
+      shouldPlan: false,
+      shouldVerify: true,
+      shouldUseSubagents: false,
+      summary: commitMessage,
+      gitRoute: commitGitRoute,
+    });
+    expect(commitRoute.operationClass).toBe('local_git_write');
+
+    const pullRequest = 'Push this branch and create a pull request';
+    const prGitRoute = resolveGitRoute(pullRequest, 'agent');
+    const prRoute = resolveRoute(pullRequest, {
+      kind: 'git',
+      complexity: 'medium',
+      shouldPlan: true,
+      shouldVerify: true,
+      shouldUseSubagents: false,
+      summary: pullRequest,
+      gitRoute: prGitRoute,
+    });
+    expect(prRoute.operationClass).toBe('remote_write');
+  });
+
   it('hides release_plan_controller and MCP filesystem on docs routes', () => {
     const route = resolveRoute('Write a README for frontend', {
       kind: 'docs',
@@ -183,6 +245,7 @@ describe('pipeline planning depth', () => {
       orchestrationEnabled: true,
     });
     expect(pipeline.route.intent).toBe('docs');
+    expect(pipeline.route.operationClass).toBe('workspace_write');
     expect(pipeline.depthAxis).toBe('direct');
     expect(pipeline.shouldUsePlanner).toBe(false);
     expect(pipeline.skills.activeSkill).toBe('documentation');
