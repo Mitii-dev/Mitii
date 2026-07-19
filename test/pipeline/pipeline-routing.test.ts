@@ -16,6 +16,7 @@ import { resolveActSkillNames } from '../../src/features/ce/modes/agent/actSkill
 import { shouldUsePlannerForAct } from '../../src/features/ce/modes/agent/ActIntentRouter';
 import { minStepsForPlanningDepth } from '../../src/features/ce/plans/planningDepth';
 import { resolveGitRoute } from '../../src/features/ce/git/intents';
+import { shouldRunStructuredPlanner } from '../../src/features/ce/orchestration/ChatOrchestrator';
 
 describe('pipeline route + subtypes', () => {
   it('extracts multiple explicit artifacts with normalized paths', () => {
@@ -83,10 +84,19 @@ describe('pipeline route + subtypes', () => {
     expect(route.operationClass).toBe('workspace_write');
     expect(route.risk).toBe('high');
     expect(route.executionPath).toBe('orchestrated');
-    expect(resolveTurnPipeline(msg, analysis, {
+    const pipeline = resolveTurnPipeline(msg, analysis, {
       mode: 'agent',
       orchestrationEnabled: true,
-    }).shouldUsePlanner).toBe(true);
+    });
+    expect(analysis.shouldPlan).toBe(false);
+    expect(pipeline.shouldUsePlanner).toBe(true);
+    expect(pipeline.internalDepth).not.toBe('none');
+    expect(shouldRunStructuredPlanner(
+      pipeline.shouldUsePlanner,
+      true,
+      pipeline.internalDepth,
+      'agent'
+    )).toBe(true);
     expect(resolveSkillsForRoute(route, analysis).activeSkill).toBe('bugfix-workflow');
   });
 

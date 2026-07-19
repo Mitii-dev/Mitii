@@ -36,7 +36,7 @@ import { toolsToDefinitions } from '../../../kernel/tools/toolSchema';
 import { AgentLoop, type ApprovedToolResult, type AgentLoopSuspendState } from '../../../features/ce/runtime/AgentLoop';
 import { describeSkipLabel, isSkippedToolOutput } from '../../../features/ce/runtime/toolSkip';
 import { PlanExecutor } from '../../../features/ce/runtime/PlanExecutor';
-import { resolvePlanningDepth, shouldSkipStructuredPlanner } from '../../../features/ce/plans/planningDepth';
+import { shouldSkipStructuredPlanner } from '../../../features/ce/plans/planningDepth';
 import { analyzeTask, type TaskAnalysis } from '../../../features/ce/runtime/TaskAnalyzer';
 import {
   resolveTurnPipeline,
@@ -1127,7 +1127,10 @@ export class ChatOrchestrator {
       );
     };
     const sharedLoopCallbacks = this.buildLoopCallbacks(emitLiveTokenUsage);
-    const planningDepth = resolvePlanningDepth(taskAnalysis);
+    // PipelineResolution is the canonical planner authority. Recomputing from the
+    // pre-reconciliation TaskAnalysis can turn an orchestrated restoration back into
+    // "none" and silently skip planning.
+    const planningDepth = pipeline.internalDepth;
     const sharedPlanOptions = {
       stepMaxRetries: agentConfig?.stepMaxRetries,
       finalValidationEnabled: agentConfig?.finalValidationEnabled,
@@ -1200,10 +1203,13 @@ export class ChatOrchestrator {
       }
 
       if (
-        plannerEnabled &&
-        this.planExecutor &&
-        taskAnalysis.shouldPlan &&
-        !shouldSkipStructuredPlanner(planningDepth, session.mode)
+        shouldRunStructuredPlanner(
+          plannerEnabled,
+          Boolean(this.planExecutor),
+          planningDepth,
+          session.mode
+        ) &&
+        this.planExecutor
       ) {
         this.deps.sessionLog?.append('info', 'Planning depth resolved', {
           planningDepth,
@@ -2647,6 +2653,19 @@ function shouldUsePlanner(
 }
 
 export { shouldUsePlanner };
+
+export function shouldRunStructuredPlanner(
+  plannerEnabled: boolean,
+  hasPlanExecutor: boolean,
+  planningDepth: import('../../../features/ce/plans/planningDepth').PlanningDepth,
+  mode: ThunderSession['mode']
+): boolean {
+  return (
+    plannerEnabled &&
+    hasPlanExecutor &&
+    !shouldSkipStructuredPlanner(planningDepth, mode)
+  );
+}
 
 export function shouldExecuteSavedPlan(
   mode: ThunderSession['mode'],

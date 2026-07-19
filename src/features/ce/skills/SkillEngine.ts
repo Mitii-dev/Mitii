@@ -219,12 +219,13 @@ export class SkillResolver {
     const eligible = reports
       .filter((report) => report.eligible)
       .sort((a, b) => b.score - a.score || b.manifest.priority - a.manifest.priority || a.id.localeCompare(b.id));
-    const primary = eligible[0]?.score > 0 ? eligible[0] : undefined;
+    const primary = eligible.find((report) => report.score > 0 && hasStrongTaskMatch(report));
     const supporting = eligible.find((report) =>
       report.id !== primary?.id &&
-      report.score > 0 &&
+      report.score >= 20 &&
+      hasStrongTaskMatch(report) &&
       !hasConflict(report.manifest, primary?.manifest));
-    const candidates = eligible.slice(0, this.reportLimit);
+    const candidates = eligible.filter((report) => report.score > 0).slice(0, this.reportLimit);
     const rejected = reports.filter((report) => !report.eligible).slice(0, this.reportLimit);
     return {
       engineVersion: SKILL_ENGINE_VERSION,
@@ -236,6 +237,13 @@ export class SkillResolver {
       estimatedCatalogChars: [...candidates, ...rejected].reduce((sum, report) => sum + report.id.length + report.name.length + 32, 0),
     };
   }
+}
+
+function hasStrongTaskMatch(report: SkillCandidateReport): boolean {
+  return report.factors.some((factor) =>
+    factor.score > 0 &&
+    ['intent', 'task_subtype', 'trigger', 'pin', 'pin_rule'].includes(factor.key)
+  );
 }
 
 function statusFor(

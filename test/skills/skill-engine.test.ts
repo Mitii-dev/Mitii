@@ -84,6 +84,41 @@ describe('Skill Engine', () => {
     expect(result.selectedSkillIds).toHaveLength(2);
   });
 
+  it('does not inject documentation solely because the repository contains markdown files', () => {
+    const entries = [
+      entry({
+        ...manifest('bugfix-workflow'),
+        intents: ['bugfix'],
+        taskKinds: ['implementation'],
+        triggers: ['fix'],
+        priority: 20,
+      }),
+      entry({
+        ...manifest('documentation'),
+        intents: ['docs'],
+        taskKinds: ['implementation'],
+        taskSubtypes: ['readme'],
+        pathPatterns: ['**/*.md'],
+        priority: 20,
+      }),
+    ];
+    const resolver = new SkillResolver(new StaticRetriever(entries), new ExplainableSkillRanker());
+    const result = resolver.resolve({
+      ...baseContext(),
+      request: 'Fix build errors from a half implemented folder migration',
+      intent: 'bugfix',
+      taskKind: 'implementation',
+      repository: {
+        ...baseContext().repository,
+        paths: ['docs/README.md', 'src/index.ts'],
+      },
+    });
+
+    expect(result.primarySkillId).toBe('bugfix-workflow');
+    expect(result.supportingSkillId).toBeUndefined();
+    expect(result.selectedSkillIds).toEqual(['bugfix-workflow']);
+  });
+
   it('returns a no-skill result when no eligible candidate has a positive score', () => {
     const resolver = new SkillResolver(
       new StaticRetriever([entry(manifest('generic'))]),
