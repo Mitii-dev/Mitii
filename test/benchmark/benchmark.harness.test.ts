@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error benchmark verifier ships as plain ESM
 import { verifyTask } from '../../tools/benchmark/verify.mjs';
-import { resolveBundledSkillsRoot } from '../../src/core/skills/resolveBundledSkillsRoot';
-import { listBundledSkillNames } from '../../src/core/skills/installBundledSkills';
-import { buildHeadlessConfig } from '../../src/core/headless/HeadlessConfig';
-import { headlessDiscoverFiles } from '../../src/core/headless/headlessDiscoverFiles';
-import { IgnoreService } from '../../src/core/indexing/IgnoreService';
+import { resolveBundledSkillsRoot } from '../../src/features/ce/skills/resolveBundledSkillsRoot';
+import { listBundledSkillNames } from '../../src/features/ce/skills/installBundledSkills';
+import { buildHeadlessConfig } from '../../src/adapters/node/HeadlessConfig';
+import { headlessDiscoverFiles } from '../../src/adapters/node/headlessDiscoverFiles';
+import { IgnoreService } from '../../src/features/ce/indexing/IgnoreService';
 import { join } from 'path';
 
 describe('benchmark verify rules', () => {
@@ -51,10 +51,10 @@ describe('benchmark verify rules', () => {
   });
 });
 
-describe('core bundled skills', () => {
-  it('resolves skills from src/core/skills/bundled', () => {
+describe('bundled skills', () => {
+  it('resolves skills from src/features/ce/skills/bundled', () => {
     const root = resolveBundledSkillsRoot(process.cwd());
-    expect(root).toContain('src/core/skills/bundled');
+    expect(root).toContain('src/features/ce/skills/bundled');
     const names = listBundledSkillNames(process.cwd());
     expect(names).toContain('test-driven-development');
     expect(names).toContain('browser-testing-with-devtools');

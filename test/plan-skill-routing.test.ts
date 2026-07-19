@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { SkillCatalogContextSource, SkillCatalogService } from '../src/core/skills/SkillCatalogService';
+import { SkillCatalogContextSource, SkillCatalogService } from '../src/features/ce/skills/SkillCatalogService';
 import {
   loadPlanningSkillPlaybooks,
   resolvePlanningSkillNames,
-} from '../src/core/modes/plan/planSkillRouting';
+} from '../src/features/ce/modes/plan/planSkillRouting';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';

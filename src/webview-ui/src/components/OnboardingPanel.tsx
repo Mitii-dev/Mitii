@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ProviderSettingsPayload, SettingsView } from '../../../vscode/webview/messages';
-import { PROVIDER_PRESETS } from '../../../core/llm/providerPresets';
-import { validateProviderSettings } from '../../../core/config/ui/mappers';
+import { PROVIDER_PRESETS } from '../../../kernel/llm/providerPresets';
+import { validateProviderSettings } from '../../../kernel/config/ui/mappers';
 
 interface OnboardingPanelProps {
   settings: SettingsView;

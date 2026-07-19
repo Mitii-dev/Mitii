@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { generateChangelogEntry, insertChangelogEntry } from '../src/core/release/ChangelogGenerator';
-import { generateReleaseNotes } from '../src/core/release/ReleaseNotesGenerator';
-import { parseConventionalSubject } from '../src/core/release/GitHistoryCollector';
+import { generateChangelogEntry, insertChangelogEntry } from '../src/features/ce/release/ChangelogGenerator';
+import { generateReleaseNotes } from '../src/features/ce/release/ReleaseNotesGenerator';
+import { parseConventionalSubject } from '../src/features/ce/release/GitHistoryCollector';
 
 describe('release automation', () => {
   const commits = [

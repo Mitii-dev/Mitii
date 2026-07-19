@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { HeadlessAgentHost } from '../../src/core/headless/HeadlessAgentHost';
-import { defaultThunderConfig } from '../../src/core/config/defaults';
+import { HeadlessAgentHost } from '../../src/adapters/node/HeadlessAgentHost';
+import { defaultThunderConfig } from '../../src/kernel/config/defaults';
 import { recallAtK, ndcgAtK, reciprocalRank, mean } from '../../tools/benchmark/scripts/retrievalMetrics';
 import retrievalDataset from '../../tools/benchmark/datasets/retrieval-eval.json';
 

@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { defaultThunderConfig } from '../src/core/config/defaults';
-import { applyAutonomyPreset, describeAutonomyPreset } from '../src/core/safety/autonomyPresets';
-import { createProvider } from '../src/core/llm/createProvider';
-import { OpenAiCompatibleProvider, sanitizeOpenAiCompatibleMessages } from '../src/core/llm/OpenAiCompatibleProvider';
-import { PROVIDER_PRESETS, getProviderPreset, isCloudProvider } from '../src/core/llm/providerPresets';
-import { LlmProviderRegistry } from '../src/core/llm/LlmProviderRegistry';
-import { makeToolName } from '../src/core/mcp/McpManager';
-import { resolveMcpAuthProvider } from '../src/core/mcp/McpOAuthProvider';
-import { testProviderConnection } from '../src/core/llm/testConnection';
+import { defaultThunderConfig } from '../src/kernel/config/defaults';
+import { applyAutonomyPreset, describeAutonomyPreset } from '../src/features/ce/safety/autonomyPresets';
+import { createProvider } from '../src/adapters/providers/createProvider';
+import { OpenAiCompatibleProvider, sanitizeOpenAiCompatibleMessages } from '../src/adapters/providers/OpenAiCompatibleProvider';
+import { PROVIDER_PRESETS, getProviderPreset, isCloudProvider } from '../src/kernel/llm/providerPresets';
+import { LlmProviderRegistry } from '../src/adapters/providers/LlmProviderRegistry';
+import { makeToolName } from '../src/features/ce/mcp/McpManager';
+import { resolveMcpAuthProvider } from '../src/features/ce/mcp/McpOAuthProvider';
+import { testProviderConnection } from '../src/kernel/llm/testConnection';
 import { deriveSafetySettings } from '../src/webview-ui/src/utils/approvalMode';
 
 describe('providerPresets', () => {
@@ -385,7 +385,7 @@ describe('plan vs act config schema', () => {
 
 describe('fetch_web tool policy', () => {
   it('is registered as read-only in tool policy', async () => {
-    const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
+    const { ToolPolicyEngine } = await import('../src/features/ce/safety/ToolPolicyEngine');
     const engine = new ToolPolicyEngine(
       { ...defaultThunderConfig().safety, allowNetwork: true },
       () => false
@@ -395,7 +395,7 @@ describe('fetch_web tool policy', () => {
   });
 
   it('blocks fetch_web when network disabled', async () => {
-    const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
+    const { ToolPolicyEngine } = await import('../src/features/ce/safety/ToolPolicyEngine');
     const engine = new ToolPolicyEngine(
       applyAutonomyPreset(defaultThunderConfig().safety, 'safe'),
       () => false
@@ -405,7 +405,7 @@ describe('fetch_web tool policy', () => {
   });
 
   it('explains that OSV package queries require POST before making a request', async () => {
-    const { createFetchWebTool } = await import('../src/core/tools/builtinTools');
+    const { createFetchWebTool } = await import('../src/features/ce/tools/builtinTools');
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     try {
@@ -421,7 +421,7 @@ describe('fetch_web tool policy', () => {
   });
 
   it('corrects malformed GitHub advisory ID URLs before making a request', async () => {
-    const { createFetchWebTool } = await import('../src/core/tools/builtinTools');
+    const { createFetchWebTool } = await import('../src/features/ce/tools/builtinTools');
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     try {
@@ -445,7 +445,7 @@ describe('CheckpointService strategy metadata', () => {
 
 describe('Anthropic message splitting', () => {
   it('maps tool results to anthropic format without throwing', async () => {
-    const { AnthropicProvider } = await import('../src/core/llm/AnthropicProvider');
+    const { AnthropicProvider } = await import('../src/adapters/providers/AnthropicProvider');
     const provider = new AnthropicProvider({
       baseUrl: 'https://api.anthropic.com',
       model: 'claude-sonnet-4-20250514',

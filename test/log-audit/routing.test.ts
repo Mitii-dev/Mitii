@@ -5,8 +5,8 @@ import {
   buildLogAuditBootstrapBlock,
   isLogAuditTask,
   extractLogAuditTargetPath,
-} from '../../src/core/runtime/logAudit';
-import { routeAskIntent } from '../../src/core/modes/ask';
+} from '../../src/features/ce/runtime/logAudit';
+import { routeAskIntent } from '../../src/features/ce/modes/ask';
 
 describe('logAudit routing', () => {
   it('detects explicit jsonl analysis requests', () => {

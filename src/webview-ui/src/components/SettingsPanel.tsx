@@ -21,9 +21,9 @@ import { SettingStepper } from './SettingStepper';
 import { SettingNote } from './SettingNote';
 import { MemoryPanel } from './MemoryPanel';
 import { CheckpointPanel } from './CheckpointPanel';
-import { getProviderPreset } from '../../../core/llm/providerPresets';
-import { validateProviderSettings } from '../../../core/config/ui/mappers';
-import { AGENT_DEPTH_OPTIONS, normalizeAgentDepth } from '../../../core/config/agentDepth';
+import { getProviderPreset } from '../../../kernel/llm/providerPresets';
+import { validateProviderSettings } from '../../../kernel/config/ui/mappers';
+import { AGENT_DEPTH_OPTIONS, normalizeAgentDepth } from '../../../kernel/config/agentDepth';
 import {
   deriveSafetyFromAutonomyPreset,
 } from '../utils/autonomyPreset';

@@ -2,9 +2,9 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { WorkspaceLanguageService } from '../src/core/indexing/WorkspaceLanguageService';
-import { IgnoreService } from '../src/core/indexing/IgnoreService';
-import { defaultThunderConfig } from '../src/core/config/defaults';
+import { WorkspaceLanguageService } from '../src/features/ce/indexing/WorkspaceLanguageService';
+import { IgnoreService } from '../src/features/ce/indexing/IgnoreService';
+import { defaultThunderConfig } from '../src/kernel/config/defaults';
 
 function makeWorkspace(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), 'mitii-lang-service-'));

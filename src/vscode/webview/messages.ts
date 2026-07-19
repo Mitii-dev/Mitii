@@ -1,4 +1,4 @@
-import type { ThunderMode } from '../../core/session/ThunderSession';
+import type { ThunderMode } from '../../features/ce/session/ThunderSession';
 import type {
   AgentSettingsPayload,
   AgentDepthView,
@@ -10,7 +10,7 @@ import type {
   ProviderTypeView,
   SafetySettingsPayload,
   ThunderSettingsPayload,
-} from '../../core/config/ui/payloads';
+} from '../../kernel/config/ui/payloads';
 export type {
   AgentSettingsPayload,
   AgentDepthView,
@@ -25,7 +25,7 @@ export type {
   SafetySettingsPayload,
   TelemetrySettingsPayload,
   ThunderSettingsPayload,
-} from '../../core/config/ui/payloads';
+} from '../../kernel/config/ui/payloads';
 
 export type WebviewTab = 'chat' | 'history' | 'settings';
 

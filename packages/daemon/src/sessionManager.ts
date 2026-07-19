@@ -1,9 +1,9 @@
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'fs';
 import { dirname, join } from 'path';
-import { HeadlessAgentHost } from '../../../src/core/headless/HeadlessAgentHost';
-import type { HeadlessAgentOptions } from '../../../src/core/headless/HeadlessConfig';
-import type { MitiiApprovalDecision, MitiiMode } from '../../../src/core/headless/events';
+import { HeadlessAgentHost } from '../../../src/adapters/node/HeadlessAgentHost';
+import type { HeadlessAgentOptions } from '../../../src/adapters/node/HeadlessConfig';
+import type { MitiiApprovalDecision, MitiiMode } from '../../../src/adapters/node/events';
 import { SseHub } from './sseHub';
 import { canonicalWorkspace } from './workspaceBinding';
 

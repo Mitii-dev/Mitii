@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import { ThunderController } from '../../core/app/ThunderController';
-import { createLogger } from '../../core/telemetry/Logger';
-import { normalizeError, formatUserError } from '../../core/telemetry/errors';
-import { debugTrace } from '../../core/telemetry/AsyncDebugTrace';
-import { chunkContent, chunkReasoning } from '../../core/llm/streamChunks';
+import { ThunderController } from '../../adapters/vscode/ThunderController';
+import { createLogger } from '../../kernel/telemetry/Logger';
+import { normalizeError, formatUserError } from '../../adapters/vscode/telemetry/errors';
+import { debugTrace } from '../../kernel/telemetry/AsyncDebugTrace';
+import { chunkContent, chunkReasoning } from '../../kernel/llm/streamChunks';
 import { AGENT_FULL_NAME, AGENT_NAME, brandMessage } from '../../shared/brand';
 import {
   type ExtensionToWebviewMessage,

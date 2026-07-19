@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { aggregateChangelog, detectChangelogStrategy, generateChangelogPatch } from '../../src/core/git/changelog';
-import { buildIssueDraft, buildPullRequestDraft, findDuplicateIssues, parseGitHubRemoteUrl, verifyGitHubRepository } from '../../src/core/git/github';
-import { analyzeGitHubWorkflow, workflowMayAffectProduction } from '../../src/core/git/workflows';
+import { aggregateChangelog, detectChangelogStrategy, generateChangelogPatch } from '../../src/features/ce/git/changelog';
+import { buildIssueDraft, buildPullRequestDraft, findDuplicateIssues, parseGitHubRemoteUrl, verifyGitHubRepository } from '../../src/features/ce/git/github';
+import { analyzeGitHubWorkflow, workflowMayAffectProduction } from '../../src/features/ce/git/workflows';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';

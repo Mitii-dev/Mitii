@@ -5,22 +5,23 @@ import { createInterface } from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
 import { homedir } from 'os';
 import { dirname, join, resolve } from 'path';
-import { AuditPackBuilder, verifyAuditPack } from '../core/audit';
-import { generateHeadlessChangelog, prepareHeadlessRelease } from '../core/headless';
-import type { HeadlessRuntime } from '../core/headless/HeadlessConfig';
-import type { ProviderType } from '../core/config/schema';
+import { AuditPackBuilder, verifyAuditPack } from '../features/ce/audit';
+import { generateHeadlessChangelog, prepareHeadlessRelease } from '../adapters/node/headless';
+import type { HeadlessRuntime } from '../adapters/node/HeadlessConfig';
+import type { ProviderType } from '../kernel/config/schema';
 import { createClient, query, DaemonClient, DaemonSessionClient } from '../../packages/sdk/src';
 import type { MitiiMode, MitiiEvent } from '../../packages/sdk/src';
-import { connectAgentMemoryMcp } from '../core/mcp/mcpWorkspaceConfig';
-import { AutoMemoryFileWriter } from '../core/memory/AutoMemoryFileWriter';
+import { connectAgentMemoryMcp } from '../features/ce/mcp/mcpWorkspaceConfig';
+import { AutoMemoryFileWriter } from '../features/ce/memory/AutoMemoryFileWriter';
 import { serveCommand } from '../../packages/daemon/src/cli';
 import { startMitiiBoard } from '../../packages/board/src/server';
-import { TaskBoardService, ParallelAgentRunner } from '../core/task';
-import { WorktreeService } from '../core/git';
-import { IndexWorkerService } from '../core/indexing/IndexWorkerService';
-import { GitHubPullRequestService, inferGitHubRepo } from '../core/integrations/github';
-import { JobQueueService, type MitiiJob } from '../core/jobs';
-import { TeamService } from '../core/teams';
+import { TaskBoardService } from '../features/ce/task-board';
+import { ParallelAgentRunner } from '../features/ee/parallel-agents';
+import { WorktreeService } from '../features/ce/git';
+import { IndexWorkerService } from '../features/ce/indexing/IndexWorkerService';
+import { GitHubPullRequestService, inferGitHubRepo } from '../features/ce/github';
+import { JobQueueService, type MitiiJob } from '../features/ee/distributed-jobs';
+import { TeamService } from '../features/ee/teams';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
@@ -758,12 +759,12 @@ function initAgentTemplate(cwd: string, json: boolean): number {
   return 0;
 }
 
-function formatTasks(tasks: import('../core/task').MitiiTask[]): string {
+function formatTasks(tasks: import('../features/ce/task-board').MitiiTask[]): string {
   if (tasks.length === 0) return 'No tasks.\n';
   return tasks.map((task) => `${task.id}\t${task.status}\t${task.title}`).join('\n') + '\n';
 }
 
-function formatIndexStatus(status: import('../core/indexing/IndexMaintenanceService').IndexStatusReport): string {
+function formatIndexStatus(status: import('../features/ce/indexing/IndexMaintenanceService').IndexStatusReport): string {
   return [
     `Workspace: ${status.workspace}`,
     `Files: ${status.filesIndexed}/${status.filesTotal} indexed`,

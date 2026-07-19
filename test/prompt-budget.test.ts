@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { fitChatRequestToBudget, getMaxInputTokens } from '../src/core/runtime/PromptBudget';
-import { estimateChatRequestTokens } from '../src/core/llm/UsageTrackingProvider';
+import { fitChatRequestToBudget, getMaxInputTokens } from '../src/features/ce/runtime/PromptBudget';
+import { estimateChatRequestTokens } from '../src/features/ce/runtime/UsageTrackingProvider';
 
 describe('PromptBudget', () => {
   it('reserves output headroom from the configured window', () => {

@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
-import { ThunderController } from '../src/core/app/ThunderController';
-import { PlanPersistence } from '../src/core/plans/PlanPersistence';
-import { ThunderSession } from '../src/core/session/ThunderSession';
+import { ThunderController } from '../src/adapters/vscode/ThunderController';
+import { PlanPersistence } from '../src/features/ce/plans/PlanPersistence';
+import { ThunderSession } from '../src/features/ce/session/ThunderSession';
 
 describe('session recovery', () => {
   const fixturePlanPath = () => join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures/session-recovery/active-plan.json');

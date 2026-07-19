@@ -5,7 +5,7 @@ import { MarkdownMessage } from './MarkdownMessage';
 import { AgentActivityPanel } from './AgentActivityPanel';
 import { ThinkingRow } from './ThinkingRow';
 import { useStreamReveal } from '../hooks/useStreamReveal';
-import type { ThunderMode } from '../../../core/session/ThunderSession';
+import type { ThunderMode } from '../../../features/ce/session/ThunderSession';
 
 interface MessageListProps {
   messages: ChatMessage[];

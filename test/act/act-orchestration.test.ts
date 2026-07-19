@@ -5,12 +5,12 @@ import {
   hasDirectRouteOverride,
   routeActIntent,
   shouldResumeSavedPlan,
-} from '../../src/core/modes/agent';
-import { analyzeTask } from '../../src/core/runtime/TaskAnalyzer';
-import { resolveMaxContextItems } from '../../src/core/context/resolveMaxContextItems';
-import type { ToolDefinition } from '../../src/core/llm/toolTypes';
-import { buildSystemPrompt } from '../../src/core/plans/promptBuilder';
-import type { SkillCatalogService } from '../../src/core/skills/SkillCatalogService';
+} from '../../src/features/ce/modes/agent';
+import { analyzeTask } from '../../src/features/ce/runtime/TaskAnalyzer';
+import { resolveMaxContextItems } from '../../src/features/ce/context/resolveMaxContextItems';
+import type { ToolDefinition } from '../../src/kernel/llm/toolTypes';
+import { buildSystemPrompt } from '../../src/features/ce/plans/promptBuilder';
+import type { SkillCatalogService } from '../../src/features/ce/skills/SkillCatalogService';
 
 describe('Act orchestration boundary', () => {
   it('recognizes explicit and natural saved-plan handoff phrases', () => {

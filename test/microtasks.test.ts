@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { budgetDiff } from '../src/core/scm/GitDiffCollector';
-import { buildCommitMessagePrompt, redactSensitiveDiff } from '../src/core/scm/commitMessagePrompt';
-import { detectMicroTask, MicroTaskExecutor } from '../src/core/microtasks';
-import type { GitService } from '../src/core/context/GitService';
-import type { LlmProvider } from '../src/core/llm/types';
+import { budgetDiff } from '../src/features/ce/scm/GitDiffCollector';
+import { buildCommitMessagePrompt, redactSensitiveDiff } from '../src/features/ce/scm/commitMessagePrompt';
+import { detectMicroTask, MicroTaskExecutor } from '../src/features/ce/microtasks';
+import type { GitService } from '../src/features/ce/context/GitService';
+import type { LlmProvider } from '../src/kernel/llm/types';
 
 describe('microtasks', () => {
   it('detects supported micro-task intents', () => {

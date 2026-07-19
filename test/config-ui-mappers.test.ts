@@ -3,8 +3,8 @@ import {
   normalizeAgentSettings,
   normalizeProviderSettings,
   normalizeThunderSettings,
-} from '../src/core/config/ui/mappers';
-import type { AgentSettingsPayload, ThunderSettingsPayload } from '../src/core/config/ui/payloads';
+} from '../src/kernel/config/ui/mappers';
+import type { AgentSettingsPayload, ThunderSettingsPayload } from '../src/kernel/config/ui/payloads';
 
 const agentSettings = (overrides: Partial<AgentSettingsPayload> = {}): AgentSettingsPayload => ({
   subagentsEnabled: true,

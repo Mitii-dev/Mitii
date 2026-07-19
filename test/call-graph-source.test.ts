@@ -2,12 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { ThunderDb } from '../src/core/indexing/ThunderDb';
-import { MigrationRunner } from '../src/core/indexing/migrations';
-import { WorkspaceLanguageService } from '../src/core/indexing/WorkspaceLanguageService';
-import { IgnoreService } from '../src/core/indexing/IgnoreService';
-import { defaultThunderConfig } from '../src/core/config/defaults';
-import { CallGraphContextSource } from '../src/core/context/sources/callGraphSource';
+import { ThunderDb } from '../src/features/ce/indexing/ThunderDb';
+import { MigrationRunner } from '../src/features/ce/indexing/migrations';
+import { WorkspaceLanguageService } from '../src/features/ce/indexing/WorkspaceLanguageService';
+import { IgnoreService } from '../src/features/ce/indexing/IgnoreService';
+import { defaultThunderConfig } from '../src/kernel/config/defaults';
+import { CallGraphContextSource } from '../src/features/ce/context/sources/callGraphSource';
 
 describe('CallGraphContextSource', () => {
   let dir: string;

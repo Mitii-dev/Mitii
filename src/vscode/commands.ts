@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import { ThunderController } from '../core/app/ThunderController';
+import { ThunderController } from '../adapters/vscode/ThunderController';
 import { ThunderWebviewProvider } from './webview/ThunderWebviewProvider';
 import { registerScmContributions } from './scm/registerScmContributions';
-import { migrateThunderSettingsToMitii } from '../core/config/vscode/migrate';
-import { MITII_SETTING_PATHS } from '../core/config/settingPaths';
+import { migrateThunderSettingsToMitii } from '../adapters/vscode/config/migrate';
+import { MITII_SETTING_PATHS } from '../kernel/config/settingPaths';
 
 export function registerCommands(
   context: vscode.ExtensionContext,

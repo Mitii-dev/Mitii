@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { ChatMessage } from '../../src/core/llm/types';
-import type { ToolDefinition } from '../../src/core/llm/toolTypes';
-import type { SkillCatalogService } from '../../src/core/skills/SkillCatalogService';
+import type { ChatMessage } from '../../src/kernel/llm/types';
+import type { ToolDefinition } from '../../src/kernel/llm/toolTypes';
+import type { SkillCatalogService } from '../../src/features/ce/skills/SkillCatalogService';
 
 describe('Plan mode orchestration', () => {
   it('forces structured planning for non-trivial codebase questions', async () => {
-    const { analyzeTask } = await import('../../src/core/runtime/TaskAnalyzer');
+    const { analyzeTask } = await import('../../src/features/ce/runtime/TaskAnalyzer');
 
     const analysis = analyzeTask('How does authentication work in this repo?', 'plan');
 
@@ -15,7 +15,7 @@ describe('Plan mode orchestration', () => {
   });
 
   it('keeps trivial general knowledge out of the planner', async () => {
-    const { analyzeTask } = await import('../../src/core/runtime/TaskAnalyzer');
+    const { analyzeTask } = await import('../../src/features/ce/runtime/TaskAnalyzer');
 
     const analysis = analyzeTask('What is a binary search tree?', 'plan');
 
@@ -24,7 +24,7 @@ describe('Plan mode orchestration', () => {
   });
 
   it('prepares a scoped SDK-compatible plan boundary', async () => {
-    const { PlanOrchestrator, createSdkCompatibilityNote } = await import('../../src/core/modes/plan/PlanOrchestrator');
+    const { PlanOrchestrator, createSdkCompatibilityNote } = await import('../../src/features/ce/modes/plan/PlanOrchestrator');
 
     const prepared = PlanOrchestrator.prepare('Implement the SDK plan runner in packages/sdk', {
       configuredMaxSteps: 20,
@@ -61,7 +61,7 @@ describe('Plan mode orchestration', () => {
   });
 
   it('uses catalog-only skill discovery for lean Plan tiers', async () => {
-    const { PlanOrchestrator } = await import('../../src/core/modes/plan/PlanOrchestrator');
+    const { PlanOrchestrator } = await import('../../src/features/ce/modes/plan/PlanOrchestrator');
     const prepared = PlanOrchestrator.prepare('Implement the SDK plan runner', {
       skillCatalog: createSkillCatalog({
         'using-agent-skills': '# Agent Skills\n\nFull playbook.',
@@ -80,7 +80,7 @@ describe('Plan mode orchestration', () => {
   });
 
   it('fully injects Plan skills within the tier budget', async () => {
-    const { PlanOrchestrator } = await import('../../src/core/modes/plan/PlanOrchestrator');
+    const { PlanOrchestrator } = await import('../../src/features/ce/modes/plan/PlanOrchestrator');
     const prepared = PlanOrchestrator.prepare('Implement the SDK plan runner', {
       skillCatalog: createSkillCatalog({
         'using-agent-skills': '# Agent Skills\n\nShort playbook.',
@@ -102,7 +102,7 @@ describe('Plan mode orchestration', () => {
   });
 
   it('filters Plan mode tools to planning capabilities with approval-gated mutators', async () => {
-    const { filterPlanModeTools, PLAN_ALLOWED_TOOLS } = await import('../../src/core/modes/plan/planMode');
+    const { filterPlanModeTools, PLAN_ALLOWED_TOOLS } = await import('../../src/features/ce/modes/plan/planMode');
     const tools = [
       tool('read_file'),
       tool('search_batch'),
@@ -130,8 +130,8 @@ describe('Plan mode orchestration', () => {
   });
 
   it('passes planning discovery into isolated plan compilation', async () => {
-    const { PlanExecutor } = await import('../../src/core/runtime/PlanExecutor');
-    const { analyzeTask } = await import('../../src/core/runtime/TaskAnalyzer');
+    const { PlanExecutor } = await import('../../src/features/ce/runtime/PlanExecutor');
+    const { analyzeTask } = await import('../../src/features/ce/runtime/TaskAnalyzer');
     let capturedMessages: ChatMessage[] = [];
     const provider = {
       id: 'fake',
@@ -216,7 +216,7 @@ describe('Plan mode orchestration', () => {
   });
 
   it('tells planning discovery to ask material clarifying questions before compiling', async () => {
-    const { buildPlanningDiscoveryPrompt } = await import('../../src/core/plans/promptBuilder');
+    const { buildPlanningDiscoveryPrompt } = await import('../../src/features/ce/plans/promptBuilder');
     const pack = {
       items: [],
       totalTokens: 0,
@@ -244,7 +244,7 @@ describe('Plan mode orchestration', () => {
   });
 
   it('returns a best-effort fallback in Plan mode when quality gate rejects a parsed plan', async () => {
-    const { PlanExecutor } = await import('../../src/core/runtime/PlanExecutor');
+    const { PlanExecutor } = await import('../../src/features/ce/runtime/PlanExecutor');
     const provider = {
       id: 'fake',
       capabilities: {

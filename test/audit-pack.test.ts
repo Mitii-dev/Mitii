@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { AuditPackBuilder, verifyAuditPack } from '../src/core/audit';
+import { AuditPackBuilder, verifyAuditPack } from '../src/features/ce/audit';
 
 describe('AuditPackBuilder', () => {
   it('builds a zip with expected entries and redacts secrets', () => {

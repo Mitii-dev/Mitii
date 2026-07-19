@@ -9,7 +9,7 @@ import {
   decomposeCompositeGitTask,
   resolveGitRoute,
   toolsForGitRoute,
-} from '../../src/core/git/intents';
+} from '../../src/features/ce/git/intents';
 
 describe('Git intent metadata and routing', () => {
   it('defines metadata for every Git intent', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ToolPolicyEngine } from '../../src/core/safety/ToolPolicyEngine';
-import { defaultThunderConfig } from '../../src/core/config/defaults';
+import { ToolPolicyEngine } from '../../src/features/ce/safety/ToolPolicyEngine';
+import { defaultThunderConfig } from '../../src/kernel/config/defaults';
 
 describe('Git permission policy', () => {
   const engine = new ToolPolicyEngine(defaultThunderConfig().safety, () => false);

@@ -2,14 +2,14 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { ThunderDb } from '../src/core/indexing/ThunderDb';
-import { MigrationRunner } from '../src/core/indexing/migrations';
-import { checkDbHealth } from '../src/core/indexing/health';
-import { WorkspaceScanner } from '../src/core/indexing/WorkspaceScanner';
-import { ChunkingService } from '../src/core/indexing/ChunkingService';
-import { FtsIndex, sanitizeFtsQuery } from '../src/core/indexing/FtsIndex';
-import { tsExtractor } from '../src/core/indexing/SymbolExtractor';
-import { IndexQueue } from '../src/core/indexing/IndexQueue';
+import { ThunderDb } from '../src/features/ce/indexing/ThunderDb';
+import { MigrationRunner } from '../src/features/ce/indexing/migrations';
+import { checkDbHealth } from '../src/features/ce/indexing/health';
+import { WorkspaceScanner } from '../src/features/ce/indexing/WorkspaceScanner';
+import { ChunkingService } from '../src/features/ce/indexing/ChunkingService';
+import { FtsIndex, sanitizeFtsQuery } from '../src/features/ce/indexing/FtsIndex';
+import { tsExtractor } from '../src/features/ce/indexing/SymbolExtractor';
+import { IndexQueue } from '../src/features/ce/indexing/IndexQueue';
 
 describe('DB integration', () => {
   let tempDir: string;

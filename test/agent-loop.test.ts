@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AgentLoop } from '../src/core/runtime/AgentLoop';
-import { chunkContent } from '../src/core/llm/streamChunks';
-import type { ToolExecutor } from '../src/core/safety/ToolExecutor';
-import type { LlmProvider } from '../src/core/llm/types';
-import type { ThunderPlan } from '../src/core/plans/PlanActEngine';
+import { AgentLoop } from '../src/features/ce/runtime/AgentLoop';
+import { chunkContent } from '../src/kernel/llm/streamChunks';
+import type { ToolExecutor } from '../src/features/ce/safety/ToolExecutor';
+import type { LlmProvider } from '../src/kernel/llm/types';
+import type { ThunderPlan } from '../src/features/ce/plans/PlanActEngine';
 
 function mockProvider(responses: Array<Record<string, unknown>>): LlmProvider {
   let call = 0;
@@ -839,8 +839,8 @@ describe('AgentLoop E2E', () => {
 
 describe('Plan tools E2E', () => {
   it('resolves missing mark_step_complete stepId to the running step', async () => {
-    const { createMarkStepCompleteTool } = await import('../src/core/tools/planTools');
-    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
+    const { createMarkStepCompleteTool } = await import('../src/features/ce/plans/tools/planTools');
+    const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
     const plan: ThunderPlan = {
       goal: 'test',
       assumptions: [],
@@ -867,8 +867,8 @@ describe('Plan tools E2E', () => {
   });
 
   it('resolves stepId "current" to the first pending step when nothing is running', async () => {
-    const { createMarkStepCompleteTool } = await import('../src/core/tools/planTools');
-    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
+    const { createMarkStepCompleteTool } = await import('../src/features/ce/plans/tools/planTools');
+    const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
     const plan: ThunderPlan = {
       goal: 'test',
       assumptions: [],
@@ -891,7 +891,7 @@ describe('Plan tools E2E', () => {
   });
 
   it('applyDependencyLocks blocks steps until deps complete', async () => {
-    const { applyDependencyLocks, getNextExecutableStep } = await import('../src/core/tools/planTools');
+    const { applyDependencyLocks, getNextExecutableStep } = await import('../src/features/ce/plans/tools/planTools');
     type StepStatus = 'pending' | 'running' | 'done' | 'blocked' | 'failed' | 'blocked_by_dependency';
     const plan = {
       goal: 'test',
@@ -917,7 +917,7 @@ describe('Plan tools E2E', () => {
 
 describe('ImportExtractor', () => {
   it('extracts ES imports and resolves relative paths', async () => {
-    const { extractImports, resolveImportTarget } = await import('../src/core/indexing/ImportExtractor');
+    const { extractImports, resolveImportTarget } = await import('../src/features/ce/indexing/ImportExtractor');
     const content = `
 import { foo } from './utils';
 import type { Bar } from '../types/bar';
@@ -934,7 +934,7 @@ describe('PlanFileStore', () => {
     const { mkdtempSync, rmSync, readFileSync, existsSync } = await import('fs');
     const { join } = await import('path');
     const { tmpdir } = await import('os');
-    const { PlanFileStore } = await import('../src/core/plans/PlanFileStore');
+    const { PlanFileStore } = await import('../src/features/ce/plans/PlanFileStore');
 
     const dir = mkdtempSync(join(tmpdir(), 'thunder-plan-'));
     const store = new PlanFileStore(dir, 'task-123');
@@ -964,7 +964,7 @@ describe('PlanFileStore', () => {
 
 describe('pageRank personalization', () => {
   it('boosts personalized nodes', async () => {
-    const { computePageRank } = await import('../src/core/context/pageRank');
+    const { computePageRank } = await import('../src/features/ce/context/pageRank');
     const personalization = new Map([
       ['hub.ts', 10],
       ['leaf.ts', 0.1],
@@ -980,7 +980,7 @@ describe('pageRank personalization', () => {
 
 describe('TreeSitterParser fallback', () => {
   it('extracts symbols via regex when tree-sitter unavailable', async () => {
-    const { treeSitterParser } = await import('../src/core/indexing/SymbolExtractor');
+    const { treeSitterParser } = await import('../src/features/ce/indexing/SymbolExtractor');
     const symbols = treeSitterParser.parse(`
 export class MyService {
   async fetchData(): Promise<void> {}
@@ -991,8 +991,8 @@ export interface Config { key: string; }
   });
 
   it('extracts symbols via tree-sitter WASM when available', async () => {
-    const { initTreeSitter, preloadWasmLanguage } = await import('../src/core/indexing/TreeSitterService');
-    const { extractSymbols } = await import('../src/core/indexing/SymbolExtractor');
+    const { initTreeSitter, preloadWasmLanguage } = await import('../src/features/ce/indexing/TreeSitterService');
+    const { extractSymbols } = await import('../src/features/ce/indexing/SymbolExtractor');
     const ready = await initTreeSitter();
     if (!ready) return;
     await preloadWasmLanguage('python');

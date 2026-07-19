@@ -5,7 +5,7 @@ import { join } from 'path';
 
 describe('Logger', () => {
   it('should exist as a module', async () => {
-    const { createLogger } = await import('../src/core/telemetry/Logger');
+    const { createLogger } = await import('../src/kernel/telemetry/Logger');
     const log = createLogger('test');
     expect(log.info).toBeDefined();
     expect(log.warn).toBeDefined();
@@ -17,7 +17,7 @@ describe('SessionLogService', () => {
   it('keeps numeric token usage while redacting string secrets', async () => {
     const workspace = mkdtempSync(join(tmpdir(), 'thunder-log-test-'));
     try {
-      const { SessionLogService } = await import('../src/core/telemetry/SessionLogService');
+      const { SessionLogService } = await import('../src/kernel/telemetry/SessionLogService');
       const log = new SessionLogService();
       log.configure(workspace, 'session-1', true);
       log.append('token_usage', 'usage', {
@@ -35,7 +35,7 @@ describe('SessionLogService', () => {
 
 describe('ThunderSession', () => {
   it('creates session with defaults', async () => {
-    const { ThunderSession } = await import('../src/core/session/ThunderSession');
+    const { ThunderSession } = await import('../src/features/ce/session/ThunderSession');
     const session = new ThunderSession('/workspace');
     expect(session.id).toBeTruthy();
     expect(session.workspace).toBe('/workspace');
@@ -45,7 +45,7 @@ describe('ThunderSession', () => {
 
 describe('Error normalization', () => {
   it('normalizes Error objects', async () => {
-    const { normalizeError } = await import('../src/core/telemetry/errors');
+    const { normalizeError } = await import('../src/adapters/vscode/telemetry/errors');
     const result = normalizeError(new Error('test error'));
     expect(result.message).toBe('test error');
   });

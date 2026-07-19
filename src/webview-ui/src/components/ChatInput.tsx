@@ -1,5 +1,5 @@
 import { useState, useCallback, type CSSProperties, type KeyboardEvent, useRef, useEffect } from 'react';
-import type { ThunderMode } from '../../../core/session/ThunderSession';
+import type { ThunderMode } from '../../../features/ce/session/ThunderSession';
 import type {
   AgentDepthView,
   ApprovalMode,
@@ -25,7 +25,7 @@ import {
 } from './Icons';
 import { TokenMeter } from './TokenMeter';
 import { APPROVAL_MODE_OPTIONS } from '../utils/approvalMode';
-import { AGENT_DEPTH_OPTIONS, normalizeAgentDepth } from '../../../core/config/agentDepth';
+import { AGENT_DEPTH_OPTIONS, normalizeAgentDepth } from '../../../kernel/config/agentDepth';
 
 interface ChatInputProps {
   loading: boolean;

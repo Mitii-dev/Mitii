@@ -1,5 +1,5 @@
-import { HeadlessAgentHost } from '../../../src/core/headless/HeadlessAgentHost';
-import type { ProviderType } from '../../../src/core/config/schema';
+import { HeadlessAgentHost } from '../../../src/adapters/node/HeadlessAgentHost';
+import type { ProviderType } from '../../../src/kernel/config/schema';
 import type { MitiiClientOptions, MitiiEvent, MitiiQueryOptions, MitiiResult } from './types';
 
 export class MitiiClient {

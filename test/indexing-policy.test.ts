@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { scaffoldMitiiWorkspace } from '../src/core/mcp/scaffoldMitiiWorkspace';
-import { sortIndexCandidates } from '../src/core/indexing/indexingPolicy';
+import { scaffoldMitiiWorkspace } from '../src/features/ce/mcp/scaffoldMitiiWorkspace';
+import { sortIndexCandidates } from '../src/features/ce/indexing/indexingPolicy';
 
 describe('indexing policy', () => {
   it('prioritizes package metadata, config, and src files before broad repo files', () => {

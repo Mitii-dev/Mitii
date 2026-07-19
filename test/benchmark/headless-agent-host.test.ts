@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { HeadlessAgentHost } from '../../src/core/headless/HeadlessAgentHost';
+import { HeadlessAgentHost } from '../../src/adapters/node/HeadlessAgentHost';
 
 describe('HeadlessAgentHost', () => {
   it('runs stub ask/plan/agent without native index', async () => {

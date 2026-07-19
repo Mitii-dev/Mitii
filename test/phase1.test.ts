@@ -3,9 +3,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { query } from '../packages/sdk/src';
-import { ProjectRulesService } from '../src/core/rules/ProjectRulesService';
-import { AutoMemoryFileWriter } from '../src/core/memory/AutoMemoryFileWriter';
-import { connectAgentMemoryMcp, loadWorkspaceMcpServers } from '../src/core/mcp/mcpWorkspaceConfig';
+import { ProjectRulesService } from '../src/features/ce/rules/ProjectRulesService';
+import { AutoMemoryFileWriter } from '../src/features/ce/memory/AutoMemoryFileWriter';
+import { connectAgentMemoryMcp, loadWorkspaceMcpServers } from '../src/features/ce/mcp/mcpWorkspaceConfig';
 
 describe('Phase 1 SDK and platform gaps', () => {
   it('streams SDK events for a stub agent query', async () => {

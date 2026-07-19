@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeRelPath, resolveWorkspaceRelPath } from '../src/core/util/paths';
-import { npxMcpServer } from '../src/core/mcp/npxCommand';
+import { normalizeRelPath, resolveWorkspaceRelPath } from '../src/kernel/util/paths';
+import { npxMcpServer } from '../src/features/ce/mcp/npxCommand';
 
 describe('Windows path hardening', () => {
   it('resolves drive-letter absolute paths to workspace-relative POSIX paths', () => {

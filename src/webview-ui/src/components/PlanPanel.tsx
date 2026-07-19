@@ -5,7 +5,7 @@ import type {
   PlanStepView,
   PlanView,
 } from '../../../vscode/webview/messages';
-import type { ThunderMode } from '../../../core/session/ThunderSession';
+import type { ThunderMode } from '../../../features/ce/session/ThunderSession';
 
 interface PlanPanelProps {
   plan: PlanView | null;

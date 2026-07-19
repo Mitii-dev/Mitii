@@ -1,7 +1,8 @@
 import { createServer, type Server } from 'http';
 import { resolve } from 'path';
-import { TaskBoardService, ParallelAgentRunner, type ParallelAgentRunnerOptions } from '../../../src/core/task';
-import type { HeadlessRuntime } from '../../../src/core/headless/HeadlessConfig';
+import { TaskBoardService } from '../../../src/features/ce/task-board';
+import { ParallelAgentRunner, type ParallelAgentRunnerOptions } from '../../../src/features/ee/parallel-agents';
+import type { HeadlessRuntime } from '../../../src/adapters/node/HeadlessConfig';
 import { writeJson } from '../../daemon/src/authMiddleware';
 
 export interface BoardServerOptions {

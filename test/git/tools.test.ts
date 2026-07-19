@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFileSync } from 'child_process';
-import { createGitLogTool, createGitStatusTool, createStructuredGitDiffTool } from '../../src/core/tools/gitTools';
+import { createGitLogTool, createGitStatusTool, createStructuredGitDiffTool } from '../../src/features/ce/git/tools/gitTools';
 
 describe('structured Git tools', () => {
   it('returns structured status, diff, and log from a real repository', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeTask } from '../src/core/runtime/TaskAnalyzer';
+import { analyzeTask } from '../src/features/ce/runtime/TaskAnalyzer';
 
 describe('TaskAnalyzer routing regressions', () => {
   it('preserves deterministic Act intent metadata when no classifier intent is supplied', () => {

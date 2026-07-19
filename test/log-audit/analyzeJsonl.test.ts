@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { mkdirSync, writeFileSync, unlinkSync, mkdtempSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { analyzeJsonlFile, analyzeLogDirectory } from '../../src/core/runtime/logAudit';
-import { IgnoreService } from '../../src/core/indexing/IgnoreService';
-import { createAnalyzeJsonlTool, createAnalyzeLogDirectoryTool } from '../../src/core/tools/logAuditTools';
+import { analyzeJsonlFile, analyzeLogDirectory } from '../../src/features/ce/runtime/logAudit';
+import { IgnoreService } from '../../src/features/ce/indexing/IgnoreService';
+import { createAnalyzeJsonlTool, createAnalyzeLogDirectoryTool } from '../../src/features/ce/audit/tools/logAuditTools';
 
 describe('analyzeJsonlFile', () => {
   it('parses compact session metrics without embedding raw content', async () => {

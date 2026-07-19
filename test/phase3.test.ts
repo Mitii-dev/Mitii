@@ -2,12 +2,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { GitHubPullRequestService, parseGitHubRemoteUrl } from '../src/core/integrations/github';
-import { JobQueueService } from '../src/core/jobs';
-import { TeamService } from '../src/core/teams';
-import { ThunderDb } from '../src/core/indexing/ThunderDb';
-import { MigrationRunner } from '../src/core/indexing/migrations';
-import { IndexMaintenanceService } from '../src/core/indexing/IndexMaintenanceService';
+import { GitHubPullRequestService, parseGitHubRemoteUrl } from '../src/features/ce/github';
+import { JobQueueService } from '../src/features/ee/distributed-jobs';
+import { TeamService } from '../src/features/ee/teams';
+import { ThunderDb } from '../src/features/ce/indexing/ThunderDb';
+import { MigrationRunner } from '../src/features/ce/indexing/migrations';
+import { IndexMaintenanceService } from '../src/features/ce/indexing/IndexMaintenanceService';
 
 const dirs: string[] = [];
 

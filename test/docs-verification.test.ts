@@ -4,8 +4,8 @@ import { tmpdir } from 'os';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   verifyDocumentationFiles,
-} from '../src/core/runtime/docsVerification';
-import { resolveProjectVerifyCommands } from '../src/core/runtime/verifyCommandDiscovery';
+} from '../src/features/ce/runtime/docsVerification';
+import { resolveProjectVerifyCommands } from '../src/features/ce/runtime/verifyCommandDiscovery';
 
 const workspaces: string[] = [];
 

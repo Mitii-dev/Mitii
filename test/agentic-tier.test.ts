@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { resolveAgenticTier, resolveTierPolicy } from '../src/core/llm/agenticTier';
-import { detectModelCapabilities } from '../src/core/llm/modelCapabilities';
+import { resolveAgenticTier, resolveTierPolicy } from '../src/kernel/llm/agenticTier';
+import { detectModelCapabilities } from '../src/kernel/llm/modelCapabilities';
 
 describe('agentic tier resolver', () => {
   it('classifies local models by context size', () => {

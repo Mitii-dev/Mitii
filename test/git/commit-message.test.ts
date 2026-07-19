@@ -6,7 +6,7 @@ import {
   redactSensitiveDiff,
   summarizeStagedDiff,
   validateCommitMessage,
-} from '../../src/core/scm/commitMessagePrompt';
+} from '../../src/features/ce/scm/commitMessagePrompt';
 
 const diff = [
   'diff --git a/src/auth.ts b/src/auth.ts',

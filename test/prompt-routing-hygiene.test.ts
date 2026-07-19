@@ -10,17 +10,17 @@ import {
   buildFinalValidationPrompt,
   collectSystemPromptSections,
   describePromptSections,
-} from '../src/core/plans/promptBuilder';
+} from '../src/features/ce/plans/promptBuilder';
 import {
   resolvePlanningDepth,
   shouldSkipStructuredPlanner,
   maxStepsForPlanningDepth,
   minStepsForPlanningDepth,
-} from '../src/core/plans/planningDepth';
-import { shouldUsePlannerForAct } from '../src/core/modes/agent/ActIntentRouter';
-import type { TaskAnalysis } from '../src/core/runtime/TaskAnalyzer';
-import type { ContextPack } from '../src/core/context/types';
-import type { ThunderPlan } from '../src/core/plans/PlanActEngine';
+} from '../src/features/ce/plans/planningDepth';
+import { shouldUsePlannerForAct } from '../src/features/ce/modes/agent/ActIntentRouter';
+import type { TaskAnalysis } from '../src/features/ce/runtime/TaskAnalyzer';
+import type { ContextPack } from '../src/features/ce/context/types';
+import type { ThunderPlan } from '../src/features/ce/plans/PlanActEngine';
 
 function emptyPack(overrides: Partial<ContextPack> = {}): ContextPack {
   return {

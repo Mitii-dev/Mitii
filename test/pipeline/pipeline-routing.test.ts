@@ -10,12 +10,12 @@ import {
   minStepsForAxis,
   resolvePlanningDepthAxis,
   classifyArtifacts,
-} from '../../src/core/pipeline/index';
-import { analyzeTask } from '../../src/core/runtime/TaskAnalyzer';
-import { resolveActSkillNames } from '../../src/core/modes/agent/actSkillRouting';
-import { shouldUsePlannerForAct } from '../../src/core/modes/agent/ActIntentRouter';
-import { minStepsForPlanningDepth } from '../../src/core/plans/planningDepth';
-import { resolveGitRoute } from '../../src/core/git/intents';
+} from '../../src/features/ce/pipeline/index';
+import { analyzeTask } from '../../src/features/ce/runtime/TaskAnalyzer';
+import { resolveActSkillNames } from '../../src/features/ce/modes/agent/actSkillRouting';
+import { shouldUsePlannerForAct } from '../../src/features/ce/modes/agent/ActIntentRouter';
+import { minStepsForPlanningDepth } from '../../src/features/ce/plans/planningDepth';
+import { resolveGitRoute } from '../../src/features/ce/git/intents';
 
 describe('pipeline route + subtypes', () => {
   it('extracts multiple explicit artifacts with normalized paths', () => {
@@ -69,7 +69,7 @@ describe('pipeline route + subtypes', () => {
   });
 
   it('does not treat unusual architecture as unused-code cleanup', async () => {
-    const { isAuditCleanupTask } = await import('../../src/core/runtime/taskKind');
+    const { isAuditCleanupTask } = await import('../../src/features/ce/runtime/taskKind');
     expect(isAuditCleanupTask('Review this unusual architecture')).toBe(false);
   });
 

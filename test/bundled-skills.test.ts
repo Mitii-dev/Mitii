@@ -1,9 +1,9 @@
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
-import { MAX_SKILL_DESCRIPTION_CHARS } from '../src/core/skills/skillLimits';
+import { MAX_SKILL_DESCRIPTION_CHARS } from '../src/features/ce/skills/skillLimits';
 
-const bundledRoot = join(__dirname, '../src/core/skills/bundled');
+const bundledRoot = join(__dirname, '../src/features/ce/skills/bundled');
 
 function findSkillFiles(dir: string): string[] {
   const out: string[] = [];

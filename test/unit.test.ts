@@ -2,25 +2,25 @@ import { describe, it, expect, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join, resolve } from 'path';
-import { IgnoreService } from '../src/core/indexing/IgnoreService';
-import { ChunkingService } from '../src/core/indexing/ChunkingService';
-import { sanitizeFtsQuery } from '../src/core/indexing/FtsIndex';
-import { tsExtractor, pythonExtractor, extractSymbols } from '../src/core/indexing/SymbolExtractor';
+import { IgnoreService } from '../src/features/ce/indexing/IgnoreService';
+import { ChunkingService } from '../src/features/ce/indexing/ChunkingService';
+import { sanitizeFtsQuery } from '../src/features/ce/indexing/FtsIndex';
+import { tsExtractor, pythonExtractor, extractSymbols } from '../src/features/ce/indexing/SymbolExtractor';
 import {
   detectLanguageFromPath,
   getSupportedExtensionCount,
   getWasmLanguageIds,
   hasWasmGrammar,
-} from '../src/core/indexing/languageRegistry';
-import { detectLanguage } from '../src/core/indexing/fileUtils';
-import { isDangerousCommand, isDeleteLikeCommand } from '../src/core/safety/ToolPolicyEngine';
-import { ToolPolicyEngine } from '../src/core/safety/ToolPolicyEngine';
-import { ContextBudgeter } from '../src/core/context/ContextBudgeter';
-import type { ContextItem } from '../src/core/context/types';
-import { defaultThunderConfig } from '../src/core/config/defaults';
-import { estimateTokens } from '../src/core/llm/tokenEstimate';
-import { UsageTrackingProvider } from '../src/core/llm/UsageTrackingProvider';
-import { ProjectRulesService } from '../src/core/rules/ProjectRulesService';
+} from '../src/features/ce/indexing/languageRegistry';
+import { detectLanguage } from '../src/features/ce/indexing/fileUtils';
+import { isDangerousCommand, isDeleteLikeCommand } from '../src/features/ce/safety/ToolPolicyEngine';
+import { ToolPolicyEngine } from '../src/features/ce/safety/ToolPolicyEngine';
+import { ContextBudgeter } from '../src/features/ce/context/ContextBudgeter';
+import type { ContextItem } from '../src/features/ce/context/types';
+import { defaultThunderConfig } from '../src/kernel/config/defaults';
+import { estimateTokens } from '../src/kernel/llm/tokenEstimate';
+import { UsageTrackingProvider } from '../src/features/ce/runtime/UsageTrackingProvider';
+import { ProjectRulesService } from '../src/features/ce/rules/ProjectRulesService';
 
 describe('IgnoreService', () => {
   it('ignores node_modules by default', () => {
@@ -59,7 +59,7 @@ describe('IgnoreService', () => {
       writeFileSync(join(tempDir, '.mitii', 'config.json'), '{}');
       const ig = new IgnoreService();
       ig.load(tempDir);
-      const { createListFilesTool } = await import('../src/core/tools/builtinTools');
+      const { createListFilesTool } = await import('../src/features/ce/tools/builtinTools');
       const tool = createListFilesTool(tempDir, ig);
       const recursive = await tool.execute({ path: '.mitii', recursive: true });
       expect(recursive.success).toBe(true);
@@ -114,7 +114,7 @@ describe('IgnoreService', () => {
       mkdirSync(join(tempDir, 'node_modules'));
       const ig = new IgnoreService();
       ig.load(tempDir);
-      const { createListFilesTool } = await import('../src/core/tools/builtinTools');
+      const { createListFilesTool } = await import('../src/features/ce/tools/builtinTools');
       const result = await createListFilesTool(tempDir, ig).execute({ path: '.', recursive: false });
       expect(result.success).toBe(true);
       expect(result.output).toContain('package.json');
@@ -127,7 +127,7 @@ describe('IgnoreService', () => {
   it('write_file creates parent directories for new nested files', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-write-nested-test-'));
     try {
-      const { createWriteFileTool } = await import('../src/core/tools/builtinTools');
+      const { createWriteFileTool } = await import('../src/features/ce/tools/builtinTools');
       const ig = new IgnoreService();
       ig.load(tempDir);
       const tool = createWriteFileTool(tempDir, ig);
@@ -148,7 +148,7 @@ describe('IgnoreService', () => {
   it('read_file accepts absolute paths inside the workspace', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-read-absolute-test-'));
     try {
-      const { createReadFileTool } = await import('../src/core/tools/builtinTools');
+      const { createReadFileTool } = await import('../src/features/ce/tools/builtinTools');
       const ig = new IgnoreService();
       ig.load(tempDir);
       const absPath = join(tempDir, 'apps/docs/docs/ffb-mui/api/formik-renderer.md');
@@ -167,7 +167,7 @@ describe('IgnoreService', () => {
   it('read_file returns a requested line slice with file line metadata', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-read-slice-test-'));
     try {
-      const { createReadFileTool } = await import('../src/core/tools/builtinTools');
+      const { createReadFileTool } = await import('../src/features/ce/tools/builtinTools');
       const ig = new IgnoreService();
       ig.load(tempDir);
       const relPath = 'src/sliced.ts';
@@ -192,8 +192,8 @@ describe('IgnoreService', () => {
   it('propose_file_scope validates candidates and stores accepted scope', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-file-scope-test-'));
     try {
-      const { createProposeFileScopeTool } = await import('../src/core/tools/builtinTools');
-      const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+      const { createProposeFileScopeTool } = await import('../src/features/ce/tools/builtinTools');
+      const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
       const ig = new IgnoreService();
       ig.load(tempDir);
       mkdirSync(join(tempDir, 'src'), { recursive: true });
@@ -223,8 +223,8 @@ describe('IgnoreService', () => {
   it('propose_file_scope accepts access aliases and rejects missing read targets', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-file-scope-access-test-'));
     try {
-      const { createProposeFileScopeTool } = await import('../src/core/tools/builtinTools');
-      const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+      const { createProposeFileScopeTool } = await import('../src/features/ce/tools/builtinTools');
+      const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
       const ig = new IgnoreService();
       ig.load(tempDir);
       mkdirSync(join(tempDir, 'src'), { recursive: true });
@@ -256,13 +256,13 @@ describe('IgnoreService', () => {
   it('propose_file_scope repairs common model argument variants', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-file-scope-coerce-test-'));
     try {
-      const { createProposeFileScopeTool } = await import('../src/core/tools/builtinTools');
+      const { createProposeFileScopeTool } = await import('../src/features/ce/tools/builtinTools');
       const ig = new IgnoreService();
       ig.load(tempDir);
       mkdirSync(join(tempDir, 'src'), { recursive: true });
       writeFileSync(join(tempDir, 'src/foo.ts'), 'export const foo = 1;\n');
       const tool = createProposeFileScopeTool(tempDir, ig);
-      const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
+      const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
       const runtime = new ToolRuntime();
       runtime.register(tool);
 
@@ -300,7 +300,7 @@ describe('IgnoreService', () => {
         readFile: readFileSpy,
       }));
 
-      const { clearReadFileCache, createReadFileTool, createReadFilesTool } = await import('../src/core/tools/builtinTools');
+      const { clearReadFileCache, createReadFileTool, createReadFilesTool } = await import('../src/features/ce/tools/builtinTools');
       clearReadFileCache(tempDir);
       const ig = new IgnoreService();
       ig.load(tempDir);
@@ -322,7 +322,7 @@ describe('IgnoreService', () => {
   it('list_files accepts absolute directories inside the workspace', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-list-absolute-test-'));
     try {
-      const { createListFilesTool } = await import('../src/core/tools/builtinTools');
+      const { createListFilesTool } = await import('../src/features/ce/tools/builtinTools');
       const ig = new IgnoreService();
       ig.load(tempDir);
       const absDir = join(tempDir, 'apps/docs/docs/ffb-mui/api');
@@ -342,7 +342,7 @@ describe('IgnoreService', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-outside-workspace-test-'));
     const outsideDir = mkdtempSync(join(tmpdir(), 'thunder-outside-file-test-'));
     try {
-      const { createReadFileTool } = await import('../src/core/tools/builtinTools');
+      const { createReadFileTool } = await import('../src/features/ce/tools/builtinTools');
       const ig = new IgnoreService();
       ig.load(tempDir);
       const outsideFile = join(outsideDir, 'secret.ts');
@@ -361,7 +361,7 @@ describe('IgnoreService', () => {
   it('read_files recovers gracefully from batches over 12 paths', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-read-files-limit-test-'));
     try {
-      const { createReadFilesTool } = await import('../src/core/tools/builtinTools');
+      const { createReadFilesTool } = await import('../src/features/ce/tools/builtinTools');
       const ig = new IgnoreService();
       ig.load(tempDir);
       for (let i = 1; i <= 13; i++) {
@@ -388,7 +388,7 @@ describe('IgnoreService', () => {
     try {
       const ig = new IgnoreService();
       ig.load(tempDir);
-      const { createWriteFileTool } = await import('../src/core/tools/builtinTools');
+      const { createWriteFileTool } = await import('../src/features/ce/tools/builtinTools');
       const result = await createWriteFileTool(tempDir, ig).execute({
         path: 'src/screens/kitchen-screen/components/DineInKanban.tsx',
         content: 'git checkout HEAD -- src/screens/kitchen-screen/components/DineInKanban.tsx',
@@ -406,7 +406,7 @@ describe('IgnoreService', () => {
     try {
       const ig = new IgnoreService();
       ig.load(tempDir);
-      const { createWriteFileTool } = await import('../src/core/tools/builtinTools');
+      const { createWriteFileTool } = await import('../src/features/ce/tools/builtinTools');
       const result = await createWriteFileTool(tempDir, ig).execute({
         path: 'docs/ffb-mui/api/formik-renderer.md',
         content: [
@@ -432,7 +432,7 @@ describe('IgnoreService', () => {
     try {
       const ig = new IgnoreService();
       ig.load(tempDir);
-      const { createWriteFileTool } = await import('../src/core/tools/builtinTools');
+      const { createWriteFileTool } = await import('../src/features/ce/tools/builtinTools');
       const result = await createWriteFileTool(tempDir, ig).execute({
         path: 'docs/ffb-mui/api/formik-renderer.md',
         content: [
@@ -457,7 +457,7 @@ describe('IgnoreService', () => {
     try {
       const ig = new IgnoreService();
       ig.load(tempDir);
-      const { createWriteFileTool } = await import('../src/core/tools/builtinTools');
+      const { createWriteFileTool } = await import('../src/features/ce/tools/builtinTools');
       const result = await createWriteFileTool(tempDir, ig).execute({
         path: 'docs/ffb-mui/api/formik-renderer.md',
         content: [
@@ -722,7 +722,7 @@ describe('Thunder config', () => {
 
 describe('Builtin MCP servers', () => {
   it('builds free official servers for a workspace', async () => {
-    const { buildBuiltinMcpServers } = await import('../src/core/mcp/builtinServers');
+    const { buildBuiltinMcpServers } = await import('../src/features/ce/mcp/builtinServers');
     const servers = buildBuiltinMcpServers('/tmp/my-project');
 
     expect(Object.keys(servers).sort()).toEqual(['agentmemory', 'filesystem', 'memory', 'puppeteer', 'sequential-thinking']);
@@ -735,13 +735,13 @@ describe('Builtin MCP servers', () => {
   });
 
   it('omits filesystem when workspace is empty', async () => {
-    const { buildBuiltinMcpServers } = await import('../src/core/mcp/builtinServers');
+    const { buildBuiltinMcpServers } = await import('../src/features/ce/mcp/builtinServers');
     const servers = buildBuiltinMcpServers('');
     expect(Object.keys(servers).sort()).toEqual(['agentmemory', 'memory', 'puppeteer', 'sequential-thinking']);
   });
 
   it('lets user settings override built-in servers', async () => {
-    const { resolveMcpServers } = await import('../src/core/mcp/McpManager');
+    const { resolveMcpServers } = await import('../src/features/ce/mcp/McpManager');
     const config = defaultThunderConfig();
     const servers = resolveMcpServers(
       {
@@ -767,14 +767,14 @@ describe('Builtin MCP servers', () => {
   });
 
   it('skips built-ins when preloadBuiltin is false', async () => {
-    const { resolveMcpServers } = await import('../src/core/mcp/McpManager');
+    const { resolveMcpServers } = await import('../src/features/ce/mcp/McpManager');
     const config = defaultThunderConfig();
     const servers = resolveMcpServers({ ...config.mcp, preloadBuiltin: false }, '/tmp/project');
     expect(servers).toEqual({});
   });
 
   it('disables built-ins when session toggles are off', async () => {
-    const { resolveMcpServers } = await import('../src/core/mcp/McpManager');
+    const { resolveMcpServers } = await import('../src/features/ce/mcp/McpManager');
     const config = defaultThunderConfig();
     const servers = resolveMcpServers(config.mcp, '/tmp/project', {
       filesystem: true,
@@ -840,7 +840,7 @@ describe('Config schema', () => {
 
 describe('Plan/Act task analysis', () => {
   it('plans actionable requests in plan mode without marking them for execution verification', async () => {
-    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
     const analysis = analyzeTask('Implement a solid planning mode and separate act mode', 'plan');
 
     expect(analysis.kind).toBe('implementation');
@@ -850,7 +850,7 @@ describe('Plan/Act task analysis', () => {
   });
 
   it('plans and verifies actionable requests in agent mode', async () => {
-    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
     const analysis = analyzeTask('Implement a solid planning mode and separate act mode', 'agent');
 
     expect(analysis.kind).toBe('implementation');
@@ -859,7 +859,7 @@ describe('Plan/Act task analysis', () => {
   });
 
   it('treats ask mode as read-only question answering', async () => {
-    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
     const analysis = analyzeTask('implement auth and add tests for all routes', 'ask');
 
     expect(analysis.kind).toBe('question');
@@ -874,7 +874,7 @@ describe('Plan/Act task analysis', () => {
 
 describe('Ask mode helpers', () => {
   it('filters tools to the Ask allowlist (writes are approval-gated)', async () => {
-    const { filterAskModeTools, ASK_ALLOWED_TOOLS } = await import('../src/core/runtime/askMode');
+    const { filterAskModeTools, ASK_ALLOWED_TOOLS } = await import('../src/features/ce/runtime/askMode');
     const tools = [
       { type: 'function' as const, function: { name: 'read_file', description: '', parameters: {} } },
       { type: 'function' as const, function: { name: 'write_file', description: '', parameters: {} } },
@@ -897,7 +897,7 @@ describe('Ask mode helpers', () => {
 
   it('detects when Ask answers need grounding', async () => {
     const { needsAskGrounding, isGeneralKnowledgeQuestion, shouldEnableAskSubagents } =
-      await import('../src/core/runtime/askMode');
+      await import('../src/features/ce/runtime/askMode');
 
     expect(needsAskGrounding('Where is ChatOrchestrator.send defined?')).toBe(true);
     expect(needsAskGrounding('hi')).toBe(false);
@@ -909,10 +909,10 @@ describe('Ask mode helpers', () => {
   });
 
   it('blocks disallowed tools in ask mode via ToolExecutor', async () => {
-    const { ToolExecutor } = await import('../src/core/safety/ToolExecutor');
-    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
-    const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
-    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
+    const { ToolExecutor } = await import('../src/features/ce/safety/ToolExecutor');
+    const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
+    const { ToolPolicyEngine } = await import('../src/features/ce/safety/ToolPolicyEngine');
+    const { ApprovalQueue } = await import('../src/features/ce/safety/ApprovalQueue');
 
     const runtime = new ToolRuntime();
     const executor = new ToolExecutor(
@@ -934,12 +934,12 @@ describe('Ask mode helpers', () => {
   });
 
   it('requests approval for writes in Ask mode instead of hard-blocking', async () => {
-    const { ToolExecutor } = await import('../src/core/safety/ToolExecutor');
-    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
-    const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
-    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
-    const { createWriteFileTool } = await import('../src/core/tools/builtinTools');
-    const { IgnoreService } = await import('../src/core/indexing/IgnoreService');
+    const { ToolExecutor } = await import('../src/features/ce/safety/ToolExecutor');
+    const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
+    const { ToolPolicyEngine } = await import('../src/features/ce/safety/ToolPolicyEngine');
+    const { ApprovalQueue } = await import('../src/features/ce/safety/ApprovalQueue');
+    const { createWriteFileTool } = await import('../src/features/ce/tools/builtinTools');
+    const { IgnoreService } = await import('../src/features/ce/indexing/IgnoreService');
 
     const queue = new ApprovalQueue();
     const runtime = new ToolRuntime();
@@ -965,11 +965,11 @@ describe('Ask mode helpers', () => {
   });
 
   it('requests approval for mutating shell in Ask mode', async () => {
-    const { ToolExecutor } = await import('../src/core/safety/ToolExecutor');
-    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
-    const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
-    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
-    const { createRunCommandTool } = await import('../src/core/tools/builtinTools');
+    const { ToolExecutor } = await import('../src/features/ce/safety/ToolExecutor');
+    const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
+    const { ToolPolicyEngine } = await import('../src/features/ce/safety/ToolPolicyEngine');
+    const { ApprovalQueue } = await import('../src/features/ce/safety/ApprovalQueue');
+    const { createRunCommandTool } = await import('../src/features/ce/tools/builtinTools');
 
     const queue = new ApprovalQueue();
     const runtime = new ToolRuntime();
@@ -995,7 +995,7 @@ describe('Ask mode helpers', () => {
 
 describe('ThunderMode normalization', () => {
   it('maps legacy act to agent', async () => {
-    const { normalizeThunderMode } = await import('../src/core/session/ThunderSession');
+    const { normalizeThunderMode } = await import('../src/features/ce/session/ThunderSession');
     expect(normalizeThunderMode('act')).toBe('agent');
     expect(normalizeThunderMode('ask')).toBe('ask');
     expect(normalizeThunderMode('unknown')).toBe('plan');
@@ -1025,7 +1025,7 @@ describe('ChatOrchestrator response handling', () => {
 
   it('turns empty model output into an explicit assistant message', async () => {
     const { EMPTY_ASSISTANT_RESPONSE_MESSAGE, normalizeAssistantResponse } =
-      await import('../src/core/orchestration/ChatOrchestrator');
+      await import('../src/features/ce/orchestration/ChatOrchestrator');
 
     expect(normalizeAssistantResponse('')).toEqual({
       content: EMPTY_ASSISTANT_RESPONSE_MESSAGE,
@@ -1039,12 +1039,12 @@ describe('ChatOrchestrator response handling', () => {
   });
 
   it('passes resolved tier policy into context retrieval', async () => {
-    const { ChatOrchestrator } = await import('../src/core/orchestration/ChatOrchestrator');
-    const { ContextBudgeter } = await import('../src/core/context/ContextBudgeter');
-    const { ThunderSession } = await import('../src/core/session/ThunderSession');
-    let capturedQuery: import('../src/core/context/types').ContextQuery | undefined;
+    const { ChatOrchestrator } = await import('../src/features/ce/orchestration/ChatOrchestrator');
+    const { ContextBudgeter } = await import('../src/features/ce/context/ContextBudgeter');
+    const { ThunderSession } = await import('../src/features/ce/session/ThunderSession');
+    let capturedQuery: import('../src/features/ce/context/types').ContextQuery | undefined;
     const retriever = {
-      retrieve: async (query: import('../src/core/context/types').ContextQuery) => {
+      retrieve: async (query: import('../src/features/ce/context/types').ContextQuery) => {
         capturedQuery = query;
         return [];
       },
@@ -1064,7 +1064,7 @@ describe('ChatOrchestrator response handling', () => {
     };
 
     const orchestrator = new ChatOrchestrator(
-      retriever as unknown as import('../src/core/context/HybridRetriever').HybridRetriever,
+      retriever as unknown as import('../src/features/ce/context/HybridRetriever').HybridRetriever,
       new ContextBudgeter()
     );
     const session = new ThunderSession('/tmp/mitii-test', 'ask');
@@ -1078,7 +1078,7 @@ describe('ChatOrchestrator response handling', () => {
   });
 
   it('scopes touched-file audit lookups to the current turn', async () => {
-    const { getTouchedFilesFromAudit } = await import('../src/core/orchestration/ChatOrchestrator');
+    const { getTouchedFilesFromAudit } = await import('../src/features/ce/orchestration/ChatOrchestrator');
     const audit = [
       {
         toolName: 'write_file',
@@ -1105,7 +1105,7 @@ describe('ChatOrchestrator response handling', () => {
   });
 
   it('subtracts explicit context before budgeting retrieved snippets', async () => {
-    const { calculateRetrievalContextBudget } = await import('../src/core/orchestration/ChatOrchestrator');
+    const { calculateRetrievalContextBudget } = await import('../src/features/ce/orchestration/ChatOrchestrator');
 
     expect(calculateRetrievalContextBudget(10_000, 1_200, 300)).toEqual({
       requestedContextBudget: 6_500,
@@ -1118,9 +1118,9 @@ describe('ChatOrchestrator response handling', () => {
   });
 
   it('passes only current-turn audit entries to memory extraction', async () => {
-    const { ChatOrchestrator } = await import('../src/core/orchestration/ChatOrchestrator');
-    const { ContextBudgeter } = await import('../src/core/context/ContextBudgeter');
-    const { ThunderSession } = await import('../src/core/session/ThunderSession');
+    const { ChatOrchestrator } = await import('../src/features/ce/orchestration/ChatOrchestrator');
+    const { ContextBudgeter } = await import('../src/features/ce/context/ContextBudgeter');
+    const { ThunderSession } = await import('../src/features/ce/session/ThunderSession');
     const capturedAudits: unknown[] = [];
     const staleAudit = [{
       toolName: 'write_file',
@@ -1141,7 +1141,7 @@ describe('ChatOrchestrator response handling', () => {
       },
     };
     const orchestrator = new ChatOrchestrator(
-      { retrieve: async () => [] } as unknown as import('../src/core/context/HybridRetriever').HybridRetriever,
+      { retrieve: async () => [] } as unknown as import('../src/features/ce/context/HybridRetriever').HybridRetriever,
       new ContextBudgeter()
     );
     orchestrator.configure({
@@ -1164,10 +1164,10 @@ describe('ChatOrchestrator response handling', () => {
 
   it('does not auto-apply final response code blocks after tool-capable agent turns', async () => {
     const { z } = await import('zod');
-    const { ChatOrchestrator } = await import('../src/core/orchestration/ChatOrchestrator');
-    const { ContextBudgeter } = await import('../src/core/context/ContextBudgeter');
-    const { ThunderSession } = await import('../src/core/session/ThunderSession');
-    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
+    const { ChatOrchestrator } = await import('../src/features/ce/orchestration/ChatOrchestrator');
+    const { ContextBudgeter } = await import('../src/features/ce/context/ContextBudgeter');
+    const { ThunderSession } = await import('../src/features/ce/session/ThunderSession');
+    const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
     const writes: unknown[] = [];
     const toolRuntime = new ToolRuntime();
     toolRuntime.register({
@@ -1192,7 +1192,7 @@ describe('ChatOrchestrator response handling', () => {
       },
     };
     const orchestrator = new ChatOrchestrator(
-      { retrieve: async () => [] } as unknown as import('../src/core/context/HybridRetriever').HybridRetriever,
+      { retrieve: async () => [] } as unknown as import('../src/features/ce/context/HybridRetriever').HybridRetriever,
       new ContextBudgeter()
     );
     orchestrator.configure({
@@ -1214,9 +1214,9 @@ describe('ChatOrchestrator response handling', () => {
   });
 
   it('keeps legacy response auto-apply for agent turns without tool-capable model calls', async () => {
-    const { ChatOrchestrator } = await import('../src/core/orchestration/ChatOrchestrator');
-    const { ContextBudgeter } = await import('../src/core/context/ContextBudgeter');
-    const { ThunderSession } = await import('../src/core/session/ThunderSession');
+    const { ChatOrchestrator } = await import('../src/features/ce/orchestration/ChatOrchestrator');
+    const { ContextBudgeter } = await import('../src/features/ce/context/ContextBudgeter');
+    const { ThunderSession } = await import('../src/features/ce/session/ThunderSession');
     const writes: unknown[] = [];
     const provider = {
       id: 'fake-no-tools',
@@ -1233,7 +1233,7 @@ describe('ChatOrchestrator response handling', () => {
       },
     };
     const orchestrator = new ChatOrchestrator(
-      { retrieve: async () => [] } as unknown as import('../src/core/context/HybridRetriever').HybridRetriever,
+      { retrieve: async () => [] } as unknown as import('../src/features/ce/context/HybridRetriever').HybridRetriever,
       new ContextBudgeter()
     );
     orchestrator.configure({
@@ -1262,9 +1262,9 @@ describe('ChatOrchestrator response handling', () => {
   });
 
   it('does not save plan-shaped ask responses as active plans', async () => {
-    const { ChatOrchestrator } = await import('../src/core/orchestration/ChatOrchestrator');
-    const { ContextBudgeter } = await import('../src/core/context/ContextBudgeter');
-    const { ThunderSession } = await import('../src/core/session/ThunderSession');
+    const { ChatOrchestrator } = await import('../src/features/ce/orchestration/ChatOrchestrator');
+    const { ContextBudgeter } = await import('../src/features/ce/context/ContextBudgeter');
+    const { ThunderSession } = await import('../src/features/ce/session/ThunderSession');
     const save = vi.fn();
     const provider = {
       id: 'fake',
@@ -1286,7 +1286,7 @@ describe('ChatOrchestrator response handling', () => {
       },
     };
     const orchestrator = new ChatOrchestrator(
-      { retrieve: async () => [] } as unknown as import('../src/core/context/HybridRetriever').HybridRetriever,
+      { retrieve: async () => [] } as unknown as import('../src/features/ce/context/HybridRetriever').HybridRetriever,
       new ContextBudgeter()
     );
     orchestrator.configure({
@@ -1304,7 +1304,7 @@ describe('ChatOrchestrator response handling', () => {
 
 describe('Plan parser', () => {
   it('flattens rich phase plans into executable steps', async () => {
-    const { parsePlanFromText } = await import('../src/core/plans/PlanActEngine');
+    const { parsePlanFromText } = await import('../src/features/ce/plans/PlanActEngine');
     const parsed = parsePlanFromText(`\`\`\`json
 {
   "goal": "Improve planning",
@@ -1339,7 +1339,7 @@ describe('Plan parser', () => {
   });
 
   it('keeps generated plan phases mode-aware', async () => {
-    const { PlanExecutor } = await import('../src/core/runtime/PlanExecutor');
+    const { PlanExecutor } = await import('../src/features/ce/runtime/PlanExecutor');
     const provider = {
       id: 'fake',
       capabilities: {
@@ -1388,7 +1388,7 @@ describe('Plan parser', () => {
   });
 
   it('fails an explicit scripted plan step when its command fails', async () => {
-    const { PlanExecutor } = await import('../src/core/runtime/PlanExecutor');
+    const { PlanExecutor } = await import('../src/features/ce/runtime/PlanExecutor');
     const plan = {
       goal: 'Verify package',
       assumptions: [],
@@ -1449,7 +1449,7 @@ describe('Plan parser', () => {
   });
 
   it('does not complete a verification step from prose without running a verifier', async () => {
-    const { PlanExecutor } = await import('../src/core/runtime/PlanExecutor');
+    const { PlanExecutor } = await import('../src/features/ce/runtime/PlanExecutor');
     const plan = {
       goal: 'Verify package',
       assumptions: [],
@@ -1504,7 +1504,7 @@ describe('Plan parser', () => {
   });
 
   it('does not reuse stale agent-loop approval state after an explicit step succeeds', async () => {
-    const { PlanExecutor } = await import('../src/core/runtime/PlanExecutor');
+    const { PlanExecutor } = await import('../src/features/ce/runtime/PlanExecutor');
     const plan = {
       goal: 'Verify package',
       assumptions: [],
@@ -1567,7 +1567,7 @@ describe('Plan parser', () => {
 
 describe('extractFileMentions', () => {
   it('extracts file names from user text', async () => {
-    const { extractFileMentions } = await import('../src/core/context/fuzzyFileMatch');
+    const { extractFileMentions } = await import('../src/features/ce/context/fuzzyFileMatch');
     const mentions = extractFileMentions('Can you change DineInKanban.tsx and src/App.tsx?');
     expect(mentions).toContain('DineInKanban.tsx');
     expect(mentions).toContain('src/App.tsx');
@@ -1576,7 +1576,7 @@ describe('extractFileMentions', () => {
 
 describe('fuzzyFileMatch', () => {
   it('expands DinInKanban to searchable kanban term', async () => {
-    const { expandCamelCaseTerms, globPatternsForMention } = await import('../src/core/context/fuzzyFileMatch');
+    const { expandCamelCaseTerms, globPatternsForMention } = await import('../src/features/ce/context/fuzzyFileMatch');
     const terms = expandCamelCaseTerms('DinInKanban.tsx');
     expect(terms).toContain('kanban');
     const patterns = globPatternsForMention('DinInKanban.tsx');
@@ -1586,8 +1586,8 @@ describe('fuzzyFileMatch', () => {
 
 describe('ApprovalQueue', () => {
   it('maps clarifying questions with options for persisted UI state', async () => {
-    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
-    const { toApprovalView } = await import('../src/core/app/ThunderController');
+    const { ApprovalQueue } = await import('../src/features/ce/safety/ApprovalQueue');
+    const { toApprovalView } = await import('../src/adapters/vscode/ThunderController');
     const queue = new ApprovalQueue();
     const req = queue.createRequest('s1', 'ask_question', {
       question: 'Which project should I inspect?',
@@ -1607,7 +1607,7 @@ describe('ApprovalQueue', () => {
   });
 
   it('stores full input for large write_file payloads', async () => {
-    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
+    const { ApprovalQueue } = await import('../src/features/ce/safety/ApprovalQueue');
     const queue = new ApprovalQueue();
     const bigContent = 'x'.repeat(20_000);
     const req = queue.createRequest('s1', 'write_file', { path: 'src/Foo.tsx', content: bigContent }, {
@@ -1621,7 +1621,7 @@ describe('ApprovalQueue', () => {
   });
 
   it('keeps task approval grants explicit and clearable', async () => {
-    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
+    const { ApprovalQueue } = await import('../src/features/ce/safety/ApprovalQueue');
     const queue = new ApprovalQueue();
     const req = queue.createRequest('s1', 'write_file', { path: 'src/Foo.tsx', content: 'x' }, {
       decision: 'require_approval',
@@ -1642,7 +1642,7 @@ describe('ApprovalQueue', () => {
 
 describe('codeEditParser', () => {
   it('parses CODE_EDIT_BLOCK format', async () => {
-    const { parseCodeEdits } = await import('../src/core/apply/codeEditParser');
+    const { parseCodeEdits } = await import('../src/features/ce/apply/codeEditParser');
     const response = 'Here is the file:\n```tsx|CODE_EDIT_BLOCK|src/Foo.tsx\nexport const x = 1\n```';
     const edits = parseCodeEdits(response);
     expect(edits).toHaveLength(1);
@@ -1651,7 +1651,7 @@ describe('codeEditParser', () => {
   });
 
   it('infers path from user mention when one code block', async () => {
-    const { parseCodeEdits } = await import('../src/core/apply/codeEditParser');
+    const { parseCodeEdits } = await import('../src/features/ce/apply/codeEditParser');
     const response = '```tsx\nexport const DineInKanban = () => null\n```';
     const edits = parseCodeEdits(response, 'redesign DineInKanban.tsx');
     expect(edits[0]?.path).toBe('DineInKanban.tsx');
@@ -1660,7 +1660,7 @@ describe('codeEditParser', () => {
 
 describe('ContextCompaction', () => {
   it('keeps recent messages within budget', async () => {
-    const { compactMessages } = await import('../src/core/runtime/ContextCompaction');
+    const { compactMessages } = await import('../src/features/ce/runtime/ContextCompaction');
     const messages = Array.from({ length: 10 }, (_, i) => ({
       role: 'user' as const,
       content: `message ${i} `.repeat(50),
@@ -1672,7 +1672,7 @@ describe('ContextCompaction', () => {
 
 describe('autonomyPresets', () => {
   it('pilot preset auto-approves writes', async () => {
-    const { applyAutonomyPreset } = await import('../src/core/safety/autonomyPresets');
+    const { applyAutonomyPreset } = await import('../src/features/ce/safety/autonomyPresets');
     const base = defaultThunderConfig().safety;
     const pilot = applyAutonomyPreset(base, 'pilot');
     expect(pilot.requireApprovalForWrites).toBe(false);
@@ -1680,7 +1680,7 @@ describe('autonomyPresets', () => {
   });
 
   it('resolveEffectiveSafety keeps auto approval when preset is guided', async () => {
-    const { resolveEffectiveSafety } = await import('../src/core/safety/autonomyPresets');
+    const { resolveEffectiveSafety } = await import('../src/features/ce/safety/autonomyPresets');
     const resolved = resolveEffectiveSafety({
       ...defaultThunderConfig().safety,
       approvalMode: 'auto',
@@ -1693,7 +1693,7 @@ describe('autonomyPresets', () => {
   });
 
   it('resolveEffectiveSafety honors ask_edits over pilot preset defaults', async () => {
-    const { resolveEffectiveSafety } = await import('../src/core/safety/autonomyPresets');
+    const { resolveEffectiveSafety } = await import('../src/features/ce/safety/autonomyPresets');
     const resolved = resolveEffectiveSafety({
       ...defaultThunderConfig().safety,
       approvalMode: 'ask_edits',
@@ -1705,7 +1705,7 @@ describe('autonomyPresets', () => {
   });
 
   it('differentiates safe, guided, and builder', async () => {
-    const { applyAutonomyPreset } = await import('../src/core/safety/autonomyPresets');
+    const { applyAutonomyPreset } = await import('../src/features/ce/safety/autonomyPresets');
     const base = defaultThunderConfig().safety;
     const safe = applyAutonomyPreset(base, 'safe');
     const guided = applyAutonomyPreset(base, 'guided');
@@ -1720,7 +1720,7 @@ describe('autonomyPresets', () => {
 
 describe('shouldDecomposeTask', () => {
   it('decomposes implementation tasks and explicit plan requests in act mode', async () => {
-    const { shouldDecomposeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const { shouldDecomposeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
     expect(
       shouldDecomposeTask('implement auth and then add tests step by step for all routes', 'agent')
     ).toBe(true);
@@ -1736,7 +1736,7 @@ describe('shouldDecomposeTask', () => {
 
 describe('TaskAnalyzer', () => {
   it('classifies task kinds', async () => {
-    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
     const audit = analyzeTask('find unused dependencies and clean up dead code', 'agent');
     expect(audit.kind).toBe('audit');
     expect(audit.shouldPlan).toBe(true);
@@ -1752,7 +1752,7 @@ describe('TaskAnalyzer', () => {
   });
 
   it('classifies UI polish requests with typos as implementation work', async () => {
-    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
     const result = analyzeTask(
       '@src/utils/kitchen-status.ts Can you imporve the Ui and UX of this file and also its child compoenents, cards and all',
       'agent'
@@ -1764,7 +1764,7 @@ describe('TaskAnalyzer', () => {
   });
 
   it('treats short product/action trigger words as implementation work', async () => {
-    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
     const result = analyzeTask('need animated enterprise landing page UI', 'agent');
 
     expect(result.kind).toBe('implementation');
@@ -1773,7 +1773,7 @@ describe('TaskAnalyzer', () => {
   });
 
   it('plans broad documentation feature work', async () => {
-    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
     const result = analyzeTask('add docs for all ffb-mui features', 'agent');
 
     expect(result.kind).toBe('docs');
@@ -1783,7 +1783,7 @@ describe('TaskAnalyzer', () => {
   });
 
   it('routes single-file day/row appends as direct simple edits', async () => {
-    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
     const result = analyzeTask(
       'Can you add Day 17 and  18 to Add Java in Oracle Fusion learn plan',
       'agent'
@@ -1795,7 +1795,7 @@ describe('TaskAnalyzer', () => {
   });
 
   it('does not treat low-complexity "and" lists as full implementation work', async () => {
-    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
     const result = analyzeTask('rename foo and bar in config.json', 'agent');
 
     expect(result.kind).toBe('simple_edit');
@@ -1805,19 +1805,19 @@ describe('TaskAnalyzer', () => {
 
 describe('contextRelevance', () => {
   it('includes diagnostics only for error-fix requests', async () => {
-    const { isDiagnosticsRelevant } = await import('../src/core/context/contextRelevance');
+    const { isDiagnosticsRelevant } = await import('../src/features/ce/context/contextRelevance');
     expect(isDiagnosticsRelevant('fix the type errors in auth.ts')).toBe(true);
     expect(isDiagnosticsRelevant('list unused files and dependencies')).toBe(false);
   });
 
   it('skips passive editor context unless the file is mentioned', async () => {
-    const { isFileContextRelevant } = await import('../src/core/context/contextRelevance');
+    const { isFileContextRelevant } = await import('../src/features/ce/context/contextRelevance');
     expect(isFileContextRelevant('clean up unused deps', 'src/screens/DineInKanban.tsx')).toBe(false);
     expect(isFileContextRelevant('fix DineInKanban.tsx imports', 'src/screens/DineInKanban.tsx')).toBe(true);
   });
 
   it('excludes internal agent log files from passive editor context', async () => {
-    const { isFileContextRelevant, isInternalAgentPath } = await import('../src/core/context/contextRelevance');
+    const { isFileContextRelevant, isInternalAgentPath } = await import('../src/features/ce/context/contextRelevance');
     expect(isInternalAgentPath('.thunder/logs/session.jsonl')).toBe(true);
     expect(isFileContextRelevant('add docs for all ffb-mui features', '.thunder/logs/session.jsonl')).toBe(false);
   });
@@ -1825,7 +1825,7 @@ describe('contextRelevance', () => {
 
 describe('context query expansion', () => {
   it('adds docs routing and package export hints for broad docs tasks', async () => {
-    const { expandContextQuery } = await import('../src/core/context/contextQueryExpansion');
+    const { expandContextQuery } = await import('../src/features/ce/context/contextQueryExpansion');
     const expanded = expandContextQuery('add docs for all ffb-mui features');
 
     expect(expanded).toContain('apps/docs/docusaurus.config.ts');
@@ -1835,14 +1835,14 @@ describe('context query expansion', () => {
   });
 
   it('uses package-like names as indexed path search terms', async () => {
-    const { extractIndexedSearchTerms } = await import('../src/core/context/fuzzyFileMatch');
+    const { extractIndexedSearchTerms } = await import('../src/features/ce/context/fuzzyFileMatch');
     expect(extractIndexedSearchTerms('add docs for all ffb-mui features')).toContain('ffb-mui');
   });
 });
 
 describe('taskKind', () => {
   it('detects audit/cleanup tasks', async () => {
-    const { isAuditCleanupTask } = await import('../src/core/runtime/taskKind');
+    const { isAuditCleanupTask } = await import('../src/features/ce/runtime/taskKind');
     expect(isAuditCleanupTask('identify and remove unused files and dependencies')).toBe(true);
     expect(isAuditCleanupTask('what does this project do?')).toBe(false);
   });
@@ -1850,14 +1850,14 @@ describe('taskKind', () => {
 
 describe('TaskAnalyzer', () => {
   it('does not re-plan approval continuations', async () => {
-    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
     const result = analyzeTask('Continue the current approved task from where it paused.\nOriginal user request: refactor app', 'agent');
     expect(result.shouldPlan).toBe(false);
     expect(result.summary).toContain('resume');
   });
 
   it('classifies cleanup tasks with common typos as audit', async () => {
-    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
     const result = analyzeTask(
       'Can you remove all the unsed imports and files and dependencies from the entire porject',
       'agent'
@@ -1871,7 +1871,7 @@ describe('TaskAnalyzer', () => {
 describe('auditRouting', () => {
   it('detects dependency enumeration subagent tasks', async () => {
     const { isDependencyEnumerationTask, estimateSubagentAuditSeconds, estimateScriptAuditSeconds } =
-      await import('../src/core/runtime/auditRouting');
+      await import('../src/features/ce/runtime/auditRouting');
     expect(isDependencyEnumerationTask('Check each of the 64 npm dependencies for usage')).toBe(true);
     expect(isDependencyEnumerationTask('Find unused dependencies in package.json')).toBe(true);
     expect(isDependencyEnumerationTask('Map the src folder structure')).toBe(false);
@@ -1880,7 +1880,7 @@ describe('auditRouting', () => {
   });
 
   it('blocks spawn_research_agent for dependency audits', async () => {
-    const { createSpawnResearchAgentTool } = await import('../src/core/tools/builtinTools');
+    const { createSpawnResearchAgentTool } = await import('../src/features/ce/tools/builtinTools');
     const tool = createSpawnResearchAgentTool();
     const result = await tool.execute({
       task: 'Check all unused npm dependencies listed in package.json (18 prod, 46 dev)',
@@ -1891,7 +1891,7 @@ describe('auditRouting', () => {
   });
 
   it('blocks spawn_research_agent for unused imports audit', async () => {
-    const { createSpawnResearchAgentTool } = await import('../src/core/tools/builtinTools');
+    const { createSpawnResearchAgentTool } = await import('../src/features/ce/tools/builtinTools');
     const tool = createSpawnResearchAgentTool();
     const result = await tool.execute({
       task: 'Audit unused imports within source files. Look at each .ts file and identify imports never used.',
@@ -1902,7 +1902,7 @@ describe('auditRouting', () => {
   });
 
   it('blocks Audit unused npm dependencies task from log', async () => {
-    const { isDependencyEnumerationTask } = await import('../src/core/runtime/auditRouting');
+    const { isDependencyEnumerationTask } = await import('../src/features/ce/runtime/auditRouting');
     const task =
       'Audit unused npm dependencies in this project. For each dependency in package.json, search whether it is actually imported';
     expect(isDependencyEnumerationTask(task)).toBe(true);
@@ -1912,7 +1912,7 @@ describe('auditRouting', () => {
     const {
       isVulnerabilityAuditTask,
       buildScriptFirstAuditMessage,
-    } = await import('../src/core/runtime/auditRouting');
+    } = await import('../src/features/ce/runtime/auditRouting');
     expect(isVulnerabilityAuditTask('Can you check the vulnerabilities in my package.json?')).toBe(true);
     expect(isVulnerabilityAuditTask('Find unused dependencies')).toBe(false);
     const msg = buildScriptFirstAuditMessage('check vulnerabilities and use web to check online');
@@ -1924,8 +1924,8 @@ describe('auditRouting', () => {
 
 describe('shouldUsePlanner', () => {
   it('skips planner for audit tasks in act mode', async () => {
-    const { shouldUsePlanner } = await import('../src/core/orchestration/ChatOrchestrator');
-    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const { shouldUsePlanner } = await import('../src/features/ce/orchestration/ChatOrchestrator');
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
     const analysis = analyzeTask('remove unused imports and dependencies', 'agent');
     expect(analysis.kind).toBe('audit');
     expect(shouldUsePlanner('agent', analysis, true, true)).toBe(false);
@@ -1934,7 +1934,7 @@ describe('shouldUsePlanner', () => {
   });
 
   it('removes plan-only tools from direct agent runs', async () => {
-    const { filterDirectAgentTools, shouldRunDirectFinalValidation } = await import('../src/core/orchestration/ChatOrchestrator');
+    const { filterDirectAgentTools, shouldRunDirectFinalValidation } = await import('../src/features/ce/orchestration/ChatOrchestrator');
     const tools = [
       { type: 'function', function: { name: 'read_file', description: '', parameters: {} } },
       { type: 'function', function: { name: 'mark_step_complete', description: '', parameters: {} } },
@@ -1955,7 +1955,7 @@ describe('shouldUsePlanner', () => {
 
 describe('AgentTaskState', () => {
   it('blocks repeated depcheck after analyze completes', async () => {
-    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
     const state = new AgentTaskState();
     state.setTaskContext('audit', 'Audit/cleanup task', 'remove unused dependencies');
     state.recordToolSuccess('run_command', { command: 'npx depcheck' }, 'Unused: foo');
@@ -1968,7 +1968,7 @@ describe('AgentTaskState', () => {
   });
 
   it('allows depcheck again after write_file', async () => {
-    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
     const state = new AgentTaskState();
     state.setTaskContext('audit', 'Audit/cleanup task', 'remove unused dependencies');
     state.recordToolSuccess('run_command', { command: 'npx depcheck' }, 'Unused: foo');
@@ -1978,7 +1978,7 @@ describe('AgentTaskState', () => {
   });
 
   it('blocks repeated verification after edits already verified', async () => {
-    const { AgentTaskState, normalizeDiagnosticKey } = await import('../src/core/runtime/AgentTaskState');
+    const { AgentTaskState, normalizeDiagnosticKey } = await import('../src/features/ce/runtime/AgentTaskState');
     const state = new AgentTaskState();
     state.setTaskContext(
       'simple_edit',
@@ -2005,7 +2005,7 @@ describe('AgentTaskState', () => {
   });
 
   it('builds pause summary with next step hint', async () => {
-    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
     const state = new AgentTaskState();
     state.setTaskContext('audit', 'Audit/cleanup task', 'remove unused dependencies');
     state.recordToolSuccess('run_command', { command: 'npx depcheck' }, 'Unused dependencies\n* @date-io/dayjs');
@@ -2015,7 +2015,7 @@ describe('AgentTaskState', () => {
   });
 
   it('returns soft block with cached eslint output in execute phase', async () => {
-    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
     const state = new AgentTaskState();
     state.recordToolSuccess('run_command', { command: 'npx eslint src/' }, 'no-unused-vars: 3 errors');
     expect(state.getPhase()).toBe('execute');
@@ -2028,7 +2028,7 @@ describe('AgentTaskState', () => {
   });
 
   it('uses MDX repair guidance instead of audit cleanup guidance', async () => {
-    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
     const state = new AgentTaskState();
     state.setTaskContext(
       'simple_edit',
@@ -2048,7 +2048,7 @@ describe('AgentTaskState', () => {
   });
 
   it('blocks repeated read_file after first successful read', async () => {
-    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
     const state = new AgentTaskState();
     state.setFileScope(['apps/docs/docusaurus.config.ts']);
     state.recordToolSuccess('read_file', { path: 'apps/docs/docusaurus.config.ts' }, 'export default {}');
@@ -2060,7 +2060,7 @@ describe('AgentTaskState', () => {
   });
 
   it('invalidates read cache after apply_patch', async () => {
-    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
     const state = new AgentTaskState();
     state.setFileScope(['src/foo.ts']);
     state.recordToolSuccess('read_file', { path: 'src/foo.ts' }, 'const x = 1');
@@ -2069,7 +2069,7 @@ describe('AgentTaskState', () => {
   });
 
   it('requires proposed file scope before reads and edits', async () => {
-    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
     const state = new AgentTaskState();
     expect(state.checkFileScopeBlocked('read_file', { path: 'src/foo.ts' })).toContain('propose_file_scope');
     state.setFileScope(['src/foo.ts', 'src/other.ts'], 1);
@@ -2081,7 +2081,7 @@ describe('AgentTaskState', () => {
   });
 
   it('expands an exhausted read budget when a later plan step adds valid scope', async () => {
-    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
     const state = new AgentTaskState();
     state.setFileScope(['src/a.ts'], 1);
     state.recordToolSuccess('read_file', { path: 'src/a.ts' }, 'a');
@@ -2092,7 +2092,7 @@ describe('AgentTaskState', () => {
   });
 
   it('clears forced synthesis between structured plan step loops', async () => {
-    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
     const state = new AgentTaskState();
     state.markForceSynthesis();
     expect(state.shouldForceSynthesis()).toBe(true);
@@ -2107,7 +2107,7 @@ describe('AgentTaskState', () => {
       gateIntentClassification,
       parseIntentClassification,
       safeDefaultIntent,
-    } = await import('../src/core/runtime/intentClassifier');
+    } = await import('../src/features/ce/runtime/intentClassifier');
     const parsed = parseIntentClassification(
       '{"intent":"docs","confidence":0.82,"alternatives":[{"intent":"feature","confidence":0.4},{"intent":"feature","confidence":0.6}]}',
       ['bugfix', 'feature', 'docs'] as const
@@ -2264,7 +2264,7 @@ describe('AgentTaskState', () => {
   });
 
   it('keeps intent-classifier fast paths narrow and punctuation-safe', async () => {
-    const { classifyIntentFastPath } = await import('../src/core/runtime/intentClassifier');
+    const { classifyIntentFastPath } = await import('../src/features/ce/runtime/intentClassifier');
 
     expect(classifyIntentFastPath(
       'plan',
@@ -2328,7 +2328,7 @@ describe('AgentTaskState', () => {
   });
 
   it('resolves state-aware control intent before domain routing', async () => {
-    const { resolveControlIntent } = await import('../src/core/runtime/controlIntent');
+    const { resolveControlIntent } = await import('../src/features/ce/runtime/controlIntent');
 
     expect(resolveControlIntent('yes', { hasPendingApproval: true }).intent).toBe('approve_pending');
     expect(resolveControlIntent('yes').intent).toBe('acknowledgement');
@@ -2340,7 +2340,7 @@ describe('AgentTaskState', () => {
   });
 
   it('caps sequential-thinking MCP calls', async () => {
-    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
     const state = new AgentTaskState();
     state.setLimits({ maxSequentialThinkingCalls: 2 });
     state.recordToolSuccess('mcp__sequential-thinking__sequentialthinking', {}, 'thought 1');
@@ -2351,8 +2351,8 @@ describe('AgentTaskState', () => {
 
 describe('tool input coercion', () => {
   it('coerces JSON string arrays for read_files paths', async () => {
-    const { normalizeToolInput } = await import('../src/core/tools/coerceInput');
-    const { stringArray } = await import('../src/core/tools/coerceInput');
+    const { normalizeToolInput } = await import('../src/kernel/tools/coerceInput');
+    const { stringArray } = await import('../src/kernel/tools/coerceInput');
     const schema = stringArray(1, 12);
     const normalized = normalizeToolInput('read_files', {
       paths: '["package.json","src/App.tsx"]',
@@ -2365,7 +2365,7 @@ describe('tool input coercion', () => {
   });
 
   it('coerces search_batch queries sent as JSON string', async () => {
-    const { stringArray } = await import('../src/core/tools/coerceInput');
+    const { stringArray } = await import('../src/kernel/tools/coerceInput');
     const schema = stringArray(1, 10);
     const parsed = schema.safeParse('["@date-io/dayjs","escpos-usb"]');
     expect(parsed.success).toBe(true);
@@ -2377,7 +2377,7 @@ describe('tool input coercion', () => {
 
 describe('PlanActEngine read-only shell', () => {
   it('allows inspection commands in plan mode', async () => {
-    const { isShellAllowed, isReadOnlyCommand, isToolAllowedInPlanPhase, stripLeadingCd } = await import('../src/core/plans/PlanActEngine');
+    const { isShellAllowed, isReadOnlyCommand, isToolAllowedInPlanPhase, stripLeadingCd } = await import('../src/features/ce/plans/PlanActEngine');
     expect(isReadOnlyCommand('npx depcheck')).toBe(true);
     expect(isReadOnlyCommand('cd /home/user && rg "foo" src')).toBe(true);
     expect(isReadOnlyCommand("sed -n '70,90p' src/screens/printer/printer.tsx")).toBe(true);
@@ -2412,7 +2412,7 @@ describe('PlanActEngine read-only shell', () => {
   });
 
   it('upgrades write-intent steps from diagnostics to execute in agent mode', async () => {
-    const { resolveStepPhaseLock, stepImpliesWrite } = await import('../src/core/plans/PlanActEngine');
+    const { resolveStepPhaseLock, stepImpliesWrite } = await import('../src/features/ce/plans/PlanActEngine');
     expect(stepImpliesWrite({ title: 'Audit Current Implementation & Identify Bugs' })).toBe(false);
     expect(stepImpliesWrite({ title: 'Fix ReferenceError & Prepare Theme Utilities' })).toBe(true);
     expect(
@@ -2434,13 +2434,13 @@ describe('PlanActEngine read-only shell', () => {
   });
 
   it('detects phase-lock write errors', async () => {
-    const { isPhaseLockWriteError } = await import('../src/core/plans/PlanActEngine');
+    const { isPhaseLockWriteError } = await import('../src/features/ce/plans/PlanActEngine');
     expect(isPhaseLockWriteError('Phase 1 (Diagnostics) is read-only; file writes are locked until Phase 3 (Execute).')).toBe(true);
     expect(isPhaseLockWriteError('Patch failed')).toBe(false);
   });
 
   it('detects phase-lock run_command errors', async () => {
-    const { isPhaseLockRunCommandError } = await import('../src/core/plans/PlanActEngine');
+    const { isPhaseLockRunCommandError } = await import('../src/features/ce/plans/PlanActEngine');
     expect(isPhaseLockRunCommandError('Phase 4 (Verify) allows diagnostics, lint, tests, builds, and targeted file fixes, not arbitrary shell commands.')).toBe(true);
     expect(isPhaseLockRunCommandError('Phase 1 (Diagnostics) allows only read-only shell commands.')).toBe(true);
     expect(isPhaseLockRunCommandError('Command exited with code 1')).toBe(false);
@@ -2449,7 +2449,7 @@ describe('PlanActEngine read-only shell', () => {
 
 describe('verifyCommandDiscovery', () => {
   it('skips missing npm scripts and placeholder npm tests', async () => {
-    const { resolveProjectVerifyCommands } = await import('../src/core/runtime/verifyCommandDiscovery');
+    const { resolveProjectVerifyCommands } = await import('../src/features/ce/runtime/verifyCommandDiscovery');
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-verify-npm-test-'));
     try {
       writeFileSync(join(tempDir, 'package.json'), JSON.stringify({
@@ -2470,7 +2470,7 @@ describe('verifyCommandDiscovery', () => {
   });
 
   it('uses the first matching docs build command from workspace suggestions', async () => {
-    const { resolveProjectVerifyCommands } = await import('../src/core/runtime/verifyCommandDiscovery');
+    const { resolveProjectVerifyCommands } = await import('../src/features/ce/runtime/verifyCommandDiscovery');
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-verify-docs-test-'));
     try {
       const docsDir = join(tempDir, 'apps/docs');
@@ -2498,7 +2498,7 @@ describe('verifyCommandDiscovery', () => {
   });
 
   it('adds docs build verification when docs files changed and default verify scripts are missing', async () => {
-    const { resolveProjectVerifyCommands } = await import('../src/core/runtime/verifyCommandDiscovery');
+    const { resolveProjectVerifyCommands } = await import('../src/features/ce/runtime/verifyCommandDiscovery');
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-verify-docs-touched-test-'));
     try {
       const docsDir = join(tempDir, 'apps/docs');
@@ -2526,7 +2526,7 @@ describe('verifyCommandDiscovery', () => {
   });
 
   it('auto-discovers scripts from package.json when verifyCommands is empty', async () => {
-    const { resolveProjectVerifyCommands } = await import('../src/core/runtime/verifyCommandDiscovery');
+    const { resolveProjectVerifyCommands } = await import('../src/features/ce/runtime/verifyCommandDiscovery');
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-verify-auto-test-'));
     try {
       mkdirSync(join(tempDir, 'src'), { recursive: true });
@@ -2551,7 +2551,7 @@ describe('verifyCommandDiscovery', () => {
   });
 
   it('discovers non-JS test commands from manifests only when appropriate', async () => {
-    const { resolveProjectVerifyCommands } = await import('../src/core/runtime/verifyCommandDiscovery');
+    const { resolveProjectVerifyCommands } = await import('../src/features/ce/runtime/verifyCommandDiscovery');
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-verify-polyglot-test-'));
     try {
       writeFileSync(join(tempDir, 'pom.xml'), '<project />');
@@ -2570,20 +2570,20 @@ describe('verifyCommandDiscovery', () => {
 
 describe('pathUtils', () => {
   it('normalizes "." to empty root', async () => {
-    const { normalizeRelPath } = await import('../src/core/util/paths');
+    const { normalizeRelPath } = await import('../src/kernel/util/paths');
     expect(normalizeRelPath('.')).toBe('');
     expect(normalizeRelPath('./src/foo.ts')).toBe('src/foo.ts');
   });
 
   it('rejects invalid workspace roots', async () => {
-    const { normalizeWorkspaceRoot } = await import('../src/core/util/paths');
+    const { normalizeWorkspaceRoot } = await import('../src/kernel/util/paths');
     expect(normalizeWorkspaceRoot('')).toBeNull();
     expect(normalizeWorkspaceRoot('   ')).toBeNull();
     expect(normalizeWorkspaceRoot('/tmp')).toMatch(/tmp/);
   });
 
   it('strips embedded workspace root from pseudo-absolute paths', async () => {
-    const { resolveWorkspaceRelPath } = await import('../src/core/util/paths');
+    const { resolveWorkspaceRelPath } = await import('../src/kernel/util/paths');
     const ws = '/Users/me/proj';
     expect(resolveWorkspaceRelPath(ws, 'Users/me/proj/apps/docs/config.ts')).toBe('apps/docs/config.ts');
     expect(resolveWorkspaceRelPath(ws, '/Users/me/proj/apps/docs/config.ts')).toBe('apps/docs/config.ts');
@@ -2591,7 +2591,7 @@ describe('pathUtils', () => {
   });
 
   it('suggests extension variants for missing paths', async () => {
-    const { pathExistenceVariants } = await import('../src/core/util/paths');
+    const { pathExistenceVariants } = await import('../src/kernel/util/paths');
     const variants = pathExistenceVariants('apps/docs/docusaurus.config.js');
     expect(variants).toContain('apps/docs/docusaurus.config.ts');
   });
@@ -2599,12 +2599,12 @@ describe('pathUtils', () => {
 
 describe('modelNormalize', () => {
   it('maps deepseek-v4-flash to deepseek-chat', async () => {
-    const { normalizeProviderModel } = await import('../src/core/llm/modelNormalize');
+    const { normalizeProviderModel } = await import('../src/kernel/llm/modelNormalize');
     expect(normalizeProviderModel('deepseek', 'deepseek-v4-flash').model).toBe('deepseek-chat');
   });
 
   it('rejects local Ollama model ids on DeepSeek provider', async () => {
-    const { normalizeProviderModel } = await import('../src/core/llm/modelNormalize');
+    const { normalizeProviderModel } = await import('../src/kernel/llm/modelNormalize');
     const result = normalizeProviderModel('deepseek', 'qwen3-coder:30b');
     expect(result.model).toBe('deepseek-chat');
     expect(result.warning).toMatch(/local/i);
@@ -2613,14 +2613,14 @@ describe('modelNormalize', () => {
 
 describe('toolAliases', () => {
   it('maps search_files to search', async () => {
-    const { resolveToolName } = await import('../src/core/tools/toolAliases');
+    const { resolveToolName } = await import('../src/kernel/tools/toolAliases');
     expect(resolveToolName('search_files')).toBe('search');
   });
 });
 
 describe('promptBuilder', () => {
   it('includes cause-specific MDX generic repair guidance only for MDX repair mode', async () => {
-    const { buildSystemPrompt } = await import('../src/core/plans/promptBuilder');
+    const { buildSystemPrompt } = await import('../src/features/ce/plans/promptBuilder');
     const defaultPrompt = buildSystemPrompt('agent', true);
     expect(defaultPrompt).not.toContain('Unexpected character `,` in name');
     expect(defaultPrompt).not.toContain('LiveCodeBlock');
@@ -2637,7 +2637,7 @@ describe('promptBuilder', () => {
 
 describe('pageRank', () => {
   it('ranks highly referenced nodes higher', async () => {
-    const { computePageRank } = await import('../src/core/context/pageRank');
+    const { computePageRank } = await import('../src/features/ce/context/pageRank');
     const scores = computePageRank(
       ['a.ts', 'b.ts', 'c.ts'],
       [
@@ -2652,7 +2652,7 @@ describe('pageRank', () => {
 
 describe('PassiveMemoryInjector', () => {
   it('returns empty without memory service', async () => {
-    const { PassiveMemoryInjector } = await import('../src/core/memory/PassiveMemoryInjector');
+    const { PassiveMemoryInjector } = await import('../src/features/ce/memory/PassiveMemoryInjector');
     const injector = new PassiveMemoryInjector(undefined);
     expect(await injector.inject('auth module')).toEqual([]);
   });
@@ -2660,14 +2660,14 @@ describe('PassiveMemoryInjector', () => {
 
 describe('PatchApplyService validateSyntax', () => {
   it('rejects invalid JSON', async () => {
-    const { PatchApplyService } = await import('../src/core/apply/PatchApplyService');
+    const { PatchApplyService } = await import('../src/features/ce/apply/PatchApplyService');
     const svc = new PatchApplyService('/tmp');
     const result = svc.validateSyntax('data.json', '{ invalid');
     expect(result.success).toBe(false);
   });
 
   it('rejects MDX patches that leave raw TypeScript generics in table cells', async () => {
-    const { PatchApplyService } = await import('../src/core/apply/PatchApplyService');
+    const { PatchApplyService } = await import('../src/features/ce/apply/PatchApplyService');
     const svc = new PatchApplyService('/tmp');
     const result = svc.validateSyntax(
       'docs/ffb-mui/api/formik-renderer.md',
@@ -2683,7 +2683,7 @@ describe('PatchApplyService validateSyntax', () => {
   });
 
   it('does not run source-code bracket balance checks on plain Markdown', async () => {
-    const { PatchApplyService } = await import('../src/core/apply/PatchApplyService');
+    const { PatchApplyService } = await import('../src/features/ce/apply/PatchApplyService');
     const svc = new PatchApplyService('/tmp');
     const result = svc.validateSyntax(
       'README.md',
@@ -2705,7 +2705,7 @@ describe('PatchApplyService validateSyntax', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-patch-markdown-test-'));
 
     try {
-      const { createApplyPatchTool } = await import('../src/core/tools/builtinTools');
+      const { createApplyPatchTool } = await import('../src/features/ce/tools/builtinTools');
       const ig = new IgnoreService();
       ig.load(tempDir);
       const readmePath = join(tempDir, 'README.md');
@@ -2739,7 +2739,7 @@ describe('PatchApplyService validateSyntax', () => {
   });
 
   it('allows targeted TSX patches when the final file has many self-closing components', async () => {
-    const { PatchApplyService } = await import('../src/core/apply/PatchApplyService');
+    const { PatchApplyService } = await import('../src/features/ce/apply/PatchApplyService');
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-patch-tsx-test-'));
 
     try {
@@ -2776,7 +2776,7 @@ ${children}
 
 describe('HashEmbeddingProvider', () => {
   it('produces normalized embeddings', async () => {
-    const { HashEmbeddingProvider, cosineSimilarity } = await import('../src/core/indexing/EmbeddingProvider');
+    const { HashEmbeddingProvider, cosineSimilarity } = await import('../src/features/ce/indexing/EmbeddingProvider');
     const provider = new HashEmbeddingProvider();
     const [a, b] = await provider.embed(['hello world', 'hello there']);
     expect(a.length).toBeGreaterThan(0);
@@ -2786,7 +2786,7 @@ describe('HashEmbeddingProvider', () => {
 
 describe('ContextReranker', () => {
   it('reranks candidates by lexical overlap', async () => {
-    const { LexicalContextReranker } = await import('../src/core/context/ContextReranker');
+    const { LexicalContextReranker } = await import('../src/features/ce/context/ContextReranker');
     const reranker = new LexicalContextReranker();
     const items = [
       { id: 'a', source: 'fts', content: 'unrelated blob', score: 9, reason: 'fts', tokenEstimate: 10 },
@@ -2799,8 +2799,8 @@ describe('ContextReranker', () => {
 
 describe('HybridRetriever reranker', () => {
   it('applies reranker top-k when enabled', async () => {
-    const { HybridRetriever } = await import('../src/core/context/HybridRetriever');
-    const { LexicalContextReranker } = await import('../src/core/context/ContextReranker');
+    const { HybridRetriever } = await import('../src/features/ce/context/HybridRetriever');
+    const { LexicalContextReranker } = await import('../src/features/ce/context/ContextReranker');
     const retriever = new HybridRetriever(
       [{
         id: 'mock',
@@ -2824,8 +2824,8 @@ describe('HybridRetriever reranker', () => {
   });
 
   it('emits source and reranker timings', async () => {
-    const { HybridRetriever } = await import('../src/core/context/HybridRetriever');
-    const { LexicalContextReranker } = await import('../src/core/context/ContextReranker');
+    const { HybridRetriever } = await import('../src/features/ce/context/HybridRetriever');
+    const { LexicalContextReranker } = await import('../src/features/ce/context/ContextReranker');
     const timings: Array<{ source: string; success: boolean }> = [];
     const retriever = new HybridRetriever(
       [{
@@ -2859,9 +2859,9 @@ describe('MemoryService FTS', () => {
     const { mkdtempSync, rmSync } = await import('fs');
     const { join } = await import('path');
     const { tmpdir } = await import('os');
-    const { ThunderDb } = await import('../src/core/indexing/ThunderDb');
-    const { MigrationRunner } = await import('../src/core/indexing/migrations');
-    const { MemoryService } = await import('../src/core/memory/MemoryService');
+    const { ThunderDb } = await import('../src/features/ce/indexing/ThunderDb');
+    const { MigrationRunner } = await import('../src/features/ce/indexing/migrations');
+    const { MemoryService } = await import('../src/features/ce/memory/MemoryService');
 
     const dir = mkdtempSync(join(tmpdir(), 'thunder-memory-fts-'));
     const db = new ThunderDb(join(dir, 'thunder.sqlite'));
@@ -2882,7 +2882,7 @@ describe('MemoryService FTS', () => {
 
 describe('SubagentTracker', () => {
   it('tracks run lifecycle', async () => {
-    const { SubagentTracker } = await import('../src/core/runtime/SubagentTracker');
+    const { SubagentTracker } = await import('../src/features/ce/runtime/SubagentTracker');
     const tracker = new SubagentTracker();
     const updates: number[] = [];
     tracker.setUpdateCallback((runs) => updates.push(runs.length));
@@ -2898,7 +2898,7 @@ describe('SessionLogService', () => {
     const { mkdtempSync, readFileSync, rmSync } = await import('fs');
     const { join } = await import('path');
     const { tmpdir } = await import('os');
-    const { SessionLogService } = await import('../src/core/telemetry/SessionLogService');
+    const { SessionLogService } = await import('../src/kernel/telemetry/SessionLogService');
 
     const dir = mkdtempSync(join(tmpdir(), 'mitii-turn-log-'));
     try {
@@ -2931,7 +2931,7 @@ describe('SessionLogService', () => {
     const { mkdtempSync, readFileSync, rmSync } = await import('fs');
     const { join } = await import('path');
     const { tmpdir } = await import('os');
-    const { SessionLogService } = await import('../src/core/telemetry/SessionLogService');
+    const { SessionLogService } = await import('../src/kernel/telemetry/SessionLogService');
 
     const dir = mkdtempSync(join(tmpdir(), 'thunder-log-'));
     const workspace = join(dir, 'ws');
@@ -2957,8 +2957,8 @@ describe('SessionLogService', () => {
   it('records canonical tool start and end fields from ToolRuntime', async () => {
     const { z } = await import('zod');
     const { readFileSync } = await import('fs');
-    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
-    const { SessionLogService } = await import('../src/core/telemetry/SessionLogService');
+    const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
+    const { SessionLogService } = await import('../src/kernel/telemetry/SessionLogService');
 
     const dir = mkdtempSync(join(tmpdir(), 'thunder-tool-log-'));
     try {
@@ -3004,7 +3004,7 @@ describe('SessionLogService', () => {
 describe('toolSchema', () => {
   it('converts zod tool to OpenAI definition', async () => {
     const { z } = await import('zod');
-    const { toolToDefinition } = await import('../src/core/tools/toolSchema');
+    const { toolToDefinition } = await import('../src/kernel/tools/toolSchema');
     const def = toolToDefinition({
       name: 'read_file',
       description: 'Read a file',
@@ -3022,7 +3022,7 @@ describe('UserExplicitContextBuilder', () => {
     const dir = mkdtempSync(join(tmpdir(), 'thunder-explicit-'));
     try {
       writeFileSync(join(dir, 'hello.ts'), 'export function hello() { return 1; }\n');
-      const { UserExplicitContextBuilder } = await import('../src/core/context/UserExplicitContextBuilder');
+      const { UserExplicitContextBuilder } = await import('../src/features/ce/context/UserExplicitContextBuilder');
       const builder = new UserExplicitContextBuilder(undefined, dir);
       const result = builder.build([{ path: 'hello.ts', kind: 'file' }]);
       expect(result.formatted).toContain('<user_explicit_context>');
@@ -3039,7 +3039,7 @@ describe('UserExplicitContextBuilder', () => {
     try {
       const body = Array.from({ length: 12000 }, (_, i) => `// line ${i}`).join('\n');
       writeFileSync(join(dir, 'big.ts'), `export class Big {}\n${body}`);
-      const { UserExplicitContextBuilder } = await import('../src/core/context/UserExplicitContextBuilder');
+      const { UserExplicitContextBuilder } = await import('../src/features/ce/context/UserExplicitContextBuilder');
       const builder = new UserExplicitContextBuilder(undefined, dir);
       const result = builder.build([{ path: 'big.ts', kind: 'file' }]);
       expect(result.formatted).toContain('representation="scoped-ast"');
@@ -3053,7 +3053,7 @@ describe('UserExplicitContextBuilder', () => {
 
 describe('buildPrompt explicit context', () => {
   it('places user_explicit_context inside the untrusted workspace context', async () => {
-    const { buildPrompt } = await import('../src/core/plans/promptBuilder');
+    const { buildPrompt } = await import('../src/features/ce/plans/promptBuilder');
     const pack = {
       items: [],
       totalTokens: 0,
@@ -3090,7 +3090,7 @@ describe('buildPrompt explicit context', () => {
 
 describe('conversation task message resolution', () => {
   it('expands terse follow-ups using the latest substantive user turn', async () => {
-    const { resolveConversationTaskMessage } = await import('../src/core/runtime/taskMessage');
+    const { resolveConversationTaskMessage } = await import('../src/features/ce/runtime/taskMessage');
     const resolved = resolveConversationTaskMessage('add them', [
       { role: 'user', content: 'Can you add Day 17 and 18 to the Oracle Fusion learn plan' },
       { role: 'assistant', content: 'Planning failed quality gate' },
@@ -3103,7 +3103,7 @@ describe('conversation task message resolution', () => {
 
 describe('TaskAnalyzer direct error fix', () => {
   it('routes syntax/compiler errors to direct execution without replanning', async () => {
-    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
     const message = `Syntax error: Missing semicolon. (2:28)
 src/screens/kitchen-screen/components/DineInKanban.tsx
 
@@ -3117,7 +3117,7 @@ src/screens/kitchen-screen/components/DineInKanban.tsx
   });
 
   it('routes MDX compilation failures to direct exact-file repair', async () => {
-    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
     const analysis = analyzeTask(
       'Error: MDX compilation failed for file "/repo/apps/docs/docs/ffb-mui/api/formik-renderer.md" Cause: Unexpected character `,`',
       'agent'
@@ -3131,7 +3131,7 @@ src/screens/kitchen-screen/components/DineInKanban.tsx
   });
 
   it('routes module resolution failures in docs builds to direct repair', async () => {
-    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
     const analysis = analyzeTask(
       "Module not found: Error: Can't resolve 'ffb-mui' in '/repo/apps/docs/src/components'",
       'agent'
@@ -3146,7 +3146,7 @@ src/screens/kitchen-screen/components/DineInKanban.tsx
 describe('mdxRepairRouting', () => {
   it('detects pasted Docusaurus build failures', async () => {
     const { isMdxRepairTask, extractMdxErrorFile, buildMdxRepairBootstrapBlock } = await import(
-      '../src/core/runtime/mdxRepairRouting'
+      '../src/features/ce/runtime/mdxRepairRouting'
     );
     const text = `Compiled with problems:
 ERROR in ./docs/ffb-mui/api/formik-renderer.md
@@ -3162,7 +3162,7 @@ Cause: Could not parse expression with acorn`;
 
 describe('SessionLogService timing', () => {
   it('records timing events and omits debug payloads when debugMetrics is off', async () => {
-    const { SessionLogService } = await import('../src/core/telemetry/SessionLogService');
+    const { SessionLogService } = await import('../src/kernel/telemetry/SessionLogService');
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-session-log-'));
 
     try {
@@ -3187,7 +3187,7 @@ describe('SessionLogService timing', () => {
   });
 
   it('captures debug payloads when debugMetrics is enabled', async () => {
-    const { SessionLogService } = await import('../src/core/telemetry/SessionLogService');
+    const { SessionLogService } = await import('../src/kernel/telemetry/SessionLogService');
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-session-log-debug-'));
 
     try {
@@ -3209,7 +3209,7 @@ describe('workspace scaffolding', () => {
     const { mkdtempSync, existsSync, readFileSync, rmSync } = await import('fs');
     const { join } = await import('path');
     const { tmpdir } = await import('os');
-    const { scaffoldMitiiWorkspace } = await import('../src/core/mcp/scaffoldMitiiWorkspace');
+    const { scaffoldMitiiWorkspace } = await import('../src/features/ce/mcp/scaffoldMitiiWorkspace');
 
     const dir = mkdtempSync(join(tmpdir(), 'thunder-scaffold-'));
     try {
@@ -3230,7 +3230,7 @@ describe('workspace scaffolding', () => {
     const { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } = await import('fs');
     const { join } = await import('path');
     const { tmpdir } = await import('os');
-    const { scaffoldMitiiWorkspace } = await import('../src/core/mcp/scaffoldMitiiWorkspace');
+    const { scaffoldMitiiWorkspace } = await import('../src/features/ce/mcp/scaffoldMitiiWorkspace');
 
     const dir = mkdtempSync(join(tmpdir(), 'thunder-scaffold-'));
     try {
@@ -3249,7 +3249,7 @@ describe('run_command exit codes', () => {
     const { mkdtempSync, rmSync } = await import('fs');
     const { join } = await import('path');
     const { tmpdir } = await import('os');
-    const { createRunCommandTool } = await import('../src/core/tools/builtinTools');
+    const { createRunCommandTool } = await import('../src/features/ce/tools/builtinTools');
 
     const dir = mkdtempSync(join(tmpdir(), 'thunder-cmd-'));
     try {
@@ -3268,7 +3268,7 @@ describe('run_command exit codes', () => {
     const { mkdtempSync, writeFileSync, rmSync } = await import('fs');
     const { join } = await import('path');
     const { tmpdir } = await import('os');
-    const { createRunCommandTool } = await import('../src/core/tools/builtinTools');
+    const { createRunCommandTool } = await import('../src/features/ce/tools/builtinTools');
 
     const dir = mkdtempSync(join(tmpdir(), 'thunder-cmd-log-'));
     try {
@@ -3291,7 +3291,7 @@ describe('run_command exit codes', () => {
     const { mkdtempSync, rmSync } = await import('fs');
     const { join } = await import('path');
     const { tmpdir } = await import('os');
-    const { createRunCommandTool } = await import('../src/core/tools/builtinTools');
+    const { createRunCommandTool } = await import('../src/features/ce/tools/builtinTools');
 
     const dir = mkdtempSync(join(tmpdir(), 'thunder-cmd-tsc-pipe-'));
     try {
@@ -3309,7 +3309,7 @@ describe('run_command exit codes', () => {
 
 describe('Ask v2 routing, scope, and impact', () => {
   it('routes canonical Ask intents and profiles', async () => {
-    const { routeAskIntent } = await import('../src/core/modes/ask');
+    const { routeAskIntent } = await import('../src/features/ce/modes/ask');
 
     expect(routeAskIntent('Where is Ask mode defined?')).toMatchObject({
       intent: 'locate',
@@ -3339,7 +3339,7 @@ describe('Ask v2 routing, scope, and impact', () => {
 
   it('discovers monorepo projects and persists a catalog file', async () => {
     const { discoverProjectCatalog, saveProjectCatalog, loadProjectCatalog, formatProjectCatalog } =
-      await import('../src/core/modes/ask');
+      await import('../src/features/ce/modes/ask');
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-project-catalog-test-'));
     try {
       writeFileSync(join(tempDir, 'pnpm-workspace.yaml'), ['packages:', "  - 'apps/*'", "  - 'packages/*'"].join('\n'));
@@ -3372,7 +3372,7 @@ describe('Ask v2 routing, scope, and impact', () => {
   });
 
   it('resolves explicit, type-based, and cross-project scopes', async () => {
-    const { resolveAskScope } = await import('../src/core/modes/ask');
+    const { resolveAskScope } = await import('../src/features/ce/modes/ask');
     const catalog = {
       workspaceRoot: '/tmp/repo',
       generatedAt: 'now',
@@ -3394,7 +3394,7 @@ describe('Ask v2 routing, scope, and impact', () => {
   });
 
   it('analyzes likely affected files without mutating source files', async () => {
-    const { analyzeChangeImpact } = await import('../src/core/modes/ask');
+    const { analyzeChangeImpact } = await import('../src/features/ce/modes/ask');
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-impact-test-'));
     try {
       mkdirSync(join(tempDir, 'src/core/auth'), { recursive: true });
@@ -3421,7 +3421,7 @@ describe('Ask v2 routing, scope, and impact', () => {
   });
 
   it('exposes project catalog and impact through read-only built-in tools', async () => {
-    const { createProjectCatalogTool, createAnalyzeChangeImpactTool } = await import('../src/core/tools/builtinTools');
+    const { createProjectCatalogTool, createAnalyzeChangeImpactTool } = await import('../src/features/ce/tools/builtinTools');
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-ask-tools-test-'));
     try {
       mkdirSync(join(tempDir, 'src'), { recursive: true });
@@ -3448,7 +3448,7 @@ describe('Ask v2 routing, scope, and impact', () => {
   });
 
   it('prepares a headless Ask run plan for SDK-compatible callers', async () => {
-    const { AskOrchestrator } = await import('../src/core/modes/ask');
+    const { AskOrchestrator } = await import('../src/features/ce/modes/ask');
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-ask-orchestrator-test-'));
     try {
       writeFileSync(join(tempDir, 'package.json'), JSON.stringify({ name: 'ask-app' }));
@@ -3468,7 +3468,7 @@ describe('Ask v2 routing, scope, and impact', () => {
   });
 
   it('uses Ask step ceilings instead of overriding every intent with the setting', async () => {
-    const { AskOrchestrator } = await import('../src/core/modes/ask');
+    const { AskOrchestrator } = await import('../src/features/ce/modes/ask');
 
     expect(AskOrchestrator.prepare('Where is Ask mode defined?', {
       configuredMaxSteps: 18,
@@ -3490,7 +3490,7 @@ describe('Ask v2 routing, scope, and impact', () => {
   });
 
   it('loads cached project catalogs during Ask preparation', async () => {
-    const { AskOrchestrator } = await import('../src/core/modes/ask');
+    const { AskOrchestrator } = await import('../src/features/ce/modes/ask');
     const tempDir = mkdtempSync(join(tmpdir(), 'thunder-ask-cached-catalog-test-'));
     try {
       mkdirSync(join(tempDir, '.mitii'), { recursive: true });
@@ -3511,8 +3511,8 @@ describe('Ask v2 routing, scope, and impact', () => {
   });
 
   it('filters scoped search and retrieve_context tool results', async () => {
-    const { createSearchTool, createRetrieveContextTool } = await import('../src/core/tools/builtinTools');
-    const { ContextBudgeter } = await import('../src/core/context/ContextBudgeter');
+    const { createSearchTool, createRetrieveContextTool } = await import('../src/features/ce/tools/builtinTools');
+    const { ContextBudgeter } = await import('../src/features/ce/context/ContextBudgeter');
     const fakeFts = {
       search: () => [
         { relPath: 'apps/docs/src/index.ts', snippet: 'docs result' },
@@ -3549,7 +3549,7 @@ describe('Ask v2 routing, scope, and impact', () => {
   });
 
   it('injects Ask routing instructions without forcing deep prose on concise profiles', async () => {
-    const { buildPrompt, buildSystemPrompt } = await import('../src/core/plans/promptBuilder');
+    const { buildPrompt, buildSystemPrompt } = await import('../src/features/ce/plans/promptBuilder');
 
     const system = buildSystemPrompt('ask', true);
     expect(system).not.toContain('technical blog post');
@@ -3583,7 +3583,7 @@ describe('Ask v2 routing, scope, and impact', () => {
 
 describe('SCM commit message generation', () => {
   it('redacts sensitive diff lines before prompting', async () => {
-    const { buildCommitMessagePrompt } = await import('../src/core/scm');
+    const { buildCommitMessagePrompt } = await import('../src/features/ce/scm');
     const prompt = buildCommitMessagePrompt({
       stagedDiff: [
         'diff --git a/.env b/.env',
@@ -3599,7 +3599,7 @@ describe('SCM commit message generation', () => {
   });
 
   it('normalizes model output to a 72-character subject', async () => {
-    const { normalizeCommitMessage } = await import('../src/core/scm');
+    const { normalizeCommitMessage } = await import('../src/features/ce/scm');
     const result = normalizeCommitMessage('```text\nfeat(ask): add an extremely long subject that should be shortened because it will not fit in git history cleanly\n\nAdds details.\n```');
 
     expect(result.subject.length).toBeLessThanOrEqual(72);
@@ -3608,7 +3608,7 @@ describe('SCM commit message generation', () => {
   });
 
   it('generates a commit message through the configured provider', async () => {
-    const { generateCommitMessage } = await import('../src/core/scm');
+    const { generateCommitMessage } = await import('../src/features/ce/scm');
     const provider = {
       id: 'fake',
       capabilities: {
@@ -3633,7 +3633,7 @@ describe('SCM commit message generation', () => {
   });
 
   it('rejects empty staged diffs', async () => {
-    const { generateCommitMessage } = await import('../src/core/scm');
+    const { generateCommitMessage } = await import('../src/features/ce/scm');
     const provider = {
       id: 'fake',
       capabilities: {

@@ -3,8 +3,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFileSync } from 'child_process';
 import { afterEach, describe, expect, it } from 'vitest';
-import { TaskBoardService } from '../src/core/task';
-import { WorktreeService } from '../src/core/git';
+import { TaskBoardService } from '../src/features/ce/task-board';
+import { WorktreeService } from '../src/features/ce/git';
 
 const dirs: string[] = [];
 

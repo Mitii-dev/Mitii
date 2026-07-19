@@ -16,5 +16,5 @@ function copyBundledDir(relSource, relDest, label) {
   console.log(`Copied bundled ${label} to`, dest);
 }
 
-copyBundledDir('src/core/skills/bundled', 'dist/core/skills/bundled', 'skills');
-copyBundledDir('src/core/rules/bundled', 'dist/core/rules/bundled', 'rules');
+copyBundledDir('src/features/ce/skills/bundled', 'dist/features/ce/skills/bundled', 'skills');
+copyBundledDir('src/features/ce/rules/bundled', 'dist/features/ce/rules/bundled', 'rules');

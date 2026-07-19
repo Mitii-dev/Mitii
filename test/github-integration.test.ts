@@ -3,8 +3,8 @@ import {
   GitHubIssueFetcher,
   buildGitHubIssueContext,
   parseGitHubIssueUrl,
-} from '../src/core/integrations/github';
-import { enrichTask } from '../src/core/task';
+} from '../src/features/ce/github';
+import { enrichTask } from '../src/features/ce/task-board';
 
 describe('GitHub issue integration', () => {
   it('parses GitHub issue URLs without matching pull requests', () => {

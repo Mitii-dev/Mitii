@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { ThunderController } from './core/app/ThunderController';
+import { ThunderController } from './adapters/vscode/ThunderController';
 import { registerCommands } from './vscode/commands';
 import { ThunderWebviewProvider } from './vscode/webview/ThunderWebviewProvider';
-import { createLogger } from './core/telemetry/Logger';
+import { createLogger } from './kernel/telemetry/Logger';
 import { AGENT_FULL_NAME } from './shared/brand';
 import { notifyNativeModuleHealth } from './vscode/nativeModuleHealth';
 

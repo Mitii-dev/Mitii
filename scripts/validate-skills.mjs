@@ -16,7 +16,7 @@ const WARN_CHARS = 18_000;
 const targets = process.argv.slice(2);
 const roots = targets.length
   ? targets.map((t) => (t.startsWith('/') ? t : join(ROOT, t)))
-  : [join(ROOT, 'src/core/skills/bundled')];
+  : [join(ROOT, 'src/features/ce/skills/bundled')];
 
 let errors = 0;
 let warnings = 0;

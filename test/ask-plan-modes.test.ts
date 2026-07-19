@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { chunkContent } from '../src/core/llm/streamChunks';
+import { chunkContent } from '../src/kernel/llm/streamChunks';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { ChatMessage } from '../src/core/llm/types';
-import type { ToolExecutor } from '../src/core/safety/ToolExecutor';
-import type { LlmProvider } from '../src/core/llm/types';
+import type { ChatMessage } from '../src/kernel/llm/types';
+import type { ToolExecutor } from '../src/features/ce/safety/ToolExecutor';
+import type { LlmProvider } from '../src/kernel/llm/types';
 
 describe('Ask and Plan mode reliability', () => {
   it('distinguishes git diff cached vs unstaged diagnostic keys', async () => {
-    const { normalizeDiagnosticKey } = await import('../src/core/runtime/AgentTaskState');
+    const { normalizeDiagnosticKey } = await import('../src/features/ce/runtime/AgentTaskState');
 
     expect(normalizeDiagnosticKey('git diff')).toBe('git-diff:unstaged');
     expect(normalizeDiagnosticKey('git diff --cached')).toBe('git-diff:cached');
@@ -18,7 +18,7 @@ describe('Ask and Plan mode reliability', () => {
   });
 
   it('does not block git diff --cached after git diff unstaged in agent mode', async () => {
-    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
     const state = new AgentTaskState();
     state.setTaskContext('question', 'commit message', 'commit message for staged changes');
     state.recordToolSuccess('run_command', { command: 'git diff' }, '(no changes)');
@@ -28,8 +28,8 @@ describe('Ask and Plan mode reliability', () => {
   });
 
   it('skips AgentTaskState redundant blocking in Ask mode via ToolExecutor', async () => {
-    const { ToolExecutor } = await import('../src/core/safety/ToolExecutor');
-    const { AgentTaskState } = await import('../src/core/runtime/AgentTaskState');
+    const { ToolExecutor } = await import('../src/features/ce/safety/ToolExecutor');
+    const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
     const taskState = new AgentTaskState();
     taskState.setTaskContext('question', 'commit message', 'commit message');
     taskState.recordToolSuccess('run_command', { command: 'git diff' }, '(no changes)');
@@ -52,7 +52,7 @@ describe('Ask and Plan mode reliability', () => {
   });
 
   it('detects interim Ask responses that need synthesis', async () => {
-    const { needsReadOnlySynthesis } = await import('../src/core/runtime/AgentLoop');
+    const { needsReadOnlySynthesis } = await import('../src/features/ce/runtime/AgentLoop');
     const messages: ChatMessage[] = [
       { role: 'user', content: 'commit message please' },
       {
@@ -67,7 +67,7 @@ describe('Ask and Plan mode reliability', () => {
   });
 
   it('does not re-synthesize when a substantive answer already exists', async () => {
-    const { needsReadOnlySynthesis } = await import('../src/core/runtime/AgentLoop');
+    const { needsReadOnlySynthesis } = await import('../src/features/ce/runtime/AgentLoop');
     const messages: ChatMessage[] = [
       { role: 'user', content: 'how does auth work?' },
       {
@@ -80,7 +80,7 @@ describe('Ask and Plan mode reliability', () => {
   });
 
   it('runs a final synthesis turn after tool-only Ask exploration', async () => {
-    const { AgentLoop } = await import('../src/core/runtime/AgentLoop');
+    const { AgentLoop } = await import('../src/features/ce/runtime/AgentLoop');
     let llmCalls = 0;
     const provider = {
       id: 'mock',
@@ -132,7 +132,7 @@ describe('Ask and Plan mode reliability', () => {
   });
 
   it('nudges Plan mode when answering without grounding tools', async () => {
-    const { AgentLoop } = await import('../src/core/runtime/AgentLoop');
+    const { AgentLoop } = await import('../src/features/ce/runtime/AgentLoop');
     const seen: string[] = [];
     let llmCalls = 0;
     const provider = {
@@ -188,8 +188,8 @@ describe('Ask and Plan mode reliability', () => {
   });
 
   it('uses structured planner in Plan mode even when orchestration is disabled', async () => {
-    const { shouldUsePlanner } = await import('../src/core/orchestration/ChatOrchestrator');
-    const { analyzeTask } = await import('../src/core/runtime/TaskAnalyzer');
+    const { shouldUsePlanner } = await import('../src/features/ce/orchestration/ChatOrchestrator');
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
 
     const analysis = analyzeTask('How does authentication work in this repo?', 'plan');
     expect(analysis.shouldPlan).toBe(true);
@@ -198,7 +198,7 @@ describe('Ask and Plan mode reliability', () => {
   });
 
   it('prepares Plan mode with depth-aware discovery budgets', async () => {
-    const { PlanOrchestrator } = await import('../src/core/modes/plan/PlanOrchestrator');
+    const { PlanOrchestrator } = await import('../src/features/ce/modes/plan/PlanOrchestrator');
     const quick = PlanOrchestrator.prepare('Implement SDK plan runner', { planDepth: 'quick' });
     const deep = PlanOrchestrator.prepare('Implement SDK plan runner', { planDepth: 'deep' });
     const enterprise = PlanOrchestrator.prepare('Implement SDK plan runner', {
@@ -212,7 +212,7 @@ describe('Ask and Plan mode reliability', () => {
   });
 
   it('parses SKILL.md frontmatter descriptions for the skill catalog', async () => {
-    const { parseSkillFrontmatter } = await import('../src/core/skills/SkillCatalogService');
+    const { parseSkillFrontmatter } = await import('../src/features/ce/skills/SkillCatalogService');
     const parsed = parseSkillFrontmatter(`---
 name: performance-optimization
 description: >
@@ -228,7 +228,7 @@ description: >
   });
 
   it('uses SKILL.md frontmatter names in the refreshed skill catalog', async () => {
-    const { SkillCatalogService } = await import('../src/core/skills/SkillCatalogService');
+    const { SkillCatalogService } = await import('../src/features/ce/skills/SkillCatalogService');
     const workspace = mkdtempSync(join(tmpdir(), 'thunder-skill-catalog-'));
     try {
       const skillDir = join(workspace, '.mitii', 'skills', 'perf-folder');
@@ -259,14 +259,14 @@ description: "Measure-first performance work for LCP, INP, CLS, API latency, and
   });
 
   it('defaults planDepth in agent config schema', async () => {
-    const { AgentConfigSchema } = await import('../src/core/config/schema');
+    const { AgentConfigSchema } = await import('../src/kernel/config/schema');
     const parsed = AgentConfigSchema.parse({});
     expect(parsed.planDepth).toBe('auto');
     expect(parsed.agenticTierOverride).toBe('auto');
   });
 
   it('installs bundled skills from the extension into the workspace', async () => {
-    const { installBundledSkills, listBundledSkillNames } = await import('../src/core/skills/installBundledSkills');
+    const { installBundledSkills, listBundledSkillNames } = await import('../src/features/ce/skills/installBundledSkills');
     const { fileURLToPath } = await import('url');
     const extensionRoot = join(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -286,7 +286,7 @@ description: "Measure-first performance work for LCP, INP, CLS, API latency, and
       const forced = installBundledSkills(workspace, extensionRoot, { force: true });
       expect(forced.installed.length).toBeGreaterThan(0);
 
-      const catalog = new (await import('../src/core/skills/SkillCatalogService')).SkillCatalogService(workspace);
+      const catalog = new (await import('../src/features/ce/skills/SkillCatalogService')).SkillCatalogService(workspace);
       const entries = catalog.refresh();
       expect(entries.some((entry) => entry.name === 'audit-cleanup')).toBe(true);
       expect(entries.some((entry) => entry.name === 'using-agent-skills')).toBe(true);
@@ -296,7 +296,7 @@ description: "Measure-first performance work for LCP, INP, CLS, API latency, and
   });
 
   it('refreshes workspace bundled skills when the extension copy changes', async () => {
-    const { installBundledSkills } = await import('../src/core/skills/installBundledSkills');
+    const { installBundledSkills } = await import('../src/features/ce/skills/installBundledSkills');
     const extensionRoot = mkdtempSync(join(tmpdir(), 'thunder-extension-skills-'));
     const workspace = mkdtempSync(join(tmpdir(), 'thunder-refresh-skills-'));
     const skillDir = join(extensionRoot, 'src', 'core', 'skills', 'bundled', 'demo-skill');
@@ -330,7 +330,7 @@ description: "Measure-first performance work for LCP, INP, CLS, API latency, and
   });
 
   it('scaffoldMitiiWorkspace copies bundled skills when extensionRoot is provided', async () => {
-    const { scaffoldMitiiWorkspace } = await import('../src/core/mcp/scaffoldMitiiWorkspace');
+    const { scaffoldMitiiWorkspace } = await import('../src/features/ce/mcp/scaffoldMitiiWorkspace');
     const { fileURLToPath } = await import('url');
     const extensionRoot = join(fileURLToPath(new URL('..', import.meta.url)));
     const workspace = mkdtempSync(join(tmpdir(), 'thunder-scaffold-skills-'));

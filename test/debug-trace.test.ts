@@ -2,9 +2,9 @@ import { mkdtemp, readFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { withLlmTracing } from '../src/core/llm/TracingLlmProvider';
-import type { LlmProvider } from '../src/core/llm/types';
-import { AsyncDebugTrace, debugTrace } from '../src/core/telemetry/AsyncDebugTrace';
+import { withLlmTracing } from '../src/kernel/llm/TracingLlmProvider';
+import type { LlmProvider } from '../src/kernel/llm/types';
+import { AsyncDebugTrace, debugTrace } from '../src/kernel/telemetry/AsyncDebugTrace';
 
 const temporaryDirectories: string[] = [];
 

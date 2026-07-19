@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { validateProviderSettings } from '../src/core/config/ui/mappers';
+import { validateProviderSettings } from '../src/kernel/config/ui/mappers';
 import { detectEditorRebuildCommand } from '../src/vscode/nativeModuleHealth';
-import { parseReviewDiffFiles } from '../src/core/scm/ReviewDiffCollector';
-import { OpenAiCompatibleProvider } from '../src/core/llm/OpenAiCompatibleProvider';
-import { HeadlessAgentRunner } from '../src/core/headless';
-import { createProvider } from '../src/core/llm/createProvider';
-import { detectModelCapabilities } from '../src/core/llm/modelCapabilities';
-import { WebhookEmitter } from '../src/core/telemetry/WebhookEmitter';
+import { parseReviewDiffFiles } from '../src/features/ce/scm/ReviewDiffCollector';
+import { OpenAiCompatibleProvider } from '../src/adapters/providers/OpenAiCompatibleProvider';
+import { HeadlessAgentRunner } from '../src/adapters/node/headless';
+import { createProvider } from '../src/adapters/providers/createProvider';
+import { detectModelCapabilities } from '../src/kernel/llm/modelCapabilities';
+import { WebhookEmitter } from '../src/features/ee/telemetry-webhook/WebhookEmitter';
 
 describe('provider setup validation', () => {
   it('requires provider-specific fields', () => {

@@ -6,8 +6,8 @@ import { isAuthorized, writeJson, writeUnauthorized } from './authMiddleware';
 import { SessionConflictError, SessionLimitError, SessionManager, SessionNotFoundError } from './sessionManager';
 import { SseHub } from './sseHub';
 import { isLoopbackHost, validateWorkspace } from './workspaceBinding';
-import type { MitiiApprovalDecision, MitiiMode } from '../../../src/core/headless/events';
-import { IndexWorkerService } from '../../../src/core/indexing/IndexWorkerService';
+import type { MitiiApprovalDecision, MitiiMode } from '../../../src/adapters/node/events';
+import { IndexWorkerService } from '../../../src/features/ce/indexing/IndexWorkerService';
 
 export interface MitiiDaemonServerOptions {
   cwd: string;

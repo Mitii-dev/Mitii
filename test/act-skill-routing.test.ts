@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { resolveActSkillNames } from '../src/core/modes/agent/actSkillRouting';
-import { resolveGitRoute } from '../src/core/git/intents';
+import { resolveActSkillNames } from '../src/features/ce/modes/agent/actSkillRouting';
+import { resolveGitRoute } from '../src/features/ce/git/intents';
 
 describe('actSkillRouting', () => {
   it('injects Git route skill (0–1) for commit message requests', () => {

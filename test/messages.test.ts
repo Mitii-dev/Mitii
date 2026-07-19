@@ -25,13 +25,13 @@ describe('Webview message protocol', () => {
 
 describe('ToolExecutor', () => {
   it('requests approval for writes in plan mode', async () => {
-    const { ToolExecutor } = await import('../src/core/safety/ToolExecutor');
-    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
-    const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
-    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
-    const { defaultThunderConfig } = await import('../src/core/config/defaults');
-    const { createWriteFileTool } = await import('../src/core/tools/builtinTools');
-    const { IgnoreService } = await import('../src/core/indexing/IgnoreService');
+    const { ToolExecutor } = await import('../src/features/ce/safety/ToolExecutor');
+    const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
+    const { ToolPolicyEngine } = await import('../src/features/ce/safety/ToolPolicyEngine');
+    const { ApprovalQueue } = await import('../src/features/ce/safety/ApprovalQueue');
+    const { defaultThunderConfig } = await import('../src/kernel/config/defaults');
+    const { createWriteFileTool } = await import('../src/features/ce/tools/builtinTools');
+    const { IgnoreService } = await import('../src/features/ce/indexing/IgnoreService');
 
     const runtime = new ToolRuntime();
     runtime.register(createWriteFileTool(process.cwd(), new IgnoreService()));
@@ -56,12 +56,12 @@ describe('ToolExecutor', () => {
   });
 
   it('blocks dangerous commands before creating an approval request', async () => {
-    const { ToolExecutor } = await import('../src/core/safety/ToolExecutor');
-    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
-    const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
-    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
-    const { defaultThunderConfig } = await import('../src/core/config/defaults');
-    const { createRunCommandTool } = await import('../src/core/tools/builtinTools');
+    const { ToolExecutor } = await import('../src/features/ce/safety/ToolExecutor');
+    const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
+    const { ToolPolicyEngine } = await import('../src/features/ce/safety/ToolPolicyEngine');
+    const { ApprovalQueue } = await import('../src/features/ce/safety/ApprovalQueue');
+    const { defaultThunderConfig } = await import('../src/kernel/config/defaults');
+    const { createRunCommandTool } = await import('../src/features/ce/tools/builtinTools');
 
     const runtime = new ToolRuntime();
     runtime.register(createRunCommandTool(process.cwd(), () => 'plan'));
@@ -84,11 +84,11 @@ describe('ToolExecutor', () => {
 
   it('checks Ask allowlist before creating approval requests', async () => {
     const { z } = await import('zod');
-    const { ToolExecutor } = await import('../src/core/safety/ToolExecutor');
-    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
-    const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
-    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
-    const { defaultThunderConfig } = await import('../src/core/config/defaults');
+    const { ToolExecutor } = await import('../src/features/ce/safety/ToolExecutor');
+    const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
+    const { ToolPolicyEngine } = await import('../src/features/ce/safety/ToolPolicyEngine');
+    const { ApprovalQueue } = await import('../src/features/ce/safety/ApprovalQueue');
+    const { defaultThunderConfig } = await import('../src/kernel/config/defaults');
 
     const runtime = new ToolRuntime();
     const execute = vi.fn(async () => ({ success: true, output: 'committed' }));
@@ -117,13 +117,13 @@ describe('ToolExecutor', () => {
   });
 
   it('executes approved requests by id and consumes them once', async () => {
-    const { ToolExecutor } = await import('../src/core/safety/ToolExecutor');
-    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
-    const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
-    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
-    const { defaultThunderConfig } = await import('../src/core/config/defaults');
-    const { createWriteFileTool } = await import('../src/core/tools/builtinTools');
-    const { IgnoreService } = await import('../src/core/indexing/IgnoreService');
+    const { ToolExecutor } = await import('../src/features/ce/safety/ToolExecutor');
+    const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
+    const { ToolPolicyEngine } = await import('../src/features/ce/safety/ToolPolicyEngine');
+    const { ApprovalQueue } = await import('../src/features/ce/safety/ApprovalQueue');
+    const { defaultThunderConfig } = await import('../src/kernel/config/defaults');
+    const { createWriteFileTool } = await import('../src/features/ce/tools/builtinTools');
+    const { IgnoreService } = await import('../src/features/ce/indexing/IgnoreService');
     const { mkdtempSync, readFileSync } = await import('fs');
     const { tmpdir } = await import('os');
     const { join } = await import('path');
@@ -156,12 +156,12 @@ describe('ToolExecutor', () => {
   });
 
   it('enforces offered tools inside ToolExecutor when provided by the caller', async () => {
-    const { ToolExecutor } = await import('../src/core/safety/ToolExecutor');
-    const { ToolRuntime } = await import('../src/core/tools/ToolRuntime');
-    const { ToolPolicyEngine } = await import('../src/core/safety/ToolPolicyEngine');
-    const { ApprovalQueue } = await import('../src/core/safety/ApprovalQueue');
-    const { defaultThunderConfig } = await import('../src/core/config/defaults');
-    const { createRunCommandTool } = await import('../src/core/tools/builtinTools');
+    const { ToolExecutor } = await import('../src/features/ce/safety/ToolExecutor');
+    const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
+    const { ToolPolicyEngine } = await import('../src/features/ce/safety/ToolPolicyEngine');
+    const { ApprovalQueue } = await import('../src/features/ce/safety/ApprovalQueue');
+    const { defaultThunderConfig } = await import('../src/kernel/config/defaults');
+    const { createRunCommandTool } = await import('../src/features/ce/tools/builtinTools');
 
     const runtime = new ToolRuntime();
     runtime.register(createRunCommandTool(process.cwd(), () => 'agent'));

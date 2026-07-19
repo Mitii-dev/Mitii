@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join as pathJoin } from 'path';
-import { IgnoreService } from '../src/core/indexing/IgnoreService';
-import { ThunderDb } from '../src/core/indexing/ThunderDb';
-import { MigrationRunner } from '../src/core/indexing/migrations';
-import { createWorkspacePathResolver } from '../src/core/paths/WorkspacePathResolver';
-import { ProjectRulesContextSource, ProjectRulesService } from '../src/core/rules/ProjectRulesService';
-import { installBundledRules } from '../src/core/rules/installBundledRules';
-import { BUNDLED_DEFAULT_RULES } from '../src/core/rules/bundledDefaultRules';
+import { IgnoreService } from '../src/features/ce/indexing/IgnoreService';
+import { ThunderDb } from '../src/features/ce/indexing/ThunderDb';
+import { MigrationRunner } from '../src/features/ce/indexing/migrations';
+import { createWorkspacePathResolver } from '../src/features/ce/paths/WorkspacePathResolver';
+import { ProjectRulesContextSource, ProjectRulesService } from '../src/features/ce/rules/ProjectRulesService';
+import { installBundledRules } from '../src/features/ce/rules/installBundledRules';
+import { BUNDLED_DEFAULT_RULES } from '../src/features/ce/rules/bundledDefaultRules';
 
 describe('WorkspacePathResolver', () => {
   it('auto-resolves folder/file layout when a flat path is requested', () => {
@@ -94,7 +94,7 @@ describe('read_file path auto-resolution', () => {
       mkdirSync(dirname(target), { recursive: true });
       writeFileSync(target, 'export const FieldSlider = () => null;\n');
 
-      const { createReadFileTool } = await import('../src/core/tools/builtinTools');
+      const { createReadFileTool } = await import('../src/features/ce/tools/builtinTools');
       const ig = new IgnoreService();
       ig.load(tempDir);
 
@@ -128,7 +128,7 @@ describe('bundled path-resolution rules', () => {
 
   it('keeps bundled markdown and TypeScript fallback rules in sync', () => {
     const markdown = readFileSync(
-      pathJoin(process.cwd(), 'src/core/rules/bundled/path-resolution.md'),
+      pathJoin(process.cwd(), 'src/features/ce/rules/bundled/path-resolution.md'),
       'utf8'
     );
     expect(BUNDLED_DEFAULT_RULES.trim()).toBe(markdown.trim());

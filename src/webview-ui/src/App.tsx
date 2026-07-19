@@ -16,9 +16,9 @@ import { PlanPanel } from './components/PlanPanel';
 import { IconButton } from './components/IconButton';
 import { IconChat, IconHistory, IconPlus, IconSettings } from './components/Icons';
 import { deriveSafetySettings } from './utils/approvalMode';
-import { normalizeAgentDepth } from '../../core/config/agentDepth';
+import { normalizeAgentDepth } from '../../kernel/config/agentDepth';
 import type { AgentDepthView, AgentSettingsPayload, ApprovalMode, SettingsView } from '../../vscode/webview/messages';
-import type { ThunderMode } from '../../core/session/ThunderSession';
+import type { ThunderMode } from '../../features/ce/session/ThunderSession';
 
 function activeDepthForMode(settings: SettingsView, mode: ThunderMode): AgentDepthView {
   if (mode === 'ask') return normalizeAgentDepth(settings.askDepth);

@@ -3,8 +3,8 @@ import {
   AGENT_DEPTH_OPTIONS,
   AGENT_DEPTHS,
   normalizeAgentDepth,
-} from '../src/core/config/agentDepth';
-import { AgentConfigSchema, AgentDepthSchema } from '../src/core/config/schema';
+} from '../src/kernel/config/agentDepth';
+import { AgentConfigSchema, AgentDepthSchema } from '../src/kernel/config/schema';
 
 describe('agentDepth', () => {
   it('exposes exactly three canonical depths for the UI', () => {

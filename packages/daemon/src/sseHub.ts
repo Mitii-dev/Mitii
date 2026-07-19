@@ -1,5 +1,5 @@
 import type { ServerResponse } from 'http';
-import type { MitiiEvent } from '../../../src/core/headless/events';
+import type { MitiiEvent } from '../../../src/adapters/node/events';
 
 export interface BufferedSseEvent {
   id: number;
