@@ -10,6 +10,7 @@ description: Create or update README, architecture, and API documentation for pa
 - Prefer existing README conventions in the same folder before inventing a new template.
 - Discover via `list_files`, `read_file` / `read_files`, `package.json`, route/API entry files — not full production builds.
 - For **README / package docs**: verify by re-reading the written file for completeness; do **not** run app builds unless the user asks.
+- For **API docs**: discover route handlers, methods, params, request/response types, auth/error behavior, and examples before writing.
 - For **Docusaurus / MDX site docs**: inspect config + sidebars, then run the docs build from `package.json`.
 - Prefer builtin `read_file` / `write_file` / `apply_patch` over MCP filesystem tools.
 - Never call `release_plan_controller` or git release tools for documentation work.
@@ -40,6 +41,14 @@ description: Create or update README, architecture, and API documentation for pa
 5. Done — skip lint/build unless asked.
 
 See `references/readme-guide.md` for a recommended outline.
+
+## API Documentation Workflow
+
+1. Identify the API framework and route files from routing conventions, config, and `package.json`.
+2. For each requested endpoint, read the handler and the types/schemas it imports.
+3. Capture method, path, parameters, request body, response shape, status codes, auth requirements, side effects, and error cases.
+4. Write agent-friendly markdown with concrete examples. Avoid placeholders for undocumented fields; mark only verified unknowns as unknown.
+5. Re-read the generated docs and cross-check endpoint names, type names, and referenced files.
 
 ## Docusaurus workflow
 

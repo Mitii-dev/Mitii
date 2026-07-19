@@ -9,7 +9,9 @@ description: Create implementation plans for multi-step, ambiguous, risky, or cr
 
 - Pick the smallest useful depth: None → Micro → Short → Standard → Full.
 - Every task needs a concrete change, acceptance criteria, and a verify step.
+- Use exact paths, concrete interfaces, and real verification commands when enough context is available.
 - Order foundational work before dependents; prefer verifiable vertical slices.
+- Remove placeholders such as TODO, TBD, “handle edge cases,” or “write tests” without a concrete test target.
 - Replan only when scope, architecture, safety, or a core assumption changes.
 - Ask the user only when an unresolved decision changes behavior, security, data, cost, API, or destructive ops.
 
@@ -31,12 +33,13 @@ description: Create implementation plans for multi-step, ambiguous, risky, or cr
 4. Order foundational changes before dependent changes.
 5. Prefer independently verifiable vertical slices.
 6. Every task must describe a concrete change and a testable outcome.
-7. Include only relevant metadata — do not add files, parallelization, risks, or stop conditions mechanically.
-8. Add checkpoints only after meaningful risk boundaries or completed vertical slices.
-9. Stop planning after reaching the selected depth.
-10. Do not regenerate or expand the plan unless scope, architecture, safety, or a core assumption changes.
-11. Do not create a second plan for minor implementation discoveries.
-12. Ask the user only when an unresolved decision changes behavior, security, data, cost, public API, or destructive operations.
+7. Include exact file paths and public interfaces when the discovery pass has identified them.
+8. Include only relevant metadata — do not add files, parallelization, risks, or stop conditions mechanically.
+9. Add checkpoints only after meaningful risk boundaries or completed vertical slices.
+10. Stop planning after reaching the selected depth.
+11. Do not regenerate or expand the plan unless scope, architecture, safety, or a core assumption changes.
+12. Do not create a second plan for minor implementation discoveries.
+13. Ask the user only when an unresolved decision changes behavior, security, data, cost, public API, or destructive operations.
 
 ## Compact Task Format
 
@@ -52,6 +55,17 @@ description: Create implementation plans for multi-step, ambiguous, risky, or cr
 
 **Depends on:** Task N or none
 ```
+
+## Plan Self-Check
+
+Before handing off a standard or full plan, scan it for:
+
+- Uncovered requirements from the user request.
+- Placeholder text or vague work items.
+- Type, function, route, or filename inconsistencies across tasks.
+- Verification steps that do not prove the acceptance criteria.
+
+Fix issues inline and then stop; do not start a second planning pass for ordinary cleanup.
 
 Micro-plan for small but nontrivial work:
 

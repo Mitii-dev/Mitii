@@ -22,7 +22,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm sync:versions
-      - run: pnpm -r build
+      - run: pnpm --filter @mitii/sdk build
+      - run: pnpm --filter @mitii/daemon build
       - run: pnpm test
       - run: npm publish --workspace packages/sdk --access public
         env:

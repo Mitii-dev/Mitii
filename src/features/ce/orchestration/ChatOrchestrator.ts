@@ -177,7 +177,7 @@ export interface ChatOrchestratorDeps {
   memoryService?: MemoryService;
   taskState?: AgentTaskState;
   researchAgentProvider?: LlmProvider;
-  runVerifyHooks?: (commands: string[], userMessage?: string) => Promise<string>;
+  runVerifyHooks?: (commands: string[], userMessage?: string, touchedFiles?: string[]) => Promise<string>;
   skillCatalog?: SkillCatalogService;
   skillResolver?: SkillResolver;
   skillInjectionBuilder?: SkillInjectionBuilder;
@@ -1221,20 +1221,29 @@ export class ChatOrchestrator {
             sourceMode: session.mode === 'agent' ? 'agent' : 'plan',
           });
         const skillContext = (() => {
-          if (planPlan?.skillPlaybookContext) {
-            return {
-              skillPlaybookContext: planPlan.skillPlaybookContext,
-              appliedSkills: planPlan.appliedSkills,
-            };
-          }
-          const loaded = loadPlanningSkillPlaybooks(
-            this.deps.skillCatalog,
-            suggestedPlanningSkills,
-            { style: tierPolicy.skillInjection, maxChars: tierPolicy.maxSkillChars, runtimeContext: skillRuntimeContext }
-          );
+          const baseSkillContext = session.mode === 'agent'
+            ? actPlan?.skillPlaybookContext
+            : planPlan?.skillPlaybookContext;
+          const baseAppliedSkills = session.mode === 'agent'
+            ? (actPlan?.appliedSkills ?? [])
+            : (planPlan?.appliedSkills ?? []);
+          const remainingSkills = suggestedPlanningSkills.filter((skill) => !baseAppliedSkills.includes(skill));
+          const loaded = remainingSkills.length > 0
+            ? loadPlanningSkillPlaybooks(
+                this.deps.skillCatalog,
+                remainingSkills,
+                {
+                  style: session.mode === 'agent' && baseAppliedSkills.length > 0
+                    ? 'quick-ref'
+                    : tierPolicy.skillInjection,
+                  maxChars: tierPolicy.maxSkillChars,
+                  runtimeContext: skillRuntimeContext,
+                }
+              )
+            : { context: '', loaded: [] };
           return {
-            skillPlaybookContext: loaded.context,
-            appliedSkills: loaded.loaded,
+            skillPlaybookContext: mergePromptContexts(baseSkillContext, loaded.context) ?? '',
+            appliedSkills: [...new Set([...baseAppliedSkills, ...loaded.loaded])],
           };
         })();
 
@@ -1245,7 +1254,7 @@ export class ChatOrchestrator {
           resolvedTier,
           tierPolicy,
           suggestedPlanningSkills,
-          pipeline.skills.injectSkills,
+          [...new Set([...pipeline.skills.injectSkills, ...skillContext.appliedSkills])],
           skillContext.appliedSkills,
           skillContext.skillPlaybookContext.length
         );
@@ -1254,7 +1263,7 @@ export class ChatOrchestrator {
         let planningDiscovery = '';
 
         this.onPlan?.({
-          goal: planningRequest.slice(0, 240),
+          goal: cleanPlanGoalForDisplay(taskForClassification, taskForClassification),
           assumptions: [],
           steps: [],
           status: 'planning',
@@ -1360,7 +1369,7 @@ export class ChatOrchestrator {
             requirementAnalysisText = text;
             if (session.mode === 'plan') {
               this.onPlan?.({
-                goal: planningRequest.slice(0, 240),
+                goal: cleanPlanGoalForDisplay(taskForClassification, taskForClassification),
                 assumptions: [],
                 steps: [],
                 status: 'planning',
@@ -1409,6 +1418,7 @@ export class ChatOrchestrator {
           stepCount: plan?.steps.length ?? 0,
         });
         if (plan && plan.steps.length >= 1) {
+          plan.goal = cleanPlanGoalForDisplay(plan.goal, taskForClassification);
           const planView = thunderPlanToView(plan, {
             status: session.mode === 'plan' ? 'ready' : 'running',
             requirementAnalysis: requirementAnalysis || undefined,
@@ -1760,7 +1770,11 @@ export class ChatOrchestrator {
             const verifyCommands = mdxRepairMode
               ? suggestDocsVerifyCommands()
               : (agentConfig.verifyCommands ?? []);
-            const verifyOutput = await this.deps.runVerifyHooks?.(verifyCommands, taskForClassification);
+            const verifyOutput = await this.deps.runVerifyHooks?.(
+              verifyCommands,
+              taskForClassification,
+              directTouchedFiles
+            );
             if (verifyOutput?.trim()) {
               const block = `\n\n### Verify\n\n${verifyOutput}\n`;
               fullResponse += block;
@@ -2426,7 +2440,7 @@ export class ChatOrchestrator {
       (text) => {
         requirementAnalysisText = text;
         this.onPlan?.({
-          goal: planningRequest.slice(0, 240),
+          goal: cleanPlanGoalForDisplay(planningRequest, planningRequest),
           assumptions: [],
           steps: [],
           status: 'planning',
@@ -2461,6 +2475,7 @@ export class ChatOrchestrator {
     );
 
     if (plan && plan.steps.length >= 1) {
+      plan.goal = cleanPlanGoalForDisplay(plan.goal, planningRequest);
       const planView = thunderPlanToView(plan, {
         status: 'ready',
         requirementAnalysis: requirementAnalysis || undefined,
@@ -2607,7 +2622,21 @@ function extractRequirementAnalysis(fullResponse: string): string {
 }
 
 function formatPlanHeader(plan: import('../../../features/ce/plans/PlanActEngine').ThunderPlan): string {
-  return `## Plan: ${plan.goal}\n\n${plan.steps.length} validated steps to execute.\n\n`;
+  return `## Plan\n\n**${plan.goal}**\n\n${plan.steps.length} validated steps to execute.\n\n`;
+}
+
+function cleanPlanGoalForDisplay(goal: string, fallback: string): string {
+  const trimmed = goal.trim();
+  const fallbackGoal = fallback.trim().replace(/\s+/g, ' ').slice(0, 240);
+  if (!trimmed) return fallbackGoal;
+  if (
+    /^#{1,6}\s*(?:act|plan)\s+routing\b/i.test(trimmed) ||
+    /\n#{1,6}\s*(?:act|plan)\s+routing\b/i.test(trimmed) ||
+    /\bOriginal\s+(?:Act|Plan)\s+request\b/i.test(trimmed)
+  ) {
+    return fallbackGoal;
+  }
+  return trimmed.replace(/\s+/g, ' ').slice(0, 240);
 }
 
 function formatPlanModeChatSummary(plan: PlanView): string {
@@ -2620,7 +2649,7 @@ function formatPlanModeChatSummary(plan: PlanView): string {
     '',
     `**${plan.goal}**`,
     '',
-    `${stepCount} step${stepCount === 1 ? '' : 's'} compiled in the **Planner** panel above — requirement analysis, phased steps, tools, and success criteria are shown there.`,
+    `${stepCount} step${stepCount === 1 ? '' : 's'} compiled in the **Planner** panel above. It shows the action list, current status, blockers, and verification details.`,
     skillNote,
     '',
     '---',

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "github-pull-request",
+  "name": "GitHub pull request",
+  "description": "Draft or create GitHub pull requests from commits, diffs, and repository templates with approval gates for remote writes.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": ["ask", "plan", "agent"],
+  "intents": ["git"],
+  "taskKinds": ["git"],
+  "taskSubtypes": ["github_pr_create", "github_pr_draft"],
+  "triggers": ["pull request", "pr description", "create pr", "open pr", "draft pr", "github pr"],
+  "negativeTriggers": ["merge pull request", "review pull request"],
+  "requiredTools": ["read_file", "search"],
+  "optionalTools": ["run_command", "github_create_pull_request"],
+  "requiredCapabilities": ["repository-read"],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 5000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 20,
+  "tags": ["git", "github", "pull-request"],
+  "tests": [
+    {
+      "id": "pr-description",
+      "name": "Selects for PR description drafting",
+      "request": "Generate a PR description for my current branch",
+      "mode": "agent",
+      "availableTools": ["read_file", "search", "run_command"],
+      "availableCapabilities": ["repository-read"],
+      "expected": "selected",
+      "maxInjectionChars": 5000
+    }
+  ]
+}

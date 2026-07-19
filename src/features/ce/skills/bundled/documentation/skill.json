@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "documentation",
   "name": "Documentation",
-  "description": "Inspect, write, and verify repository documentation, including README, API, architecture, examples, and documentation-site changes.",
+  "description": "Inspect, write, and verify repository documentation, including README, API route, architecture, examples, and documentation-site changes.",
   "version": "1.0.0",
   "apiVersion": "1",
   "owner": "mitii",
@@ -14,9 +14,9 @@
   "intents": ["docs"],
   "taskKinds": ["docs", "implementation", "question", "explicit_plan"],
   "taskSubtypes": ["readme", "api_reference", "architecture", "docusaurus", "mdx_repair", "changelog", "examples", "generic"],
-  "triggers": ["documentation", "readme", "docs", "mdx", "docusaurus"],
+  "triggers": ["documentation", "readme", "docs", "mdx", "docusaurus", "api docs", "api documentation", "document endpoints", "openapi", "swagger"],
   "negativeTriggers": ["release notes from git history"],
-  "pathPatterns": ["**/*.md", "**/*.mdx", "docs/**"],
+  "pathPatterns": ["*.md", "*.mdx", "**/*.md", "**/*.mdx", "docs/**", "src/routes/**", "app/api/**", "pages/api/**", "src/api/**"],
   "requiredTools": ["read_file"],
   "optionalTools": ["search", "apply_patch", "run_command"],
   "requiredCapabilities": ["repository-read"],
@@ -46,6 +46,19 @@
       "mode": "agent",
       "repositoryFacts": {
         "paths": ["README.md"]
+      },
+      "availableTools": ["read_file", "search", "apply_patch"],
+      "availableCapabilities": ["repository-read", "workspace-write"],
+      "expected": "selected",
+      "maxInjectionChars": 6000
+    },
+    {
+      "id": "api-docs",
+      "name": "Selects for API endpoint documentation",
+      "request": "Generate API documentation for the auth and billing endpoints",
+      "mode": "agent",
+      "repositoryFacts": {
+        "paths": ["src/routes/auth.ts", "src/routes/billing.ts"]
       },
       "availableTools": ["read_file", "search", "apply_patch"],
       "availableCapabilities": ["repository-read", "workspace-write"],

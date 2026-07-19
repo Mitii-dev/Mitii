@@ -55,6 +55,41 @@ describe('actSkillRouting', () => {
     ).toContain('performance-optimization');
   });
 
+  it('routes component, visual design, and React performance skills distinctly', () => {
+    expect(
+      resolveActSkillNames('feature', {
+        kind: 'implementation',
+        complexity: 'medium',
+        summary: 'Build an accessible React dropdown UI component with keyboard navigation',
+        shouldPlan: false,
+        shouldVerify: true,
+        shouldUseSubagents: false,
+      })
+    ).toContain('building-components');
+
+    expect(
+      resolveActSkillNames('feature', {
+        kind: 'implementation',
+        complexity: 'medium',
+        summary: 'Redesign the dashboard with stronger visual design and responsive polish',
+        shouldPlan: false,
+        shouldVerify: true,
+        shouldUseSubagents: false,
+      })
+    ).toContain('frontend-design');
+
+    expect(
+      resolveActSkillNames('bugfix', {
+        kind: 'implementation',
+        complexity: 'medium',
+        summary: 'Fix the Next.js hydration and bundle size performance regression',
+        shouldPlan: false,
+        shouldVerify: true,
+        shouldUseSubagents: false,
+      })
+    ).toContain('react-next-performance');
+  });
+
   it('injects documentation skill for docs, not meta or TDD', () => {
     const names = resolveActSkillNames('docs', {
       kind: 'docs',

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { AgentActivityEntry, AgentLiveStatusView, ApprovalRequestView, ChatMessage } from '../../../vscode/webview/messages';
+import type { AgentActivityEntry, AgentLiveStatusView, ApprovalRequestView, ChatMessage, SubagentStatusView } from '../../../vscode/webview/messages';
 import { AGENT_NAME } from '../../../shared/brand';
 import { MarkdownMessage } from './MarkdownMessage';
 import { AgentActivityPanel } from './AgentActivityPanel';
@@ -12,6 +12,7 @@ interface MessageListProps {
   loading?: boolean;
   agentActivity?: AgentActivityEntry[];
   agentLiveStatus?: AgentLiveStatusView | null;
+  subagents?: SubagentStatusView[];
   approvals?: ApprovalRequestView[];
   showReasoning?: boolean;
   reasoningPreviewMaxChars?: number;
@@ -27,6 +28,7 @@ function AssistantMessage({
   mode,
   agentActivity = [],
   agentLiveStatus = null,
+  subagents = [],
   loading = false,
   approvals = [],
 }: {
@@ -38,12 +40,13 @@ function AssistantMessage({
   mode: ThunderMode;
   agentActivity?: AgentActivityEntry[];
   agentLiveStatus?: AgentLiveStatusView | null;
+  subagents?: SubagentStatusView[];
   loading?: boolean;
   approvals?: ApprovalRequestView[];
 }) {
   const revealed = useStreamReveal(content, Boolean(streaming));
   const label = mode === 'agent' ? 'Agent' : mode === 'plan' ? 'Plan' : 'Answer';
-  const showActivity = loading || agentActivity.length > 0 || approvals.length > 0;
+  const showActivity = loading || agentActivity.length > 0 || approvals.length > 0 || subagents.length > 0;
 
   return (
     <div className="assistant-turn">
@@ -60,6 +63,7 @@ function AssistantMessage({
           loading={Boolean(loading)}
           liveStatus={agentLiveStatus}
           waitingForApproval={!loading && approvals.length > 0}
+          subagents={subagents}
         />
       )}
       <ThinkingRow
@@ -83,6 +87,7 @@ export function MessageList({
   loading,
   agentActivity = [],
   agentLiveStatus = null,
+  subagents = [],
   approvals = [],
   showReasoning = true,
   reasoningPreviewMaxChars = 8000,
@@ -105,7 +110,7 @@ export function MessageList({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages, loading, agentActivity.length, agentLiveStatus?.label, agentLiveStatus?.stepCurrent, approvals.length]);
+  }, [messages, loading, agentActivity.length, agentLiveStatus?.label, agentLiveStatus?.stepCurrent, approvals.length, subagents.length]);
 
   if (messages.length === 0) {
     return (
@@ -132,6 +137,7 @@ export function MessageList({
                   mode={mode}
                   agentActivity={index === activeAssistantIndex ? agentActivity : []}
                   agentLiveStatus={index === activeAssistantIndex ? agentLiveStatus : null}
+                  subagents={index === activeAssistantIndex ? subagents : []}
                   loading={index === activeAssistantIndex ? Boolean(loading) : false}
                   approvals={index === activeAssistantIndex ? approvals : []}
                 />
@@ -145,6 +151,7 @@ export function MessageList({
                   mode={mode}
                   agentActivity={index === activeAssistantIndex ? agentActivity : []}
                   agentLiveStatus={index === activeAssistantIndex ? agentLiveStatus : null}
+                  subagents={index === activeAssistantIndex ? subagents : []}
                   loading={index === activeAssistantIndex ? Boolean(loading) : false}
                   approvals={index === activeAssistantIndex ? approvals : []}
                 />
@@ -157,6 +164,7 @@ export function MessageList({
                   mode={mode}
                   agentActivity={index === activeAssistantIndex ? agentActivity : []}
                   agentLiveStatus={index === activeAssistantIndex ? agentLiveStatus : null}
+                  subagents={index === activeAssistantIndex ? subagents : []}
                   loading={index === activeAssistantIndex ? Boolean(loading) : false}
                   approvals={index === activeAssistantIndex ? approvals : []}
                 />
@@ -174,7 +182,7 @@ export function MessageList({
           </div>
         </article>
       ))}
-      {activeAssistantIndex === -1 && (loading || agentActivity.length > 0 || approvals.length > 0) && (
+      {activeAssistantIndex === -1 && (loading || agentActivity.length > 0 || approvals.length > 0 || subagents.length > 0) && (
         <article className="message message--assistant">
           <div className="message-content">
             <AssistantMessage
@@ -185,6 +193,7 @@ export function MessageList({
               mode={mode}
               agentActivity={agentActivity}
               agentLiveStatus={agentLiveStatus}
+              subagents={subagents}
               loading={Boolean(loading)}
               approvals={approvals}
             />

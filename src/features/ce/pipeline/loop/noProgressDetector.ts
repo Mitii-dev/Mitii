@@ -24,10 +24,39 @@ const PHASE_LOCK_MARKERS = [
   'allows only read-only shell commands',
 ];
 
+/**
+ * Strip the output-wrangling idioms models reach for on retry (`2>&1`, `| head -N`, `| tail -N`,
+ * `| cat`, `|| true`, `; echo $?`, temp-file redirects) so a command re-issued with a different
+ * wrapper still fingerprints the same as its predecessor. Without this, `pnpm run build`,
+ * `pnpm run build 2>&1`, and `pnpm run build 2>&1 | head -120` look like three distinct attempts
+ * and the identical-failure counter never trips, letting the model burn dozens of calls retrying
+ * the same underlying command under different syntax.
+ */
+function normalizeCommandForFingerprint(command: string): string {
+  return command
+    .replace(/\/tmp\/[^\s"']+/gi, '<tmp>')
+    .replace(/\s+2>&1\b/gi, '')
+    .replace(/\s*\|\|\s*(?:true|echo\b[^|;]*)/gi, '')
+    .replace(/;\s*echo\s+["']?(?:exit(?:_code)?\s*[:=]\s*)?\$\?[^\n]*/gi, '')
+    .replace(/\s*\|\s*(?:head|tail)(?:\s+(?:-n\s*)?-?\d+)?/gi, '')
+    .replace(/\s*\|\s*cat\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function fingerprintToolCall(toolName: string, args: unknown, error?: string): string {
   let argsKey = '';
   try {
-    argsKey = JSON.stringify(args ?? {});
+    if (
+      toolName === 'run_command' &&
+      args &&
+      typeof args === 'object' &&
+      typeof (args as Record<string, unknown>).command === 'string'
+    ) {
+      argsKey = normalizeCommandForFingerprint((args as Record<string, unknown>).command as string);
+    } else {
+      argsKey = JSON.stringify(args ?? {});
+    }
   } catch {
     argsKey = String(args);
   }

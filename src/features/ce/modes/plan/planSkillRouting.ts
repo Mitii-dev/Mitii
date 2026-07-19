@@ -33,6 +33,8 @@ export function resolvePlanningSkillNames(
   const route = resolveRoute(summary, analysis);
   if (intent === 'docs') route.intent = 'docs';
   if (intent === 'audit') route.intent = 'audit';
+  if (intent === 'bugfix') route.intent = 'bugfix';
+  if (intent === 'refactor') route.intent = 'refactor';
   const skills = resolveSkillsForRoute(route, analysis, {
     sourceMode: options.sourceMode ?? 'plan',
     planning: true,
@@ -63,17 +65,24 @@ export function loadPlanningSkillPlaybooks(
   const blocks: string[] = [];
   let totalChars = 0;
 
-  for (const name of skillNames) {
+  const uniqueSkillNames = [...new Set(skillNames)];
+  for (const [index, name] of uniqueSkillNames.entries()) {
     const skill = catalog.get(name);
     if (!skill) {
       skipped.push(name);
       continue;
     }
+    const effectiveStyle =
+      style === 'full' && index > 0 && isPlanningSupportSkill(name)
+        ? 'quick-ref'
+        : style;
 
     const block = [
       `### Skill: ${skill.entry.name}`,
       `Path: ${skill.entry.relPath}`,
-      style === 'quick-ref' ? extractQuickRef(skill.content, skill.entry.description) : skill.content.trim(),
+      effectiveStyle === 'quick-ref'
+        ? extractQuickRef(skill.content, skill.entry.description)
+        : skill.content.trim(),
     ].join('\n\n');
 
     if (totalChars + block.length > maxChars) {
@@ -106,6 +115,10 @@ export function loadPlanningSkillPlaybooks(
     ].join('\n'),
     loaded,
   };
+}
+
+function isPlanningSupportSkill(name: string): boolean {
+  return name === 'agent-plan' || name === 'planning-and-task-breakdown';
 }
 
 function extractQuickRef(content: string, description?: string): string {

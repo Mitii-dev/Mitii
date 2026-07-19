@@ -5,6 +5,8 @@ import type { ThunderSession } from '../../../features/ce/session/ThunderSession
 import type { PlanPhase, ThunderPlan } from '../plans/PlanActEngine';
 import {
   inferStepPhase,
+  isPhaseLockRunCommandError,
+  normalizeDeclaredStepPhase,
   normalizePlanSafety,
   resolveStepPhaseLock,
   stepImpliesWrite,
@@ -193,6 +195,8 @@ export class PlanExecutor {
       const issues = validatePlanQuality(plan, taskAnalysis, planningDepth);
       if (issues.length === 0) {
         applyDependencyLocks(plan);
+        integratePlanningDiscoveryEvidence(plan, planningDiscovery, mode);
+        applyDependencyLocks(plan);
         if (sessionId && options?.workspace) {
           const fileStore = new PlanFileStore(options.workspace, sessionId);
           fileStore.save(plan, 'planning');
@@ -213,6 +217,8 @@ export class PlanExecutor {
         ...plan.assumptions,
         `Planning quality warning: ${relaxedFallback.issues.join(' ')}`,
       ];
+      applyDependencyLocks(plan);
+      integratePlanningDiscoveryEvidence(plan, planningDiscovery, mode);
       applyDependencyLocks(plan);
       if (sessionId && options?.workspace) {
         const fileStore = new PlanFileStore(options.workspace, sessionId);
@@ -255,6 +261,23 @@ export class PlanExecutor {
       .filter((tool) => PLANNING_DISCOVERY_TOOLS.has(tool.function.name))
       .filter((tool) => analysis.shouldUseSubagents || !['spawn_research_agent', 'spawn_subagent'].includes(tool.function.name));
     let output = '';
+    const toolEvidence: string[] = [];
+    const toolInputs: Array<{ name: string; input: Record<string, unknown> }> = [];
+    const discoveryCallbacks: AgentLoopCallbacks = {
+      ...loopCallbacks,
+      onToolStart: (name, input) => {
+        toolInputs.push({ name, input });
+        loopCallbacks?.onToolStart?.(name, input);
+      },
+      onToolEnd: (name, success, toolOutput, durationMs) => {
+        loopCallbacks?.onToolEnd?.(name, success, toolOutput, durationMs);
+        const input = [...toolInputs].reverse().find((candidate) => candidate.name === name)?.input;
+        toolEvidence.push(formatPlanningDiscoveryToolEvidence(name, input, success, toolOutput));
+        while (toolEvidence.join('\n').length > 12_000 && toolEvidence.length > 1) {
+          toolEvidence.shift();
+        }
+      },
+    };
 
     log.debug('Running planning discovery', {
       mode,
@@ -268,7 +291,7 @@ export class PlanExecutor {
       messages,
       readOnlyTools,
       signal,
-      loopCallbacks,
+      discoveryCallbacks,
       {
         maxSteps: Math.min(options?.agentMaxSteps ?? 8, 12),
         phaseLock: 'diagnostics',
@@ -287,7 +310,7 @@ export class PlanExecutor {
     }
 
     log.debug('Planning discovery finished', { outputChars: output.length, aborted: Boolean(signal?.aborted) });
-    return output.trim();
+    return mergePlanningDiscoveryOutput(output, toolEvidence);
   }
 
   async *executePlan(
@@ -427,20 +450,41 @@ export class PlanExecutor {
           }
 
           if (!execResult.success) {
-            lastValidationErrors = [`${explicitToolCall.name} failed: ${execResult.error ?? execResult.output}`];
-            attempt += 1;
-            if (attempt <= maxRetries) {
-              log.debug('Step tool failed, retrying', { stepId: step.id, tool: explicitToolCall.name, attempt: attempt + 1 });
-              yield `\n\nStep tool did not complete. Retrying step ${i + 1}/${plan.steps.length} (${attempt + 1}/${maxRetries + 1})…\n`;
-              plan.steps[i] = { ...plan.steps[i], status: 'pending' };
-              continue;
+            const failureDetail = execResult.error ?? execResult.output;
+            lastValidationErrors = [`${explicitToolCall.name} failed: ${failureDetail}`];
+            if (isExpectedDiagnosticFailureCapture(step, explicitToolCall.name, execResult)) {
+              log.debug('Treating failed diagnostic command as captured reproduction evidence', {
+                stepId: step.id,
+                tool: explicitToolCall.name,
+              });
+              const captureMessage = '\n\nDiagnostic failing signal captured; continuing with captured output.\n';
+              stepOutput += captureMessage;
+              yield captureMessage;
+            } else {
+              if (
+                explicitToolCall.name === 'run_command' &&
+                isPhaseLockRunCommandError(failureDetail)
+              ) {
+                plan.steps[i] = { ...plan.steps[i], status: 'failed' };
+                this.planPersistence.updatePlan(session.id, plan, 'running');
+                onPlanUpdate?.(plan);
+                yield `\n\nStep ${i + 1} was rejected by the phase policy and will not be retried unchanged.\n`;
+                break;
+              }
+              attempt += 1;
+              if (attempt <= maxRetries) {
+                log.debug('Step tool failed, retrying', { stepId: step.id, tool: explicitToolCall.name, attempt: attempt + 1 });
+                yield `\n\nStep tool did not complete. Retrying step ${i + 1}/${plan.steps.length} (${attempt + 1}/${maxRetries + 1})…\n`;
+                plan.steps[i] = { ...plan.steps[i], status: 'pending' };
+                continue;
+              }
+              plan.steps[i] = { ...plan.steps[i], status: 'failed' };
+              this.planPersistence.updatePlan(session.id, plan, 'running');
+              onPlanUpdate?.(plan);
+              log.warn('Step failed after max retries', { stepId: step.id, tool: explicitToolCall.name, errors: lastValidationErrors });
+              yield `\n\n❌ Step failed after ${maxRetries + 1} attempts. Errors:\n${lastValidationErrors.join('\n')}\n`;
+              break;
             }
-            plan.steps[i] = { ...plan.steps[i], status: 'failed' };
-            this.planPersistence.updatePlan(session.id, plan, 'running');
-            onPlanUpdate?.(plan);
-            log.warn('Step failed after max retries', { stepId: step.id, tool: explicitToolCall.name, errors: lastValidationErrors });
-            yield `\n\n❌ Step failed after ${maxRetries + 1} attempts. Errors:\n${lastValidationErrors.join('\n')}\n`;
-            break;
           }
 
           if (['write_file', 'apply_patch'].includes(explicitToolCall.name)) {
@@ -525,7 +569,10 @@ export class PlanExecutor {
           }
         }
 
-        lastValidationErrors = await this.validateStepFiles(step.files ?? []);
+        const shouldValidateStepFiles = successfulWrites > 0 || writeExpected;
+        lastValidationErrors = shouldValidateStepFiles
+          ? await this.validateStepFiles(step.files ?? [])
+          : [];
         if (lastValidationErrors.length > 0) {
           attempt += 1;
           if (attempt <= maxRetries) {
@@ -744,21 +791,19 @@ function flattenPlanPhases(
   for (const phase of phases) {
     const declaredPhase = normalizePlanPhase(phase.phase) ?? inferPhaseFromTitle(phase.title);
     for (const step of phase.steps ?? []) {
+      const objective = step.objective ?? phase.objective;
       steps.push({
         id: step.id ?? `step-${steps.length + 1}`,
         title: step.title,
         status: 'pending',
-        phase: resolveStepPhaseLock(
-          {
-            title: step.title,
-            objective: step.objective ?? phase.objective,
-            phase: declaredPhase,
-            tools: normalizeStringArray(step.tools),
-            files: step.files,
-          },
-          mode
-        ),
-        objective: step.objective ?? phase.objective,
+        phase: normalizeDeclaredStepPhase({
+          title: step.title,
+          objective,
+          phase: declaredPhase,
+          tools: normalizeStringArray(step.tools),
+          files: step.files,
+        }, steps.length, mode),
+        objective,
         tool: step.tool,
         args: step.args,
         script: step.script,
@@ -771,6 +816,96 @@ function flattenPlanPhases(
     }
   }
   return steps;
+}
+
+function formatPlanningDiscoveryToolEvidence(
+  name: string,
+  input: Record<string, unknown> | undefined,
+  success: boolean,
+  output: string
+): string {
+  const command =
+    typeof input?.command === 'string'
+      ? input.command
+      : typeof input?.script === 'string'
+        ? input.script
+        : undefined;
+  const target = typeof input?.path === 'string' ? input.path : undefined;
+  const descriptor = command ? ` (${command})` : target ? ` (${target})` : '';
+  const trimmed = output.trim();
+  const capped = trimmed.length > 1800 ? trimmed.slice(-1800) : trimmed;
+  return `- ${name}${descriptor} ${success ? 'succeeded' : 'failed'}${capped ? `: ${capped}` : ''}`;
+}
+
+function mergePlanningDiscoveryOutput(output: string, toolEvidence: string[]): string {
+  const prose = output.trim();
+  const evidence = toolEvidence.map((item) => item.trim()).filter(Boolean);
+  if (evidence.length === 0) return prose;
+
+  const merged = [
+    prose || 'DISCOVERY_SUMMARY: Tool-assisted discovery produced the following evidence.',
+    'DISCOVERY_TOOL_EVIDENCE:',
+    ...evidence,
+  ].join('\n');
+  return merged.length > 12_000 ? merged.slice(-12_000).trim() : merged;
+}
+
+function integratePlanningDiscoveryEvidence(
+  plan: ThunderPlan,
+  planningDiscovery: string | undefined,
+  mode: ThunderSession['mode']
+): void {
+  if (mode !== 'agent') return;
+  if (!hasCapturedFailingVerificationSignal(planningDiscovery)) return;
+
+  const duplicate = plan.steps.find((step) =>
+    step.status !== 'done' &&
+    isDiagnosticFailureCaptureStep(step)
+  );
+  if (!duplicate) return;
+
+  duplicate.status = 'done';
+  const note = `Planning discovery already captured the failing build/typecheck/test signal; skipped duplicate reproduction step ${duplicate.id}.`;
+  if (!plan.assumptions.includes(note)) {
+    plan.assumptions = [...plan.assumptions, note];
+  }
+}
+
+function isExpectedDiagnosticFailureCapture(
+  step: ThunderPlan['steps'][number],
+  toolName: string,
+  result: ToolExecutionResult
+): boolean {
+  if (!['run_command', 'execute_workspace_script'].includes(toolName)) return false;
+  const failureDetail = `${result.error ?? ''}\n${result.output ?? ''}`;
+  if (isPhaseLockRunCommandError(failureDetail)) return false;
+  const signalContext = `${step.title}\n${step.objective ?? ''}\n${step.script?.command ?? ''}\n${failureDetail}`;
+  return isDiagnosticFailureCaptureStep(step) && hasCapturedFailingVerificationSignal(signalContext);
+}
+
+function isDiagnosticFailureCaptureStep(step: ThunderPlan['steps'][number]): boolean {
+  if (step.phase && !['diagnostics', 'review'].includes(step.phase)) return false;
+  const text = `${step.title} ${step.objective ?? ''} ${step.successCriteria?.join(' ') ?? ''}`.toLowerCase();
+  const tools = step.tools ?? [];
+  const usesDiagnosticTool =
+    tools.length === 0 ||
+    tools.some((tool) => ['run_command', 'execute_workspace_script', 'diagnostics'].includes(tool)) ||
+    Boolean(step.script?.command);
+  if (!usesDiagnosticTool) return false;
+
+  return (
+    /\b(reproduce|capture|collect|establish)\b[\s\S]*\b(fail|failing|failure|error|build|typecheck|compile|test|lint|signal)\b/i.test(text) ||
+    /\b(run|rerun|execute)\b[\s\S]*\b(build|typecheck|compile|test|lint)\b[\s\S]*\b(capture|initial|fail|failing|failure|error|signal)\b/i.test(text)
+  );
+}
+
+function hasCapturedFailingVerificationSignal(text: string | undefined): boolean {
+  if (!text) return false;
+  const hasVerificationCommand =
+    /\b(build|typecheck|tsc|compile|lint|test|pnpm\s+run|npm\s+run|yarn\s+(?:run\s+)?)\b/i.test(text);
+  const hasFailure =
+    /\b(error TS\d+|Command failed|failed|failure|ERR_|FAIL\b|exit code [1-9]\d*)\b/i.test(text);
+  return hasVerificationCommand && hasFailure;
 }
 
 function parseGeneratedPlan(response: string, mode: ThunderSession['mode'] = 'plan'): ThunderPlan | null {
@@ -792,16 +927,13 @@ function parseGeneratedPlan(response: string, mode: ThunderSession['mode'] = 'pl
         ...s,
         id: s.id ?? `step-${i + 1}`,
         status: s.status ?? 'pending',
-        phase: resolveStepPhaseLock(
-          {
-            title: s.title,
-            objective: typeof s.objective === 'string' ? s.objective : undefined,
-            phase: normalizePlanPhase(s.phase) ?? inferStepPhase(s.title, i),
-            tools: normalizeStringArray(s.tools),
-            files: normalizeStringArray(s.files),
-          },
-          mode
-        ),
+        phase: normalizeDeclaredStepPhase({
+          title: s.title,
+          objective: typeof s.objective === 'string' ? s.objective : undefined,
+          phase: normalizePlanPhase(s.phase) ?? inferStepPhase(s.title, i),
+          tools: normalizeStringArray(s.tools),
+          files: normalizeStringArray(s.files),
+        }, i, mode),
         objective: typeof s.objective === 'string' ? s.objective : undefined,
         tool: typeof s.tool === 'string' ? s.tool : undefined,
         args: typeof s.args === 'object' && s.args !== null ? s.args as Record<string, unknown> : undefined,

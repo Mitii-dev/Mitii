@@ -18,6 +18,13 @@ export interface VerifyCommandOptions {
   userMessage?: string;
 }
 
+interface PackageJson {
+  name?: string;
+  scripts?: Record<string, string>;
+  workspaces?: string[] | { packages?: string[] };
+  packageManager?: string;
+}
+
 const PLACEHOLDER_TEST = /no test specified|error:\s*no test|exit\s+1/i;
 
 /** Script names to probe in priority order — only those that exist in package.json are used. */
@@ -71,7 +78,10 @@ export function resolveProjectVerifyCommands(
     addResolvedCommand(workspace, command, commands, skipped, seenTargets);
   }
 
-  const packageDirs = discoverPackageDirs(workspace, touchedFiles);
+  const workspacePackageDirs = discoverWorkspacePackageDirs(workspace);
+  const packageDirs = requestsWorkspaceWideVerification(options.userMessage)
+    ? workspacePackageDirs
+    : discoverPackageDirs(workspace, touchedFiles, workspacePackageDirs);
   for (const pkgDir of packageDirs) {
     const rel = workspaceRelative(workspace, pkgDir);
     const scripts = listAvailableScripts(pkgDir);
@@ -113,7 +123,10 @@ export function resolveProjectVerifyCommands(
     }
   }
 
-  if (commands.length === 0) {
+  const onlyWorkspaceRoot =
+    packageDirs.length === 0 ||
+    packageDirs.every((dir) => resolve(dir) === resolve(workspace));
+  if (commands.length === 0 && onlyWorkspaceRoot) {
     const fallback = discoverManifestVerifyCommands(workspace, skipped);
     for (const cmd of fallback) {
       if (!commands.includes(cmd)) commands.push(cmd);
@@ -123,8 +136,12 @@ export function resolveProjectVerifyCommands(
     }
   }
 
-  if (commands.length === 0 && skipped.length > 0) {
-    notes.push('No runnable verify scripts found — read package.json and run the closest available check.');
+  if (commands.length === 0) {
+    notes.push(
+      packageDirs.length > 0
+        ? 'No package-local verification script is configured for the selected project(s).'
+        : 'No runnable verify scripts found — read package.json and run the closest available check.'
+    );
   }
 
   const pm = packageManagerCommand(workspace);
@@ -221,15 +238,20 @@ function finalizePlan(
   };
 }
 
-function discoverPackageDirs(workspace: string, touchedFiles: string[]): string[] {
+function discoverPackageDirs(
+  workspace: string,
+  touchedFiles: string[],
+  workspacePackageDirs: string[]
+): string[] {
   const dirs = new Set<string>();
   const root = resolve(workspace);
+  const members = new Set(workspacePackageDirs.map((dir) => resolve(dir)));
 
   for (const file of touchedFiles) {
     let dir = resolve(root, dirname(file));
     while (dir.startsWith(root)) {
       if (existsSync(join(dir, 'package.json'))) {
-        dirs.add(dir);
+        if (members.has(dir)) dirs.add(dir);
         break;
       }
       const parent = dirname(dir);
@@ -252,6 +274,89 @@ function discoverPackageDirs(workspace: string, touchedFiles: string[]): string[
   }
 
   return [...dirs];
+}
+
+function discoverWorkspacePackageDirs(workspace: string): string[] {
+  const root = resolve(workspace);
+  const rootPackage = readPackageJson(root);
+  const patterns = readWorkspacePatterns(root, rootPackage);
+  const dirs = new Set<string>();
+  if (rootPackage) dirs.add(root);
+  if (patterns.length === 0) return [...dirs];
+
+  const candidates = collectPackageDirs(root);
+  const includes = patterns.filter((pattern) => !pattern.startsWith('!'));
+  const excludes = patterns
+    .filter((pattern) => pattern.startsWith('!'))
+    .map((pattern) => pattern.slice(1));
+
+  for (const dir of candidates) {
+    const rel = workspaceRelative(root, dir);
+    if (
+      includes.some((pattern) => workspacePatternMatches(pattern, rel)) &&
+      !excludes.some((pattern) => workspacePatternMatches(pattern, rel))
+    ) {
+      dirs.add(dir);
+    }
+  }
+  return [...dirs].sort();
+}
+
+function readWorkspacePatterns(workspace: string, pkg: PackageJson | null): string[] {
+  const pnpmWorkspace = join(workspace, 'pnpm-workspace.yaml');
+  if (existsSync(pnpmWorkspace)) {
+    try {
+      const content = readFileSync(pnpmWorkspace, 'utf8');
+      const packageSection = content.match(/(?:^|\n)packages:\s*\n((?:\s+-[^\n]*\n?)*)/);
+      if (packageSection) {
+        return packageSection[1]
+          .split('\n')
+          .map((line) => line.match(/^\s*-\s*['"]?([^'"]+?)['"]?\s*$/)?.[1]?.trim())
+          .filter((value): value is string => Boolean(value));
+      }
+    } catch {
+      // Fall through to package.json workspaces.
+    }
+  }
+  const workspaces = pkg?.workspaces;
+  if (Array.isArray(workspaces)) return workspaces;
+  return workspaces?.packages ?? [];
+}
+
+function collectPackageDirs(root: string): string[] {
+  const dirs: string[] = [];
+  const queue = [root];
+  let visited = 0;
+  while (queue.length > 0 && visited < 2000) {
+    const dir = queue.shift()!;
+    visited += 1;
+    for (const child of safeReadDirs(dir)) {
+      const name = basename(child);
+      if (['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.mitii', 'target'].includes(name)) continue;
+      if (existsSync(join(child, 'package.json'))) dirs.push(child);
+      queue.push(child);
+    }
+  }
+  return dirs;
+}
+
+function workspacePatternMatches(pattern: string, rel: string): boolean {
+  const normalized = pattern.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+  const escaped = normalized
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*/g, '\0')
+    .replace(/\*/g, '[^/]*')
+    .replace(/\0/g, '.*');
+  return new RegExp(`^${escaped}$`).test(rel);
+}
+
+function requestsWorkspaceWideVerification(userMessage?: string): boolean {
+  if (!userMessage) return false;
+  return (
+    /\b(?:all|whole|entire|full)\s+(?:workspace|project|repo(?:sitory)?|packages?|apps?)\b/i.test(userMessage) ||
+    /\b(?:workspace|monorepo)\s+(?:build|test|verify|verification)\b/i.test(userMessage) ||
+    /\bfix\s+(?:all\s+)?build\s+errors?\b/i.test(userMessage)
+  );
 }
 
 function listAvailableScripts(pkgDir: string): string[] {
@@ -278,7 +383,7 @@ function discoverVerifyCommandsForPackages(
     if (!pkg?.scripts) continue;
 
     const rel = workspaceRelative(workspace, pkgDir);
-    const pm = packageManagerCommand(pkgDir);
+    const pm = packageManagerCommand(workspace);
     const relPrefix = rel && rel !== '.' ? `cd ${rel} && ` : '';
 
     for (const script of probeOrderForPackage(pkgDir, rel, touchedFiles)) {
@@ -358,7 +463,7 @@ function resolveRequestedCommand(workspace: string, command: string): { run: boo
     return packageScriptDecision(pkgDir, script);
   }
 
-  const pnpmFilter = cmd.match(/^pnpm\s+--filter\s+([\w@/.-]+)\s+([\w:-]+)\b/i);
+  const pnpmFilter = cmd.match(/^pnpm\s+(?:--filter|-F)\s+([\w@/.-]+)\s+(?:run\s+)?([\w:-]+)\b/i);
   if (pnpmFilter) {
     const [, workspaceSpec, script] = pnpmFilter;
     const pkgDir = findWorkspacePackageDir(workspace, workspaceSpec);
@@ -455,11 +560,11 @@ function packageScriptDecision(dir: string, script: string): { run: boolean; rea
   return { run: true, targetKey: `${dir}:package-script:${script}` };
 }
 
-function readPackageJson(dir: string): { name?: string; scripts?: Record<string, string> } | null {
+function readPackageJson(dir: string): PackageJson | null {
   try {
     const path = join(dir, 'package.json');
     if (!existsSync(path)) return null;
-    return JSON.parse(readFileSync(path, 'utf8')) as { name?: string; scripts?: Record<string, string> };
+    return JSON.parse(readFileSync(path, 'utf8')) as PackageJson;
   } catch {
     return null;
   }
@@ -475,19 +580,12 @@ function parseCdPrefix(workspace: string, command: string): { cwd: string; comma
 
 function findWorkspacePackageDir(workspace: string, spec: string): string | null {
   const direct = resolve(workspace, spec);
-  if (direct.startsWith(resolve(workspace)) && readPackageJson(direct)) return direct;
+  const members = discoverWorkspacePackageDirs(workspace);
+  if (members.includes(direct) && readPackageJson(direct)) return direct;
 
-  const queue = [workspace];
-  let visited = 0;
-  while (queue.length > 0 && visited < 500) {
-    const dir = queue.shift()!;
-    visited += 1;
+  for (const dir of members) {
     const pkg = readPackageJson(dir);
     if (pkg?.name === spec || basename(dir) === spec) return dir;
-    for (const child of safeReadDirs(dir)) {
-      if (['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.mitii'].includes(basename(child))) continue;
-      queue.push(child);
-    }
   }
   return null;
 }
@@ -543,7 +641,11 @@ function safeReadEntries(dir: string): string[] {
 }
 
 function packageManagerCommand(workspace: string): 'npm' | 'pnpm' | 'yarn' {
-  if (existsSync(join(workspace, 'pnpm-lock.yaml'))) return 'pnpm';
+  if (
+    existsSync(join(workspace, 'pnpm-lock.yaml')) ||
+    existsSync(join(workspace, 'pnpm-workspace.yaml')) ||
+    readPackageJson(workspace)?.packageManager?.startsWith('pnpm@')
+  ) return 'pnpm';
   if (existsSync(join(workspace, 'yarn.lock'))) return 'yarn';
   return 'npm';
 }

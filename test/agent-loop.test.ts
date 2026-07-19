@@ -830,6 +830,125 @@ describe('AgentLoop E2E', () => {
     expect(chunks.join('')).not.toContain('Stopped after repeated identical tool failure');
   });
 
+  it('recognizes retries of the same command under different wrappers as identical failures', async () => {
+    const executor = createMockExecutor();
+    (executor.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: false,
+      output: '',
+      error: 'Command failed with exit code 2',
+    });
+
+    const provider = mockProvider([
+      {
+        tool_calls: [{
+          index: 0,
+          id: 'call_1',
+          function: { name: 'run_command', arguments: '{"command":"pnpm run build"}' },
+        }],
+      },
+      {
+        tool_calls: [{
+          index: 0,
+          id: 'call_2',
+          // Same underlying command, wrapped differently — a weak model reaching for a
+          // different way to see truncated output, not a genuinely different attempt.
+          function: { name: 'run_command', arguments: '{"command":"pnpm run build 2>&1 | head -120"}' },
+        }],
+      },
+      { content: 'Should not get here.' },
+    ]);
+
+    const loop = new AgentLoop(executor, 5);
+    const chunks: string[] = [];
+    for await (const chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Fix the build' }],
+      [{ type: 'function', function: { name: 'run_command', description: 'run', parameters: {} } }],
+      undefined,
+      undefined,
+      { maxSteps: 5 }
+    )) {
+      chunks.push(chunkContent(chunk));
+    }
+
+    expect(executor.execute).toHaveBeenCalledTimes(2);
+    expect(chunks.join('')).not.toContain('Should not get here');
+  });
+
+  it('narrows to write tools instead of fully disabling tools when no-progress fires on an unwritten edit task', async () => {
+    const executor = createMockExecutor();
+    (executor.execute as ReturnType<typeof vi.fn>).mockImplementation(async (name: string) => {
+      executedTools.push(name);
+      if (name === 'run_command') {
+        return { success: false, output: '', error: 'Command failed with exit code 2' };
+      }
+      return { success: true, output: `ok:${name}` };
+    });
+
+    const toolsOfferedPerCall: string[][] = [];
+    const responses: Array<Record<string, unknown>> = [
+      {
+        tool_calls: [{
+          index: 0,
+          id: 'call_1',
+          function: { name: 'run_command', arguments: '{"command":"pnpm run build"}' },
+        }],
+      },
+      {
+        tool_calls: [{
+          index: 0,
+          id: 'call_2',
+          function: { name: 'run_command', arguments: '{"command":"pnpm run build 2>&1"}' },
+        }],
+      },
+      {
+        tool_calls: [{
+          index: 0,
+          id: 'call_3',
+          function: { name: 'apply_patch', arguments: '{"path":"a.ts","oldText":"x","newText":"y"}' },
+        }],
+      },
+      { content: 'Fixed the type error.' },
+    ];
+    let call = 0;
+    const provider = {
+      id: 'mock',
+      capabilities: { supportsTools: true, supportsStreaming: true, contextWindow: 8192, supportsEmbeddings: false },
+      async *complete(request: { tools: Array<{ function: { name: string } }> }) {
+        toolsOfferedPerCall.push(request.tools.map((t) => t.function.name));
+        const response = responses[Math.min(call, responses.length - 1)];
+        call += 1;
+        if (response.content) yield { content: response.content as string };
+        if (response.tool_calls) yield { tool_calls: response.tool_calls as never };
+        yield { done: true };
+      },
+    } as unknown as LlmProvider;
+
+    const loop = new AgentLoop(executor, 6);
+    const chunks: string[] = [];
+    for await (const chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Fix the build error' }],
+      [
+        { type: 'function', function: { name: 'run_command', description: 'run', parameters: {} } },
+        { type: 'function', function: { name: 'apply_patch', description: 'patch', parameters: {} } },
+        { type: 'function', function: { name: 'read_file', description: 'read', parameters: {} } },
+      ],
+      undefined,
+      undefined,
+      { maxSteps: 6, requiresWrite: true }
+    )) {
+      chunks.push(chunkContent(chunk));
+    }
+
+    // After 2 identical run_command failures trip no-progress, the model still has apply_patch
+    // available (not fully synthesize-only) so it can act on the failures it already found.
+    expect(toolsOfferedPerCall[2]).toEqual(['apply_patch']);
+    expect(executedTools).toContain('apply_patch');
+    expect(chunks.join('')).not.toContain('No files were changed');
+    expect(chunks.join('')).not.toContain('did not change any files');
+  });
+
   it('synthesizes gathered evidence after repeated tool failures in Ask mode', async () => {
     const executor = createMockExecutor();
     (executor.execute as ReturnType<typeof vi.fn>)

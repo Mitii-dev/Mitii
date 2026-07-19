@@ -124,12 +124,14 @@ function mapIntent(
   if (auditSubtype || taskAnalysis?.kind === 'audit' || taskAnalysis?.actIntent === 'audit') {
     return 'audit';
   }
+  if (taskAnalysis?.actIntent === 'bugfix' || isBugfixLikeRequest(text)) {
+    return 'bugfix';
+  }
   if (taskAnalysis?.actIntent) return taskAnalysis.actIntent as PipelineIntent;
   if (taskAnalysis?.planIntent === 'bugfix') return 'bugfix';
   if (taskAnalysis?.planIntent === 'refactor') return 'refactor';
   if (taskAnalysis?.kind === 'debugging') return 'diagnose';
   if (taskAnalysis?.kind === 'question') return 'question';
-  if (/\b(fix|bug|broken)\b/i.test(text)) return 'bugfix';
   return 'feature';
 }
 
@@ -299,6 +301,10 @@ export function isRepositoryRestorationBugfix(text: string, taskAnalysis?: TaskA
   const combined = `${text} ${taskAnalysis?.summary ?? ''}`;
   if (!RESTORATION_BUGFIX_RE.test(combined)) return false;
   return FAILURE_FIX_RE.test(combined) || /\b(?:fix|repair|restore|revert|build|compile|failing|failed|broken|error)\b/i.test(combined);
+}
+
+function isBugfixLikeRequest(text: string): boolean {
+  return /\b(fix|repair|resolve|correct|debug|troubleshoot|bug|broken|failing|failed|error|issue)\b/i.test(text);
 }
 
 export function buildRoutePolicyText(route: RouteResolution): string {

@@ -155,9 +155,6 @@ importers:
       typescript:
         specifier: ^5.5.2
         version: 5.9.3
-      vitest:
-        specifier: ^3.2.7
-        version: 3.2.7(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0)
 
   tools/benchmark: {}
 

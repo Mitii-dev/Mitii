@@ -22,12 +22,14 @@ description: Reproduce, diagnose, minimally fix, and regression-test software de
 ## Planning Guidance
 
 - Include reproduction evidence before implementation steps.
+- If planning discovery already captured the failing build/typecheck/test output, reuse that evidence; do not plan a duplicate reproduction command before diagnosis.
 - Identify regression coverage and rollback concerns.
 - Avoid speculative cleanup outside the defect boundary.
 
 ## Agent Execution Guidance
 
 - Preserve a failing signal before editing when practical.
+- Treat a nonzero build/typecheck/test exit as successful evidence capture for a diagnostic reproduction step; do not rerun equivalent commands until after a fix is applied.
 - Make the smallest change that resolves the confirmed cause.
 - Do not bundle unrelated refactors.
 

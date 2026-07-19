@@ -827,7 +827,14 @@ export function createExecuteWorkspaceScriptTool(
       } catch (e) {
         const err = e as { code?: number; stdout?: string; stderr?: string; message?: string };
         const output = [err.stdout, err.stderr].filter(Boolean).join('\n').slice(0, 50000);
-        if (entry.readOnly && (err.code === 1 || output.length > 0)) {
+        if (entry.readOnly && isReadOnlyScriptUnavailable(output)) {
+          return {
+            success: false,
+            output,
+            error: extractReadOnlyScriptFailure(output) ?? err.message ?? 'Read-only helper unavailable',
+          };
+        }
+        if (entry.readOnly && err.code === 1) {
           return { success: true, output: output || '(no findings)' };
         }
         if (entry.name === 'write-checkpoint.sh') {
@@ -842,6 +849,20 @@ export function createExecuteWorkspaceScriptTool(
       }
     },
   };
+}
+
+function isReadOnlyScriptUnavailable(output: string): boolean {
+  return /\b(?:command not found|Cannot find module|ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL|No such file or directory|not installed)\b/i.test(output);
+}
+
+function extractReadOnlyScriptFailure(output: string): string | undefined {
+  return output
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) =>
+      /\b(?:command not found|Cannot find module|ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL|No such file or directory|not installed)\b/i.test(line)
+    )
+    ?.slice(0, 240);
 }
 
 export function createUseSkillTool(
@@ -1442,6 +1463,26 @@ export function createRunCommandTool(workspace: string, getMode: () => string): 
         if (normalized.error) {
           return { success: false, output: '', error: normalized.error };
         }
+        if (isStatusMaskingVerificationCommand(normalized.command)) {
+          const sanitized = stripStatusMaskingWrapper(normalized.command);
+          if (sanitized && !isStatusMaskingVerificationCommand(sanitized)) {
+            normalized.command = sanitized;
+            normalized.note = [
+              normalized.note,
+              `Stripped output wrapper (pipe/"|| true"/"echo $?") before running — this tool already returns full stdout+stderr (truncated at 50000 chars), so exit codes stay accurate without one. Ran: ${sanitized}`,
+            ]
+              .filter(Boolean)
+              .join(' ');
+          } else {
+            return {
+              success: false,
+              output: '',
+              error:
+                'Verification commands must run directly so their real exit code is preserved. ' +
+                'Remove pipes, "|| true", output-status wrappers, and retry the command.',
+            };
+          }
+        }
         const { stdout, stderr } = await execShellSafe(normalized.command, {
           cwd: normalized.cwd,
           maxBuffer: 4 * 1024 * 1024,
@@ -1476,6 +1517,40 @@ export function createRunCommandTool(workspace: string, getMode: () => string): 
       }
     },
   };
+}
+
+function isStatusMaskingVerificationCommand(command: string): boolean {
+  const isVerification =
+    /\b(tsc|typescript|eslint|vitest|jest|pytest|cargo\s+(?:test|check)|(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:test|lint|build|compile|typecheck|check|verify|validate|doctor))\b/i.test(command);
+  if (!isVerification) return false;
+  return (
+    /(?:^|[^|])\|(?:[^|]|$)/.test(command) ||
+    /\|\|\s*(?:true|echo\b)/i.test(command) ||
+    /;\s*echo\s+["']?(?:exit(?:_code)?\s*[:=]\s*)?\$\?/i.test(command)
+  );
+}
+
+/**
+ * Best-effort strip of common exit-code-masking wrappers (trailing `| head`/`| tail`/`| cat`,
+ * `|| true`/`|| echo ...`, `; echo ...$?`) so the underlying verification command can still run.
+ * Weak models reach for these idioms to truncate output, not knowing this tool already returns
+ * the full stdout+stderr (capped at 50000 chars) regardless — rejecting outright just burns their
+ * retry budget on syntax variants instead of the actual fix. Returns undefined if nothing recognized.
+ */
+function stripStatusMaskingWrapper(command: string): string | undefined {
+  let cmd = command;
+  for (let i = 0; i < 6; i++) {
+    const before = cmd;
+    cmd = cmd
+      .replace(/\s*\|\|\s*(?:true|echo\b[^|;]*)\s*$/i, '')
+      .replace(/;\s*echo\s+["']?(?:exit(?:_code)?\s*[:=]\s*)?\$\?[^\n]*$/i, '')
+      .replace(/\s*\|\s*(?:head|tail)(?:\s+(?:-n\s*)?-?\d+)?\s*$/i, '')
+      .replace(/\s*\|\s*cat\s*$/i, '')
+      .trim();
+    if (cmd === before) break;
+  }
+  if (!cmd || cmd === command.trim()) return undefined;
+  return cmd;
 }
 
 /** Prefer stderr — grepping logs often prints historical "not found" / "permission denied" in stdout. */

@@ -33,6 +33,33 @@ Planning is an execution aid, not the final deliverable. After producing a valid
 
 ---
 
+# Plan Presentation
+
+Phases are internal orchestration metadata.
+
+For normal user-facing plans:
+
+* Use the heading `Plan`.
+* Present one concise numbered list of concrete actions.
+* Show what is being planned or executed through step titles, current-step status, blockers, and final verification status.
+* Do not display Diagnostics, Review, Execute, or Verify as headings, badges, or section labels.
+* Do not expose phase names, tool-policy metadata, internal IDs, operation categories, dependency edges, machine validation details, or approval mechanics unless the user explicitly requests a technical plan, execution trace, or planner-debug view.
+
+Example user-facing plan:
+
+```text
+Plan
+
+1. Reproduce the affected package build failure.
+2. Inspect the files and imports named by the failure.
+3. Restore the intended folder structure with the smallest safe change.
+4. Rerun the affected builds and start the application.
+```
+
+The machine-readable plan may continue to store phases, dependencies, success criteria, risks, and approval requirements for execution control.
+
+---
+
 # Planning Depths
 
 ## Auto
@@ -277,7 +304,7 @@ Complete
 
 # Step Requirements
 
-Every planned step must have:
+Every internal planned step must have:
 
 * `id`
 * `objective`
@@ -286,6 +313,7 @@ Every planned step must have:
 
 Include these when relevant:
 
+* `kind`, when supported by the controller schema
 * `files`
 * `dependsOn`
 * `risk`
@@ -293,7 +321,7 @@ Include these when relevant:
 * `checkpoint`
 * `approvalRequired`
 
-Do not include metadata mechanically.
+Do not include metadata mechanically. The normal user-facing plan must show only the objective or title and meaningful status; internal metadata must remain hidden unless detailed planner output is explicitly requested.
 
 ## Recommended schema
 

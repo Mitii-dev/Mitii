@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join, resolve } from 'path';
 import { IgnoreService } from '../src/features/ce/indexing/IgnoreService';
@@ -71,6 +71,50 @@ describe('IgnoreService', () => {
       const nonRecursive = await tool.execute({ path: '.mitii', recursive: false });
       expect(nonRecursive.success).toBe(true);
       expect(nonRecursive.output.split('\n')).toContain('logs');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('execute_workspace_script reports unavailable read-only helpers as failures', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'mitii-script-failure-'));
+    try {
+      const scriptsDir = join(tempDir, 'scripts');
+      mkdirSync(scriptsDir, { recursive: true });
+      writeFileSync(
+        join(scriptsDir, 'script-catalog.json'),
+        JSON.stringify([
+          {
+            id: 1,
+            name: 'safe-lint-target.sh',
+            category: 'validation',
+            command: 'bash scripts/safe-lint-target.sh <target>',
+            description: 'lint',
+            readOnly: true,
+          },
+        ])
+      );
+      const scriptPath = join(scriptsDir, 'safe-lint-target.sh');
+      writeFileSync(
+        scriptPath,
+        [
+          '#!/usr/bin/env bash',
+          'echo \'ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command "eslint" not found\'',
+          'exit 1',
+        ].join('\n')
+      );
+      chmodSync(scriptPath, 0o755);
+      mkdirSync(join(tempDir, 'src'));
+
+      const ig = new IgnoreService();
+      ig.load(tempDir);
+      const { createExecuteWorkspaceScriptTool } = await import('../src/features/ce/tools/builtinTools');
+      const tool = createExecuteWorkspaceScriptTool(tempDir, tempDir, ig);
+      const result = await tool.execute({ script: 'safe-lint-target.sh', target: 'src' });
+
+      expect(result.success).toBe(false);
+      expect(result.output).toContain('Command "eslint" not found');
+      expect(result.error).toContain('ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL');
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -1413,6 +1457,51 @@ describe('Plan parser', () => {
     expect(parsed?.requiredApprovals).toContain('recursive_delete:ai-service/src/features,ai-service/src/infrastructure');
   });
 
+  it('normalizes diagnostic build-capture steps even when the model declares execute', async () => {
+    const { parsePlanFromText } = await import('../src/features/ce/plans/PlanActEngine');
+    const parsed = parsePlanFromText(`\`\`\`json
+{
+  "goal": "Fix build errors",
+  "assumptions": [],
+  "steps": [
+    {
+      "id": "step-1",
+      "title": "Capture exact ai-service build errors",
+      "phase": "execute",
+      "tools": ["run_command"],
+      "successCriteria": ["Build error output is captured"],
+      "files": ["ai-service/package.json"],
+      "risk": "medium"
+    }
+  ],
+  "requiredApprovals": []
+}
+\`\`\``);
+
+    expect(parsed?.steps[0].phase).toBe('diagnostics');
+  });
+
+  it('hides internal plan phases from the default plan view', async () => {
+    const { thunderPlanToView } = await import('../src/features/ce/modes/plan/planViewMapper');
+    const plan = {
+      goal: 'Fix build errors',
+      assumptions: [],
+      requiredApprovals: [],
+      steps: [
+        {
+          id: 'step-1',
+          title: 'Capture exact ai-service build errors',
+          status: 'pending' as const,
+          phase: 'diagnostics' as const,
+          risk: 'medium' as const,
+        },
+      ],
+    };
+
+    expect(thunderPlanToView(plan).steps[0].phase).toBeUndefined();
+    expect(thunderPlanToView(plan, { showInternalPhases: true }).steps[0].phase).toBe('diagnostics');
+  });
+
   it('keeps generated plan phases mode-aware', async () => {
     const { PlanExecutor } = await import('../src/features/ce/runtime/PlanExecutor');
     const provider = {
@@ -1521,6 +1610,114 @@ describe('Plan parser', () => {
 
     expect(plan.steps[0].status).toBe('failed');
     expect(output).toContain('lint failed');
+
+    plan.steps[0].status = 'pending';
+    let phasePolicyCalls = 0;
+    const phasePolicyExecutor = new PlanExecutor(
+      agentLoop as never,
+      persistence as never,
+      undefined,
+      {
+        execute: async () => {
+          phasePolicyCalls += 1;
+          return {
+            success: false,
+            output: '',
+            error: 'Phase 4 (Verify) allows diagnostics, lint, tests, builds, and targeted file fixes, not arbitrary shell commands.',
+          };
+        },
+      } as never
+    );
+    let phasePolicyOutput = '';
+    for await (const chunk of phasePolicyExecutor.executePlan(
+      { id: 's2', mode: 'agent' } as never,
+      {} as never,
+      plan,
+      pack,
+      [],
+      undefined,
+      undefined,
+      undefined,
+      { stepMaxRetries: 2 }
+    )) {
+      phasePolicyOutput += chunk;
+    }
+    expect(phasePolicyCalls).toBe(1);
+    expect(plan.steps[0].status).toBe('failed');
+    expect(phasePolicyOutput).toContain('will not be retried unchanged');
+  });
+
+  it('completes an explicit diagnostic reproduction step when the command captures a failing signal', async () => {
+    const { PlanExecutor } = await import('../src/features/ce/runtime/PlanExecutor');
+    const plan = {
+      goal: 'Fix package build',
+      assumptions: [],
+      requiredApprovals: [],
+      steps: [
+        {
+          id: 'reproduce',
+          title: 'Reproduce build failure — capture initial failing signal',
+          objective: 'Run pnpm run build and preserve current TypeScript errors',
+          status: 'pending' as const,
+          risk: 'low' as const,
+          phase: 'diagnostics' as const,
+          tools: ['run_command'],
+          script: { command: 'pnpm run build' },
+          successCriteria: ['Build output captured showing current errors'],
+        },
+      ],
+    };
+    const persistence = {
+      save: () => 'plan-id',
+      updatePlan: () => undefined,
+      complete: () => undefined,
+    };
+    const agentLoop = {
+      hadPendingApproval: () => false,
+      async *run() {
+        throw new Error('agent loop should not run for explicit scripted steps');
+      },
+    };
+    let calls = 0;
+    const toolExecutor = {
+      execute: async () => {
+        calls += 1;
+        return {
+          success: false,
+          output: "src/index.ts(1,1): error TS2307: Cannot find module './missing'.",
+          error: 'Command failed with exit code 2',
+        };
+      },
+    };
+    const executor = new PlanExecutor(agentLoop as never, persistence as never, undefined, toolExecutor as never);
+    const pack = {
+      items: [],
+      totalTokens: 0,
+      formatted: '',
+      budgetLimit: 100,
+      retrievedCount: 0,
+      truncatedCount: 0,
+      dropped: [],
+    };
+    let output = '';
+
+    for await (const chunk of executor.executePlan(
+      { id: 's1', mode: 'agent' } as never,
+      {} as never,
+      plan,
+      pack,
+      [],
+      undefined,
+      undefined,
+      undefined,
+      { stepMaxRetries: 2, finalValidationEnabled: false }
+    )) {
+      output += chunk;
+    }
+
+    expect(calls).toBe(1);
+    expect(plan.steps[0].status).toBe('done');
+    expect(output).toContain('Diagnostic failing signal captured');
   });
 
   it('does not complete a verification step from prose without running a verifier', async () => {
@@ -2075,8 +2272,10 @@ describe('AgentTaskState', () => {
     expect(soft).toContain('Stop using tools now');
     expect(soft).toContain('Cached evidence reference');
     expect(soft).not.toContain('\nNo errors\n');
-    expect(normalizeDiagnosticKey('cd packages/ffb-mui && npm run build:types')).toBeNull();
-    expect(normalizeDiagnosticKey('cd apps/docs && npm run build')).toBe('docs-build');
+    expect(normalizeDiagnosticKey('cd packages/ffb-mui && npm run build:types')).toBe('build:packages/ffb-mui');
+    expect(normalizeDiagnosticKey('cd apps/docs && npm run build')).toBe('docs-build:apps/docs');
+    expect(normalizeDiagnosticKey('cd ai-service && npx tsc --noEmit')).toBe('tsc:ai-service');
+    expect(normalizeDiagnosticKey('cd frontend && npx tsc --noEmit')).toBe('tsc:frontend');
   });
 
   it('builds pause summary with next step hint', async () => {
@@ -2483,10 +2682,13 @@ describe('PlanActEngine read-only shell', () => {
     expect(isShellAllowed('ask', 'npm install lodash')).toBe(false);
     expect(isToolAllowedInPlanPhase('execute', 'run_command', { command: 'npm run build' }).allowed).toBe(true);
     expect(isToolAllowedInPlanPhase('verify', 'run_command', { command: 'npm run build' }).allowed).toBe(true);
-    expect(isToolAllowedInPlanPhase('diagnostics', 'run_command', { command: 'npm run build' }).allowed).toBe(false);
+    expect(isToolAllowedInPlanPhase('diagnostics', 'run_command', { command: 'npm run build' }).allowed).toBe(true);
     expect(isToolAllowedInPlanPhase('verify', 'run_command', { command: 'node scripts/custom-mutator.js' }).allowed).toBe(false);
     expect(classifyCommandEffect('rg "foo" src')).toBe('inspect_only');
     expect(classifyCommandEffect('npm run build')).toBe('verification_with_artifacts');
+    expect(classifyCommandEffect('pnpm run build')).toBe('verification_with_artifacts');
+    expect(classifyCommandEffect('pnpm --filter frontend run build')).toBe('verification_with_artifacts');
+    expect(classifyCommandEffect('cd ai-service && pnpm exec tsc --noEmit')).toBe('inspect_only');
     expect(classifyCommandEffect('npm install lodash')).toBe('dependency_mutation');
     expect(classifyCommandEffect('git checkout -- src/index.ts')).toBe('workspace_mutation');
     expect(classifyCommandEffect('git restore -- src/index.ts src/routes.ts')).toBe('workspace_mutation');
@@ -2495,8 +2697,10 @@ describe('PlanActEngine read-only shell', () => {
 
   it('classifies step phases without treating all build steps as verification', async () => {
     const { inferStepPhase, resolveStepPhaseLock, stepImpliesWrite } = await import('../src/features/ce/plans/PlanActEngine');
+    expect(inferStepPhase('Capture exact ai-service build errors', 0)).toBe('diagnostics');
     expect(inferStepPhase('Build the new settings component', 1)).toBe('execute');
     expect(inferStepPhase('Run the production build', 3)).toBe('verify');
+    expect(stepImpliesWrite({ title: 'Capture exact ai-service build errors' })).toBe(false);
     expect(stepImpliesWrite({ title: 'Audit Current Implementation & Identify Bugs' })).toBe(false);
     expect(stepImpliesWrite({ title: 'Fix ReferenceError & Prepare Theme Utilities' })).toBe(true);
     expect(
@@ -2629,6 +2833,76 @@ describe('verifyCommandDiscovery', () => {
       expect(plan.discoveredScripts['.']).toContain('typecheck');
       expect(plan.discoveredScripts['.']).toContain('lint');
       expect(plan.notes.some((n) => /scanned/i.test(n))).toBe(true);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('uses pnpm workspace membership and does not fall back to root checks', async () => {
+    const { resolveProjectVerifyCommands } = await import('../src/features/ce/runtime/verifyCommandDiscovery');
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-verify-workspace-test-'));
+    try {
+      mkdirSync(join(tempDir, 'packages/channels/src'), { recursive: true });
+      mkdirSync(join(tempDir, 'fixtures/example/src'), { recursive: true });
+      writeFileSync(join(tempDir, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n");
+      writeFileSync(join(tempDir, 'package.json'), JSON.stringify({
+        name: 'root',
+        scripts: { lint: 'tsc --noEmit', test: 'vitest run' },
+      }));
+      writeFileSync(join(tempDir, 'packages/channels/package.json'), JSON.stringify({
+        name: '@example/channels',
+      }));
+      writeFileSync(join(tempDir, 'fixtures/example/package.json'), JSON.stringify({
+        name: 'fixture',
+        scripts: { lint: 'exit 1' },
+      }));
+
+      const plan = resolveProjectVerifyCommands(tempDir, [], {
+        touchedFiles: ['packages/channels/src/index.ts'],
+      });
+
+      expect(plan.commands).toEqual([]);
+      expect(plan.discoveredScripts).toEqual({});
+      expect(plan.notes.join('\n')).toContain('No package-local verification script');
+      expect(plan.notes.join('\n')).not.toContain('workspace-root manifest');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('builds a workspace-wide verification matrix from pnpm members', async () => {
+    const { resolveProjectVerifyCommands } = await import('../src/features/ce/runtime/verifyCommandDiscovery');
+    const tempDir = mkdtempSync(join(tmpdir(), 'thunder-verify-workspace-all-test-'));
+    try {
+      mkdirSync(join(tempDir, 'packages/web/src'), { recursive: true });
+      mkdirSync(join(tempDir, 'packages/api/src'), { recursive: true });
+      writeFileSync(join(tempDir, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n");
+      writeFileSync(join(tempDir, 'package.json'), JSON.stringify({
+        name: 'root',
+        packageManager: 'pnpm@10.13.1',
+      }));
+      writeFileSync(join(tempDir, 'packages/web/package.json'), JSON.stringify({
+        name: 'web',
+        scripts: { build: 'vite build' },
+      }));
+      writeFileSync(join(tempDir, 'packages/api/package.json'), JSON.stringify({
+        name: 'api',
+        scripts: { typecheck: 'tsc --noEmit', test: 'vitest run' },
+      }));
+
+      const plan = resolveProjectVerifyCommands(tempDir, [], {
+        touchedFiles: ['packages/web/src/index.ts'],
+        userMessage: 'Fix all build errors in the whole workspace',
+      });
+
+      expect(plan.commands).toEqual([
+        'cd packages/api && pnpm run typecheck',
+        'cd packages/web && pnpm run build',
+      ]);
+      expect(Object.keys(plan.discoveredScripts).sort()).toEqual([
+        'packages/api',
+        'packages/web',
+      ]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -3371,7 +3645,7 @@ describe('run_command exit codes', () => {
     }
   });
 
-  it('detects compiler errors hidden by a successful trailing pipeline command', async () => {
+  it('rejects verification pipelines that mask the real exit code', async () => {
     const { mkdtempSync, rmSync } = await import('fs');
     const { join } = await import('path');
     const { tmpdir } = await import('os');
@@ -3384,7 +3658,47 @@ describe('run_command exit codes', () => {
         command: 'printf "src/index.ts(1,1): error TS18046: bad type\\n" | tail -20 # tsc --noEmit',
       });
       expect(result.success).toBe(false);
-      expect(result.error).toContain('error TS18046');
+      expect(result.error).toContain('real exit code');
+
+      const count = await tool.execute({
+        command: 'npx tsc --noEmit 2>&1 | grep "error TS" | wc -l',
+      });
+      expect(count.success).toBe(false);
+      expect(count.error).toContain('run directly');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('strips a trailing head/tail/echo-$?/|| true wrapper and runs the real verification command', async () => {
+    const { mkdtempSync, rmSync, writeFileSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const { createRunCommandTool } = await import('../src/features/ce/tools/builtinTools');
+
+    const dir = mkdtempSync(join(tmpdir(), 'thunder-cmd-strip-'));
+    try {
+      writeFileSync(
+        join(dir, 'package.json'),
+        JSON.stringify({ name: 'x', scripts: { build: 'node -e "console.error(\'error TS2304: boom\'); process.exit(2)"' } })
+      );
+      const tool = createRunCommandTool(dir, () => 'agent');
+
+      // A weak model piping to head to see truncated output — should run for real instead of
+      // being rejected outright, since this tool already returns full stdout+stderr.
+      const piped = await tool.execute({ command: 'npm run build 2>&1 | head -120' });
+      expect(piped.error).not.toContain('run directly');
+      expect(piped.success).toBe(false);
+      expect(piped.output).toContain('error TS2304');
+
+      // `|| true` / `; echo $?` variants should be stripped the same way.
+      const orTrue = await tool.execute({ command: 'npm run build 2>&1 || true' });
+      expect(orTrue.error).not.toContain('run directly');
+      expect(orTrue.success).toBe(false);
+
+      const echoExit = await tool.execute({ command: 'npm run build 2>&1; echo "EXIT_CODE: $?"' });
+      expect(echoExit.error).not.toContain('run directly');
+      expect(echoExit.success).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

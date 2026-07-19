@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "id": "frontend-design",
+  "name": "Frontend design",
+  "description": "Create distinctive visual direction for frontend screens, layouts, palettes, typography, copy tone, and responsive polish.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": ["ask", "plan", "agent"],
+  "intents": ["feature", "refactor"],
+  "taskKinds": ["implementation", "explicit_plan"],
+  "triggers": ["design", "redesign", "frontend", "ui polish", "visual design", "landing page", "dashboard", "portfolio", "hero", "responsive"],
+  "negativeTriggers": ["backend", "api route", "database", "simple bugfix", "fix failing test", "figma"],
+  "languages": ["typescript", "javascript", "html", "css"],
+  "frameworks": ["react", "next.js", "nextjs", "vite"],
+  "requiredTools": ["read_file", "search"],
+  "optionalTools": ["apply_patch", "run_command", "browser"],
+  "requiredCapabilities": ["repository-read"],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 6000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 14,
+  "tags": ["frontend", "design", "visual", "responsive"],
+  "tests": [
+    {
+      "id": "redesign-dashboard",
+      "name": "Selects for visual frontend redesign",
+      "request": "Redesign the React dashboard so it feels polished and responsive",
+      "mode": "agent",
+      "repositoryFacts": {
+        "languages": ["typescript"],
+        "frameworks": ["react"],
+        "paths": ["src/App.tsx", "src/styles.css"]
+      },
+      "availableTools": ["read_file", "search", "apply_patch", "run_command"],
+      "availableCapabilities": ["repository-read", "workspace-write"],
+      "expected": "selected",
+      "maxInjectionChars": 6000
+    },
+    {
+      "id": "reject-backend",
+      "name": "Rejects backend-only work",
+      "request": "Add a backend API route for invoices",
+      "mode": "agent",
+      "repositoryFacts": {
+        "languages": ["typescript"],
+        "frameworks": ["react"]
+      },
+      "availableTools": ["read_file", "search"],
+      "availableCapabilities": ["repository-read"],
+      "expected": "rejected"
+    }
+  ]
+}

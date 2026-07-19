@@ -226,6 +226,106 @@ describe('Plan mode orchestration', () => {
     expect(capturedMessages.map((m) => m.content).join('\n')).toContain(discovery);
   });
 
+  it('marks duplicate reproduction steps done when discovery already captured the failing signal', async () => {
+    const { PlanExecutor } = await import('../../src/features/ce/runtime/PlanExecutor');
+    const { analyzeTask } = await import('../../src/features/ce/runtime/TaskAnalyzer');
+    const provider = {
+      id: 'fake',
+      capabilities: {
+        contextWindow: 8192,
+        supportsStreaming: false,
+        supportsTools: false,
+        supportsEmbeddings: false,
+      },
+      async *complete() {
+        yield {
+          content: `\`\`\`json
+{
+  "goal": "Fix build",
+  "assumptions": [],
+  "steps": [
+    {
+      "id": "step-1",
+      "title": "Reproduce build failure — capture initial failing signal",
+      "objective": "Run pnpm run build and preserve current TypeScript errors",
+      "tools": ["run_command"],
+      "dependsOn": [],
+      "successCriteria": ["Build output captured showing current errors"],
+      "files": ["ai-service/package.json"],
+      "risk": "low",
+      "phase": "diagnostics"
+    },
+    {
+      "id": "step-2",
+      "title": "Diagnose captured TypeScript errors",
+      "objective": "Read files from the captured TS errors and identify the root cause",
+      "tools": ["read_file"],
+      "dependsOn": ["step-1"],
+      "successCriteria": ["Root cause is identified from captured build output"],
+      "files": ["ai-service/src/features/document-parser/services/manual-resume-service.ts"],
+      "risk": "low",
+      "phase": "diagnostics"
+    },
+    {
+      "id": "step-3",
+      "title": "Apply minimal TypeScript fix",
+      "objective": "Patch the confirmed type mismatch",
+      "tools": ["apply_patch"],
+      "dependsOn": ["step-2"],
+      "successCriteria": ["Patch only touches the confirmed root cause"],
+      "files": ["ai-service/src/features/document-parser/services/manual-resume-service.ts"],
+      "risk": "medium",
+      "phase": "execute"
+    },
+    {
+      "id": "step-4",
+      "title": "Verify build passes",
+      "objective": "Rerun pnpm run build after the fix",
+      "tools": ["run_command"],
+      "dependsOn": ["step-3"],
+      "successCriteria": ["pnpm run build exits successfully"],
+      "files": ["ai-service/package.json"],
+      "risk": "medium",
+      "phase": "verify"
+    }
+  ],
+  "requiredApprovals": []
+}
+\`\`\``,
+        };
+      },
+    };
+    const pack = {
+      items: [],
+      totalTokens: 0,
+      formatted: '',
+      budgetLimit: 100,
+      retrievedCount: 0,
+      truncatedCount: 0,
+      dropped: [],
+    };
+    const executor = new PlanExecutor({} as never, { save: () => 'plan-id' } as never);
+    const discovery = [
+      'DISCOVERY_TOOL_EVIDENCE:',
+      '- run_command (cd ai-service && pnpm run build) failed: Command failed with exit code 2',
+      "src/features/document-parser/services/manual-resume-service.ts(415,25): error TS2339: Property 'subtitle' does not exist on type 'ResumeProject'.",
+    ].join('\n');
+
+    const plan = await executor.generatePlan(
+      provider,
+      'agent',
+      pack,
+      'Fix all build issues in ai-service',
+      'Need to repair the failing build.',
+      discovery,
+      analyzeTask('Fix all build issues in ai-service', 'agent')
+    );
+
+    expect(plan?.steps[0].status).toBe('done');
+    expect(plan?.steps[1].status).toBe('pending');
+    expect(plan?.assumptions.join('\n')).toContain('skipped duplicate reproduction step step-1');
+  });
+
   it('tells planning discovery to ask material clarifying questions before compiling', async () => {
     const { buildPlanningDiscoveryPrompt } = await import('../../src/features/ce/plans/promptBuilder');
     const pack = {

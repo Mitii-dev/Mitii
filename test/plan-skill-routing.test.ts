@@ -36,6 +36,19 @@ describe('planSkillRouting', () => {
     expect(names).toEqual(['agent-plan']);
   });
 
+  it('keeps bugfix workflow primary during Agent-mode structured planning', () => {
+    const names = resolvePlanningSkillNames('bugfix', {
+      kind: 'implementation',
+      complexity: 'medium',
+      summary: 'fix build errors from a half implemented restructuring and restore the original state',
+      shouldPlan: true,
+      shouldVerify: true,
+      shouldUseSubagents: false,
+    }, { sourceMode: 'agent' });
+
+    expect(names).toEqual(['bugfix-workflow', 'agent-plan']);
+  });
+
   it('injects Git route selected skills into planning', () => {
     const names = resolvePlanningSkillNames('feature', {
       kind: 'implementation',
@@ -146,6 +159,69 @@ This full procedure should stay out of quick-ref prompts.
       expect(context).toContain('Description: Breaks work into ordered tasks.');
       expect(context).toContain('## Quick Reference');
       expect(context).not.toContain('Full Procedure');
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('loads planning support skills as compact secondary contributions', () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'mitii-plan-skills-support-'));
+    try {
+      const bugfixDir = join(workspace, '.mitii', 'skills', 'bugfix-workflow');
+      const agentPlanDir = join(workspace, '.mitii', 'skills', 'agent-plan');
+      mkdirSync(bugfixDir, { recursive: true });
+      mkdirSync(agentPlanDir, { recursive: true });
+      writeFileSync(
+        join(bugfixDir, 'SKILL.md'),
+        `---
+name: bugfix-workflow
+description: Reproduce, diagnose, patch, verify.
+---
+
+# Bugfix
+
+## Quick Reference
+
+- Reproduce before patching.
+
+## Agent Execution Guidance
+
+- Keep fixes minimal.
+`,
+        'utf8'
+      );
+      writeFileSync(
+        join(agentPlanDir, 'SKILL.md'),
+        `---
+name: agent-plan
+description: Agent structured planning support.
+---
+
+# Agent Plan
+
+## Quick Reference
+
+- Hide internal phases from users.
+
+## Full Procedure
+
+${'large planner body\n'.repeat(200)}
+`,
+        'utf8'
+      );
+
+      const catalog = new SkillCatalogService(workspace);
+      catalog.refresh();
+      const { context, loaded } = loadPlanningSkillPlaybooks(
+        catalog,
+        ['bugfix-workflow', 'agent-plan'],
+        { style: 'full', maxChars: 5000 }
+      );
+
+      expect(loaded).toEqual(['bugfix-workflow', 'agent-plan']);
+      expect(context).toContain('Keep fixes minimal');
+      expect(context).toContain('Hide internal phases from users');
+      expect(context).not.toContain('large planner body');
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }

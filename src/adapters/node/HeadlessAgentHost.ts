@@ -491,7 +491,8 @@ export class HeadlessAgentHost {
       skillTelemetry: new SkillTelemetry(this.sessionLog),
       repositoryProfileProvider: new WorkspaceRepositoryProfileProvider(workspace),
       allowNetwork: () => resolveEffectiveSafety(this.config.safety).allowNetwork,
-      runVerifyHooks: async (commands, userMessage) => this.runVerifyHooks(workspace, commands, userMessage ?? ''),
+      runVerifyHooks: async (commands, userMessage, touchedFiles) =>
+        this.runVerifyHooks(workspace, commands, userMessage ?? '', touchedFiles ?? []),
       microTaskRoutingEnabled: this.config.context.microTaskRoutingEnabled,
       microTaskExecutorFactory: (provider) => new MicroTaskExecutor({
         workspace,
@@ -727,9 +728,13 @@ export class HeadlessAgentHost {
     }
   }
 
-  private async runVerifyHooks(workspace: string, commands: string[], userMessage: string): Promise<string> {
+  private async runVerifyHooks(
+    workspace: string,
+    commands: string[],
+    userMessage: string,
+    touchedFiles: string[]
+  ): Promise<string> {
     const lines: string[] = [];
-    const touchedFiles = this.getTouchedFilesFromAudit();
     const plan = resolveProjectVerifyCommands(workspace, commands, { touchedFiles, userMessage });
     lines.push(formatVerifyPlanForAgent(plan));
 
@@ -751,15 +756,6 @@ export class HeadlessAgentHost {
     return lines.join('\n\n');
   }
 
-  private getTouchedFilesFromAudit(): string[] {
-    const files = new Set<string>();
-    for (const { toolName, input, result } of this.toolRuntime.getAuditLog()) {
-      if (!result.success || !['write_file', 'apply_patch'].includes(toolName)) continue;
-      const path = (input as Record<string, unknown>).path;
-      if (typeof path === 'string') files.add(path);
-    }
-    return [...files];
-  }
 }
 
 function sleep(ms: number): Promise<void> {

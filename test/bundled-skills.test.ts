@@ -1,7 +1,11 @@
-import { readdirSync, readFileSync, statSync } from 'fs';
-import { join } from 'path';
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'fs';
+import { dirname, join } from 'path';
+import { tmpdir } from 'os';
 import { describe, expect, it } from 'vitest';
 import { MAX_SKILL_DESCRIPTION_CHARS } from '../src/features/ce/skills/skillLimits';
+import { validateSkillManifest } from '../src/features/ce/skills/SkillManifestSchema';
+import { SkillCatalogService } from '../src/features/ce/skills/SkillCatalogService';
+import { SkillTestRunner } from '../src/features/ce/skills/SkillTestRunner';
 
 const bundledRoot = join(__dirname, '../src/features/ce/skills/bundled');
 
@@ -15,6 +19,16 @@ function findSkillFiles(dir: string): string[] {
   return out;
 }
 
+function findFiles(dir: string, target: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) out.push(...findFiles(full, target));
+    else if (entry === target) out.push(full);
+  }
+  return out;
+}
+
 function parseDescription(content: string): string | undefined {
   const match = content.match(/^description:\s*(.+)$/m);
   return match?.[1]?.trim();
@@ -22,6 +36,7 @@ function parseDescription(content: string): string | undefined {
 
 describe('bundled skills', () => {
   const skillFiles = findSkillFiles(bundledRoot);
+  const manifestFiles = findFiles(bundledRoot, 'skill.json');
 
   it('finds at least one bundled SKILL.md to validate', () => {
     expect(skillFiles.length).toBeGreaterThan(0);
@@ -36,4 +51,44 @@ describe('bundled skills', () => {
       expect((description as string).length).toBeLessThanOrEqual(MAX_SKILL_DESCRIPTION_CHARS);
     });
   }
+
+  it('parses bundled skill manifests with unique ids and valid referenced files', () => {
+    const ids = new Set<string>();
+
+    for (const file of manifestFiles) {
+      const manifest = JSON.parse(readFileSync(file, 'utf8'));
+      const validation = validateSkillManifest(manifest);
+
+      expect(validation.issues, file).toEqual([]);
+      expect(validation.success, file).toBe(true);
+      expect(ids.has(validation.manifest!.id), `duplicate id ${validation.manifest!.id}`).toBe(false);
+      ids.add(validation.manifest!.id);
+      expect(existsSync(join(dirname(file), validation.manifest!.entrypoint)), `${file} entrypoint`).toBe(true);
+      for (const ref of validation.manifest!.referenceFiles ?? []) {
+        expect(existsSync(join(dirname(file), ref)), `${file} reference ${ref}`).toBe(true);
+      }
+    }
+  });
+
+  it('runs bundled manifest routing examples through the catalog selector', () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'mitii-skills-'));
+    try {
+      const workspaceSkills = join(workspace, '.mitii', 'skills');
+      cpSync(bundledRoot, workspaceSkills, { recursive: true });
+      const catalog = new SkillCatalogService(workspace);
+      catalog.refresh();
+      const runner = new SkillTestRunner(catalog);
+
+      for (const entry of catalog.listEntries()) {
+        if ((entry.manifest.tests?.length ?? 0) === 0) continue;
+        const result = runner.run(entry.id);
+        expect(result.results, entry.id).toEqual(
+          expect.arrayContaining(result.results.map(() => expect.objectContaining({ passed: true })))
+        );
+        expect(result.failed, entry.id).toBe(0);
+      }
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
 });

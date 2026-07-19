@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import type {
   AgentLiveStatusView,
-  PlanPhaseView,
   PlanStepView,
   PlanView,
 } from '../../../vscode/webview/messages';
@@ -21,13 +20,6 @@ const STATUS_LABEL: Record<PlanStepView['status'], string> = {
   blocked: 'Awaiting approval',
   failed: 'Failed',
   blocked_by_dependency: 'Waiting',
-};
-
-const PHASE_LABEL: Record<PlanPhaseView['phase'], string> = {
-  diagnostics: 'Diagnostics',
-  review: 'Review',
-  execute: 'Execute',
-  verify: 'Verify',
 };
 
 function statusGlyph(status: PlanStepView['status']): string {
@@ -107,38 +99,6 @@ function PlanStepRow({ step, index }: { step: PlanStepView; index: number }) {
   );
 }
 
-function PlanPhaseSection({ phase }: { phase: PlanPhaseView }) {
-  const [collapsed, setCollapsed] = useState(false);
-  const done = phase.steps.filter((step) => step.status === 'done').length;
-
-  return (
-    <section className={`plan-phase plan-phase--${phase.phase}`}>
-      <button
-        type="button"
-        className="plan-phase__header"
-        onClick={() => setCollapsed((value) => !value)}
-        aria-expanded={!collapsed}
-      >
-        <span className="plan-phase__chevron" aria-hidden="true">
-          {collapsed ? '▸' : '▾'}
-        </span>
-        <span className="plan-phase__title">{phase.title}</span>
-        <span className="plan-phase__badge">{PHASE_LABEL[phase.phase]}</span>
-        <span className="plan-phase__progress">
-          {done}/{phase.steps.length}
-        </span>
-      </button>
-      {!collapsed && (
-        <ol className="plan-panel__steps plan-panel__steps--nested">
-          {phase.steps.map((step, index) => (
-            <PlanStepRow key={step.id} step={step} index={index} />
-          ))}
-        </ol>
-      )}
-    </section>
-  );
-}
-
 export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = null }: PlanPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [autoCollapsedSignature, setAutoCollapsedSignature] = useState<string | null>(null);
@@ -166,7 +126,6 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
   const running = plan.steps.find((step) => step.status === 'running');
   const runningIndex = running ? plan.steps.findIndex((step) => step.id === running.id) : -1;
   const isPlanComplete = hasSteps && done === plan.steps.length;
-  const phases = plan.phases?.length ? plan.phases : undefined;
   const plannerState = isPlanningSession
     ? 'Planning'
     : isPlanComplete || plan.status === 'completed'
@@ -215,10 +174,8 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
         </span>
         <div className="plan-panel__header">
           <div className="plan-panel__headline">
-            <p className="plan-panel__eyebrow">
-              {plannerState}
-            </p>
-            <h2>{plan.goal}</h2>
+            <h2>Plan</h2>
+            {plan.goal && <p className="plan-panel__goal">{plan.goal}</p>}
             {isPlanningSession && (
               <p className="plan-panel__running" role="status">
                 <span className="plan-panel__spinner plan-panel__spinner--inline" aria-hidden="true" />
@@ -244,6 +201,7 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
             {collapsed && showHeaderSpinner && (
               <span className="plan-panel__spinner plan-panel__spinner--meta" aria-hidden="true" />
             )}
+            <span className="plan-panel__state">{plannerState}</span>
             {hasSteps && (
               <span className="plan-panel__progress">{done}/{plan.steps.length}</span>
             )}
@@ -298,13 +256,7 @@ export function PlanPanel({ plan, mode = 'plan', loading = false, liveStatus = n
             </details>
           )}
 
-          {phases ? (
-            <div className="plan-panel__phases">
-              {phases.map((phase) => (
-                <PlanPhaseSection key={phase.id} phase={phase} />
-              ))}
-            </div>
-          ) : hasSteps ? (
+          {hasSteps ? (
             <ol className="plan-panel__steps">
               {plan.steps.map((step, index) => (
                 <PlanStepRow key={step.id} step={step} index={index} />

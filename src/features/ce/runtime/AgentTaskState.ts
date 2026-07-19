@@ -759,15 +759,23 @@ function formatLineRange(input: Record<string, unknown>): string {
 export function normalizeDiagnosticKey(command: string): string | null {
   const cmd = command.trim().toLowerCase();
   if (!cmd) return null;
+  const project = commandProjectScope(cmd);
+  const scoped = (capability: string): string =>
+    project === '.' ? capability : `${capability}:${project}`;
   if (/\bdepcheck\b/.test(cmd)) return 'depcheck';
   if (/\bknip\b/.test(cmd)) return 'audit-dead-code';
   if (/audit-dependencies/.test(cmd)) return 'audit-dependencies';
   if (/audit-vulnerabilities/.test(cmd) || /\b(?:npm|pnpm|yarn)\s+audit\b/.test(cmd)) return 'audit-vulnerabilities';
-  if (/\beslint\b/.test(cmd)) return cmd.includes('--fix') ? 'eslint:fix' : 'eslint';
+  if (/\beslint\b/.test(cmd)) return scoped(cmd.includes('--fix') ? 'eslint:fix' : 'eslint');
   if (/\bnpm\s+(ls|list)\b/.test(cmd)) return 'npm-ls';
-  if (/\bdocusaurus\s+build\b/.test(cmd) || /\bnpm\s+run\s+build(?:\s|$)/.test(cmd)) return 'docs-build';
-  if (/\btsc\b/.test(cmd) || /\btypescript\b/.test(cmd)) return 'tsc';
-  if (/\bpnpm\s+--filter\s+docs\s+build\b/.test(cmd)) return 'docs-build';
+  if (/\bdocusaurus\s+build\b/.test(cmd) || /(?:^|\/)(?:apps\/)?docs(?:\/|$)/.test(project)) {
+    return scoped('docs-build');
+  }
+  if (/\btsc\b/.test(cmd) || /\btypescript\b/.test(cmd)) return scoped('tsc');
+  const packageScript = cmd.match(
+    /\b(?:npm|pnpm|yarn)\s+(?:(?:--filter|-f|--workspace|-w)\s+\S+\s+|workspace\s+\S+\s+)?(?:-r\s+|--recursive\s+)?(?:run\s+)?(test|lint|build|compile|typecheck|check|verify|validate|doctor)\b/
+  );
+  if (packageScript) return scoped(packageScript[1]);
   if (/\bgrep\b|\brg\b/.test(cmd)) return 'grep/rg';
   if (/\bgit\s+diff\b/.test(cmd)) {
     if (/--cached|--staged/.test(cmd)) return 'git-diff:cached';
@@ -778,11 +786,23 @@ export function normalizeDiagnosticKey(command: string): string | null {
   return null;
 }
 
+function commandProjectScope(command: string): string {
+  const cd = command.match(/^cd\s+(['"]?)([^'"&;]+)\1\s*&&/);
+  if (cd) return normalizeScopePath(cd[2].trim()).replace(/^\.\//, '') || '.';
+  const pnpmFilter = command.match(/\bpnpm\s+(?:--filter|-f)\s+(\S+)/);
+  if (pnpmFilter) return normalizeScopePath(pnpmFilter[1].replace(/^['"]|['"]$/g, ''));
+  const npmWorkspace = command.match(/\bnpm\s+(?:--workspace|-w)(?:=|\s+)(\S+)/);
+  if (npmWorkspace) return normalizeScopePath(npmWorkspace[1].replace(/^['"]|['"]$/g, ''));
+  const yarnWorkspace = command.match(/\byarn\s+workspace\s+(\S+)/);
+  if (yarnWorkspace) return normalizeScopePath(yarnWorkspace[1].replace(/^['"]|['"]$/g, ''));
+  return '.';
+}
+
 function isPostEditVerificationKey(key: string): boolean {
-  return key === 'docs-build' ||
-    key === 'tsc' ||
-    key === 'eslint' ||
-    key === 'eslint:fix' ||
+  const capability = key.split(':', 1)[0];
+  return ['docs-build', 'build', 'compile', 'test', 'lint', 'typecheck', 'check', 'verify', 'validate', 'doctor'].includes(capability) ||
+    capability === 'tsc' ||
+    capability === 'eslint' ||
     key === 'npm-ls' ||
     key === 'git-diff' ||
     key.startsWith('git-diff:');

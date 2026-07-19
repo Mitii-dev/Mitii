@@ -2,5 +2,8 @@ packages:
   - 'tools/*'
   - 'packages/*'
 
+overrides:
+  protobufjs: ^7.6.3
+
 onlyBuiltDependencies:
   - sharp

@@ -37,6 +37,8 @@ const VALIDATION_BLOCK_MESSAGE =
 
 const REPEATED_TOOL_INPUT_FAILURE_PREFIX = 'Stopped after repeated identical tool failure';
 
+const WRITE_TOOL_NAMES = new Set(['apply_patch', 'write_file']);
+
 /**
  * Tool filtering (e.g. filterActModeTools) only controls what's advertised to the model —
  * nothing previously stopped the model from calling an excluded tool name anyway (it would
@@ -264,6 +266,11 @@ export class AgentLoop {
     let noWriteToolRounds = 0;
     let writeChurnNudgeUsed = false;
     let synthesizeOnly = false;
+    /** Narrows the offered tools to apply_patch/write_file when no-progress fires on an
+     *  edit task that hasn't written yet — the model already has the failure evidence it
+     *  needs, so cutting off run_command/read tools (not everything) pushes it to fix the
+     *  known issue instead of stopping with a text-only report. Cleared once a write lands. */
+    let writeOnlyMode = false;
     const recentToolAttempts: ToolAttemptRecord[] = [];
     const hardLimit = maxSteps + maxAutoContinues * maxSteps;
 
@@ -288,7 +295,7 @@ export class AgentLoop {
 
       for await (const delta of provider.complete({
         messages,
-        tools: synthesizeOnly ? [] : tools,
+        tools: synthesizeOnly ? [] : writeOnlyMode ? tools.filter((t) => WRITE_TOOL_NAMES.has(t.function.name)) : tools,
         toolChoice: synthesizeOnly ? 'none' : 'auto',
         stream: true,
         reasoningEffort: options?.reasoningEffort,
@@ -469,6 +476,7 @@ export class AgentLoop {
           nonWriteOnlyTurn = false;
           if (completedRealSideEffect) {
             writeToolCallsMade = true;
+            writeOnlyMode = false;
           }
         }
         if (
@@ -479,6 +487,7 @@ export class AgentLoop {
           requiredSideEffectMade = true;
           if (requiredOperation === 'workspace_write' || requiredOperation === 'execute_saved_plan') {
             writeToolCallsMade = true;
+            writeOnlyMode = false;
             nonWriteOnlyTurn = false;
           }
         }
@@ -585,15 +594,30 @@ export class AgentLoop {
         messages.push({ role: 'user', content: VALIDATION_BLOCK_MESSAGE });
       }
 
+      // Both churn-detectors below can fire on the same evidence: repeated failed reads/verifications
+      // for an edit task that already has enough information to act on. When that's the case, narrow
+      // to write tools instead of ending the turn empty-handed — the model still has real work to do.
+      const canFixInstead = Boolean(options?.requiresWrite) && !isReadOnlyRoute && !writeToolCallsMade;
+
       const noProgress = evaluateNoProgress(recentToolAttempts);
       if (noProgress.stuck) {
-        synthesizeOnly = true;
-        messages.push({
-          role: 'user',
-          content:
-            `NO_PROGRESS_STOP: ${noProgress.reason ?? 'Repeated tool activity is not advancing the task.'} ` +
-            'Tools are disabled for this loop. Summarize the exact blocker or completed evidence now; the plan executor may retry the step with fresh state.',
-        });
+        if (canFixInstead) {
+          writeOnlyMode = true;
+          messages.push({
+            role: 'user',
+            content:
+              `NO_PROGRESS_STOP: ${noProgress.reason ?? 'Repeated tool activity is not advancing the task.'} ` +
+              'run_command and other exploration tools are disabled for this loop. The failures above already show the exact issue(s) — call apply_patch or write_file now to fix them. Do not call any other tool.',
+          });
+        } else {
+          synthesizeOnly = true;
+          messages.push({
+            role: 'user',
+            content:
+              `NO_PROGRESS_STOP: ${noProgress.reason ?? 'Repeated tool activity is not advancing the task.'} ` +
+              'Tools are disabled for this loop. Summarize the exact blocker or completed evidence now; the plan executor may retry the step with fresh state.',
+          });
+        }
       }
 
       if (options?.getTaskState?.()?.shouldForceSynthesis()) {
@@ -662,6 +686,16 @@ export class AgentLoop {
             content:
               `${repeatedInputFailureStop}\n\n` +
               'Tools are now disabled. Answer the original request using the successful evidence already gathered, and briefly identify any online verification that could not be completed.',
+          });
+          continue;
+        }
+        if (canFixInstead) {
+          writeOnlyMode = true;
+          messages.push({
+            role: 'user',
+            content:
+              `${repeatedInputFailureStop}\n\n` +
+              'run_command and other exploration tools are disabled for this loop. The failures above already show the exact issue(s) — call apply_patch or write_file now to fix them. Do not call any other tool.',
           });
           continue;
         }

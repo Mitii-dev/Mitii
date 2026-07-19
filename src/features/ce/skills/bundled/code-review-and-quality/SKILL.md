@@ -8,6 +8,8 @@ description: Multi-axis code review (correctness, readability, architecture, sec
 ## Quick Reference
 
 - Review every mergeable change across five axes: correctness, readability, architecture, security, performance.
+- Determine the review target first: uncommitted diff, staged diff, commit, branch comparison, PR URL/number, or specific files.
+- Read the full affected files around changed code; diffs alone are not enough for correctness or security review.
 - Approve when the change improves overall health — not only when it is perfect.
 - Label findings by severity; block on Critical/Required issues.
 - For deep checklists see `references/security-checklist.md` and `references/performance-checklist.md`.
@@ -21,6 +23,7 @@ Multi-dimensional code review with quality gates. Every change gets reviewed bef
 ## When to Use
 
 - Before merging any PR or change
+- When the user says `/review`, "review this PR", "review my changes", "review this diff", or points at a commit/branch/PR
 - After completing a feature implementation
 - When another agent or model produced code you need to evaluate
 - When refactoring existing code
@@ -39,6 +42,8 @@ Does the code do what it claims to do?
 - Are error paths handled (not just the happy path)?
 - Does it pass all tests? Are the tests actually testing the right things?
 - Are there off-by-one errors, race conditions, or state inconsistencies?
+
+When the target is not explicit, review uncommitted changes first with `git diff` and staged changes with `git diff --cached`. For commits use `git show`; for branches compare against the named base; for GitHub PRs use repository PR tooling when available.
 
 ### 2. Readability & Simplicity
 

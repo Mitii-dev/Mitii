@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useMachine } from '@xstate/react';
 import { motion } from 'framer-motion';
-import type { AgentActivityEntry, AgentLiveStatusView } from '../../../vscode/webview/messages';
+import type { AgentActivityEntry, AgentLiveStatusView, SubagentStatusView } from '../../../vscode/webview/messages';
 import { agentActivityMachine, type ActivityPhase } from '../state/agentActivityMachine';
 
 interface AgentActivityPanelProps {
@@ -9,6 +9,7 @@ interface AgentActivityPanelProps {
   loading: boolean;
   liveStatus?: AgentLiveStatusView | null;
   waitingForApproval?: boolean;
+  subagents?: SubagentStatusView[];
 }
 
 const KIND_LABEL: Record<AgentActivityEntry['kind'], string> = {
@@ -32,7 +33,7 @@ function resolvePhase(loading: boolean, waitingForApproval: boolean, entries: Ag
   return 'complete';
 }
 
-export function AgentActivityPanel({ entries, loading, liveStatus, waitingForApproval = false }: AgentActivityPanelProps) {
+export function AgentActivityPanel({ entries, loading, liveStatus, waitingForApproval = false, subagents = [] }: AgentActivityPanelProps) {
   const [snapshot, send] = useMachine(agentActivityMachine);
   const phase = snapshot.value as ActivityPhase;
   const visible = entries.slice(-10);
@@ -125,8 +126,40 @@ export function AgentActivityPanel({ entries, loading, liveStatus, waitingForApp
           );
         })}
       </ol>
+      {subagents.length > 0 && (
+        <ol className="assistant-thinking__subagents" aria-label="Subagent runs">
+          {subagents.slice(-6).map((run) => (
+            <li key={run.id} className={`assistant-thinking__subagent assistant-thinking__subagent--${run.status}`}>
+              <span className="assistant-thinking__subagent-status">{formatSubagentStatus(run.status)}</span>
+              <span className="assistant-thinking__subagent-body">
+                <span className="assistant-thinking__subagent-title">
+                  {run.type ?? 'subagent'}: {summarizeDetail(run.task)}
+                </span>
+                {(run.summary || run.error || run.focus) && (
+                  <span className="assistant-thinking__subagent-detail">
+                    {summarizeDetail(run.error ?? run.summary ?? run.focus ?? '')}
+                  </span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
     </motion.section>
   );
+}
+
+function formatSubagentStatus(status: SubagentStatusView['status']): string {
+  switch (status) {
+    case 'running':
+      return 'run';
+    case 'done':
+      return 'done';
+    case 'error':
+      return 'error';
+    case 'queued':
+      return 'queued';
+  }
 }
 
 function summarizeDetail(detail: string): string {

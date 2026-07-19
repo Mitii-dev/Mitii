@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.7.75",
+  "version": "2.7.76",
   "publisher": "mitii",
   "icon": "media/mitii-short-logo.png",
   "license": "AGPL-3.0-or-later",
@@ -1586,6 +1586,7 @@
     "benchmark:manual": "pnpm --filter @mitii/benchmark benchmark:manual",
     "benchmark:manual:validate": "pnpm --filter @mitii/benchmark benchmark:manual:validate",
     "benchmark:smoke": "pnpm --filter @mitii/benchmark benchmark:smoke",
+    "build": "pnpm run compile",
     "check:architecture": "vitest run test/architecture/target-boundaries.test.ts",
     "check:circular-deps": "node scripts/check-circular-deps.mjs",
     "check:missing-types": "bash scripts/check-missing-types.sh",
@@ -1643,6 +1644,8 @@
     "test:daemon": "vitest run test/daemon.test.ts",
     "test:parallel": "vitest run test/parallel-agents.test.ts",
     "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "verify": "pnpm run typecheck && pnpm test && pnpm run build",
     "version:bump": "node scripts/bump-version.mjs",
     "version:major": "pnpm version major --no-git-tag-version --force && pnpm run readme:sync-version",
     "version:minor": "pnpm version minor --no-git-tag-version --force && pnpm run readme:sync-version",
@@ -1700,11 +1703,6 @@
     "ignoreDependencies": [
       "madge"
     ]
-  },
-  "pnpm": {
-    "overrides": {
-      "protobufjs": "^7.6.3"
-    }
   },
   "packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad"
 }

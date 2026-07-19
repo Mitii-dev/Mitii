@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "id": "react-next-performance",
+  "name": "React Next performance",
+  "description": "Optimize React and Next.js render, bundle, hydration, data-fetch, Server Component, and Core Web Vitals issues with targeted rules.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": ["ask", "plan", "agent"],
+  "intents": ["feature", "bugfix", "refactor"],
+  "taskKinds": ["implementation", "debugging", "explicit_plan"],
+  "triggers": ["react performance", "next.js performance", "core web vitals", "bundle size", "rerender", "hydration", "waterfall", "server component", "rsc", "next/dynamic"],
+  "negativeTriggers": ["database query", "backend api latency", "non-react", "visual redesign", "component library api"],
+  "languages": ["typescript", "javascript"],
+  "frameworks": ["react", "next.js", "nextjs"],
+  "requiredTools": ["read_file", "search"],
+  "optionalTools": ["apply_patch", "run_command", "browser"],
+  "requiredCapabilities": ["repository-read"],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": ["references/rules/_sections.md"],
+  "maxInjectionChars": 6500,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 17,
+  "tags": ["react", "nextjs", "performance", "web-vitals"],
+  "tests": [
+    {
+      "id": "bundle-regression",
+      "name": "Selects for React bundle performance",
+      "request": "Fix the Next.js bundle size regression and rerender issue on the dashboard",
+      "mode": "agent",
+      "repositoryFacts": {
+        "languages": ["typescript"],
+        "frameworks": ["next.js"],
+        "paths": ["app/dashboard/page.tsx"]
+      },
+      "availableTools": ["read_file", "search", "apply_patch", "run_command"],
+      "availableCapabilities": ["repository-read", "workspace-write"],
+      "expected": "selected",
+      "maxInjectionChars": 6500
+    },
+    {
+      "id": "reject-backend-latency",
+      "name": "Rejects non-React backend latency",
+      "request": "Optimize backend API latency caused by a database query",
+      "mode": "agent",
+      "repositoryFacts": {
+        "languages": ["typescript"],
+        "frameworks": ["react"]
+      },
+      "availableTools": ["read_file", "search"],
+      "availableCapabilities": ["repository-read"],
+      "expected": "rejected"
+    }
+  ]
+}

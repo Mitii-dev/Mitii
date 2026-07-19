@@ -90,12 +90,42 @@ export function parsePlanFromText(text: string): ThunderPlan | null {
     if (parsed.goal && Array.isArray(parsed.steps)) {
       parsed.assumptions = Array.isArray(parsed.assumptions) ? parsed.assumptions : [];
       parsed.requiredApprovals = Array.isArray(parsed.requiredApprovals) ? parsed.requiredApprovals : [];
-      return normalizePlanSafety(parsed);
+      return normalizePlanSafety(normalizePlanStepPhases(parsed));
     }
   } catch {
     return null;
   }
   return null;
+}
+
+export function normalizePlanStepPhases(plan: ThunderPlan, mode = 'agent'): ThunderPlan {
+  plan.steps = plan.steps.map((step, index) => ({
+    ...step,
+    status: step.status ?? 'pending',
+    phase: normalizeDeclaredStepPhase(step, index, mode),
+  }));
+  return plan;
+}
+
+export function normalizeDeclaredStepPhase(
+  step: {
+    title: string;
+    objective?: string;
+    phase?: PlanPhase;
+    tools?: string[];
+    files?: string[];
+  },
+  index: number,
+  mode = 'agent'
+): PlanPhase {
+  const declared = coercePlanPhase(step.phase);
+  const inferred = inferStepPhase(`${step.title} ${step.objective ?? ''}`, index);
+  const declaredLooksWrong =
+    declared === 'execute' &&
+    inferred === 'diagnostics' &&
+    !stepImpliesWrite(step);
+  const phase = declared && !declaredLooksWrong ? declared : inferred;
+  return resolveStepPhaseLock({ ...step, phase }, mode) ?? phase;
 }
 
 export function normalizePlanSafety(plan: ThunderPlan): ThunderPlan {
@@ -191,7 +221,7 @@ function classifyCommandSegmentEffect(cmd: string, extraPatterns: string[] = [])
   if (/^(npx\s+(--yes\s+)?)?knip\b/i.test(cmd)) return 'inspect_only';
   if (/^npx\s+(--yes\s+)?docusaurus\b/i.test(cmd)) return 'verification_with_artifacts';
   if (/^npx\s+eslint\b/i.test(cmd) && !/\s--fix\b/.test(cmd)) return 'verification_with_artifacts';
-  if (/^(npx\s+(--yes\s+)?)?tsc\s+[\s\S]*--noEmit\b/i.test(cmd)) return 'inspect_only';
+  if (/^(?:(?:npx\s+(?:--yes\s+)?)|(?:pnpm\s+exec\s+))?tsc\s+[\s\S]*--noEmit\b/i.test(cmd)) return 'inspect_only';
   if (/^(npx\s+(--yes\s+)?)?vitest\s+(run\b|--run\b)/i.test(cmd)) return 'verification_with_artifacts';
   if (/^(npx\s+(--yes\s+)?)?jest\b/i.test(cmd)) return 'verification_with_artifacts';
   // Align npm/pnpm/yarn: audit + outdated are read-only advisory lookups (no lockfile mutation).
@@ -201,9 +231,9 @@ function classifyCommandSegmentEffect(cmd: string, extraPatterns: string[] = [])
   if (/^npm\s+(?:(?:--workspace|-w)=?\s*\S+\s+)?(?:ls|list|outdated|audit|why|view|info)\b/i.test(cmd)) return 'inspect_only';
   if (/^npm\s+(?:(?:--workspace|-w)=?\s*\S+\s+)?run\s+(lint|test|typecheck|check|build|compile|verify|validate|doctor)\b/i.test(cmd)) return 'verification_with_artifacts';
   if (/^yarn\s+(?:workspace\s+\S+\s+)?(?:why|list|info|outdated|audit)\b/i.test(cmd)) return 'inspect_only';
-  if (/^yarn\s+(?:workspace\s+\S+\s+)?(?:lint|test|build|compile|typecheck|check|verify|validate|doctor)\b/i.test(cmd)) return 'verification_with_artifacts';
+  if (/^yarn\s+(?:workspace\s+\S+\s+)?(?:run\s+)?(?:lint|test|build|compile|typecheck|check|verify|validate|doctor)\b/i.test(cmd)) return 'verification_with_artifacts';
   if (/^pnpm\s+(?:(?:--filter|-F)\s+\S+\s+)?(?:-r\s+|--recursive\s+)?(?:why|list|ls|outdated|audit)\b/i.test(cmd)) return 'inspect_only';
-  if (/^pnpm\s+(?:(?:--filter|-F)\s+\S+\s+)?(?:-r\s+|--recursive\s+)?(?:lint|test|build|compile|typecheck|check|verify|validate|doctor)\b/i.test(cmd)) return 'verification_with_artifacts';
+  if (/^pnpm\s+(?:(?:--filter|-F)\s+\S+\s+)?(?:-r\s+|--recursive\s+)?(?:run\s+)?(?:lint|test|build|compile|typecheck|check|verify|validate|doctor)\b/i.test(cmd)) return 'verification_with_artifacts';
   if (/^(?:\.\/mvnw|mvn)\s+test\b/i.test(cmd)) return 'verification_with_artifacts';
   if (/^(?:\.\/gradlew|gradle)\s+test\b/i.test(cmd)) return 'verification_with_artifacts';
   if (/^cargo\s+test\b/i.test(cmd)) return 'verification_with_artifacts';
@@ -457,6 +487,11 @@ export function inferStepPhase(title: string, index: number): PlanPhase {
     /\b(run|rerun|execute|check|ensure)\b[\s\S]*\bbuild\b/.test(text) ||
     /\bbuild\b[\s\S]*\b(pass|passes|succeed|succeeds|verification|output)\b/.test(text);
   if (hasVerificationIntent) return 'verify';
+  const hasReadOnlyDiagnosticIntent =
+    /\b(capture|reproduce|inspect|analy[sz]e|read|identify|diagnos|investigate|trace|collect|list|search)\b/.test(text);
+  const hasStrongWriteIntent =
+    /\b(implement|edit|patch|write|remove|delete|update|fix|rewrite|redesign|overhaul|refactor|restore|revert|copy|move|migrate|create|add)\b/.test(text);
+  if (hasReadOnlyDiagnosticIntent && !hasStrongWriteIntent) return 'diagnostics';
   if (/\b(execute|implement|edit|patch|write|remove|update|fix|rewrite|redesign|overhaul|refactor|prepare|create|add|build|theme|style|component)\b/.test(text)) {
     return 'execute';
   }
@@ -466,7 +501,11 @@ export function inferStepPhase(title: string, index: number): PlanPhase {
 }
 
 const WRITE_INTENT_PATTERN =
-  /\b(fix|rewrite|redesign|overhaul|implement|refactor|update|patch|write|prepare|create|add|remove|migrate|build|style|theme|component)\b/i;
+  /\b(fix|rewrite|redesign|overhaul|implement|refactor|update|patch|write|prepare|create|add|remove|delete|restore|revert|copy|move|migrate|build|style|theme|component)\b/i;
+const READ_ONLY_STEP_PATTERN =
+  /\b(capture|reproduce|inspect|analy[sz]e|read|identify|diagnos|investigate|trace|collect|list|search)\b/i;
+const STRONG_WRITE_INTENT_PATTERN =
+  /\b(fix|rewrite|redesign|overhaul|implement|refactor|update|patch|write|prepare|create|add|remove|delete|restore|revert|copy|move|migrate|style|theme|component)\b/i;
 
 export function stepImpliesWrite(step: {
   title: string;
@@ -477,14 +516,22 @@ export function stepImpliesWrite(step: {
   const text = `${step.title} ${step.objective ?? ''}`;
   const lower = text.toLowerCase();
   if (step.tools?.some((t) => ['write_file', 'apply_patch'].includes(t))) return true;
+  if (READ_ONLY_STEP_PATTERN.test(lower) && !STRONG_WRITE_INTENT_PATTERN.test(lower)) {
+    return false;
+  }
   if (
     /\b(audit|inspect|analyze|diagnostic|identify)\b/.test(lower) &&
-    !/\b(fix|rewrite|redesign|overhaul|implement|refactor|update|patch|write|prepare|create|add|remove|migrate|build|style|theme|component)\b/.test(lower)
+    !STRONG_WRITE_INTENT_PATTERN.test(lower)
   ) {
     return false;
   }
   if (WRITE_INTENT_PATTERN.test(text)) return true;
   return false;
+}
+
+function coercePlanPhase(phase: unknown): PlanPhase | undefined {
+  if (phase === 'diagnostics' || phase === 'review' || phase === 'execute' || phase === 'verify') return phase;
+  return undefined;
 }
 
 /** Resolve the effective phase lock for a plan step (Agent mode upgrades write steps stuck in diagnostics). */
@@ -540,12 +587,6 @@ export function isToolAllowedInPlanPhase(
       return {
         allowed: false,
         reason: `${phaseLabel(phase)} allows only read-only shell commands.`,
-      };
-    }
-    if (toolName === 'run_command' && classifyCommandEffect(typeof input.command === 'string' ? input.command : '') !== 'inspect_only') {
-      return {
-        allowed: false,
-        reason: `${phaseLabel(phase)} allows only inspect-only shell commands.`,
       };
     }
   }

@@ -10,6 +10,8 @@ description: Systematic root-cause debugging for failing tests, broken builds, a
 - Stop the line: preserve evidence, stop feature work, triage systematically.
 - Reproduce first; change one variable at a time; verify the fix with a failing→passing test.
 - Prefer logs, stack traces, and minimal repros over speculative rewrites.
+- Do not propose fixes until a root-cause hypothesis is supported by observed evidence.
+- If three focused fix attempts fail, pause and reassess architecture or assumptions instead of stacking more patches.
 - Escalate to `log-audit` for large log corpora; to TDD for prove-it fixes.
 
 ## Overview
@@ -39,6 +41,18 @@ When anything unexpected happens:
 ```
 
 **Don't push past a failing test or broken build to work on the next feature.** Errors compound. A bug in Step 3 that goes unfixed makes Steps 4-6 wrong.
+
+## Root-Cause Rule
+
+Before editing, state the current evidence and the narrow root-cause hypothesis it supports. If the evidence only identifies a symptom, keep investigating.
+
+For multi-component failures, trace data across boundaries before fixing:
+
+- Entry point: request, event, CLI command, job, or test setup
+- Boundary crossing: UI to API, API to service, service to database, workflow to script, script to external tool
+- Output: response, log line, persisted state, generated file, or exit code
+
+Add temporary diagnostics only when they will identify the failing boundary, and remove or keep them intentionally before finishing.
 
 ## The Triage Checklist
 
@@ -141,6 +155,8 @@ Root cause fix (good):
 ```
 
 Ask: "Why does this happen?" until you reach the actual cause, not just where it manifests.
+
+If a fix does not work, do not layer another unrelated fix on top. Record what the failed attempt proved, form a new hypothesis, and make the next test smaller. After three failed attempts, stop and question whether the architecture, fixture, environment, or mental model is wrong.
 
 ### Step 5: Guard Against Recurrence
 

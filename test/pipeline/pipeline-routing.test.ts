@@ -100,6 +100,38 @@ describe('pipeline route + subtypes', () => {
     expect(resolveSkillsForRoute(route, analysis).activeSkill).toBe('bugfix-workflow');
   });
 
+  it('keeps broad project repairs canonical when Agent depth is deep', () => {
+    const msg = 'Can you please fix all the issues in this project @ai-service';
+    const analysis = analyzeTask(msg, 'agent', { actIntent: 'feature' });
+    const pipeline = resolveTurnPipeline(msg, analysis, {
+      mode: 'agent',
+      userDepth: 'deep',
+      orchestrationEnabled: true,
+    });
+
+    expect(pipeline.route.intent).toBe('bugfix');
+    expect(pipeline.route.executionPath).toBe('orchestrated');
+    expect(pipeline.depthAxis).toBe('deep');
+    expect(pipeline.internalDepth).toBe('full');
+    expect(pipeline.shouldUsePlanner).toBe(true);
+    expect(pipeline.skills.activeSkill).toBe('bugfix-workflow');
+  });
+
+  it('does not allow direct execution to carry deep planning depth', () => {
+    const msg = 'fix typo in src/auth.ts';
+    const analysis = analyzeTask(msg, 'agent');
+    const pipeline = resolveTurnPipeline(msg, analysis, {
+      mode: 'agent',
+      userDepth: 'deep',
+      orchestrationEnabled: true,
+    });
+
+    expect(pipeline.route.executionPath).toBe('direct');
+    expect(pipeline.depthAxis).toBe('direct');
+    expect(pipeline.internalDepth).toBe('micro');
+    expect(pipeline.shouldUsePlanner).toBe(false);
+  });
+
   it('resolves docs subtypes', () => {
     expect(resolveDocsSubtype('update the README')).toBe('readme');
     expect(resolveDocsSubtype('fix docusaurus sidebar')).toBe('docusaurus');

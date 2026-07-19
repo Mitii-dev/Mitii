@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "id": "building-components",
+  "name": "Building components",
+  "description": "Build accessible, composable, reusable UI components with clear APIs, states, tokens, docs, and packaging guidance.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": ["ask", "plan", "agent"],
+  "intents": ["feature", "refactor", "docs"],
+  "taskKinds": ["implementation", "explicit_plan", "docs"],
+  "triggers": ["component", "ui component", "component library", "aria", "accessibility", "design tokens", "slots", "aschild", "polymorphic", "controlled", "uncontrolled", "registry", "npm package"],
+  "negativeTriggers": ["landing page", "full page redesign", "core web vitals", "pull request"],
+  "languages": ["typescript", "javascript"],
+  "frameworks": ["react", "next.js", "nextjs"],
+  "requiredTools": ["read_file", "search"],
+  "optionalTools": ["apply_patch", "run_command"],
+  "requiredCapabilities": ["repository-read"],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [
+    "references/accessibility.mdx",
+    "references/composition.mdx",
+    "references/design-tokens.mdx",
+    "references/types.mdx"
+  ],
+  "maxInjectionChars": 6000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 16,
+  "tags": ["frontend", "components", "accessibility", "design-system"],
+  "tests": [
+    {
+      "id": "component-api",
+      "name": "Selects for reusable component API work",
+      "request": "Build an accessible dropdown component with keyboard navigation and typed props",
+      "mode": "agent",
+      "repositoryFacts": {
+        "languages": ["typescript"],
+        "frameworks": ["react"],
+        "paths": ["src/components/dropdown.tsx"]
+      },
+      "availableTools": ["read_file", "search", "apply_patch", "run_command"],
+      "availableCapabilities": ["repository-read", "workspace-write"],
+      "expected": "selected",
+      "maxInjectionChars": 6000
+    },
+    {
+      "id": "reject-full-page",
+      "name": "Rejects full-page visual redesigns",
+      "request": "Redesign the landing page hero and pricing sections",
+      "mode": "agent",
+      "repositoryFacts": {
+        "languages": ["typescript"],
+        "frameworks": ["react"]
+      },
+      "availableTools": ["read_file", "search"],
+      "availableCapabilities": ["repository-read"],
+      "expected": "rejected"
+    }
+  ]
+}

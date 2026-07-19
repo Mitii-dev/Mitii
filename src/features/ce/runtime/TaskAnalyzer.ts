@@ -97,6 +97,15 @@ const DIAGNOSTIC_SCOPE_EXPANDING =
 const FILE_PATH_IN_TEXT =
   /(?:^|\s|['"`])([\w./-]+\.(?:tsx?|jsx?|py|go|rs|json|css|scss|mdx?))\b/i;
 
+const BUGFIX_ACTION =
+  /\b(fix|repair|resolve|correct|debug|troubleshoot)\b/i;
+
+const PROJECT_SCOPE_TARGET =
+  /(?:^|\s)@[\w.-]+\b|\b(?:this|the|entire|whole|full)?\s*(?:project|repo|repository|workspace|codebase|package|service|app|application)\b/i;
+
+const UNBOUNDED_REPAIR_SCOPE =
+  /\b(?:fix|repair|resolve|correct)\s+all\b|\b(?:all|every|entire|whole|full|current)\b[\s\S]{0,80}\b(?:issues?|bugs?|errors?|failures?|problems?|failing tests?|build errors?)\b/i;
+
 const SIMPLE_EDIT =
   /\b(fix typo|rename|change (?:the )?(?:name|text|label)|update import|add comment|format)\b/i;
 
@@ -371,7 +380,12 @@ function classifyTask(text: string): TaskAnalysis {
   const actionCount = primary.match(ACTION_VERBS_GLOBAL)?.length ?? 0;
   const connectorCount = (primary.match(/\b(and|then|also|after that|next)\b/gi) ?? []).length;
   const fileMentions = (primary.match(/[`'"]?[\w./-]+\.(tsx?|jsx?|py|go|rs|json|md|css|scss|yaml|yml)[`'"]?/gi) ?? []).length;
-  const complexity = estimateComplexity(primary);
+  const broadProjectRepair = isBroadProjectRepairRequest(primary);
+  const estimatedComplexity = estimateComplexity(primary);
+  const complexity: TaskComplexity =
+    broadProjectRepair && estimatedComplexity === 'low'
+      ? 'medium'
+      : estimatedComplexity;
 
   const hasImplementationHint = IMPLEMENTATION_HINTS.test(primary);
   const isUiPolishTask = (ACTION_VERBS.test(primary) || hasImplementationHint) && UI_POLISH_SCOPE.test(primary);
@@ -394,6 +408,7 @@ function classifyTask(text: string): TaskAnalysis {
     const hasMaterialAmbiguity =
       /\b(figure out|decide|choose the best|whatever is needed|as appropriate|unsure)\b/i.test(primary);
     const hasDependentComponents =
+      broadProjectRepair ||
       fileMentions >= 5 ||
       /\b(across (?:multiple|all)|(?:for|across)\s+all\s+(?:routes|packages|components|modules|files)|end[- ]to[- ]end|frontend and backend|client and server|child components?|dependent components?|separate\s+\w+\s+mode)\b/i.test(primary);
     const shouldPlan =
@@ -408,7 +423,10 @@ function classifyTask(text: string): TaskAnalysis {
       shouldPlan,
       shouldVerify: true,
       shouldUseSubagents: complexity === 'high',
-      summary: shouldPlan
+      actIntent: broadProjectRepair ? 'bugfix' : undefined,
+      summary: broadProjectRepair
+        ? `Project repair task (${complexity} complexity) — reproduce the current failures, scope to the first error cluster, patch, then verify.`
+        : shouldPlan
         ? `Implementation task (${complexity} complexity) — plan because risk, dependencies, or ambiguity require coordination.`
         : `Implementation task (${complexity} complexity) — execute directly with focused verification.`,
     };
@@ -540,6 +558,10 @@ function applyActIntent(
 function isAuditCleanupRequest(text: string): boolean {
   if (isLogAuditTask(text)) return false;
   return AUDIT_CLEANUP_TARGET.test(text) && AUDIT_CLEANUP_ACTION.test(text);
+}
+
+function isBroadProjectRepairRequest(text: string): boolean {
+  return BUGFIX_ACTION.test(text) && PROJECT_SCOPE_TARGET.test(text) && UNBOUNDED_REPAIR_SCOPE.test(text);
 }
 
 function estimateComplexity(text: string): TaskComplexity {

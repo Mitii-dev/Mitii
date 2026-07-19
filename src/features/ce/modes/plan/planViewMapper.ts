@@ -7,10 +7,12 @@ export function thunderPlanToView(
     status?: PlanView['status'];
     requirementAnalysis?: string;
     appliedSkills?: string[];
+    showInternalPhases?: boolean;
   }
 ): PlanView {
-  const steps = plan.steps.map(thunderStepToView);
-  const phases = buildPhaseViews(plan);
+  const showInternalPhases = Boolean(options?.showInternalPhases);
+  const steps = plan.steps.map((step) => thunderStepToView(step, showInternalPhases));
+  const phases = showInternalPhases ? buildPhaseViews(plan) : [];
 
   return {
     goal: plan.goal,
@@ -24,14 +26,14 @@ export function thunderPlanToView(
   };
 }
 
-function thunderStepToView(step: ThunderPlan['steps'][number]): PlanStepView {
+function thunderStepToView(step: ThunderPlan['steps'][number], includeInternalPhase = false): PlanStepView {
   return {
     id: step.id,
     title: step.title,
     status: step.status,
     risk: step.risk,
     files: step.files,
-    phase: step.phase,
+    phase: includeInternalPhase ? step.phase : undefined,
     objective: step.objective,
     tools: step.tools,
     successCriteria: step.successCriteria,
@@ -50,7 +52,7 @@ function buildPhaseViews(plan: ThunderPlan): PlanPhaseView[] {
           ...step,
           status: plan.steps.find((s) => s.id === step.id)?.status ?? 'pending',
           risk: step.risk ?? 'medium',
-        } as ThunderPlan['steps'][number])
+        } as ThunderPlan['steps'][number], true)
       ),
     }));
   }
@@ -59,7 +61,7 @@ function buildPhaseViews(plan: ThunderPlan): PlanPhaseView[] {
   for (const step of plan.steps) {
     const phase = step.phase ?? 'execute';
     const list = byPhase.get(phase) ?? [];
-    list.push(thunderStepToView(step));
+    list.push(thunderStepToView(step, true));
     byPhase.set(phase, list);
   }
 

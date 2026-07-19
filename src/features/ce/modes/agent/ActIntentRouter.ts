@@ -66,9 +66,21 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
   // Evaluate once and pass down to avoid redundant regex execution
   const isDirectOverride = hasDirectRouteOverride(userMessage);
 
-  if (!isApprovalContinuationMessage(userMessage) && shouldResumeSavedPlan(userMessage, hasActivePlan, isDirectOverride, { actDepth })) {
+  if (hasActivePlan && !isDirectOverride && isApprovalContinuationMessage(userMessage)) {
     return {
-      intent: options.intent ?? fallbackActIntent(analysis),
+      intent: resolveActIntent(options.intent, analysis, userMessage),
+      executionPath: 'resume_saved_plan',
+      complexity: analysis.complexity,
+      shouldUsePlanner: false,
+      shouldUseSubagents: false,
+      shouldVerify: true,
+      summary: 'Approval received — resume the active saved plan from its pending step.',
+    };
+  }
+
+  if (shouldResumeSavedPlan(userMessage, hasActivePlan, isDirectOverride, { actDepth })) {
+    return {
+      intent: resolveActIntent(options.intent, analysis, userMessage),
       executionPath: 'resume_saved_plan',
       complexity: analysis.complexity,
       shouldUsePlanner: false,
@@ -134,7 +146,7 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
     };
   }
 
-  const intent = restorationBugfix ? 'bugfix' : options.intent ?? fallbackActIntent(analysis);
+  const intent = restorationBugfix ? 'bugfix' : resolveActIntent(options.intent, analysis, userMessage);
 
   return {
     intent,
@@ -196,14 +208,34 @@ export function hasDirectRouteOverride(userMessage: string): boolean {
   return DIRECT_ROUTE_OVERRIDE.test(userMessage);
 }
 
-function fallbackActIntent(analysis: TaskAnalysis): ActRoute['intent'] {
+function fallbackActIntent(analysis: TaskAnalysis, userMessage = ''): ActRoute['intent'] {
+  const bugfixEvidence =
+    analysis.kind === 'implementation' &&
+    /\b(fix|repair|resolve|correct|debug|troubleshoot|bug|broken|failing|failed|error|issue)\b/i.test(
+      `${userMessage}\n${analysis.summary}`
+    );
+  if (analysis.actIntent && !(analysis.actIntent === 'feature' && bugfixEvidence)) return analysis.actIntent;
   if (analysis.kind === 'log_audit') return 'log_audit';
   if (analysis.kind === 'audit') return 'audit';
   if (analysis.kind === 'docs') return 'docs';
   if (analysis.kind === 'question') return 'question';
   if (analysis.kind === 'debugging') return 'diagnose';
+  if (bugfixEvidence) return 'bugfix';
   if (analysis.kind === 'implementation' || analysis.kind === 'explicit_plan') return 'feature';
   return 'bugfix';
+}
+
+function resolveActIntent(
+  classifierIntent: ActRoute['intent'] | undefined,
+  analysis: TaskAnalysis,
+  userMessage: string
+): ActRoute['intent'] {
+  const fallback = fallbackActIntent(analysis, userMessage);
+  if (!classifierIntent) return fallback;
+  // The LLM intent classifier can over-generalize broad repair requests as
+  // "feature". Keep deterministic bugfix signals authoritative.
+  if (classifierIntent === 'feature' && fallback === 'bugfix') return 'bugfix';
+  return classifierIntent;
 }
 
 function intentLabel(intent: ActRoute['intent']): string {

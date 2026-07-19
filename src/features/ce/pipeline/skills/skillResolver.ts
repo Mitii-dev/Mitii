@@ -23,11 +23,11 @@ export function resolveSkillsForRoute(
   const deferred: string[] = [];
   let active: string | undefined;
 
-  // Planning sessions: one planning skill, not meta + planning + agent-plan stacked.
-  if (options.planning) {
-    active = options.sourceMode === 'agent' ? 'agent-plan' : 'planning-and-task-breakdown';
-    deferred.push('planning-and-task-breakdown', 'agent-plan');
-  }
+  const planningSupportSkill = options.planning
+    ? options.sourceMode === 'agent'
+      ? 'agent-plan'
+      : 'planning-and-task-breakdown'
+    : undefined;
 
   if (route.isGitTask && taskAnalysis?.gitRoute) {
     const git = taskAnalysis.gitRoute;
@@ -61,11 +61,7 @@ export function resolveSkillsForRoute(
     route.intent === 'diagnose' ||
     /\b(error|failing|failed|debug|repair|fix)\b/i.test(taskAnalysis?.summary ?? '')
   ) {
-    const bugfixSkill = (
-      route.intent === 'bugfix' &&
-      route.operationClass === 'workspace_write' &&
-      route.risk === 'high'
-    ) || isRepositoryRestorationBugfix(taskAnalysis?.summary ?? '')
+    const bugfixSkill = route.intent === 'bugfix' || isRepositoryRestorationBugfix(taskAnalysis?.summary ?? '')
       ? 'bugfix-workflow'
       : 'debugging-and-error-recovery';
     if (!active || !options.planning) active = bugfixSkill;
@@ -73,14 +69,33 @@ export function resolveSkillsForRoute(
   }
 
   const summary = taskAnalysis?.summary ?? '';
+  const componentWork =
+    /\b(component library|ui component|component api|accessible component|aria|keyboard navigation|design tokens?|aschild|polymorphic|controlled|uncontrolled|registry component)\b/i.test(summary);
+  const visualDesignWork =
+    /\b(redesign|visual design|ui polish|frontend design|landing page|hero section|responsive polish|make (?:it|this).*(?:polished|beautiful|modern))\b/i.test(summary);
+  const reactNextPerformanceWork =
+    /\b(react|next\.?js|server components?|rsc|hydration|rerenders?|next\/dynamic)\b/i.test(summary) &&
+    /\b(performance|slow|latency|core web vitals|bundle size|profiling|waterfall|hydration|rerenders?)\b/i.test(summary);
+
+  if (componentWork) {
+    if (!active || (!options.planning && (route.intent === 'feature' || route.intent === 'refactor'))) active = 'building-components';
+    else deferred.push('building-components');
+  }
+  if (visualDesignWork) {
+    if (!active || (!options.planning && (route.intent === 'feature' || route.intent === 'refactor'))) active = 'frontend-design';
+    else deferred.push('frontend-design');
+  }
   if (/\b(code review|review (this|the|my) (pr|pull request|diff|change)|quality gate)\b/i.test(summary)) {
     if (!active || !options.planning) active = 'code-review-and-quality';
     else deferred.push('code-review-and-quality');
   }
   // Do not match Ask "deep profile" summaries — require real perf language / profiling.
-  if (/\b(performance|slow|latency|core web vitals|bundle size|profiling)\b/i.test(summary)) {
-    if (!active || !options.planning) active = 'performance-optimization';
-    else deferred.push('performance-optimization');
+  if (/\b(performance|slow|latency|core web vitals|bundle size|profiling|waterfall|hydration|rerenders?)\b/i.test(summary)) {
+    const performanceSkill = reactNextPerformanceWork ? 'react-next-performance' : 'performance-optimization';
+    const supportingPerformanceSkill = reactNextPerformanceWork ? 'performance-optimization' : undefined;
+    if (!active || !options.planning) active = performanceSkill;
+    else deferred.push(performanceSkill);
+    if (supportingPerformanceSkill && supportingPerformanceSkill !== active) deferred.push(supportingPerformanceSkill);
   }
   if (/\b(console\.log|inline style|tech debt|code smells?)\b/i.test(summary)) {
     deferred.push('code-smells-and-tech-debt');
@@ -91,6 +106,18 @@ export function resolveSkillsForRoute(
   if (/\b(browser|puppeteer|screenshot)\b/i.test(summary)) {
     deferred.push('browser-testing-with-devtools');
   }
+
+  // Planning is workflow support. Domain skills (bugfix/docs/git/etc.) remain
+  // primary so their task-specific process is not displaced by the planner.
+  if (planningSupportSkill) {
+    if (!active) active = planningSupportSkill;
+    else if (options.sourceMode === 'agent' && active !== planningSupportSkill) deferred.push(planningSupportSkill);
+    deferred.push(
+      planningSupportSkill === 'agent-plan'
+        ? 'planning-and-task-breakdown'
+        : 'agent-plan'
+    );
+  }
   if (
     !options.planning &&
     route.intent !== 'docs' &&
@@ -100,7 +127,7 @@ export function resolveSkillsForRoute(
     if (!active) {
       active =
         route.intent === 'bugfix'
-          ? 'debugging-and-error-recovery'
+          ? 'bugfix-workflow'
           : 'test-driven-development';
     } else if (active !== 'test-driven-development') {
       deferred.push('test-driven-development');
@@ -116,10 +143,17 @@ export function resolveSkillsForRoute(
   deferred.push('using-agent-skills');
 
   const deferredUnique = [...new Set(deferred.filter((s) => s !== active))];
-  const injectSkills = active ? [active] : [];
+  const supportingSkill =
+    options.planning && planningSupportSkill && active && active !== planningSupportSkill && deferredUnique.includes(planningSupportSkill)
+      ? planningSupportSkill
+      : undefined;
+  const injectSkills = active
+    ? [active, supportingSkill].filter((skill): skill is string => Boolean(skill))
+    : [];
 
   return {
     activeSkill: active,
+    supportingSkill,
     deferredSkills: deferredUnique,
     suggestedSkills: active ? [active, ...deferredUnique] : deferredUnique,
     injectSkills,

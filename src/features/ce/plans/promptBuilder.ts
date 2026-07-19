@@ -510,6 +510,7 @@ Process:
 7. ${stepGuidance}
 8. ${isDocs ? 'For this documentation task, include explicit discovery for docs routing/config and a verification step that proves the pages are served.' : 'Keep docs routing/config steps out unless the task is documentation-specific.'}${auditGuidance}
 9. Follow any loaded planning skill playbooks for step boundaries, dependency ordering, risk, and verification.
+10. If tool-assisted discovery already captured failing build/typecheck/test output, do NOT add another reproduction step that reruns the same command. Start the executable plan with diagnosing the captured errors, and keep the original command for post-fix verification.
 
 ${PLANNING_EVIDENCE_TRUST_RULE}${trustedSkillBlock}
 
@@ -602,6 +603,7 @@ Output a strict JSON DAG plan with dependsOn edges. Each step must declare:
 - optional tool + args for script-driven steps
 
 When planning skill playbooks are present, use them for step boundaries, acceptance criteria, and verification.
+If tool-assisted discovery already captured failing build/typecheck/test output, do NOT add another reproduction step that reruns the same command. Start with diagnosing the captured errors, and keep the original command for post-fix verification.
 
 ${PLANNING_EVIDENCE_TRUST_RULE}${trustedSkillBlock}
 
@@ -713,6 +715,7 @@ Rules:
 - For dependency/dead-code/vulnerability cleanup audits, inspect package manifests and repo shape before finalizing findings.
 - If a material planning choice is ambiguous after reading available context, call ask_question before producing DISCOVERY_SUMMARY.
 - Finish with a concise "DISCOVERY_SUMMARY" containing facts, relevant files, risks, and verification commands.
+- For bugfix/build-repair discovery, run at most one build/typecheck/test reproduction command per distinct project. If it fails, treat that output as evidence, summarize the exact failing files/errors, and do not retry command variants just to collect the same failures.
 - If planning skill playbooks are loaded above, align discovery findings with their workflow.`,
     },
     {

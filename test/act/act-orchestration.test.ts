@@ -42,6 +42,21 @@ describe('Act orchestration boundary', () => {
     expect(route.shouldUsePlanner).toBe(false);
   });
 
+  it('routes approval continuations with active plans to saved-plan resume', () => {
+    const analysis = analyzeTask('Fix the failing build and update tests', 'agent');
+    const route = routeActIntent('Continue the current approved task from where it paused\nOriginal user request:\nFix the failing build and update tests', analysis, {
+      mode: 'agent',
+      hasActivePlan: true,
+      orchestrationEnabled: true,
+      intent: 'bugfix',
+    });
+
+    expect(route.intent).toBe('bugfix');
+    expect(route.executionPath).toBe('resume_saved_plan');
+    expect(route.shouldUsePlanner).toBe(false);
+    expect(route.summary).toContain('Approval received');
+  });
+
   it('honors direct Agent route overrides before saved-plan resume or replanning', () => {
     const message = '/fast implement the settings workflow, add tests, and update docs';
     const analysis = analyzeTask(message, 'agent');
@@ -102,6 +117,22 @@ describe('Act orchestration boundary', () => {
     expect(route.intent).toBe('docs');
   });
 
+  it('keeps deterministic bugfix evidence over a generic feature classifier intent', () => {
+    const message = 'Can you please fix all the issues in this project @ai-service';
+    const analysis = analyzeTask(message, 'agent', { actIntent: 'feature' });
+    const route = routeActIntent(message, analysis, {
+      mode: 'agent',
+      hasActivePlan: false,
+      orchestrationEnabled: true,
+      actDepth: 'deep',
+      intent: 'feature',
+    });
+
+    expect(route.intent).toBe('bugfix');
+    expect(route.executionPath).toBe('orchestrated');
+    expect(route.shouldUsePlanner).toBe(true);
+  });
+
   it('skips orchestration for quick depth and simple edits', () => {
     const message = 'Can you add Day 17 and  18 to Add Java in Oracle Fusion learn plan';
     const analysis = analyzeTask(message, 'agent');
@@ -133,14 +164,14 @@ describe('Act orchestration boundary', () => {
   it('prepares SDK-aligned Act run plans with skills and saved plan metadata', () => {
     const skillCatalog = {
       get(name: string) {
-        if (name !== 'debugging-and-error-recovery') return undefined;
+        if (name !== 'bugfix-workflow') return undefined;
         return {
           entry: {
-            name: 'debugging-and-error-recovery',
-            description: 'Debug failures',
-            relPath: '.mitii/skills/debugging-and-error-recovery/SKILL.md',
+            name: 'bugfix-workflow',
+            description: 'Fix failures',
+            relPath: '.mitii/skills/bugfix-workflow/SKILL.md',
           },
-          content: '# Debugging\n\nReproduce, isolate, fix, verify.',
+          content: '# Bugfix\n\nReproduce, isolate, fix, verify.',
         };
       },
     } as unknown as SkillCatalogService;
@@ -160,7 +191,7 @@ describe('Act orchestration boundary', () => {
     expect(plan.promptContext).toContain('Saved plan handoff');
     expect(plan.promptContext).toContain('plan-123');
     expect(plan.promptContext).toContain('propose_file_scope is the default Act file contract');
-    expect(plan.appliedSkills).toContain('debugging-and-error-recovery');
+    expect(plan.appliedSkills).toContain('bugfix-workflow');
   });
 
   it('uses catalog-only skill discovery for lean Act tiers', () => {

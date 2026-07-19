@@ -16,9 +16,6 @@ export function resolvePlanningDepthAxis(
   taskAnalysis?: TaskAnalysis,
   userDepth: AgentDepth | string = 'auto'
 ): PlanningDepthAxis {
-  if (userDepth === 'quick') return 'quick';
-  if (userDepth === 'deep') return 'deep';
-
   if (
     route.executionPath === 'direct' ||
     route.executionPath === 'log_audit' ||
@@ -28,6 +25,9 @@ export function resolvePlanningDepthAxis(
   ) {
     return 'direct';
   }
+
+  if (userDepth === 'quick') return 'quick';
+  if (userDepth === 'deep') return 'deep';
 
   if (route.intent === 'docs' && route.docsSubtype === 'readme') {
     return taskAnalysis?.complexity === 'high' ? 'quick' : 'direct';

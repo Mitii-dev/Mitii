@@ -47,4 +47,14 @@ describe('TaskAnalyzer routing regressions', () => {
       expect(analysis.shouldUseSubagents).toBe(false);
     }
   });
+
+  it('treats broad project repair requests as planned bugfix work', () => {
+    const analysis = analyzeTask('Can you please fix all the issues in this project @ai-service', 'agent');
+
+    expect(analysis.kind).toBe('implementation');
+    expect(analysis.complexity).toBe('medium');
+    expect(analysis.shouldPlan).toBe(true);
+    expect(analysis.shouldVerify).toBe(true);
+    expect(analysis.actIntent).toBe('bugfix');
+  });
 });

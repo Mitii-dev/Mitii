@@ -222,6 +222,7 @@ export function App() {
               loading={state.loading}
               agentActivity={state.agentActivity}
               agentLiveStatus={state.agentLiveStatus}
+              subagents={state.subagents}
               approvals={state.approvals}
               showReasoning={state.settings.showReasoning}
               reasoningPreviewMaxChars={state.settings.reasoningPreviewMaxChars}

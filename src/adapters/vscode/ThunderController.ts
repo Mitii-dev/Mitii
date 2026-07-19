@@ -35,7 +35,7 @@ import { MentionedFileContextSource } from '../../adapters/vscode/context/mentio
 import { GitService } from '../../features/ce/context/GitService';
 import { DiagnosticsService, GitDiffContextSource, DiagnosticsContextSource } from '../../adapters/vscode/context/DiagnosticsService';
 import { RepoMapService } from '../../features/ce/context/RepoMapService';
-import { classifyCommandEffect, inferTouchedFilesFromCommand, setVerifyCommandPatterns } from '../../features/ce/plans/PlanActEngine';
+import { setVerifyCommandPatterns } from '../../features/ce/plans/PlanActEngine';
 import { debounce } from '../../kernel/util/debounce';
 import { ChatOrchestrator } from '../../features/ce/orchestration/ChatOrchestrator';
 import { VscodeEditorContextPort } from '../../adapters/vscode/runtime/VscodeEditorContextPort';
@@ -866,7 +866,8 @@ export class ThunderController {
       onPostWrite: async (relPath) => {
         await this.validateAfterWrite(relPath);
       },
-      runVerifyHooks: async (commands, userMessage) => this.runVerifyHooks(commands, userMessage ?? ''),
+      runVerifyHooks: async (commands, userMessage, touchedFiles) =>
+        this.runVerifyHooks(commands, userMessage ?? '', touchedFiles ?? []),
       workspace: ws,
       editorContext: ws ? new VscodeEditorContextPort(ws) : undefined,
       diffPreview: ws ? new VscodeDiffPreviewPort(ws) : undefined,
@@ -1444,12 +1445,15 @@ export class ThunderController {
     this.notifyUi({ agentActivity: this.agentActivity });
   }
 
-  private async runVerifyHooks(commands: string[], userMessage = ''): Promise<string> {
+  private async runVerifyHooks(
+    commands: string[],
+    userMessage = '',
+    touchedFiles: string[] = []
+  ): Promise<string> {
     const workspace = this.resolveWorkspacePath();
     if (!workspace || !this.isWorkspaceTrusted()) return '';
 
     const lines: string[] = [];
-    const touchedFiles = this.getTouchedFilesFromAudit();
     const docsVerification = verifyDocumentationFiles(workspace, touchedFiles);
     const docsVerificationOutput = formatDocumentationVerification(docsVerification);
     if (docsVerificationOutput) {
@@ -1536,28 +1540,6 @@ export class ThunderController {
 
     const parts = [...installLog, `$ ${command}\n${body.slice(0, 4000)}`];
     return parts.join('\n\n');
-  }
-
-  private getTouchedFilesFromAudit(): string[] {
-    const audit = this.toolRuntime.getAuditLog();
-    const files = new Set<string>();
-    for (const { toolName, input, result } of audit) {
-      if (!result.success) continue;
-      if (toolName === 'write_file' || toolName === 'apply_patch') {
-        const path = (input as Record<string, unknown>).path;
-        if (typeof path === 'string') files.add(path);
-      }
-      if (toolName === 'run_command') {
-        const command = (input as Record<string, unknown>).command;
-        if (typeof command === 'string') {
-          const effect = classifyCommandEffect(command);
-          if (effect === 'workspace_mutation' || effect === 'dependency_mutation') {
-            for (const file of inferTouchedFilesFromCommand(command)) files.add(file);
-          }
-        }
-      }
-    }
-    return [...files];
   }
 
   private async validateAfterWrite(relPath: string): Promise<void> {
@@ -3623,19 +3605,10 @@ function buildVectorIndexStatusView(
 
 function toPlanView(plan: import('../../features/ce/plans/PlanActEngine').ThunderPlan | null | undefined): PlanView | null {
   if (!plan) return null;
-  const stepStatus = new Map(plan.steps.map((step) => [step.id, step.status]));
   return {
     ...plan,
     steps: plan.steps.map((step) => ({ ...step })),
-    phases: plan.phases?.map((phase) => ({
-      id: phase.id,
-      title: phase.title,
-      phase: phase.phase,
-      steps: phase.steps.map((step) => ({
-        ...step,
-        status: stepStatus.get(step.id) ?? 'pending',
-      })),
-    })),
+    phases: undefined,
   };
 }
 
