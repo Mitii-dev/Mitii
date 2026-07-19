@@ -1,4 +1,5 @@
 import type { GitService } from '../../../features/ce/context/GitService';
+import { redactSensitiveDiff } from './commitMessagePrompt';
 import type { CommitMessageInput } from './commitMessageTypes';
 
 export async function collectCommitMessageInput(
@@ -15,8 +16,8 @@ export async function collectCommitMessageInput(
   const stagedCollectionMaxChars = Math.min(1_000_000, Math.max(stagedDiffMaxChars * 32, 128_000));
   const unstagedCollectionMaxChars = Math.min(500_000, Math.max(unstagedDiffMaxChars * 16, 64_000));
   const [stagedDiff, unstagedDiff, changedFiles, recentCommits, branch] = await Promise.all([
-    // Fetch beyond the final prompt budget so one large first file does not
-    // prevent later staged files from being represented by budgetDiff().
+    // Fetch beyond the final prompt budget; buildCommitMessagePrompt performs
+    // the authoritative redacted, per-file budget pass.
     git.getStagedDiff(stagedCollectionMaxChars),
     git.getUnstagedDiff(unstagedCollectionMaxChars),
     git.getChangedFilesDetailed(true),
@@ -25,11 +26,8 @@ export async function collectCommitMessageInput(
   ]);
 
   return {
-    stagedDiff: budgetDiff(stagedDiff, {
-      totalMaxChars: stagedDiffMaxChars,
-      perFileMaxChars: options.perFileMaxChars,
-    }),
-    unstagedDiff: budgetDiff(unstagedDiff, {
+    stagedDiff: redactSensitiveDiff(stagedDiff),
+    unstagedDiff: budgetDiff(redactSensitiveDiff(unstagedDiff), {
       totalMaxChars: unstagedDiffMaxChars,
       perFileMaxChars: options.perFileMaxChars,
     }),
@@ -44,21 +42,54 @@ export function budgetDiff(
   diff: string,
   options: { totalMaxChars: number; perFileMaxChars?: number }
 ): string {
-  if (!diff || diff.length <= options.totalMaxChars && !options.perFileMaxChars) {
+  const totalMaxChars = Math.max(0, options.totalMaxChars);
+  if (!diff || diff.length <= totalMaxChars && !options.perFileMaxChars) {
     return diff;
   }
 
-  const perFileMax = options.perFileMaxChars ?? options.totalMaxChars;
   const files = diff.split(/(?=^diff --git )/m).filter(Boolean);
-  const budgeted = files.map((fileDiff) => {
-    if (fileDiff.length <= perFileMax) return fileDiff;
-    const header = fileDiff
-      .split(/\r?\n/)
-      .filter((line) => /^(diff --git|index |--- |\+\+\+ |@@ )/.test(line))
-      .join('\n');
-    return `${header}\n[diff truncated: ${fileDiff.length - header.length} chars omitted]\n`;
-  }).join('');
+  if (files.length === 0) return diff.slice(0, totalMaxChars);
 
-  if (budgeted.length <= options.totalMaxChars) return budgeted;
-  return `${budgeted.slice(0, options.totalMaxChars)}\n[diff truncated: ${budgeted.length - options.totalMaxChars} chars omitted]\n`;
+  const perFileMax = options.perFileMaxChars ?? Math.max(1, Math.floor(totalMaxChars / files.length));
+  const chunks = files.map((fileDiff) => truncateFileDiff(fileDiff, perFileMax));
+  const rendered: string[] = [];
+  let used = 0;
+  let omitted = 0;
+  for (const chunk of chunks) {
+    if (used >= totalMaxChars) {
+      omitted += 1;
+      continue;
+    }
+    const remaining = totalMaxChars - used;
+    if (chunk.length > remaining) {
+      const marker = `\n[diff truncated: ${chunk.length - remaining} chars omitted]\n`;
+      if (remaining > marker.length + 20) {
+        rendered.push(`${chunk.slice(0, remaining - marker.length)}${marker}`);
+        used = totalMaxChars;
+      } else {
+        omitted += 1;
+      }
+      continue;
+    }
+    rendered.push(chunk);
+    used += chunk.length;
+  }
+  if (omitted > 0 && used < totalMaxChars) {
+    rendered.push(`[diff truncated: ${omitted} file sections omitted]`);
+  }
+
+  return rendered.join('');
+}
+
+function truncateFileDiff(fileDiff: string, perFileMax: number): string {
+  if (fileDiff.length <= perFileMax) return fileDiff;
+  const header = fileDiff
+    .split(/\r?\n/)
+    .filter((line) => /^(diff --git|index |--- |\+\+\+ |@@ )/.test(line))
+    .join('\n');
+  const remaining = Math.max(0, perFileMax - header.length - 48);
+  const hunkStart = fileDiff.indexOf('@@');
+  const bodyStart = hunkStart >= 0 ? fileDiff.indexOf('\n', hunkStart) + 1 : -1;
+  const body = bodyStart > 0 ? fileDiff.slice(bodyStart, bodyStart + remaining) : '';
+  return `${header}\n${body}\n[diff truncated: ${fileDiff.length - header.length - remaining} chars omitted]\n`;
 }

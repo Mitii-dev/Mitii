@@ -14,6 +14,16 @@ export function buildCommitMessagePrompt(input: CommitMessageInput): string {
   const changedFiles = input.changedFiles.slice(0, MAX_CHANGED_FILES).map(singleLine);
   const unstagedNames = extractDiffFileNames(input.unstagedDiff ?? '').slice(0, MAX_CHANGED_FILES);
   const budgetedDiff = budgetStagedDiff(redactSensitiveDiff(input.stagedDiff), DEFAULT_PER_FILE_DIFF_BUDGET, MAX_PROMPT_DIFF_CHARS);
+  const evidence = {
+    branch: singleLine(input.branch || '(unknown)'),
+    scopeHint: singleLine(input.scope || summary.likelyPrimaryComponent || '(infer from staged files)'),
+    testResults: input.testResults?.map(singleLine) ?? [],
+    detectedStyle: style,
+    stagedChangeSummary: summary,
+    changedFiles,
+    changedFileListCapped: input.changedFiles.length > changedFiles.length,
+    unstagedFileNames: unstagedNames,
+  };
 
   return [
     'Generate exactly one safe Git commit message for the staged changes.',
@@ -27,28 +37,16 @@ export function buildCommitMessagePrompt(input: CommitMessageInput): string {
     '- If a body is useful, separate it from the subject with one blank line and keep it concise.',
     '- Never include secrets, tokens, private keys, raw .env values, or credentials.',
     '- Do not claim tests passed unless explicit test results are provided below.',
+    '- Use unstaged file names only as awareness context; do not describe them as committed changes.',
     '',
-    `Branch: ${singleLine(input.branch || '(unknown)')}`,
-    `Scope hint: ${singleLine(input.scope || summary.likelyPrimaryComponent || '(infer from staged files)')}`,
-    `Tests actually provided: ${input.testResults?.length ? input.testResults.map(singleLine).join('; ') : '(none)'}`,
-    '',
-    'Detected commit style:',
-    JSON.stringify(style, null, 2),
-    '',
-    'Staged change summary:',
-    JSON.stringify(summary, null, 2),
-    '',
-    'Changed files:',
-    changedFiles.length ? changedFiles.join('\n') : '(none)',
-    changedFiles.length >= MAX_CHANGED_FILES ? `...(changed file list capped at ${MAX_CHANGED_FILES})` : '',
-    '',
-    'Unstaged file names for awareness only; do not describe them as committed:',
-    unstagedNames.length ? unstagedNames.join('\n') : '(none)',
+    '<git_evidence trust="untrusted-data">',
+    JSON.stringify(evidence, null, 2),
     '',
     'BEGIN UNTRUSTED STAGED DIFF DATA',
     budgetedDiff,
     'END UNTRUSTED STAGED DIFF DATA',
-  ].filter((line) => line !== '').join('\n');
+    '</git_evidence>',
+  ].join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
 export function redactSensitiveDiff(diff: string): string {
@@ -138,6 +136,7 @@ export function detectCommitStyle(recentCommits: string[]): CommitStyleDetection
 export function summarizeStagedDiff(stagedDiff: string, changedFiles: string[] = []): StagedChangeSummary {
   const fileNames = extractDiffFileNames(stagedDiff);
   const stagedFileNames = (fileNames.length ? fileNames : changedFiles).slice(0, MAX_CHANGED_FILES);
+  const sections = parseDiffSections(stagedDiff);
   const numstatLike = stagedDiff.split(/\r?\n/);
   let additions = 0;
   let deletions = 0;
@@ -146,9 +145,9 @@ export function summarizeStagedDiff(stagedDiff: string, changedFiles: string[] =
     if (line.startsWith('+')) additions += 1;
     if (line.startsWith('-')) deletions += 1;
   }
-  const addedFiles = stagedFileNames.filter((file) => new RegExp(`new file mode[\\s\\S]{0,300}${escapeRegExp(file)}`).test(stagedDiff));
-  const deletedFiles = stagedFileNames.filter((file) => new RegExp(`deleted file mode[\\s\\S]{0,300}${escapeRegExp(file)}`).test(stagedDiff));
-  const renamedFiles = stagedFileNames.filter((file) => new RegExp(`rename to ${escapeRegExp(file)}`).test(stagedDiff));
+  const addedFiles = sections.filter((section) => section.status === 'A').map((section) => section.newPath);
+  const deletedFiles = sections.filter((section) => section.status === 'D').map((section) => section.newPath);
+  const renamedFiles = sections.filter((section) => section.status === 'R').map((section) => section.newPath);
   const modifiedFiles = stagedFileNames.filter((file) => !addedFiles.includes(file) && !deletedFiles.includes(file) && !renamedFiles.includes(file));
   const testFilesChanged = stagedFileNames.filter((file) => /(?:^|\/)(?:test|tests|__tests__)\/|(?:\.test|\.spec)\./i.test(file));
   const documentationFilesChanged = stagedFileNames.filter((file) => /\.(md|mdx|rst)$/i.test(file) || /docs?\//i.test(file));
@@ -169,6 +168,28 @@ export function summarizeStagedDiff(stagedDiff: string, changedFiles: string[] =
     likelyPrimaryComponent: inferPrimaryComponent(stagedFileNames),
     likelyChangeCategories: inferChangeCategories({ testFilesChanged, documentationFilesChanged, configurationFilesChanged, dependencyFilesChanged, stagedFileNames }),
   };
+}
+
+interface ParsedDiffSection {
+  oldPath: string;
+  newPath: string;
+  status: 'A' | 'M' | 'D' | 'R';
+}
+
+function parseDiffSections(diff: string): ParsedDiffSection[] {
+  return diff.split(/\n(?=diff --git )/g).filter(Boolean).map((section) => {
+    const header = section.match(/^diff --git a\/(.+?) b\/(.+)$/m);
+    const oldPath = header?.[1] ?? 'unknown';
+    const newPath = header?.[2] ?? oldPath;
+    const status = /^new file mode /m.test(section)
+      ? 'A'
+      : /^deleted file mode /m.test(section)
+        ? 'D'
+        : /^rename from /m.test(section)
+          ? 'R'
+          : 'M';
+    return { oldPath, newPath, status };
+  });
 }
 
 export function budgetStagedDiff(diff: string, perFileBudget = DEFAULT_PER_FILE_DIFF_BUDGET, totalBudget = MAX_PROMPT_DIFF_CHARS): string {
@@ -289,8 +310,4 @@ function truncateSubject(subject: string): string {
 
 function singleLine(value: string): string {
   return value.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 240);
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
