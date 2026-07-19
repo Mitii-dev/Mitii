@@ -95,6 +95,14 @@ import { PostEditValidator } from '../../features/ce/apply/PostEditValidator';
 import { McpManager } from '../../features/ce/mcp/McpManager';
 import { ProjectRulesContextSource, ProjectRulesService } from '../../features/ce/rules/ProjectRulesService';
 import { SkillCatalogContextSource, SkillCatalogService } from '../../features/ce/skills/SkillCatalogService';
+import {
+  CatalogSkillCandidateRetriever,
+  ExplainableSkillRanker,
+  SkillResolver,
+} from '../../features/ce/skills/SkillEngine';
+import { SkillInjectionBuilder } from '../../features/ce/skills/SkillInjectionBuilder';
+import { SkillTelemetry } from '../../features/ce/skills/SkillTelemetry';
+import { WorkspaceRepositoryProfileProvider } from '../../features/ce/skills/RepositoryProfileProvider';
 import { createLogger } from '../../kernel/telemetry/Logger';
 import { SessionLogService } from '../../kernel/telemetry/SessionLogService';
 import { debugTrace } from '../../kernel/telemetry/AsyncDebugTrace';
@@ -453,6 +461,12 @@ export class HeadlessAgentHost {
 
     const passiveMemoryInjector = new PassiveMemoryInjector(this.memoryService!);
     const memoryHookService = new MemoryHookService(workspace);
+    const skillResolver = this.skillCatalogService
+      ? new SkillResolver(
+          new CatalogSkillCandidateRetriever(this.skillCatalogService),
+          new ExplainableSkillRanker()
+        )
+      : undefined;
 
     this.chatOrchestrator.configure({
       toolRuntime: this.toolRuntime,
@@ -470,6 +484,12 @@ export class HeadlessAgentHost {
       memoryService: this.memoryService,
       taskState: this.agentTaskState,
       skillCatalog: this.skillCatalogService,
+      skillResolver,
+      skillInjectionBuilder: this.skillCatalogService
+        ? new SkillInjectionBuilder(this.skillCatalogService)
+        : undefined,
+      skillTelemetry: new SkillTelemetry(this.sessionLog),
+      repositoryProfileProvider: new WorkspaceRepositoryProfileProvider(workspace),
       allowNetwork: () => resolveEffectiveSafety(this.config.safety).allowNetwork,
       runVerifyHooks: async (commands, userMessage) => this.runVerifyHooks(workspace, commands, userMessage ?? ''),
       microTaskRoutingEnabled: this.config.context.microTaskRoutingEnabled,

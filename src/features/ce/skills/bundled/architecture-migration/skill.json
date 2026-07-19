@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "architecture-migration",
+  "name": "Architecture migration",
+  "description": "Plan and execute cross-package restructuring through explicit current-state, move-map, compatibility, and boundary-verification stages.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": ["ask", "plan", "agent"],
+  "intents": ["refactor", "feature"],
+  "triggers": ["folder structure", "move package", "cross-package", "architecture migration", "restructure"],
+  "negativeTriggers": ["rename one file"],
+  "requiredTools": ["read_file", "search", "repo_map"],
+  "optionalTools": ["apply_patch", "run_command"],
+  "requiredCapabilities": ["repository-read"],
+  "dependencies": [],
+  "conflicts": ["audit-cleanup"],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 6000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 18,
+  "tags": ["architecture", "migration", "monorepo"],
+  "pinningRules": [],
+  "tests": [
+    {
+      "id": "cross-package",
+      "name": "Selects for cross-package restructuring",
+      "request": "Change the folder structure and migrate runtime modules across packages",
+      "mode": "plan",
+      "availableTools": ["read_file", "search", "repo_map"],
+      "availableCapabilities": ["repository-read"],
+      "expected": "selected",
+      "maxInjectionChars": 6000
+    }
+  ]
+}

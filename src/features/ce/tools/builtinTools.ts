@@ -32,6 +32,7 @@ import { analyzeChangeImpact, discoverProjectCatalog, formatProjectCatalog, save
 import { filterItemsToScope, normalizeScopeRoot } from '../../../features/ce/context/scopeFilter';
 
 const log = createLogger('BuiltinTools');
+export const DANGEROUS_COMMAND_APPROVAL_FIELD = '__mitiiApprovedDangerousCommand';
 
 interface SpawnCaptureOptions {
   cwd?: string;
@@ -1412,14 +1413,25 @@ export function createApplyPatchTool(workspace: string, ignoreService: IgnoreSer
   };
 }
 
-export function createRunCommandTool(workspace: string, getMode: () => string): Tool<{ command: string }> {
+type RunCommandInput = {
+  command: string;
+  [DANGEROUS_COMMAND_APPROVAL_FIELD]?: boolean;
+};
+
+export function createRunCommandTool(workspace: string, getMode: () => string): Tool<RunCommandInput> {
   return {
     name: 'run_command',
     description: `Run a shell command in the workspace (${workspace}). Do not prefix commands with cd; the tool already runs there. Read-only commands (grep, rg, depcheck, npm ls) work in Plan mode.`,
     risk: 'high',
-    inputSchema: z.object({ command: z.string() }),
+    inputSchema: z.object({
+      command: z.string(),
+      [DANGEROUS_COMMAND_APPROVAL_FIELD]: z.boolean().optional(),
+    }),
     async execute(input): Promise<ToolResult> {
-      if (isDangerousCommand(input.command)) {
+      if (
+        isDangerousCommand(input.command) &&
+        input[DANGEROUS_COMMAND_APPROVAL_FIELD] !== true
+      ) {
         return { success: false, output: '', error: 'Dangerous command blocked' };
       }
       // Mode gates live in ToolExecutor (approval for mutators in Ask/Plan). Do not

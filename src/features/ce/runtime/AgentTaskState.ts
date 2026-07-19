@@ -1,5 +1,6 @@
 import type { TaskKind } from './TaskAnalyzer';
 import { isMdxRepairTask as isMdxRepairTaskText } from './mdxRepairRouting';
+import { classifyCommandEffect, inferTouchedFilesFromCommand } from '../plans/PlanActEngine';
 import {
   createPhaseActor,
   getPhaseFromActor,
@@ -177,6 +178,17 @@ export class AgentTaskState {
     }
 
     if (toolName === 'run_command') {
+      const command = typeof input.command === 'string' ? input.command : '';
+      const commandEffect = classifyCommandEffect(command);
+      if (commandEffect === 'workspace_mutation' || commandEffect === 'dependency_mutation') {
+        this.executionToolsUsed = true;
+        for (const path of inferTouchedFilesFromCommand(command)) {
+          this.invalidateReadsForPath(path);
+        }
+        if (this.getPhase() === 'analyze') {
+          sendPhaseEvent(this.phaseActor, { type: 'ADVANCE_EXECUTE' });
+        }
+      }
       const key = toolKey(toolName, input);
       if (this.executionToolsUsed && key && isPostEditVerificationKey(key)) {
         this.verificationSucceeded = true;

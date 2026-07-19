@@ -1,6 +1,10 @@
 import type { ToolRuntime } from '../../../kernel/tools/ToolRuntime';
-import { readApprovedExternalFile, readApprovedExternalFiles } from '../tools/builtinTools';
-import type { ToolPolicyEngine, PolicyResult } from './ToolPolicyEngine';
+import {
+  DANGEROUS_COMMAND_APPROVAL_FIELD,
+  readApprovedExternalFile,
+  readApprovedExternalFiles,
+} from '../tools/builtinTools';
+import { isDangerousCommand, type ToolPolicyEngine, type PolicyResult } from './ToolPolicyEngine';
 import type { ApprovalQueue } from './ApprovalQueue';
 import type { AgentTaskState } from '../../../features/ce/runtime/AgentTaskState';
 import {
@@ -8,6 +12,7 @@ import {
   isShellAllowed,
   isPatchAllowed,
   isReadOnlyCommand,
+  classifyCommandEffect,
   isToolAllowedInPlanPhase,
   isPhaseLockWriteError,
   type PlanPhase,
@@ -76,6 +81,7 @@ export class ToolExecutor {
     input: Record<string, unknown>,
     context?: ToolExecuteContext
   ): Promise<ToolExecutionResult> {
+    input = stripInternalApprovalFields(input);
     const resolvedName = resolveToolName(toolName);
     const mode = this.getMode();
     const normalizedMode = normalizeThunderMode(mode);
@@ -158,6 +164,12 @@ export class ToolExecutor {
 
     if (policy.decision === 'block') {
       return this.finishBlocked(resolvedName, input, policy.reason, context?.toolCallId);
+    }
+
+    const planModeBlock = getPlanModeMutationBlockReason(resolvedName, input, normalizedMode);
+    const dangerousShell = isDangerousShellCall(resolvedName, input);
+    if (planModeBlock && !dangerousShell) {
+      return this.finishBlocked(resolvedName, input, planModeBlock, context?.toolCallId);
     }
 
     const modeApprovalReason = this.getModeApprovalReason(resolvedName, input, mode, readOnlyMode, normalizedMode);
@@ -427,6 +439,12 @@ export class ToolExecutor {
       return this.finishBlocked(toolName, input, policy.reason, request.toolCallId);
     }
 
+    const planModeBlock = getPlanModeMutationBlockReason(toolName, input, normalizedMode);
+    const dangerousShell = isDangerousShellCall(toolName, input);
+    if (planModeBlock && !dangerousShell) {
+      return this.finishBlocked(toolName, input, planModeBlock, request.toolCallId);
+    }
+
     const modeApprovalReason = this.getModeApprovalReason(toolName, input, mode, readOnlyMode, normalizedMode);
     const requiredKind = getApprovalKind(Boolean(modeApprovalReason), policy.decision === 'require_approval');
     if (requiredKind && !approvalKindCovers(request.approvalKind, requiredKind)) {
@@ -458,7 +476,10 @@ export class ToolExecutor {
       return this.finishBlocked(toolName, input, `Unknown tool: ${toolName}`, request.toolCallId);
     }
 
-    const result = await this.toolRuntime.execute(toolName, input, request.toolCallId);
+    const runtimeInput = dangerousShell
+      ? { ...input, [DANGEROUS_COMMAND_APPROVAL_FIELD]: true }
+      : input;
+    const result = await this.toolRuntime.execute(toolName, runtimeInput, request.toolCallId);
     if (result.success) {
       this.getTaskState?.()?.recordToolSuccess(toolName, input, result.output);
     }
@@ -475,6 +496,43 @@ function getApprovalKind(modeRequired: boolean, policyRequired: boolean): Approv
   if (modeRequired && policyRequired) return 'mode+policy';
   if (modeRequired) return 'mode';
   if (policyRequired) return 'policy';
+  return undefined;
+}
+
+function isDangerousShellCall(toolName: string, input: Record<string, unknown>): boolean {
+  return (
+    toolName === 'run_command' &&
+    typeof input.command === 'string' &&
+    isDangerousCommand(input.command)
+  );
+}
+
+function stripInternalApprovalFields(input: Record<string, unknown>): Record<string, unknown> {
+  if (!(DANGEROUS_COMMAND_APPROVAL_FIELD in input)) return input;
+  const sanitized = { ...input };
+  delete sanitized[DANGEROUS_COMMAND_APPROVAL_FIELD];
+  return sanitized;
+}
+
+function getPlanModeMutationBlockReason(
+  toolName: string,
+  input: Record<string, unknown>,
+  normalizedMode: string
+): string | undefined {
+  if (normalizedMode !== 'plan' && normalizedMode !== 'ask') return undefined;
+  const modeLabel = normalizedMode === 'ask' ? 'Ask' : 'Plan';
+  if (['write_file', 'apply_patch', 'memory_write', 'save_task_state'].includes(toolName)) {
+    return `Tool ${toolName} is not available in ${modeLabel} mode; switch to Agent mode to make changes.`;
+  }
+  if (isMcpFilesystemWriteTool(toolName)) {
+    return `Tool ${toolName} is not available in ${modeLabel} mode; MCP filesystem writes are disabled.`;
+  }
+  if (toolName === 'run_command') {
+    const command = typeof input.command === 'string' ? input.command : '';
+    if (classifyCommandEffect(command) !== 'inspect_only') {
+      return `${modeLabel} mode allows only inspect-only shell commands.`;
+    }
+  }
   return undefined;
 }
 

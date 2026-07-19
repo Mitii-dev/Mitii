@@ -21,9 +21,9 @@ describe('Git permission policy', () => {
     expect(engine.evaluate(tool, {}).decision).toBe(decision);
   });
 
-  it('blocks dangerous generic Git commands', () => {
-    expect(engine.evaluate('run_command', { command: 'git reset --hard HEAD' }).decision).toBe('block');
-    expect(engine.evaluate('run_command', { command: 'git push --force-with-lease' }).decision).toBe('block');
-    expect(engine.evaluate('run_command', { command: 'git clean -fdx' }).decision).toBe('block');
+  it('requires explicit approval for dangerous generic Git commands', () => {
+    expect(engine.evaluate('run_command', { command: 'git reset --hard HEAD' }).decision).toBe('require_approval');
+    expect(engine.evaluate('run_command', { command: 'git push --force-with-lease' }).decision).toBe('require_approval');
+    expect(engine.evaluate('run_command', { command: 'git clean -fdx' }).decision).toBe('require_approval');
   });
 });

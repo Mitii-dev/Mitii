@@ -7,9 +7,6 @@ export const PLAN_ALLOWED_TOOLS = new Set([
   'execute_workspace_script',
   'project_catalog',
   'analyze_change_impact',
-  // Approval-gated mutators — ToolExecutor prompts the user before running.
-  'write_file',
-  'apply_patch',
   'analyze_log_directory',
   'analyze_jsonl',
   'query_log_events',
@@ -27,7 +24,7 @@ export function filterPlanModeTools(tools: ToolDefinition[]): ToolDefinition[] {
 }
 
 export function isPlanAllowedTool(toolName: string): boolean {
-  return PLAN_ALLOWED_TOOLS.has(toolName) || toolName.startsWith('mcp__');
+  return PLAN_ALLOWED_TOOLS.has(toolName) || isPlanAllowedMcpReadTool(toolName);
 }
 
 export function needsPlanGrounding(userMessage: string): boolean {
@@ -35,8 +32,27 @@ export function needsPlanGrounding(userMessage: string): boolean {
 }
 
 export function isPlanGroundingToolCall(toolName: string): boolean {
-  return PLAN_GROUNDING_TOOLS.has(toolName) || toolName.startsWith('mcp__');
+  return PLAN_GROUNDING_TOOLS.has(toolName) || isPlanGroundingMcpReadTool(toolName);
 }
+
+export function isPlanAllowedMcpReadTool(toolName: string): boolean {
+  return PLAN_ALLOWED_MCP_READ_TOOL_PATTERNS.some((pattern) => pattern.test(toolName));
+}
+
+export function isPlanGroundingMcpReadTool(toolName: string): boolean {
+  return PLAN_GROUNDING_MCP_READ_TOOL_PATTERNS.some((pattern) => pattern.test(toolName));
+}
+
+const PLAN_ALLOWED_MCP_READ_TOOL_PATTERNS = [
+  /^mcp__filesystem__(?:read_text_file|read_multiple_files|read_media_file|read_file|list_directory|directory_tree|search_files|get_file_info|list_allowed_directories)$/i,
+  /^mcp__(?:memory|agentmemory)__(?:search|retrieve|lookup|query)$/i,
+  /^mcp__github__(?:search|search_code|get_file_contents|get_repository|get_issue|get_pull_request|list_issues|list_pull_requests)$/i,
+];
+
+const PLAN_GROUNDING_MCP_READ_TOOL_PATTERNS = [
+  /^mcp__filesystem__(?:read_text_file|read_multiple_files|read_file|list_directory|directory_tree|search_files|get_file_info)$/i,
+  /^mcp__github__(?:search_code|get_file_contents|get_repository)$/i,
+];
 
 export const PLAN_SYNTHESIS_NUDGE = `Read-only discovery for this Plan-mode turn is complete.
 

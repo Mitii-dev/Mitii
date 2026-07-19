@@ -73,6 +73,23 @@ describe('pipeline route + subtypes', () => {
     expect(isAuditCleanupTask('Review this unusual architecture')).toBe(false);
   });
 
+  it('routes build restoration cleanup as a bugfix instead of generic audit cleanup', () => {
+    const msg = 'Fix the build errors. The folder structure changes were half implemneted; cleanup unnecessary files, bring the project to its original state, and run it.';
+    const analysis = analyzeTask(msg, 'agent');
+    const route = resolveRoute(msg, analysis);
+
+    expect(route.intent).toBe('bugfix');
+    expect(route.auditSubtype).toBeUndefined();
+    expect(route.operationClass).toBe('workspace_write');
+    expect(route.risk).toBe('high');
+    expect(route.executionPath).toBe('orchestrated');
+    expect(resolveTurnPipeline(msg, analysis, {
+      mode: 'agent',
+      orchestrationEnabled: true,
+    }).shouldUsePlanner).toBe(true);
+    expect(resolveSkillsForRoute(route, analysis).activeSkill).toBe('bugfix-workflow');
+  });
+
   it('resolves docs subtypes', () => {
     expect(resolveDocsSubtype('update the README')).toBe('readme');
     expect(resolveDocsSubtype('fix docusaurus sidebar')).toBe('docusaurus');

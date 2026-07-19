@@ -27,6 +27,21 @@ describe('Ask and Plan mode reliability', () => {
     expect(state.checkBlocked('run_command', { command: 'git diff' })).toContain('git-diff:unstaged');
   });
 
+  it('tracks successful git restore shell commands as execution', async () => {
+    const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
+    const state = new AgentTaskState();
+    state.setTaskContext('implementation', 'restore files', 'restore the original structure');
+
+    state.recordToolSuccess(
+      'run_command',
+      { command: 'git restore -- src/index.ts' },
+      'restored'
+    );
+
+    expect(state.buildPauseSummary('restore the original structure')).toContain('Execution started: yes');
+    expect(state.getPhase()).toBe('execute');
+  });
+
   it('skips AgentTaskState redundant blocking in Ask mode via ToolExecutor', async () => {
     const { ToolExecutor } = await import('../src/features/ce/safety/ToolExecutor');
     const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
@@ -207,8 +222,19 @@ describe('Ask and Plan mode reliability', () => {
     });
 
     expect(quick.discoveryMaxSteps).toBeLessThan(deep.discoveryMaxSteps);
-    expect(enterprise.discoveryMaxSteps).toBe(deep.discoveryMaxSteps);
+    expect(enterprise.discoveryMaxSteps).toBe(50);
     expect(quick.promptContext).toContain('Plan routing');
+  });
+
+  it('lets explicit Plan auto-continue configuration raise automatic defaults within cap', async () => {
+    const { PlanOrchestrator } = await import('../src/features/ce/modes/plan/PlanOrchestrator');
+    const prepared = PlanOrchestrator.prepare('Implement SDK plan runner', {
+      configuredMaxSteps: 20,
+      planMaxAutoContinues: 3,
+    });
+
+    expect(prepared.discoveryMaxSteps).toBe(20);
+    expect(prepared.maxAutoContinues).toBe(3);
   });
 
   it('parses SKILL.md frontmatter descriptions for the skill catalog', async () => {

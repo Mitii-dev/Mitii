@@ -618,9 +618,21 @@ describe('ToolPolicyEngine', () => {
     expect(autoEngine.evaluate('run_command', { command: 'npm install lodash' }).decision).toBe('allow');
   });
 
-  it('blocks dangerous commands', () => {
+  it('detects dangerous commands and requires approval even in auto mode', () => {
     expect(isDangerousCommand('rm -rf /')).toBe(true);
+    expect(isDangerousCommand('rm -fr generated/')).toBe(true);
+    expect(isDangerousCommand('rm --recursive --force generated/')).toBe(true);
+    expect(isDangerousCommand('git clean -df generated/')).toBe(true);
+    expect(isDangerousCommand('git push origin main -f')).toBe(true);
     expect(isDangerousCommand('npm test')).toBe(false);
+    const autoEngine = new ToolPolicyEngine(
+      { ...defaultThunderConfig().safety, approvalMode: 'auto', blockDangerousCommands: true },
+      () => false
+    );
+    expect(autoEngine.evaluate('run_command', { command: 'git clean -fd generated/' })).toEqual({
+      decision: 'require_approval',
+      reason: 'Dangerous command requires explicit user approval',
+    });
   });
 
   it('detects delete-like commands', () => {
@@ -873,7 +885,7 @@ describe('Plan/Act task analysis', () => {
 });
 
 describe('Ask mode helpers', () => {
-  it('filters tools to the Ask allowlist (writes are approval-gated)', async () => {
+  it('filters tools to the read-only Ask allowlist', async () => {
     const { filterAskModeTools, ASK_ALLOWED_TOOLS } = await import('../src/features/ce/runtime/askMode');
     const tools = [
       { type: 'function' as const, function: { name: 'read_file', description: '', parameters: {} } },
@@ -885,13 +897,12 @@ describe('Ask mode helpers', () => {
     const filtered = filterAskModeTools(tools);
     expect(filtered.map((t) => t.function.name)).toEqual([
       'read_file',
-      'write_file',
       'analyze_change_impact',
       'mcp__fs__read',
     ]);
     expect(ASK_ALLOWED_TOOLS.has('spawn_research_agent')).toBe(true);
     expect(ASK_ALLOWED_TOOLS.has('project_catalog')).toBe(true);
-    expect(ASK_ALLOWED_TOOLS.has('write_file')).toBe(true);
+    expect(ASK_ALLOWED_TOOLS.has('write_file')).toBe(false);
     expect(ASK_ALLOWED_TOOLS.has('analyze_jsonl')).toBe(true);
   });
 
@@ -933,7 +944,7 @@ describe('Ask mode helpers', () => {
     expect(result.error).toContain('not available in Ask mode');
   });
 
-  it('requests approval for writes in Ask mode instead of hard-blocking', async () => {
+  it('hard-blocks writes in Ask mode', async () => {
     const { ToolExecutor } = await import('../src/features/ce/safety/ToolExecutor');
     const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
     const { ToolPolicyEngine } = await import('../src/features/ce/safety/ToolPolicyEngine');
@@ -958,13 +969,13 @@ describe('Ask mode helpers', () => {
     );
 
     const result = await executor.execute('write_file', { path: 'README.md', content: 'x' });
-    expect(result.pendingApproval).toBe(true);
-    expect(result.error).toBe('Awaiting approval');
-    expect(queue.getPending()).toHaveLength(1);
-    expect(queue.getPending()[0]?.toolName).toBe('write_file');
+    expect(result.success).toBe(false);
+    expect(result.pendingApproval).not.toBe(true);
+    expect(result.error).toContain('not available in Ask mode');
+    expect(queue.getPending()).toHaveLength(0);
   });
 
-  it('requests approval for mutating shell in Ask mode', async () => {
+  it('hard-blocks mutating shell in Ask mode', async () => {
     const { ToolExecutor } = await import('../src/features/ce/safety/ToolExecutor');
     const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
     const { ToolPolicyEngine } = await import('../src/features/ce/safety/ToolPolicyEngine');
@@ -988,8 +999,10 @@ describe('Ask mode helpers', () => {
     );
 
     const result = await executor.execute('run_command', { command: 'npm install lodash' });
-    expect(result.pendingApproval).toBe(true);
-    expect(queue.getPending()[0]?.reason).toMatch(/approval/i);
+    expect(result.success).toBe(false);
+    expect(result.pendingApproval).not.toBe(true);
+    expect(result.error).toContain('Ask mode allows only inspect-only shell commands');
+    expect(queue.getPending()).toHaveLength(0);
   });
 });
 
@@ -1102,6 +1115,43 @@ describe('ChatOrchestrator response handling', () => {
     const runtime = { getAuditLog: () => audit };
 
     expect(getTouchedFilesFromAudit(runtime as never, 2)).toEqual(['src/current.ts']);
+  });
+
+  it('counts scoped git restore commands as current-turn workspace changes', async () => {
+    const {
+      getTouchedFilesFromAudit,
+      hasWorkspaceMutationFromAudit,
+    } = await import('../src/features/ce/orchestration/ChatOrchestrator');
+    const audit = [
+      {
+        toolName: 'run_command',
+        input: { command: 'git restore -- src/index.ts src/routes.ts' },
+        result: { success: true, output: '' },
+        timestamp: 1,
+      },
+    ];
+    const runtime = { getAuditLog: () => audit };
+
+    expect(getTouchedFilesFromAudit(runtime as never)).toEqual(['src/index.ts', 'src/routes.ts']);
+    expect(hasWorkspaceMutationFromAudit(runtime as never)).toBe(true);
+  });
+
+  it('records a successful dependency mutation even when no exact file can be inferred', async () => {
+    const {
+      getTouchedFilesFromAudit,
+      hasWorkspaceMutationFromAudit,
+    } = await import('../src/features/ce/orchestration/ChatOrchestrator');
+    const runtime = {
+      getAuditLog: () => [{
+        toolName: 'run_command',
+        input: { command: 'pnpm remove unused-package' },
+        result: { success: true, output: '' },
+        timestamp: 1,
+      }],
+    };
+
+    expect(getTouchedFilesFromAudit(runtime as never)).toEqual([]);
+    expect(hasWorkspaceMutationFromAudit(runtime as never)).toBe(true);
   });
 
   it('subtracts explicit context before budgeting retrieved snippets', async () => {
@@ -1336,6 +1386,31 @@ describe('Plan parser', () => {
     expect(parsed?.steps[0].objective).toBe('Inspect current behavior');
     expect(parsed?.steps[0].tools).toEqual(['read_file']);
     expect(parsed?.steps[0].successCriteria).toEqual(['Mode branch is understood']);
+  });
+
+  it('raises recursive deletion plans to high risk with explicit approvals', async () => {
+    const { parsePlanFromText } = await import('../src/features/ce/plans/PlanActEngine');
+    const parsed = parsePlanFromText(`\`\`\`json
+{
+  "goal": "Restore repository structure",
+  "assumptions": [],
+  "steps": [
+    {
+      "id": "step-1",
+      "title": "Remove half-finished restructuring directories",
+      "phase": "execute",
+      "tools": ["run_command"],
+      "script": { "command": "rm -rf ai-service/src/features ai-service/src/infrastructure" },
+      "files": ["ai-service/src/features", "ai-service/src/infrastructure"],
+      "risk": "low"
+    }
+  ],
+  "requiredApprovals": []
+}
+\`\`\``);
+
+    expect(parsed?.steps[0].risk).toBe('high');
+    expect(parsed?.requiredApprovals).toContain('recursive_delete:ai-service/src/features,ai-service/src/infrastructure');
   });
 
   it('keeps generated plan phases mode-aware', async () => {
@@ -2377,7 +2452,7 @@ describe('tool input coercion', () => {
 
 describe('PlanActEngine read-only shell', () => {
   it('allows inspection commands in plan mode', async () => {
-    const { isShellAllowed, isReadOnlyCommand, isToolAllowedInPlanPhase, stripLeadingCd } = await import('../src/features/ce/plans/PlanActEngine');
+    const { classifyCommandEffect, inferTouchedFilesFromCommand, isShellAllowed, isReadOnlyCommand, isToolAllowedInPlanPhase, stripLeadingCd } = await import('../src/features/ce/plans/PlanActEngine');
     expect(isReadOnlyCommand('npx depcheck')).toBe(true);
     expect(isReadOnlyCommand('cd /home/user && rg "foo" src')).toBe(true);
     expect(isReadOnlyCommand("sed -n '70,90p' src/screens/printer/printer.tsx")).toBe(true);
@@ -2408,11 +2483,20 @@ describe('PlanActEngine read-only shell', () => {
     expect(isShellAllowed('ask', 'npm install lodash')).toBe(false);
     expect(isToolAllowedInPlanPhase('execute', 'run_command', { command: 'npm run build' }).allowed).toBe(true);
     expect(isToolAllowedInPlanPhase('verify', 'run_command', { command: 'npm run build' }).allowed).toBe(true);
+    expect(isToolAllowedInPlanPhase('diagnostics', 'run_command', { command: 'npm run build' }).allowed).toBe(false);
     expect(isToolAllowedInPlanPhase('verify', 'run_command', { command: 'node scripts/custom-mutator.js' }).allowed).toBe(false);
+    expect(classifyCommandEffect('rg "foo" src')).toBe('inspect_only');
+    expect(classifyCommandEffect('npm run build')).toBe('verification_with_artifacts');
+    expect(classifyCommandEffect('npm install lodash')).toBe('dependency_mutation');
+    expect(classifyCommandEffect('git checkout -- src/index.ts')).toBe('workspace_mutation');
+    expect(classifyCommandEffect('git restore -- src/index.ts src/routes.ts')).toBe('workspace_mutation');
+    expect(inferTouchedFilesFromCommand('git restore -- src/index.ts src/routes.ts')).toEqual(['src/index.ts', 'src/routes.ts']);
   });
 
-  it('upgrades write-intent steps from diagnostics to execute in agent mode', async () => {
-    const { resolveStepPhaseLock, stepImpliesWrite } = await import('../src/features/ce/plans/PlanActEngine');
+  it('classifies step phases without treating all build steps as verification', async () => {
+    const { inferStepPhase, resolveStepPhaseLock, stepImpliesWrite } = await import('../src/features/ce/plans/PlanActEngine');
+    expect(inferStepPhase('Build the new settings component', 1)).toBe('execute');
+    expect(inferStepPhase('Run the production build', 3)).toBe('verify');
     expect(stepImpliesWrite({ title: 'Audit Current Implementation & Identify Bugs' })).toBe(false);
     expect(stepImpliesWrite({ title: 'Fix ReferenceError & Prepare Theme Utilities' })).toBe(true);
     expect(

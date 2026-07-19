@@ -2,6 +2,12 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type {
   ContextPathSuggestion,
   ExtensionToWebviewMessage,
+  SkillAnalyzerResultView,
+  SkillCatalogItem,
+  SkillDocumentView,
+  SkillDraftAnalysis,
+  SkillTestRunResult,
+  SkillUsageMetric,
   WebviewToExtensionMessage,
 } from '../../../vscode/webview/messages';
 import { initialState, webviewReducer } from './store';
@@ -18,6 +24,13 @@ export function useVsCodeMessaging() {
   const [state, dispatch] = useReducer(webviewReducer, initialState);
   const [pathSuggestions, setPathSuggestions] = useState<ContextPathSuggestion[]>([]);
   const [pathSearchRequestId, setPathSearchRequestId] = useState<string | null>(null);
+  const [skillCatalog, setSkillCatalog] = useState<{ items: SkillCatalogItem[]; total: number; error?: string }>({ items: [], total: 0 });
+  const [skillDocument, setSkillDocument] = useState<SkillDocumentView | undefined>();
+  const [skillDraftAnalysis, setSkillDraftAnalysis] = useState<SkillDraftAnalysis | undefined>();
+  const [skillAnalyzerResult, setSkillAnalyzerResult] = useState<SkillAnalyzerResultView | undefined>();
+  const [skillTestResult, setSkillTestResult] = useState<SkillTestRunResult | undefined>();
+  const [skillAnalytics, setSkillAnalytics] = useState<SkillUsageMetric[]>([]);
+  const [skillOperationError, setSkillOperationError] = useState<string | undefined>();
   const pathSearchRequestIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -81,6 +94,35 @@ export function useVsCodeMessaging() {
             setPathSuggestions(message.payload.paths);
           }
           break;
+        case 'skillCatalogResult':
+          setSkillCatalog({ items: message.payload.items, total: message.payload.total, error: message.payload.error });
+          setSkillOperationError(message.payload.error);
+          break;
+        case 'skillDocumentResult':
+          setSkillDocument(message.payload.document);
+          setSkillOperationError(message.payload.error);
+          break;
+        case 'skillMutationResult':
+          if (message.payload.document) setSkillDocument(message.payload.document);
+          if (message.payload.deletedId) setSkillDocument(undefined);
+          setSkillOperationError(message.payload.error);
+          break;
+        case 'skillDraftAnalysisResult':
+          setSkillDraftAnalysis(message.payload.analysis);
+          setSkillOperationError(message.payload.error);
+          break;
+        case 'skillAnalyzerResult':
+          setSkillAnalyzerResult(message.payload.result);
+          setSkillOperationError(message.payload.error);
+          break;
+        case 'skillTestResult':
+          setSkillTestResult(message.payload.result);
+          setSkillOperationError(message.payload.error);
+          break;
+        case 'skillAnalyticsResult':
+          setSkillAnalytics(message.payload.metrics);
+          setSkillOperationError(message.payload.error);
+          break;
       }
     };
 
@@ -96,5 +138,18 @@ export function useVsCodeMessaging() {
     vscode?.postMessage(message);
   }, []);
 
-  return { state, dispatch, postMessage, pathSuggestions, pathSearchRequestId };
+  return {
+    state,
+    dispatch,
+    postMessage,
+    pathSuggestions,
+    pathSearchRequestId,
+    skillCatalog,
+    skillDocument,
+    skillDraftAnalysis,
+    skillAnalyzerResult,
+    skillTestResult,
+    skillAnalytics,
+    skillOperationError,
+  };
 }

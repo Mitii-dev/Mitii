@@ -25,9 +25,6 @@ export const ASK_ALLOWED_TOOLS = new Set([
   'project_catalog',
   'analyze_change_impact',
   'propose_file_scope',
-  // Approval-gated mutators — ToolExecutor prompts the user; do not auto-run.
-  'write_file',
-  'apply_patch',
   'analyze_log_directory',
   'analyze_jsonl',
   'query_log_events',
@@ -70,7 +67,7 @@ export function filterAskModeTools(tools: ToolDefinition[]): ToolDefinition[] {
 export function isAskAllowedTool(toolName: string): boolean {
   if (ASK_ALLOWED_TOOLS.has(toolName)) return true;
   if (!toolName.startsWith('mcp__')) return false;
-  return true;
+  return !/(?:write|create|delete|remove|move|rename|update|patch|commit|push|merge|dispatch|publish)/i.test(toolName);
 }
 
 /** Whether the answer should be grounded in codebase reads/searches before finishing. */

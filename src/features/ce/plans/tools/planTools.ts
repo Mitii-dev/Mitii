@@ -57,7 +57,7 @@ export function createMarkStepCompleteTool(ctx: PlanToolsContext): Tool<{ stepId
   return {
     name: 'mark_step_complete',
     description:
-      'Mark a plan step as completed. Prefer the exact step id from the plan (e.g. step_1). The orchestrator also auto-completes steps — only call when explicitly needed.',
+      'Mark a plan step as completed by exact step id. This tool is orchestrator-owned; the model should not call it unless it is explicitly offered.',
     risk: 'low',
     inputSchema: z.object({ stepId: z.string() }),
     async execute(input): Promise<ToolResult> {
@@ -114,23 +114,6 @@ function resolvePlanStepId(
 ): string | undefined {
   const direct = plan.steps.find((s) => s.id === rawStepId);
   if (direct) return direct.id;
-
-  const slug = rawStepId.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-  const bySlug = plan.steps.find((s) => {
-    const stepSlug = s.id.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-    const titleSlug = s.title.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-    return stepSlug === slug || titleSlug === slug || stepSlug.includes(slug) || titleSlug.includes(slug);
-  });
-  if (bySlug) return bySlug.id;
-
-  const running = plan.steps.find((s) => s.status === 'running');
-  if (running) return running.id;
-
-  const pending = plan.steps.find((s) => s.status === 'pending');
-  if (pending && /^(current|active|execute|verify|complete|done|task_complete)$/i.test(rawStepId)) {
-    return pending.id;
-  }
-
   return undefined;
 }
 
@@ -182,22 +165,27 @@ export function createProposePlanMutationTool(ctx: PlanToolsContext): Tool<{
         return { success: false, output: '', error: 'No active plan' };
       }
 
-      const pendingIds = new Set(
-        plan.steps.filter((s) => s.status === 'pending' || s.status === 'running').map((s) => s.id)
-      );
+      const validation = validatePlanMutation(plan, input.newSteps);
+      if (!validation.valid) {
+        return {
+          success: false,
+          output: '',
+          error: validation.errors.join('\n'),
+        };
+      }
+
       for (const step of plan.steps) {
-        if (pendingIds.has(step.id) && step.status === 'running') {
-          step.status = 'done';
+        if (step.status === 'running') {
+          step.status = 'blocked';
         }
       }
-      plan.steps = plan.steps.filter((s) => !pendingIds.has(s.id) || s.status === 'done');
 
       let firstNewRunning = false;
       for (const step of input.newSteps) {
         const deps = step.dependsOn ?? [];
         const blocked = deps.some((depId) => {
           const dep = plan.steps.find((s) => s.id === depId);
-          return dep && dep.status !== 'done';
+          return !dep || dep.status !== 'done';
         });
         const phase = step.phase ?? 'execute';
         const shouldRunNow = !firstNewRunning && phase === 'execute' && !blocked;
@@ -226,6 +214,7 @@ export function createProposePlanMutationTool(ctx: PlanToolsContext): Tool<{
       }
 
       plan.assumptions.push(`Plan mutation: ${input.reason}`);
+      plan.assumptions.push('Plan mutation preserved existing unfinished steps; running steps were blocked rather than marked done.');
       ctx.setPlan(plan);
       ctx.planPersistence?.updatePlan(ctx.getSessionId(), plan, 'running');
       ctx.planFileStore?.mutatePlan(plan, 'running');
@@ -238,6 +227,79 @@ export function createProposePlanMutationTool(ctx: PlanToolsContext): Tool<{
       };
     },
   };
+}
+
+function validatePlanMutation(
+  plan: ThunderPlan,
+  newSteps: z.infer<typeof newStepSchema>[]
+): { valid: true } | { valid: false; errors: string[] } {
+  const errors: string[] = [];
+  const existingIds = new Set(plan.steps.map((step) => step.id));
+  const newIds = new Set<string>();
+
+  for (const step of newSteps) {
+    if (existingIds.has(step.id)) {
+      errors.push(`PLAN_MUTATION_DUPLICATE_STEP_ID: ${step.id} already exists.`);
+    }
+    if (newIds.has(step.id)) {
+      errors.push(`PLAN_MUTATION_DUPLICATE_STEP_ID: ${step.id} is duplicated in newSteps.`);
+    }
+    newIds.add(step.id);
+  }
+
+  const allIds = new Set([...existingIds, ...newIds]);
+  for (const step of newSteps) {
+    for (const depId of step.dependsOn ?? []) {
+      if (!allIds.has(depId)) {
+        errors.push(`PLAN_MUTATION_MISSING_DEPENDENCY: ${step.id} depends on unknown step ${depId}.`);
+      }
+    }
+  }
+
+  const cycle = findNewStepDependencyCycle(newSteps, existingIds);
+  if (cycle) {
+    errors.push(`PLAN_MUTATION_DEPENDENCY_CYCLE: ${cycle.join(' -> ')}.`);
+  }
+
+  return errors.length > 0 ? { valid: false, errors } : { valid: true };
+}
+
+function findNewStepDependencyCycle(
+  newSteps: z.infer<typeof newStepSchema>[],
+  existingIds: Set<string>
+): string[] | undefined {
+  const graph = new Map<string, string[]>();
+  for (const step of newSteps) {
+    graph.set(step.id, (step.dependsOn ?? []).filter((depId) => !existingIds.has(depId)));
+  }
+
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const path: string[] = [];
+
+  const visit = (id: string): string[] | undefined => {
+    if (visited.has(id)) return undefined;
+    if (visiting.has(id)) {
+      const start = path.indexOf(id);
+      return [...path.slice(start), id];
+    }
+    visiting.add(id);
+    path.push(id);
+    for (const depId of graph.get(id) ?? []) {
+      const cycle = visit(depId);
+      if (cycle) return cycle;
+    }
+    path.pop();
+    visiting.delete(id);
+    visited.add(id);
+    return undefined;
+  };
+
+  for (const step of newSteps) {
+    const cycle = visit(step.id);
+    if (cycle) return cycle;
+  }
+  return undefined;
 }
 
 /** Resolve step dependencies — mark steps blocked when deps are incomplete. */

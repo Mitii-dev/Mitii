@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "id": "bugfix-workflow",
+  "name": "Bugfix workflow",
+  "description": "Reproduce, diagnose, minimally fix, and regression-test software defects. Use for concrete bugfix tasks; not for explanation-only requests.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": ["ask", "plan", "agent"],
+  "intents": ["bugfix", "diagnose"],
+  "taskKinds": ["debugging", "implementation"],
+  "triggers": ["fix", "bug", "broken", "failing", "regression"],
+  "negativeTriggers": ["explain bugfix workflow"],
+  "requiredTools": ["read_file", "search"],
+  "optionalTools": ["diagnostics", "apply_patch", "run_command"],
+  "requiredCapabilities": ["repository-read"],
+  "dependencies": [],
+  "conflicts": [],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 5000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 20,
+  "tags": ["debugging", "verification"],
+  "pinningRules": [
+    {
+      "id": "bugfix-intent",
+      "scope": "intent",
+      "value": "bugfix",
+      "action": "recommend",
+      "priority": 35
+    }
+  ],
+  "tests": [
+    {
+      "id": "positive-bugfix",
+      "name": "Selects for a concrete bugfix",
+      "request": "Fix the failing authentication refresh test",
+      "mode": "agent",
+      "availableTools": ["read_file", "search", "apply_patch", "run_command"],
+      "availableCapabilities": ["repository-read", "workspace-write"],
+      "expected": "selected",
+      "maxInjectionChars": 5000
+    },
+    {
+      "id": "missing-tools",
+      "name": "Rejects without required repository tools",
+      "request": "Fix this bug",
+      "mode": "agent",
+      "availableTools": [],
+      "availableCapabilities": ["repository-read"],
+      "expected": "rejected"
+    }
+  ]
+}

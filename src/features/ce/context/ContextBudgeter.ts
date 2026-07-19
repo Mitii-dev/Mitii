@@ -19,6 +19,7 @@ export class ContextBudgeter {
 
     const allocations: Array<{ source: string; budget: number }> = [
       { source: 'project-rules', budget: maxTokens * 0.10 },
+      { source: 'skill-catalog', budget: maxTokens * 0.04 },
       { source: 'mentioned-files', budget: maxTokens * 0.30 },
       { source: 'indexed-file-search', budget: maxTokens * 0.20 },
       { source: 'workspace-overview', budget: maxTokens * 0.22 },

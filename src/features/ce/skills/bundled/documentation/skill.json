@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "id": "documentation",
+  "name": "Documentation",
+  "description": "Inspect, write, and verify repository documentation, including README, API, architecture, examples, and documentation-site changes.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": ["ask", "plan", "agent"],
+  "intents": ["docs"],
+  "taskKinds": ["docs", "implementation", "question", "explicit_plan"],
+  "taskSubtypes": ["readme", "api_reference", "architecture", "docusaurus", "mdx_repair", "changelog", "examples", "generic"],
+  "triggers": ["documentation", "readme", "docs", "mdx", "docusaurus"],
+  "negativeTriggers": ["release notes from git history"],
+  "pathPatterns": ["**/*.md", "**/*.mdx", "docs/**"],
+  "requiredTools": ["read_file"],
+  "optionalTools": ["search", "apply_patch", "run_command"],
+  "requiredCapabilities": ["repository-read"],
+  "dependencies": [],
+  "conflicts": ["audit-cleanup"],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": ["references/readme-guide.md"],
+  "maxInjectionChars": 6000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 20,
+  "tags": ["docs", "readme", "mdx"],
+  "pinningRules": [
+    {
+      "id": "mdx-path",
+      "scope": "path",
+      "value": "**/*.mdx",
+      "action": "attach",
+      "priority": 50
+    }
+  ],
+  "tests": [
+    {
+      "id": "readme-update",
+      "name": "Selects for README updates",
+      "request": "Update the README installation section",
+      "mode": "agent",
+      "repositoryFacts": {
+        "paths": ["README.md"]
+      },
+      "availableTools": ["read_file", "search", "apply_patch"],
+      "availableCapabilities": ["repository-read", "workspace-write"],
+      "expected": "selected",
+      "maxInjectionChars": 6000
+    }
+  ]
+}

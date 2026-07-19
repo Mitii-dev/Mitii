@@ -566,6 +566,40 @@ describe('AgentLoop E2E', () => {
     expect(chunks.join('')).toContain('tried to finish an Agent-mode edit task without calling apply_patch or write_file');
   });
 
+  it('counts a successful workspace-mutating shell command as the required edit', async () => {
+    const executor = createMockExecutor();
+    const provider = mockProvider([
+      {
+        tool_calls: [{
+          index: 0,
+          id: 'call_restore',
+          function: {
+            name: 'run_command',
+            arguments: '{"command":"git restore -- src/index.ts"}',
+          },
+        }],
+      },
+      { content: 'Restored src/index.ts.' },
+    ]);
+
+    const loop = new AgentLoop(executor, 5);
+    const chunks: string[] = [];
+    for await (const chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Restore src/index.ts' }],
+      [{ type: 'function', function: { name: 'run_command', description: 'run', parameters: {} } }],
+      undefined,
+      undefined,
+      { maxSteps: 5, requiresWrite: true, requiredOperation: 'workspace_write' }
+    )) {
+      chunks.push(chunkContent(chunk));
+    }
+
+    expect(executedTools).toEqual(['run_command']);
+    expect(chunks.join('')).toContain('Restored src/index.ts');
+    expect(chunks.join('')).not.toContain('without calling apply_patch or write_file');
+  });
+
   it('resumes with the same required-write enforcement after denied approval', async () => {
     const executor = createMockExecutor();
     (executor.execute as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
@@ -752,6 +786,50 @@ describe('AgentLoop E2E', () => {
     expect(chunks.join('')).not.toContain('Should not get here');
   });
 
+  it('does not treat different command arguments with the same error as identical failures', async () => {
+    const executor = createMockExecutor();
+    (executor.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: false,
+      output: '',
+      error: 'Dangerous command blocked',
+    });
+
+    const provider = mockProvider([
+      {
+        tool_calls: [{
+          index: 0,
+          id: 'call_clean',
+          function: { name: 'run_command', arguments: '{"command":"git clean -fd generated/"}' },
+        }],
+      },
+      {
+        tool_calls: [{
+          index: 0,
+          id: 'call_rm',
+          function: { name: 'run_command', arguments: '{"command":"rm -rf generated/"}' },
+        }],
+      },
+      { content: 'Both approaches were blocked; user approval is required.' },
+    ]);
+
+    const loop = new AgentLoop(executor, 5);
+    const chunks: string[] = [];
+    for await (const chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Clean generated files' }],
+      [{ type: 'function', function: { name: 'run_command', description: 'run', parameters: {} } }],
+      undefined,
+      undefined,
+      { maxSteps: 5 }
+    )) {
+      chunks.push(chunkContent(chunk));
+    }
+
+    expect(executor.execute).toHaveBeenCalledTimes(2);
+    expect(chunks.join('')).toContain('user approval is required');
+    expect(chunks.join('')).not.toContain('Stopped after repeated identical tool failure');
+  });
+
   it('synthesizes gathered evidence after repeated tool failures in Ask mode', async () => {
     const executor = createMockExecutor();
     (executor.execute as ReturnType<typeof vi.fn>)
@@ -838,7 +916,7 @@ describe('AgentLoop E2E', () => {
 });
 
 describe('Plan tools E2E', () => {
-  it('resolves missing mark_step_complete stepId to the running step', async () => {
+  it('requires an exact mark_step_complete stepId', async () => {
     const { createMarkStepCompleteTool } = await import('../src/features/ce/plans/tools/planTools');
     const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
     const plan: ThunderPlan = {
@@ -861,12 +939,12 @@ describe('Plan tools E2E', () => {
 
     const result = await runtime.execute('mark_step_complete', {});
 
-    expect(result.success).toBe(true);
-    expect(result.output).toContain('Step step_1 marked complete');
-    expect(plan.steps[0].status).toBe('done');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Invalid input');
+    expect(plan.steps[0].status).toBe('running');
   });
 
-  it('resolves stepId "current" to the first pending step when nothing is running', async () => {
+  it('does not fuzzy-match mark_step_complete ids', async () => {
     const { createMarkStepCompleteTool } = await import('../src/features/ce/plans/tools/planTools');
     const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
     const plan: ThunderPlan = {
@@ -886,8 +964,9 @@ describe('Plan tools E2E', () => {
 
     const result = await runtime.execute('mark_step_complete', { stepId: 'current' });
 
-    expect(result.success).toBe(true);
-    expect(plan.steps[0].status).toBe('done');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Step not found: current');
+    expect(plan.steps[0].status).toBe('pending');
   });
 
   it('applyDependencyLocks blocks steps until deps complete', async () => {
@@ -912,6 +991,81 @@ describe('Plan tools E2E', () => {
     applyDependencyLocks(plan);
     expect(plan.steps[1].status).toBe('pending');
     expect(getNextExecutableStep(plan)?.id).toBe('b');
+  });
+
+  it('preserves unfinished steps when proposing a plan mutation', async () => {
+    const { createProposePlanMutationTool } = await import('../src/features/ce/plans/tools/planTools');
+    const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
+    const plan: ThunderPlan = {
+      goal: 'test',
+      assumptions: [],
+      requiredApprovals: [],
+      steps: [
+        { id: 'step_1', title: 'Diagnose', status: 'done', risk: 'low' },
+        { id: 'step_2', title: 'Fix auth', status: 'running', risk: 'medium' },
+        { id: 'step_3', title: 'Add regression test', status: 'pending', risk: 'medium', dependsOn: ['step_2'] },
+        { id: 'step_4', title: 'Verify package', status: 'pending', risk: 'low', dependsOn: ['step_3'] },
+      ],
+    };
+    const runtime = new ToolRuntime();
+    runtime.register(createProposePlanMutationTool({
+      getPlan: () => plan,
+      setPlan: (updated) => {
+        plan.steps = updated.steps;
+        plan.assumptions = updated.assumptions;
+      },
+      getSessionId: () => 'session-1',
+    }));
+
+    const result = await runtime.execute('propose_plan_mutation', {
+      reason: 'Baseline failure revealed an auth fixture setup gap',
+      newSteps: [{
+        id: 'step_5',
+        title: 'Repair auth fixture setup',
+        phase: 'execute',
+        dependsOn: ['step_1'],
+        risk: 'medium',
+      }],
+    });
+
+    expect(result.success).toBe(true);
+    expect(plan.steps.map((step) => step.id)).toEqual(['step_1', 'step_2', 'step_3', 'step_4', 'step_5']);
+    expect(plan.steps.find((step) => step.id === 'step_2')?.status).toBe('blocked');
+    expect(plan.steps.find((step) => step.id === 'step_3')?.status).toBe('pending');
+    expect(plan.steps.find((step) => step.id === 'step_5')?.status).toBe('running');
+  });
+
+  it('rejects plan mutations with missing dependencies', async () => {
+    const { createProposePlanMutationTool } = await import('../src/features/ce/plans/tools/planTools');
+    const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
+    const plan: ThunderPlan = {
+      goal: 'test',
+      assumptions: [],
+      requiredApprovals: [],
+      steps: [{ id: 'step_1', title: 'Diagnose', status: 'done', risk: 'low' }],
+    };
+    const runtime = new ToolRuntime();
+    runtime.register(createProposePlanMutationTool({
+      getPlan: () => plan,
+      setPlan: (updated) => {
+        plan.steps = updated.steps;
+      },
+      getSessionId: () => 'session-1',
+    }));
+
+    const result = await runtime.execute('propose_plan_mutation', {
+      reason: 'Need another step',
+      newSteps: [{
+        id: 'step_2',
+        title: 'Retry verify',
+        dependsOn: ['step_that_does_not_exist'],
+        risk: 'medium',
+      }],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('PLAN_MUTATION_MISSING_DEPENDENCY');
+    expect(plan.steps).toHaveLength(1);
   });
 });
 

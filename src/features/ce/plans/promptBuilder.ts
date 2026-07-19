@@ -73,6 +73,20 @@ TOOLS: You have tools to read files, search code, run commands, write files, and
 - If a tool returns "awaiting approval", stop and inform the user.
 - NEVER say "I will search…" without calling tools in the same turn.`;
 
+const PLAN_TOOL_GUIDANCE = `
+TOOLS: You have tools for read-only planning discovery.
+- Use read_file/read_files/search/search_batch/list_files to gather evidence before producing a plan.
+- Use resolve_path before read_file when unsure of the exact path; read_file auto-resolves high-confidence misses.
+- Copy rel_path values from search/resolve_path exactly — never invent flattened paths.
+- Use git_diff and diagnostics when current changes or errors matter.
+- Use run_command only for inspect-only commands such as rg, git status/diff/log, ls, sed, cat, head, or tsc --noEmit.
+- Use project_catalog/repo_map/retrieve_context when project/package scope matters.
+- Use analyze_change_impact for "how would I implement..." or "what files change..." planning questions.
+- Tools named mcp__server__tool come from configured MCP servers. Only use explicitly read-shaped MCP tools offered this turn; prefer builtin filesystem tools.
+- Use ask_question when a key planning decision is ambiguous.
+- Plan mode is strictly read-only: do not write, patch, save memory, edit package manifests, or run mutating commands.
+- NEVER say "I will search…" without calling tools in the same turn.`;
+
 const AUDIT_GUIDANCE = `
 AUDIT / CLEANUP MODE — AST-FIRST (avoid tunnel vision and manual grep):
 1. **CVE / vulnerability tasks**: execute_workspace_script("audit-vulnerabilities.mjs") first. Then optionally pnpm/npm audit|outdated or fetch_web on advisory URLs.
@@ -180,7 +194,13 @@ export function collectSystemPromptSections(
     Pick<SystemPromptOptions, 'askProfile' | 'allowedToolNames'>
 ): PromptSectionMap {
   const modeInstructions = buildModeInstructions(mode, options);
-  const baseToolGuidance = toolsEnabled ? (mode === 'ask' ? ASK_TOOL_GUIDANCE : TOOL_GUIDANCE) : '';
+  const baseToolGuidance = toolsEnabled
+    ? mode === 'ask'
+      ? ASK_TOOL_GUIDANCE
+      : mode === 'plan'
+        ? PLAN_TOOL_GUIDANCE
+        : TOOL_GUIDANCE
+    : '';
   const allowedToolNames = options.allowedToolNames ?? [];
   const toolGuidance =
     toolsEnabled && allowedToolNames.length > 0
@@ -282,8 +302,7 @@ ${options.askProfile === 'deep' ? '- For deep Ask responses, write like a techni
     plan: `You are in PLAN mode. Analyze the codebase and give a direct answer.
 - Start with a 1-2 sentence summary of your recommendation.
 - Use bullet points for steps. Be specific with file paths from context.
-- Prefer not to write files — propose what to change and where.
-- If a write is necessary to proceed, call write_file/apply_patch and wait for user approval.
+- Do not write files in Plan mode — propose what to change and where.
 - For complex tasks, output a JSON plan block (see format below).`,
     agent: `You are in AGENT mode. Implement changes using tools and/or CODE_EDIT_BLOCK format.
 

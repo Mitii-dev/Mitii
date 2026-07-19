@@ -123,5 +123,5 @@ ${completed.length ? completed.join('\n') : '(none)'}
 Remaining:
 ${pending.join('\n')}
 
-Do NOT modify this plan tracker text. Use mark_step_complete when the active step is finished.`;
+Do NOT modify this plan tracker text. The orchestrator advances step status automatically.`;
 }

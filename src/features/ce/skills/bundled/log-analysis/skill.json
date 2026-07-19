@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "log-analysis",
+  "name": "Log analysis",
+  "description": "Analyze Mitii JSONL session logs through deterministic analyzers and compact reports without loading raw logs into model context.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": ["ask", "plan", "agent"],
+  "intents": ["log_audit"],
+  "taskKinds": ["log_audit"],
+  "taskSubtypes": ["log"],
+  "triggers": ["jsonl", "session log", "analyze logs", ".mitii/logs"],
+  "negativeTriggers": ["application logging feature"],
+  "pathPatterns": ["**/*.jsonl", ".mitii/logs/**"],
+  "requiredTools": ["analyze_jsonl"],
+  "optionalTools": ["analyze_log_directory", "query_log_events", "list_logs"],
+  "requiredCapabilities": ["repository-read"],
+  "dependencies": [],
+  "conflicts": ["log-audit"],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 5000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 30,
+  "tags": ["logs", "jsonl", "telemetry"],
+  "pinningRules": [],
+  "tests": [
+    {
+      "id": "jsonl-analysis",
+      "name": "Selects structured log analysis",
+      "request": "Analyze .mitii/logs/session.jsonl and identify token and tool failures",
+      "mode": "ask",
+      "repositoryFacts": {
+        "paths": [".mitii/logs/session.jsonl"]
+      },
+      "availableTools": ["analyze_jsonl", "query_log_events"],
+      "availableCapabilities": ["repository-read"],
+      "expected": "selected",
+      "maxInjectionChars": 5000
+    }
+  ]
+}

@@ -28,6 +28,10 @@ const CODE_QUALITY_AUDIT_RE =
 /** Broad "audit" — only after specific subtypes fail. Not every use of the word. */
 const GENERIC_CLEANUP_RE =
   /\b(cleanup|clean\s+up|unused|dead\s*code|depcheck|knip|orphan\s+files?)\b/i;
+const RESTORATION_BUGFIX_RE =
+  /\b(?:restore|revert|roll\s*back|undo|back\s*out|original\s+(?:state|structure)|previous\s+(?:state|structure)|bring\s+(?:the\s+)?project\s+back|half[-\s]?(?:finished|implemented|implemneted|done)|failed\s+restructur|broken\s+restructur)\b/i;
+const FAILURE_FIX_RE =
+  /\b(?:fix|repair|correct|resolve)\b[\s\S]{0,100}\b(?:build|compile|test|failure|error|broken|failing)\b|\b(?:build|compile|test)\b[\s\S]{0,100}\b(?:fail|fails|failed|error|broken)\b/i;
 
 const README_RE = /\b(readme|read\s*me|readfile)\b/i;
 const DOCUSAURUS_RE = /\b(docusaurus|docs\s+site|docs\s+plugin|sidebars?\.tsx?)\b/i;
@@ -46,6 +50,7 @@ export function classifyTaskSignals(userMessage: string, taskAnalysis?: TaskAnal
   if (taskAnalysis?.gitRoute?.isGitTask) signals.push('git');
   if (LOG_AUDIT_RE.test(userMessage)) signals.push('log_audit');
   if (DOCS_RE.test(userMessage)) signals.push('docs');
+  if (isRepositoryRestorationBugfix(userMessage, taskAnalysis)) signals.push('repository_restoration_bugfix');
 
   const primaryKind =
     taskAnalysis?.kind === 'implementation' &&
@@ -62,6 +67,7 @@ export function classifyTaskSignals(userMessage: string, taskAnalysis?: TaskAnal
 }
 
 export function resolveAuditSubtype(text: string): AuditSubtype | undefined {
+  if (isRepositoryRestorationBugfix(text)) return undefined;
   if (LOG_AUDIT_RE.test(text)) return 'log';
   if (UNUSED_DEPS_RE.test(text)) return 'unused_deps';
   if (DEAD_CODE_RE.test(text)) return 'dead_code';
@@ -111,6 +117,7 @@ function mapIntent(
     return 'log_audit';
   }
   if (taskAnalysis?.gitRoute?.isGitTask) return 'git';
+  if (isRepositoryRestorationBugfix(text, taskAnalysis)) return 'bugfix';
   if (taskAnalysis?.kind === 'docs' || taskAnalysis?.actIntent === 'docs' || taskAnalysis?.planIntent === 'docs' || docsSubtype) {
     return 'docs';
   }
@@ -218,15 +225,18 @@ export function resolveRoute(
   options: ResolveRouteOptions = {}
 ): RouteResolution {
   const text = userMessage.trim();
+  const restorationBugfix = isRepositoryRestorationBugfix(text, taskAnalysis);
   const auditSubtype =
-    taskAnalysis?.auditSubtype ??
-    (taskAnalysis?.kind === 'audit' ||
-    taskAnalysis?.kind === 'log_audit' ||
-    taskAnalysis?.askIntent === 'log_analysis' ||
-    /\baudit\b/i.test(text) ||
-    GENERIC_CLEANUP_RE.test(text)
-      ? resolveAuditSubtype(text)
-      : undefined);
+    restorationBugfix
+      ? undefined
+      : taskAnalysis?.auditSubtype ??
+        (taskAnalysis?.kind === 'audit' ||
+        taskAnalysis?.kind === 'log_audit' ||
+        taskAnalysis?.askIntent === 'log_analysis' ||
+        /\baudit\b/i.test(text) ||
+        GENERIC_CLEANUP_RE.test(text)
+          ? resolveAuditSubtype(text)
+          : undefined);
   const docsSubtype =
     taskAnalysis?.docsSubtype ??
     (taskAnalysis?.kind === 'docs' ||
@@ -247,7 +257,9 @@ export function resolveRoute(
     Boolean(options.resumeSavedPlan),
     auditSubtype
   );
-  const risk = resolveRisk(intent, operationClass, taskAnalysis?.complexity, taskAnalysis?.gitRoute);
+  const risk = restorationBugfix && operationClass === 'workspace_write'
+    ? 'high'
+    : resolveRisk(intent, operationClass, taskAnalysis?.complexity, taskAnalysis?.gitRoute);
 
   const shouldPlan =
     !options.forceDirect &&
@@ -255,7 +267,7 @@ export function resolveRoute(
     intent !== 'question' &&
     // README / simple docs: prefer direct unless explicitly high complexity
     !(intent === 'docs' && docsSubtype === 'readme' && taskAnalysis?.complexity !== 'high') &&
-    (taskAnalysis?.shouldPlan ?? false);
+    (restorationBugfix || (taskAnalysis?.shouldPlan ?? false));
 
   const executionPath = resolveExecutionPath(intent, docsSubtype, auditSubtype, {
     mdxRepairMode: options.mdxRepairMode,
@@ -281,6 +293,12 @@ export function resolveRoute(
       .filter(Boolean)
       .join(' · '),
   };
+}
+
+export function isRepositoryRestorationBugfix(text: string, taskAnalysis?: TaskAnalysis): boolean {
+  const combined = `${text} ${taskAnalysis?.summary ?? ''}`;
+  if (!RESTORATION_BUGFIX_RE.test(combined)) return false;
+  return FAILURE_FIX_RE.test(combined) || /\b(?:fix|repair|restore|revert|build|compile|failing|failed|broken|error)\b/i.test(combined);
 }
 
 export function buildRoutePolicyText(route: RouteResolution): string {

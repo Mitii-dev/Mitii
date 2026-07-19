@@ -21,7 +21,7 @@ import {
   collectSystemPromptSections,
   describePromptSections,
 } from '../../../features/ce/plans/promptBuilder';
-import { parsePlanFromText, isWriteAllowed } from '../../../features/ce/plans/PlanActEngine';
+import { classifyCommandEffect, inferTouchedFilesFromCommand, parsePlanFromText, isWriteAllowed } from '../../../features/ce/plans/PlanActEngine';
 import { createLogger } from '../../../kernel/telemetry/Logger';
 import type { SessionLogService } from '../../../kernel/telemetry/SessionLogService';
 import { SessionTiming } from '../../../kernel/telemetry/SessionTiming';
@@ -99,6 +99,10 @@ import type { MemoryService } from '../../../features/ce/memory/MemoryService';
 import type { AgentTaskState } from '../../../features/ce/runtime/AgentTaskState';
 import type { PostEditValidator } from '../../../features/ce/apply/PostEditValidator';
 import type { SkillCatalogService } from '../../../features/ce/skills/SkillCatalogService';
+import type { SkillResolver } from '../../../features/ce/skills/SkillEngine';
+import type { SkillInjectionBuilder } from '../../../features/ce/skills/SkillInjectionBuilder';
+import type { SkillTelemetry } from '../../../features/ce/skills/SkillTelemetry';
+import type { RepositoryProfileProvider } from '../../../features/ce/skills/RepositoryProfileProvider';
 import { normalizeAgentDepth } from '../../../kernel/config/agentDepth';
 import type { SkillRuntimeContext } from '../../../features/ce/skills/skillRuntimeContext';
 import { thunderPlanToView } from '../../../features/ce/modes/plan/planViewMapper';
@@ -175,6 +179,10 @@ export interface ChatOrchestratorDeps {
   researchAgentProvider?: LlmProvider;
   runVerifyHooks?: (commands: string[], userMessage?: string) => Promise<string>;
   skillCatalog?: SkillCatalogService;
+  skillResolver?: SkillResolver;
+  skillInjectionBuilder?: SkillInjectionBuilder;
+  skillTelemetry?: SkillTelemetry;
+  repositoryProfileProvider?: RepositoryProfileProvider;
   allowNetwork?: () => boolean;
   githubIssueFetcher?: GitHubIssueFetcher;
   githubTokenProvider?: () => Promise<string | undefined>;
@@ -649,6 +657,68 @@ export class ChatOrchestrator {
       orchestrationEnabled,
       forceDirect: isAgentMode && hasDirectRouteOverride(taskForClassification),
     });
+    let engineResolution: ReturnType<SkillResolver['resolve']> | undefined;
+    if (this.deps.skillResolver && this.deps.repositoryProfileProvider && session.mode !== 'review') {
+      const availableTools = new Set(this.deps.toolRuntime?.list().map((tool) => tool.name) ?? []);
+      const taskSubtype = pipeline.route.auditSubtype ?? pipeline.route.docsSubtype;
+      engineResolution = this.deps.skillResolver.resolve({
+        request: taskForClassification,
+        mode: session.mode,
+        intent: pipeline.route.intent,
+        taskKind: taskAnalysis.kind,
+        taskSubtype,
+        operationType: pipeline.route.operationClass,
+        complexity: taskAnalysis.complexity,
+        artifacts: pipeline.artifact.artifacts.map((artifact) => artifact.path).filter((path): path is string => Boolean(path)),
+        repository: this.deps.repositoryProfileProvider.getProfile(),
+        availableTools,
+        availableCapabilities: new Set([
+          ...availableTools,
+          'repository-read',
+          ...(session.mode === 'agent' ? ['workspace-write'] : []),
+          ...(this.deps.allowNetwork?.() ? ['network'] : []),
+        ]),
+        edition: 'ce',
+        manualSkillIds: extractManualSkillIds(taskForClassification),
+      });
+      pipeline.skills = {
+        activeSkill: engineResolution.primarySkillId,
+        supportingSkill: engineResolution.supportingSkillId,
+        deferredSkills: engineResolution.candidateSkills
+          .map((candidate) => candidate.id)
+          .filter((id) => !engineResolution!.selectedSkillIds.includes(id)),
+        suggestedSkills: engineResolution.candidateSkills.map((candidate) => candidate.id),
+        injectSkills: engineResolution.selectedSkillIds,
+        engineReport: {
+          engineVersion: engineResolution.engineVersion,
+          candidates: engineResolution.candidateSkills.map((candidate) => ({
+            id: candidate.id,
+            score: candidate.score,
+            status: candidate.status,
+            reasons: candidate.factors.map((factor) => factor.reason),
+          })),
+          rejected: engineResolution.rejectedSkills.map((candidate) => ({
+            id: candidate.id,
+            status: candidate.status,
+            reasons: candidate.rejectionReasons,
+          })),
+        },
+      };
+      this.deps.skillTelemetry?.recordResolution({
+        request: taskForClassification,
+        mode: session.mode,
+        intent: pipeline.route.intent,
+        taskKind: taskAnalysis.kind,
+        taskSubtype,
+        operationType: pipeline.route.operationClass,
+        complexity: taskAnalysis.complexity,
+        artifacts: pipeline.artifact.artifacts.map((artifact) => artifact.path).filter((path): path is string => Boolean(path)),
+        repository: this.deps.repositoryProfileProvider.getProfile(),
+        availableTools,
+        availableCapabilities: new Set(availableTools),
+        edition: 'ce',
+      }, engineResolution, 'plan-v1');
+    }
     this.deps.sessionLog?.append('info', 'Pipeline resolution', {
       intent: pipeline.route.intent,
       auditSubtype: pipeline.route.auditSubtype,
@@ -714,6 +784,39 @@ export class ChatOrchestrator {
           skillResolution: pipeline.skills,
         })
       : undefined;
+    const skillInjection = engineResolution && this.deps.skillInjectionBuilder && session.mode !== 'review'
+      ? this.deps.skillInjectionBuilder.build({
+          skillIds: engineResolution.selectedSkillIds,
+          mode: session.mode,
+          style: tierPolicy.skillInjection === 'quick-ref'
+            ? 'quick-ref'
+            : tierPolicy.skillInjection === 'full'
+              ? 'full'
+              : tierPolicy.skillInjection,
+          maxChars: tierPolicy.maxSkillChars,
+          runtimeContext: skillRuntimeContext,
+        })
+      : undefined;
+    if (skillInjection?.context && planPlan) {
+      planPlan.skillPlaybookContext = skillInjection.context;
+      planPlan.appliedSkills = skillInjection.loaded.map((skill) => skill.id);
+    }
+    if (skillInjection?.context && actPlan) {
+      actPlan.skillPlaybookContext = skillInjection.context;
+      actPlan.appliedSkills = skillInjection.loaded.map((skill) => skill.id);
+    }
+    if (skillInjection) {
+      this.deps.skillTelemetry?.recordInjection(session.mode, skillInjection);
+      this.recordSkillInjectionTelemetry(
+        resolvedTier,
+        tierPolicy,
+        engineResolution?.candidateSkills.map((candidate) => candidate.id) ?? [],
+        engineResolution?.selectedSkillIds ?? [],
+        skillInjection.loaded.map((skill) => skill.id),
+        skillInjection.totalChars
+      );
+    }
+    const askSkillContext = isAskMode ? skillInjection?.context : undefined;
     const scopedRoot =
       askPlan?.scope.status === 'matched'
         ? askPlan.scope.scopeRoot
@@ -1490,6 +1593,7 @@ export class ChatOrchestrator {
           ...taskEnrichment.contextBlocks
         ),
         mergePromptContexts(
+          askSkillContext,
           planPlan?.skillPlaybookContext,
           actPlan?.skillPlaybookContext
         ),
@@ -1514,6 +1618,7 @@ export class ChatOrchestrator {
         sections: promptSections,
         planningDepth,
         skillChars:
+          (askSkillContext?.length ?? 0) +
           (planPlan?.skillPlaybookContext.length ?? 0) +
           (actPlan?.skillPlaybookContext.length ?? 0),
       });
@@ -1628,7 +1733,11 @@ export class ChatOrchestrator {
           preserveLiveStatus = true;
         } else if (!this.agentLoop.hadPendingApproval() && !signal.aborted) {
           const directTouchedFiles = getTouchedFilesFromAudit(this.deps.toolRuntime, auditStartIndex);
-          if (requiresAgentWrite && directTouchedFiles.length === 0) {
+          const directWorkspaceMutation = hasWorkspaceMutationFromAudit(
+            this.deps.toolRuntime,
+            auditStartIndex
+          );
+          if (requiresAgentWrite && !directWorkspaceMutation) {
             const noWriteBlock =
               '\n\nStopped because the model did not change any files for this Agent-mode edit task. No files were changed.\n';
             fullResponse += noWriteBlock;
@@ -1814,6 +1923,10 @@ export class ChatOrchestrator {
       );
     }
 
+    this.deps.skillTelemetry?.recordOutcome(
+      this.skillInjectionTelemetry?.loaded ?? [],
+      !normalizedResponse.wasEmpty && !/\b(?:failed|error)\b/i.test(fullResponse.slice(0, 240))
+    );
     this.flushSkillInjectionTelemetry(provider);
   }
 
@@ -2551,11 +2664,35 @@ export function getTouchedFilesFromAudit(toolRuntime?: ToolRuntime, startIndex =
   const audit = (toolRuntime?.getAuditLog() ?? []).slice(Math.max(0, startIndex));
   const files = new Set<string>();
   for (const { toolName, input, result } of audit) {
-    if (!result.success || !['write_file', 'apply_patch'].includes(toolName)) continue;
-    const path = (input as Record<string, unknown>).path;
-    if (typeof path === 'string') files.add(path);
+    if (!result.success) continue;
+    if (toolName === 'write_file' || toolName === 'apply_patch') {
+      const path = (input as Record<string, unknown>).path;
+      if (typeof path === 'string') files.add(path);
+    }
+    if (toolName === 'run_command') {
+      const command = (input as Record<string, unknown>).command;
+      if (typeof command === 'string') {
+        const effect = classifyCommandEffect(command);
+        if (effect === 'workspace_mutation' || effect === 'dependency_mutation') {
+          for (const file of inferTouchedFilesFromCommand(command)) files.add(file);
+        }
+      }
+    }
   }
   return [...files];
+}
+
+export function hasWorkspaceMutationFromAudit(toolRuntime?: ToolRuntime, startIndex = 0): boolean {
+  const audit = (toolRuntime?.getAuditLog() ?? []).slice(Math.max(0, startIndex));
+  return audit.some(({ toolName, input, result }) => {
+    if (!result.success) return false;
+    if (toolName === 'write_file' || toolName === 'apply_patch') return true;
+    if (toolName !== 'run_command') return false;
+    const command = (input as Record<string, unknown>).command;
+    if (typeof command !== 'string') return false;
+    const effect = classifyCommandEffect(command);
+    return effect === 'workspace_mutation' || effect === 'dependency_mutation';
+  });
 }
 
 export function calculateRetrievalContextBudget(
@@ -2730,4 +2867,9 @@ export function contextItemsToViews(items: ContextItem[]): ContextItemView[] {
     preview: item.content.slice(0, 300),
     truncated: item.reason.includes('truncated'),
   }));
+}
+
+function extractManualSkillIds(message: string): string[] {
+  return [...message.matchAll(/(?:@skill:|\/skill\s+)([a-z0-9][a-z0-9._-]*)/gi)]
+    .map((match) => match[1].toLowerCase());
 }

@@ -278,6 +278,11 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
       }
 
       case 'setTab': {
+        if (message.payload === 'skills' && !this.state.internalFeatures.skillManagement) {
+          this.state = { ...this.state, tab: 'chat', error: 'Skill Management is internal-development only.' };
+          this.postMessage({ type: 'state', payload: this.state });
+          break;
+        }
         if (message.payload === 'history') {
           this.archiveCurrentThread();
         }
@@ -472,6 +477,123 @@ export class ThunderWebviewProvider implements vscode.WebviewViewProvider {
         if (markdown) {
           await vscode.env.clipboard.writeText(markdown);
           void vscode.window.setStatusBarMessage(brandMessage('chat history copied as Markdown'), 2500);
+        }
+        break;
+      }
+
+      case 'requestSkillCatalog': {
+        try {
+          const result = this.controller.listInternalSkills({
+            text: message.payload.query,
+            enabled: message.payload.enabled,
+            modes: message.payload.mode ? [message.payload.mode] : undefined,
+            sort: message.payload.sort,
+            limit: message.payload.limit,
+            offset: message.payload.offset,
+          });
+          this.postMessage({ type: 'skillCatalogResult', payload: { requestId: message.payload.requestId, ...result } });
+        } catch (error) {
+          this.postMessage({ type: 'skillCatalogResult', payload: {
+            requestId: message.payload.requestId,
+            items: [],
+            total: 0,
+            error: error instanceof Error ? error.message : String(error),
+          } });
+        }
+        break;
+      }
+
+      case 'openSkill': {
+        try {
+          const document = this.controller.openInternalSkill(message.payload.id);
+          this.postMessage({ type: 'skillDocumentResult', payload: { requestId: message.payload.requestId, document } });
+        } catch (error) {
+          this.postMessage({ type: 'skillDocumentResult', payload: {
+            requestId: message.payload.requestId,
+            error: error instanceof Error ? error.message : String(error),
+          } });
+        }
+        break;
+      }
+
+      case 'saveSkill': {
+        try {
+          const document = this.controller.saveInternalSkill(message.payload.document, message.payload.expectedRevision);
+          this.postMessage({ type: 'skillMutationResult', payload: { requestId: message.payload.requestId, document } });
+        } catch (error) {
+          this.postMessage({ type: 'skillMutationResult', payload: {
+            requestId: message.payload.requestId,
+            error: error instanceof Error ? error.message : String(error),
+          } });
+        }
+        break;
+      }
+
+      case 'deleteSkill': {
+        try {
+          this.controller.deleteInternalSkill(message.payload.id, message.payload.expectedRevision);
+          this.postMessage({ type: 'skillMutationResult', payload: {
+            requestId: message.payload.requestId,
+            deletedId: message.payload.id,
+          } });
+        } catch (error) {
+          this.postMessage({ type: 'skillMutationResult', payload: {
+            requestId: message.payload.requestId,
+            error: error instanceof Error ? error.message : String(error),
+          } });
+        }
+        break;
+      }
+
+      case 'analyzeSkillDraft': {
+        try {
+          const analysis = this.controller.analyzeInternalSkillDraft(message.payload.manifest, message.payload.content);
+          this.postMessage({ type: 'skillDraftAnalysisResult', payload: { requestId: message.payload.requestId, analysis } });
+        } catch (error) {
+          this.postMessage({ type: 'skillDraftAnalysisResult', payload: {
+            requestId: message.payload.requestId,
+            error: error instanceof Error ? error.message : String(error),
+          } });
+        }
+        break;
+      }
+
+      case 'analyzeSkillRouting': {
+        try {
+          const result = this.controller.analyzeInternalSkillRouting(message.payload.input);
+          this.postMessage({ type: 'skillAnalyzerResult', payload: { requestId: message.payload.requestId, result } });
+        } catch (error) {
+          this.postMessage({ type: 'skillAnalyzerResult', payload: {
+            requestId: message.payload.requestId,
+            error: error instanceof Error ? error.message : String(error),
+          } });
+        }
+        break;
+      }
+
+      case 'runSkillTests': {
+        try {
+          const result = this.controller.runInternalSkillTests(message.payload.skillId);
+          this.postMessage({ type: 'skillTestResult', payload: { requestId: message.payload.requestId, result } });
+        } catch (error) {
+          this.postMessage({ type: 'skillTestResult', payload: {
+            requestId: message.payload.requestId,
+            error: error instanceof Error ? error.message : String(error),
+          } });
+        }
+        break;
+      }
+
+      case 'requestSkillAnalytics': {
+        try {
+          const metrics = this.controller.getInternalSkillAnalytics();
+          this.postMessage({ type: 'skillAnalyticsResult', payload: { requestId: message.payload.requestId, metrics } });
+        } catch (error) {
+          this.postMessage({ type: 'skillAnalyticsResult', payload: {
+            requestId: message.payload.requestId,
+            metrics: [],
+            error: error instanceof Error ? error.message : String(error),
+          } });
         }
         break;
       }

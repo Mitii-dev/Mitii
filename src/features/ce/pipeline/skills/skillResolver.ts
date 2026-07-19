@@ -1,6 +1,6 @@
 import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import type { RouteResolution, SkillResolution } from '../types';
-import { isDependencyCleanupAudit } from '../route/routeResolver';
+import { isDependencyCleanupAudit, isRepositoryRestorationBugfix } from '../route/routeResolver';
 
 /**
  * Resolve 0–1 active skill for injection. Meta skill `using-agent-skills` is never
@@ -61,8 +61,15 @@ export function resolveSkillsForRoute(
     route.intent === 'diagnose' ||
     /\b(error|failing|failed|debug|repair|fix)\b/i.test(taskAnalysis?.summary ?? '')
   ) {
-    if (!active || !options.planning) active = 'debugging-and-error-recovery';
-    else deferred.push('debugging-and-error-recovery');
+    const bugfixSkill = (
+      route.intent === 'bugfix' &&
+      route.operationClass === 'workspace_write' &&
+      route.risk === 'high'
+    ) || isRepositoryRestorationBugfix(taskAnalysis?.summary ?? '')
+      ? 'bugfix-workflow'
+      : 'debugging-and-error-recovery';
+    if (!active || !options.planning) active = bugfixSkill;
+    else deferred.push(bugfixSkill);
   }
 
   const summary = taskAnalysis?.summary ?? '';

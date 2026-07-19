@@ -35,7 +35,7 @@ import { MentionedFileContextSource } from '../../adapters/vscode/context/mentio
 import { GitService } from '../../features/ce/context/GitService';
 import { DiagnosticsService, GitDiffContextSource, DiagnosticsContextSource } from '../../adapters/vscode/context/DiagnosticsService';
 import { RepoMapService } from '../../features/ce/context/RepoMapService';
-import { setVerifyCommandPatterns } from '../../features/ce/plans/PlanActEngine';
+import { classifyCommandEffect, inferTouchedFilesFromCommand, setVerifyCommandPatterns } from '../../features/ce/plans/PlanActEngine';
 import { debounce } from '../../kernel/util/debounce';
 import { ChatOrchestrator } from '../../features/ce/orchestration/ChatOrchestrator';
 import { VscodeEditorContextPort } from '../../adapters/vscode/runtime/VscodeEditorContextPort';
@@ -121,6 +121,16 @@ import {
   providerSecretRef,
 } from '../../features/ce/providers/ProviderProfilesService';
 import { SkillCatalogContextSource, SkillCatalogService } from '../../features/ce/skills/SkillCatalogService';
+import {
+  CatalogSkillCandidateRetriever,
+  ExplainableSkillRanker,
+  SkillResolver,
+} from '../../features/ce/skills/SkillEngine';
+import { SkillInjectionBuilder } from '../../features/ce/skills/SkillInjectionBuilder';
+import { SkillTelemetry } from '../../features/ce/skills/SkillTelemetry';
+import { SkillManagementService } from '../../features/ce/skills/SkillManagementService';
+import { SkillTestRunner } from '../../features/ce/skills/SkillTestRunner';
+import { WorkspaceRepositoryProfileProvider } from '../../features/ce/skills/RepositoryProfileProvider';
 import { InlineDiffManager } from '../../vscode/inlineDiffManager';
 import { testProviderConnection } from '../../kernel/llm/testConnection';
 import { createLogger } from '../../kernel/telemetry/Logger';
@@ -142,6 +152,9 @@ import type {
   McpCustomServerView,
   ModelOptionView,
   SessionProviderOverrideView,
+  SkillAnalyzerRequest,
+  SkillAnalyzerResultView,
+  SkillDocumentView,
 } from '../../vscode/webview/messages';
 import {
   initialWebviewState,
@@ -216,6 +229,12 @@ export class ThunderController {
   private projectRulesService: ProjectRulesService | undefined;
   private providerProfilesService: ProviderProfilesService | undefined;
   private skillCatalogService: SkillCatalogService | undefined;
+  private skillResolver: SkillResolver | undefined;
+  private skillInjectionBuilder: SkillInjectionBuilder | undefined;
+  private skillTelemetry: SkillTelemetry | undefined;
+  private skillManagementService: SkillManagementService | undefined;
+  private skillTestRunner: SkillTestRunner | undefined;
+  private repositoryProfileProvider: WorkspaceRepositoryProfileProvider | undefined;
   private inlineDiffManager: InlineDiffManager | undefined;
   private researchAgentProvider: LlmProvider | undefined;
   private sessionLog = new SessionLogService(new WebhookEmitter());
@@ -512,6 +531,7 @@ export class ThunderController {
     this.providerProfilesService = new ProviderProfilesService(workspace);
     this.skillCatalogService = new SkillCatalogService(workspace);
     this.skillCatalogService.refresh();
+    this.initializeSkillEngine(workspace);
     const retriever = new HybridRetriever(
       [
         new ProjectRulesContextSource(this.projectRulesService, () => this.currentTierPolicy()),
@@ -587,6 +607,7 @@ export class ThunderController {
     this.providerProfilesService = new ProviderProfilesService(workspace);
     this.skillCatalogService = new SkillCatalogService(workspace);
     this.skillCatalogService.refresh();
+    this.initializeSkillEngine(workspace);
     this.memoryService = new MemoryService(db, workspace, {
       maxItems: config.memory.maxItems,
       hybridSearchEnabled: config.memory.hybridSearchEnabled,
@@ -807,6 +828,19 @@ export class ThunderController {
     this.context.subscriptions.push(this.languageServiceSyncDisposable);
   }
 
+  private initializeSkillEngine(workspace: string): void {
+    if (!this.skillCatalogService) return;
+    this.skillResolver = new SkillResolver(
+      new CatalogSkillCandidateRetriever(this.skillCatalogService),
+      new ExplainableSkillRanker()
+    );
+    this.skillInjectionBuilder = new SkillInjectionBuilder(this.skillCatalogService);
+    this.skillTelemetry = new SkillTelemetry(this.sessionLog);
+    this.skillManagementService = new SkillManagementService(workspace, this.skillCatalogService);
+    this.skillTestRunner = new SkillTestRunner(this.skillCatalogService);
+    this.repositoryProfileProvider = new WorkspaceRepositoryProfileProvider(workspace);
+  }
+
   private createChatOrchestrator(
     retriever: HybridRetriever,
     budgeter: ContextBudgeter,
@@ -839,6 +873,10 @@ export class ThunderController {
       memoryService: this.memoryService,
       taskState: this.agentTaskState,
       skillCatalog: this.skillCatalogService,
+      skillResolver: this.skillResolver,
+      skillInjectionBuilder: this.skillInjectionBuilder,
+      skillTelemetry: this.skillTelemetry,
+      repositoryProfileProvider: this.repositoryProfileProvider,
       allowNetwork: () => resolveEffectiveSafety(this.configService.getConfig().safety).allowNetwork,
       githubTokenProvider: async () => this.configService.getApiKey(
         this.configService.getConfig().github.tokenRef
@@ -1091,7 +1129,7 @@ export class ThunderController {
         this.skillCatalogService?.refresh();
         this.pushActivity('info', 'Workspace skills catalog refreshed');
       };
-      for (const skillPattern of ['.mitii/skills/**/SKILL.md']) {
+      for (const skillPattern of ['.mitii/skills/**/SKILL.md', '.mitii/skills/**/skill.json']) {
         const skillWatcher = vscode.workspace.createFileSystemWatcher(
           createWorkspacePattern(workspace, skillPattern)
         );
@@ -1118,13 +1156,15 @@ export class ThunderController {
     const appVersion = String(this.context.extension.packageJSON.version ?? '');
     const onboardingCompleted = this.context.globalState.get<boolean>(ONBOARDING_STATE_KEY, false);
     const providerConfigured = config.provider.type !== 'echo' || Boolean(apiKey);
+    const skillManagementEnabled = this.context.extensionMode === vscode.ExtensionMode.Development;
 
     const approvals: ApprovalRequestView[] = (this.approvalQueue?.getPending() ?? []).map(toApprovalView);
     const effectiveProvider = this.resolveEffectiveProviderSelection(this.session?.mode ?? 'plan');
 
     return {
       ...initialWebviewState(),
-      tab: base.tab ?? 'chat',
+      tab: base.tab === 'skills' && !skillManagementEnabled ? 'chat' : base.tab ?? 'chat',
+      internalFeatures: { skillManagement: skillManagementEnabled },
       messages: base.messages ?? [],
       currentSessionId: base.currentSessionId ?? this.session?.id ?? '',
       chatHistory: base.chatHistory ?? [],
@@ -1290,6 +1330,99 @@ export class ThunderController {
     this.notifyUi({ reviewDiff: this.currentReviewDiff });
   }
 
+  listInternalSkills(query: {
+    text?: string;
+    enabled?: boolean;
+    modes?: string[];
+    sort?: 'name' | 'priority' | 'updated';
+    limit?: number;
+    offset?: number;
+  }) {
+    this.assertInternalSkillManagement();
+    return this.requireSkillManagement().list(query);
+  }
+
+  openInternalSkill(id: string): SkillDocumentView | undefined {
+    this.assertInternalSkillManagement();
+    return this.requireSkillManagement().repository.get(id);
+  }
+
+  saveInternalSkill(
+    document: Omit<SkillDocumentView, 'revision'>,
+    expectedRevision?: string
+  ): SkillDocumentView {
+    this.assertInternalSkillManagement();
+    return this.requireSkillManagement().repository.save(document, expectedRevision);
+  }
+
+  deleteInternalSkill(id: string, expectedRevision?: string): void {
+    this.assertInternalSkillManagement();
+    this.requireSkillManagement().repository.delete(id, expectedRevision);
+  }
+
+  analyzeInternalSkillDraft(manifest: unknown, content: string) {
+    this.assertInternalSkillManagement();
+    return this.requireSkillManagement().analyzeDraft(manifest, content);
+  }
+
+  analyzeInternalSkillRouting(input: SkillAnalyzerRequest): SkillAnalyzerResultView {
+    this.assertInternalSkillManagement();
+    if (!this.skillResolver || !this.skillInjectionBuilder || !this.repositoryProfileProvider) {
+      throw new Error('Skill engine is not initialized');
+    }
+    const repositoryProfile = this.repositoryProfileProvider.getProfile();
+    const availableTools = new Set(input.availableTools ?? this.toolRuntime.list().map((tool) => tool.name));
+    const availableCapabilities = new Set(input.availableCapabilities ?? [...availableTools]);
+    const resolution = this.skillResolver.resolve({
+      request: input.request,
+      mode: input.mode,
+      intent: input.intent,
+      taskKind: input.taskKind,
+      taskSubtype: input.taskSubtype,
+      repository: repositoryProfile,
+      availableTools,
+      availableCapabilities,
+      edition: 'ce',
+    });
+    const injection = this.skillInjectionBuilder.build({
+      skillIds: resolution.selectedSkillIds,
+      mode: input.mode,
+      style: 'quick-ref',
+      maxChars: 8_000,
+    });
+    return {
+      resolution,
+      repositoryProfile,
+      selectedReports: resolution.candidateSkills.filter((candidate) =>
+        resolution.selectedSkillIds.includes(candidate.id)),
+      finalContext: injection.context,
+      injectionChars: injection.totalChars,
+      injectionTokens: injection.estimatedTokens,
+    };
+  }
+
+  runInternalSkillTests(skillId: string) {
+    this.assertInternalSkillManagement();
+    if (!this.skillTestRunner) throw new Error('Skill test runner is not initialized');
+    return this.skillTestRunner.run(skillId);
+  }
+
+  getInternalSkillAnalytics() {
+    this.assertInternalSkillManagement();
+    return this.skillTelemetry?.snapshot() ?? [];
+  }
+
+  private requireSkillManagement(): SkillManagementService {
+    if (!this.skillManagementService) throw new Error('Skill management requires an open workspace');
+    return this.skillManagementService;
+  }
+
+  private assertInternalSkillManagement(): void {
+    if (this.context.extensionMode !== vscode.ExtensionMode.Development) {
+      throw new Error('Skill Management is available only in an Extension Development Host');
+    }
+  }
+
   async completeOnboarding(): Promise<void> {
     await this.context.globalState.update(ONBOARDING_STATE_KEY, true);
     this.notifyUi({ onboarding: (await this.buildUiState()).onboarding });
@@ -1409,9 +1542,20 @@ export class ThunderController {
     const audit = this.toolRuntime.getAuditLog();
     const files = new Set<string>();
     for (const { toolName, input, result } of audit) {
-      if (!result.success || !['write_file', 'apply_patch'].includes(toolName)) continue;
-      const path = (input as Record<string, unknown>).path;
-      if (typeof path === 'string') files.add(path);
+      if (!result.success) continue;
+      if (toolName === 'write_file' || toolName === 'apply_patch') {
+        const path = (input as Record<string, unknown>).path;
+        if (typeof path === 'string') files.add(path);
+      }
+      if (toolName === 'run_command') {
+        const command = (input as Record<string, unknown>).command;
+        if (typeof command === 'string') {
+          const effect = classifyCommandEffect(command);
+          if (effect === 'workspace_mutation' || effect === 'dependency_mutation') {
+            for (const file of inferTouchedFilesFromCommand(command)) files.add(file);
+          }
+        }
+      }
     }
     return [...files];
   }

@@ -13,6 +13,7 @@ import { IndexingStatusBar } from './components/IndexingStatusBar';
 import { WorkspaceBanner } from './components/WorkspaceBanner';
 import { HistoryPanel } from './components/HistoryPanel';
 import { PlanPanel } from './components/PlanPanel';
+import { SkillManagementPanel } from './components/skills/SkillManagementPanel';
 import { IconButton } from './components/IconButton';
 import { IconChat, IconHistory, IconPlus, IconSettings } from './components/Icons';
 import { deriveSafetySettings } from './utils/approvalMode';
@@ -52,7 +53,19 @@ function buildAgentSettingsPayload(settings: SettingsView, depthPatch: Partial<P
 }
 
 export function App() {
-  const { state, postMessage, pathSuggestions, pathSearchRequestId } = useVsCodeMessaging();
+  const {
+    state,
+    postMessage,
+    pathSuggestions,
+    pathSearchRequestId,
+    skillCatalog,
+    skillDocument,
+    skillDraftAnalysis,
+    skillAnalyzerResult,
+    skillTestResult,
+    skillAnalytics,
+    skillOperationError,
+  } = useVsCodeMessaging();
   const canRetry = state.messages.some((m) => m.role === 'user');
   const [contextWarningsDismissed, setContextWarningsDismissed] = useState(false);
   const activeDepth = activeDepthForMode(state.settings, state.mode);
@@ -115,6 +128,15 @@ export function App() {
           >
             <IconSettings />
           </IconButton>
+          {state.internalFeatures.skillManagement && (
+            <IconButton
+              label="Skills"
+              active={state.tab === 'skills'}
+              onClick={() => postMessage({ type: 'setTab', payload: 'skills' })}
+            >
+              <span aria-hidden="true">S</span>
+            </IconButton>
+          )}
         </nav>
         <div className="toolbar-meta">
           <IndexingStatusBar
@@ -278,6 +300,17 @@ export function App() {
           onOpen={(id) => postMessage({ type: 'openChatThread', payload: { id } })}
           onDelete={(id) => postMessage({ type: 'deleteChatThread', payload: { id } })}
           onClear={() => postMessage({ type: 'clearChatHistory' })}
+        />
+      ) : state.tab === 'skills' && state.internalFeatures.skillManagement ? (
+        <SkillManagementPanel
+          catalog={skillCatalog}
+          document={skillDocument}
+          draftAnalysis={skillDraftAnalysis}
+          analyzerResult={skillAnalyzerResult}
+          testResult={skillTestResult}
+          analytics={skillAnalytics}
+          operationError={skillOperationError}
+          postMessage={postMessage}
         />
       ) : (
         <main className="thunder-main settings-view">

@@ -5,6 +5,7 @@ import type { ThunderSession } from '../../../features/ce/session/ThunderSession
 import type { PlanPhase, ThunderPlan } from '../plans/PlanActEngine';
 import {
   inferStepPhase,
+  normalizePlanSafety,
   resolveStepPhaseLock,
   stepImpliesWrite,
 } from '../plans/PlanActEngine';
@@ -812,7 +813,7 @@ function parseGeneratedPlan(response: string, mode: ThunderSession['mode'] = 'pl
         risk: normalizeRisk(s.risk),
       }));
       applyDependencyLocks(parsed);
-      return parsed;
+      return normalizePlanSafety(parsed);
     }
   } catch {
     return null;

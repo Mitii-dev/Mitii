@@ -12,12 +12,11 @@ export interface PolicyResult {
 export type IgnoredPathChecker = (path: string, options?: { forRead?: boolean }) => boolean;
 
 const DANGEROUS_COMMANDS = [
-  /rm\s+-rf/i, /\bsudo\b/i, /chmod\s+-R/i, /chown\s+-R/i,
+  /\bsudo\b/i, /chmod\s+-R/i, /chown\s+-R/i,
   /\bmkfs\b/i, /\bdd\b/i, /\bshutdown\b/i, /\breboot\b/i,
   /curl\s+.*\|\s*sh/i, /wget\s+.*\|\s*sh/i,
-  /\bnpm\s+publish\b/i, /git\s+push\s+--force/i,
+  /\bnpm\s+publish\b/i,
   /\bgit\s+reset\s+--hard\b/i,
-  /\bgit\s+clean\s+-f(?:d|x|dx|xd)?\b/i,
   /\bgit\s+checkout\s+--\s+\.\b/i,
   /\bgit\s+restore\s+\.\b/i,
   /\bgit\s+branch\s+-D\b/i,
@@ -142,7 +141,10 @@ export class ToolPolicyEngine {
     if (SHELL_TOOLS.has(toolName)) {
       const command = typeof input.command === 'string' ? input.command : '';
       if (this.safetyConfig.blockDangerousCommands && isDangerousCommand(command)) {
-        return { decision: 'block', reason: 'Dangerous command blocked' };
+        return {
+          decision: 'require_approval',
+          reason: 'Dangerous command requires explicit user approval',
+        };
       }
       if (isReadOnlyCommand(command)) {
         return { decision: 'allow', reason: 'Read-only inspection command' };
@@ -258,7 +260,20 @@ export function isMcpFilesystemWriteTool(toolName: string): boolean {
 }
 
 export function isDangerousCommand(command: string): boolean {
-  return DANGEROUS_COMMANDS.some((p) => p.test(command));
+  return (
+    DANGEROUS_COMMANDS.some((p) => p.test(command)) ||
+    isRecursiveForcedDelete(command) ||
+    isDestructiveGitClean(command) ||
+    /\bgit\s+push\b[^;&|\n]*(?:--force(?:-with-lease)?|-f)(?:\s|$)/i.test(command)
+  );
+}
+
+function isRecursiveForcedDelete(command: string): boolean {
+  return /\brm\s+(?=[^;&|\n]*(?:-[a-z]*r[a-z]*|--recursive)(?:\s|$))(?=[^;&|\n]*(?:-[a-z]*f[a-z]*|--force)(?:\s|$))[^;&|\n]+/i.test(command);
+}
+
+function isDestructiveGitClean(command: string): boolean {
+  return /\bgit\s+clean\s+(?=[^;&|\n]*(?:-[a-z]*f[a-z]*|--force)(?:\s|$))(?=[^;&|\n]*(?:-[a-z]*(?:d|x)[a-z]*|--directories|--ignored)(?:\s|$))[^;&|\n]*/i.test(command);
 }
 
 export function isDeleteLikeCommand(command: string): boolean {

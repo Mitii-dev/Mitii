@@ -6,6 +6,7 @@ import type { ActDepth, ActRoute } from './actTypes';
 import { ACT_INTENT_DESCRIPTIONS } from '../../runtime/intentClassifier';
 import { normalizeAgentDepth } from '../../../../kernel/config/agentDepth';
 import { resolvePlanningDepth } from '../../plans/planningDepth';
+import { isRepositoryRestorationBugfix } from '../../pipeline/route/routeResolver';
 
 export interface ActRouteOptions {
   mode?: ThunderMode;
@@ -41,7 +42,8 @@ const PLANNED_WORK_REFERENCE =
 
 export function routeActIntent(userMessage: string, analysis: TaskAnalysis, options: ActRouteOptions = {}): ActRoute {
   const mode = options.mode ?? 'agent';
-  const auditMode = Boolean(options.auditMode || analysis.kind === 'audit');
+  const restorationBugfix = isRepositoryRestorationBugfix(userMessage, analysis);
+  const auditMode = Boolean(options.auditMode || analysis.kind === 'audit') && !restorationBugfix;
   const logAuditMode = Boolean(options.logAuditMode || analysis.kind === 'log_audit');
   const mdxRepairMode = Boolean(options.mdxRepairMode);
   const githubIssueMode = Boolean(options.githubIssueMode);
@@ -112,9 +114,11 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
     };
   }
 
-  const shouldUsePlanner = shouldUsePlannerForAct(analysis, orchestrationEnabled, auditMode || logAuditMode, actDepth, {
-    directOverride: isDirectOverride,
-  });
+  const shouldUsePlanner = restorationBugfix
+    ? orchestrationEnabled && !isDirectOverride && normalizeAgentDepth(actDepth) !== 'quick'
+    : shouldUsePlannerForAct(analysis, orchestrationEnabled, auditMode || logAuditMode, actDepth, {
+        directOverride: isDirectOverride,
+      });
   
   if (githubIssueMode) {
     return {
@@ -130,7 +134,7 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
     };
   }
 
-  const intent = options.intent ?? fallbackActIntent(analysis);
+  const intent = restorationBugfix ? 'bugfix' : options.intent ?? fallbackActIntent(analysis);
 
   return {
     intent,

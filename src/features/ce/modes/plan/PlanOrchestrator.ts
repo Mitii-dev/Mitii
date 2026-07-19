@@ -104,7 +104,7 @@ function resolvePlanDiscoveryMaxSteps(
   const automatic = depthDefaultSteps(planDepth) ?? intentDefaultSteps(complexity, intent);
   const bounded = !configuredMaxSteps || configuredMaxSteps <= 0
     ? automatic
-    : Math.max(1, Math.min(automatic, configuredMaxSteps, 50));
+    : Math.max(1, Math.min(configuredMaxSteps, 50));
   return scaleTierSteps(bounded, policy, 50);
 }
 
@@ -115,7 +115,7 @@ function resolvePlanMaxAutoContinues(
 ): number {
   const automatic = complexity === 'high' || intent === 'audit' || intent === 'spike' ? 1 : 0;
   if (configured === undefined) return automatic;
-  return Math.max(0, Math.min(automatic, configured, 10));
+  return Math.max(0, Math.min(configured, 10));
 }
 
 function intentDefaultSteps(complexity: string, intent: string): number {

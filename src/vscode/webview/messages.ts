@@ -1,4 +1,9 @@
 import type { ThunderMode } from '../../features/ce/session/ThunderSession';
+import type { SkillManifest } from '../../interfaces/skills/SkillManifest';
+import type { SkillCandidateReport, SkillEngineResolution } from '../../features/ce/skills/SkillEngine';
+import type { SkillUsageMetric } from '../../features/ce/skills/SkillTelemetry';
+import type { SkillTestRunResult } from '../../features/ce/skills/SkillTestRunner';
+import type { SkillDraftAnalysis, SkillCatalogItem } from '../../features/ce/skills/SkillManagementService';
 import type {
   AgentSettingsPayload,
   AgentDepthView,
@@ -27,7 +32,51 @@ export type {
   ThunderSettingsPayload,
 } from '../../kernel/config/ui/payloads';
 
-export type WebviewTab = 'chat' | 'history' | 'settings';
+export type WebviewTab = 'chat' | 'history' | 'settings' | 'skills';
+
+export interface InternalFeaturesView {
+  skillManagement: boolean;
+}
+
+export interface SkillDocumentView {
+  manifest: SkillManifest;
+  content: string;
+  revision: string;
+  source: 'builtin' | 'internal' | 'repository' | 'installed';
+}
+
+export interface SkillAnalyzerRequest {
+  request: string;
+  mode: 'ask' | 'plan' | 'agent';
+  intent?: string;
+  taskKind?: string;
+  taskSubtype?: string;
+  availableTools?: string[];
+  availableCapabilities?: string[];
+}
+
+export interface SkillAnalyzerResultView {
+  resolution: SkillEngineResolution;
+  repositoryProfile: {
+    version: string;
+    repositoryId?: string;
+    languages: string[];
+    frameworks: string[];
+    packageManagers: string[];
+    paths: string[];
+  };
+  selectedReports: SkillCandidateReport[];
+  finalContext: string;
+  injectionChars: number;
+  injectionTokens: number;
+}
+
+export type {
+  SkillCatalogItem,
+  SkillDraftAnalysis,
+  SkillUsageMetric,
+  SkillTestRunResult,
+};
 
 export interface ChatImageAttachment {
   kind: 'image';
@@ -395,6 +444,7 @@ export interface ContextToggles {
 
 export interface WebviewState {
   tab: WebviewTab;
+  internalFeatures: InternalFeaturesView;
   messages: ChatMessage[];
   currentSessionId: string;
   chatHistory: ChatThreadSummary[];
@@ -460,7 +510,14 @@ export type ExtensionToWebviewMessage =
   | { type: 'setSubagents'; payload: SubagentStatusView[] }
   | { type: 'setTokenUsage'; payload: TokenUsageView }
   | { type: 'setReviewDiff'; payload: ReviewDiffView | null }
-  | { type: 'setContextPaths'; payload: { requestId: string; paths: ContextPathSuggestion[] } };
+  | { type: 'setContextPaths'; payload: { requestId: string; paths: ContextPathSuggestion[] } }
+  | { type: 'skillCatalogResult'; payload: { requestId: string; items: SkillCatalogItem[]; total: number; error?: string } }
+  | { type: 'skillDocumentResult'; payload: { requestId: string; document?: SkillDocumentView; error?: string } }
+  | { type: 'skillMutationResult'; payload: { requestId: string; document?: SkillDocumentView; deletedId?: string; error?: string } }
+  | { type: 'skillDraftAnalysisResult'; payload: { requestId: string; analysis?: SkillDraftAnalysis; error?: string } }
+  | { type: 'skillAnalyzerResult'; payload: { requestId: string; result?: SkillAnalyzerResultView; error?: string } }
+  | { type: 'skillTestResult'; payload: { requestId: string; result?: SkillTestRunResult; error?: string } }
+  | { type: 'skillAnalyticsResult'; payload: { requestId: string; metrics: SkillUsageMetric[]; error?: string } };
 
 // Webview -> Extension messages
 export type WebviewToExtensionMessage =
@@ -512,7 +569,15 @@ export type WebviewToExtensionMessage =
   | { type: 'pickContextPath' }
   | { type: 'refreshReviewDiff' }
   | { type: 'completeOnboarding' }
-  | { type: 'refreshPanels' };
+  | { type: 'refreshPanels' }
+  | { type: 'requestSkillCatalog'; payload: { requestId: string; query?: string; enabled?: boolean; mode?: string; sort?: 'name' | 'priority' | 'updated'; limit?: number; offset?: number } }
+  | { type: 'openSkill'; payload: { requestId: string; id: string } }
+  | { type: 'saveSkill'; payload: { requestId: string; document: Omit<SkillDocumentView, 'revision'>; expectedRevision?: string } }
+  | { type: 'deleteSkill'; payload: { requestId: string; id: string; expectedRevision?: string } }
+  | { type: 'analyzeSkillDraft'; payload: { requestId: string; manifest: unknown; content: string } }
+  | { type: 'analyzeSkillRouting'; payload: { requestId: string; input: SkillAnalyzerRequest } }
+  | { type: 'runSkillTests'; payload: { requestId: string; skillId: string } }
+  | { type: 'requestSkillAnalytics'; payload: { requestId: string } };
 
 export const defaultMcpToggles = (): McpToggles => ({
   filesystem: true,
@@ -601,6 +666,7 @@ export const defaultSettingsView = (): SettingsView => ({
 
 export const initialWebviewState = (): WebviewState => ({
   tab: 'chat',
+  internalFeatures: { skillManagement: false },
   messages: [],
   currentSessionId: '',
   chatHistory: [],

@@ -72,6 +72,21 @@ describe('Act orchestration boundary', () => {
     expect(route.shouldVerify).toBe(true);
   });
 
+  it('does not let cleanup wording override repository restoration bugfixes', () => {
+    const message = 'Fix the build, remove the half-finished folder restructuring, restore the original structure, and run the project.';
+    const analysis = analyzeTask(message, 'agent');
+    const route = routeActIntent(message, { ...analysis, kind: 'audit' }, {
+      mode: 'agent',
+      hasActivePlan: false,
+      orchestrationEnabled: true,
+      auditMode: true,
+    });
+
+    expect(route.intent).toBe('bugfix');
+    expect(route.executionPath).toBe('orchestrated');
+    expect(route.shouldUsePlanner).toBe(true);
+  });
+
   it('uses orchestrated Act for complex implementation when orchestration is enabled', () => {
     const message = 'Implement the Act SDK boundary, add tests, and update docs';
     const analysis = analyzeTask(message, 'agent');

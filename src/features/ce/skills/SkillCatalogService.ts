@@ -1,6 +1,8 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs';
+import { randomUUID } from 'crypto';
 import { basename, dirname, join, relative } from 'path';
 import type { ContextItem, ContextQuery, ContextSource } from '../../../features/ce/context/types';
+import type { SkillManifest } from '../../../interfaces/skills/SkillManifest';
 import { createLogger } from '../../../kernel/telemetry/Logger';
 import { AGENT_NAME } from '../../../shared/brand';
 import {
@@ -8,28 +10,40 @@ import {
   MAX_SKILL_WALK_DEPTH,
   RECOMMENDED_SKILL_BODY_CHARS,
 } from './skillLimits';
+import { legacySkillManifest, validateSkillManifest, type SkillValidationIssue } from './SkillManifestSchema';
 
 const log = createLogger('SkillCatalog');
 
-export interface SkillCatalogEntry {
+export interface SkillCatalogItem {
   name: string;
   description: string;
   relPath: string;
 }
 
+export interface SkillCatalogEntry extends SkillCatalogItem {
+  id: string;
+  manifest: SkillManifest;
+  valid: boolean;
+  issues: SkillValidationIssue[];
+}
+
 export class SkillCatalogService {
   private entries: SkillCatalogEntry[] = [];
+  private entriesById = new Map<string, SkillCatalogEntry>();
+  private aliases = new Map<string, string>();
 
   constructor(private readonly workspace: string) {}
 
-  refresh(): SkillCatalogEntry[] {
+  refresh(): SkillCatalogItem[] {
     const root = this.skillsRoot();
     if (!existsSync(root)) {
       this.entries = [];
+      this.rebuildIndexes();
       return [];
     }
 
     const skillFiles = findSkillFiles(root);
+    const seen = new Set<string>();
     this.entries = skillFiles.map((absPath) => {
       const content = readFileSync(absPath, 'utf8');
       const frontmatter = parseSkillFrontmatter(content);
@@ -37,6 +51,17 @@ export class SkillCatalogService {
       const name = frontmatter.name || folderName;
       const description = extractDescription(content, frontmatter);
       const relPath = relative(this.workspace, absPath).replace(/\\/g, '/');
+      const manifestPath = join(dirname(absPath), 'skill.json');
+      const rawManifest = readJson(manifestPath);
+      const validation = rawManifest === undefined
+        ? { success: true, manifest: legacySkillManifest({ id: folderName, name, description }), issues: [] }
+        : validateSkillManifest(rawManifest);
+      const manifest = validation.manifest ?? legacySkillManifest({ id: folderName, name, description });
+      const issues = [...validation.issues];
+      if (seen.has(manifest.id)) {
+        issues.push({ path: 'id', code: 'duplicate_id', message: `Duplicate skill id: ${manifest.id}` });
+      }
+      seen.add(manifest.id);
 
       if (!frontmatter.name || !frontmatter.description) {
         log.warn('Skill missing required frontmatter fields', {
@@ -67,29 +92,77 @@ export class SkillCatalogService {
         });
       }
 
-      return { name, description, relPath };
+      return {
+        id: manifest.id,
+        name: manifest.name,
+        description: manifest.description,
+        relPath,
+        manifest,
+        valid: issues.length === 0,
+        issues,
+      };
     });
+
+    const cycleIds = detectDependencyCycles(this.entries);
+    if (cycleIds.size > 0) {
+      this.entries = this.entries.map((entry) => cycleIds.has(entry.id)
+        ? {
+            ...entry,
+            valid: false,
+            issues: [...entry.issues, {
+              path: 'dependencies',
+              code: 'dependency_cycle',
+              message: 'Skill dependency cycle detected',
+            }],
+          }
+        : entry);
+    }
+    this.rebuildIndexes();
 
     this.writeCatalog();
     log.info('Skill catalog refreshed', { count: this.entries.length });
     return this.list();
   }
 
-  list(): SkillCatalogEntry[] {
+  list(): SkillCatalogItem[] {
+    return this.entries.map(({ name, description, relPath }) => ({ name, description, relPath }));
+  }
+
+  listEntries(): SkillCatalogEntry[] {
     return [...this.entries];
   }
 
   get(name: string): { entry: SkillCatalogEntry; content: string } | undefined {
     const normalized = name.trim().toLowerCase();
-    const entry = this.entries.find((s) => {
-      const folderName = basename(dirname(s.relPath)).toLowerCase();
-      return s.name.toLowerCase() === normalized || folderName === normalized;
-    });
+    const id = this.aliases.get(normalized) ?? normalized;
+    const entry = this.entriesById.get(id);
     if (!entry) return undefined;
     return {
       entry,
       content: readFileSync(join(this.workspace, entry.relPath), 'utf8'),
     };
+  }
+
+  search(query: string, limit = 10): SkillCatalogEntry[] {
+    const terms = tokenize(query);
+    return this.entries
+      .filter((entry) => entry.valid)
+      .map((entry) => ({ entry, score: catalogScore(entry, terms) }))
+      .filter((item) => terms.length === 0 || item.score > 0)
+      .sort((a, b) => b.score - a.score || b.entry.manifest.priority - a.entry.manifest.priority || a.entry.id.localeCompare(b.entry.id))
+      .slice(0, Math.max(0, limit))
+      .map((item) => item.entry);
+  }
+
+  private rebuildIndexes(): void {
+    this.entriesById = new Map();
+    this.aliases = new Map();
+    for (const entry of this.entries) {
+      if (!this.entriesById.has(entry.id)) this.entriesById.set(entry.id, entry);
+      this.aliases.set(entry.id.toLowerCase(), entry.id);
+      this.aliases.set(entry.name.toLowerCase(), entry.id);
+      this.aliases.set(basename(dirname(entry.relPath)).toLowerCase(), entry.id);
+    }
   }
 
   private skillsRoot(): string {
@@ -99,7 +172,10 @@ export class SkillCatalogService {
   private writeCatalog(): void {
     const root = this.skillsRoot();
     mkdirSync(root, { recursive: true });
-    writeFileSync(join(root, 'catalog.json'), `${JSON.stringify(this.entries, null, 2)}\n`, 'utf8');
+    const destination = join(root, 'catalog.json');
+    const temporary = `${destination}.${process.pid}.${randomUUID()}.tmp`;
+    writeFileSync(temporary, `${JSON.stringify(this.list(), null, 2)}\n`, 'utf8');
+    renameSync(temporary, destination);
   }
 }
 
@@ -112,9 +188,9 @@ export class SkillCatalogContextSource implements ContextSource {
 
   constructor(private readonly catalog: SkillCatalogService) {}
 
-  async retrieve(_query: ContextQuery): Promise<ContextItem[]> {
-    if (_query.tierPolicy?.skillInjection === 'none') return [];
-    const entries = this.catalog.list();
+  async retrieve(query: ContextQuery): Promise<ContextItem[]> {
+    if (query.tierPolicy?.skillInjection === 'none') return [];
+    const entries = this.catalog.search(query.text, 8);
     if (entries.length === 0) return [];
     const content = [
       `## Available ${AGENT_NAME} Skills`,
@@ -123,7 +199,7 @@ export class SkillCatalogContextSource implements ContextSource {
     ].join('\n');
     return [{
       id: 'skill-catalog',
-      source: 'skills',
+      source: 'skill-catalog',
       relPath: '.mitii/skills/catalog.json',
       content,
       score: 3,
@@ -235,6 +311,75 @@ function cleanYamlScalar(value: string): string | undefined {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function readJson(path: string): unknown | undefined {
+  if (!existsSync(path)) return undefined;
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as unknown;
+  } catch (error) {
+    log.warn('Could not parse skill manifest', {
+      path,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return {};
+  }
+}
+
+function tokenize(value: string): string[] {
+  return [...new Set(value.toLowerCase().split(/[^a-z0-9+#._-]+/).filter((term) => term.length > 1))];
+}
+
+function catalogScore(entry: SkillCatalogEntry, terms: string[]): number {
+  if (terms.length === 0) return entry.manifest.priority;
+  const fields = [
+    entry.id,
+    entry.name,
+    entry.description,
+    ...(entry.manifest.triggers ?? []),
+    ...(entry.manifest.intents ?? []),
+    ...(entry.manifest.taskKinds ?? []),
+    ...(entry.manifest.taskSubtypes ?? []),
+    ...(entry.manifest.tags ?? []),
+  ].map((value) => value.toLowerCase());
+  let score = 0;
+  for (const term of terms) {
+    if (entry.id.toLowerCase() === term || entry.name.toLowerCase() === term) score += 20;
+    for (const field of fields) {
+      if (field === term) score += 8;
+      else if (field.includes(term)) score += 2;
+    }
+  }
+  return score;
+}
+
+function detectDependencyCycles(entries: SkillCatalogEntry[]): Set<string> {
+  const dependencies = new Map(entries.map((entry) => [
+    entry.id,
+    (entry.manifest.dependencies ?? entry.manifest.requires ?? []).filter(Boolean),
+  ]));
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const cyclic = new Set<string>();
+
+  const visit = (id: string, path: string[]): void => {
+    if (visiting.has(id)) {
+      const start = path.indexOf(id);
+      for (const item of path.slice(Math.max(0, start))) cyclic.add(item);
+      cyclic.add(id);
+      return;
+    }
+    if (visited.has(id)) return;
+    visiting.add(id);
+    for (const dependency of dependencies.get(id) ?? []) {
+      if (dependencies.has(dependency)) visit(dependency, [...path, id]);
+    }
+    visiting.delete(id);
+    visited.add(id);
+  };
+
+  for (const id of dependencies.keys()) visit(id, []);
+  return cyclic;
 }
 
 export { parseSkillFrontmatter };

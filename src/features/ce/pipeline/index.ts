@@ -45,7 +45,7 @@ export {
 import type { TaskAnalysis } from '../runtime/TaskAnalyzer';
 import type { AgentDepth } from '../../../kernel/config/schema';
 import type { ToolExposure } from '../../../kernel/policy/tierPolicy';
-import type { PipelineResolution } from './types';
+import type { PipelineResolution, SkillResolution } from './types';
 import { classifyTaskSignals, resolveRoute } from './route/routeResolver';
 import {
   resolvePlanningDepthAxis,
@@ -66,6 +66,8 @@ export interface ResolvePipelineOptions {
   planExecution?: boolean;
   orchestrationEnabled?: boolean;
   forceDirect?: boolean;
+  /** Optional catalog-backed decision produced outside this pure policy pipeline. */
+  skillResolution?: SkillResolution;
 }
 
 /**
@@ -85,10 +87,10 @@ export function resolveTurnPipeline(
   });
   const depthAxis = resolvePlanningDepthAxis(route, taskAnalysis, options.userDepth);
   const internalDepth = toInternalPlanningDepth(depthAxis, taskAnalysis);
-  const skills = resolveSkillsForRoute(route, taskAnalysis, {
-    sourceMode: options.mode === 'ask' || options.mode === 'plan' || options.mode === 'agent' ? options.mode : 'agent',
-    planning: options.planning ?? options.mode === 'plan',
-  });
+  const skills = options.skillResolution ?? resolveSkillsForRoute(route, taskAnalysis, {
+      sourceMode: options.mode === 'ask' || options.mode === 'plan' || options.mode === 'agent' ? options.mode : 'agent',
+      planning: options.planning ?? options.mode === 'plan',
+    });
   const capabilities = resolveCapabilities(route, {
     mode: options.mode,
     toolExposure: options.toolExposure,

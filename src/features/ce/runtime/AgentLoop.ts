@@ -10,7 +10,7 @@ import { NO_TOOLS_ASK_NUDGE, ASK_SYNTHESIS_NUDGE, isGroundingToolCall } from './
 import { NO_TOOLS_PLAN_NUDGE, PLAN_SYNTHESIS_NUDGE, isPlanGroundingToolCall } from '../modes/plan/planMode';
 import { isSkippedToolOutput } from './toolSkip';
 import type { PlanPhase, ThunderPlan } from '../plans/PlanActEngine';
-import { isPhaseLockRunCommandError, isPhaseLockWriteError } from '../plans/PlanActEngine';
+import { classifyCommandEffect, isPhaseLockRunCommandError, isPhaseLockWriteError } from '../plans/PlanActEngine';
 import { buildPlanTrackerPacket } from '../plans/PlanFileStore';
 import { createLogger } from '../../../kernel/telemetry/Logger';
 import {
@@ -79,10 +79,14 @@ function buildRequiredOperationStop(
 
 function isOperationSideEffectTool(
   operation: NonNullable<AgentLoopOptions['requiredOperation']>,
-  toolName: string
+  toolName: string,
+  input?: Record<string, unknown>
 ): boolean {
   if (operation === 'workspace_write' || operation === 'execute_saved_plan') {
-    return ['write_file', 'apply_patch'].includes(toolName);
+    if (['write_file', 'apply_patch'].includes(toolName)) return true;
+    if (toolName !== 'run_command') return false;
+    const effect = classifyCommandEffect(typeof input?.command === 'string' ? input.command : '');
+    return effect === 'workspace_mutation' || effect === 'dependency_mutation';
   }
   if (operation === 'local_git_write') {
     return /^git_(?:stage|unstage|commit|branch|merge|rebase|tag)/.test(toolName);
@@ -470,9 +474,13 @@ export class AgentLoop {
         if (
           completedRealSideEffect &&
           requiredOperation &&
-          isOperationSideEffectTool(requiredOperation, tc.function.name)
+          isOperationSideEffectTool(requiredOperation, tc.function.name, input)
         ) {
           requiredSideEffectMade = true;
+          if (requiredOperation === 'workspace_write' || requiredOperation === 'execute_saved_plan') {
+            writeToolCallsMade = true;
+            nonWriteOnlyTurn = false;
+          }
         }
 
         if (completedRealSideEffect && isGroundingTool(tc.function.name)) {
@@ -547,7 +555,9 @@ export class AgentLoop {
         });
 
         const inputFailureKey =
-          !execResult.success && !isSkipped ? repeatedToolFailureKey(tc.function.name, output) : undefined;
+          !execResult.success && !isSkipped
+            ? repeatedToolFailureKey(tc.function.name, input, output)
+            : undefined;
         if (inputFailureKey) {
           if (inputFailureKey === lastInputFailureKey) {
             repeatedInputFailureCount += 1;
@@ -798,7 +808,7 @@ export class AgentLoop {
         if (['write_file', 'apply_patch'].includes(result.toolName)) {
           initialState.writeToolCallsMade = true;
         }
-        if (requiredOperation && isOperationSideEffectTool(requiredOperation, result.toolName)) {
+        if (requiredOperation && isOperationSideEffectTool(requiredOperation, result.toolName, result.input)) {
           initialState.requiredSideEffectMade = true;
         }
         if (isGroundingTool(result.toolName)) {
@@ -1209,9 +1219,13 @@ function resolveToolOutput(execResult: import('../safety/ToolExecutor').ToolExec
  * counted across steps. Phase-lock failures ARE included after the first instructional nudge
  * so the model cannot loop forever on write_file / run_command / mark_step_complete.
  */
-function repeatedToolFailureKey(toolName: string, output: string): string | undefined {
+function repeatedToolFailureKey(
+  toolName: string,
+  input: Record<string, unknown>,
+  output: string
+): string | undefined {
   if (!output) return undefined;
-  return `${toolName}:${normalizeToolFailure(output)}`;
+  return fingerprintToolCall(toolName, input, normalizeToolFailure(output));
 }
 
 function normalizeToolFailure(output: string): string {

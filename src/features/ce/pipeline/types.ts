@@ -107,12 +107,20 @@ export interface RouteResolution {
 export interface SkillResolution {
   /** At most one full playbook injected into context. */
   activeSkill?: string;
+  /** Optional secondary guidance contribution; never grants capabilities. */
+  supportingSkill?: string;
   /** Names the model may load via use_skill (catalog / deferred). */
   deferredSkills: string[];
   /** Ordered list for telemetry: active first, then deferred. */
   suggestedSkills: string[];
-  /** Skills to actually inject (0–1). */
+  /** Skills to inject: zero/one primary plus at most one supporting contribution. */
   injectSkills: string[];
+  /** Explainable engine report for telemetry and internal analysis. */
+  engineReport?: {
+    engineVersion: string;
+    candidates: Array<{ id: string; score: number; status: string; reasons: string[] }>;
+    rejected: Array<{ id: string; status: string; reasons: string[] }>;
+  };
 }
 
 export type McpPolicy =

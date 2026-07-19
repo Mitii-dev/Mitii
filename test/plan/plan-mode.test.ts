@@ -101,7 +101,7 @@ describe('Plan mode orchestration', () => {
     expect(prepared.skillPlaybookContext.match(/### Skill:/g)).toHaveLength(1);
   });
 
-  it('filters Plan mode tools to planning capabilities with approval-gated mutators', async () => {
+  it('filters Plan mode tools to read-only planning capabilities', async () => {
     const { filterPlanModeTools, PLAN_ALLOWED_TOOLS } = await import('../../src/features/ce/modes/plan/planMode');
     const tools = [
       tool('read_file'),
@@ -112,21 +112,32 @@ describe('Plan mode orchestration', () => {
       tool('memory_write'),
       tool('save_task_state'),
       tool('mcp__github__search'),
+      tool('mcp__slack__post_message'),
+      tool('mcp__filesystem__write_file'),
     ];
 
     const filtered = filterPlanModeTools(tools).map((t) => t.function.name);
 
     expect(PLAN_ALLOWED_TOOLS.has('read_file')).toBe(true);
-    expect(PLAN_ALLOWED_TOOLS.has('write_file')).toBe(true);
-    expect(PLAN_ALLOWED_TOOLS.has('apply_patch')).toBe(true);
+    expect(PLAN_ALLOWED_TOOLS.has('write_file')).toBe(false);
+    expect(PLAN_ALLOWED_TOOLS.has('apply_patch')).toBe(false);
     expect(filtered).toEqual([
       'read_file',
       'search_batch',
       'execute_workspace_script',
-      'write_file',
-      'apply_patch',
       'mcp__github__search',
     ]);
+  });
+
+  it('counts only repository-read MCP tools as Plan grounding', async () => {
+    const { isPlanGroundingToolCall, isPlanAllowedTool } = await import('../../src/features/ce/modes/plan/planMode');
+
+    expect(isPlanAllowedTool('mcp__github__search')).toBe(true);
+    expect(isPlanGroundingToolCall('mcp__github__search')).toBe(false);
+    expect(isPlanGroundingToolCall('mcp__github__search_code')).toBe(true);
+    expect(isPlanGroundingToolCall('mcp__filesystem__read_text_file')).toBe(true);
+    expect(isPlanAllowedTool('mcp__slack__search')).toBe(false);
+    expect(isPlanGroundingToolCall('mcp__slack__search')).toBe(false);
   });
 
   it('passes planning discovery into isolated plan compilation', async () => {
