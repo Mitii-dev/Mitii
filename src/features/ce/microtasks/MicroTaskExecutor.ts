@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { LlmProvider } from '../../../kernel/llm/types';
+import { createLogger } from '../../../kernel/telemetry/Logger';
 import type { SessionLogService } from '../../../kernel/telemetry/SessionLogService';
 import { collectCommitMessageInput, generateCommitMessage, buildCommitMessagePrompt } from '../../../features/ce/scm';
 import { estimateChatRequestTokens } from '../runtime/UsageTrackingProvider';
@@ -9,6 +10,8 @@ import { GitHistoryCollector } from '../../../features/ce/release/GitHistoryColl
 import { generateChangelogEntry } from '../../../features/ce/release/ChangelogGenerator';
 import { generateReleaseNotes } from '../../../features/ce/release/ReleaseNotesGenerator';
 import type { MicroTaskId, MicroTaskResult } from './types';
+
+const log = createLogger('MicroTaskExecutor');
 
 export interface MicroTaskExecutorDeps {
   workspace: string;
@@ -46,20 +49,68 @@ export class MicroTaskExecutor {
       changedFiles: input.changedFiles.length,
       hasUnstagedDiff: Boolean(input.unstagedDiff?.trim()),
     });
-    const result = await generateCommitMessage(input, this.deps.provider);
-    return {
-      id: 'commit_message',
-      content: result.fullMessage,
-      metadata: {
-        subject: result.subject,
-        promptTokens: estimateChatRequestTokens({
-          messages: [
-            { role: 'system', content: 'commit' },
-            { role: 'user', content: prompt },
-          ],
-        }),
-      },
+    const startedAt = Date.now();
+    const generationData = {
+      provider: this.deps.provider.id,
+      stagedDiffChars: input.stagedDiff.length,
+      changedFiles: input.changedFiles.length,
+      promptChars: prompt.length,
     };
+    this.deps.sessionLog?.append('info', 'Commit message generation started', generationData);
+    log.info('Commit message generation started', generationData);
+
+    try {
+      const result = await generateCommitMessage(input, this.deps.provider, {
+        prompt,
+        onAttempt: (attempt) => {
+          this.deps.sessionLog?.append('info', 'Commit message generation attempt completed', {
+            provider: this.deps.provider!.id,
+            ...attempt,
+          });
+        },
+      });
+      const durationMs = Date.now() - startedAt;
+      this.deps.sessionLog?.append('info', 'Commit message generation completed', {
+        provider: this.deps.provider.id,
+        durationMs,
+        subject: result.subject,
+        bodyChars: result.body?.length ?? 0,
+      });
+      this.deps.sessionLog?.appendTiming('commit_message_generation', durationMs, {
+        provider: this.deps.provider.id,
+      });
+      return {
+        id: 'commit_message',
+        content: result.fullMessage,
+        metadata: {
+          subject: result.subject,
+          promptTokens: estimateChatRequestTokens({
+            messages: [
+              { role: 'system', content: 'commit' },
+              { role: 'user', content: prompt },
+            ],
+          }),
+        },
+      };
+    } catch (error) {
+      const durationMs = Date.now() - startedAt;
+      const message = error instanceof Error ? error.message : String(error);
+      this.deps.sessionLog?.append('error', 'Commit message generation failed', {
+        provider: this.deps.provider.id,
+        durationMs,
+        error: message,
+      });
+      this.deps.sessionLog?.appendTiming('commit_message_generation', durationMs, {
+        provider: this.deps.provider.id,
+        status: 'failed',
+      });
+      log.error('Commit message generation failed', {
+        provider: this.deps.provider.id,
+        durationMs,
+        error: message,
+      });
+      throw error;
+    }
   }
 
   private async generateChangelogEntry(userMessage: string): Promise<MicroTaskResult> {

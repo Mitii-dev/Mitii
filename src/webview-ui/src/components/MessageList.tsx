@@ -51,6 +51,9 @@ function AssistantMessage({
         <span>{label}</span>
         {(streaming || loading) && <span className="assistant-turn__status">Working</span>}
       </div>
+      {!revealed.trim() && (streaming || loading) && (
+        <p className="assistant-turn__pending">Preparing answer</p>
+      )}
       {showActivity && (
         <AgentActivityPanel
           entries={agentActivity}
@@ -67,8 +70,6 @@ function AssistantMessage({
       />
       {revealed.trim() ? (
         <MarkdownMessage content={revealed} streaming={streaming} />
-      ) : streaming || loading ? (
-        <p className="assistant-turn__pending">Preparing answer</p>
       ) : null}
       {streaming && revealed.trim() && !revealed.includes('```') && (
         <span className="streaming-cursor streaming-cursor--pulse" aria-hidden="true">▋</span>

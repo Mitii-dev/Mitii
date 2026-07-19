@@ -1,36 +1,78 @@
 import type { LlmProvider } from '../../../kernel/llm/types';
+import { createLogger } from '../../../kernel/telemetry/Logger';
 import { buildCommitMessagePrompt, validateCommitMessage } from './commitMessagePrompt';
 import type { CommitMessageInput, CommitMessageResult } from './commitMessageTypes';
 
+const log = createLogger('CommitMessageGenerator');
+
+export interface CommitMessageGenerationAttempt {
+  attempt: number;
+  durationMs: number;
+  outputChars: number;
+  reasoningChars: number;
+  finishReason?: string;
+  validationErrors: string[];
+}
+
+export interface CommitMessageGenerationOptions {
+  prompt?: string;
+  onAttempt?: (attempt: CommitMessageGenerationAttempt) => void;
+}
+
 export async function generateCommitMessage(
   input: CommitMessageInput,
-  provider: LlmProvider
+  provider: LlmProvider,
+  options: CommitMessageGenerationOptions = {}
 ): Promise<CommitMessageResult> {
   validateCommitMessageInput(input);
-  const prompt = buildCommitMessagePrompt(input);
-  let text = await collectCommitMessage(provider, {
-    messages: [
-      {
-        role: 'system',
-        content: 'You write concise, accurate Git commit messages for a coding agent. Return only the message.',
-      },
-      { role: 'user', content: prompt },
-    ],
-    stream: true,
-    toolChoice: 'none',
-    // See intentClassifier.ts: reasoning models burn tokens on hidden thinking before
-    // content, so a tight budget here can return an empty message on those backends.
-    maxTokens: 900,
-    reasoningEffort: 'low',
-  });
+  const prompt = options.prompt ?? buildCommitMessagePrompt(input);
+  const attempts = [
+    {
+      stream: provider.capabilities.supportsStreaming,
+      maxTokens: 1_200,
+      userPrompt: `${prompt}\n\n/no_think`,
+    },
+    {
+      stream: false,
+      maxTokens: 1_800,
+      userPrompt: `${prompt}\n\nYour previous response was empty or invalid. Return the commit message text now.\n/no_think`,
+    },
+  ];
 
-  const validation = validateCommitMessage(text);
-  if (!validation.valid && validation.corrected) {
-    const correctedValidation = validateCommitMessage(validation.corrected);
-    if (correctedValidation.valid) text = validation.corrected;
+  for (const [index, attempt] of attempts.entries()) {
+    const startedAt = Date.now();
+    const response = await collectCommitMessage(provider, {
+      messages: [
+        {
+          role: 'system',
+          content: 'Write one concise, accurate Git commit message. Return only the commit message text.',
+        },
+        { role: 'user', content: attempt.userPrompt },
+      ],
+      stream: attempt.stream,
+      toolChoice: 'none',
+      maxTokens: attempt.maxTokens,
+      includeReasoning: false,
+      disableReasoning: true,
+    });
+    const validated = validateOrCorrect(response.text);
+    const event: CommitMessageGenerationAttempt = {
+      attempt: index + 1,
+      durationMs: Date.now() - startedAt,
+      outputChars: response.text.length,
+      reasoningChars: response.reasoningChars,
+      finishReason: response.finishReason,
+      validationErrors: validated.errors,
+    };
+    options.onAttempt?.(event);
+    log.info('Commit message generation attempt completed', {
+      provider: provider.id,
+      ...event,
+    });
+    if (validated.text) return normalizeCommitMessage(validated.text);
   }
 
-  return normalizeCommitMessage(text);
+  throw new Error('The model returned no valid commit message after two attempts. Check the Mitii logs for provider response details.');
 }
 
 export function normalizeCommitMessage(raw: string): CommitMessageResult {
@@ -39,8 +81,12 @@ export function normalizeCommitMessage(raw: string): CommitMessageResult {
     .replace(/```$/i, '')
     .trim();
   const lines = cleaned.split(/\r?\n/).map((line) => line.trimEnd());
-  const subject = truncateSubject((lines.find((line) => line.trim()) ?? 'chore: update workspace').trim());
-  const bodyLines = lines.slice(lines.findIndex((line) => line.trim()) + 1).join('\n').trim();
+  const subjectIndex = lines.findIndex((line) => line.trim());
+  if (subjectIndex < 0) {
+    throw new Error('The model returned an empty commit message.');
+  }
+  const subject = truncateSubject(lines[subjectIndex].trim());
+  const bodyLines = lines.slice(subjectIndex + 1).join('\n').trim();
   const body = bodyLines || undefined;
   return {
     subject,
@@ -58,14 +104,28 @@ function validateCommitMessageInput(input: CommitMessageInput): void {
 async function collectCommitMessage(
   provider: LlmProvider,
   request: Parameters<LlmProvider['complete']>[0]
-): Promise<string> {
+): Promise<{ text: string; reasoningChars: number; finishReason?: string }> {
   let text = '';
+  let reasoningChars = 0;
+  let finishReason: string | undefined;
   for await (const delta of provider.complete(request)) {
     if (delta.error) throw new Error(delta.error);
     if (delta.content) text += delta.content;
+    reasoningChars += delta.reasoning?.length ?? 0;
+    finishReason = delta.finish_reason ?? finishReason;
     if (delta.done) break;
   }
-  return text;
+  return { text, reasoningChars, finishReason };
+}
+
+function validateOrCorrect(text: string): { text?: string; errors: string[] } {
+  const validation = validateCommitMessage(text);
+  if (validation.valid) return { text, errors: [] };
+  if (!validation.corrected?.trim()) return { errors: validation.errors };
+  const correctedValidation = validateCommitMessage(validation.corrected);
+  return correctedValidation.valid
+    ? { text: validation.corrected, errors: validation.errors }
+    : { errors: [...validation.errors, ...correctedValidation.errors] };
 }
 
 function truncateSubject(subject: string): string {

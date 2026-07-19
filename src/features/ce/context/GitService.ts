@@ -80,10 +80,15 @@ export class GitService {
     }
   }
 
-  async getChangedFilesDetailed(): Promise<string[]> {
+  async getChangedFilesDetailed(staged = false): Promise<string[]> {
     if (!this.isRepo || !this.git) return [];
     try {
-      const output = await this.git.raw(['diff', '--name-status', 'HEAD']);
+      const output = await this.git.raw([
+        'diff',
+        ...(staged ? ['--cached'] : []),
+        '--name-status',
+        ...(staged ? [] : ['HEAD']),
+      ]);
       return output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
     } catch {
       return this.getChangedFiles();

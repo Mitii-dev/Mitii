@@ -32,6 +32,8 @@ export interface ChatRequest {
   toolChoice?: 'auto' | 'none' | 'required';
   reasoningEffort?: ReasoningEffort;
   includeReasoning?: boolean;
+  /** Request direct output for short tasks; providers may map this to model-specific controls. */
+  disableReasoning?: boolean;
 }
 
 export interface ToolCallDelta {

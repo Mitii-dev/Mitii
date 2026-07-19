@@ -153,7 +153,7 @@ import { resolveDbPath } from '../../features/ce/indexing/paths';
 import { searchWorkspacePaths, resolvePickedPaths } from '../../adapters/vscode/context/contextPathSearch';
 import { normalizeWorkspaceRoot, resolveWorkspaceRelPath } from '../../kernel/util/paths';
 import { createWorkspacePattern, isWorkspaceInVscodeFolders, toWorkspaceRelPath } from '../../adapters/vscode/util/paths';
-import type { CommitMessageResult } from '../../features/ce/scm';
+import { normalizeCommitMessage, type CommitMessageResult } from '../../features/ce/scm';
 import { MicroTaskExecutor } from '../../features/ce/microtasks';
 import { AuditPackBuilder } from '../../features/ce/audit';
 import { GitHistoryCollector, generateChangelogEntry, generateReleaseNotes, insertChangelogEntry } from '../../features/ce/release';
@@ -1534,13 +1534,7 @@ export class ThunderController {
       provider,
       sessionLog: this.sessionLog,
     }).execute('commit_message', 'generate commit message');
-    const [subject, ...rest] = result.content.split(/\r?\n/);
-    const body = rest.join('\n').trim() || undefined;
-    return {
-      subject: subject || 'chore: update workspace',
-      body,
-      fullMessage: body ? `${subject}\n\n${body}` : subject || 'chore: update workspace',
-    };
+    return normalizeCommitMessage(result.content);
   }
 
   private resolveEffectiveProviderSelection(mode: string): ThunderSessionProviderOverride & { source: 'session' | 'mode' | 'global' } {

@@ -223,8 +223,10 @@ function containsLikelySecret(value: string): boolean {
 function correctCommitMessage(message: string): string {
   const withoutFences = message.replace(/^```(?:gitcommit|text)?/i, '').replace(/```$/i, '').trim();
   const lines = withoutFences.split('\n').filter((line) => !/^(here(?:'s| is)|option \d|alternative|commit message:)/i.test(line.trim()));
-  const subject = truncateSubject((lines.find((line) => line.trim()) ?? 'chore: update workspace').trim());
-  const body = lines.slice(lines.findIndex((line) => line.trim()) + 1).join('\n').trim();
+  const subjectIndex = lines.findIndex((line) => line.trim());
+  if (subjectIndex < 0) return '';
+  const subject = truncateSubject(lines[subjectIndex].trim());
+  const body = lines.slice(subjectIndex + 1).join('\n').trim();
   return body ? `${subject}\n\n${body.split('\n').slice(0, 6).join('\n').slice(0, 600)}` : subject;
 }
 

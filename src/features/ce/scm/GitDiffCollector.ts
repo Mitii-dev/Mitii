@@ -10,21 +10,27 @@ export async function collectCommitMessageInput(
     perFileMaxChars?: number;
   } = {}
 ): Promise<CommitMessageInput> {
+  const stagedDiffMaxChars = options.stagedDiffMaxChars ?? 16_000;
+  const unstagedDiffMaxChars = options.unstagedDiffMaxChars ?? 8_000;
+  const stagedCollectionMaxChars = Math.min(1_000_000, Math.max(stagedDiffMaxChars * 32, 128_000));
+  const unstagedCollectionMaxChars = Math.min(500_000, Math.max(unstagedDiffMaxChars * 16, 64_000));
   const [stagedDiff, unstagedDiff, changedFiles, recentCommits, branch] = await Promise.all([
-    git.getStagedDiff(options.stagedDiffMaxChars ?? 16_000),
-    git.getUnstagedDiff(options.unstagedDiffMaxChars ?? 8_000),
-    git.getChangedFilesDetailed(),
+    // Fetch beyond the final prompt budget so one large first file does not
+    // prevent later staged files from being represented by budgetDiff().
+    git.getStagedDiff(stagedCollectionMaxChars),
+    git.getUnstagedDiff(unstagedCollectionMaxChars),
+    git.getChangedFilesDetailed(true),
     git.getRecentCommits(5),
     git.getCurrentBranch(),
   ]);
 
   return {
     stagedDiff: budgetDiff(stagedDiff, {
-      totalMaxChars: options.stagedDiffMaxChars ?? 16_000,
+      totalMaxChars: stagedDiffMaxChars,
       perFileMaxChars: options.perFileMaxChars,
     }),
     unstagedDiff: budgetDiff(unstagedDiff, {
-      totalMaxChars: options.unstagedDiffMaxChars ?? 8_000,
+      totalMaxChars: unstagedDiffMaxChars,
       perFileMaxChars: options.perFileMaxChars,
     }),
     changedFiles,

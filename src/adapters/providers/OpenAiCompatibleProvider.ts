@@ -53,13 +53,20 @@ export class OpenAiCompatibleProvider implements LlmProvider {
 
     const includeReasoning = request.includeReasoning ?? this.config.includeReasoning;
     const reasoningEffort = request.reasoningEffort ?? this.config.reasoningEffort;
+    const model = request.model ?? this.config.model;
     const body: Record<string, unknown> = {
-      model: request.model ?? this.config.model,
+      model,
       messages: sanitizeOpenAiCompatibleMessages(request.messages).map(formatMessage),
       temperature: request.temperature ?? 0.2,
       max_tokens: request.maxTokens,
       stream: request.stream !== false,
     };
+    if (request.disableReasoning && /qwen[^a-z0-9]*3/i.test(model)) {
+      // Qwen3.x defaults to thinking mode and can exhaust a short task's entire
+      // output budget before emitting content. Ollama/vLLM accept this extension
+      // on their OpenAI-compatible chat-completions endpoints.
+      body.chat_template_kwargs = { enable_thinking: false };
+    }
     if (includeReasoning) {
       body.include_reasoning = true;
     }

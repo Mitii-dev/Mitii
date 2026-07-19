@@ -231,6 +231,35 @@ describe('OpenAiCompatibleProvider', () => {
     expect(deltas.some((delta) => delta.reasoning === 'thinking')).toBe(true);
   });
 
+  it('disables Qwen thinking for direct-output requests', async () => {
+    const provider = new OpenAiCompatibleProvider({
+      baseUrl: 'http://localhost:11434/v1',
+      model: 'qwen3.6:27b',
+      capabilities: { supportsReasoning: true },
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: 'docs: update architecture guides' }, finish_reason: 'stop' }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      for await (const _delta of provider.complete({
+        messages: [{ role: 'user', content: 'write a commit message' }],
+        stream: false,
+        disableReasoning: true,
+      })) {
+        // consume stream
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.chat_template_kwargs).toEqual({ enable_thinking: false });
+    expect(body.reasoning_effort).toBeUndefined();
+  });
+
   it('omits tool definitions when the configured model does not support tools', async () => {
     const provider = new OpenAiCompatibleProvider({
       baseUrl: 'https://example.com/v1',

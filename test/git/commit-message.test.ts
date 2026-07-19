@@ -68,6 +68,12 @@ describe('commit-message prompt safety', () => {
     expect(result.corrected).toBeTruthy();
   });
 
+  it('does not turn an empty model response into a generic fallback', () => {
+    const result = validateCommitMessage('');
+    expect(result.valid).toBe(false);
+    expect(result.corrected).toBe('');
+  });
+
   it('budgets large multi-file diffs with truncation markers', () => {
     const large = Array.from({ length: 4 }, (_, index) => [
       `diff --git a/src/file${index}.ts b/src/file${index}.ts`,
