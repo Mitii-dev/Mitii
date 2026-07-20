@@ -98,8 +98,8 @@ export class SkillCatalogService {
 
       return {
         id: manifest.id,
-        name: manifest.name,
-        description: manifest.description,
+        name,
+        description,
         relPath,
         manifest,
         valid: issues.length === 0,

@@ -55,6 +55,43 @@ describe('TaskAnalyzer routing regressions', () => {
     expect(analysis.complexity).toBe('medium');
     expect(analysis.shouldPlan).toBe(true);
     expect(analysis.shouldVerify).toBe(true);
+    expect(analysis.shouldUseSubagents).toBe(false);
+    expect(analysis.subagentDecision?.reasonCodes).toContain('capture_baseline_first');
     expect(analysis.actIntent).toBe('bugfix');
+  });
+
+  it('keeps deterministic high-complexity verification work on direct tools', () => {
+    const analysis = analyzeTask(
+      'Run tests, lint, typecheck, and build across the entire workspace, then report every failure and verification command result.',
+      'agent'
+    );
+
+    expect(analysis.kind).toBe('implementation');
+    expect(analysis.complexity).toBe('high');
+    expect(analysis.shouldUseSubagents).toBe(false);
+    expect(analysis.subagentDecision).toMatchObject({
+      executionMode: 'single_agent',
+      maxParallelAgents: 0,
+      singleWriter: true,
+      reasonCodes: ['independent_deterministic_work'],
+    });
+  });
+
+  it('allows read-only subagents only for independent reasoning workstreams', () => {
+    const analysis = analyzeTask(
+      'Refactor frontend and backend authentication flows, compare migration options, update tests, and implement shared token handling across the whole codebase.',
+      'agent'
+    );
+
+    expect(analysis.kind).toBe('implementation');
+    expect(analysis.complexity).toBe('high');
+    expect(analysis.shouldUseSubagents).toBe(true);
+    expect(analysis.subagentDecision).toMatchObject({
+      executionMode: 'parallel_readonly_agents',
+      maxParallelAgents: 2,
+      singleWriter: true,
+    });
+    expect(analysis.subagentDecision?.reasonCodes).toContain('independent_reasoning_workstreams');
+    expect(analysis.subagentDecision?.reasonCodes).toContain('coordinator_single_writer');
   });
 });

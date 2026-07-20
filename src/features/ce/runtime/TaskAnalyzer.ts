@@ -22,6 +22,20 @@ export type TaskKind =
 
 export type TaskComplexity = 'low' | 'medium' | 'high';
 
+export type SubagentExecutionMode =
+  | 'single_agent'
+  | 'parallel_tools'
+  | 'parallel_readonly_agents'
+  | 'parallel_package_agents';
+
+export interface SubagentDecision {
+  useSubagents: boolean;
+  executionMode: SubagentExecutionMode;
+  maxParallelAgents: number;
+  singleWriter: boolean;
+  reasonCodes: string[];
+}
+
 export type AuditSubtype =
   | 'unused_deps'
   | 'dead_code'
@@ -52,6 +66,7 @@ export interface TaskAnalysis {
   shouldPlan: boolean;
   shouldVerify: boolean;
   shouldUseSubagents: boolean;
+  subagentDecision?: SubagentDecision;
   summary: string;
   askIntent?: AskIntent;
   askProfile?: import('../modes/ask/askTypes').AskResponseProfile;
@@ -163,6 +178,18 @@ const DOCS_IMPLEMENTATION =
 // narrow pattern catches the directive shape specifically instead of widening the verb list.
 const CROSS_PACKAGE_WIRING_DIRECTIVE =
   /^(?:have|make)\s+\S[\s\S]{0,80}?\b(?:also\s+)?(?:use|uses|call|calls|import|imports|wire|wires|leverage|leverages)\b/i;
+
+const INDEPENDENT_SUBAGENT_WORKSTREAMS =
+  /\b(frontend and backend|backend and frontend|client and server|server and client|api and ui|ui and api|web and api|api and web|extension and website|website and extension|mobile and web|web and mobile|docs and agent|agent and docs|independent workstreams?|separate workstreams?|separate packages?|separate services?|separate apps?|separate modules?|across packages?|across services?|across apps?|monorepo packages?)\b/i;
+
+const SUBAGENT_REASONING_WORK =
+  /\b(analy[sz]e|analysis|architecture|audit|compare|design|investigate|map out|migration options?|research|review|tradeoffs?)\b/i;
+
+const DETERMINISTIC_WORK_ONLY =
+  /\b(run|execute)\b[\s\S]{0,80}\b(builds?|checks?|commands?|lint|scripts?|tests?|typecheck|verification)\b|\b(format|generate|install|compile)\b/i;
+
+const SEQUENTIAL_ROOT_CAUSE_WORK =
+  /\b(first error|first failure|first failing|root cause|single failing|single failure|stack trace|test failure cluster|compiler error|type ?error|build error)\b/i;
 
 export function analyzeTask(userMessage: string, mode: string, options: TaskAnalysisOptions = {}): TaskAnalysis {
   const text = userMessage.trim();
@@ -459,16 +486,19 @@ function classifyTask(text: string): TaskAnalysis {
       hasMigration ||
       hasDestructiveOperation ||
       hasMaterialAmbiguity;
-    // Medium-complexity tasks only warrant subagent parallelism when they already show a
-    // multi-file or multi-step signal — otherwise spinning one up just adds latency/tokens
-    // for work a single agent loop would finish just as fast.
-    const mediumNeedsSubagents = complexity === 'medium' && (fileMentions >= 3 || connectorCount >= 2);
+    const subagentDecision = resolveImplementationSubagentDecision(primary, {
+      broadProjectRepair,
+      complexity,
+      connectorCount,
+      fileMentions,
+    });
     return {
       kind: 'implementation',
       complexity,
       shouldPlan,
       shouldVerify: true,
-      shouldUseSubagents: complexity === 'high' || mediumNeedsSubagents,
+      shouldUseSubagents: subagentDecision.useSubagents,
+      subagentDecision,
       actIntent: broadProjectRepair ? 'bugfix' : undefined,
       summary: broadProjectRepair
         ? `Project repair task (${complexity} complexity) — reproduce the current failures, scope to the first error cluster, patch, then verify.`
@@ -599,6 +629,68 @@ function applyActIntent(
         actIntent: effectiveIntent,
       };
   }
+}
+
+function resolveImplementationSubagentDecision(
+  text: string,
+  signals: {
+    broadProjectRepair: boolean;
+    complexity: TaskComplexity;
+    connectorCount: number;
+    fileMentions: number;
+  }
+): SubagentDecision {
+  if (signals.broadProjectRepair) {
+    return singleAgentSubagentDecision('capture_baseline_first');
+  }
+
+  if (SEQUENTIAL_ROOT_CAUSE_WORK.test(text)) {
+    return singleAgentSubagentDecision('sequential_root_cause');
+  }
+
+  // Keep the established multi-file/multi-step medium route, but make the single-writer
+  // contract explicit so subagents investigate while the coordinator owns repository writes.
+  if (signals.complexity === 'medium' && (signals.fileMentions >= 3 || signals.connectorCount >= 2)) {
+    return readonlySubagentDecision(['multi_file_signal']);
+  }
+
+  if (signals.complexity !== 'high') {
+    return singleAgentSubagentDecision('task_too_small');
+  }
+
+  if (DETERMINISTIC_WORK_ONLY.test(text) && !SUBAGENT_REASONING_WORK.test(text)) {
+    return singleAgentSubagentDecision('independent_deterministic_work');
+  }
+
+  if (!INDEPENDENT_SUBAGENT_WORKSTREAMS.test(text)) {
+    return singleAgentSubagentDecision('workstreams_not_independent');
+  }
+
+  if (!SUBAGENT_REASONING_WORK.test(text)) {
+    return singleAgentSubagentDecision('reasoning_work_not_independent');
+  }
+
+  return readonlySubagentDecision(['independent_reasoning_workstreams']);
+}
+
+function singleAgentSubagentDecision(reason: string): SubagentDecision {
+  return {
+    useSubagents: false,
+    executionMode: 'single_agent',
+    maxParallelAgents: 0,
+    singleWriter: true,
+    reasonCodes: [reason],
+  };
+}
+
+function readonlySubagentDecision(reasonCodes: string[]): SubagentDecision {
+  return {
+    useSubagents: true,
+    executionMode: 'parallel_readonly_agents',
+    maxParallelAgents: 2,
+    singleWriter: true,
+    reasonCodes: [...reasonCodes, 'coordinator_single_writer'],
+  };
 }
 
 function isAuditCleanupRequest(text: string): boolean {
