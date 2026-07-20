@@ -40,6 +40,12 @@ function normalizeCommandForFingerprint(command: string): string {
     .replace(/;\s*echo\s+["']?(?:exit(?:_code)?\s*[:=]\s*)?\$\?[^\n]*/gi, '')
     .replace(/\s*\|\s*(?:head|tail)(?:\s+(?:-n\s*)?-?\d+)?/gi, '')
     .replace(/\s*\|\s*cat\b/gi, '')
+    // `npx tsc --noEmit`, `pnpm exec tsc --noEmit`, `yarn tsc --noEmit`, and bare `tsc --noEmit`
+    // invoke the exact same binary with the exact same flags — only the package-manager
+    // wrapper differs. Without collapsing these to one fingerprint, a model that switches
+    // wrappers between retries (as models under repeated-failure pressure tend to) never
+    // trips the identical-failure guard, and burns a fresh LLM call on each "new" wrapper.
+    .replace(/^(?:npx\s+(?:--yes\s+)?|pnpm\s+(?:exec|dlx)\s+|yarn\s+(?:dlx\s+)?|npm\s+exec\s+(?:--\s+)?)(?=tsc\b)/i, '')
     .replace(/\s+/g, ' ')
     .trim();
 }

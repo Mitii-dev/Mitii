@@ -1856,6 +1856,149 @@ describe('Plan parser', () => {
     expect(output).toContain('without a successful verification command');
   });
 
+  it('does not complete a generic (non-write, non-verify) step whose tool calls all failed', async () => {
+    const { PlanExecutor } = await import('../src/features/ce/runtime/PlanExecutor');
+    const plan = {
+      goal: 'Fix package build',
+      assumptions: [],
+      requiredApprovals: [],
+      steps: [{
+        id: 'scope',
+        title: 'Propose file scope',
+        status: 'pending' as const,
+        risk: 'low' as const,
+        phase: 'diagnostics' as const,
+      }],
+    };
+    const persistence = {
+      save: () => 'plan-id',
+      updatePlan: () => undefined,
+      complete: () => undefined,
+    };
+    let calls = 0;
+    const agentLoop = {
+      hadPendingApproval: () => false,
+      async *run(_provider: unknown, _messages: unknown, _tools: unknown, _signal: unknown, callbacks: {
+        onToolStart?: (name: string, input: Record<string, unknown>) => void;
+        onToolEnd?: (name: string, success: boolean, output: string) => void;
+      }) {
+        calls += 1;
+        callbacks.onToolStart?.('propose_file_scope', { paths: ['src/index.ts'] });
+        callbacks.onToolEnd?.('propose_file_scope', false, 'Scope proposal rejected: quota exceeded');
+        // Model narrates success even though the only tool call failed.
+        yield 'Scope has been proposed and accepted.';
+      },
+    };
+    const executor = new PlanExecutor(agentLoop as never, persistence as never);
+    const pack = {
+      items: [],
+      totalTokens: 0,
+      formatted: '',
+      budgetLimit: 100,
+      retrievedCount: 0,
+      truncatedCount: 0,
+      dropped: [],
+    };
+    let output = '';
+
+    for await (const chunk of executor.executePlan(
+      { id: 's1', mode: 'agent' } as never,
+      {} as never,
+      plan,
+      pack,
+      [],
+      undefined,
+      undefined,
+      undefined,
+      { stepMaxRetries: 0 }
+    )) {
+      output += chunk;
+    }
+
+    expect(calls).toBe(1);
+    expect(plan.steps[0].status).toBe('failed');
+    expect(output).toContain('no tool call succeeded');
+  });
+
+  it('resumes a blocked step from its suspended sub-loop state instead of restarting it', async () => {
+    const { PlanExecutor } = await import('../src/features/ce/runtime/PlanExecutor');
+    const plan = {
+      goal: 'Fix package build',
+      assumptions: [],
+      requiredApprovals: [],
+      steps: [{
+        id: 'scope',
+        title: 'Propose file scope',
+        status: 'pending' as const,
+        risk: 'low' as const,
+        phase: 'diagnostics' as const,
+      }],
+    };
+    const persistence = {
+      save: () => 'plan-id',
+      updatePlan: () => undefined,
+      complete: () => undefined,
+    };
+    let runCalls = 0;
+    let resumeCalls = 0;
+    let seenState: unknown;
+    let seenApproved: unknown;
+    const suspendState = { messages: [{ role: 'assistant', content: 'partial' }], tools: [], options: {} };
+    const approvedResults = [{ toolCallId: 't1', toolName: 'propose_file_scope', output: 'ok', success: true }];
+    const agentLoop = {
+      hadPendingApproval: () => false,
+      async *run() {
+        runCalls += 1;
+        throw new Error('should resume the suspended step instead of restarting it');
+      },
+      async *resume(_provider: unknown, state: unknown, approved: unknown, _signal: unknown, callbacks: {
+        onToolStart?: (name: string, input: Record<string, unknown>) => void;
+        onToolEnd?: (name: string, success: boolean, output: string) => void;
+      }) {
+        resumeCalls += 1;
+        seenState = state;
+        seenApproved = approved;
+        callbacks.onToolStart?.('propose_file_scope', { paths: ['src/index.ts'] });
+        callbacks.onToolEnd?.('propose_file_scope', true, 'Scope accepted');
+        yield 'Scope has been proposed and accepted.';
+      },
+    };
+    const executor = new PlanExecutor(agentLoop as never, persistence as never);
+    const pack = {
+      items: [],
+      totalTokens: 0,
+      formatted: '',
+      budgetLimit: 100,
+      retrievedCount: 0,
+      truncatedCount: 0,
+      dropped: [],
+    };
+
+    for await (const _chunk of executor.executePlan(
+      { id: 's1', mode: 'agent' } as never,
+      {} as never,
+      plan,
+      pack,
+      [],
+      undefined,
+      undefined,
+      undefined,
+      {
+        stepMaxRetries: 0,
+        finalValidationEnabled: false,
+        resumeStep: { stepId: 'scope', suspendState: suspendState as never, approved: approvedResults as never },
+      }
+    )) {
+      // consume stream
+    }
+
+    expect(runCalls).toBe(0);
+    expect(resumeCalls).toBe(1);
+    expect(seenState).toBe(suspendState);
+    expect(seenApproved).toBe(approvedResults);
+    expect(plan.steps[0].status).toBe('done');
+  });
+
   it('does not reuse stale agent-loop approval state after an explicit step succeeds', async () => {
     const { PlanExecutor } = await import('../src/features/ce/runtime/PlanExecutor');
     const plan = {
@@ -2941,6 +3084,9 @@ describe('PlanActEngine read-only shell', () => {
     expect(classifyCommandEffect('pnpm run build')).toBe('verification_with_artifacts');
     expect(classifyCommandEffect('pnpm --filter frontend run build')).toBe('verification_with_artifacts');
     expect(classifyCommandEffect('cd ai-service && pnpm exec tsc --noEmit')).toBe('inspect_only');
+    expect(classifyCommandEffect('pnpm run build > /tmp/ai-service-build.log 2>&1')).toBe('verification_with_artifacts');
+    expect(classifyCommandEffect('npx tsc --noEmit > /dev/null 2>&1')).toBe('inspect_only');
+    expect(classifyCommandEffect('pnpm run build > build-output.log')).toBe('workspace_mutation');
     expect(classifyCommandEffect('npm install lodash')).toBe('dependency_mutation');
     expect(classifyCommandEffect('git checkout -- src/index.ts')).toBe('workspace_mutation');
     expect(classifyCommandEffect('git restore -- src/index.ts src/routes.ts')).toBe('workspace_mutation');

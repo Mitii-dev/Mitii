@@ -63,11 +63,19 @@ export class SkillTelemetry {
         score: item.score,
         factors: item.factors,
         pinningEffects: item.pinningEffects,
+        manifestVersion: item.manifest.version,
+        manifestPath: item.manifestPath,
+        manifestHash: item.manifestHash,
+        supportedModes: item.manifest.supportedModes,
       })),
       selected: resolution.selectedSkillIds,
       rejected: resolution.rejectedSkills.map((item) => ({
         id: item.id,
         reasons: item.rejectionReasons,
+        manifestVersion: item.manifest.version,
+        manifestPath: item.manifestPath,
+        manifestHash: item.manifestHash,
+        supportedModes: item.manifest.supportedModes,
       })),
     });
   }

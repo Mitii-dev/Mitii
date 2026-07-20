@@ -275,10 +275,27 @@ function isDependencyMutationCommand(cmd: string): boolean {
 
 function isObviousWorkspaceMutationCommand(cmd: string): boolean {
   return /\b(?:rm|mv|cp|mkdir|touch|truncate|chmod|chown)\b/i.test(cmd) ||
-    /(?:^|[\s;|&])(?:>|>>)\s*\S+/.test(cmd) ||
+    hasWorkspaceMutatingRedirect(cmd) ||
     /\bgit\s+(?:checkout\s+--|restore\b|clean\b|reset\b|rm\b)/i.test(cmd) ||
     /\bsed\s+-i\b/i.test(cmd) ||
     /\b(?:eslint|prettier)\b[\s\S]*\s--(?:fix|write)\b/i.test(cmd);
+}
+
+/** A `>`/`>>` redirect only counts as a workspace mutation if it targets a file that could
+ * actually land in the workspace — a redirect to a temp dir or /dev/null (e.g. capturing
+ * `pnpm run build > /tmp/build.log 2>&1` for diagnosis) writes nothing a workspace diff would
+ * ever show, so it shouldn't be treated the same as `rm`/`sed -i`/etc. */
+function hasWorkspaceMutatingRedirect(cmd: string): boolean {
+  for (const match of cmd.matchAll(/(?:^|[\s;|&])(?:>|>>)\s*(\S+)/g)) {
+    if (!isDiagnosticRedirectTarget(match[1])) return true;
+  }
+  return false;
+}
+
+function isDiagnosticRedirectTarget(target: string): boolean {
+  const cleaned = target.replace(/^['"]|['"]$/g, '');
+  if (/^&\d+$/.test(cleaned)) return true; // fd duplication (e.g. `2>&1`) writes no file
+  return /^\/dev\/null$/i.test(cleaned) || /^\/(?:tmp|var\/tmp|private\/tmp|private\/var\/folders)\//i.test(cleaned);
 }
 
 /** Allow python/node one-liners that only inspect data — reject obvious mutators. */

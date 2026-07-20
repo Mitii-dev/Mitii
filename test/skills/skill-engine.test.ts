@@ -361,5 +361,7 @@ function entry(skillManifest: SkillManifest): SkillCatalogEntry {
     manifest: skillManifest,
     valid: true,
     issues: [],
+    manifestPath: `.mitii/skills/${skillManifest.id}/skill.json`,
+    manifestHash: 'test-hash',
   };
 }

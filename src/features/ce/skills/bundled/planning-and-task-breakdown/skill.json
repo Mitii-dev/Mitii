@@ -2,100 +2,145 @@
   "schemaVersion": 1,
   "id": "planning-and-task-breakdown",
   "name": "Planning and task breakdown",
-  "description": "Create implementation plans for multi-step, ambiguous, risky, or cross-component work. Use when asked for a plan or dependent changes must be coordinated. Do not use for questions, commit messages, or single-step fixes.",
-  "version": "1.0.0",
+  "description": "Supporting planning skill that turns an active planning goal and existing evidence into a small, ordered, verifiable task list. Use only once planning is active and work needs decomposition; not a primary workflow like bugfix-workflow.",
+  "version": "1.1.0",
   "apiVersion": "1",
   "owner": "mitii",
   "edition": "ce",
   "enabled": true,
   "status": "recommended",
   "kind": "workflow",
-  "supportedModes": [
-    "ask",
-    "plan"
-  ],
-  "intents": [
-    "feature",
-    "refactor"
-  ],
-  "taskKinds": [
-    "explicit_plan"
-  ],
+  "supportedModes": ["plan", "agent"],
+  "intents": ["bugfix", "feature", "refactor"],
+  "taskKinds": ["explicit_plan", "implementation"],
   "triggers": [
-    "create a plan",
+    "create an implementation plan",
     "break down the work",
-    "implementation plan",
     "task breakdown",
-    "multi-step plan"
+    "multi-step plan",
+    "coordinate dependent changes",
+    "plan this migration",
+    "plan the implementation",
+    "plan the repository repair",
+    "break this into executable tasks"
   ],
   "negativeTriggers": [
     "what is",
+    "explain",
     "commit message",
-    "fix this one-line typo"
+    "analyze this log",
+    "fix this one-line typo",
+    "single file change",
+    "directly fix",
+    "without planning",
+    "without creating a plan",
+    "skip planning",
+    "no plan"
   ],
-  "requiredTools": [
-    "read_file",
-    "search"
-  ],
-  "optionalTools": [
-    "repo_map"
-  ],
-  "requiredCapabilities": [
-    "repository-read"
-  ],
+  "requiredTools": [],
+  "optionalTools": ["read_file", "search", "repo_map"],
+  "requiredCapabilities": ["repository-read"],
   "dependencies": [],
-  "conflicts": [
-    "agent-plan"
-  ],
+  "conflicts": [],
   "entrypoint": "SKILL.md",
   "referenceFiles": [],
-  "maxInjectionChars": 6000,
+  "maxInjectionChars": 4500,
   "injectionStrategy": "lazy-references",
   "trust": "builtin",
-  "priority": 20,
+  "priority": 12,
   "tags": [
     "planning",
-    "breakdown",
-    "plan-mode"
+    "task-breakdown",
+    "decomposition",
+    "supporting-workflow",
+    "plan-mode",
+    "agent-planning"
   ],
-  "pinningRules": [
-    {
-      "id": "plan-mode",
-      "scope": "mode",
-      "value": "plan",
-      "action": "recommend",
-      "priority": 35
-    }
-  ],
+  "pinningRules": [],
   "tests": [
     {
-      "id": "positive-plan",
-      "name": "Selects for multi-step planning in plan mode",
-      "request": "Create an implementation plan for migrating auth across three packages",
+      "id": "positive-explicit-plan",
+      "name": "Selects for an explicit implementation plan",
+      "request": "Create an implementation plan for a multi-step feature with dependent changes",
       "mode": "plan",
-      "availableTools": [
-        "read_file",
-        "search",
-        "repo_map"
-      ],
-      "availableCapabilities": [
-        "repository-read"
-      ],
+      "availableTools": ["read_file", "search", "repo_map"],
+      "availableCapabilities": ["repository-read"],
       "expected": "selected",
-      "maxInjectionChars": 6000
+      "maxInjectionChars": 4500
+    },
+    {
+      "id": "positive-task-breakdown",
+      "name": "Selects when work must be broken into ordered tasks",
+      "request": "Break this large implementation into small ordered tasks with acceptance criteria",
+      "mode": "plan",
+      "availableTools": ["read_file", "search", "repo_map"],
+      "availableCapabilities": ["repository-read"],
+      "expected": "selected",
+      "maxInjectionChars": 4500
+    },
+    {
+      "id": "positive-agent-planning",
+      "name": "Selects as planning support for multi-step Agent work",
+      "request": "Implement this multi-component change, but create a bounded plan before editing",
+      "mode": "agent",
+      "availableTools": ["read_file", "search", "repo_map"],
+      "availableCapabilities": ["repository-read"],
+      "expected": "selected",
+      "maxInjectionChars": 4500
+    },
+    {
+      "id": "positive-dependent-work",
+      "name": "Selects for coordinated dependent changes",
+      "request": "Plan the changes in dependency order because several components depend on each other",
+      "mode": "plan",
+      "availableTools": ["read_file", "search", "repo_map"],
+      "availableCapabilities": ["repository-read"],
+      "expected": "selected",
+      "maxInjectionChars": 4500
+    },
+    {
+      "id": "negative-simple-edit",
+      "name": "Not selected for a localized edit",
+      "request": "Fix this one-line typo",
+      "mode": "agent",
+      "availableTools": ["read_file", "search"],
+      "availableCapabilities": ["repository-read"],
+      "expected": "rejected"
+    },
+    {
+      "id": "negative-question",
+      "name": "Not selected for a general question",
+      "request": "What is dependency injection?",
+      "mode": "ask",
+      "availableTools": ["read_file", "search"],
+      "availableCapabilities": ["repository-read"],
+      "expected": "rejected"
     },
     {
       "id": "negative-commit-message",
-      "name": "Not selected for commit messages",
+      "name": "Not selected for commit-message generation",
       "request": "Write a commit message for my staged changes",
       "mode": "ask",
-      "availableTools": [
-        "read_file",
-        "search"
-      ],
-      "availableCapabilities": [
-        "repository-read"
-      ],
+      "availableTools": ["read_file", "search"],
+      "availableCapabilities": ["repository-read"],
+      "expected": "rejected"
+    },
+    {
+      "id": "negative-log-analysis",
+      "name": "Not selected for log analysis",
+      "request": "Analyze this agent log and identify the failures",
+      "mode": "ask",
+      "availableTools": ["read_file", "search"],
+      "availableCapabilities": ["repository-read"],
+      "expected": "rejected"
+    },
+    {
+      "id": "negative-direct-override",
+      "name": "Not selected when planning is disabled",
+      "request": "Make the change directly without creating a plan",
+      "mode": "agent",
+      "availableTools": ["read_file", "search"],
+      "availableCapabilities": ["repository-read"],
       "expected": "rejected"
     }
   ]

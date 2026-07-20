@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { basename, dirname, join, relative } from 'path';
 import type { ContextItem, ContextQuery, ContextSource } from '../../../features/ce/context/types';
 import type { SkillManifest } from '../../../interfaces/skills/SkillManifest';
@@ -25,6 +25,10 @@ export interface SkillCatalogEntry extends SkillCatalogItem {
   manifest: SkillManifest;
   valid: boolean;
   issues: SkillValidationIssue[];
+  /** Absolute path to this skill's skill.json (or its SKILL.md when no manifest file exists). */
+  manifestPath: string;
+  /** Short content hash of the resolved manifest — lets telemetry tell two builds/copies of the same skill id apart. */
+  manifestHash: string;
 }
 
 export class SkillCatalogService {
@@ -100,6 +104,8 @@ export class SkillCatalogService {
         manifest,
         valid: issues.length === 0,
         issues,
+        manifestPath: rawManifest === undefined ? absPath : manifestPath,
+        manifestHash: hashManifest(rawManifest ?? manifest),
       };
     });
 
@@ -311,6 +317,10 @@ function cleanYamlScalar(value: string): string | undefined {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hashManifest(manifest: unknown): string {
+  return createHash('sha256').update(JSON.stringify(manifest)).digest('hex').slice(0, 12);
 }
 
 function readJson(path: string): unknown | undefined {

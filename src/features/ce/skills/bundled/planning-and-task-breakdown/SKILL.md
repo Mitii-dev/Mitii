@@ -1,87 +1,232 @@
 ---
 name: planning-and-task-breakdown
-description: Create implementation plans for multi-step, ambiguous, risky, or cross-component work. Use when asked for a plan or dependent changes must be coordinated. Do not use for questions, commit messages, or single-step fixes.
+description: Converts a planning goal and current evidence into a small, ordered, verifiable task list. Use only when planning is already active and the task requires decomposition. Do not use for simple edits, questions, or already well-defined tasks.
 ---
 
 # Planning and Task Breakdown
 
-## Quick Reference
+## Purpose
 
-- Pick the smallest useful depth: None → Micro → Short → Standard → Full.
-- Every task needs a concrete change, acceptance criteria, and a verify step.
-- Use exact paths, concrete interfaces, and real verification commands when enough context is available.
-- Order foundational work before dependents; prefer verifiable vertical slices.
-- Remove placeholders such as TODO, TBD, “handle edge cases,” or “write tests” without a concrete test target.
-- Replan only when scope, architecture, safety, or a core assumption changes.
-- Ask the user only when an unresolved decision changes behavior, security, data, cost, API, or destructive ops.
+Convert an approved task goal and available repository evidence into the smallest executable task list.
 
-## Depth Budgets
+This skill does not decide whether planning is required, select the planning depth, control tool permissions, or replace the task-specific primary workflow. Those decisions belong to the planner and execution router.
 
-| Depth | When | Limit |
-| --- | --- | --- |
-| None | Direct, obvious, low-risk | Execute without a visible plan |
-| Micro | One small change, minor risk | ≤3 bullets, ≤80 words |
-| Short | 2–4 related tasks | ≤4 tasks, ≤250 words |
-| Standard | Multi-component with dependencies | ≤8 tasks, ≤800 words |
-| Full | Cross-cutting, ambiguous, destructive, migration | ≤12 top-level tasks, ≤1,500 words |
+## When to Use
 
-## Rules
+Use this skill when:
 
-1. Planning must reduce uncertainty rather than delay execution.
-2. Do not produce a visible plan for questions, commit messages, status checks, or obvious single-step edits.
-3. Inspect only enough code to identify scope, dependencies, risks, and verification.
-4. Order foundational changes before dependent changes.
-5. Prefer independently verifiable vertical slices.
-6. Every task must describe a concrete change and a testable outcome.
-7. Include exact file paths and public interfaces when the discovery pass has identified them.
-8. Include only relevant metadata — do not add files, parallelization, risks, or stop conditions mechanically.
-9. Add checkpoints only after meaningful risk boundaries or completed vertical slices.
-10. Stop planning after reaching the selected depth.
-11. Do not regenerate or expand the plan unless scope, architecture, safety, or a core assumption changes.
-12. Do not create a second plan for minor implementation discoveries.
-13. Ask the user only when an unresolved decision changes behavior, security, data, cost, public API, or destructive operations.
+* Planning is already active.
+* The task spans multiple dependent changes.
+* The implementation order is not obvious.
+* The task contains independent workstreams.
+* A broad goal must be converted into bounded executable tasks.
 
-## Compact Task Format
+Do not use this skill for:
 
-```markdown
-## Task N: Title
+* Questions or explanations.
+* Single-file changes with obvious scope.
+* Localized compiler or test failures.
+* Tasks that already contain a complete executable plan.
+* Log analysis.
+* Documentation-only edits with clear requested changes.
 
-**Change:** Concrete implementation work.
+## Inputs
 
-**Acceptance:**
-- Testable outcome
+Use the canonical planning context:
 
-**Verify:** Command or manual check
+* Task goal
+* Target project or workspace
+* Task intent and subtype
+* Requested planning depth
+* Repository evidence already collected
+* Existing error or test clusters
+* Approved file scope
+* Risk and approval constraints
+* Available verification commands
 
-**Depends on:** Task N or none
-```
+Do not repeat discovery already represented in the evidence packet.
 
-## Plan Self-Check
+## Decomposition Strategy
 
-Before handing off a standard or full plan, scan it for:
+Choose the strategy that matches the task.
 
-- Uncovered requirements from the user request.
-- Placeholder text or vague work items.
-- Type, function, route, or filename inconsistencies across tasks.
-- Verification steps that do not prove the acceptance criteria.
+### Feature work
 
-Fix issues inline and then stop; do not start a second planning pass for ordinary cleanup.
+Prefer vertical slices that deliver independently testable behavior.
 
-Micro-plan for small but nontrivial work:
+### Bugfix work
 
-```markdown
-Plan:
-- Change: One sentence
-- Verify: Command or manual check
-- Risk: Low, medium, or high with a brief reason
-```
+Decompose by root-cause or error cluster:
 
-## Replanning
+1. Reproduce or reuse the current failure evidence.
+2. Inspect the exact affected files and contracts.
+3. Apply the smallest compatible fix.
+4. Rerun the original failing check.
+5. Continue only when a new failure cluster appears.
 
-Replan only when the user changes scope, a required dependency is missing, implementation conflicts with expected architecture, a destructive operation becomes necessary, or verification disproves a core assumption.
+### Migration or restoration work
 
-Do not replan for filename differences, minor test adjustments, equivalent helper reuse, or local implementation details.
+Follow dependency order:
 
-## Completion
+1. Establish the canonical target state.
+2. Restore or migrate shared contracts.
+3. Update dependent implementations.
+4. Update consumers.
+5. Remove obsolete structures only after verification.
 
-A plan is complete when scope is bounded, dependencies are ordered, each task has a testable outcome, verification is defined, relevant risks are identified, and the plan fits its depth budget. Then stop planning and proceed to execution.
+### Audit or cleanup work
+
+Separate:
+
+1. Evidence collection
+2. Candidate review
+3. Approved changes
+4. Verification
+
+Do not combine discovery and deletion into one task.
+
+## Task Contract
+
+Every internal task must contain:
+
+* `id`
+* `kind`
+* `objective`
+* `acceptanceCriteria`
+* `verification`
+* `dependencies`
+* `risk`
+* `likelyPaths`
+* `evidenceIds`
+* `status`
+
+Supported task kinds:
+
+* `inspect`
+* `reproduce`
+* `diagnose`
+* `design`
+* `change`
+* `restore`
+* `cleanup`
+* `verify`
+* `smoke_test`
+
+Phase and tool policy are derived by the orchestrator from `kind`. Do not invent phase labels.
+
+## Task Sizing
+
+Prefer tasks that represent one coherent outcome.
+
+Use these default limits:
+
+* Quick plan: 2–4 tasks
+* Deep plan: 4–7 tasks
+* More than 7 tasks: split into named workstreams
+
+A task is too large when it:
+
+* Contains multiple independent outcomes.
+* Crosses unrelated subsystems.
+* Requires unrelated verification methods.
+* Mixes diagnosis, implementation, and cleanup.
+* Contains destructive work together with ordinary edits.
+
+File count is supporting evidence, not the primary measure of complexity.
+
+## Acceptance Criteria
+
+Acceptance criteria must be machine-verifiable whenever possible.
+
+Good criteria:
+
+* The original TypeScript error signature no longer appears.
+* The affected package build exits successfully.
+* The referenced module resolves from all updated consumers.
+* The application starts and reaches the expected health endpoint.
+
+Avoid criteria such as:
+
+* Code looks correct.
+* Structure is cleaner.
+* All issues are fixed.
+
+## Verification
+
+Use the narrowest verification that proves the task.
+
+* Reuse an existing check result when the workspace has not changed.
+* Rerun a check only after a relevant workspace mutation.
+* Treat a failing diagnostic check as successfully captured evidence.
+* Treat a failing final verification as an incomplete task.
+* Do not mark a task complete from model narration alone.
+
+Each completed task must reference evidence proving its acceptance criteria.
+
+## Evidence Reuse
+
+Planning discovery may already satisfy some tasks.
+
+When evidence already proves a task:
+
+* Mark it `satisfied_before_execution`.
+* Attach the existing evidence IDs.
+* Do not repeat the command or file read.
+* Begin execution at the first unsatisfied task.
+
+## Parallelization
+
+Parallelize only when workstreams are independently verifiable and do not modify shared contracts.
+
+Do not parallelize:
+
+* Shared schema changes
+* Repository restoration
+* Sequential migrations
+* Changes that depend on the same files
+* Work that requires one canonical architectural decision first
+
+## Persistence
+
+The canonical plan is stored in the internal Plan Repository.
+
+Do not create `tasks/plan.md`, `tasks/todo.md`, checkpoint files, logs, or state files in the user repository unless the user explicitly requests persistent plan documents.
+
+A ready plan must produce a handoff record containing:
+
+* `planId`
+* `rootGoalHash`
+* `targetProjectId`
+* `status: ready`
+* `nextStepId`
+* `evidenceIds`
+* `workspaceRevision`
+
+Agent-mode continuation messages such as “continue,” “execute the plan,” or “fix it” must resume this plan when the handoff remains valid.
+
+## User-Facing Presentation
+
+Internal tasks may contain IDs, kinds, dependencies, risks, evidence references, and execution metadata.
+
+The normal user-facing plan should show only:
+
+1. A concise numbered action list
+2. Important risks or approvals
+3. The verification outcome expected at completion
+
+Do not display internal phase names, tool policy, machine IDs, or orchestration metadata unless the user requests planner-debug details.
+
+## Completion Check
+
+Before accepting the plan, verify:
+
+* The goal matches the user’s requested direction.
+* The target project is explicit.
+* Existing evidence is reused.
+* Every task has measurable acceptance criteria.
+* Dependencies are valid.
+* Destructive operations are isolated.
+* Verification is project-specific.
+* Quick plans contain no more than four tasks.
+* Deep plans contain no more than seven tasks.
+* The Plan-to-Agent handoff can be resumed.

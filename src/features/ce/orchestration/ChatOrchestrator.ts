@@ -2251,6 +2251,12 @@ export class ChatOrchestrator {
       // Approved tools were already applied in resolveApproval; denied tools must not be retried.
       if (planResume && this.planExecutor && session.mode === 'agent' && !planningResume) {
         const plan = planResume.plan;
+        // If the pause happened inside this step's own agent sub-loop (not an explicit
+        // scripted tool call), `baseState` holds its exact suspended conversation — resume
+        // there instead of restarting the step from a fresh prompt, which would otherwise
+        // discard whatever discovery/reasoning already happened before the approval gate.
+        const blockedStep = plan.steps.find((s) => s.status === 'blocked');
+        const resumeStep = blockedStep && baseState ? { stepId: blockedStep.id, suspendState: baseState, approved } : undefined;
         for (let i = 0; i < plan.steps.length; i++) {
           if (plan.steps[i].status === 'blocked') {
             plan.steps[i] = { ...plan.steps[i], status: 'pending' };
@@ -2301,6 +2307,7 @@ export class ChatOrchestrator {
               this.deps.taskState?.mergeFileScope(paths);
             },
             getTaskState: () => this.deps.taskState,
+            resumeStep,
           }
         )) {
           if (signal.aborted) break;

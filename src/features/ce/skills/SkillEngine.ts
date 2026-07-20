@@ -66,6 +66,8 @@ export interface SkillCandidateReport {
   missingTools: string[];
   missingCapabilities: string[];
   manifest: SkillManifest;
+  manifestPath: string;
+  manifestHash: string;
 }
 
 export interface SkillEngineResolution {
@@ -204,6 +206,8 @@ export class ExplainableSkillRanker implements SkillRanker {
       missingTools,
       missingCapabilities,
       manifest,
+      manifestPath: entry.manifestPath,
+      manifestHash: entry.manifestHash,
     };
   }
 }
@@ -243,10 +247,17 @@ export class SkillResolver {
 }
 
 function hasStrongTaskMatch(report: SkillCandidateReport): boolean {
-  return report.factors.some((factor) =>
-    factor.score > 0 &&
-    ['intent', 'task_subtype', 'trigger', 'pin', 'pin_rule'].includes(factor.key)
-  );
+  // A skill that declares its own relevance signals (triggers/pathPatterns) is opting into
+  // evidence-based matching: a bare intent/taskKind match (shared by many broadly-scoped
+  // skills) isn't enough to rank it as primary/supporting unless one of ITS OWN signals
+  // actually fired. Only skills that declare no such signals fall back to intent as strong
+  // evidence, since they have no narrower way to demonstrate relevance.
+  const declaresEvidenceSignals =
+    (report.manifest.triggers?.length ?? 0) > 0 || (report.manifest.pathPatterns?.length ?? 0) > 0;
+  const strongKeys = declaresEvidenceSignals
+    ? ['task_subtype', 'trigger', 'path', 'pin', 'pin_rule']
+    : ['intent', 'task_subtype', 'trigger', 'path', 'pin', 'pin_rule'];
+  return report.factors.some((factor) => factor.score > 0 && strongKeys.includes(factor.key));
 }
 
 function statusFor(

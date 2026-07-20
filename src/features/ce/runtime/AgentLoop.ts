@@ -9,6 +9,7 @@ import type { AgentTaskState } from './AgentTaskState';
 import { NO_TOOLS_ASK_NUDGE, ASK_SYNTHESIS_NUDGE, isGroundingToolCall } from './askMode';
 import { NO_TOOLS_PLAN_NUDGE, PLAN_SYNTHESIS_NUDGE, isPlanGroundingToolCall } from '../modes/plan/planMode';
 import { isSkippedToolOutput } from './toolSkip';
+import { canParallelizeRound } from './toolConcurrency';
 import type { PlanPhase, ThunderPlan } from '../plans/PlanActEngine';
 import { classifyCommandEffect, isPhaseLockRunCommandError, isPhaseLockWriteError } from '../plans/PlanActEngine';
 import { buildPlanTrackerPacket } from '../plans/PlanFileStore';
@@ -897,18 +898,19 @@ export class AgentLoop {
     signal?: AbortSignal,
     callbacks?: AgentLoopCallbacks
   ): Promise<ExecutedToolCall[]> {
-    const executions: ExecutedToolCall[] = [];
+    if (signal?.aborted) return [];
 
-    for (const tc of toolCalls) {
-      if (signal?.aborted) break;
-
+    const parsedCalls = toolCalls.map((tc) => {
       let input: Record<string, unknown> = {};
       try {
         input = JSON.parse(tc.function.arguments || '{}') as Record<string, unknown>;
       } catch {
         input = {};
       }
+      return { tc, input };
+    });
 
+    const runOne = async (tc: ToolCall, input: Record<string, unknown>): Promise<ExecutedToolCall> => {
       callbacks?.onToolStart?.(tc.function.name, input);
       const toolStartedAt = Date.now();
       const execResult = allowedToolNames.has(tc.function.name)
@@ -919,10 +921,27 @@ export class AgentLoop {
             allowedToolNames,
           })
         : notOfferedToolResult(tc.function.name);
+      return { tc, input, execResult, durationMs: Date.now() - toolStartedAt };
+    };
 
-      executions.push({ tc, input, execResult, durationMs: Date.now() - toolStartedAt });
+    // A round is only run concurrently when every call in it is independently safe to
+    // reorder/overlap (see toolConcurrency.ts) — any write, approval-gated, or
+    // ordering-sensitive call anywhere in the round falls the whole round back to the
+    // strictly sequential path below, so approval short-circuiting and write ordering
+    // are byte-for-byte unaffected. Result order always matches `toolCalls` order either
+    // way, so every downstream consumer (message building, counters) is unaffected.
+    if (canParallelizeRound(parsedCalls.map(({ tc, input }) => ({ name: tc.function.name, input })))) {
+      return Promise.all(parsedCalls.map(({ tc, input }) => runOne(tc, input)));
+    }
 
-      if (execResult.pendingApproval) {
+    const executions: ExecutedToolCall[] = [];
+    for (const { tc, input } of parsedCalls) {
+      if (signal?.aborted) break;
+
+      const execution = await runOne(tc, input);
+      executions.push(execution);
+
+      if (execution.execResult.pendingApproval) {
         break;
       }
     }

@@ -14,7 +14,7 @@ import {
 import type { PlanPersistence } from '../plans/PlanPersistence';
 import type { SessionLogService } from '../../../kernel/telemetry/SessionLogService';
 import type { AgentLoop } from './AgentLoop';
-import type { AgentLoopCallbacks } from './AgentLoop';
+import type { AgentLoopCallbacks, AgentLoopSuspendState, ApprovedToolResult } from './AgentLoop';
 import type { ContextPack } from '../../../features/ce/context/types';
 import type { PostEditValidator } from '../apply/PostEditValidator';
 import type { ToolExecutor, ToolExecutionResult } from '../safety/ToolExecutor';
@@ -68,6 +68,10 @@ export interface PlanExecutorOptions {
   getTaskState?: () => AgentTaskState | undefined;
   onRequirementAnalysisDelta?: (text: string) => void;
   onPlanQualityIssues?: (issues: string[]) => void;
+  /** When a step was blocked pending approval inside its own agent sub-loop (not an explicit
+   * scripted tool call), resume that exact suspended conversation on this step's first
+   * attempt instead of rebuilding the step prompt from scratch. */
+  resumeStep?: { stepId: string; suspendState: AgentLoopSuspendState; approved: ApprovedToolResult[] };
 }
 
 export interface StepExecutionResult {
@@ -424,6 +428,8 @@ export class PlanExecutor {
         let successfulVerifyCommands = 0;
         let failedVerifyCommands = 0;
         let diagnosticFailureCaptures = 0;
+        let toolCallCount = 0;
+        let toolCallSuccessCount = 0;
         let pendingApproval = false;
         const explicitToolCall = getExplicitStepToolCall(step);
         const writeExpected = stepImpliesWrite(step) && session.mode === 'agent' && !explicitToolCall;
@@ -497,62 +503,75 @@ export class PlanExecutor {
           }
         } else {
           const toolInputs: Array<{ name: string; input: Record<string, unknown> }> = [];
-          for await (const chunk of this.agentLoop.run(
-            provider,
-            messages,
-            filterToolsForPlanPhase(filterDirectAgentTools(tools), phaseLock),
-            signal,
-            {
-              ...loopCallbacks,
-              onToolStart: (name, input) => {
-                toolInputs.push({ name, input });
-                loopCallbacks?.onToolStart?.(name, input);
-              },
-              onToolEnd: (name, success, output) => {
-                loopCallbacks?.onToolEnd?.(name, success, output);
-                const input = [...toolInputs].reverse().find((candidate) => candidate.name === name)?.input;
-                const capturedDiagnosticFailure =
-                  !success &&
-                  isExpectedDiagnosticFailureCapture(
-                    step,
-                    name,
-                    { success: false, output: output ?? '', error: output ?? '' },
-                    input
-                  );
-                if (capturedDiagnosticFailure) {
-                  diagnosticFailureCaptures += 1;
-                }
-                if (success && ['write_file', 'apply_patch'].includes(name)) {
-                  successfulWrites += 1;
-                }
-                if (
-                  isVerifyStep &&
-                  success &&
-                  isVerificationTool(name) &&
-                  !/\bSkipped redundant\b/i.test(output ?? '')
-                ) {
-                  hasSuccessfulVerification = true;
-                  successfulVerifyCommands += 1;
-                }
-                if (
-                  isVerifyStep &&
-                  name === 'run_command' &&
-                  !success &&
-                  !capturedDiagnosticFailure &&
-                  !/\bSkipped redundant\b/i.test(output ?? '')
-                ) {
-                  failedVerifyCommands += 1;
-                }
-              },
+          const stepCallbacks: AgentLoopCallbacks = {
+            ...loopCallbacks,
+            onToolStart: (name, input) => {
+              toolInputs.push({ name, input });
+              loopCallbacks?.onToolStart?.(name, input);
             },
-            {
-              maxSteps: options?.agentMaxSteps,
-              phaseLock,
-              restrictRunCommandToReadOnly: options?.restrictRunCommandToReadOnly,
-              planTracker: plan,
-              getTaskState: options?.getTaskState,
-            }
-          )) {
+            onToolEnd: (name, success, output) => {
+              loopCallbacks?.onToolEnd?.(name, success, output);
+              toolCallCount += 1;
+              if (success) toolCallSuccessCount += 1;
+              const input = [...toolInputs].reverse().find((candidate) => candidate.name === name)?.input;
+              const capturedDiagnosticFailure =
+                !success &&
+                isExpectedDiagnosticFailureCapture(
+                  step,
+                  name,
+                  { success: false, output: output ?? '', error: output ?? '' },
+                  input
+                );
+              if (capturedDiagnosticFailure) {
+                diagnosticFailureCaptures += 1;
+              }
+              if (success && ['write_file', 'apply_patch'].includes(name)) {
+                successfulWrites += 1;
+              }
+              if (
+                isVerifyStep &&
+                success &&
+                isVerificationTool(name) &&
+                !/\bSkipped redundant\b/i.test(output ?? '')
+              ) {
+                hasSuccessfulVerification = true;
+                successfulVerifyCommands += 1;
+              }
+              if (
+                isVerifyStep &&
+                name === 'run_command' &&
+                !success &&
+                !capturedDiagnosticFailure &&
+                !/\bSkipped redundant\b/i.test(output ?? '')
+              ) {
+                failedVerifyCommands += 1;
+              }
+            },
+          };
+
+          // A step blocked mid-sub-loop pending approval has its exact conversation preserved
+          // in `resumeStep.suspendState` — continue there on the first attempt instead of
+          // re-entering with a fresh prompt, which would otherwise re-run discovery the step
+          // already completed before the approval gate.
+          const resumingThisStep = attempt === 0 && options?.resumeStep?.stepId === step.id;
+          const stepStream = resumingThisStep && options?.resumeStep
+            ? this.agentLoop.resume(provider, options.resumeStep.suspendState, options.resumeStep.approved, signal, stepCallbacks)
+            : this.agentLoop.run(
+                provider,
+                messages,
+                filterToolsForPlanPhase(filterDirectAgentTools(tools), phaseLock),
+                signal,
+                stepCallbacks,
+                {
+                  maxSteps: options?.agentMaxSteps,
+                  phaseLock,
+                  restrictRunCommandToReadOnly: options?.restrictRunCommandToReadOnly,
+                  planTracker: plan,
+                  getTaskState: options?.getTaskState,
+                }
+              );
+
+          for await (const chunk of stepStream) {
             yield chunk;
             stepOutput += chunkContent(chunk);
           }
@@ -640,6 +659,30 @@ export class PlanExecutor {
           this.planPersistence.updatePlan(session.id, plan, 'running');
           onPlanUpdate?.(plan);
           yield `\n\n❌ Verification step failed after ${maxRetries + 1} attempts without a successful verification command.\n`;
+          break;
+        }
+
+        // Generic steps (no explicit write/verify expectation) have no other completion gate
+        // above, so without this check a step whose tool calls all failed would still be
+        // marked done purely because the model stopped emitting tool calls — completion must
+        // be tied to a tool actually succeeding, not to the model's narration ending.
+        const isGenericStep = !writeExpected && !isVerifyStep && !explicitToolCall;
+        if (isGenericStep && toolCallCount > 0 && toolCallSuccessCount === 0) {
+          lastValidationErrors = [
+            'This step ran one or more tool calls, but none of them completed successfully.',
+            'Do not report this step as complete from narration alone — retry the underlying tool call or adjust the approach.',
+          ];
+          attempt += 1;
+          if (attempt <= maxRetries) {
+            yield `\n\n⚠️ No tool call in this step succeeded — retrying step ${i + 1}/${plan.steps.length} (${attempt + 1}/${maxRetries + 1})…\n`;
+            plan.steps[i] = { ...plan.steps[i], status: 'pending' };
+            continue;
+          }
+          plan.steps[i] = { ...plan.steps[i], status: 'failed' };
+          this.planPersistence.updatePlan(session.id, plan, 'running');
+          onPlanUpdate?.(plan);
+          log.warn('Step failed: no tool call succeeded', { stepId: step.id, toolCallCount });
+          yield `\n\n❌ Step failed after ${maxRetries + 1} attempts — no tool call succeeded.\n`;
           break;
         }
 

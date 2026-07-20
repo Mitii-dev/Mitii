@@ -421,6 +421,93 @@ describe('AgentLoop E2E', () => {
     expect(chunks.join('')).toContain('kept using read-only tools');
   });
 
+  it('runs independent read-only tool calls in a round concurrently', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const startOrder: string[] = [];
+    const executor = {
+      execute: vi.fn(async (name: string) => {
+        startOrder.push(name);
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        inFlight -= 1;
+        return { success: true, output: `ok:${name}` };
+      }),
+    } as unknown as ToolExecutor;
+
+    const provider = mockProvider([
+      {
+        tool_calls: [
+          { index: 0, id: 'call_1', function: { name: 'read_file', arguments: '{"path":"a.ts"}' } },
+          { index: 1, id: 'call_2', function: { name: 'search', arguments: '{"query":"foo"}' } },
+          { index: 2, id: 'call_3', function: { name: 'git_diff', arguments: '{}' } },
+        ],
+      },
+      { content: 'Done.' },
+    ]);
+
+    const loop = new AgentLoop(executor, 5);
+    for await (const _chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Explain the change' }],
+      [
+        { type: 'function', function: { name: 'read_file', description: 'read', parameters: {} } },
+        { type: 'function', function: { name: 'search', description: 'search', parameters: {} } },
+        { type: 'function', function: { name: 'git_diff', description: 'diff', parameters: {} } },
+      ],
+      undefined,
+      undefined,
+      { maxSteps: 3 }
+    )) {
+      // consume
+    }
+
+    expect(startOrder).toEqual(['read_file', 'search', 'git_diff']);
+    expect(maxInFlight).toBe(3);
+  });
+
+  it('falls back to sequential execution when a round mixes a write with read-only calls', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const executor = {
+      execute: vi.fn(async (name: string) => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        inFlight -= 1;
+        return { success: true, output: `ok:${name}` };
+      }),
+    } as unknown as ToolExecutor;
+
+    const provider = mockProvider([
+      {
+        tool_calls: [
+          { index: 0, id: 'call_1', function: { name: 'read_file', arguments: '{"path":"a.ts"}' } },
+          { index: 1, id: 'call_2', function: { name: 'write_file', arguments: '{"path":"a.ts","content":"x"}' } },
+        ],
+      },
+      { content: 'Done.' },
+    ]);
+
+    const loop = new AgentLoop(executor, 5);
+    for await (const _chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Fix the file' }],
+      [
+        { type: 'function', function: { name: 'read_file', description: 'read', parameters: {} } },
+        { type: 'function', function: { name: 'write_file', description: 'write', parameters: {} } },
+      ],
+      undefined,
+      undefined,
+      { maxSteps: 3 }
+    )) {
+      // consume
+    }
+
+    expect(maxInFlight).toBe(1);
+  });
+
   it('does not spend the no-write budget on rounds where every tool call failed', async () => {
     let call = 0;
     const executor = {
