@@ -80,6 +80,46 @@ describe('ToolExecutor', () => {
   });
 
   it.each(['agent', 'plan', 'ask'] as const)(
+    'requires explicit approval for workspace-mutating shell in %s mode',
+    async (mode) => {
+      const { z } = await import('zod');
+      const { ToolExecutor } = await import('../src/features/ce/safety/ToolExecutor');
+      const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
+      const { ToolPolicyEngine } = await import('../src/features/ce/safety/ToolPolicyEngine');
+      const { ApprovalQueue } = await import('../src/features/ce/safety/ApprovalQueue');
+      const { defaultThunderConfig } = await import('../src/kernel/config/defaults');
+
+      const runtime = new ToolRuntime();
+      const execute = vi.fn(async () => ({ success: true, output: 'mutated after approval' }));
+      runtime.register({
+        name: 'run_command',
+        description: 'run',
+        risk: 'high',
+        inputSchema: z.object({ command: z.string() }),
+        execute,
+      });
+
+      const approvalQueue = new ApprovalQueue();
+      const executor = new ToolExecutor(
+        runtime,
+        new ToolPolicyEngine({ ...defaultThunderConfig().safety, blockDangerousCommands: true }, () => false),
+        approvalQueue,
+        () => 'session-mutation',
+        () => mode
+      );
+
+      const result = await executor.execute('run_command', {
+        command: "sed -i 's/foo/bar/' src/service.ts",
+      });
+      expect(result.success).toBe(false);
+      expect(result.pendingApproval).toBe(true);
+      expect(result.error).toBe('Awaiting approval');
+      expect(approvalQueue.getPending()).toHaveLength(1);
+      expect(execute).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['agent', 'plan', 'ask'] as const)(
     'requires explicit approval for dangerous commands in %s mode',
     async (mode) => {
     const { z } = await import('zod');

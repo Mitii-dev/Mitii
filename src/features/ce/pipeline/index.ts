@@ -4,7 +4,12 @@
  */
 
 export * from './types';
-export { classifyArtifacts, classifyArtifactPath } from './classify/artifactClassifier';
+export {
+  classifyArtifacts,
+  classifyArtifactPath,
+  isStaleDiagnosticLogPath,
+  resolveProjectMentions,
+} from './classify/artifactClassifier';
 
 export {
   classifyTaskSignals,
@@ -45,7 +50,7 @@ export {
 import type { TaskAnalysis } from '../runtime/TaskAnalyzer';
 import type { AgentDepth } from '../../../kernel/config/schema';
 import type { ToolExposure } from '../../../kernel/policy/tierPolicy';
-import type { PipelineResolution, SkillResolution } from './types';
+import type { KnownProjectRef, PipelineResolution, SkillResolution } from './types';
 import { classifyTaskSignals, resolveRoute } from './route/routeResolver';
 import {
   resolvePlanningDepthAxis,
@@ -66,6 +71,8 @@ export interface ResolvePipelineOptions {
   planExecution?: boolean;
   orchestrationEnabled?: boolean;
   forceDirect?: boolean;
+  /** Optional workspace project catalog used to resolve `@project` mentions. */
+  knownProjects?: readonly KnownProjectRef[];
   /** Optional catalog-backed decision produced outside this pure policy pipeline. */
   skillResolution?: SkillResolution;
 }
@@ -79,7 +86,7 @@ export function resolveTurnPipeline(
   options: ResolvePipelineOptions
 ): PipelineResolution {
   const classification = classifyTaskSignals(userMessage, taskAnalysis);
-  const artifact = classifyArtifacts(userMessage);
+  const artifact = classifyArtifacts(userMessage, { knownProjects: options.knownProjects });
   const route = resolveRoute(userMessage, taskAnalysis, {
     mdxRepairMode: options.mdxRepairMode,
     resumeSavedPlan: options.resumeSavedPlan,

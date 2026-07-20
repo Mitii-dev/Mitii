@@ -115,5 +115,14 @@
     "description": "Run ESLint against a single target with --no-eslintrc to avoid broken root config failures.",
     "keywords": ["eslint", "safe lint", "--no-eslintrc", "targeted lint", "validation"],
     "readOnly": true
+  },
+  {
+    "id": 53,
+    "name": "write-build-diagnostics.sh",
+    "category": "git-state-safety",
+    "command": "bash scripts/write-build-diagnostics.sh",
+    "description": "Run the project build (THUNDER_BUILD_COMMAND or `pnpm run build`) and write its output to .mitii/diagnostics/current-build-errors.json so the headless host can report post-edit build errors for a file.",
+    "keywords": ["build", "typecheck", "tsc", "diagnostics", "post-edit", "headless", "errors"],
+    "readOnly": true
   }
 ]

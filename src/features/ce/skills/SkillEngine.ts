@@ -157,8 +157,11 @@ export class ExplainableSkillRanker implements SkillRanker {
     if (triggerMatches.length > 0) {
       factors.push({ key: 'trigger', score: Math.min(24, triggerMatches.length * 12), reason: `Matched: ${triggerMatches.join(', ')}` });
     }
+    // Score only against task-evidence paths (explicit mentions/@-references), not the
+    // ambient repository file listing — a file merely existing somewhere in the repo is
+    // not evidence this skill is relevant to the current request.
     const pathMatches = (manifest.pathPatterns ?? []).filter((pattern) =>
-      [...context.repository.paths, ...(context.artifacts ?? [])].some((path) => globMatches(path, pattern)));
+      (context.artifacts ?? []).some((path) => globMatches(path, pattern)));
     if (pathMatches.length > 0) {
       factors.push({ key: 'path', score: Math.min(16, pathMatches.length * 8), reason: `Matched: ${pathMatches.join(', ')}` });
     }
@@ -348,7 +351,9 @@ function pinRuleMatches(rule: SkillPinRule, context: SkillResolutionContext): bo
     case 'intent': return Boolean(value && context.intent?.toLowerCase() === value);
     case 'task-kind': return Boolean(value && context.taskKind?.toLowerCase() === value);
     case 'task-subtype': return Boolean(value && context.taskSubtype?.toLowerCase() === value);
-    case 'path': return Boolean(value && context.repository.paths.some((path) => globMatches(path, value)));
+    // Task-evidence only: a `path` pin should reflect that the current task actually
+    // references this file, not that it happens to exist somewhere in the repository.
+    case 'path': return Boolean(value && (context.artifacts ?? []).some((path) => globMatches(path, value)));
   }
 }
 

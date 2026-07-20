@@ -234,8 +234,20 @@ export class ToolExecutor {
     if ((readOnlyMode || normalizedMode === 'review') && isMcpFilesystemWriteTool(resolvedName)) {
       return 'MCP filesystem writes in Ask/Plan/Review require your approval';
     }
-    if (resolvedName === 'run_command' && !isShellAllowed(mode, typeof input.command === 'string' ? input.command : undefined)) {
-      return 'Mutating shell commands in Ask/Plan/Review require your approval (read-only grep/rg/ls/etc. are allowed without approval)';
+    if (resolvedName === 'run_command' && typeof input.command === 'string') {
+      const command = input.command;
+      const effect = classifyCommandEffect(command);
+      if (
+        isDangerousCommand(command) ||
+        effect === 'workspace_mutation' ||
+        effect === 'dependency_mutation' ||
+        effect === 'external_side_effect'
+      ) {
+        return 'Mutating or dangerous shell commands require your approval in all modes. Prefer apply_patch/write_file for source edits.';
+      }
+      if (!isShellAllowed(mode, command)) {
+        return 'Mutating shell commands in Ask/Plan/Review require your approval (read-only grep/rg/ls/etc. are allowed without approval)';
+      }
     }
     return undefined;
   }
@@ -529,7 +541,18 @@ function getPlanModeMutationBlockReason(
   }
   if (toolName === 'run_command') {
     const command = typeof input.command === 'string' ? input.command : '';
-    if (classifyCommandEffect(command) !== 'inspect_only') {
+    const effect = classifyCommandEffect(command);
+    // Mutating / dangerous shells are approval-gated in all modes (not hard-blocked).
+    if (
+      isDangerousCommand(command) ||
+      effect === 'workspace_mutation' ||
+      effect === 'dependency_mutation' ||
+      effect === 'external_side_effect'
+    ) {
+      return undefined;
+    }
+    // Keep Ask/Plan discovery narrow for everything else.
+    if (effect !== 'inspect_only') {
       return `${modeLabel} mode allows only inspect-only shell commands.`;
     }
   }

@@ -44,6 +44,8 @@ import {
   buildRoutePolicyText,
   type PipelineResolution,
 } from '../../../features/ce/pipeline';
+import { loadProjectCatalog } from '../../../features/ce/modes/ask/ProjectCatalog';
+import { hashCheckpointGoal } from '../../../features/ce/runtime/checkpointIdentity';
 import {
   ACT_INTENT_DESCRIPTIONS,
   ASK_INTENT_DESCRIPTIONS,
@@ -646,6 +648,14 @@ export class ChatOrchestrator {
       Boolean(activePlanAtStart?.plan),
       actDepth
     );
+    const projectCatalog = this.deps.workspace
+      ? loadProjectCatalog(this.deps.workspace)
+      : { workspaceRoot: '', projects: [], generatedAt: new Date().toISOString() };
+    const knownProjects = projectCatalog.projects.map((project) => ({
+      id: project.id,
+      root: project.root,
+      name: project.name,
+    }));
     const pipeline: PipelineResolution = resolveTurnPipeline(taskForClassification, taskAnalysis, {
       mode: session.mode,
       userDepth: isAskMode ? askDepth : isPlanMode ? planDepth : actDepth,
@@ -656,11 +666,17 @@ export class ChatOrchestrator {
       planExecution: false,
       orchestrationEnabled,
       forceDirect: isAgentMode && hasDirectRouteOverride(taskForClassification),
+      knownProjects,
     });
+    const taskTarget = resolveTaskTargetFromArtifacts(pipeline.artifact.artifacts);
     let engineResolution: ReturnType<SkillResolver['resolve']> | undefined;
     if (this.deps.skillResolver && this.deps.repositoryProfileProvider && session.mode !== 'review') {
       const availableTools = new Set(this.deps.toolRuntime?.list().map((tool) => tool.name) ?? []);
       const taskSubtype = pipeline.route.auditSubtype ?? pipeline.route.docsSubtype;
+      const repositoryProfile = this.deps.repositoryProfileProvider.getProfile(taskTarget?.rootPath);
+      const artifactPaths = pipeline.artifact.artifacts
+        .map((artifact) => artifact.path)
+        .filter((path): path is string => Boolean(path));
       engineResolution = this.deps.skillResolver.resolve({
         request: taskForClassification,
         mode: session.mode,
@@ -669,8 +685,8 @@ export class ChatOrchestrator {
         taskSubtype,
         operationType: pipeline.route.operationClass,
         complexity: taskAnalysis.complexity,
-        artifacts: pipeline.artifact.artifacts.map((artifact) => artifact.path).filter((path): path is string => Boolean(path)),
-        repository: this.deps.repositoryProfileProvider.getProfile(),
+        artifacts: artifactPaths,
+        repository: repositoryProfile,
         availableTools,
         availableCapabilities: new Set([
           ...availableTools,
@@ -712,8 +728,8 @@ export class ChatOrchestrator {
         taskSubtype,
         operationType: pipeline.route.operationClass,
         complexity: taskAnalysis.complexity,
-        artifacts: pipeline.artifact.artifacts.map((artifact) => artifact.path).filter((path): path is string => Boolean(path)),
-        repository: this.deps.repositoryProfileProvider.getProfile(),
+        artifacts: artifactPaths,
+        repository: repositoryProfile,
         availableTools,
         availableCapabilities: new Set(availableTools),
         edition: 'ce',
@@ -725,6 +741,8 @@ export class ChatOrchestrator {
       docsSubtype: pipeline.route.docsSubtype,
       operationClass: pipeline.route.operationClass,
       artifacts: pipeline.artifact.artifacts,
+      taskTarget,
+      goalHash: hashCheckpointGoal(taskForClassification),
       executionPath: pipeline.route.executionPath,
       depthAxis: pipeline.depthAxis,
       activeSkill: pipeline.skills.activeSkill,
@@ -941,14 +959,14 @@ export class ChatOrchestrator {
       retrievedPaths.slice(0, 8).join('\n')
     );
 
-    const hookInjection = logAuditMode
-      ? undefined
-      : this.deps.memoryHookService
-        ? await this.deps.memoryHookService.onUserPromptSubmit(session.id, userMessage)
-        : undefined;
-    const passiveMemories = logAuditMode
-      ? []
-      : await (this.deps.passiveMemoryInjector?.inject(userMessage, session.id) ?? Promise.resolve([]));
+    const [hookInjection, passiveMemories] = logAuditMode
+      ? [undefined, []]
+      : await Promise.all([
+          this.deps.memoryHookService
+            ? this.deps.memoryHookService.onUserPromptSubmit(session.id, userMessage)
+            : Promise.resolve(undefined),
+          this.deps.passiveMemoryInjector?.inject(userMessage, session.id) ?? Promise.resolve([]),
+        ]);
     if (passiveMemories.length > 0) {
       items = [...items, ...passiveMemories];
       this.emitActivity('info', `Injected ${passiveMemories.length} passive memories`);
@@ -1019,7 +1037,12 @@ export class ChatOrchestrator {
     const toolsEnabled = provider.capabilities.supportsTools
       && Boolean(this.deps.toolRuntime && this.deps.toolExecutor && this.agentLoop);
     const isResume = isApprovalContinuationMessage(userMessage);
-    this.deps.taskState?.setTaskContext(taskAnalysis.kind, taskAnalysis.summary, taskForClassification);
+    this.deps.taskState?.setTaskContext(
+      taskAnalysis.kind,
+      taskAnalysis.summary,
+      taskForClassification,
+      actPlan?.executionPath === 'resume_saved_plan'
+    );
     if (!isResume) {
       this.suspendContext = undefined;
       this.agentLoop?.clearSuspendState();
@@ -2920,4 +2943,14 @@ export function contextItemsToViews(items: ContextItem[]): ContextItemView[] {
 function extractManualSkillIds(message: string): string[] {
   return [...message.matchAll(/(?:@skill:|\/skill\s+)([a-z0-9][a-z0-9._-]*)/gi)]
     .map((match) => match[1].toLowerCase());
+}
+
+function resolveTaskTargetFromArtifacts(
+  artifacts: Array<{ kind: string; path?: string; projectId?: string }>
+): { projectId: string; rootPath: string } | undefined {
+  const project = artifacts.find((artifact) => artifact.kind === 'project' && (artifact.path || artifact.projectId));
+  if (!project) return undefined;
+  const projectId = project.projectId ?? project.path!;
+  const rootPath = project.path ?? project.projectId!;
+  return { projectId, rootPath };
 }

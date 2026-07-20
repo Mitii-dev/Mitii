@@ -40,6 +40,9 @@ export type OperationClass =
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 
 export type ArtifactKind =
+  | 'project'
+  | 'package'
+  | 'directory'
   | 'source_file'
   | 'readme'
   | 'documentation'
@@ -53,8 +56,17 @@ export type ArtifactKind =
 export interface ArtifactSignal {
   kind: ArtifactKind;
   path?: string;
+  /** Catalog project id when kind is `project`. */
+  projectId?: string;
   source: 'explicit' | 'conversation' | 'inferred';
   confidence: number;
+}
+
+/** Optional catalog entries used to resolve `@project` mentions. */
+export interface KnownProjectRef {
+  id: string;
+  root: string;
+  name?: string;
 }
 
 export interface ArtifactClassification {

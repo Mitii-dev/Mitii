@@ -914,6 +914,16 @@ describe('Plan/Act task analysis', () => {
     expect(analysis.shouldVerify).toBe(true);
   });
 
+  it('classifies gerund bug-report phrasing ("fixing", "issues") as bugfix intent', async () => {
+    const { routePlanIntent } = await import('../src/features/ce/modes/plan/PlanIntentRouter');
+    const route = routePlanIntent(
+      "Can you plan on fixing this repo entirely, mainly @ai-service? I don't need any issues and the project should be fully functional."
+    );
+
+    expect(route.intent).toBe('bugfix');
+    expect(route.qualityProfile).not.toBe('relaxed');
+  });
+
   it('treats ask mode as read-only question answering', async () => {
     const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
     const analysis = analyzeTask('implement auth and add tests for all routes', 'ask');
@@ -1019,7 +1029,7 @@ describe('Ask mode helpers', () => {
     expect(queue.getPending()).toHaveLength(0);
   });
 
-  it('hard-blocks mutating shell in Ask mode', async () => {
+  it('requires approval for mutating shell in Ask mode', async () => {
     const { ToolExecutor } = await import('../src/features/ce/safety/ToolExecutor');
     const { ToolRuntime } = await import('../src/kernel/tools/ToolRuntime');
     const { ToolPolicyEngine } = await import('../src/features/ce/safety/ToolPolicyEngine');
@@ -1044,9 +1054,10 @@ describe('Ask mode helpers', () => {
 
     const result = await executor.execute('run_command', { command: 'npm install lodash' });
     expect(result.success).toBe(false);
-    expect(result.pendingApproval).not.toBe(true);
-    expect(result.error).toContain('Ask mode allows only inspect-only shell commands');
-    expect(queue.getPending()).toHaveLength(0);
+    expect(result.pendingApproval).toBe(true);
+    expect(result.error).toBe('Awaiting approval');
+    expect(queue.getPending()).toHaveLength(1);
+    expect(queue.getPending()[0]?.reason).toContain('require your approval in all modes');
   });
 });
 
@@ -1720,6 +1731,76 @@ describe('Plan parser', () => {
     expect(output).toContain('Diagnostic failing signal captured');
   });
 
+  it('completes an agent-loop diagnostic build capture when the command exits nonzero', async () => {
+    const { PlanExecutor } = await import('../src/features/ce/runtime/PlanExecutor');
+    const plan = {
+      goal: 'Fix package build',
+      assumptions: [],
+      requiredApprovals: [],
+      steps: [
+        {
+          id: 'capture',
+          title: 'Run pnpm run build and capture errors',
+          objective: 'Collect the current TypeScript build errors before editing',
+          status: 'pending' as const,
+          risk: 'low' as const,
+          phase: 'diagnostics' as const,
+          tools: ['run_command'],
+          successCriteria: ['Build error output captured'],
+        },
+      ],
+    };
+    const persistence = {
+      save: () => 'plan-id',
+      updatePlan: () => undefined,
+      complete: () => undefined,
+    };
+    let calls = 0;
+    const agentLoop = {
+      hadPendingApproval: () => false,
+      async *run(_provider: unknown, _messages: unknown, _tools: unknown, _signal: unknown, callbacks: {
+        onToolStart?: (name: string, input: Record<string, unknown>) => void;
+        onToolEnd?: (name: string, success: boolean, output: string) => void;
+      }) {
+        calls += 1;
+        callbacks.onToolStart?.('run_command', { command: 'pnpm run build' });
+        callbacks.onToolEnd?.(
+          'run_command',
+          false,
+          "src/index.ts(1,1): error TS2307: Cannot find module './missing'. Command failed with exit code 2"
+        );
+        yield 'Stopped after repeated identical tool failure: Command failed with exit code 2';
+      },
+    };
+    const executor = new PlanExecutor(agentLoop as never, persistence as never);
+    const pack = {
+      items: [],
+      totalTokens: 0,
+      formatted: '',
+      budgetLimit: 100,
+      retrievedCount: 0,
+      truncatedCount: 0,
+      dropped: [],
+    };
+
+    for await (const _chunk of executor.executePlan(
+      { id: 's1', mode: 'agent' } as never,
+      {} as never,
+      plan,
+      pack,
+      [],
+      undefined,
+      undefined,
+      undefined,
+      { stepMaxRetries: 2, finalValidationEnabled: false }
+    )) {
+      // consume stream
+    }
+
+    expect(calls).toBe(1);
+    expect(plan.steps[0].status).toBe('done');
+  });
+
   it('does not complete a verification step from prose without running a verifier', async () => {
     const { PlanExecutor } = await import('../src/features/ce/runtime/PlanExecutor');
     const plan = {
@@ -2073,6 +2154,19 @@ describe('TaskAnalyzer', () => {
     expect(result.kind).toBe('simple_edit');
     expect(result.shouldPlan).toBe(false);
   });
+
+  it('recognizes gerund/plural action-verb forms ("fixing", "entirely") instead of falling back to a question', async () => {
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
+    const result = analyzeTask(
+      "Can you plan on fixing this repo entirely, mainly @ai-service? I don't need any issues and the project should be fully functional.",
+      'plan'
+    );
+
+    expect(result.kind).not.toBe('question');
+    expect(result.kind).toBe('implementation');
+    expect(result.actIntent).toBe('bugfix');
+    expect(result.shouldPlan).toBe(true);
+  });
 });
 
 describe('contextRelevance', () => {
@@ -2136,6 +2230,28 @@ describe('TaskAnalyzer', () => {
     );
     expect(result.kind).toBe('audit');
     expect(result.shouldPlan).toBe(true);
+    expect(result.shouldUseSubagents).toBe(false);
+  });
+
+  it('enables subagents for medium-complexity implementation tasks with multi-file signal', async () => {
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
+    const result = analyzeTask(
+      'Fix the bug in api/routes.ts, update models/user.ts, and also check utils/helper.ts imports for correctness',
+      'agent'
+    );
+    expect(result.kind).toBe('implementation');
+    expect(result.complexity).toBe('medium');
+    expect(result.shouldUseSubagents).toBe(true);
+  });
+
+  it('does not enable subagents for medium-complexity implementation tasks without multi-file/multi-step signal', async () => {
+    const { analyzeTask } = await import('../src/features/ce/runtime/TaskAnalyzer');
+    const result = analyzeTask(
+      'Refactor the authentication module to improve readability and use consistent naming everywhere across the whole codebase for maintainability purposes today',
+      'agent'
+    );
+    expect(result.kind).toBe('implementation');
+    expect(result.complexity).toBe('medium');
     expect(result.shouldUseSubagents).toBe(false);
   });
 });
@@ -2363,6 +2479,131 @@ describe('AgentTaskState', () => {
 
     expect(state.checkFileScopeBlocked('read_file', { path: 'src/b.ts' })).toBeNull();
     expect(state.getFileScopeSnapshot().maxFilesRead).toBeGreaterThanOrEqual(3);
+  });
+
+  it('allows propose_file_scope access upgrades for the same path', async () => {
+    const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
+    const state = new AgentTaskState();
+    state.recordToolSuccess(
+      'propose_file_scope',
+      { candidates: [{ path: 'frontend/src/app/api/stripe/checkout/route.ts', intent: 'read' }] },
+      'accepted'
+    );
+    expect(
+      state.checkBlocked('propose_file_scope', {
+        candidates: [{ path: 'frontend/src/app/api/stripe/checkout/route.ts', intent: 'read' }],
+      })
+    ).toContain('already');
+    expect(
+      state.checkBlocked('propose_file_scope', {
+        candidates: [{ path: 'frontend/src/app/api/stripe/checkout/route.ts', intent: 'write' }],
+      })
+    ).toBeNull();
+  });
+
+  it('blocks stale diagnostic log files as current evidence', async () => {
+    const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
+    const { isStaleDiagnosticLogPath } = await import('../src/features/ce/pipeline/classify/artifactClassifier');
+    expect(isStaleDiagnosticLogPath('build-error.log')).toBe(true);
+    expect(isStaleDiagnosticLogPath('.mitii-state.json')).toBe(true);
+    expect(isStaleDiagnosticLogPath('ai-service/src/index.ts')).toBe(false);
+
+    const state = new AgentTaskState();
+    state.setFileScope(['build-error.log', 'ai-service/src/index.ts']);
+    expect(state.checkFileScopeBlocked('read_file', { path: 'build-error.log' })).toContain('Stale diagnostic log');
+    expect(state.checkFileScopeBlocked('read_file', { path: 'ai-service/src/index.ts' })).toBeNull();
+  });
+
+  it('blocks reloading .mitii-state.json on a new task turn, but allows it on an explicit resume', async () => {
+    const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
+    const state = new AgentTaskState();
+
+    state.setTaskContext('implementation', 'Fix ai-service build', 'fix all issues in @ai-service');
+    expect(
+      state.checkBlocked('execute_workspace_script', { script: 'read-checkpoint.sh' })
+    ).toContain('not a resume');
+    expect(
+      state.checkBlocked('run_command', { command: 'bash scripts/read-checkpoint.sh' })
+    ).toContain('not a resume');
+    // Writing a checkpoint is unrelated to reload safety and must never be blocked.
+    expect(
+      state.checkBlocked('execute_workspace_script', { script: 'write-checkpoint.sh' })
+    ).toBeNull();
+
+    state.setTaskContext('implementation', 'Resume saved plan', 'fix all issues in @ai-service', true);
+    expect(
+      state.checkBlocked('execute_workspace_script', { script: 'read-checkpoint.sh' })
+    ).toBeNull();
+  });
+
+  it('rejects mismatched checkpoint identity before resume', async () => {
+    const { canResumeCheckpoint, hashCheckpointGoal } = await import('../src/features/ce/runtime/checkpointIdentity');
+    const goalHash = hashCheckpointGoal('fix all issues in @ai-service');
+    expect(
+      canResumeCheckpoint(
+        {
+          targetProjectId: 'frontend',
+          goalHash: 'old-frontend-goal',
+          planId: 'plan-1',
+          branch: 'main',
+          commit: 'abc123',
+        },
+        { targetProjectId: 'ai-service', goalHash, planId: 'plan-2' }
+      )
+    ).toEqual(expect.objectContaining({
+      ok: false,
+      code: 'CHECKPOINT_TASK_MISMATCH',
+    }));
+    expect(
+      canResumeCheckpoint(
+        { targetProjectId: 'ai-service', goalHash, planId: 'plan-2', branch: 'main', commit: 'abc123' },
+        { targetProjectId: 'ai-service', goalHash, planId: 'plan-2', branch: 'main', baseCommit: 'abc123' }
+      )
+    ).toEqual({ ok: true });
+    expect(
+      canResumeCheckpoint(
+        { plan: 'old frontend stripe findings', findings: 'build-error.log' },
+        { targetProjectId: 'ai-service' }
+      )
+    ).toEqual(expect.objectContaining({
+      ok: false,
+      code: 'CHECKPOINT_MISSING_IDENTITY',
+    }));
+  });
+
+  it('scopes repository profiles to the requested project root', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const { WorkspaceRepositoryProfileProvider } = await import('../src/features/ce/skills/RepositoryProfileProvider');
+
+    const tempDir = mkdtempSync(join(tmpdir(), 'mitii-profile-scope-'));
+    try {
+      mkdirSync(join(tempDir, 'ai-service'), { recursive: true });
+      mkdirSync(join(tempDir, 'frontend'), { recursive: true });
+      writeFileSync(join(tempDir, 'ai-service/package.json'), JSON.stringify({
+        name: 'ai-service',
+        dependencies: { fastify: '^4.0.0' },
+      }));
+      writeFileSync(join(tempDir, 'ai-service/index.ts'), 'export {}');
+      writeFileSync(join(tempDir, 'frontend/package.json'), JSON.stringify({
+        name: 'frontend',
+        dependencies: { next: '^14.0.0', react: '^18.0.0' },
+      }));
+      writeFileSync(join(tempDir, 'frontend/page.tsx'), 'export default function Page() { return null }');
+
+      const provider = new WorkspaceRepositoryProfileProvider(tempDir);
+      const whole = provider.getProfile();
+      const scoped = provider.getProfile('ai-service');
+
+      expect(whole.frameworks).toEqual(expect.arrayContaining(['fastify', 'nextjs', 'react']));
+      expect(scoped.frameworks).toEqual(['fastify']);
+      expect(scoped.frameworks).not.toContain('react');
+      expect(scoped.frameworks).not.toContain('nextjs');
+      expect(scoped.paths.every((path) => path === 'ai-service' || path.startsWith('ai-service/'))).toBe(true);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it('clears forced synthesis between structured plan step loops', async () => {
@@ -2647,6 +2888,17 @@ describe('tool input coercion', () => {
       expect(parsed.data).toHaveLength(2);
     }
   });
+
+  it('repairs a misspelled propose_file_scope field name instead of failing schema validation', async () => {
+    const { normalizeToolInput } = await import('../src/kernel/tools/coerceInput');
+    const normalized = normalizeToolInput('propose_file_scope', {
+      objecive: 'Fix the broken relative imports',
+      candidatePaths: '["ai-service/src/foo.ts","ai-service/src/bar.ts"]',
+    }) as { objective?: string; candidates?: unknown };
+
+    expect(normalized.objective).toBe('Fix the broken relative imports');
+    expect(normalized.candidates).toBe('["ai-service/src/foo.ts","ai-service/src/bar.ts"]');
+  });
 });
 
 describe('PlanActEngine read-only shell', () => {
@@ -2693,13 +2945,26 @@ describe('PlanActEngine read-only shell', () => {
     expect(classifyCommandEffect('git checkout -- src/index.ts')).toBe('workspace_mutation');
     expect(classifyCommandEffect('git restore -- src/index.ts src/routes.ts')).toBe('workspace_mutation');
     expect(inferTouchedFilesFromCommand('git restore -- src/index.ts src/routes.ts')).toEqual(['src/index.ts', 'src/routes.ts']);
+    expect(classifyCommandEffect("sed -i 's/foo/bar/' src/jd-parser/services/jd-parser-service.ts")).toBe('workspace_mutation');
+    expect(inferTouchedFilesFromCommand("sed -i 's/foo/bar/' src/jd-parser/services/jd-parser-service.ts")).toEqual([
+      'src/jd-parser/services/jd-parser-service.ts',
+    ]);
+    expect(inferTouchedFilesFromCommand("sed -i '' 's/foo/bar/' src/a.ts src/b.ts")).toEqual(['src/a.ts', 'src/b.ts']);
+    expect(inferTouchedFilesFromCommand('rm ai-service/src/jd-parser/services/base-ai-service.ts')).toEqual([
+      'ai-service/src/jd-parser/services/base-ai-service.ts',
+    ]);
   });
 
   it('classifies step phases without treating all build steps as verification', async () => {
-    const { inferStepPhase, resolveStepPhaseLock, stepImpliesWrite } = await import('../src/features/ce/plans/PlanActEngine');
+    const { inferStepPhase, normalizeDeclaredStepPhase, resolveStepPhaseLock, stepImpliesWrite } = await import('../src/features/ce/plans/PlanActEngine');
     expect(inferStepPhase('Capture exact ai-service build errors', 0)).toBe('diagnostics');
+    expect(inferStepPhase('Run pnpm run build and capture errors', 0)).toBe('diagnostics');
     expect(inferStepPhase('Build the new settings component', 1)).toBe('execute');
     expect(inferStepPhase('Run the production build', 3)).toBe('verify');
+    expect(normalizeDeclaredStepPhase({
+      title: 'Run pnpm run build and capture errors',
+      phase: 'verify',
+    }, 0, 'agent')).toBe('diagnostics');
     expect(stepImpliesWrite({ title: 'Capture exact ai-service build errors' })).toBe(false);
     expect(stepImpliesWrite({ title: 'Audit Current Implementation & Identify Bugs' })).toBe(false);
     expect(stepImpliesWrite({ title: 'Fix ReferenceError & Prepare Theme Utilities' })).toBe(true);

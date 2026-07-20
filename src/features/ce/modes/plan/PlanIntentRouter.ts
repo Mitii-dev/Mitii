@@ -11,7 +11,9 @@ const DOCS_RE = /\b(docs?|documentation|docusaurus|mdx?|examples?|readme|readfil
 /** Cleanup-shaped audits only — bare "audit" alone is not enough (see pipeline audit subtypes). */
 const AUDIT_RE =
   /\b(cleanup|clean up|unused|dead code|dependenc(?:y|ies)\s+audit|knip|depcheck|vulnerabilit)\b/i;
-const BUG_RE = /\b(fix|bug|broken|failing|error|debug|regression|issue)\b/i;
+// Include -ing/-ed inflections and the plural "issues" — `\bfix\b` alone doesn't match
+// "fixing" or "issues" because `\b` never fires mid-word.
+const BUG_RE = /\b(fix|fixing|fixed|bug|broken|failing|error|debug|debugging|regression|issue|issues)\b/i;
 const REFACTOR_RE = /\b(refactor|rewrite|migrate|simplify|restructure|rename|extract)\b/i;
 const FEATURE_RE = /\b(implement|build|create|add|integrate|wire|support|setup|configure|enhance)\b/i;
 

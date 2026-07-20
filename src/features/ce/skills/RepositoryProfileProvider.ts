@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
-import { basename, extname, join, relative } from 'path';
+import { basename, extname, join, relative, resolve } from 'path';
 import { createHash } from 'crypto';
 import type { RepositoryProfile } from './SkillEngine';
 
@@ -35,23 +35,27 @@ const FRAMEWORK_PACKAGES: Record<string, string> = {
 };
 
 export interface RepositoryProfileProvider {
-  getProfile(): RepositoryProfile;
+  getProfile(scopeRoot?: string): RepositoryProfile;
 }
 
 export class WorkspaceRepositoryProfileProvider implements RepositoryProfileProvider {
-  private cached?: RepositoryProfile;
+  private cached = new Map<string, RepositoryProfile>();
 
   constructor(private readonly workspace: string) {}
 
-  getProfile(): RepositoryProfile {
-    if (this.cached) return this.cached;
+  getProfile(scopeRoot?: string): RepositoryProfile {
+    const scopeKey = normalizeScopeRoot(scopeRoot);
+    const cached = this.cached.get(scopeKey);
+    if (cached) return cached;
+
+    const walkRoot = resolveScopedRoot(this.workspace, scopeKey);
     const languages = new Set<string>();
     const frameworks = new Set<string>();
     const packageManagers = new Set<string>();
     const paths: string[] = [];
     const projectIds: string[] = [];
 
-    walkWorkspace(this.workspace, (absolutePath) => {
+    walkWorkspace(walkRoot, (absolutePath) => {
       const relPath = relative(this.workspace, absolutePath).replace(/\\/g, '/');
       paths.push(relPath);
       const language = LANGUAGE_BY_EXTENSION[extname(absolutePath).toLowerCase()];
@@ -77,12 +81,13 @@ export class WorkspaceRepositoryProfileProvider implements RepositoryProfileProv
     const repositoryId = basename(this.workspace);
     const versionInput = JSON.stringify({
       repositoryId,
+      scopeRoot: scopeKey,
       languages: [...languages].sort(),
       frameworks: [...frameworks].sort(),
       packageManagers: [...packageManagers].sort(),
       projectIds: [...new Set(projectIds)].sort(),
     });
-    this.cached = {
+    const profile: RepositoryProfile = {
       version: createHash('sha256').update(versionInput).digest('hex').slice(0, 12),
       repositoryId,
       projectIds: [...new Set(projectIds)],
@@ -91,12 +96,34 @@ export class WorkspaceRepositoryProfileProvider implements RepositoryProfileProv
       packageManagers: [...packageManagers],
       paths: paths.slice(0, 2_000),
     };
-    return this.cached;
+    this.cached.set(scopeKey, profile);
+    return profile;
   }
 
   invalidate(): void {
-    this.cached = undefined;
+    this.cached.clear();
   }
+}
+
+function normalizeScopeRoot(scopeRoot?: string): string {
+  if (!scopeRoot || scopeRoot === '.' || scopeRoot === './') return '';
+  return scopeRoot.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+}
+
+function resolveScopedRoot(workspace: string, scopeKey: string): string {
+  if (!scopeKey) return workspace;
+  const workspaceRoot = resolve(workspace);
+  const candidate = resolve(workspaceRoot, scopeKey);
+  const prefix = workspaceRoot.endsWith('/') || workspaceRoot.endsWith('\\')
+    ? workspaceRoot
+    : `${workspaceRoot}/`;
+  const normalizedCandidate = candidate.replace(/\\/g, '/');
+  const normalizedPrefix = prefix.replace(/\\/g, '/');
+  if (normalizedCandidate !== workspaceRoot.replace(/\\/g, '/') && !normalizedCandidate.startsWith(normalizedPrefix)) {
+    return workspaceRoot;
+  }
+  if (existsSync(candidate) && statSync(candidate).isDirectory()) return candidate;
+  return workspaceRoot;
 }
 
 function walkWorkspace(root: string, visit: (path: string) => void): void {

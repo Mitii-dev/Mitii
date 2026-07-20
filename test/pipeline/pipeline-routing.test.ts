@@ -10,6 +10,7 @@ import {
   minStepsForAxis,
   resolvePlanningDepthAxis,
   classifyArtifacts,
+  classifyArtifactPath,
 } from '../../src/features/ce/pipeline/index';
 import { analyzeTask } from '../../src/features/ce/runtime/TaskAnalyzer';
 import { resolveActSkillNames } from '../../src/features/ce/modes/agent/actSkillRouting';
@@ -28,6 +29,12 @@ describe('pipeline route + subtypes', () => {
       expect.objectContaining({ kind: 'source_file', path: 'src/auth.ts', source: 'explicit' }),
       expect.objectContaining({ kind: 'log_directory', path: '.mitii/logs', source: 'explicit' }),
     ]));
+  });
+
+  it('classifies a specific .jsonl session log file distinctly from the logs directory', () => {
+    expect(classifyArtifactPath('.mitii/logs/2026-07-19_19-44-53-abc.jsonl')).toBe('jsonl_file');
+    expect(classifyArtifactPath('.mitii/logs')).toBe('log_directory');
+    expect(classifyArtifactPath('.mitii/logs/')).toBe('log_directory');
   });
 
   it('classifies README requests as docs/readme and skips heavy planner', () => {
@@ -115,6 +122,44 @@ describe('pipeline route + subtypes', () => {
     expect(pipeline.internalDepth).toBe('full');
     expect(pipeline.shouldUsePlanner).toBe(true);
     expect(pipeline.skills.activeSkill).toBe('bugfix-workflow');
+  });
+
+  it('classifies @project mentions as structured project artifacts', () => {
+    const msg = 'Can you please fix all the issues in this project @ai-service';
+    const withoutCatalog = classifyArtifacts(msg);
+    expect(withoutCatalog.artifacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'project',
+        path: 'ai-service',
+        projectId: 'ai-service',
+        source: 'explicit',
+      }),
+    ]));
+
+    const withCatalog = classifyArtifacts(msg, {
+      knownProjects: [
+        { id: 'ai-service', root: 'ai-service', name: 'ai-service' },
+        { id: 'frontend', root: 'frontend', name: 'frontend' },
+      ],
+    });
+    expect(withCatalog.artifacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'project',
+        path: 'ai-service',
+        projectId: 'ai-service',
+        confidence: 1,
+      }),
+    ]));
+    expect(withCatalog.artifacts.some((artifact) => artifact.projectId === 'frontend')).toBe(false);
+
+    const pipeline = resolveTurnPipeline(msg, analyzeTask(msg, 'agent'), {
+      mode: 'agent',
+      orchestrationEnabled: true,
+      knownProjects: [{ id: 'ai-service', root: 'ai-service', name: 'ai-service' }],
+    });
+    expect(pipeline.artifact.artifacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'project', projectId: 'ai-service' }),
+    ]));
   });
 
   it('does not allow direct execution to carry deep planning depth', () => {

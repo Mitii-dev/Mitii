@@ -121,8 +121,8 @@ export function normalizeDeclaredStepPhase(
   const declared = coercePlanPhase(step.phase);
   const inferred = inferStepPhase(`${step.title} ${step.objective ?? ''}`, index);
   const declaredLooksWrong =
-    declared === 'execute' &&
     inferred === 'diagnostics' &&
+    (declared === 'execute' || declared === 'verify') &&
     !stepImpliesWrite(step);
   const phase = declared && !declaredLooksWrong ? declared : inferred;
   return resolveStepPhaseLock({ ...step, phase }, mode) ?? phase;
@@ -356,6 +356,18 @@ function inferTouchedFilesFromCommandSegment(command: string): string[] {
   if (['rm', 'mv', 'cp'].includes(tokens[0])) {
     return cleanPathTokens(tokens.slice(1).filter((token) => !token.startsWith('-')));
   }
+  // `sed -i` / `sed -i ''` in-place edits mutate source files but were previously untracked.
+  if (tokens[0] === 'sed' && tokens.some((token) => token === '-i' || token.startsWith('-i'))) {
+    const pathTokens = tokens.slice(1).filter((token) => {
+      if (token.startsWith('-')) return false;
+      // macOS sed -i '' uses an empty extension argument.
+      if (token === '') return false;
+      // Skip the script expression (usually the first non-flag after -i['' ]).
+      return true;
+    });
+    // Drop the sed script expression (first remaining token).
+    return cleanPathTokens(pathTokens.slice(1));
+  }
   return [];
 }
 
@@ -482,6 +494,10 @@ export function isPatchAllowed(mode: string): boolean {
 
 export function inferStepPhase(title: string, index: number): PlanPhase {
   const text = title.toLowerCase();
+  const hasFailureCaptureIntent =
+    /\b(capture|captured|reproduce|collect|read|inspect|analy[sz]e|identify)\b[\s\S]*\b(fail|failing|failure|error|errors|build|typecheck|compile|test|lint|signal)\b/.test(text);
+  if (hasFailureCaptureIntent) return 'diagnostics';
+
   const hasVerificationIntent =
     /\b(verify|test|lint|validate)\b/.test(text) ||
     /\b(run|rerun|execute|check|ensure)\b[\s\S]*\bbuild\b/.test(text) ||

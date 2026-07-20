@@ -421,6 +421,88 @@ describe('AgentLoop E2E', () => {
     expect(chunks.join('')).toContain('kept using read-only tools');
   });
 
+  it('does not spend the no-write budget on rounds where every tool call failed', async () => {
+    let call = 0;
+    const executor = {
+      execute: vi.fn(async (name: string) => {
+        call += 1;
+        // First 4 rounds are a malformed propose_file_scope call that keeps failing with a
+        // *different* input each time (so repeatedInputFailureStop's identical-failure
+        // detector never fires) — this must not burn the write-required churn budget, since
+        // the model never got usable results to write from.
+        if (name === 'propose_file_scope' && call <= 4) {
+          return { success: false, output: '', error: `Invalid input variant ${call}` };
+        }
+        return { success: true, output: `ok:${name}` };
+      }),
+    } as unknown as ToolExecutor;
+
+    let round = 0;
+    const provider = {
+      id: 'mock',
+      capabilities: { supportsTools: true, supportsStreaming: true, contextWindow: 8192, supportsEmbeddings: false },
+      async *complete() {
+        round += 1;
+        if (round <= 4) {
+          yield {
+            tool_calls: [{
+              index: 0,
+              id: `call_scope_${round}`,
+              function: { name: 'propose_file_scope', arguments: `{"objective":"fix","candidates":[{"path":"a${round}.ts"}]}` },
+            }],
+          };
+        } else if (round === 5) {
+          yield {
+            tool_calls: [{
+              index: 0,
+              id: 'call_scope_ok',
+              function: { name: 'propose_file_scope', arguments: '{"objective":"fix","candidates":[{"path":"a.ts"}]}' },
+            }],
+          };
+        } else if (round === 6) {
+          yield {
+            tool_calls: [{
+              index: 0,
+              id: 'call_read',
+              function: { name: 'read_file', arguments: '{"path":"a.ts"}' },
+            }],
+          };
+        } else if (round === 7) {
+          yield {
+            tool_calls: [{
+              index: 0,
+              id: 'call_write',
+              function: { name: 'write_file', arguments: '{"path":"a.ts","content":"fixed"}' },
+            }],
+          };
+        } else {
+          yield { content: 'Fixed a.ts.' };
+        }
+        yield { done: true };
+      },
+    } as LlmProvider;
+
+    const loop = new AgentLoop(executor, 8);
+    const chunks: string[] = [];
+    for await (const chunk of loop.run(
+      provider,
+      [{ role: 'user', content: 'Fix the failing import' }],
+      [
+        { type: 'function', function: { name: 'propose_file_scope', description: 'scope', parameters: {} } },
+        { type: 'function', function: { name: 'read_file', description: 'read', parameters: {} } },
+        { type: 'function', function: { name: 'write_file', description: 'write', parameters: {} } },
+      ],
+      undefined,
+      undefined,
+      { maxSteps: 8, requiresWrite: true }
+    )) {
+      chunks.push(chunkContent(chunk));
+    }
+
+    expect(chunks.join('')).not.toContain('kept using read-only tools');
+    expect(executor.execute).toHaveBeenCalledTimes(7);
+  });
+
   it('stops when an edit task summarizes again after the no-write nudge', async () => {
     const executor = createMockExecutor();
     let call = 0;

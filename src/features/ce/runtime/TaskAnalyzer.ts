@@ -70,8 +70,41 @@ export interface TaskAnalysisOptions {
   actIntent?: ActIntent;
 }
 
-const ACTION_VERB_SOURCE =
-  String.raw`\b(?:implement|build|create|add|fix|refactor|migrate|rewrite|update|remove|delete|integrate|wire|connect|setup|configure|optimize|improve|imporve|enhance|polish|redesign|debug|test|change|replace)\b`;
+// Each base verb plus its common -ing/-ed inflections — a plain `\bfix\b` never matches
+// "fixing"/"fixed" because `\b` requires a transition out of word characters, which doesn't
+// occur mid-word (e.g. between "fix" and "ing" in "fixing"). Without this, requests phrased
+// with a gerund ("fixing this repo entirely") fall through to the generic question fallback
+// instead of being classified as implementation/bugfix work.
+const ACTION_VERB_FORMS = [
+  'implement', 'implementing', 'implemented',
+  'build', 'building', 'built',
+  'create', 'creating', 'created',
+  'add', 'adding', 'added',
+  'fix', 'fixing', 'fixed',
+  'refactor', 'refactoring', 'refactored',
+  'migrate', 'migrating', 'migrated',
+  'rewrite', 'rewriting', 'rewrote',
+  'update', 'updating', 'updated',
+  'remove', 'removing', 'removed',
+  'delete', 'deleting', 'deleted',
+  'integrate', 'integrating', 'integrated',
+  'wire', 'wiring', 'wired',
+  'connect', 'connecting', 'connected',
+  'setup',
+  'configure', 'configuring', 'configured',
+  'optimize', 'optimizing', 'optimized',
+  'improve', 'improving', 'improved',
+  'imporve',
+  'enhance', 'enhancing', 'enhanced',
+  'polish', 'polishing', 'polished',
+  'redesign', 'redesigning', 'redesigned',
+  'debug', 'debugging', 'debugged',
+  'test', 'testing', 'tested',
+  'change', 'changing', 'changed',
+  'replace', 'replacing', 'replaced',
+];
+
+const ACTION_VERB_SOURCE = String.raw`\b(?:${ACTION_VERB_FORMS.join('|')})\b`;
 
 const ACTION_VERBS = new RegExp(ACTION_VERB_SOURCE, 'i');
 const ACTION_VERBS_GLOBAL = new RegExp(ACTION_VERB_SOURCE, 'gi');
@@ -98,13 +131,13 @@ const FILE_PATH_IN_TEXT =
   /(?:^|\s|['"`])([\w./-]+\.(?:tsx?|jsx?|py|go|rs|json|css|scss|mdx?))\b/i;
 
 const BUGFIX_ACTION =
-  /\b(fix|repair|resolve|correct|debug|troubleshoot)\b/i;
+  /\b(fix|fixing|fixed|repair|repairing|repaired|resolve|resolving|resolved|correct|correcting|corrected|debug|debugging|debugged|troubleshoot|troubleshooting|troubleshot)\b/i;
 
 const PROJECT_SCOPE_TARGET =
-  /(?:^|\s)@[\w.-]+\b|\b(?:this|the|entire|whole|full)?\s*(?:project|repo|repository|workspace|codebase|package|service|app|application)\b/i;
+  /(?:^|\s)@[\w.-]+\b|\b(?:this|the|entire|entirely|whole|full)?\s*(?:project|repo|repository|workspace|codebase|package|service|app|application)\b/i;
 
 const UNBOUNDED_REPAIR_SCOPE =
-  /\b(?:fix|repair|resolve|correct)\s+all\b|\b(?:all|every|entire|whole|full|current)\b[\s\S]{0,80}\b(?:issues?|bugs?|errors?|failures?|problems?|failing tests?|build errors?)\b/i;
+  /\b(?:fix|fixing|repair|repairing|resolve|resolving|correct|correcting)\s+all\b|\b(?:all|every|entire|entirely|whole|full|current)\b[\s\S]{0,80}\b(?:issues?|bugs?|errors?|failures?|problems?|failing tests?|build errors?)\b/i;
 
 const SIMPLE_EDIT =
   /\b(fix typo|rename|change (?:the )?(?:name|text|label)|update import|add comment|format)\b/i;
@@ -417,12 +450,16 @@ function classifyTask(text: string): TaskAnalysis {
       hasMigration ||
       hasDestructiveOperation ||
       hasMaterialAmbiguity;
+    // Medium-complexity tasks only warrant subagent parallelism when they already show a
+    // multi-file or multi-step signal — otherwise spinning one up just adds latency/tokens
+    // for work a single agent loop would finish just as fast.
+    const mediumNeedsSubagents = complexity === 'medium' && (fileMentions >= 3 || connectorCount >= 2);
     return {
       kind: 'implementation',
       complexity,
       shouldPlan,
       shouldVerify: true,
-      shouldUseSubagents: complexity === 'high',
+      shouldUseSubagents: complexity === 'high' || mediumNeedsSubagents,
       actIntent: broadProjectRepair ? 'bugfix' : undefined,
       summary: broadProjectRepair
         ? `Project repair task (${complexity} complexity) — reproduce the current failures, scope to the first error cluster, patch, then verify.`

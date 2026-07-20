@@ -93,5 +93,29 @@ export function normalizeToolInput(toolName: string, input: unknown): unknown {
     delete obj.pattern;
   }
 
+  // propose_file_scope: models occasionally misspell `objective` (e.g. "objecive") or send
+  // the candidate list under a different field name ("candidatePaths"/"paths"). Repair these
+  // deterministically instead of failing schema validation and burning the turn's progress.
+  if (toolName === 'propose_file_scope') {
+    if (typeof obj.objective !== 'string') {
+      const objectiveAlias = ['objecive', 'objectve', 'objectiv', 'goal', 'task'].find(
+        (key) => typeof obj[key] === 'string'
+      );
+      if (objectiveAlias) {
+        obj.objective = obj[objectiveAlias];
+        delete obj[objectiveAlias];
+      }
+    }
+    if (obj.candidates === undefined) {
+      const candidatesAlias = ['candidatePaths', 'paths', 'pathCandidates', 'canidates', 'files'].find(
+        (key) => obj[key] !== undefined
+      );
+      if (candidatesAlias) {
+        obj.candidates = obj[candidatesAlias];
+        delete obj[candidatesAlias];
+      }
+    }
+  }
+
   return obj;
 }

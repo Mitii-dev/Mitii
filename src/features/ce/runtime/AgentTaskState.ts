@@ -1,6 +1,7 @@
 import type { TaskKind } from './TaskAnalyzer';
 import { isMdxRepairTask as isMdxRepairTaskText } from './mdxRepairRouting';
 import { classifyCommandEffect, inferTouchedFilesFromCommand } from '../plans/PlanActEngine';
+import { isStaleDiagnosticLogPath } from '../pipeline/classify/artifactClassifier';
 import {
   createPhaseActor,
   getPhaseFromActor,
@@ -44,6 +45,7 @@ export class AgentTaskState {
   private maxFilesRead = Infinity;
   private readPaths = new Set<string>();
   private forceSynthesis = false;
+  private isResumeSavedPlan = false;
 
   reset(): void {
     sendPhaseEvent(this.phaseActor, { type: 'RESET' });
@@ -61,6 +63,7 @@ export class AgentTaskState {
     this.fileScope = null;
     this.readPaths.clear();
     this.forceSynthesis = false;
+    this.isResumeSavedPlan = false;
   }
 
   setLimits(limits: AgentTaskLimits): void {
@@ -72,10 +75,11 @@ export class AgentTaskState {
     }
   }
 
-  setTaskContext(kind: TaskKind, summary: string, originalTask: string): void {
+  setTaskContext(kind: TaskKind, summary: string, originalTask: string, isResumeSavedPlan = false): void {
     this.taskKind = kind;
     this.taskSummary = summary;
     this.originalTask = originalTask;
+    this.isResumeSavedPlan = isResumeSavedPlan;
   }
 
   getPhase(): TaskPhase {
@@ -232,6 +236,9 @@ export class AgentTaskState {
 
   /** Returns block reason if this tool call should be rejected. */
   checkBlocked(toolName: string, input: Record<string, unknown>): string | null {
+    const checkpointBlocked = this.checkCheckpointReloadBlocked(toolName, input);
+    if (checkpointBlocked) return checkpointBlocked;
+
     const scopeBlocked = this.checkFileScopeBlocked(toolName, input);
     if (scopeBlocked) return scopeBlocked;
 
@@ -363,10 +370,35 @@ export class AgentTaskState {
     this.forceSynthesis = true;
   }
 
+  /**
+   * `.mitii-state.json` is only safe to reload when routing explicitly chose to resume a
+   * saved plan — otherwise a checkpoint left over from an unrelated prior task gets loaded
+   * as if it were current evidence for this turn.
+   */
+  private checkCheckpointReloadBlocked(toolName: string, input: Record<string, unknown>): string | null {
+    if (this.isResumeSavedPlan) return null;
+    const isCheckpointReadScript =
+      (toolName === 'execute_workspace_script' && input.script === 'read-checkpoint.sh') ||
+      (toolName === 'run_command' && typeof input.command === 'string' && /\bread-checkpoint\.sh\b/.test(input.command));
+    if (!isCheckpointReadScript) return null;
+    return (
+      'This is a new task turn, not a resume — do not load .mitii-state.json. ' +
+      'Proceed with fresh discovery for this task and ignore any prior checkpoint content.'
+    );
+  }
+
   checkFileScopeBlocked(toolName: string, input: Record<string, unknown>): string | null {
     if (!isScopedFileTool(toolName)) return null;
     const paths = extractScopedPaths(toolName, input);
     if (paths.length === 0) return null;
+
+    const staleLogs = paths.filter((path) => isStaleDiagnosticLogPath(path));
+    if (staleLogs.length > 0 && (toolName === 'read_file' || toolName === 'read_files')) {
+      return (
+        `Stale diagnostic log path(s) are not current evidence: ${staleLogs.join(', ')}. ` +
+        'Use the current turn\'s run_command / verification output instead of persistent build-error.log or .mitii-state.json files.'
+      );
+    }
 
     if (!this.hasFileScope()) {
       return 'Call propose_file_scope first to declare the candidate read/write paths for this task.';
@@ -708,9 +740,17 @@ export function toolKey(toolName: string, input: Record<string, unknown>): strin
   if (toolName === 'propose_file_scope') {
     const candidates = Array.isArray(input.candidates)
       ? input.candidates
-          .map((c) => (c && typeof c === 'object' && typeof (c as { path?: unknown }).path === 'string'
-            ? normalizeScopePath((c as { path: string }).path)
-            : ''))
+          .map((c) => {
+            if (!c || typeof c !== 'object') return '';
+            const candidate = c as { path?: unknown; intent?: unknown; access?: unknown };
+            if (typeof candidate.path !== 'string') return '';
+            const access = typeof candidate.intent === 'string'
+              ? candidate.intent
+              : typeof candidate.access === 'string'
+                ? candidate.access
+                : 'read';
+            return `${normalizeScopePath(candidate.path)}:${String(access).toLowerCase()}`;
+          })
           .filter(Boolean)
           .sort()
           .join('|')

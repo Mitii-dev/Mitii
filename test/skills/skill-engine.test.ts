@@ -84,6 +84,119 @@ describe('Skill Engine', () => {
     expect(result.selectedSkillIds).toHaveLength(2);
   });
 
+  it('rejects frontend skills when the repository profile is scoped to a backend project', () => {
+    const entries = [
+      entry({
+        ...manifest('bugfix-workflow'),
+        intents: ['bugfix'],
+        taskKinds: ['implementation'],
+        triggers: ['fix'],
+        priority: 20,
+      }),
+      entry({
+        ...manifest('react-next-performance'),
+        intents: ['bugfix', 'feature'],
+        taskKinds: ['implementation'],
+        frameworks: ['react', 'nextjs'],
+        priority: 17,
+      }),
+    ];
+    const resolver = new SkillResolver(new StaticRetriever(entries), new ExplainableSkillRanker());
+    const result = resolver.resolve({
+      ...baseContext(),
+      request: 'Can you please fix all the issues in this project @ai-service',
+      intent: 'bugfix',
+      taskKind: 'implementation',
+      artifacts: ['ai-service'],
+      repository: {
+        version: 'scoped',
+        repositoryId: 'resumeAI',
+        projectIds: ['ai-service'],
+        languages: ['typescript'],
+        frameworks: ['fastify'],
+        packageManagers: ['pnpm'],
+        paths: ['ai-service/src/index.ts', 'ai-service/package.json'],
+      },
+    });
+
+    expect(result.primarySkillId).toBe('bugfix-workflow');
+    expect(result.supportingSkillId).toBeUndefined();
+    expect(result.selectedSkillIds).toEqual(['bugfix-workflow']);
+    expect(result.rejectedSkills.some((skill) =>
+      skill.id === 'react-next-performance' &&
+      skill.rejectionReasons.some((reason) => /framework/i.test(reason))
+    )).toBe(true);
+  });
+
+  it('does not select an env/secrets skill solely because a .env file exists in the repo', () => {
+    const entries = [
+      entry({
+        ...manifest('bugfix-workflow'),
+        intents: ['bugfix'],
+        taskKinds: ['implementation'],
+        triggers: ['fix'],
+        priority: 20,
+      }),
+      entry({
+        ...manifest('environment-and-secrets'),
+        intents: ['feature', 'diagnose'],
+        taskKinds: ['implementation', 'debugging', 'question'],
+        triggers: ['.env', 'env.example', 'missing environment variable', 'api key'],
+        pathPatterns: ['.env*', '**/.env*', '**/*.env.example', '**/env.example'],
+        pinningRules: [{ id: 'env-path', scope: 'path', value: '**/.env*', action: 'recommend', priority: 45 }],
+        priority: 25,
+      }),
+    ];
+    const resolver = new SkillResolver(new StaticRetriever(entries), new ExplainableSkillRanker());
+    const result = resolver.resolve({
+      ...baseContext(),
+      request: "Cannot find module '../../../../infrastructure/ai/parser-service-config' — fix the ai-service build",
+      intent: 'bugfix',
+      taskKind: 'implementation',
+      artifacts: ['ai-service'],
+      repository: {
+        version: 'scoped',
+        repositoryId: 'resumeAI',
+        projectIds: ['ai-service'],
+        languages: ['typescript'],
+        frameworks: ['fastify'],
+        packageManagers: ['pnpm'],
+        paths: ['ai-service/src/index.ts', 'ai-service/.env'],
+      },
+    });
+
+    expect(result.primarySkillId).toBe('bugfix-workflow');
+    expect(result.supportingSkillId).toBeUndefined();
+    expect(result.selectedSkillIds).toEqual(['bugfix-workflow']);
+  });
+
+  it('still selects an env/secrets skill when the task itself references env keys', () => {
+    const entries = [
+      entry({
+        ...manifest('environment-and-secrets'),
+        intents: ['feature', 'diagnose'],
+        taskKinds: ['implementation', 'debugging', 'question'],
+        triggers: ['.env', 'env.example', 'missing environment variable', 'api key'],
+        pathPatterns: ['.env*', '**/.env*', '**/*.env.example', '**/env.example'],
+        pinningRules: [{ id: 'env-path', scope: 'path', value: '**/.env*', action: 'recommend', priority: 45 }],
+        priority: 25,
+      }),
+    ];
+    const resolver = new SkillResolver(new StaticRetriever(entries), new ExplainableSkillRanker());
+    const result = resolver.resolve({
+      ...baseContext(),
+      request: 'Check which .env keys are missing compared to .env.example',
+      intent: 'diagnose',
+      taskKind: 'question',
+      repository: {
+        ...baseContext().repository,
+        paths: ['.env', '.env.example'],
+      },
+    });
+
+    expect(result.selectedSkillIds).toContain('environment-and-secrets');
+  });
+
   it('does not inject documentation solely because the repository contains markdown files', () => {
     const entries = [
       entry({

@@ -423,6 +423,7 @@ export class PlanExecutor {
         let successfulWrites = 0;
         let successfulVerifyCommands = 0;
         let failedVerifyCommands = 0;
+        let diagnosticFailureCaptures = 0;
         let pendingApproval = false;
         const explicitToolCall = getExplicitStepToolCall(step);
         const writeExpected = stepImpliesWrite(step) && session.mode === 'agent' && !explicitToolCall;
@@ -495,6 +496,7 @@ export class PlanExecutor {
             successfulVerifyCommands += 1;
           }
         } else {
+          const toolInputs: Array<{ name: string; input: Record<string, unknown> }> = [];
           for await (const chunk of this.agentLoop.run(
             provider,
             messages,
@@ -502,8 +504,24 @@ export class PlanExecutor {
             signal,
             {
               ...loopCallbacks,
+              onToolStart: (name, input) => {
+                toolInputs.push({ name, input });
+                loopCallbacks?.onToolStart?.(name, input);
+              },
               onToolEnd: (name, success, output) => {
                 loopCallbacks?.onToolEnd?.(name, success, output);
+                const input = [...toolInputs].reverse().find((candidate) => candidate.name === name)?.input;
+                const capturedDiagnosticFailure =
+                  !success &&
+                  isExpectedDiagnosticFailureCapture(
+                    step,
+                    name,
+                    { success: false, output: output ?? '', error: output ?? '' },
+                    input
+                  );
+                if (capturedDiagnosticFailure) {
+                  diagnosticFailureCaptures += 1;
+                }
                 if (success && ['write_file', 'apply_patch'].includes(name)) {
                   successfulWrites += 1;
                 }
@@ -520,6 +538,7 @@ export class PlanExecutor {
                   isVerifyStep &&
                   name === 'run_command' &&
                   !success &&
+                  !capturedDiagnosticFailure &&
                   !/\bSkipped redundant\b/i.test(output ?? '')
                 ) {
                   failedVerifyCommands += 1;
@@ -606,7 +625,7 @@ export class PlanExecutor {
           break;
         }
 
-        if (isVerifyStep && successfulVerifyCommands === 0) {
+        if (isVerifyStep && successfulVerifyCommands === 0 && diagnosticFailureCaptures === 0) {
           lastValidationErrors = [
             'This verification step did not run a successful diagnostics, typecheck, lint, test, or build tool.',
             'Do not complete verification from prose alone; run the narrowest relevant command.',
@@ -874,12 +893,19 @@ function integratePlanningDiscoveryEvidence(
 function isExpectedDiagnosticFailureCapture(
   step: ThunderPlan['steps'][number],
   toolName: string,
-  result: ToolExecutionResult
+  result: ToolExecutionResult,
+  input?: Record<string, unknown>
 ): boolean {
   if (!['run_command', 'execute_workspace_script'].includes(toolName)) return false;
   const failureDetail = `${result.error ?? ''}\n${result.output ?? ''}`;
   if (isPhaseLockRunCommandError(failureDetail)) return false;
-  const signalContext = `${step.title}\n${step.objective ?? ''}\n${step.script?.command ?? ''}\n${failureDetail}`;
+  const command =
+    typeof input?.command === 'string'
+      ? input.command
+      : typeof input?.script === 'string'
+        ? input.script
+        : '';
+  const signalContext = `${step.title}\n${step.objective ?? ''}\n${step.script?.command ?? ''}\n${command}\n${failureDetail}`;
   return isDiagnosticFailureCaptureStep(step) && hasCapturedFailingVerificationSignal(signalContext);
 }
 
@@ -894,7 +920,7 @@ function isDiagnosticFailureCaptureStep(step: ThunderPlan['steps'][number]): boo
   if (!usesDiagnosticTool) return false;
 
   return (
-    /\b(reproduce|capture|collect|establish)\b[\s\S]*\b(fail|failing|failure|error|build|typecheck|compile|test|lint|signal)\b/i.test(text) ||
+    /\b(reproduce|capture|captured|collect|establish|read|inspect|analy[sz]e|identify)\b[\s\S]*\b(fail|failing|failure|error|errors|build|typecheck|compile|test|lint|signal)\b/i.test(text) ||
     /\b(run|rerun|execute)\b[\s\S]*\b(build|typecheck|compile|test|lint)\b[\s\S]*\b(capture|initial|fail|failing|failure|error|signal)\b/i.test(text)
   );
 }

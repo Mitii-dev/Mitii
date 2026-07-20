@@ -1127,12 +1127,20 @@ function normalizeFileScopeIntent(value: unknown): unknown {
 }
 
 function parseFileScopeCandidates(value: unknown): unknown {
-  if (typeof value !== 'string') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
+  let parsed = value;
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return value;
+    }
   }
+  // Models sometimes send a bare path array (`["a.ts", "b.ts"]`) instead of the documented
+  // `{ path, reason?, intent? }` object shape — repair each plain-string entry.
+  if (Array.isArray(parsed)) {
+    return parsed.map((item) => (typeof item === 'string' ? { path: item } : item));
+  }
+  return parsed;
 }
 
 export function createProposeFileScopeTool(

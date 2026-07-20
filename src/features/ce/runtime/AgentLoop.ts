@@ -63,7 +63,7 @@ The required context is already available. In the next assistant step, call appl
 Do NOT call read_file, read_files, list_files, diagnostics, memory_search, use_skill, or ask_question again before editing.`;
 
 const WRITE_REQUIRED_CHURN_STOP =
-  'Stopped because the model kept using read-only tools for an edit task and never called apply_patch or write_file. Try a stronger coding model or reduce the prompt scope.';
+  'Stopped because the model kept using read-only tools for an edit task and never called apply_patch or write_file, despite those tool calls succeeding. Try a stronger coding model or reduce the prompt scope.';
 
 function buildRequiredOperationNudge(
   operation: NonNullable<AgentLoopOptions['requiredOperation']>
@@ -453,6 +453,12 @@ export class AgentLoop {
       let postWriteValidationFailed = false;
       let repeatedInputFailureStop: string | undefined;
       let nonWriteOnlyTurn = true;
+      // A round where every tool call errored (e.g. a malformed propose_file_scope call)
+      // has not actually given the model anything to write from yet — it should not spend
+      // down the no-write-tool-calls budget the same as a round that read real content and
+      // still chose not to edit. Distinct repeated failures are already caught faster by
+      // repeatedInputFailureStop below; this only protects a round of *new* failures.
+      let anyToolSucceededThisRound = false;
 
       for (const { tc, input, execResult, durationMs } of executions) {
         if (signal?.aborted) break;
@@ -471,6 +477,7 @@ export class AgentLoop {
 
         const { isSkipped, output, success: toolSuccess } = resolveToolOutput(execResult);
         const completedRealSideEffect = execResult.success && !isSkipped && !execResult.pendingApproval;
+        if (completedRealSideEffect) anyToolSucceededThisRound = true;
 
         if (['write_file', 'apply_patch'].includes(tc.function.name)) {
           nonWriteOnlyTurn = false;
@@ -709,7 +716,8 @@ export class AgentLoop {
         !isReadOnlyRoute &&
         !pendingApproval &&
         !writeToolCallsMade &&
-        nonWriteOnlyTurn
+        nonWriteOnlyTurn &&
+        anyToolSucceededThisRound
       ) {
         noWriteToolRounds += 1;
         if (noWriteToolRounds >= 4) {
