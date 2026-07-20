@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "id": "git-commit-message",
+  "name": "Git commit message",
+  "description": "Generate, suggest, improve, or review a Git commit message from staged changes. Use only when the user asks about the commit message \u2014 never stage or commit.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "git"
+  ],
+  "taskKinds": [
+    "git"
+  ],
+  "taskSubtypes": [
+    "git_commit_message"
+  ],
+  "triggers": [
+    "commit message",
+    "suggest a commit message",
+    "improve commit message",
+    "review commit message"
+  ],
+  "negativeTriggers": [
+    "create a commit",
+    "stage and commit",
+    "commit these changes",
+    "make a commit"
+  ],
+  "requiredTools": [
+    "read_file"
+  ],
+  "optionalTools": [
+    "run_command",
+    "git_status",
+    "git_diff",
+    "git_log"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [
+    "git-commit"
+  ],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 4000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 32,
+  "tags": [
+    "git",
+    "commit-message"
+  ],
+  "pinningRules": [
+    {
+      "id": "commit-message-subtype",
+      "scope": "task-subtype",
+      "value": "git_commit_message",
+      "action": "attach",
+      "priority": 55
+    }
+  ],
+  "tests": [
+    {
+      "id": "positive-message",
+      "name": "Selects for commit message generation",
+      "request": "Generate a commit message from my staged changes",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "run_command",
+        "git_status",
+        "git_diff"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 4000
+    },
+    {
+      "id": "negative-create-commit",
+      "name": "Not selected when asking to create a commit",
+      "request": "Create a commit with these staged changes",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "run_command",
+        "git_commit"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

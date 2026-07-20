@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "id": "changelog-maintenance",
+  "name": "Changelog maintenance",
+  "description": "Create or update release notes and CHANGELOG files. Use only when the user asks for changelog or release-notes work.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "git"
+  ],
+  "taskKinds": [
+    "git"
+  ],
+  "taskSubtypes": [
+    "git_changelog_update"
+  ],
+  "triggers": [
+    "changelog",
+    "release notes",
+    "CHANGELOG.md",
+    "update changelog"
+  ],
+  "negativeTriggers": [
+    "full release",
+    "bump version and tag",
+    "publish github release",
+    "create pull request"
+  ],
+  "pathPatterns": [
+    "CHANGELOG.md",
+    "CHANGES.md",
+    "**/CHANGELOG.md"
+  ],
+  "requiredTools": [
+    "read_file",
+    "search"
+  ],
+  "optionalTools": [
+    "apply_patch",
+    "run_command",
+    "detect_changelog_strategy",
+    "aggregate_changelog",
+    "generate_changelog_patch"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [
+    "release-management"
+  ],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 5000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 24,
+  "tags": [
+    "git",
+    "changelog",
+    "release-notes"
+  ],
+  "pinningRules": [
+    {
+      "id": "changelog-subtype",
+      "scope": "task-subtype",
+      "value": "git_changelog_update",
+      "action": "recommend",
+      "priority": 40
+    }
+  ],
+  "tests": [
+    {
+      "id": "positive-changelog",
+      "name": "Selects for changelog updates",
+      "request": "Update CHANGELOG.md with the changes since the last tag",
+      "mode": "agent",
+      "repositoryFacts": {
+        "paths": [
+          "CHANGELOG.md"
+        ]
+      },
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 5000
+    },
+    {
+      "id": "negative-full-release",
+      "name": "Not selected for full release staging",
+      "request": "Prepare the full release: bump version, tag, push, and create a GitHub release",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "run_command"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

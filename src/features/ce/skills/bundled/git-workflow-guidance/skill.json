@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "id": "git-workflow-guidance",
+  "name": "Git workflow guidance",
+  "description": "Advise on Git workflow: branching, atomic commits, trunk-based development, worktrees, merge/rebase strategy, and parallel development. Use for advice and planning only \u2014 not automatic execution.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "git"
+  ],
+  "taskKinds": [
+    "git",
+    "question",
+    "explicit_plan"
+  ],
+  "triggers": [
+    "branching strategy",
+    "trunk-based",
+    "git worktree",
+    "merge vs rebase",
+    "atomic commits",
+    "parallel development workflow"
+  ],
+  "negativeTriggers": [
+    "create a commit",
+    "open a pull request",
+    "git status",
+    "commit these changes",
+    "stage and commit"
+  ],
+  "requiredTools": [
+    "read_file"
+  ],
+  "optionalTools": [
+    "search"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 4000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 10,
+  "tags": [
+    "git",
+    "workflow",
+    "advice"
+  ],
+  "tests": [
+    {
+      "id": "positive-branching",
+      "name": "Selects for branching strategy advice",
+      "request": "Advise on a trunk-based branching strategy with worktrees for parallel work",
+      "mode": "ask",
+      "availableTools": [
+        "read_file",
+        "search"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 4000
+    },
+    {
+      "id": "negative-commit",
+      "name": "Never auto-selected for commit requests",
+      "request": "Create a commit for the staged auth fixes",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "run_command",
+        "git_commit"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

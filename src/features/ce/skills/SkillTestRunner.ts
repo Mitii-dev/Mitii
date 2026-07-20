@@ -27,12 +27,13 @@ export interface SkillTestRunResult {
 
 export class SkillTestRunner {
   private readonly resolver: SkillResolver;
+  private readonly ranker = new ExplainableSkillRanker();
   private readonly injectionBuilder: SkillInjectionBuilder;
 
   constructor(private readonly catalog: SkillCatalogService) {
     this.resolver = new SkillResolver(
       new CatalogSkillCandidateRetriever(catalog),
-      new ExplainableSkillRanker()
+      this.ranker
     );
     this.injectionBuilder = new SkillInjectionBuilder(catalog);
   }
@@ -50,6 +51,8 @@ export class SkillTestRunner {
   }
 
   private runCase(skillId: string, test: SkillRoutingTestCase): SkillTestCaseResult {
+    const skill = this.catalog.get(skillId);
+    if (!skill) throw new Error(`Skill not found: ${skillId}`);
     const repository: RepositoryProfile = {
       version: 'test-1',
       languages: [...(test.repositoryFacts?.languages ?? [])],
@@ -67,15 +70,14 @@ export class SkillTestRunner {
       manualSkillIds: [skillId],
     };
     const resolution = this.resolver.resolve(context);
-    const report = [...resolution.candidateSkills, ...resolution.rejectedSkills].find((candidate) => candidate.id === skillId);
+    // Rank the skill under test directly so report truncation cannot hide hard rejects.
+    const report = this.ranker.rank(skill.entry, context);
     const actual =
       resolution.primarySkillId === skillId || resolution.supportingSkillId === skillId
         ? 'selected'
-        : report?.eligible
+        : report.eligible
           ? 'suggested'
-          : report
-            ? 'rejected'
-            : 'not-selected';
+          : 'rejected';
     const injection = actual === 'selected'
       ? this.injectionBuilder.build({
           skillIds: [skillId],
@@ -85,8 +87,8 @@ export class SkillTestRunner {
         })
       : undefined;
     const reasons = [
-      ...(report?.rejectionReasons ?? []),
-      ...(report?.factors.map((factor) => `${factor.key}: ${factor.reason}`) ?? []),
+      ...report.rejectionReasons,
+      ...report.factors.map((factor) => `${factor.key}: ${factor.reason}`),
     ];
     if (test.maxInjectionChars && injection && injection.totalChars > test.maxInjectionChars) {
       reasons.push(`Injection ${injection.totalChars} exceeds ${test.maxInjectionChars}`);

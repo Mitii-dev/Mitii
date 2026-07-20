@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Maintainer utility: refresh src/core/skills/bundled/ from a local checkout (no runtime git pull in the extension).
+# Maintainer utility: refresh src/features/ce/skills/bundled/ from a local checkout (no runtime git pull in the extension).
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-DEST_DIR="${MITII_BUNDLED_SKILLS_DIR:-$ROOT_DIR/src/core/skills/bundled}"
+DEST_DIR="${MITII_BUNDLED_SKILLS_DIR:-$ROOT_DIR/src/features/ce/skills/bundled}"
 SOURCE_DIR="${AGENT_SKILLS_SOURCE_DIR:-}"
 
 usage() {
@@ -15,7 +15,7 @@ Usage:
   bash scripts/sync-bundled-skills.sh /path/to/agent-skills/skills
 
 Copies the listed Tier-1 SKILL.md folders from an upstream agent-skills checkout into
-src/core/skills/bundled/. Mitii-owned skills (git-*, github-*, audit-cleanup, log-audit, etc.)
+src/features/ce/skills/bundled/. Mitii-owned skills (git-*, github-*, audit-cleanup, log-audit, etc.)
 live in this tree and are not overwritten unless they appear in SKILLS below.
 
 Does not run at extension runtime — commit the result and ship it in the VSIX.
@@ -64,5 +64,5 @@ for skill in "${SKILLS[@]}"; do
   echo "Synced $skill"
 done
 
-echo "Done. src/core/skills/bundled now contains $(find "$DEST_DIR" -name SKILL.md | wc -l | tr -d ' ') skill(s)."
+echo "Done. src/features/ce/skills/bundled now contains $(find "$DEST_DIR" -name SKILL.md | wc -l | tr -d ' ') skill(s)."
 echo "Run: pnpm run skills:validate"

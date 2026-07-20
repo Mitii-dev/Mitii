@@ -30,8 +30,30 @@ function findFiles(dir: string, target: string): string[] {
 }
 
 function parseDescription(content: string): string | undefined {
-  const match = content.match(/^description:\s*(.+)$/m);
-  return match?.[1]?.trim();
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) return undefined;
+  const lines = match[1].replace(/\r\n/g, '\n').split('\n');
+  for (let i = 0; i < lines.length; i += 1) {
+    const lineMatch = lines[i].match(/^description:\s*(.*)$/);
+    if (!lineMatch) continue;
+    const value = lineMatch[1].trim();
+    if (value === '|' || value === '|-' || value === '>' || value === '>-') {
+      const indented: string[] = [];
+      for (let c = i + 1; c < lines.length; c += 1) {
+        if (/^\S/.test(lines[c])) break;
+        if (!lines[c].trim()) {
+          indented.push('');
+          continue;
+        }
+        indented.push(lines[c].replace(/^\s+/, ''));
+      }
+      return value.startsWith('>')
+        ? indented.join(' ').replace(/\s+/g, ' ').trim()
+        : indented.join('\n').trim();
+    }
+    return value.replace(/^['"]|['"]$/g, '').trim();
+  }
+  return undefined;
 }
 
 describe('bundled skills', () => {

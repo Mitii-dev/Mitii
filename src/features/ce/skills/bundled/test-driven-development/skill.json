@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "id": "test-driven-development",
+  "name": "Test-driven development",
+  "description": "Red/Green/Refactor and Prove-It bug fixes for logic and behavior changes. Use when implementing or fixing verifiable behavior; not for pure docs, config, git, or log-only work.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "feature",
+    "bugfix"
+  ],
+  "taskKinds": [
+    "implementation",
+    "debugging"
+  ],
+  "triggers": [
+    "tdd",
+    "test-driven",
+    "write a failing test",
+    "prove-it",
+    "red green refactor",
+    "add tests then implement"
+  ],
+  "negativeTriggers": [
+    "docs only",
+    "update the readme",
+    "commit message",
+    "changelog"
+  ],
+  "requiredTools": [
+    "read_file",
+    "search"
+  ],
+  "optionalTools": [
+    "apply_patch",
+    "run_command"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [
+    "references/testing-patterns.md",
+    "references/tdd-pitfalls.md"
+  ],
+  "maxInjectionChars": 7000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 18,
+  "tags": [
+    "tdd",
+    "testing",
+    "verification"
+  ],
+  "tests": [
+    {
+      "id": "positive-tdd",
+      "name": "Selects for TDD implementation",
+      "request": "Implement the discount calculator with TDD \u2014 failing test first",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch",
+        "run_command"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 7000
+    },
+    {
+      "id": "negative-docs",
+      "name": "Not selected for docs-only work",
+      "request": "Update the changelog and README only",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

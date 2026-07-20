@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "id": "browser-testing-with-devtools",
+  "name": "Browser testing with DevTools",
+  "description": "Browser automation and UI verification with Puppeteer MCP for React, Next.js, and web apps. Use for screenshots, DOM assertions, and smoke-testing pages after UI changes.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "feature",
+    "bugfix"
+  ],
+  "taskKinds": [
+    "implementation",
+    "debugging"
+  ],
+  "triggers": [
+    "screenshot",
+    "puppeteer",
+    "browser test",
+    "smoke test page",
+    "dom assertion",
+    "ui verification",
+    "devtools"
+  ],
+  "negativeTriggers": [
+    "unit test only",
+    "commit message",
+    "api docs",
+    "jest only",
+    "no browser",
+    "without browser"
+  ],
+  "requiredTools": [
+    "read_file"
+  ],
+  "optionalTools": [
+    "browser",
+    "run_command",
+    "apply_patch"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 5000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 18,
+  "tags": [
+    "browser",
+    "puppeteer",
+    "ui-testing"
+  ],
+  "tests": [
+    {
+      "id": "positive-screenshot",
+      "name": "Selects for browser screenshot verification",
+      "request": "Take a screenshot of the dashboard and assert the nav is visible",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "browser",
+        "run_command"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 5000
+    },
+    {
+      "id": "negative-unit-only",
+      "name": "Not selected for unit-test-only work",
+      "request": "Add a Jest unit test only for the pure helper function \u2014 no browser",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

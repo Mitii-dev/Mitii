@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, rmSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -12,6 +12,8 @@ function copyBundledDir(relSource, relDest, label) {
     process.exit(1);
   }
   mkdirSync(dirname(dest), { recursive: true });
+  // Replace destination so removed skills/rules do not linger in dist.
+  rmSync(dest, { recursive: true, force: true });
   cpSync(source, dest, { recursive: true, force: true });
   console.log(`Copied bundled ${label} to`, dest);
 }

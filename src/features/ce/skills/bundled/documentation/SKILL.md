@@ -1,6 +1,6 @@
 ---
 name: documentation
-description: Create or update README, architecture, and API documentation for packages and services. Use for README.md, project structure docs, payloads, and cross-service integration notes — not for unused-dependency audits.
+description: Inspect, write, and verify repository documentation, including README, API route, architecture, examples, and documentation-site changes.
 ---
 
 # Documentation

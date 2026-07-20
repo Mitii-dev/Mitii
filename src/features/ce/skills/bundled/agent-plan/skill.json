@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "id": "agent-plan",
+  "name": "Agent plan",
+  "description": "Guide Agent mode planning depth (Auto/Quick/Deep), produce executable plans, continue into implementation, and avoid unnecessary discovery or replanning.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "feature",
+    "refactor"
+  ],
+  "taskKinds": [
+    "explicit_plan",
+    "implementation"
+  ],
+  "triggers": [
+    "plan before implementing",
+    "structured plan",
+    "deep plan",
+    "quick plan",
+    "agent plan"
+  ],
+  "negativeTriggers": [
+    "what is",
+    "explain",
+    "commit message",
+    "generate a commit message"
+  ],
+  "requiredTools": [
+    "read_file",
+    "search"
+  ],
+  "optionalTools": [
+    "apply_patch",
+    "run_command",
+    "repo_map"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [
+    "planning-and-task-breakdown"
+  ],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 8000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 12,
+  "tags": [
+    "planning",
+    "agent",
+    "execution"
+  ],
+  "pinningRules": [
+    {
+      "id": "agent-mode-plan",
+      "scope": "mode",
+      "value": "agent",
+      "action": "recommend",
+      "priority": 20
+    }
+  ],
+  "tests": [
+    {
+      "id": "positive-agent-plan",
+      "name": "Selects for agent-mode structured planning",
+      "request": "Plan the migration steps before implementing the auth refactor",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 8000
+    },
+    {
+      "id": "negative-question",
+      "name": "Not selected for explanation-only questions",
+      "request": "What is dependency injection?",
+      "mode": "ask",
+      "availableTools": [
+        "read_file",
+        "search"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

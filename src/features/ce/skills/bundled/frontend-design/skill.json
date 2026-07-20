@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "frontend-design",
   "name": "Frontend design",
-  "description": "Create distinctive visual direction for frontend screens, layouts, palettes, typography, copy tone, and responsive polish.",
+  "description": "Create distinctive visual direction for frontend screens, sites, and UI redesigns. Use for aesthetic direction, layout, typography, palette, copy tone, and responsive polish; not for backend or simple bugfixes.",
   "version": "1.0.0",
   "apiVersion": "1",
   "owner": "mitii",
@@ -10,23 +10,75 @@
   "enabled": true,
   "status": "recommended",
   "kind": "workflow",
-  "supportedModes": ["ask", "plan", "agent"],
-  "intents": ["feature", "refactor"],
-  "taskKinds": ["implementation", "explicit_plan"],
-  "triggers": ["design", "redesign", "frontend", "ui polish", "visual design", "landing page", "dashboard", "portfolio", "hero", "responsive"],
-  "negativeTriggers": ["backend", "api route", "database", "simple bugfix", "fix failing test", "figma"],
-  "languages": ["typescript", "javascript", "html", "css"],
-  "frameworks": ["react", "next.js", "nextjs", "vite"],
-  "requiredTools": ["read_file", "search"],
-  "optionalTools": ["apply_patch", "run_command", "browser"],
-  "requiredCapabilities": ["repository-read"],
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "feature",
+    "refactor"
+  ],
+  "taskKinds": [
+    "implementation",
+    "explicit_plan"
+  ],
+  "triggers": [
+    "design",
+    "redesign",
+    "frontend",
+    "ui polish",
+    "visual design",
+    "landing page",
+    "dashboard",
+    "portfolio",
+    "hero",
+    "responsive"
+  ],
+  "negativeTriggers": [
+    "backend",
+    "api route",
+    "database",
+    "simple bugfix",
+    "fix failing test",
+    "figma"
+  ],
+  "languages": [
+    "typescript",
+    "javascript",
+    "html",
+    "css"
+  ],
+  "frameworks": [
+    "react",
+    "next.js",
+    "nextjs",
+    "vite"
+  ],
+  "requiredTools": [
+    "read_file",
+    "search"
+  ],
+  "optionalTools": [
+    "apply_patch",
+    "run_command",
+    "browser"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
   "entrypoint": "SKILL.md",
   "referenceFiles": [],
   "maxInjectionChars": 6000,
   "injectionStrategy": "lazy-references",
   "trust": "builtin",
   "priority": 14,
-  "tags": ["frontend", "design", "visual", "responsive"],
+  "tags": [
+    "frontend",
+    "design",
+    "visual",
+    "responsive"
+  ],
   "tests": [
     {
       "id": "redesign-dashboard",
@@ -34,12 +86,27 @@
       "request": "Redesign the React dashboard so it feels polished and responsive",
       "mode": "agent",
       "repositoryFacts": {
-        "languages": ["typescript"],
-        "frameworks": ["react"],
-        "paths": ["src/App.tsx", "src/styles.css"]
+        "languages": [
+          "typescript"
+        ],
+        "frameworks": [
+          "react"
+        ],
+        "paths": [
+          "src/App.tsx",
+          "src/styles.css"
+        ]
       },
-      "availableTools": ["read_file", "search", "apply_patch", "run_command"],
-      "availableCapabilities": ["repository-read", "workspace-write"],
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch",
+        "run_command"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
       "expected": "selected",
       "maxInjectionChars": 6000
     },
@@ -49,11 +116,20 @@
       "request": "Add a backend API route for invoices",
       "mode": "agent",
       "repositoryFacts": {
-        "languages": ["typescript"],
-        "frameworks": ["react"]
+        "languages": [
+          "typescript"
+        ],
+        "frameworks": [
+          "react"
+        ]
       },
-      "availableTools": ["read_file", "search"],
-      "availableCapabilities": ["repository-read"],
+      "availableTools": [
+        "read_file",
+        "search"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
       "expected": "rejected"
     }
   ]

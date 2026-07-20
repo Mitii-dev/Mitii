@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "id": "code-review-and-quality",
+  "name": "Code review and quality",
+  "description": "Multi-axis code review (correctness, readability, architecture, security, performance). Use before merge and when reviewing agent or human changes.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "review"
+  ],
+  "taskKinds": [
+    "review",
+    "question"
+  ],
+  "triggers": [
+    "code review",
+    "review this pr",
+    "review the diff",
+    "review changes",
+    "quality review",
+    "before merge"
+  ],
+  "negativeTriggers": [
+    "remove console.log",
+    "find unused dependencies",
+    "write unit tests from scratch",
+    "console.log",
+    "remove console",
+    "inline styles"
+  ],
+  "requiredTools": [
+    "read_file",
+    "search"
+  ],
+  "optionalTools": [
+    "run_command",
+    "diagnostics"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [
+    "references/security-checklist.md",
+    "references/performance-checklist.md",
+    "references/review-pitfalls.md"
+  ],
+  "maxInjectionChars": 7000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 20,
+  "tags": [
+    "review",
+    "quality",
+    "security"
+  ],
+  "tests": [
+    {
+      "id": "positive-pr-review",
+      "name": "Selects for PR/diff code review",
+      "request": "Review this pull request for correctness and security issues",
+      "mode": "ask",
+      "availableTools": [
+        "read_file",
+        "search",
+        "run_command"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 7000
+    },
+    {
+      "id": "negative-console-cleanup",
+      "name": "Not selected for console.log hygiene",
+      "request": "Remove console.log statements and clean up inline styles in touched files",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

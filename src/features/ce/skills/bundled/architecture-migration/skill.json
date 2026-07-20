@@ -10,22 +10,52 @@
   "enabled": true,
   "status": "recommended",
   "kind": "workflow",
-  "supportedModes": ["ask", "plan", "agent"],
-  "intents": ["refactor", "feature"],
-  "triggers": ["folder structure", "move package", "cross-package", "architecture migration", "restructure"],
-  "negativeTriggers": ["rename one file"],
-  "requiredTools": ["read_file", "search", "repo_map"],
-  "optionalTools": ["apply_patch", "run_command"],
-  "requiredCapabilities": ["repository-read"],
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "refactor",
+    "feature"
+  ],
+  "triggers": [
+    "folder structure",
+    "move package",
+    "cross-package",
+    "architecture migration",
+    "restructure"
+  ],
+  "negativeTriggers": [
+    "rename one file"
+  ],
+  "requiredTools": [
+    "read_file",
+    "search",
+    "repo_map"
+  ],
+  "optionalTools": [
+    "apply_patch",
+    "run_command"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
   "dependencies": [],
-  "conflicts": ["audit-cleanup"],
+  "conflicts": [
+    "audit-cleanup"
+  ],
   "entrypoint": "SKILL.md",
   "referenceFiles": [],
   "maxInjectionChars": 6000,
   "injectionStrategy": "lazy-references",
   "trust": "builtin",
   "priority": 18,
-  "tags": ["architecture", "migration", "monorepo"],
+  "tags": [
+    "architecture",
+    "migration",
+    "monorepo"
+  ],
   "pinningRules": [],
   "tests": [
     {
@@ -33,8 +63,14 @@
       "name": "Selects for cross-package restructuring",
       "request": "Change the folder structure and migrate runtime modules across packages",
       "mode": "plan",
-      "availableTools": ["read_file", "search", "repo_map"],
-      "availableCapabilities": ["repository-read"],
+      "availableTools": [
+        "read_file",
+        "search",
+        "repo_map"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
       "expected": "selected",
       "maxInjectionChars": 6000
     }

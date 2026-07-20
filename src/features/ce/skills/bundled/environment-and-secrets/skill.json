@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "id": "environment-and-secrets",
+  "name": "Environment and secrets",
+  "description": "Safely inspect env templates, missing keys, and secret setup without exposing values. Use for .env, env.example, missing variables, API keys, tokens, and secret configuration.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "feature",
+    "diagnose"
+  ],
+  "taskKinds": [
+    "implementation",
+    "debugging",
+    "question"
+  ],
+  "triggers": [
+    ".env",
+    "env.example",
+    "missing environment variable",
+    "api key",
+    "secret configuration",
+    "env template",
+    "dotenv"
+  ],
+  "negativeTriggers": [
+    "print the secret value",
+    "commit message"
+  ],
+  "pathPatterns": [
+    ".env*",
+    "**/.env*",
+    "**/*.env.example",
+    "**/env.example"
+  ],
+  "requiredTools": [
+    "read_file"
+  ],
+  "optionalTools": [
+    "search",
+    "run_command",
+    "apply_patch"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 5000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 25,
+  "tags": [
+    "env",
+    "secrets",
+    "security"
+  ],
+  "pinningRules": [
+    {
+      "id": "env-path",
+      "scope": "path",
+      "value": "**/.env*",
+      "action": "recommend",
+      "priority": 45
+    }
+  ],
+  "tests": [
+    {
+      "id": "positive-missing-env",
+      "name": "Selects for missing env key setup",
+      "request": "Check which .env keys are missing compared to .env.example",
+      "mode": "agent",
+      "repositoryFacts": {
+        "paths": [
+          ".env.example",
+          ".env"
+        ]
+      },
+      "availableTools": [
+        "read_file",
+        "search",
+        "run_command"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 5000
+    },
+    {
+      "id": "negative-commit",
+      "name": "Not selected for commit message requests",
+      "request": "Write a commit message for my staged changes",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

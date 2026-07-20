@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "id": "log-audit",
+  "name": "Log audit",
+  "description": "Analyze application, system, security, build, and Mitii JSONL session logs via deterministic tools. Use for log diagnosis; not for adding application logging features.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "log_audit"
+  ],
+  "taskKinds": [
+    "log_audit"
+  ],
+  "taskSubtypes": [
+    "log"
+  ],
+  "triggers": [
+    "analyze logs",
+    "jsonl",
+    "session log",
+    ".mitii/logs",
+    "syslog",
+    "stack trace",
+    "access log",
+    "log audit"
+  ],
+  "negativeTriggers": [
+    "application logging feature",
+    "add logging to code",
+    "winston",
+    "pino logger"
+  ],
+  "pathPatterns": [
+    "**/*.jsonl",
+    "**/*.log",
+    ".mitii/logs/**"
+  ],
+  "requiredTools": [],
+  "optionalTools": [
+    "analyze_log",
+    "analyze_jsonl",
+    "analyze_log_directory",
+    "query_log_events",
+    "list_logs"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 6000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 30,
+  "tags": [
+    "logs",
+    "jsonl",
+    "audit"
+  ],
+  "pinningRules": [],
+  "tests": [
+    {
+      "id": "jsonl-session",
+      "name": "Selects for Mitii session log analysis",
+      "request": "Analyze .mitii/logs/session.jsonl and identify token and tool failures",
+      "mode": "ask",
+      "repositoryFacts": {
+        "paths": [
+          ".mitii/logs/session.jsonl"
+        ]
+      },
+      "availableTools": [
+        "analyze_jsonl",
+        "query_log_events"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 6000
+    },
+    {
+      "id": "reject-add-logging",
+      "name": "Rejects add-logging feature work",
+      "request": "Add winston logging to the API service",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
+      "expected": "rejected",
+      "maxInjectionChars": 6000
+    }
+  ]
+}

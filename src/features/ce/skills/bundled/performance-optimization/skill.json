@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "id": "performance-optimization",
+  "name": "Performance optimization",
+  "description": "Measure-first performance optimization for regressions, Core Web Vitals, and load budgets. Use when profiling shows a bottleneck; not for speculative premature optimization.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "feature",
+    "bugfix",
+    "refactor"
+  ],
+  "taskKinds": [
+    "implementation",
+    "debugging",
+    "explicit_plan"
+  ],
+  "triggers": [
+    "performance",
+    "slow",
+    "latency",
+    "core web vitals",
+    "load time",
+    "bottleneck",
+    "profile",
+    "p95"
+  ],
+  "negativeTriggers": [
+    "visual redesign",
+    "write documentation",
+    "commit message",
+    "update the readme",
+    "documentation only"
+  ],
+  "requiredTools": [
+    "read_file",
+    "search"
+  ],
+  "optionalTools": [
+    "apply_patch",
+    "run_command",
+    "browser"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [
+    "references/performance-checklist.md"
+  ],
+  "maxInjectionChars": 6500,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 16,
+  "tags": [
+    "performance",
+    "profiling",
+    "web-vitals"
+  ],
+  "tests": [
+    {
+      "id": "positive-perf-regression",
+      "name": "Selects for measured performance work",
+      "request": "Profile and fix the p95 latency regression on the checkout page",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch",
+        "run_command"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 6500
+    },
+    {
+      "id": "negative-docs",
+      "name": "Not selected for docs-only work",
+      "request": "Update the README installation section \u2014 documentation only",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "id": "git-history-analysis",
+  "name": "Git history analysis",
+  "description": "Summarize recent history, file history, blame, release history, hotspots, and when a change was introduced. Use for bounded git log/blame analysis \u2014 not for rewriting history.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "git"
+  ],
+  "taskKinds": [
+    "git"
+  ],
+  "taskSubtypes": [
+    "git_history_analysis",
+    "git_blame_analysis"
+  ],
+  "triggers": [
+    "git blame",
+    "git log",
+    "file history",
+    "when was this introduced",
+    "hotspot",
+    "release history",
+    "recent commits"
+  ],
+  "negativeTriggers": [
+    "git status",
+    "show the diff",
+    "create a commit",
+    "rebase"
+  ],
+  "requiredTools": [
+    "read_file"
+  ],
+  "optionalTools": [
+    "run_command",
+    "git_log",
+    "git_blame"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [
+    "git-read"
+  ],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 4500,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 28,
+  "tags": [
+    "git",
+    "history",
+    "blame"
+  ],
+  "pinningRules": [
+    {
+      "id": "history-subtype",
+      "scope": "task-subtype",
+      "value": "git_history_analysis",
+      "action": "attach",
+      "priority": 48
+    }
+  ],
+  "tests": [
+    {
+      "id": "positive-blame",
+      "name": "Selects for blame/history questions",
+      "request": "Who last changed auth.ts and when was the token refresh introduced?",
+      "mode": "ask",
+      "availableTools": [
+        "read_file",
+        "run_command",
+        "git_log"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 4500
+    },
+    {
+      "id": "negative-status",
+      "name": "Not selected for status/diff requests",
+      "request": "Show git status and the unstaged diff",
+      "mode": "ask",
+      "availableTools": [
+        "read_file",
+        "run_command",
+        "git_status",
+        "git_diff"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

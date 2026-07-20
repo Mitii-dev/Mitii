@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "id": "debugging-and-error-recovery",
+  "name": "Debugging and error recovery",
+  "description": "Evidence-based triage for failing tests, broken builds, and unexpected behavior. Use for diagnosis; for concrete bugfix intent prefer bugfix-workflow after root cause is clear.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "diagnose",
+    "bugfix"
+  ],
+  "taskKinds": [
+    "debugging"
+  ],
+  "triggers": [
+    "failing tests",
+    "broken build",
+    "unexpected behavior",
+    "stack trace",
+    "root cause",
+    "triage",
+    "error recovery"
+  ],
+  "negativeTriggers": [
+    "implement a new feature from scratch",
+    "scaffold a new module",
+    "implement from scratch",
+    "greenfield",
+    "new feature from scratch",
+    "build a new",
+    "from scratch"
+  ],
+  "requiredTools": [
+    "read_file",
+    "search"
+  ],
+  "optionalTools": [
+    "diagnostics",
+    "run_command",
+    "apply_patch"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 7000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 22,
+  "tags": [
+    "debugging",
+    "triage",
+    "errors"
+  ],
+  "pinningRules": [
+    {
+      "id": "diagnose-intent",
+      "scope": "intent",
+      "value": "diagnose",
+      "action": "recommend",
+      "priority": 30
+    }
+  ],
+  "tests": [
+    {
+      "id": "positive-failing-tests",
+      "name": "Selects for failing-test triage",
+      "request": "The CI build is broken and tests are failing \u2014 help triage the root cause",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "run_command",
+        "diagnostics"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 7000
+    },
+    {
+      "id": "negative-greenfield",
+      "name": "Not selected for greenfield feature work",
+      "request": "Implement a new billing service from scratch as a greenfield feature",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

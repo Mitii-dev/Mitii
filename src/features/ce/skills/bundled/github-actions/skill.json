@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "id": "github-actions",
+  "name": "GitHub Actions",
+  "description": "Analyze GitHub Actions workflows and failures; update workflow files; dispatch or rerun runs. Use for CI workflow analysis, patches, and approved remote dispatch.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "git"
+  ],
+  "taskKinds": [
+    "git"
+  ],
+  "taskSubtypes": [
+    "github_workflow_analyze",
+    "github_workflow_update",
+    "github_workflow_dispatch"
+  ],
+  "triggers": [
+    "github actions",
+    "workflow yaml",
+    "ci workflow",
+    "rerun workflow",
+    "dispatch workflow",
+    "failing ci"
+  ],
+  "negativeTriggers": [
+    "create pull request",
+    "create github issue",
+    "commit message"
+  ],
+  "pathPatterns": [
+    ".github/workflows/**"
+  ],
+  "requiredTools": [
+    "read_file",
+    "search"
+  ],
+  "optionalTools": [
+    "apply_patch",
+    "run_command"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 5000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 24,
+  "tags": [
+    "git",
+    "github",
+    "ci",
+    "actions"
+  ],
+  "pinningRules": [
+    {
+      "id": "workflow-path",
+      "scope": "path",
+      "value": ".github/workflows/**",
+      "action": "recommend",
+      "priority": 40
+    }
+  ],
+  "tests": [
+    {
+      "id": "positive-ci-failure",
+      "name": "Selects for Actions workflow analysis",
+      "request": "Analyze why the GitHub Actions CI workflow is failing",
+      "mode": "agent",
+      "repositoryFacts": {
+        "paths": [
+          ".github/workflows/ci.yml"
+        ]
+      },
+      "availableTools": [
+        "read_file",
+        "search",
+        "run_command"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 5000
+    },
+    {
+      "id": "negative-pr",
+      "name": "Not selected for PR creation",
+      "request": "Create a pull request for my current branch",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "run_command"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

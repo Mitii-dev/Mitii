@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "id": "git-read",
+  "name": "Git read",
+  "description": "Read-only Git status, diff review, branch comparison, commit inspection, and repo state explanation. Use for status, diffs, and explaining repository state without writes.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "git"
+  ],
+  "taskKinds": [
+    "git"
+  ],
+  "taskSubtypes": [
+    "git_status_summary",
+    "git_diff_analysis",
+    "git_branch_compare"
+  ],
+  "triggers": [
+    "git status",
+    "show the diff",
+    "compare branches",
+    "explain repo state",
+    "unstaged changes"
+  ],
+  "negativeTriggers": [
+    "git blame",
+    "file history",
+    "create a commit",
+    "commit message"
+  ],
+  "requiredTools": [
+    "read_file"
+  ],
+  "optionalTools": [
+    "run_command",
+    "git_status",
+    "git_diff",
+    "git_log"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [
+    "git-history-analysis"
+  ],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 4000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 26,
+  "tags": [
+    "git",
+    "status",
+    "diff"
+  ],
+  "pinningRules": [
+    {
+      "id": "status-subtype",
+      "scope": "task-subtype",
+      "value": "git_status_summary",
+      "action": "attach",
+      "priority": 45
+    }
+  ],
+  "tests": [
+    {
+      "id": "positive-status-diff",
+      "name": "Selects for status and diff review",
+      "request": "Summarize git status and review the current unstaged diff",
+      "mode": "ask",
+      "availableTools": [
+        "read_file",
+        "run_command",
+        "git_status",
+        "git_diff"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 4000
+    },
+    {
+      "id": "negative-blame",
+      "name": "Not selected for blame/history",
+      "request": "Run git blame on src/auth.ts and summarize who changed it",
+      "mode": "ask",
+      "availableTools": [
+        "read_file",
+        "run_command"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

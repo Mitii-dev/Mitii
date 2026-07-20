@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "id": "git-commit",
+  "name": "Git commit",
+  "description": "Stage and create a local Git commit after explicit user request and approval. Use for local commits only \u2014 never push, force, or skip hooks automatically.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "git"
+  ],
+  "taskKinds": [
+    "git"
+  ],
+  "taskSubtypes": [
+    "git_commit",
+    "git_commit_amend"
+  ],
+  "triggers": [
+    "create a commit",
+    "commit these changes",
+    "stage and commit",
+    "make a commit"
+  ],
+  "negativeTriggers": [
+    "commit message only",
+    "write a commit message",
+    "push to remote",
+    "create pull request",
+    "generate a commit message"
+  ],
+  "requiredTools": [
+    "read_file"
+  ],
+  "optionalTools": [
+    "run_command",
+    "git_status",
+    "git_diff",
+    "git_stage_files",
+    "git_commit"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [
+    "git-commit-message"
+  ],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 4500,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 30,
+  "tags": [
+    "git",
+    "commit"
+  ],
+  "pinningRules": [
+    {
+      "id": "git-commit-subtype",
+      "scope": "task-subtype",
+      "value": "git_commit",
+      "action": "attach",
+      "priority": 50
+    }
+  ],
+  "tests": [
+    {
+      "id": "positive-commit",
+      "name": "Selects for local commit creation",
+      "request": "Commit my staged changes after I approve",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "run_command",
+        "git_status",
+        "git_commit"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 4500
+    },
+    {
+      "id": "negative-message-only",
+      "name": "Not selected for message-only requests",
+      "request": "Generate a commit message only \u2014 do not commit",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "run_command",
+        "git_status",
+        "git_diff"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

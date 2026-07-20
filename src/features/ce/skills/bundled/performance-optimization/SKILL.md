@@ -1,338 +1,115 @@
 ---
 name: performance-optimization
-description: Measure-first performance optimization for regressions, Core Web Vitals, and load-time budgets. Use when profiling shows a bottleneck to fix.
+description: Measure-first performance optimization for regressions, Core Web Vitals, and load budgets. Use when profiling shows a bottleneck; not for speculative premature optimization.
 ---
 
 # Performance Optimization
 
 ## Quick Reference
 
-- Measure before optimizing; fix the proven bottleneck; re-measure.
-- Do not use this skill for speculative premature optimization.
+- Measure → Identify → Fix → Verify → Guard. Never optimize without a baseline.
+- Fix the proven bottleneck only; re-measure after the change.
 - Prefer budgets (CWV, p95, bundle size) and CI guardrails.
 - Deep checklist: `references/performance-checklist.md`.
+- Boundary vs `react-next-performance`: this skill = general/measure-first across FE/BE; react-next = React/Next-specific rule routing when the stack and symptom are React/Next.
 
-## Overview
-
-Measure before optimizing. Performance work without measurement is guessing — and guessing leads to premature optimization that adds complexity without improving what matters. Profile first, identify the actual bottleneck, fix it, measure again. Optimize only what measurements prove matters.
-
-## When to Use
-
-- Performance requirements exist in the spec (load time budgets, response time SLAs)
-- Users or monitoring report slow behavior
-- Core Web Vitals scores are below thresholds
-- You suspect a change introduced a regression
-- Building features that handle large datasets or high traffic
-
-**When NOT to use:** Don't optimize before you have evidence of a problem. Premature optimization adds complexity that costs more than the performance it gains.
-
-## Core Web Vitals Targets
-
-| Metric | Good | Needs Improvement | Poor |
-|--------|------|-------------------|------|
-| **LCP** (Largest Contentful Paint) | ≤ 2.5s | ≤ 4.0s | > 4.0s |
-| **INP** (Interaction to Next Paint) | ≤ 200ms | ≤ 500ms | > 500ms |
-| **CLS** (Cumulative Layout Shift) | ≤ 0.1 | ≤ 0.25 | > 0.25 |
-
-## The Optimization Workflow
-
-```
-1. MEASURE  → Establish baseline with real data
-2. IDENTIFY → Find the actual bottleneck (not assumed)
-3. FIX      → Address the specific bottleneck
-4. VERIFY   → Measure again, confirm improvement
-5. GUARD    → Add monitoring or tests to prevent regression
-```
-
-### Step 1: Measure
-
-Two complementary approaches — use both:
-
-- **Synthetic (Lighthouse, DevTools Performance tab):** Controlled conditions, reproducible. Best for CI regression detection and isolating specific issues.
-- **RUM (web-vitals library, CrUX):** Real user data in real conditions. Required to validate that a fix actually improved user experience.
-
-**Frontend:**
-```bash
-# Synthetic: Lighthouse in Chrome DevTools (or CI)
-# Chrome DevTools → Performance tab → Record
-# Chrome DevTools MCP → Performance trace
-
-# RUM: Web Vitals library in code
-import { onLCP, onINP, onCLS } from 'web-vitals';
-
-onLCP(console.log);
-onINP(console.log);
-onCLS(console.log);
-```
-
-**Backend:**
-```bash
-# Response time logging
-# Application Performance Monitoring (APM)
-# Database query logging with timing
-
-# Simple timing
-console.time('db-query');
-const result = await db.query(...);
-console.timeEnd('db-query');
-```
-
-### Where to Start Measuring
-
-Use the symptom to decide what to measure first:
-
-```
-What is slow?
-├── First page load
-│   ├── Large bundle? --> Measure bundle size, check code splitting
-│   ├── Slow server response? --> Measure TTFB in DevTools Network waterfall
-│   │   ├── DNS long? --> Add dns-prefetch / preconnect for known origins
-│   │   ├── TCP/TLS long? --> Enable HTTP/2, check edge deployment, keep-alive
-│   │   └── Waiting (server) long? --> Profile backend, check queries and caching
-│   └── Render-blocking resources? --> Check network waterfall for CSS/JS blocking
-├── Interaction feels sluggish
-│   ├── UI freezes on click? --> Profile main thread, look for long tasks (>50ms)
-│   ├── Form input lag? --> Check re-renders, controlled component overhead
-│   └── Animation jank? --> Check layout thrashing, forced reflows
-├── Page after navigation
-│   ├── Data loading? --> Measure API response times, check for waterfalls
-│   └── Client rendering? --> Profile component render time, check for N+1 fetches
-└── Backend / API
-    ├── Single endpoint slow? --> Profile database queries, check indexes
-    ├── All endpoints slow? --> Check connection pool, memory, CPU
-    └── Intermittent slowness? --> Check for lock contention, GC pauses, external deps
-```
-
-### Step 2: Identify the Bottleneck
-
-Common bottlenecks by category:
-
-**Frontend:**
-
-| Symptom | Likely Cause | Investigation |
-|---------|-------------|---------------|
-| Slow LCP | Large images, render-blocking resources, slow server | Check network waterfall, image sizes |
-| High CLS | Images without dimensions, late-loading content, font shifts | Check layout shift attribution |
-| Poor INP | Heavy JavaScript on main thread, large DOM updates | Check long tasks in Performance trace |
-| Slow initial load | Large bundle, many network requests | Check bundle size, code splitting |
-
-**Backend:**
-
-| Symptom | Likely Cause | Investigation |
-|---------|-------------|---------------|
-| Slow API responses | N+1 queries, missing indexes, unoptimized queries | Check database query log |
-| Memory growth | Leaked references, unbounded caches, large payloads | Heap snapshot analysis |
-| CPU spikes | Synchronous heavy computation, regex backtracking | CPU profiling |
-| High latency | Missing caching, redundant computation, network hops | Trace requests through the stack |
-
-### Step 3: Fix Common Anti-Patterns
-
-#### N+1 Queries (Backend)
-
-```typescript
-// BAD: N+1 — one query per task for the owner
-const tasks = await db.tasks.findMany();
-for (const task of tasks) {
-  task.owner = await db.users.findUnique({ where: { id: task.ownerId } });
-}
-
-// GOOD: Single query with join/include
-const tasks = await db.tasks.findMany({
-  include: { owner: true },
-});
-```
-
-#### Unbounded Data Fetching
-
-```typescript
-// BAD: Fetching all records
-const allTasks = await db.tasks.findMany();
-
-// GOOD: Paginated with limits
-const tasks = await db.tasks.findMany({
-  take: 20,
-  skip: (page - 1) * 20,
-  orderBy: { createdAt: 'desc' },
-});
-```
-
-#### Missing Image Optimization (Frontend)
-
-```html
-<!-- BAD: No dimensions, no format optimization -->
-<img src="/hero.jpg" />
-
-<!-- GOOD: Hero / LCP image — art direction + resolution switching, high priority -->
-<!--
-  Two techniques combined:
-  - Art direction (media): different crop/composition per breakpoint
-  - Resolution switching (srcset + sizes): right file size per screen density
--->
-<picture>
-  <!-- Mobile: portrait crop (8:10) -->
-  <source
-    media="(max-width: 767px)"
-    srcset="/hero-mobile-400.avif 400w, /hero-mobile-800.avif 800w"
-    sizes="100vw"
-    width="800"
-    height="1000"
-    type="image/avif"
-  />
-  <source
-    media="(max-width: 767px)"
-    srcset="/hero-mobile-400.webp 400w, /hero-mobile-800.webp 800w"
-    sizes="100vw"
-    width="800"
-    height="1000"
-    type="image/webp"
-  />
-  <!-- Desktop: landscape crop (2:1) -->
-  <source
-    srcset="/hero-800.avif 800w, /hero-1200.avif 1200w, /hero-1600.avif 1600w"
-    sizes="(max-width: 1200px) 100vw, 1200px"
-    width="1200"
-    height="600"
-    type="image/avif"
-  />
-  <source
-    srcset="/hero-800.webp 800w, /hero-1200.webp 1200w, /hero-1600.webp 1600w"
-    sizes="(max-width: 1200px) 100vw, 1200px"
-    width="1200"
-    height="600"
-    type="image/webp"
-  />
-  <img
-    src="/hero-desktop.jpg"
-    width="1200"
-    height="600"
-    fetchpriority="high"
-    alt="Hero image description"
-  />
-</picture>
-
-<!-- GOOD: Below-the-fold image — lazy loaded + async decoding -->
-<img
-  src="/content.webp"
-  width="800"
-  height="400"
-  loading="lazy"
-  decoding="async"
-  alt="Content image description"
-/>
-```
-
-#### Unnecessary Re-renders (React)
-
-```tsx
-// BAD: Creates new object on every render, causing children to re-render
-function TaskList() {
-  return <TaskFilters options={{ sortBy: 'date', order: 'desc' }} />;
-}
-
-// GOOD: Stable reference
-const DEFAULT_OPTIONS = { sortBy: 'date', order: 'desc' } as const;
-function TaskList() {
-  return <TaskFilters options={DEFAULT_OPTIONS} />;
-}
-
-// Use React.memo for expensive components
-const TaskItem = React.memo(function TaskItem({ task }: Props) {
-  return <div>{/* expensive render */}</div>;
-});
-
-// Use useMemo for expensive computations
-function TaskStats({ tasks }: Props) {
-  const stats = useMemo(() => calculateStats(tasks), [tasks]);
-  return <div>{stats.completed} / {stats.total}</div>;
-}
-```
-
-#### Large Bundle Size
-
-```typescript
-// Modern bundlers (Vite, webpack 5+) handle named imports with tree-shaking automatically,
-// provided the dependency ships ESM and is marked `sideEffects: false` in package.json.
-// Profile before changing import styles — the real gains come from splitting and lazy loading.
-
-// GOOD: Dynamic import for heavy, rarely-used features
-const ChartLibrary = lazy(() => import('./ChartLibrary'));
-
-// GOOD: Route-level code splitting wrapped in Suspense
-const SettingsPage = lazy(() => import('./pages/Settings'));
-
-function App() {
-  return (
-    <Suspense fallback={<Spinner />}>
-      <SettingsPage />
-    </Suspense>
-  );
-}
-```
-
-#### Missing Caching (Backend)
-
-```typescript
-// Cache frequently-read, rarely-changed data
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-let cachedConfig: AppConfig | null = null;
-let cacheExpiry = 0;
-
-async function getAppConfig(): Promise<AppConfig> {
-  if (cachedConfig && Date.now() < cacheExpiry) {
-    return cachedConfig;
-  }
-  cachedConfig = await db.config.findFirst();
-  cacheExpiry = Date.now() + CACHE_TTL;
-  return cachedConfig;
-}
-
-// HTTP caching headers for static assets
-app.use('/static', express.static('public', {
-  maxAge: '1y',           // Cache for 1 year
-  immutable: true,        // Never revalidate (use content hashing in filenames)
-}));
-
-// Cache-Control for API responses
-res.set('Cache-Control', 'public, max-age=300'); // 5 minutes
-```
-
-## Performance Budget
-
-Set budgets and enforce them:
-
-```
-JavaScript bundle: < 200KB gzipped (initial load)
-CSS: < 50KB gzipped
-Images: < 200KB per image (above the fold)
-Fonts: < 100KB total
-API response time: < 200ms (p95)
-Time to Interactive: < 3.5s on 4G
-Lighthouse Performance score: ≥ 90
-```
-
-**Enforce in CI:**
-```bash
-# Bundle size check
-npx bundlesize --config bundlesize.config.json
-
-# Lighthouse CI
-npx lhci autorun
-```
-
-## See Also
-
-For detailed performance checklists, optimization commands, and anti-pattern reference, see `references/performance-checklist.md`.
-
-
-
-## Verification
-
-After any performance-related change:
-
-- [ ] Before and after measurements exist (specific numbers)
-- [ ] The specific bottleneck is identified and addressed
-- [ ] Core Web Vitals are within "Good" thresholds
-- [ ] Bundle size hasn't increased significantly
-- [ ] No N+1 queries in new data fetching code
-- [ ] Performance budget passes in CI (if configured)
-- [ ] Existing tests still pass (optimization didn't break behavior)
+## When to Use / Not
+
+**Use when:** SLA/budget exists; users/monitoring report slowness; CWV below target; suspected regression; large-data/high-traffic features with evidence.
+
+**Do not use when:** no measured problem (premature optimization); pure React/Next rule application with an already-known React symptom — prefer `react-next-performance` for that stack’s specific rules after measuring.
+
+## Core Web Vitals (Good)
+
+| Metric | Good |
+| --- | --- |
+| LCP | ≤ 2.5s |
+| INP | ≤ 200ms |
+| CLS | ≤ 0.1 |
+
+## Workflow
+
+### 1. Measure
+
+Establish baseline with synthetic (Lighthouse, DevTools Performance) and/or RUM (web-vitals, CrUX). Backend: APM, query timing, `console.time` around suspects.
+
+Symptom → first measurement:
+
+- First load → bundle size, TTFB waterfall, render-blocking resources
+- Sluggish interaction → long tasks (>50ms), re-renders
+- Post-navigation → API waterfalls, client render time
+- Backend → query plans/indexes, pool/CPU/memory, locks/GC
+
+### 2. Identify
+
+Common signals:
+
+| Area | Symptom | Investigate |
+| --- | --- | --- |
+| FE | Slow LCP / high CLS / poor INP / large load | Images, blocking CSS/JS, layout shifts, long tasks, bundle |
+| BE | Slow API / memory growth / CPU spikes | N+1, missing indexes, unbounded fetch, leaks, sync heavy work |
+
+### 3. Fix (proven bottleneck only)
+
+Apply the smallest fix matching evidence. Typical patterns (details in checklist):
+
+- N+1 → join/include/batch
+- Unbounded lists → pagination/limits
+- Images → dimensions, modern formats, priority/lazy correctly
+- Re-renders → stable props, memo only where measured
+- Bundle → route-level lazy/Suspense for heavy rarely-used paths
+- Caching → TTL for hot reads; Cache-Control for static/API as appropriate
+
+Do not combine unrelated FE/BE/bundle refactors unless evidence connects them.
+
+### 4. Verify
+
+Re-run the same measurement; record before/after numbers.
+
+### 5. Guard
+
+Add budget/CI checks (bundlesize, Lighthouse CI) or a regression test/monitor when practical.
+
+## Budgets (defaults — adjust to project)
+
+- JS initial: < 200KB gzipped; CSS < 50KB; above-fold image < 200KB; fonts < 100KB total
+- API p95 < 200ms; Lighthouse Performance ≥ 90 when used
+
+## Ask Guidance
+
+- Stay read-only; report baseline, bottleneck hypothesis with evidence, and recommended fix options.
+- Distinguish measured facts from speculative causes.
+
+## Planning Guidance
+
+- Require a measurement step before implementation.
+- One bottleneck per vertical slice; include re-measure and guardrail steps.
+- If stack is React/Next and rules are framework-specific, plan handoff/use of `react-next-performance` for the fix details.
+
+## Agent Execution Guidance
+
+- Capture baseline before edits.
+- Change one bottleneck at a time; keep behavior tests green.
+- Prefer low-risk measurable fixes over broad rewrites.
+- Stop after requested performance goal is verified — no drive-by cleanup.
+
+## Verification Guidance
+
+- Before/after numbers for the targeted metric
+- Bottleneck identified and addressed
+- Focused tests/build still pass
+- Budget/CI check when configured; report if measurement tools unavailable
+
+## Failure Behavior
+
+- No reproducible slow path → stop; ask for repro, trace, or RUM evidence.
+- Fix does not improve metric → revert speculative change; re-profile before next attempt.
+- Measurement tools missing → use best available proxy and state the limitation.
+
+## Forbidden Actions
+
+- Optimizing without a baseline
+- Claiming improvement without re-measurement
+- Broad speculative rewrites “for performance”
+- Breaking correctness/accessibility for micro-gains
+- Expanding into unrelated refactors after the budget is met

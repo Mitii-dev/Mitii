@@ -10,14 +10,41 @@
   "enabled": true,
   "status": "recommended",
   "kind": "workflow",
-  "supportedModes": ["ask", "plan", "agent"],
-  "intents": ["bugfix", "diagnose"],
-  "taskKinds": ["debugging", "implementation"],
-  "triggers": ["fix", "bug", "broken", "failing", "regression"],
-  "negativeTriggers": ["explain bugfix workflow"],
-  "requiredTools": ["read_file", "search"],
-  "optionalTools": ["diagnostics", "apply_patch", "run_command"],
-  "requiredCapabilities": ["repository-read"],
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "bugfix",
+    "diagnose"
+  ],
+  "taskKinds": [
+    "debugging",
+    "implementation"
+  ],
+  "triggers": [
+    "fix",
+    "bug",
+    "broken",
+    "failing",
+    "regression"
+  ],
+  "negativeTriggers": [
+    "explain bugfix workflow"
+  ],
+  "requiredTools": [
+    "read_file",
+    "search"
+  ],
+  "optionalTools": [
+    "diagnostics",
+    "apply_patch",
+    "run_command"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
   "dependencies": [],
   "conflicts": [],
   "entrypoint": "SKILL.md",
@@ -26,7 +53,10 @@
   "injectionStrategy": "lazy-references",
   "trust": "builtin",
   "priority": 20,
-  "tags": ["debugging", "verification"],
+  "tags": [
+    "debugging",
+    "verification"
+  ],
   "pinningRules": [
     {
       "id": "bugfix-intent",
@@ -42,8 +72,16 @@
       "name": "Selects for a concrete bugfix",
       "request": "Fix the failing authentication refresh test",
       "mode": "agent",
-      "availableTools": ["read_file", "search", "apply_patch", "run_command"],
-      "availableCapabilities": ["repository-read", "workspace-write"],
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch",
+        "run_command"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
       "expected": "selected",
       "maxInjectionChars": 5000
     },
@@ -53,7 +91,9 @@
       "request": "Fix this bug",
       "mode": "agent",
       "availableTools": [],
-      "availableCapabilities": ["repository-read"],
+      "availableCapabilities": [
+        "repository-read"
+      ],
       "expected": "rejected"
     }
   ]

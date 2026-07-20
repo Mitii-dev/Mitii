@@ -16,9 +16,12 @@ Edit Mitii-owned skills (e.g. `audit-cleanup/`, `documentation/`, `git-*`, `log-
 ```text
 bundled/<skill-name>/
 ├── SKILL.md
+├── skill.json        # optional routing/manifest metadata for Skill Engine
 ├── scripts/          # optional helpers
 └── references/       # optional schemas / guides
 ```
+
+`skill.json` is optional but recommended. When present, it must match `SkillManifestSchema` (`schemaVersion: 1`) and is used by the Skill Engine for selection, conflicts, injection limits, and routing tests. `SKILL.md` frontmatter `description` must stay in sync with `skill.json` `description` (≤240 chars).
 
 ## Rules vs Skills
 
@@ -29,7 +32,7 @@ bundled/<skill-name>/
 
 Decision rule: holds on every task => Rule; workflow for a task type => Skill.
 
-Turn policy for which skill is active lives in `src/core/pipeline/skills/` (see `src/core/STRUCTURE.md`).
+Turn policy for which skill is active lives in `src/features/ce/pipeline/skills/skillResolver.ts`. When Skill Engine is configured (normal VS Code / headless hosts), `skill.json` manifests participate in scoring, conflict resolution, and injection strategy and override the hardcoded route resolver for the turn.
 
 ## Invocation
 
@@ -44,8 +47,9 @@ For `quick-ref` tiers, include a top-level `## Quick Reference` (or `## Overview
 - [ ] Folder name = frontmatter `name` (kebab-case)
 - [ ] Valid `---` / `---` YAML frontmatter with `name` + `description`
 - [ ] Description ≤ 240 chars, third person, includes WHAT + WHEN (+ Do not use when helpful)
+- [ ] Optional `skill.json` matches frontmatter description and `SkillManifestSchema`
 - [ ] `## Quick Reference` near the top
 - [ ] Keep `SKILL.md` lean (target ≤ ~8k chars); put deep detail in `references/*.md` and link one level deep
 - [ ] No dangling `references/` links
-- [ ] Wired into routing when the skill should auto-load (`actSkillRouting` / `planSkillRouting` / `selectGitSkills`)
+- [ ] Wired into routing when the skill should auto-load (`actSkillRouting` / `planSkillRouting` / `selectGitSkills`) or covered by Skill Engine manifest tests
 - [ ] `pnpm run skills:validate` passes

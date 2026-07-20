@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "id": "github-issues",
+  "name": "GitHub issues",
+  "description": "Draft, create, or update GitHub issues, or turn a report into an issue plan. Use for issue drafts and approved remote issue writes.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "git"
+  ],
+  "taskKinds": [
+    "git"
+  ],
+  "taskSubtypes": [
+    "github_issue_draft",
+    "github_issue_create",
+    "github_issue_update"
+  ],
+  "triggers": [
+    "github issue",
+    "create an issue",
+    "draft an issue",
+    "file a bug report",
+    "update the issue"
+  ],
+  "negativeTriggers": [
+    "create pull request",
+    "commit these changes",
+    "github actions",
+    "create a pull request",
+    "open a pr",
+    "draft a pr"
+  ],
+  "requiredTools": [
+    "read_file",
+    "search"
+  ],
+  "optionalTools": [
+    "run_command"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 4000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 22,
+  "tags": [
+    "git",
+    "github",
+    "issues"
+  ],
+  "tests": [
+    {
+      "id": "positive-issue-draft",
+      "name": "Selects for issue drafting",
+      "request": "Draft a GitHub issue from this bug report",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 4000
+    },
+    {
+      "id": "negative-pr",
+      "name": "Not selected for PR work",
+      "request": "Create a pull request for the feature branch",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "run_command"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

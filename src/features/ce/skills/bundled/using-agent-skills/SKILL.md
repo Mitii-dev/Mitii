@@ -31,10 +31,11 @@ description: >-
 | Domain | Skill names |
 | --- | --- |
 | Meta / plan | `using-agent-skills`, `agent-plan`, `planning-and-task-breakdown` |
-| Quality | `code-review-and-quality`, `code-smells-and-tech-debt`, `test-driven-development` |
+| Quality | `code-review-and-quality`, `code-smells-and-tech-debt`, `test-driven-development`, `bugfix-workflow` |
 | Debug / perf | `debugging-and-error-recovery`, `performance-optimization`, `log-audit` |
+| Frontend / UI | `building-components`, `frontend-design`, `react-next-performance`, `browser-testing-with-devtools` |
+| Architecture / docs | `architecture-migration`, `documentation` |
 | Cleanup / env | `audit-cleanup`, `environment-and-secrets` |
-| Browser | `browser-testing-with-devtools` |
 | Git read/write | `git-read`, `git-history-analysis`, `git-commit-message`, `git-commit`, `git-workflow-guidance` |
 | GitHub / release | `github-pull-request`, `github-issues`, `github-actions`, `changelog-maintenance`, `release-management` |
 

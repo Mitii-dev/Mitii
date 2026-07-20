@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "id": "using-agent-skills",
+  "name": "Using agent skills",
+  "description": "Resolve ambiguity between multiple Mitii skills or sequence skills for compound tasks. Use when several playbooks could apply, the user asks about skill usage, or stages must be ordered. Do not use for ordinary single-intent tasks.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "active",
+  "kind": "policy",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [],
+  "taskKinds": [],
+  "triggers": [
+    "which skill",
+    "skill selection",
+    "use_skill",
+    "sequence skills",
+    "multiple skills apply"
+  ],
+  "negativeTriggers": [
+    "fix the bug",
+    "implement the feature",
+    "commit these changes",
+    "write unit tests"
+  ],
+  "requiredTools": [],
+  "optionalTools": [
+    "use_skill"
+  ],
+  "requiredCapabilities": [],
+  "dependencies": [],
+  "conflicts": [],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 5000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": -50,
+  "tags": [
+    "meta",
+    "policy",
+    "skill-selection"
+  ],
+  "tests": [
+    {
+      "id": "positive-ambiguity",
+      "name": "Selects when skill choice is ambiguous",
+      "request": "Several skills could apply \u2014 help me choose and sequence the right playbooks",
+      "mode": "ask",
+      "availableTools": [
+        "use_skill"
+      ],
+      "availableCapabilities": [],
+      "expected": "selected",
+      "maxInjectionChars": 5000
+    },
+    {
+      "id": "negative-ordinary-bugfix",
+      "name": "Not selected for ordinary bugfix",
+      "request": "Fix the bug in the login refresh handler",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch",
+        "run_command"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

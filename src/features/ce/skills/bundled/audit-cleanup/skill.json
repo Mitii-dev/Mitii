@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "id": "audit-cleanup",
+  "name": "Audit cleanup",
+  "description": "Find unused imports, npm dependencies, and orphan source files. Use for cleanup, depcheck, dead code, knip, circular deps, or bundle-size audits.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "refactor"
+  ],
+  "taskKinds": [
+    "implementation",
+    "explicit_plan"
+  ],
+  "triggers": [
+    "unused dependencies",
+    "dead code",
+    "depcheck",
+    "knip",
+    "orphan files",
+    "bundle-size audit",
+    "circular deps",
+    "cleanup unused"
+  ],
+  "negativeTriggers": [
+    "update readme",
+    "write documentation",
+    "api docs"
+  ],
+  "requiredTools": [
+    "read_file",
+    "search",
+    "run_command"
+  ],
+  "optionalTools": [
+    "apply_patch"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [
+    "documentation"
+  ],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 5000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 22,
+  "tags": [
+    "cleanup",
+    "dependencies",
+    "dead-code"
+  ],
+  "tests": [
+    {
+      "id": "positive-unused-deps",
+      "name": "Selects for unused dependency cleanup",
+      "request": "Find unused npm dependencies and orphan source files",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "run_command"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 5000
+    },
+    {
+      "id": "negative-docs",
+      "name": "Not selected for documentation updates",
+      "request": "Update the README installation section",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

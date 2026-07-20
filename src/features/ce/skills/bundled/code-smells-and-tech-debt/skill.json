@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "id": "code-smells-and-tech-debt",
+  "name": "Code smells and tech debt",
+  "description": "Find and classify console logs, inline styles, missing type annotations, and targeted lint issues. Use for tech-debt cleanup, lint hygiene, console.log removal, and TypeScript typing gaps.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "refactor"
+  ],
+  "taskKinds": [
+    "implementation",
+    "explicit_plan"
+  ],
+  "triggers": [
+    "console.log",
+    "inline styles",
+    "tech debt",
+    "lint hygiene",
+    "missing types",
+    "typing gaps",
+    "code smells"
+  ],
+  "negativeTriggers": [
+    "review this pr",
+    "unused npm dependencies",
+    "architecture migration",
+    "review the pull request",
+    "code review"
+  ],
+  "requiredTools": [
+    "read_file",
+    "search"
+  ],
+  "optionalTools": [
+    "apply_patch",
+    "run_command",
+    "diagnostics"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 5000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 18,
+  "tags": [
+    "tech-debt",
+    "lint",
+    "hygiene"
+  ],
+  "tests": [
+    {
+      "id": "positive-console-logs",
+      "name": "Selects for console.log cleanup",
+      "request": "Find leftover console.log statements and classify them for cleanup",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch",
+        "run_command"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 5000
+    },
+    {
+      "id": "negative-pr-review",
+      "name": "Not selected for full PR review",
+      "request": "Review this PR for correctness and security before merge",
+      "mode": "ask",
+      "availableTools": [
+        "read_file",
+        "search"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

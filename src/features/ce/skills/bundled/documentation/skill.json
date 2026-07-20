@@ -10,25 +10,84 @@
   "enabled": true,
   "status": "recommended",
   "kind": "workflow",
-  "supportedModes": ["ask", "plan", "agent"],
-  "intents": ["docs"],
-  "taskKinds": ["docs", "implementation", "question", "explicit_plan"],
-  "taskSubtypes": ["readme", "api_reference", "architecture", "docusaurus", "mdx_repair", "changelog", "examples", "generic"],
-  "triggers": ["documentation", "readme", "docs", "mdx", "docusaurus", "api docs", "api documentation", "document endpoints", "openapi", "swagger"],
-  "negativeTriggers": ["release notes from git history"],
-  "pathPatterns": ["*.md", "*.mdx", "**/*.md", "**/*.mdx", "docs/**", "src/routes/**", "app/api/**", "pages/api/**", "src/api/**"],
-  "requiredTools": ["read_file"],
-  "optionalTools": ["search", "apply_patch", "run_command"],
-  "requiredCapabilities": ["repository-read"],
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "docs"
+  ],
+  "taskKinds": [
+    "docs",
+    "implementation",
+    "question",
+    "explicit_plan"
+  ],
+  "taskSubtypes": [
+    "readme",
+    "api_reference",
+    "architecture",
+    "docusaurus",
+    "mdx_repair",
+    "changelog",
+    "examples",
+    "generic"
+  ],
+  "triggers": [
+    "documentation",
+    "readme",
+    "docs",
+    "mdx",
+    "docusaurus",
+    "api docs",
+    "api documentation",
+    "document endpoints",
+    "openapi",
+    "swagger"
+  ],
+  "negativeTriggers": [
+    "release notes from git history"
+  ],
+  "pathPatterns": [
+    "*.md",
+    "*.mdx",
+    "**/*.md",
+    "**/*.mdx",
+    "docs/**",
+    "src/routes/**",
+    "app/api/**",
+    "pages/api/**",
+    "src/api/**"
+  ],
+  "requiredTools": [
+    "read_file"
+  ],
+  "optionalTools": [
+    "search",
+    "apply_patch",
+    "run_command"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
   "dependencies": [],
-  "conflicts": ["audit-cleanup"],
+  "conflicts": [
+    "audit-cleanup"
+  ],
   "entrypoint": "SKILL.md",
-  "referenceFiles": ["references/readme-guide.md"],
+  "referenceFiles": [
+    "references/readme-guide.md"
+  ],
   "maxInjectionChars": 6000,
   "injectionStrategy": "lazy-references",
   "trust": "builtin",
   "priority": 20,
-  "tags": ["docs", "readme", "mdx"],
+  "tags": [
+    "docs",
+    "readme",
+    "mdx"
+  ],
   "pinningRules": [
     {
       "id": "mdx-path",
@@ -45,10 +104,19 @@
       "request": "Update the README installation section",
       "mode": "agent",
       "repositoryFacts": {
-        "paths": ["README.md"]
+        "paths": [
+          "README.md"
+        ]
       },
-      "availableTools": ["read_file", "search", "apply_patch"],
-      "availableCapabilities": ["repository-read", "workspace-write"],
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
       "expected": "selected",
       "maxInjectionChars": 6000
     },
@@ -58,10 +126,20 @@
       "request": "Generate API documentation for the auth and billing endpoints",
       "mode": "agent",
       "repositoryFacts": {
-        "paths": ["src/routes/auth.ts", "src/routes/billing.ts"]
+        "paths": [
+          "src/routes/auth.ts",
+          "src/routes/billing.ts"
+        ]
       },
-      "availableTools": ["read_file", "search", "apply_patch"],
-      "availableCapabilities": ["repository-read", "workspace-write"],
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
       "expected": "selected",
       "maxInjectionChars": 6000
     }

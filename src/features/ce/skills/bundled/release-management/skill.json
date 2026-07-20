@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "id": "release-management",
+  "name": "Release management",
+  "description": "Staged release preparation: version bumps, changelog, release commits, tags, pushes, and GitHub releases. Use for releases \u2014 each write stage must be separately verified and approved.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan",
+    "agent"
+  ],
+  "intents": [
+    "git"
+  ],
+  "taskKinds": [
+    "git"
+  ],
+  "taskSubtypes": [
+    "git_release_prepare",
+    "github_release_create",
+    "git_tag_create"
+  ],
+  "triggers": [
+    "prepare a release",
+    "bump version",
+    "create release tag",
+    "publish github release",
+    "release management"
+  ],
+  "negativeTriggers": [
+    "only update changelog",
+    "create pull request only",
+    "commit message"
+  ],
+  "requiredTools": [
+    "read_file",
+    "search"
+  ],
+  "optionalTools": [
+    "apply_patch",
+    "run_command",
+    "release_plan_controller",
+    "git_commit",
+    "git_tag_create",
+    "github_create_release"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [
+    "changelog-maintenance"
+  ],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 5000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 28,
+  "tags": [
+    "git",
+    "release",
+    "versioning"
+  ],
+  "pinningRules": [
+    {
+      "id": "release-subtype",
+      "scope": "task-subtype",
+      "value": "git_release_prepare",
+      "action": "recommend",
+      "priority": 45
+    }
+  ],
+  "tests": [
+    {
+      "id": "positive-release",
+      "name": "Selects for staged release preparation",
+      "request": "Prepare a release: bump version, update changelog, tag, and create a GitHub release",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "run_command",
+        "release_plan_controller"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 5000
+    },
+    {
+      "id": "negative-changelog-only",
+      "name": "Not selected for changelog-only edits",
+      "request": "Only update CHANGELOG.md with notes since the last tag",
+      "mode": "agent",
+      "availableTools": [
+        "read_file",
+        "search",
+        "apply_patch"
+      ],
+      "availableCapabilities": [
+        "repository-read",
+        "workspace-write"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}

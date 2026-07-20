@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "id": "planning-and-task-breakdown",
+  "name": "Planning and task breakdown",
+  "description": "Create implementation plans for multi-step, ambiguous, risky, or cross-component work. Use when asked for a plan or dependent changes must be coordinated. Do not use for questions, commit messages, or single-step fixes.",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "owner": "mitii",
+  "edition": "ce",
+  "enabled": true,
+  "status": "recommended",
+  "kind": "workflow",
+  "supportedModes": [
+    "ask",
+    "plan"
+  ],
+  "intents": [
+    "feature",
+    "refactor"
+  ],
+  "taskKinds": [
+    "explicit_plan"
+  ],
+  "triggers": [
+    "create a plan",
+    "break down the work",
+    "implementation plan",
+    "task breakdown",
+    "multi-step plan"
+  ],
+  "negativeTriggers": [
+    "what is",
+    "commit message",
+    "fix this one-line typo"
+  ],
+  "requiredTools": [
+    "read_file",
+    "search"
+  ],
+  "optionalTools": [
+    "repo_map"
+  ],
+  "requiredCapabilities": [
+    "repository-read"
+  ],
+  "dependencies": [],
+  "conflicts": [
+    "agent-plan"
+  ],
+  "entrypoint": "SKILL.md",
+  "referenceFiles": [],
+  "maxInjectionChars": 6000,
+  "injectionStrategy": "lazy-references",
+  "trust": "builtin",
+  "priority": 20,
+  "tags": [
+    "planning",
+    "breakdown",
+    "plan-mode"
+  ],
+  "pinningRules": [
+    {
+      "id": "plan-mode",
+      "scope": "mode",
+      "value": "plan",
+      "action": "recommend",
+      "priority": 35
+    }
+  ],
+  "tests": [
+    {
+      "id": "positive-plan",
+      "name": "Selects for multi-step planning in plan mode",
+      "request": "Create an implementation plan for migrating auth across three packages",
+      "mode": "plan",
+      "availableTools": [
+        "read_file",
+        "search",
+        "repo_map"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "selected",
+      "maxInjectionChars": 6000
+    },
+    {
+      "id": "negative-commit-message",
+      "name": "Not selected for commit messages",
+      "request": "Write a commit message for my staged changes",
+      "mode": "ask",
+      "availableTools": [
+        "read_file",
+        "search"
+      ],
+      "availableCapabilities": [
+        "repository-read"
+      ],
+      "expected": "rejected"
+    }
+  ]
+}
