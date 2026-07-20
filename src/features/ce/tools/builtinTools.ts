@@ -324,12 +324,19 @@ export function createReadFilesTool(
     },
     async execute(input): Promise<ToolResult> {
       const parts: string[] = [];
-      const paths = input.paths.slice(0, READ_FILES_MAX_PATHS);
-      if (input.paths.length > READ_FILES_MAX_PATHS) {
+      // Models occasionally send one path per array element joined with '\n' or ',' instead
+      // of separate array entries (e.g. paths: ["a.md\nb.sh"]). Split/trim defensively so a
+      // malformed-but-recoverable call still reads the intended files instead of erroring out.
+      const normalizedPaths = input.paths
+        .flatMap((raw) => raw.split(/[\n,]+/))
+        .map((p) => p.trim())
+        .filter(Boolean);
+      const paths = normalizedPaths.slice(0, READ_FILES_MAX_PATHS);
+      if (normalizedPaths.length > READ_FILES_MAX_PATHS) {
         parts.push(
           `NOTE: read_files accepts at most ${READ_FILES_MAX_PATHS} paths per call. ` +
           `Reading the first ${READ_FILES_MAX_PATHS}; call read_files again for: ` +
-          input.paths.slice(READ_FILES_MAX_PATHS).join(', ')
+          normalizedPaths.slice(READ_FILES_MAX_PATHS).join(', ')
         );
       }
       const results = await Promise.all(paths.map(async (path) => ({

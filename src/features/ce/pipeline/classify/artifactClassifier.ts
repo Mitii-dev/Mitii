@@ -112,7 +112,11 @@ export function isStaleDiagnosticLogPath(path: string): boolean {
   const normalized = path.replace(/\\/g, '/').toLowerCase();
   const basename = normalized.split('/').pop() ?? normalized;
   if (basename === '.mitii-state.json') return true;
-  if (/(?:^|\/)\.mitii\/(?:logs|debug-blobs)\//.test(normalized)) return false;
+  // `.mitii/diagnostics/<sessionId>/...` is DiagnosticsStore's first-class, timestamped
+  // evidence store (see DiagnosticsStore.ts) — reading it back is exactly how a step is
+  // supposed to consume the files/errors a prior failing build already captured, not a
+  // stale leftover dump. Only the ad hoc `*-error.log` filename patterns below are stale.
+  if (/(?:^|\/)\.mitii\/(?:logs|debug-blobs|diagnostics)\//.test(normalized)) return false;
   return /(?:^|\/)(?:build-error|typecheck-error|tsc-error|compile-error)(?:[-_.].*)?\.log$/.test(normalized) ||
     /(?:^|\/)(?:.*[-_])?(?:build|typecheck|tsc|compile)[-_]?errors?\.log$/.test(normalized);
 }

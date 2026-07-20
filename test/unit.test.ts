@@ -21,6 +21,7 @@ import { defaultThunderConfig } from '../src/kernel/config/defaults';
 import { estimateTokens } from '../src/kernel/llm/tokenEstimate';
 import { UsageTrackingProvider } from '../src/features/ce/runtime/UsageTrackingProvider';
 import { ProjectRulesService } from '../src/features/ce/rules/ProjectRulesService';
+import type { ThunderPlan } from '../src/features/ce/plans/PlanActEngine';
 
 describe('IgnoreService', () => {
   it('ignores node_modules by default', () => {
@@ -1731,6 +1732,121 @@ describe('Plan parser', () => {
     expect(output).toContain('Diagnostic failing signal captured');
   });
 
+  it('grounds the next step in the exact files a failing build named, and persists the diagnostics', async () => {
+    const { mkdtempSync, rmSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const { PlanExecutor } = await import('../src/features/ce/runtime/PlanExecutor');
+    const { DiagnosticsStore } = await import('../src/features/ce/runtime/DiagnosticsStore');
+
+    const workspace = mkdtempSync(join(tmpdir(), 'thunder-plan-diagnostics-'));
+    try {
+      const plan: ThunderPlan = {
+        goal: 'Fix ai-service build errors',
+        assumptions: [],
+        requiredApprovals: [],
+        steps: [
+          {
+            id: 'reproduce',
+            title: 'Reproduce build failure — capture initial failing signal',
+            objective: 'Run pnpm run build and preserve current TypeScript errors',
+            status: 'pending' as const,
+            risk: 'low' as const,
+            phase: 'diagnostics' as const,
+            tools: ['run_command'],
+            script: { command: 'pnpm run build' },
+            successCriteria: ['Build output captured showing current errors'],
+          },
+          {
+            id: 'fix',
+            title: 'Fix the reported errors',
+            status: 'pending' as const,
+            risk: 'low' as const,
+            script: { command: 'echo done' },
+          },
+        ],
+      };
+      const persistence = { save: () => 'plan-id', updatePlan: () => undefined, complete: () => undefined };
+      const agentLoop = {
+        hadPendingApproval: () => false,
+        async *run() {
+          throw new Error('agent loop should not run for explicit scripted steps');
+        },
+      };
+      let toolCalls = 0;
+      const toolExecutor = {
+        execute: async () => {
+          toolCalls += 1;
+          if (toolCalls === 1) {
+            return {
+              success: false,
+              output:
+                "src/features/document-parser/services/resume-builder-service.ts:20:38 - error TS2307: Cannot find module '../missing'.\n" +
+                "src/jd-parser/services/manual-resume-service.ts:134:13 - error TS7006: Parameter 'url' implicitly has an 'any' type.",
+              error: 'Command failed with exit code 2',
+            };
+          }
+          return { success: true, output: 'Wrote file' };
+        },
+      };
+      const executor = new PlanExecutor(agentLoop as never, persistence as never, undefined, toolExecutor as never);
+      const pack = {
+        items: [],
+        totalTokens: 0,
+        formatted: '',
+        budgetLimit: 100,
+        retrievedCount: 0,
+        truncatedCount: 0,
+        dropped: [],
+      };
+      let seededPaths: string[] | undefined;
+
+      let output = '';
+      for await (const chunk of executor.executePlan(
+        { id: 'sess-diagnostics-1', mode: 'agent' } as never,
+        {} as never,
+        plan,
+        pack,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        {
+          stepMaxRetries: 2,
+          finalValidationEnabled: false,
+          workspace,
+          seedFileScope: (paths: string[]) => {
+            seededPaths = paths;
+          },
+        }
+      )) {
+        output += chunk;
+      }
+      void output;
+
+      expect(plan.steps[0].status).toBe('done');
+      expect(seededPaths).toEqual([
+        'src/features/document-parser/services/resume-builder-service.ts',
+        'src/jd-parser/services/manual-resume-service.ts',
+      ]);
+      // The plan itself now targets the compiler-named files instead of leaving the next
+      // step's scope to be re-derived from narration.
+      expect(plan.steps[1].files).toEqual([
+        'src/features/document-parser/services/resume-builder-service.ts',
+        'src/jd-parser/services/manual-resume-service.ts',
+      ]);
+
+      const record = new DiagnosticsStore(workspace, 'sess-diagnostics-1').latest();
+      expect(record?.files).toEqual([
+        'src/features/document-parser/services/resume-builder-service.ts',
+        'src/jd-parser/services/manual-resume-service.ts',
+      ]);
+      expect(record?.entries.some((e) => e.code === 'TS2307')).toBe(true);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it('completes an agent-loop diagnostic build capture when the command exits nonzero', async () => {
     const { PlanExecutor } = await import('../src/features/ce/runtime/PlanExecutor');
     const plan = {
@@ -2535,6 +2651,43 @@ describe('AgentTaskState', () => {
     expect(normalizeDiagnosticKey('cd apps/docs && npm run build')).toBe('docs-build:apps/docs');
     expect(normalizeDiagnosticKey('cd ai-service && npx tsc --noEmit')).toBe('tsc:ai-service');
     expect(normalizeDiagnosticKey('cd frontend && npx tsc --noEmit')).toBe('tsc:frontend');
+  });
+
+  it('does not let a single-file tsc success satisfy whole-project verification', async () => {
+    const { AgentTaskState, normalizeDiagnosticKey } = await import('../src/features/ce/runtime/AgentTaskState');
+
+    // A file-targeted invocation must get a distinct cache key from the project-wide one,
+    // so it can never be looked up as evidence the project build passed (bug1.md: this
+    // conflation let the agent declare a failing `pnpm run build` fixed).
+    expect(
+      normalizeDiagnosticKey(
+        'cd ai-service && npx tsc --noEmit --skipLibCheck src/features/document-parser/types/resume-parser.types.ts'
+      )
+    ).toBe('tsc-files:ai-service');
+    expect(normalizeDiagnosticKey('cd ai-service && npx tsc --noEmit')).toBe('tsc:ai-service');
+    expect(normalizeDiagnosticKey('cd ai-service && npx tsc --noEmit -p tsconfig.json')).toBe('tsc:ai-service');
+
+    const state = new AgentTaskState();
+    state.setTaskContext('debugging', 'Fix ai-service build errors', 'fix all the issues in @ai-service');
+    state.recordToolSuccess('apply_patch', { path: 'ai-service/src/types/shared/resume-parser.types.ts' }, 'Patch applied');
+    state.recordToolSuccess(
+      'run_command',
+      { command: 'cd ai-service && npx tsc --noEmit --skipLibCheck src/types/shared/resume-parser.types.ts' },
+      'no errors'
+    );
+
+    // The single-file check must not be reported back to the model as "verification
+    // complete" — it should still be told to run the real project build.
+    const soft = state.buildSoftBlockResponse('run_command', {
+      command: 'cd ai-service && npx tsc --noEmit --skipLibCheck src/types/shared/resume-parser.types.ts',
+    });
+    expect(soft ?? '').not.toContain('already succeeded after edits');
+    expect(soft ?? '').not.toContain('Verification for this task is complete');
+
+    // A subsequent project-wide build failure must still be actionable (not treated as an
+    // already-completed duplicate of the narrower file check).
+    const projectBuildBlocked = state.checkBlocked('run_command', { command: 'cd ai-service && pnpm run build' });
+    expect(projectBuildBlocked).toBeNull();
   });
 
   it('builds pause summary with next step hint', async () => {

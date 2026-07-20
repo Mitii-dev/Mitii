@@ -66,6 +66,9 @@ Do NOT call read_file, read_files, list_files, diagnostics, memory_search, use_s
 const WRITE_REQUIRED_CHURN_STOP =
   'Stopped because the model kept using read-only tools for an edit task and never called apply_patch or write_file, despite those tool calls succeeding. Try a stronger coding model or reduce the prompt scope.';
 
+const EMPTY_RESPONSE_RETRY_NUDGE =
+  'SYSTEM: No response was generated for that step. Continue the task now — call a tool if more work is needed, or provide your final answer.';
+
 function buildRequiredOperationNudge(
   operation: NonNullable<AgentLoopOptions['requiredOperation']>
 ): string {
@@ -264,6 +267,7 @@ export class AgentLoop {
     let writeToolCallsMade = initialState.writeToolCallsMade ?? false;
     let requiredSideEffectMade = initialState.requiredSideEffectMade ?? false;
     let noWriteNudgeUsed = false;
+    let emptyResponseRetryUsed = false;
     let noWriteToolRounds = 0;
     let writeChurnNudgeUsed = false;
     let synthesizeOnly = false;
@@ -423,7 +427,15 @@ export class AgentLoop {
           messages.push({ role: 'assistant', content: stepContent });
           const finalChunk = toAssistantStreamChunk(stepContent, undefined, 'final');
           if (finalChunk) yield finalChunk;
-        } else emitCandidate(false, 'empty_response');
+          break;
+        }
+        if (!emptyResponseRetryUsed) {
+          emitCandidate(false, 'empty_response_retry');
+          emptyResponseRetryUsed = true;
+          messages.push({ role: 'user', content: EMPTY_RESPONSE_RETRY_NUDGE });
+          continue;
+        }
+        emitCandidate(false, 'empty_response');
         break;
       }
 
@@ -460,6 +472,13 @@ export class AgentLoop {
       // still chose not to edit. Distinct repeated failures are already caught faster by
       // repeatedInputFailureStop below; this only protects a round of *new* failures.
       let anyToolSucceededThisRound = false;
+      // A propose_file_scope call that requests write access to a new path is forward
+      // progress toward the edit (the required precursor before apply_patch/write_file is
+      // allowed for that path) — it must not be penalized the same as re-reading the same
+      // files over and over. Without this, a multi-package task that legitimately needs
+      // several propose→read/propose→write round trips can hit the flat churn cap one round
+      // before it reaches apply_patch.
+      let scopeExpandedForWrite = false;
 
       for (const { tc, input, execResult, durationMs } of executions) {
         if (signal?.aborted) break;
@@ -502,6 +521,14 @@ export class AgentLoop {
 
         if (completedRealSideEffect && isGroundingTool(tc.function.name)) {
           groundingToolCallsMade = true;
+        }
+
+        if (
+          completedRealSideEffect &&
+          tc.function.name === 'propose_file_scope' &&
+          scopeProposalHasWriteIntent(input)
+        ) {
+          scopeExpandedForWrite = true;
         }
 
         recentToolAttempts.push({
@@ -720,15 +747,21 @@ export class AgentLoop {
         nonWriteOnlyTurn &&
         anyToolSucceededThisRound
       ) {
-        noWriteToolRounds += 1;
-        if (noWriteToolRounds >= 4) {
-          messages.push({ role: 'assistant', content: WRITE_REQUIRED_CHURN_STOP });
-          yield WRITE_REQUIRED_CHURN_STOP;
-          break;
-        }
-        if (noWriteToolRounds >= 2 && !writeChurnNudgeUsed) {
-          writeChurnNudgeUsed = true;
-          messages.push({ role: 'user', content: WRITE_REQUIRED_CHURN_NUDGE });
+        if (scopeExpandedForWrite) {
+          // Forward progress toward an edit (new write-intent scope accepted) — do not
+          // penalize it the same as unproductive re-reading.
+          noWriteToolRounds = 0;
+        } else {
+          noWriteToolRounds += 1;
+          if (noWriteToolRounds >= 4) {
+            messages.push({ role: 'assistant', content: WRITE_REQUIRED_CHURN_STOP });
+            yield WRITE_REQUIRED_CHURN_STOP;
+            break;
+          }
+          if (noWriteToolRounds >= 2 && !writeChurnNudgeUsed) {
+            writeChurnNudgeUsed = true;
+            messages.push({ role: 'user', content: WRITE_REQUIRED_CHURN_NUDGE });
+          }
         }
       }
 
@@ -1253,6 +1286,16 @@ export function needsReadOnlySynthesis(messages: ChatMessage[]): boolean {
     return true;
   }
   return false;
+}
+
+function scopeProposalHasWriteIntent(input: Record<string, unknown>): boolean {
+  const candidates = Array.isArray(input.candidates) ? input.candidates : [];
+  return candidates.some((candidate) => {
+    if (!candidate || typeof candidate !== 'object') return false;
+    const rec = candidate as Record<string, unknown>;
+    const raw = `${rec.intent ?? ''} ${rec.access ?? ''}`.toLowerCase();
+    return raw.includes('write');
+  });
 }
 
 function resolveToolOutput(execResult: import('../safety/ToolExecutor').ToolExecutionResult): {

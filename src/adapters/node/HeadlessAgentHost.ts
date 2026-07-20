@@ -392,6 +392,17 @@ export class HeadlessAgentHost {
         }
       }
       yield* drain();
+    } catch (error) {
+      // An uncaught throw here previously propagated straight out of this generator,
+      // skipping the metrics/done event below entirely — the session log ended mid-step
+      // with no error record and no stack trace, making the failure undiagnosable after
+      // the fact (only a non-zero exit code remained). Log it before rethrowing so the
+      // failure is always traceable in the session log.
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      log.error('Agent stream failed', { error: message, stack });
+      this.sessionLog.append('error', 'Agent stream failed', { error: message, stack });
+      throw error;
     } finally {
       unsubscribe();
     }

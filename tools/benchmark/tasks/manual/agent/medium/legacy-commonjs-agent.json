@@ -93,7 +93,7 @@
     "fixture": "legacy-commonjs",
     "prompt": "Add appropriate Cache-Control headers to the GET /users response, considering that the underlying data can change at any time.",
     "rationale": "Requires reasoning about correct caching semantics (short or no cache) given mutable underlying data, not just adding a header blindly.",
-    "verify": ["exit_0", "jsonl_event:end", "file_contains:server.js:Cache-Control"]
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:routes/users.js:Cache-Control"]
   },
   {
     "id": "agent-medium-legacy-commonjs-module-exports-consistency",

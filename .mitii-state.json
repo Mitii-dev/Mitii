@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "savedAt": "2026-07-20T10:38:27.551Z",
+  "cwd": "/Users/karthikshinde/Applications/ai-agent/mitii/mitii-ai-agent",
+  "branch": "v2.7.x",
+  "commit": "5384afd",
+  "gitStatus": "M src/features/ce/pipeline/classify/artifactClassifier.ts\n M src/features/ce/runtime/AgentTaskState.ts\n M src/features/ce/runtime/PlanExecutor.ts\n M src/features/ce/runtime/logAudit/analyzeJsonl.ts\n M src/features/ce/safety/ToolExecutor.ts\n M test/log-audit/analyzeJsonl.test.ts\n M test/unit.test.ts\nD  tools/benchmark/fixtures/broken-repo/SUPPORT.md\nD  tools/benchmark/fixtures/broken-repo/TODO.md\n M tools/benchmark/fixtures/broken-repo/src/index.js\n M tools/benchmark/fixtures/broken-repo/src/routes/orders.js\nD  tools/benchmark/fixtures/nest-api/src/app.controller.spec.ts\nD  tools/benchmark/fixtures/nest-api/src/app.service.spec.ts\n M tools/benchmark/fixtures/node-express/src/index.js\n M tools/benchmark/fixtures/saas-api/src/modules/webhooks/webhooks.controller.ts\n?? src/features/ce/runtime/DiagnosticsStore.ts\n?? src/features/ce/runtime/diagnosticFileExtractor.ts\n?? test/diagnostics-store.test.ts\n?? tools/benchmark/fixtures/broken-repo/.gitignore\n?? tools/benchmark/fixtures/broken-repo/.mitiiignore\n?? tools/benchmark/fixtures/legacy-commonjs/.gitignore\n?? tools/benchmark/fixtures/legacy-commonjs/.mitiiignore\n?? tools/benchmark/fixtures/monorepo/.gitignore\n?? tools/benchmark/fixtures/monorepo/.mitiiignore",
+  "planId": "",
+  "goalHash": "",
+  "targetProjectId": "",
+  "workspaceRevision": "",
+  "plan": "Task complete: Fixed reserveStock boundary bug (> to >=) in src/routes/orders.js and removed broken db.js require from src/index.js. Both tests pass (node --test test/orders.test.js). npm test script has pre-existing Node v22 directory resolution issue unrelated to these changes.",
+  "findings": ""
+}

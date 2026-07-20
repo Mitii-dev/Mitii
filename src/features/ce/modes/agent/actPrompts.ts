@@ -2,6 +2,7 @@ import type { AskScopeResolution, ProjectCatalog } from '../ask/askTypes';
 import { formatProjectCatalog } from '../ask/ProjectCatalog';
 import { formatVerifyPlanForAgent, resolveProjectVerifyCommands } from '../../runtime/verifyCommandDiscovery';
 import type { ActRoute } from './actTypes';
+import { detectIntegrityGuardrail } from '../../safety/integrityGuardrail';
 
 export function buildActPromptContext(
   userMessage: string,
@@ -57,6 +58,16 @@ export function buildActPromptContext(
       '- If the user asked you to fix something, fix it. "Document the limitation" or "explain why this is restricted" is not an acceptable substitute for a fix unless the restriction is truly intentional and the user should be told to change their request instead.',
       '- Report findings directly; only apply a minimal fix if the cause is obvious and scoped to what was read.',
       '- Do not expand scope into a broader refactor or feature unless the user asks for one.'
+    );
+  }
+
+  const integrityFlag = detectIntegrityGuardrail(userMessage);
+  if (integrityFlag) {
+    lines.push(
+      '',
+      '## Judgment guardrail',
+      `- ${integrityFlag.guidance}`,
+      '- Do the rest of the request normally. For the flagged part specifically: do not call a tool that would carry it out — explain in your final answer why you are declining and what you did instead.'
     );
   }
 

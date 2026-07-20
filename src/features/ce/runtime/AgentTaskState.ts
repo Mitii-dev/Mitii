@@ -9,6 +9,7 @@ import {
   type PhaseActor,
   type TaskPhase,
 } from './agentPhaseMachine';
+import { checkIntegrityGuardrailBlock, detectIntegrityGuardrail, type IntegrityGuardrailFlag } from '../safety/integrityGuardrail';
 
 export type { TaskPhase };
 
@@ -45,7 +46,16 @@ export class AgentTaskState {
   private maxFilesRead = Infinity;
   private readPaths = new Set<string>();
   private forceSynthesis = false;
+  // Counts how many times forceSynthesis has latched true across this task's lifetime
+  // (i.e. across every AgentLoop.run() call PlanExecutor makes with this state, not just
+  // the current loop). Once a task has hit the latch this many times, beginAgentLoop() stops
+  // clearing it — a task that keeps re-triggering forceSynthesis across fresh run() calls is
+  // stuck repeating the same already-blocked action, not legitimately moving through plan
+  // phases, and needs a hard, non-resettable stop instead of another clean slate.
+  private forceSynthesisLatchCount = 0;
+  private static readonly MAX_FORCE_SYNTHESIS_RESETS = 3;
   private isResumeSavedPlan = false;
+  private integrityGuardrail: IntegrityGuardrailFlag | null = null;
 
   reset(): void {
     sendPhaseEvent(this.phaseActor, { type: 'RESET' });
@@ -63,7 +73,9 @@ export class AgentTaskState {
     this.fileScope = null;
     this.readPaths.clear();
     this.forceSynthesis = false;
+    this.forceSynthesisLatchCount = 0;
     this.isResumeSavedPlan = false;
+    this.integrityGuardrail = null;
   }
 
   setLimits(limits: AgentTaskLimits): void {
@@ -80,6 +92,11 @@ export class AgentTaskState {
     this.taskSummary = summary;
     this.originalTask = originalTask;
     this.isResumeSavedPlan = isResumeSavedPlan;
+    this.integrityGuardrail = detectIntegrityGuardrail(originalTask);
+  }
+
+  getIntegrityGuardrail(): IntegrityGuardrailFlag | null {
+    return this.integrityGuardrail;
   }
 
   getPhase(): TaskPhase {
@@ -130,7 +147,9 @@ export class AgentTaskState {
 
   /** Reset loop-local churn state while preserving useful evidence and file scope. */
   beginAgentLoop(): void {
-    this.forceSynthesis = false;
+    if (this.forceSynthesisLatchCount < AgentTaskState.MAX_FORCE_SYNTHESIS_RESETS) {
+      this.forceSynthesis = false;
+    }
     this.actionAttemptCounts.clear();
     this.lastAttemptAt.clear();
   }
@@ -236,6 +255,11 @@ export class AgentTaskState {
 
   /** Returns block reason if this tool call should be rejected. */
   checkBlocked(toolName: string, input: Record<string, unknown>): string | null {
+    if (this.integrityGuardrail) {
+      const integrityBlocked = checkIntegrityGuardrailBlock(this.integrityGuardrail, toolName, input, this.originalTask);
+      if (integrityBlocked) return integrityBlocked;
+    }
+
     const checkpointBlocked = this.checkCheckpointReloadBlocked(toolName, input);
     if (checkpointBlocked) return checkpointBlocked;
 
@@ -267,7 +291,7 @@ export class AgentTaskState {
       this.actionAttemptCounts.set(key, (this.actionAttemptCounts.get(key) ?? 0) + 1);
     }
     if ((this.actionAttemptCounts.get(key) ?? 0) >= 2) {
-      this.forceSynthesis = true;
+      this.triggerForceSynthesis();
       return (
         `already_completed:${key}. Do not retry. Synthesize from the cached result. ` +
         'Controller will force final synthesis after this response.'
@@ -367,6 +391,11 @@ export class AgentTaskState {
   }
 
   markForceSynthesis(): void {
+    this.triggerForceSynthesis();
+  }
+
+  private triggerForceSynthesis(): void {
+    if (!this.forceSynthesis) this.forceSynthesisLatchCount += 1;
     this.forceSynthesis = true;
   }
 
@@ -673,6 +702,7 @@ function skipReasonCode(reason: string): string {
   }
   if (/^File read budget exceeded/.test(reason)) return 'budget';
   if (/^FORCE_SYNTHESIS/.test(reason)) return 'synthesis';
+  if (/^INTEGRITY_GUARDRAIL/.test(reason)) return 'integrity';
   return 'duplicate';
 }
 
@@ -811,7 +841,15 @@ export function normalizeDiagnosticKey(command: string): string | null {
   if (/\bdocusaurus\s+build\b/.test(cmd) || /(?:^|\/)(?:apps\/)?docs(?:\/|$)/.test(project)) {
     return scoped('docs-build');
   }
-  if (/\btsc\b/.test(cmd) || /\btypescript\b/.test(cmd)) return scoped('tsc');
+  if (/\btsc\b/.test(cmd) || /\btypescript\b/.test(cmd)) {
+    // A tsc invocation naming explicit source files only type-checks those files in
+    // isolation from the project's tsconfig graph — it must not be able to satisfy
+    // (or be conflated with) a whole-project typecheck cache entry. See bug1.md:
+    // a single-file `tsc` success was previously cached under the same 'tsc:<dir>'
+    // key as a full `tsc --noEmit`, so the agent declared the project build fixed
+    // after checking one file while `pnpm run build` kept failing.
+    return scoped(tscTargetsExplicitFiles(cmd) ? 'tsc-files' : 'tsc');
+  }
   const packageScript = cmd.match(
     /\b(?:npm|pnpm|yarn)\s+(?:(?:--filter|-f|--workspace|-w)\s+\S+\s+|workspace\s+\S+\s+)?(?:-r\s+|--recursive\s+)?(?:run\s+)?(test|lint|build|compile|typecheck|check|verify|validate|doctor)\b/
   );
@@ -824,6 +862,11 @@ export function normalizeDiagnosticKey(command: string): string | null {
   }
   if (/^cat\s+.*package\.json/.test(cmd)) return 'read-package-json';
   return null;
+}
+
+/** True when a tsc command names explicit source files rather than checking via tsconfig. */
+function tscTargetsExplicitFiles(cmd: string): boolean {
+  return /\b[\w./-]+\.(?:ts|tsx|mts|cts)\b/.test(cmd);
 }
 
 function commandProjectScope(command: string): string {

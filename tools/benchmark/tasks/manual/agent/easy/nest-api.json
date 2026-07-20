@@ -21,7 +21,7 @@
     "fixture": "nest-api",
     "prompt": "Add a GET /users endpoint returning an in-memory array of created users from AppService.",
     "rationale": "Extends existing AppService/AppController with a matching read-side endpoint.",
-    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/app.controller.ts:GET", "file_exists:src/app.service.ts"]
+    "verify": ["exit_0", "jsonl_event:end", "file_contains:src/app.controller.ts:@Get(", "file_exists:src/app.service.ts"]
   },
   {
     "id": "agent-easy-nest-api-validation-pipe",

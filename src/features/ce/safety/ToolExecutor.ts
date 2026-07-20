@@ -317,7 +317,9 @@ export class ToolExecutor {
       toolName,
       path: typeof input.path === 'string' ? input.path : undefined,
       command: typeof input.command === 'string' ? input.command : undefined,
-      success: true,
+      // A skip is neither a completed success nor a failure — it never ran. Do not set
+      // success:true here: downstream log analysis (analyzeJsonl.ts) would otherwise count
+      // a no-op dedup as genuine verification/write evidence (bug1.md item 7/9).
       failure: false,
       skipped: true,
       durationMs: 0,

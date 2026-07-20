@@ -971,7 +971,14 @@ function formatAuditVerification(result: ReturnType<typeof verifyAuditPack>): st
 
 void main(process.argv.slice(2)).then((code) => {
   process.exitCode = code;
+  // The command's real work (including flushing stdout) is done by the time main()
+  // resolves. Force the process to exit instead of relying on the event loop draining
+  // naturally — a stray fire-and-forget background call (e.g. post-task memory
+  // summarization) holding an open handle would otherwise keep the process alive
+  // indefinitely after the user-visible task already finished and was reported.
+  process.exit(code);
 }).catch((error) => {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;
+  process.exit(1);
 });

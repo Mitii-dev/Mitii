@@ -163,9 +163,11 @@ export async function analyzeJsonlFile(
         existing.count += 1;
         signatureCounts.set(signature, existing);
 
-        const success = data.success === true;
-        const failure = data.failure === true || success === false;
         const skippedCall = data.skipped === true || /skipped/i.test(message);
+        const success = data.success === true;
+        // A skip has neither field set to true (it never ran) — don't let the absence of
+        // success:true fall through to "failure" just because it also isn't success:true.
+        const failure = !skippedCall && (data.failure === true || success === false);
 
         if (failure) failedCount += 1;
         if (skippedCall) skippedCount += 1;

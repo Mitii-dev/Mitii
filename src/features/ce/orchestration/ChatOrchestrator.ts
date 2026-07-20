@@ -404,6 +404,32 @@ export class ChatOrchestrator {
     };
   }
 
+  /**
+   * "go ahead" / "execute the plan" style continuation messages carry no informative act
+   * intent of their own (ActIntentRouter's resume_saved_plan path fully overrides routing
+   * for them anyway), so classifying one is wasted work. Worse, degenerate/repetitive
+   * continuation phrasing is exactly the input shape that made the real LLM classifier call
+   * burn most of a turn's timeout budget on hidden reasoning before returning malformed JSON
+   * (see agent-hard-regression-redos-safe-active-plan-regex). Skip the call outright instead
+   * of only falling back to it after it has already failed slowly.
+   */
+  private buildResumeSavedPlanIntentRouting(): ModeIntentRouting {
+    return {
+      mode: 'agent',
+      classification: {
+        intent: 'question',
+        confidence: 0,
+        alternatives: [],
+        needsClarification: false,
+        source: 'fallback',
+        gated: true,
+        gateReason: 'saved_plan_resume_skip',
+      },
+      needsClarification: false,
+      useClassification: false,
+    };
+  }
+
   private buildRoutingClarification(
     mode: ThunderSession['mode'],
     routing: ModeIntentRouting
@@ -601,7 +627,12 @@ export class ChatOrchestrator {
     const activePlanAtStart = isAgentMode
       ? this.deps.planPersistence?.getActive(session.id)
       : undefined;
-    let intentRouting = await this.resolveIntentRouting(session.mode, classifierText, provider);
+    const resumeSavedPlanEarly =
+      isAgentMode &&
+      shouldExecuteSavedPlan(session.mode, taskForClassification, Boolean(activePlanAtStart?.plan), actDepth);
+    let intentRouting = resumeSavedPlanEarly
+      ? this.buildResumeSavedPlanIntentRouting()
+      : await this.resolveIntentRouting(session.mode, classifierText, provider);
     if (intentRouting.needsClarification && (!this.deps.toolExecutor || isApprovalContinuationMessage(userMessage))) {
       this.deps.sessionLog?.append('info', 'Intent clarification skipped; using deterministic analyzer fallback', {
         mode: session.mode,

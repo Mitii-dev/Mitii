@@ -157,6 +157,13 @@ const AUDIT_CLEANUP_ACTION =
 const DOCS_IMPLEMENTATION =
   /\b(add|create|write|update|generate|build)\b[\s\S]{0,80}\b(docs?|documentation|docusaurus|mdx?|examples?)\b|\b(docs?|documentation|docusaurus|mdx?|examples?)\b[\s\S]{0,80}\b(all|every|features?|components?|exports?|api|route|sidebar|navbar|installation|configuration)\b/i;
 
+// "Have packages/web use X" / "Make packages/web also use X" — imperative directives that
+// wire an existing utility into a new call site. Neither "have" nor "make" is in
+// ACTION_VERB_FORMS (too broad: "make sure", "how do I use X" would false-positive), so this
+// narrow pattern catches the directive shape specifically instead of widening the verb list.
+const CROSS_PACKAGE_WIRING_DIRECTIVE =
+  /^(?:have|make)\s+\S[\s\S]{0,80}?\b(?:also\s+)?(?:use|uses|call|calls|import|imports|wire|wires|leverage|leverages)\b/i;
+
 export function analyzeTask(userMessage: string, mode: string, options: TaskAnalysisOptions = {}): TaskAnalysis {
   const text = userMessage.trim();
   const isContinuation = isApprovalContinuationMessage(text);
@@ -410,7 +417,9 @@ function classifyTask(text: string): TaskAnalysis {
     };
   }
 
-  const actionCount = primary.match(ACTION_VERBS_GLOBAL)?.length ?? 0;
+  const actionCount =
+    (primary.match(ACTION_VERBS_GLOBAL)?.length ?? 0) +
+    (CROSS_PACKAGE_WIRING_DIRECTIVE.test(primary) ? 1 : 0);
   const connectorCount = (primary.match(/\b(and|then|also|after that|next)\b/gi) ?? []).length;
   const fileMentions = (primary.match(/[`'"]?[\w./-]+\.(tsx?|jsx?|py|go|rs|json|md|css|scss|yaml|yml)[`'"]?/gi) ?? []).length;
   const broadProjectRepair = isBroadProjectRepairRequest(primary);

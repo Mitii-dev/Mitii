@@ -20,6 +20,8 @@ import type { PostEditValidator } from '../apply/PostEditValidator';
 import type { ToolExecutor, ToolExecutionResult } from '../safety/ToolExecutor';
 import type { TaskAnalysis } from './TaskAnalyzer';
 import type { AgentTaskState } from './AgentTaskState';
+import { isSkippedToolOutput } from './toolSkip';
+import { DiagnosticsStore } from './DiagnosticsStore';
 import { formatVerifyPlanForAgent, resolveProjectVerifyCommands } from './verifyCommandDiscovery';
 import {
   buildStepPrompt,
@@ -459,6 +461,23 @@ export class PlanExecutor {
           if (!execResult.success) {
             const failureDetail = execResult.error ?? execResult.output;
             lastValidationErrors = [`${explicitToolCall.name} failed: ${failureDetail}`];
+            if (['run_command', 'execute_workspace_script'].includes(explicitToolCall.name)) {
+              const commandText =
+                typeof explicitToolCall.input.command === 'string'
+                  ? explicitToolCall.input.command
+                  : typeof explicitToolCall.input.script === 'string'
+                    ? explicitToolCall.input.script
+                    : explicitToolCall.name;
+              this.captureFailingDiagnostics(
+                session.id,
+                options?.workspace,
+                commandText,
+                `${execResult.error ?? ''}\n${execResult.output ?? ''}`,
+                plan,
+                i,
+                options?.seedFileScope
+              );
+            }
             if (isExpectedDiagnosticFailureCapture(step, explicitToolCall.name, execResult)) {
               log.debug('Treating failed diagnostic command as captured reproduction evidence', {
                 stepId: step.id,
@@ -512,7 +531,13 @@ export class PlanExecutor {
             onToolEnd: (name, success, output) => {
               loopCallbacks?.onToolEnd?.(name, success, output);
               toolCallCount += 1;
-              if (success) toolCallSuccessCount += 1;
+              // AgentLoop reports a deduplicated/no-op call as success:true so the model
+              // doesn't retry it — but that means it was never actually executed, so it
+              // must not count toward "this step did real work" completion gates below
+              // (bug1.md: skipped calls must not be indistinguishable from real successes).
+              const wasSkipped = isSkippedToolOutput(output);
+              const countsAsSuccess = success && !wasSkipped;
+              if (countsAsSuccess) toolCallSuccessCount += 1;
               const input = [...toolInputs].reverse().find((candidate) => candidate.name === name)?.input;
               const capturedDiagnosticFailure =
                 !success &&
@@ -525,15 +550,27 @@ export class PlanExecutor {
               if (capturedDiagnosticFailure) {
                 diagnosticFailureCaptures += 1;
               }
-              if (success && ['write_file', 'apply_patch'].includes(name)) {
+              if (!success && !wasSkipped && ['run_command', 'execute_workspace_script'].includes(name)) {
+                const commandText =
+                  typeof input?.command === 'string'
+                    ? input.command
+                    : typeof input?.script === 'string'
+                      ? input.script
+                      : name;
+                this.captureFailingDiagnostics(
+                  session.id,
+                  options?.workspace,
+                  commandText,
+                  output ?? '',
+                  plan,
+                  i,
+                  options?.seedFileScope
+                );
+              }
+              if (countsAsSuccess && ['write_file', 'apply_patch'].includes(name)) {
                 successfulWrites += 1;
               }
-              if (
-                isVerifyStep &&
-                success &&
-                isVerificationTool(name) &&
-                !/\bSkipped redundant\b/i.test(output ?? '')
-              ) {
+              if (isVerifyStep && countsAsSuccess && isVerificationTool(name)) {
                 hasSuccessfulVerification = true;
                 successfulVerifyCommands += 1;
               }
@@ -542,7 +579,7 @@ export class PlanExecutor {
                 name === 'run_command' &&
                 !success &&
                 !capturedDiagnosticFailure &&
-                !/\bSkipped redundant\b/i.test(output ?? '')
+                !wasSkipped
               ) {
                 failedVerifyCommands += 1;
               }
@@ -760,6 +797,43 @@ export class PlanExecutor {
     } catch (error) {
       log.warn('Failed to sync plan file', { error: String(error) });
     }
+  }
+
+  /**
+   * Parses a failed command's output for the exact files/errors it named, persists them as a
+   * session+timestamp scoped DiagnosticsStore record, and pre-authorizes those files into the
+   * task's file scope — grounding the next step in what the compiler/linter actually reported
+   * instead of leaving "which files does this error implicate" to model inference. No-ops when
+   * the output doesn't parse as a recognized diagnostic shape (e.g. a non-build command failing).
+   */
+  private captureFailingDiagnostics(
+    sessionId: string,
+    workspace: string | undefined,
+    command: string,
+    output: string,
+    plan: ThunderPlan,
+    stepIndex: number,
+    seedFileScope?: (paths: string[]) => void
+  ): void {
+    if (!workspace || !command || !output) return;
+
+    const record = new DiagnosticsStore(workspace, sessionId).record({ command, output });
+    if (!record || record.files.length === 0) return;
+
+    seedFileScope?.(record.files);
+
+    // Ground the next not-yet-done step in the compiler-named files instead of the files
+    // (if any) the plan already guessed at when it was first generated.
+    const nextStep = plan.steps.slice(stepIndex + 1).find((s) => s.status !== 'done');
+    if (nextStep && !nextStep.files?.length) {
+      nextStep.files = record.files;
+    }
+
+    log.debug('Captured failing verification diagnostics', {
+      sessionId,
+      command,
+      files: record.files,
+    });
   }
 
   private async validateStepFiles(files: string[]): Promise<string[]> {

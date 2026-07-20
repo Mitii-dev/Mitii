@@ -219,6 +219,39 @@ describe('analyzeJsonlFile', () => {
     }
   });
 
+  it('does not count a skipped (deduped) tool call as a failure or a success', async () => {
+    // Regression (bug1.md): a skip is neither a completed success nor a real failure — it
+    // never ran. ToolExecutor.logSkippedToolCall writes skipped:true without success:true,
+    // and this must not fall through to "failure" just because success isn't true either.
+    const dir = mkdtempSync(join(tmpdir(), 'mitii-jsonl-skip-'));
+    try {
+      const path = join(dir, 'skip.jsonl');
+      const lines = [
+        JSON.stringify({
+          type: 'tool_end',
+          time: '2026-07-16T14:41:15.000Z',
+          sessionId: 'abc',
+          message: 'run_command',
+          data: { tool: 'run_command', failure: false, skipped: true },
+        }),
+        JSON.stringify({
+          type: 'tool_end',
+          time: '2026-07-16T14:41:16.000Z',
+          sessionId: 'abc',
+          message: 'run_command',
+          data: { tool: 'run_command', success: false, error: 'Command failed with exit code 2' },
+        }),
+      ];
+      writeFileSync(path, `${lines.join('\n')}\n`, 'utf-8');
+
+      const report = await analyzeJsonlFile(path, 'skip.jsonl');
+      expect(report.tools.failedCount).toBe(1);
+      expect(report.tools.skipped.length).toBe(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('analyzes a log directory in one call with aggregate totals and inclusion reasons', async () => {
     const workspace = mkdtempSync(join(tmpdir(), 'mitii-log-dir-'));
     try {

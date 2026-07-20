@@ -7,6 +7,12 @@ import { createLogger } from '../../../kernel/telemetry/Logger';
 
 const log = createLogger('MemoryExtractor');
 
+/** Post-task summarization is fire-and-forget background work — a hung provider call must
+ *  never block indefinitely (it can stall process exit in the CLI, or leak in long-running
+ *  daemon/server contexts). LlmProvider has no AbortSignal support, so bound each iterator
+ *  step manually and abandon the summary if the model doesn't respond in time. */
+const LLM_SUMMARIZE_TIMEOUT_MS = 15_000;
+
 export class MemoryExtractor {
   private readonly worker = new PostTaskMemoryWorker();
 
@@ -84,7 +90,7 @@ export class MemoryExtractor {
 
     let summary = '';
     try {
-      for await (const delta of provider.complete({
+      const iterator = provider.complete({
         messages: [
           { role: 'system', content: 'You extract durable coding session memories. Be concise.' },
           { role: 'user', content: prompt },
@@ -94,9 +100,22 @@ export class MemoryExtractor {
         // before content, so a tight budget here silently yields an empty summary.
         maxTokens: 800,
         reasoningEffort: 'low',
-      })) {
-        if (delta.content) summary += delta.content;
+      })[Symbol.asyncIterator]();
+
+      while (true) {
+        const step = await Promise.race([
+          iterator.next(),
+          new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), LLM_SUMMARIZE_TIMEOUT_MS)),
+        ]);
+        if (step === 'timeout') {
+          log.warn('Post-task memory summarization timed out; abandoning', { sessionId });
+          await iterator.return?.(undefined)?.catch(() => undefined);
+          break;
+        }
+        if (step.done) break;
+        if (step.value.content) summary += step.value.content;
       }
+
       if (summary.trim()) {
         const observation = this.memoryService.write(sessionId, 'decision', summary.trim(), files);
         if (observation) this.autoMemoryWriter?.writeObservation(observation);
