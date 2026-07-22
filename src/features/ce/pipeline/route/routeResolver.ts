@@ -8,97 +8,77 @@ import type {
   RouteResolution,
   TaskClassification,
 } from '../types';
+import { LOG_AUDIT_RE, GENERIC_CLEANUP_RE, matchAuditRule, isDependencyCleanupAudit } from './auditRules';
+import { DOCS_MENTION_RE, matchDocsRule } from './docsRules';
+import { MUTATION_VERBS_RE, READ_ONLY_VERBS_RE, WRITE_AUTHORIZING_ACT_INTENTS } from './constants';
+import { resolveRiskFactors } from './riskEngine';
 
-const LOG_AUDIT_RE =
-  /\b(log\s*audit|analyze\s+(?:the\s+)?logs?|session\s*log|\.jsonl|mitii\/logs|jsonl)\b/i;
+export { isDependencyCleanupAudit } from './auditRules';
 
-const UNUSED_DEPS_RE =
-  /\b(unus(?:ed)?\s+dependenc|depcheck|dependencies\s+audit|dependency\s+audit|remove\s+unused\s+(?:npm|pnpm|package))\b/i;
-const DEAD_CODE_RE = /\b(dead\s*code|unus(?:ed)?\s+(?:export|file|import)|knip|ts-prune|orphan)\b/i;
-const VULN_RE = /\b(cve|vulnerabilit|security\s+audit|npm\s+audit|pnpm\s+audit|dependabot)\b/i;
-const PROMPT_AUDIT_RE = /\b(prompt\s+audit|system\s+prompt\s+review|prompt\s+injection)\b/i;
-const SECURITY_CONFIG_RE =
-  /\b(security\s+config|auth(?:entication)?\s+config|cors|csp|helmet|oauth\s+config|secrets?\s+scan)\b/i;
-const GIT_HISTORY_AUDIT_RE = /\b(git\s+history\s+audit|history\s+audit|blame\s+audit)\b/i;
-const CI_AUDIT_RE = /\b(ci\s+audit|workflow\s+audit|github\s+actions\s+audit|pipeline\s+audit)\b/i;
-const DB_AUDIT_RE = /\b(database\s+audit|schema\s+audit|sql\s+audit|migration\s+audit)\b/i;
-const ARCH_AUDIT_RE = /\b(architecture\s+audit|arch\s+review|design\s+audit)\b/i;
-const CODE_QUALITY_AUDIT_RE =
-  /\b(code[- ]quality\s+audit|quality\s+audit|lint\s+audit|tech[- ]debt\s+audit)\b/i;
-/** Broad "audit" — only after specific subtypes fail. Not every use of the word. */
-const GENERIC_CLEANUP_RE =
-  /\b(cleanup|clean\s+up|unused|dead\s*code|depcheck|knip|orphan\s+files?)\b/i;
 const RESTORATION_BUGFIX_RE =
   /\b(?:restore|revert|roll\s*back|undo|back\s*out|original\s+(?:state|structure)|previous\s+(?:state|structure)|bring\s+(?:the\s+)?project\s+back|half[-\s]?(?:finished|implemented|implemneted|done)|failed\s+restructur|broken\s+restructur)\b/i;
 const FAILURE_FIX_RE =
   /\b(?:fix|repair|correct|resolve)\b[\s\S]{0,100}\b(?:build|compile|test|failure|error|broken|failing)\b|\b(?:build|compile|test)\b[\s\S]{0,100}\b(?:fail|fails|failed|error|broken)\b/i;
 
-const README_RE = /\b(readme|read\s*me|readfile)\b/i;
-const DOCUSAURUS_RE = /\b(docusaurus|docs\s+site|docs\s+plugin|sidebars?\.tsx?)\b/i;
-const MDX_RE = /\b(mdx|livecodeblock|unexpected character)\b/i;
-const API_DOCS_RE = /\b(api\s+(?:docs?|reference|spec)|openapi|swagger)\b/i;
-const ARCH_DOCS_RE = /\b(architecture\s+(?:doc|docs|readme|overview)|system\s+design\s+doc)\b/i;
-const CHANGELOG_DOCS_RE = /\b(changelog|release\s+notes)\b/i;
-const EXAMPLES_DOCS_RE = /\b(examples?\s+docs?|usage\s+examples?)\b/i;
-const DOCS_RE = /\b(docs?|documentation|readme|mdx|docusaurus)\b/i;
+const VALID_PIPELINE_INTENTS = new Set<PipelineIntent>([
+  'bugfix',
+  'feature',
+  'refactor',
+  'docs',
+  'audit',
+  'log_audit',
+  'question',
+  'diagnose',
+  'git',
+  'greeting',
+  'spike',
+]);
+
+const VALID_RISK_LEVELS = new Set<RiskLevel>(['low', 'medium', 'high', 'critical']);
 
 export function classifyTaskSignals(userMessage: string, taskAnalysis?: TaskAnalysis): TaskClassification {
   const signals: string[] = [];
+  const features = taskAnalysis?.features;
   if (taskAnalysis?.kind) signals.push(`kind:${taskAnalysis.kind}`);
   if (taskAnalysis?.actIntent) signals.push(`actIntent:${taskAnalysis.actIntent}`);
   if (taskAnalysis?.planIntent) signals.push(`planIntent:${taskAnalysis.planIntent}`);
   if (taskAnalysis?.gitRoute?.isGitTask) signals.push('git');
-  if (LOG_AUDIT_RE.test(userMessage)) signals.push('log_audit');
-  if (DOCS_RE.test(userMessage)) signals.push('docs');
+  if (features?.isLogAudit || LOG_AUDIT_RE.test(userMessage)) signals.push('log_audit');
+  if (features?.isDocsMention || DOCS_MENTION_RE.test(userMessage)) signals.push('docs');
   if (isRepositoryRestorationBugfix(userMessage, taskAnalysis)) signals.push('repository_restoration_bugfix');
+  if (features?.isMdxRepair) signals.push('mdx_repair');
 
   const primaryKind =
     taskAnalysis?.kind === 'implementation' &&
-    (taskAnalysis.actIntent === 'docs' || taskAnalysis.planIntent === 'docs' || DOCS_RE.test(userMessage))
+    (taskAnalysis.actIntent === 'docs' || taskAnalysis.planIntent === 'docs' || DOCS_MENTION_RE.test(userMessage))
       ? 'docs'
       : taskAnalysis?.kind ?? 'unknown';
 
+  // Real evidence-based confidence instead of a flat 0.85/0.5 split: each concrete signal
+  // adds weight, capped so this never claims certainty a regex match can't back up.
+  const base = taskAnalysis ? 0.6 : 0.4;
+  const confidence = Math.min(0.95, base + signals.length * 0.08);
+
+  // These four signals are mutually exclusive domains; if 2+ fire at once, mapIntent's
+  // fixed precedence silently picks one and drops the rest — flag that instead of hiding it.
+  const domainSignals = ['log_audit', 'docs', 'git', 'repository_restoration_bugfix'];
+  const domainHits = signals.filter((signal) => domainSignals.includes(signal)).length;
+
   return {
     primaryKind,
-    confidence: taskAnalysis ? 0.85 : 0.5,
+    confidence,
     signals,
-    needsClarification: false,
+    needsClarification: domainHits >= 2,
   };
 }
 
 export function resolveAuditSubtype(text: string): AuditSubtype | undefined {
   if (isRepositoryRestorationBugfix(text)) return undefined;
-  if (LOG_AUDIT_RE.test(text)) return 'log';
-  if (UNUSED_DEPS_RE.test(text)) return 'unused_deps';
-  if (DEAD_CODE_RE.test(text)) return 'dead_code';
-  if (VULN_RE.test(text)) return 'vulnerability';
-  if (PROMPT_AUDIT_RE.test(text)) return 'prompt';
-  if (SECURITY_CONFIG_RE.test(text)) return 'security_config';
-  if (GIT_HISTORY_AUDIT_RE.test(text)) return 'git_history';
-  if (CI_AUDIT_RE.test(text)) return 'ci';
-  if (DB_AUDIT_RE.test(text)) return 'database';
-  if (ARCH_AUDIT_RE.test(text)) return 'architecture';
-  if (CODE_QUALITY_AUDIT_RE.test(text)) return 'code_quality';
-  if (GENERIC_CLEANUP_RE.test(text)) return 'generic';
-  // Bare "audit" without cleanup language → generic review, NOT depcheck
-  if (/\baudit\b/i.test(text)) return 'generic';
-  return undefined;
+  return matchAuditRule(text);
 }
 
 export function resolveDocsSubtype(text: string): DocsSubtype | undefined {
-  if (MDX_RE.test(text) && /\b(fix|repair|error|build)\b/i.test(text)) return 'mdx_repair';
-  if (DOCUSAURUS_RE.test(text)) return 'docusaurus';
-  if (README_RE.test(text)) return 'readme';
-  if (API_DOCS_RE.test(text)) return 'api_reference';
-  if (ARCH_DOCS_RE.test(text)) return 'architecture';
-  if (CHANGELOG_DOCS_RE.test(text)) return 'changelog';
-  if (EXAMPLES_DOCS_RE.test(text)) return 'examples';
-  if (DOCS_RE.test(text)) return 'generic';
-  return undefined;
-}
-
-export function isDependencyCleanupAudit(subtype?: AuditSubtype): boolean {
-  return subtype === 'unused_deps' || subtype === 'dead_code' || subtype === 'vulnerability' || subtype === 'generic';
+  return matchDocsRule(text);
 }
 
 function mapIntent(
@@ -127,12 +107,19 @@ function mapIntent(
   if (taskAnalysis?.actIntent === 'bugfix' || isBugfixLikeRequest(text)) {
     return 'bugfix';
   }
-  if (taskAnalysis?.actIntent) return taskAnalysis.actIntent as PipelineIntent;
+  if (taskAnalysis?.actIntent && VALID_PIPELINE_INTENTS.has(taskAnalysis.actIntent)) {
+    return taskAnalysis.actIntent;
+  }
   if (taskAnalysis?.planIntent === 'bugfix') return 'bugfix';
   if (taskAnalysis?.planIntent === 'refactor') return 'refactor';
   if (taskAnalysis?.kind === 'debugging') return 'diagnose';
   if (taskAnalysis?.kind === 'question') return 'question';
   return 'feature';
+}
+
+function hasWriteAuthorization(taskAnalysis: TaskAnalysis | undefined, text: string): boolean {
+  if (taskAnalysis?.actIntent && WRITE_AUTHORIZING_ACT_INTENTS.has(taskAnalysis.actIntent)) return true;
+  return MUTATION_VERBS_RE.test(text);
 }
 
 function resolveOperationClass(
@@ -157,13 +144,17 @@ function resolveOperationClass(
     }
     return 'inspect';
   }
-  if (
-    taskAnalysis?.kind === 'question' ||
-    taskAnalysis?.askIntent ||
-    /\b(explain|describe|summarize|review|inspect|analy[sz]e|find|locate|where|what|why|how)\b/i.test(text) &&
-      !/\b(update|edit|write|create|add|remove|fix|implement|change|refactor|migrate)\b/i.test(text)
-  ) {
-    return 'inspect';
+  // A question / explanatory askIntent only forces read-only when nothing else in the
+  // request actually authorizes a change — otherwise "explain how I can fix this" and
+  // "fix this, can you explain what's wrong" would both collapse to inspect.
+  if (!hasWriteAuthorization(taskAnalysis, text)) {
+    if (
+      taskAnalysis?.kind === 'question' ||
+      taskAnalysis?.askIntent ||
+      (READ_ONLY_VERBS_RE.test(text) && !MUTATION_VERBS_RE.test(text))
+    ) {
+      return 'inspect';
+    }
   }
   if (
     intent === 'audit' &&
@@ -178,23 +169,11 @@ function resolveOperationClass(
   ) {
     return 'workspace_write';
   }
-  if (intent === 'audit' || intent === 'diagnose') return 'shell';
+  // Audit/diagnose with no detected mutation is read-oriented by default — an operation
+  // "mechanism" like shell isn't an effect, so this resolves to inspect rather than a
+  // pseudo-class nothing downstream consumes.
+  if (intent === 'audit' || intent === 'diagnose') return 'inspect';
   return 'workspace_write';
-}
-
-function resolveRisk(
-  intent: PipelineIntent,
-  operationClass: OperationClass,
-  complexity: TaskAnalysis['complexity'] | undefined,
-  gitRoute?: TaskAnalysis['gitRoute']
-): RiskLevel {
-  if (gitRoute?.risk) return gitRoute.risk as RiskLevel;
-  if (operationClass === 'release') return 'high';
-  if (operationClass === 'local_git_write' || operationClass === 'remote_write') return 'medium';
-  if (intent === 'audit' && complexity === 'high') return 'medium';
-  if (complexity === 'high') return 'medium';
-  if (intent === 'question' || intent === 'log_audit' || intent === 'docs') return 'low';
-  return 'low';
 }
 
 function resolveExecutionPath(
@@ -214,7 +193,7 @@ function resolveExecutionPath(
 export interface ResolveRouteOptions {
   mdxRepairMode?: boolean;
   resumeSavedPlan?: boolean;
-  /** When false, force direct even if taskAnalysis.shouldPlan. */
+  /** When true, force direct execution even if taskAnalysis.shouldPlan. */
   forceDirect?: boolean;
 }
 
@@ -244,7 +223,7 @@ export function resolveRoute(
     (taskAnalysis?.kind === 'docs' ||
     taskAnalysis?.actIntent === 'docs' ||
     taskAnalysis?.planIntent === 'docs' ||
-    DOCS_RE.test(text)
+    DOCS_MENTION_RE.test(text)
       ? resolveDocsSubtype(text)
       : undefined);
 
@@ -259,9 +238,21 @@ export function resolveRoute(
     Boolean(options.resumeSavedPlan),
     auditSubtype
   );
-  const risk = restorationBugfix && operationClass === 'workspace_write'
-    ? 'high'
-    : resolveRisk(intent, operationClass, taskAnalysis?.complexity, taskAnalysis?.gitRoute);
+
+  const gitRiskLevel = taskAnalysis?.gitRoute?.risk;
+  let risk: RiskLevel;
+  let riskReasons: string[];
+  if (restorationBugfix && operationClass === 'workspace_write') {
+    risk = 'high';
+    riskReasons = ['repository restoration / bugfix override'];
+  } else if (gitRiskLevel && VALID_RISK_LEVELS.has(gitRiskLevel as RiskLevel)) {
+    risk = gitRiskLevel as RiskLevel;
+    riskReasons = ['delegated to Git intent risk model'];
+  } else {
+    const assessment = resolveRiskFactors(operationClass, text, taskAnalysis?.complexity);
+    risk = assessment.level;
+    riskReasons = assessment.reasons;
+  }
 
   const shouldPlan =
     !options.forceDirect &&
@@ -282,6 +273,7 @@ export function resolveRoute(
     auditSubtype,
     docsSubtype,
     risk,
+    riskReasons,
     operationClass,
     executionPath,
     isGitTask,
@@ -312,7 +304,7 @@ export function buildRoutePolicyText(route: RouteResolution): string {
     '## Route policy',
     `Intent: ${route.intent}`,
     `Execution path: ${route.executionPath}`,
-    `Risk: ${route.risk}`,
+    route.riskReasons?.length ? `Risk: ${route.risk} (${route.riskReasons.join('; ')})` : `Risk: ${route.risk}`,
     `Operation class: ${route.operationClass}`,
   ];
   if (route.auditSubtype) lines.push(`Audit subtype: ${route.auditSubtype}`);
@@ -353,6 +345,15 @@ export function buildRoutePolicyText(route: RouteResolution): string {
       '',
       '## Log audit contract',
       '- Use analyze_log_directory / analyze_jsonl first; do not raw-read large logs.'
+    );
+  } else if (route.intent === 'bugfix') {
+    lines.push(
+      '',
+      '## Bugfix contract',
+      '- Current build/test/runtime diagnostics outrank previous-session hypotheses.',
+      '- Run one baseline reproduction check, treat a nonzero exit as captured diagnostic evidence, and do not rerun equivalent checks before editing.',
+      '- Scope first reads and edits to files named by current diagnostics plus directly referenced definitions/callers.',
+      '- Do not propose structural rewrites, duplicate-tree cleanup, or architecture questions unless current diagnostics directly require them.'
     );
   }
 

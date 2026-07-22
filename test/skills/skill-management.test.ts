@@ -23,7 +23,7 @@ describe('Skill management', () => {
     catalog.refresh();
     const entries = catalog.listEntries();
     expect(entries).toHaveLength(3);
-    expect(entries.filter((entry) => entry.issues.some((issue) => issue.code === 'duplicate_id'))).toHaveLength(1);
+    expect(entries.filter((entry) => entry.issues.some((issue) => issue.code === 'duplicate_id'))).toHaveLength(2);
     expect(entries.filter((entry) => entry.issues.some((issue) => issue.code === 'dependency_cycle')).length).toBeGreaterThan(0);
   });
 

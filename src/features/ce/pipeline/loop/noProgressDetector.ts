@@ -50,6 +50,21 @@ function normalizeCommandForFingerprint(command: string): string {
     .trim();
 }
 
+/**
+ * Key-insertion-order-independent stringify. Plain `JSON.stringify` preserves the order keys
+ * were added in, so two logically identical argument objects (e.g. `{path, content}` vs
+ * `{content, path}`) fingerprint differently and the identical-failure counter never trips.
+ */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+    .join(',')}}`;
+}
+
 export function fingerprintToolCall(toolName: string, args: unknown, error?: string): string {
   let argsKey = '';
   try {
@@ -61,7 +76,7 @@ export function fingerprintToolCall(toolName: string, args: unknown, error?: str
     ) {
       argsKey = normalizeCommandForFingerprint((args as Record<string, unknown>).command as string);
     } else {
-      argsKey = JSON.stringify(args ?? {});
+      argsKey = stableStringify(args ?? {});
     }
   } catch {
     argsKey = String(args);

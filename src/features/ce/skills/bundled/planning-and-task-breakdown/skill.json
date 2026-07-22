@@ -22,7 +22,14 @@
     "plan this migration",
     "plan the implementation",
     "plan the repository repair",
-    "break this into executable tasks"
+    "break this into executable tasks",
+    "dependent changes",
+    "break this into",
+    "ordered tasks",
+    "create a bounded plan",
+    "bounded plan",
+    "dependency order",
+    "depend on each other"
   ],
   "negativeTriggers": [
     "what is",

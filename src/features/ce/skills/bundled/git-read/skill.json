@@ -31,7 +31,9 @@
     "show the diff",
     "compare branches",
     "explain repo state",
-    "unstaged changes"
+    "unstaged changes",
+    "review the diff",
+    "unstaged diff"
   ],
   "negativeTriggers": [
     "git blame",

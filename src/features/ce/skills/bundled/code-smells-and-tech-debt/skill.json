@@ -24,6 +24,7 @@
   ],
   "triggers": [
     "console.log",
+    "console.log statements",
     "inline styles",
     "tech debt",
     "lint hygiene",

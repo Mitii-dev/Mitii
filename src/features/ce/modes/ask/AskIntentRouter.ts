@@ -2,6 +2,8 @@ import type { AskRoute, AskIntent, AskResponseProfile } from './askTypes';
 import { ASK_INTENT_DESCRIPTIONS } from '../../runtime/intentClassifier';
 import { isLogAuditTask } from '../../runtime/logAudit';
 import { DIAGNOSTIC_REQUEST } from '../../runtime/diagnosticRequest';
+import type { TaskFeatureSignals } from '../../pipeline/classify/taskFeatures';
+import { askIntentFromFeatures } from '../../pipeline/classify/taskFeatures';
 
 const LOCATE_RE = /\b(where|which file|what file|find|locate|defined|definition|lives?)\b/i;
 const ARCHITECTURE_RE = /\b(architecture|overview|flow|data flow|control flow|how does .+ work|walkthrough|trace|map out|pipeline|retrieval|orchestrat)\b/i;
@@ -16,11 +18,12 @@ const SCM_CONTEXT_RE =
 
 export interface AskRouteOptions {
   intent?: AskIntent;
+  features?: TaskFeatureSignals;
 }
 
 export function routeAskIntent(userMessage: string, options: AskRouteOptions = {}): AskRoute {
   const text = userMessage.trim();
-  const intent = options.intent ?? classifyAskIntentFallback(text);
+  const intent = options.intent ?? (options.features ? askIntentFromFeatures(options.features) : classifyAskIntentFallback(text));
   const profile = chooseProfile(intent, text);
   const includeImpact = intent === 'implement_here' || /\b(affected files|what files would change|impact)\b/i.test(text);
   const allowWeb = intent === 'implement_here' || /\b(external docs?|api docs?|latest|current|library|sdk|oauth|stripe|openai|github)\b/i.test(text);

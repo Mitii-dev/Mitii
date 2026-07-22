@@ -2,6 +2,8 @@ import type { TaskAnalysis } from '../../runtime/TaskAnalyzer';
 import type { RouteResolution, SkillResolution } from '../types';
 import { isDependencyCleanupAudit, isRepositoryRestorationBugfix } from '../route/routeResolver';
 
+const TDD_ELIGIBLE_INTENTS = new Set<RouteResolution['intent']>(['feature', 'refactor', 'bugfix']);
+
 /**
  * Resolve 0–1 active skill for injection. Meta skill `using-agent-skills` is never
  * auto-injected — it remains available via use_skill / deferred catalog.
@@ -9,7 +11,8 @@ import { isDependencyCleanupAudit, isRepositoryRestorationBugfix } from '../rout
 export function resolveSkillsForRoute(
   route: RouteResolution,
   taskAnalysis?: TaskAnalysis,
-  options: { sourceMode?: 'ask' | 'plan' | 'agent'; planning?: boolean } = {}
+  userMessage = '',
+  options: { sourceMode?: 'ask' | 'plan' | 'agent' | 'review'; planning?: boolean } = {}
 ): SkillResolution {
   if (route.intent === 'log_audit' || route.executionPath === 'log_audit') {
     return {
@@ -28,6 +31,11 @@ export function resolveSkillsForRoute(
       ? 'agent-plan'
       : 'planning-and-task-breakdown'
     : undefined;
+
+  // Match against the raw request too, not just taskAnalysis.summary — TaskAnalyzer often
+  // produces a generic boilerplate summary (e.g. "Small targeted edit — execute directly")
+  // that drops the domain keywords (aria, hero section, profiling, ...) a skill trigger needs.
+  const searchableText = [userMessage, taskAnalysis?.summary].filter(Boolean).join('\n');
 
   if (route.isGitTask && taskAnalysis?.gitRoute) {
     const git = taskAnalysis.gitRoute;
@@ -50,7 +58,7 @@ export function resolveSkillsForRoute(
   } else if (route.intent === 'audit' && isDependencyCleanupAudit(route.auditSubtype)) {
     if (!active || !options.planning) active = 'audit-cleanup';
     else deferred.push('audit-cleanup');
-  } else if (route.intent === 'audit' && route.auditSubtype === 'code_quality') {
+  } else if (route.intent === 'audit' && (route.auditSubtype === 'code_quality' || route.auditSubtype === 'review')) {
     if (!active || !options.planning) active = 'code-review-and-quality';
     else deferred.push('code-review-and-quality');
   } else if (route.intent === 'audit' && route.auditSubtype === 'git_history') {
@@ -59,16 +67,16 @@ export function resolveSkillsForRoute(
   } else if (
     route.intent === 'bugfix' ||
     route.intent === 'diagnose' ||
-    /\b(error|failing|failed|debug|repair|fix)\b/i.test(taskAnalysis?.summary ?? '')
+    /\b(error|failing|failed|debug|repair|fix)\b/i.test(searchableText)
   ) {
-    const bugfixSkill = route.intent === 'bugfix' || isRepositoryRestorationBugfix(taskAnalysis?.summary ?? '')
+    const bugfixSkill = route.intent === 'bugfix' || isRepositoryRestorationBugfix(searchableText)
       ? 'bugfix-workflow'
       : 'debugging-and-error-recovery';
     if (!active || !options.planning) active = bugfixSkill;
     else deferred.push(bugfixSkill);
   }
 
-  const summary = taskAnalysis?.summary ?? '';
+  const summary = searchableText;
   const componentWork =
     /\b(component library|ui component|component api|accessible component|aria|keyboard navigation|design tokens?|aschild|polymorphic|controlled|uncontrolled|registry component)\b/i.test(summary);
   const visualDesignWork =
@@ -118,12 +126,10 @@ export function resolveSkillsForRoute(
         : 'agent-plan'
     );
   }
-  if (
-    !options.planning &&
-    route.intent !== 'docs' &&
-    route.intent !== 'question' &&
-    (route.intent === 'feature' || route.intent === 'refactor' || route.intent === 'bugfix')
-  ) {
+  // TDD/bugfix-workflow only applies to build-something-new-or-fix-it intents. Routes like
+  // 'audit' (non-cleanup subtypes), 'git', 'greeting', or 'spike' have their own workflows
+  // (or none) and must not silently inherit a test-first playbook that doesn't fit them.
+  if (!options.planning && TDD_ELIGIBLE_INTENTS.has(route.intent)) {
     if (!active) {
       active =
         route.intent === 'bugfix'
@@ -132,11 +138,6 @@ export function resolveSkillsForRoute(
     } else if (active !== 'test-driven-development') {
       deferred.push('test-driven-development');
     }
-  }
-
-  // If still nothing active for a non-trivial agent turn, prefer TDD over meta skill.
-  if (!active && !options.planning && route.intent !== 'question') {
-    active = 'test-driven-development';
   }
 
   // Meta skill is always deferred (discoverable), never the active injection.

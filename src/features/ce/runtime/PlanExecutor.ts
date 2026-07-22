@@ -19,8 +19,11 @@ import type { ContextPack } from '../../../features/ce/context/types';
 import type { PostEditValidator } from '../apply/PostEditValidator';
 import type { ToolExecutor, ToolExecutionResult } from '../safety/ToolExecutor';
 import type { TaskAnalysis } from './TaskAnalyzer';
+import { isDependencyCleanupAudit } from '../pipeline/route/routeResolver';
 import type { AgentTaskState } from './AgentTaskState';
 import { isSkippedToolOutput } from './toolSkip';
+import { countsAsToolSuccess, countsAsVerificationSuccess } from './toolResultHelpers';
+import { WRITE_TOOL_IDS } from '../tools/toolMetadata';
 import { DiagnosticsStore } from './DiagnosticsStore';
 import { formatVerifyPlanForAgent, resolveProjectVerifyCommands } from './verifyCommandDiscovery';
 import {
@@ -87,6 +90,7 @@ export interface StepExecutionResult {
 export class PlanExecutor {
   private stepSummaries: string[] = [];
   private touchedFiles = new Set<string>();
+  private activePlanRevision?: number;
 
   constructor(
     private readonly agentLoop: AgentLoop,
@@ -346,7 +350,17 @@ export class PlanExecutor {
       }
     }
 
-    this.planPersistence.save(session.id, plan, 'running');
+    const saved = this.planPersistence.save(session.id, plan, 'running');
+    if (saved && typeof saved === 'object' && 'ok' in saved) {
+      if (saved.ok) {
+        this.activePlanRevision = saved.revision;
+      } else {
+        log.warn('Failed to persist plan at execution start', { reason: saved.reason });
+        this.bootstrapPlanRevision(session.id);
+      }
+    } else {
+      this.bootstrapPlanRevision(session.id);
+    }
     this.syncPlanFile(options?.workspace, session.id, plan, 'running');
     onPlanUpdate?.(plan);
 
@@ -383,13 +397,17 @@ export class PlanExecutor {
         }
 
         plan.steps[i] = { ...step, status: 'running' };
-        this.planPersistence.updatePlan(session.id, plan, 'running');
+        options?.getTaskState?.()?.beginPlanStep(step.id);
+        this.persistPlan(session.id, plan, 'running');
         this.syncPlanFile(options?.workspace, session.id, plan, 'running');
         onPlanUpdate?.(plan);
 
         const stepStartedAt = Date.now();
         const phaseLock = resolveStepPhaseLock(step, session.mode);
-        const isVerifyStep = phaseLock === 'verify' || /\b(verify|verification|lint|build|validate|test)\b/i.test(step.title);
+        const isVerifyStep =
+          (phaseLock === 'verify' || /\b(verify|verification|lint|build|validate|test)\b/i.test(step.title)) &&
+          step.phase !== 'diagnostics' &&
+          step.phase !== 'review';
         const verifyContextBlock =
           isVerifyStep && options?.workspace
             ? formatVerifyPlanForAgent(
@@ -451,7 +469,7 @@ export class PlanExecutor {
           if (execResult.pendingApproval) {
             log.debug('Step blocked pending approval', { stepId: step.id, tool: explicitToolCall.name });
             plan.steps[i] = { ...plan.steps[i], status: 'blocked' };
-            this.planPersistence.updatePlan(session.id, plan, 'blocked');
+            this.persistPlan(session.id, plan, 'blocked');
             this.syncPlanFile(options?.workspace, session.id, plan, 'blocked');
             onPlanUpdate?.(plan);
             yield '\n\n⏸ Waiting for approval before continuing…\n';
@@ -478,7 +496,7 @@ export class PlanExecutor {
                 options?.seedFileScope
               );
             }
-            if (isExpectedDiagnosticFailureCapture(step, explicitToolCall.name, execResult)) {
+            if (isExpectedDiagnosticFailureCapture(step, explicitToolCall.name, execResult, explicitToolCall.input)) {
               log.debug('Treating failed diagnostic command as captured reproduction evidence', {
                 stepId: step.id,
                 tool: explicitToolCall.name,
@@ -492,7 +510,7 @@ export class PlanExecutor {
                 isPhaseLockRunCommandError(failureDetail)
               ) {
                 plan.steps[i] = { ...plan.steps[i], status: 'failed' };
-                this.planPersistence.updatePlan(session.id, plan, 'running');
+                this.persistPlan(session.id, plan, 'running');
                 onPlanUpdate?.(plan);
                 yield `\n\nStep ${i + 1} was rejected by the phase policy and will not be retried unchanged.\n`;
                 break;
@@ -505,7 +523,7 @@ export class PlanExecutor {
                 continue;
               }
               plan.steps[i] = { ...plan.steps[i], status: 'failed' };
-              this.planPersistence.updatePlan(session.id, plan, 'running');
+              this.persistPlan(session.id, plan, 'running');
               onPlanUpdate?.(plan);
               log.warn('Step failed after max retries', { stepId: step.id, tool: explicitToolCall.name, errors: lastValidationErrors });
               yield `\n\n❌ Step failed after ${maxRetries + 1} attempts. Errors:\n${lastValidationErrors.join('\n')}\n`;
@@ -513,10 +531,10 @@ export class PlanExecutor {
             }
           }
 
-          if (['write_file', 'apply_patch'].includes(explicitToolCall.name)) {
+          if (WRITE_TOOL_IDS.has(explicitToolCall.name) && countsAsToolSuccess(execResult)) {
             successfulWrites += 1;
           }
-          if (isVerifyStep && isVerificationTool(explicitToolCall.name)) {
+          if (isVerifyStep && countsAsVerificationSuccess(explicitToolCall.name, execResult, execResult.output, explicitToolCall.input)) {
             hasSuccessfulVerification = true;
             successfulVerifyCommands += 1;
           }
@@ -539,6 +557,12 @@ export class PlanExecutor {
               const countsAsSuccess = success && !wasSkipped;
               if (countsAsSuccess) toolCallSuccessCount += 1;
               const input = [...toolInputs].reverse().find((candidate) => candidate.name === name)?.input;
+              options?.getTaskState?.()?.recordPlanStepToolOutcome(
+                name,
+                input ?? {},
+                { success: countsAsSuccess, output: output ?? '', error: output ?? '', skipped: wasSkipped },
+                output
+              );
               const capturedDiagnosticFailure =
                 !success &&
                 isExpectedDiagnosticFailureCapture(
@@ -567,10 +591,10 @@ export class PlanExecutor {
                   options?.seedFileScope
                 );
               }
-              if (countsAsSuccess && ['write_file', 'apply_patch'].includes(name)) {
+              if (countsAsToolSuccess({ success, output }, output) && WRITE_TOOL_IDS.has(name)) {
                 successfulWrites += 1;
               }
-              if (isVerifyStep && countsAsSuccess && isVerificationTool(name)) {
+              if (isVerifyStep && countsAsVerificationSuccess(name, { success, output }, output, input)) {
                 hasSuccessfulVerification = true;
                 successfulVerifyCommands += 1;
               }
@@ -618,7 +642,7 @@ export class PlanExecutor {
         if (pendingApproval) {
           log.debug('Step blocked pending approval', { stepId: step.id });
           plan.steps[i] = { ...plan.steps[i], status: 'blocked' };
-          this.planPersistence.updatePlan(session.id, plan, 'blocked');
+          this.persistPlan(session.id, plan, 'blocked');
           this.syncPlanFile(options?.workspace, session.id, plan, 'blocked');
           onPlanUpdate?.(plan);
           yield '\n\n⏸ Waiting for approval before continuing…\n';
@@ -655,7 +679,7 @@ export class PlanExecutor {
             continue;
           }
           plan.steps[i] = { ...plan.steps[i], status: 'failed' };
-          this.planPersistence.updatePlan(session.id, plan, 'running');
+          this.persistPlan(session.id, plan, 'running');
           onPlanUpdate?.(plan);
           log.warn('Step failed validation after max retries', { stepId: step.id, errors: lastValidationErrors });
           yield `\n\n❌ Step failed after ${maxRetries + 1} attempts. Errors:\n${lastValidationErrors.join('\n')}\n`;
@@ -674,17 +698,17 @@ export class PlanExecutor {
             continue;
           }
           plan.steps[i] = { ...plan.steps[i], status: 'failed' };
-          this.planPersistence.updatePlan(session.id, plan, 'running');
+          this.persistPlan(session.id, plan, 'running');
           onPlanUpdate?.(plan);
           log.warn('Verification step failed after max retries', { stepId: step.id, failedVerifyCommands });
           yield `\n\n❌ Verification step failed after ${maxRetries + 1} attempts.\n`;
           break;
         }
 
-        if (isVerifyStep && successfulVerifyCommands === 0 && diagnosticFailureCaptures === 0) {
+        if (isVerifyStep && successfulVerifyCommands === 0) {
           lastValidationErrors = [
             'This verification step did not run a successful diagnostics, typecheck, lint, test, or build tool.',
-            'Do not complete verification from prose alone; run the narrowest relevant command.',
+            'Captured failing diagnostics alone do not satisfy verification — run the narrowest relevant command and confirm it passes.',
           ];
           attempt += 1;
           if (attempt <= maxRetries) {
@@ -693,7 +717,7 @@ export class PlanExecutor {
             continue;
           }
           plan.steps[i] = { ...plan.steps[i], status: 'failed' };
-          this.planPersistence.updatePlan(session.id, plan, 'running');
+          this.persistPlan(session.id, plan, 'running');
           onPlanUpdate?.(plan);
           yield `\n\n❌ Verification step failed after ${maxRetries + 1} attempts without a successful verification command.\n`;
           break;
@@ -704,7 +728,9 @@ export class PlanExecutor {
         // marked done purely because the model stopped emitting tool calls — completion must
         // be tied to a tool actually succeeding, not to the model's narration ending.
         const isGenericStep = !writeExpected && !isVerifyStep && !explicitToolCall;
-        if (isGenericStep && toolCallCount > 0 && toolCallSuccessCount === 0) {
+        const capturedDiagnosticEvidence =
+          diagnosticFailureCaptures > 0 && isDiagnosticFailureCaptureStep(step);
+        if (isGenericStep && toolCallCount > 0 && toolCallSuccessCount === 0 && !capturedDiagnosticEvidence) {
           lastValidationErrors = [
             'This step ran one or more tool calls, but none of them completed successfully.',
             'Do not report this step as complete from narration alone — retry the underlying tool call or adjust the approach.',
@@ -716,7 +742,7 @@ export class PlanExecutor {
             continue;
           }
           plan.steps[i] = { ...plan.steps[i], status: 'failed' };
-          this.planPersistence.updatePlan(session.id, plan, 'running');
+          this.persistPlan(session.id, plan, 'running');
           onPlanUpdate?.(plan);
           log.warn('Step failed: no tool call succeeded', { stepId: step.id, toolCallCount });
           yield `\n\n❌ Step failed after ${maxRetries + 1} attempts — no tool call succeeded.\n`;
@@ -741,7 +767,7 @@ export class PlanExecutor {
           status: 'done',
           durationMs: stepDurationMs,
         });
-        this.planPersistence.updatePlan(session.id, plan, 'running');
+        this.persistPlan(session.id, plan, 'running');
         if (options?.workspace) {
           new PlanFileStore(options.workspace, session.id).markStepComplete(step.id);
         }
@@ -770,7 +796,7 @@ export class PlanExecutor {
     }
 
     if (allDone) {
-      this.planPersistence.complete(session.id);
+      this.persistComplete(session.id);
       onPlanUpdate?.(plan);
       yield '\n\n✅ All steps completed.\n';
     } else if (failed || stalledByDependencies) {
@@ -796,6 +822,54 @@ export class PlanExecutor {
       new PlanFileStore(workspace, sessionId).save(plan, status);
     } catch (error) {
       log.warn('Failed to sync plan file', { error: String(error) });
+    }
+  }
+
+  private bootstrapPlanRevision(sessionId: string): void {
+    if (typeof this.planPersistence.getActive !== 'function') return;
+    const active = this.planPersistence.getActive(sessionId);
+    this.activePlanRevision = active?.revision;
+  }
+
+  private persistPlan(sessionId: string, plan: ThunderPlan, status?: string): void {
+    const result = this.planPersistence.updatePlan(sessionId, plan, status, this.activePlanRevision);
+    if (!result || typeof result !== 'object' || !('ok' in result)) return;
+    if (result.ok) {
+      this.activePlanRevision = result.revision;
+      return;
+    }
+    if (result.reason === 'revision_conflict') {
+      const reloaded = typeof this.planPersistence.getActive === 'function'
+        ? this.planPersistence.getActive(sessionId)
+        : null;
+      if (reloaded) {
+        this.activePlanRevision = reloaded.revision;
+      }
+      log.warn('Plan revision conflict while persisting plan update', {
+        sessionId,
+        currentRevision: result.currentRevision,
+      });
+    }
+  }
+
+  private persistComplete(sessionId: string): void {
+    const result = this.planPersistence.complete(sessionId, this.activePlanRevision);
+    if (!result || typeof result !== 'object' || !('ok' in result)) return;
+    if (result.ok) {
+      this.activePlanRevision = result.revision;
+      return;
+    }
+    if (result.reason === 'revision_conflict') {
+      const reloaded = typeof this.planPersistence.getActive === 'function'
+        ? this.planPersistence.getActive(sessionId)
+        : null;
+      if (reloaded) {
+        this.activePlanRevision = reloaded.revision;
+      }
+      log.warn('Plan revision conflict while completing plan', {
+        sessionId,
+        currentRevision: result.currentRevision,
+      });
     }
   }
 
@@ -1120,11 +1194,7 @@ function validatePlanQuality(
 
   const cleanupAudit =
     taskAnalysis?.kind === 'audit' &&
-    (!taskAnalysis.auditSubtype ||
-      taskAnalysis.auditSubtype === 'unused_deps' ||
-      taskAnalysis.auditSubtype === 'dead_code' ||
-      taskAnalysis.auditSubtype === 'vulnerability' ||
-      taskAnalysis.auditSubtype === 'generic');
+    (!taskAnalysis.auditSubtype || isDependencyCleanupAudit(taskAnalysis.auditSubtype));
 
   if (cleanupAudit) {
     for (const phase of ['diagnostics', 'review', 'execute', 'verify'] as const) {
@@ -1278,10 +1348,6 @@ function summarizeToolExecution(toolName: string, result: ToolExecutionResult): 
   const trimmed = body.trim();
   const capped = trimmed.length > 4000 ? trimmed.slice(-4000) : trimmed;
   return `\n\n${toolName} ${result.success ? 'succeeded' : 'failed'}${capped ? `:\n${capped}\n` : '.\n'}`;
-}
-
-function isVerificationTool(toolName: string): boolean {
-  return ['run_command', 'diagnostics', 'execute_workspace_script'].includes(toolName);
 }
 
 function summarizeStepOutput(output: string, title: string): string {

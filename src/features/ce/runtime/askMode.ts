@@ -1,71 +1,18 @@
 import type { ToolDefinition } from '../../../kernel/llm/toolTypes';
 import { routeAskIntent } from '../modes/ask/AskIntentRouter';
+import { ASK_ALLOWED_TOOL_IDS, ASK_GROUNDING_TOOL_IDS } from '../tools/toolMetadata';
 
-/** Read-only tools exposed to the model in Ask mode. */
-export const ASK_ALLOWED_TOOLS = new Set([
-  'read_file',
-  'read_files',
-  'resolve_path',
-  'list_files',
-  'search',
-  'search_batch',
-  'repo_map',
-  'retrieve_context',
-  'git_diff',
-  'diagnostics',
-  'memory_search',
-  'run_command',
-  'execute_workspace_script',
-  'search_script_catalog',
-  'use_skill',
-  'fetch_web',
-  'ask_question',
-  'spawn_research_agent',
-  'spawn_subagent',
-  'project_catalog',
-  'analyze_change_impact',
-  'propose_file_scope',
-  'analyze_log_directory',
-  'analyze_jsonl',
-  'query_log_events',
-  'list_logs',
-]);
+/** @deprecated Use ASK_ALLOWED_TOOL_IDS from toolMetadata. */
+export const ASK_ALLOWED_TOOLS = ASK_ALLOWED_TOOL_IDS;
 
-const GROUNDING_TOOLS = new Set([
-  'read_file',
-  'read_files',
-  'resolve_path',
-  'search',
-  'search_batch',
-  'retrieve_context',
-  'repo_map',
-  'list_files',
-  'git_diff',
-  'diagnostics',
-  'execute_workspace_script',
-  'spawn_research_agent',
-  'spawn_subagent',
-  'project_catalog',
-  'analyze_change_impact',
-  'propose_file_scope',
-  'analyze_log_directory',
-  'analyze_jsonl',
-  'query_log_events',
-  'list_logs',
-]);
+const GROUNDING_TOOLS = ASK_GROUNDING_TOOL_IDS;
 
 export function filterAskModeTools(tools: ToolDefinition[]): ToolDefinition[] {
-  return tools.filter((tool) => {
-    const name = tool.function.name;
-    if (ASK_ALLOWED_TOOLS.has(name)) return true;
-    if (!name.startsWith('mcp__')) return false;
-    // MCP tools are available; filesystem mutators still require user approval at execute time.
-    return true;
-  });
+  return tools.filter((tool) => isAskAllowedTool(tool.function.name));
 }
 
 export function isAskAllowedTool(toolName: string): boolean {
-  if (ASK_ALLOWED_TOOLS.has(toolName)) return true;
+  if (ASK_ALLOWED_TOOL_IDS.has(toolName)) return true;
   if (!toolName.startsWith('mcp__')) return false;
   return !/(?:write|create|delete|remove|move|rename|update|patch|commit|push|merge|dispatch|publish)/i.test(toolName);
 }
@@ -103,7 +50,7 @@ export function shouldEnableAskSubagents(userMessage: string): boolean {
 }
 
 export function isGroundingToolCall(toolName: string): boolean {
-  return GROUNDING_TOOLS.has(toolName) || toolName.startsWith('mcp__');
+  return GROUNDING_TOOLS.has(toolName) || (toolName.startsWith('mcp__') && isAskAllowedTool(toolName));
 }
 
 export const ASK_SYNTHESIS_NUDGE = `You have finished read-only exploration for this Ask-mode turn.
@@ -113,18 +60,13 @@ Provide your complete final answer NOW in plain text:
 - Do NOT call any more tools in this turn.
 - If something could not be verified, say so explicitly.`;
 
-export const NO_TOOLS_ASK_NUDGE = `You answered without reading or searching the codebase. For Ask mode you MUST ground factual claims in tools first.
+export const NO_TOOLS_ASK_NUDGE = `You are in Ask mode and have not read or searched the codebase yet. Ask mode answers MUST be grounded in repository evidence when the question is about this project.
 
-In this turn, call at least one of:
-- resolve_path — confirm an exact file path before reading
+In this turn, call at least one read-only tool:
 - read_file / read_files — inspect specific files
 - search / search_batch — find symbols, routes, or patterns
-- retrieve_context — widen context for the question
+- retrieve_context / repo_map / project_catalog — widen project context
+- diagnostics / git_diff — inspect current problems or changes when relevant
+- use_skill — load a deferred skill when playbooks are not pre-loaded
 
-Then answer with:
-1. A grounded overview
-2. A structured explanation with \`path:line\` citations from files you actually read
-3. Key files and responsibilities when this is a codebase question
-4. An explicit "What I could not verify" section for anything you could not verify
-
-Do NOT guess file contents or APIs. If the user wants edits, say to switch to Agent mode.`;
+Then answer the user's question with citations. Do NOT write files in Ask mode.`;

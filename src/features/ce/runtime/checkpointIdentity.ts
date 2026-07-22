@@ -37,8 +37,6 @@ export function hashCheckpointGoal(goal: string): string {
 
 /**
  * Decide whether a persisted `.mitii-state.json` checkpoint may resume the current task.
- * Missing identity fields on legacy checkpoints are treated as unsafe to resume when the
- * current task declares a target project or goal hash.
  */
 export function canResumeCheckpoint(
   checkpoint: TaskCheckpointIdentity | null | undefined,
@@ -49,63 +47,46 @@ export function canResumeCheckpoint(
   }
 
   const mismatches: string[] = [];
-  if (current.targetProjectId) {
-    if (!checkpoint.targetProjectId) {
-      return {
-        ok: false,
-        code: 'CHECKPOINT_MISSING_IDENTITY',
-        reason: `CHECKPOINT_TASK_MISMATCH: checkpoint has no targetProjectId; current target=${current.targetProjectId}`,
-      };
-    }
-    if (normalizeId(checkpoint.targetProjectId) !== normalizeId(current.targetProjectId)) {
-      mismatches.push(
-        `checkpoint target=${checkpoint.targetProjectId} current target=${current.targetProjectId}`
-      );
-    }
-  }
-
-  if (current.goalHash) {
-    if (!checkpoint.goalHash) {
-      return {
-        ok: false,
-        code: 'CHECKPOINT_MISSING_IDENTITY',
-        reason: 'CHECKPOINT_TASK_MISMATCH: checkpoint has no goalHash for the current task.',
-      };
-    }
-    if (checkpoint.goalHash !== current.goalHash) {
-      mismatches.push('goalHash mismatch');
-    }
-  }
-
-  if (current.planId && checkpoint.planId && checkpoint.planId !== current.planId) {
-    mismatches.push(`checkpoint planId=${checkpoint.planId} current planId=${current.planId}`);
-  }
-
-  if (current.branch && checkpoint.branch && checkpoint.branch !== current.branch) {
-    mismatches.push(`checkpoint branch=${checkpoint.branch} current branch=${current.branch}`);
-  }
-
-  if (current.baseCommit && checkpoint.commit && checkpoint.commit !== current.baseCommit) {
-    mismatches.push(`checkpoint commit=${checkpoint.commit} current commit=${current.baseCommit}`);
-  }
-
-  if (
-    current.workspaceRevision &&
-    checkpoint.workspaceRevision &&
-    checkpoint.workspaceRevision !== current.workspaceRevision
-  ) {
-    mismatches.push('workspaceRevision mismatch');
-  }
+  requireMatchingField('targetProjectId', current.targetProjectId, checkpoint.targetProjectId, mismatches);
+  requireMatchingField('goalHash', current.goalHash, checkpoint.goalHash, mismatches);
+  requireMatchingField('planId', current.planId, checkpoint.planId, mismatches);
+  requireMatchingField('branch', current.branch, checkpoint.branch, mismatches);
+  requireMatchingField('commit', current.baseCommit, checkpoint.commit, mismatches);
+  requireMatchingField('workspaceRevision', current.workspaceRevision, checkpoint.workspaceRevision, mismatches);
 
   if (mismatches.length > 0) {
     return {
       ok: false,
-      code: 'CHECKPOINT_TASK_MISMATCH',
+      code: mismatches.some((item) => item.startsWith('checkpoint is missing'))
+        ? 'CHECKPOINT_MISSING_IDENTITY'
+        : 'CHECKPOINT_TASK_MISMATCH',
       reason: `CHECKPOINT_TASK_MISMATCH: ${mismatches.join('; ')}`,
     };
   }
 
   return { ok: true };
+}
+
+function requireMatchingField(
+  field: string,
+  currentValue: string | undefined,
+  checkpointValue: string | undefined,
+  mismatches: string[]
+): void {
+  if (!currentValue) return;
+  if (!checkpointValue) {
+    mismatches.push(`checkpoint is missing ${field}`);
+    return;
+  }
+  if (field === 'targetProjectId') {
+    if (normalizeId(checkpointValue) !== normalizeId(currentValue)) {
+      mismatches.push(`checkpoint target=${checkpointValue} current target=${currentValue}`);
+    }
+    return;
+  }
+  if (checkpointValue !== currentValue) {
+    mismatches.push(`${field} mismatch`);
+  }
 }
 
 function normalizeId(value: string): string {

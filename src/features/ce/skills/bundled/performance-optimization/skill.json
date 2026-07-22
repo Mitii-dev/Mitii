@@ -63,7 +63,7 @@
   "maxInjectionChars": 6500,
   "injectionStrategy": "lazy-references",
   "trust": "builtin",
-  "priority": 16,
+  "priority": 22,
   "tags": [
     "performance",
     "profiling",

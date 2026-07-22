@@ -11,6 +11,7 @@ import { isRepositoryRestorationBugfix } from '../../pipeline/route/routeResolve
 export interface ActRouteOptions {
   mode?: ThunderMode;
   hasActivePlan?: boolean;
+  planAwaitingApproval?: boolean;
   orchestrationEnabled?: boolean;
   auditMode?: boolean;
   logAuditMode?: boolean;
@@ -66,7 +67,7 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
   // Evaluate once and pass down to avoid redundant regex execution
   const isDirectOverride = hasDirectRouteOverride(userMessage);
 
-  if (hasActivePlan && !isDirectOverride && isApprovalContinuationMessage(userMessage)) {
+  if (hasActivePlan && options.planAwaitingApproval && !isDirectOverride && isApprovalContinuationMessage(userMessage)) {
     return {
       intent: resolveActIntent(options.intent, analysis, userMessage),
       executionPath: 'resume_saved_plan',
@@ -78,7 +79,7 @@ export function routeActIntent(userMessage: string, analysis: TaskAnalysis, opti
     };
   }
 
-  if (shouldResumeSavedPlan(userMessage, hasActivePlan, isDirectOverride, { actDepth })) {
+  if (shouldResumeSavedPlan(userMessage, hasActivePlan, isDirectOverride, { actDepth, planAwaitingApproval: options.planAwaitingApproval })) {
     return {
       intent: resolveActIntent(options.intent, analysis, userMessage),
       executionPath: 'resume_saved_plan',
@@ -165,7 +166,7 @@ export function shouldResumeSavedPlan(
   userMessage: string,
   hasActivePlan: boolean,
   isDirectOverride = false,
-  options: { actDepth?: ActDepth | string } = {}
+  options: { actDepth?: ActDepth | string; planAwaitingApproval?: boolean } = {}
 ): boolean {
   if (!hasActivePlan) return false;
   const text = userMessage.trim();
@@ -177,7 +178,7 @@ export function shouldResumeSavedPlan(
   }
   return (
     EXPLICIT_PLAN_HANDOFF.test(text) ||
-    CONTINUATION_HANDOFF.test(text) ||
+    (options.planAwaitingApproval && CONTINUATION_HANDOFF.test(text)) ||
     REFERENTIAL_HANDOFF.test(text) ||
     PLANNED_WORK_REFERENCE.test(text)
   );

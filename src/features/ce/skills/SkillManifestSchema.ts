@@ -27,6 +27,7 @@ export const SkillRoutingTestCaseSchema = z.object({
   }).strict().optional(),
   availableTools: stringList.optional(),
   availableCapabilities: stringList.optional(),
+  manualAttachment: z.boolean().optional(),
   expected: z.enum(['selected', 'suggested', 'rejected', 'not-selected']),
   maxInjectionChars: z.number().int().positive().max(MAX_SKILL_INJECTION_CHARS).optional(),
 }).strict();

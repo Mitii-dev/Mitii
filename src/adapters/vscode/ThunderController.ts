@@ -45,7 +45,7 @@ import {
   createReadFileTool, createReadFilesTool, createListFilesTool, createResolvePathTool, createSearchTool,
   createSearchBatchTool, createSearchScriptCatalogTool, createSpawnResearchAgentTool, createSpawnSubagentTool,
   createExecuteWorkspaceScriptTool, createUseSkillTool,
-  createRepoMapTool, createRetrieveContextTool, createGitDiffTool,
+  createRepoMapTool, createRetrieveContextTool,
   createDiagnosticsTool, createWriteFileTool, createApplyPatchTool, createRunCommandTool,
   createMemorySearchTool, createMemoryWriteTool, createSaveTaskStateTool,
   createFetchWebTool, createAskQuestionTool, createProjectCatalogTool, createAnalyzeChangeImpactTool,
@@ -729,7 +729,6 @@ export class ThunderController {
     this.toolRuntime.register(createSpawnResearchAgentTool());
     this.toolRuntime.register(createRepoMapTool(repoMap));
     this.toolRuntime.register(createRetrieveContextTool(retriever, budgeter));
-    this.toolRuntime.register(createGitDiffTool(this.gitService));
     this.toolRuntime.register(createGitStatusTool(workspace));
     this.toolRuntime.register(createStructuredGitDiffTool(workspace));
     this.toolRuntime.register(createGitLogTool(workspace));
@@ -771,10 +770,14 @@ export class ThunderController {
       getPlan: () => this.planPersistence?.getActive(sessionIdForPlans())?.plan ?? null,
       setPlan: (plan: import('../../features/ce/plans/PlanActEngine').ThunderPlan) => {
         const sid = sessionIdForPlans();
-        if (sid) this.planPersistence?.updatePlan(sid, plan);
+        if (!sid || !this.planPersistence) return;
+        const active = this.planPersistence.getActive(sid);
+        this.planPersistence.updatePlan(sid, plan, undefined, active?.revision);
       },
       planPersistence: this.planPersistence,
       getSessionId: sessionIdForPlans,
+      getTaskState: () => this.agentTaskState,
+      getMode: () => this.session?.mode ?? 'agent',
       setPlanPhaseLock: (phase: import('../../features/ce/plans/PlanActEngine').PlanPhase | undefined) => {
         this.toolExecutor?.setPlanPhaseLock(phase);
       },

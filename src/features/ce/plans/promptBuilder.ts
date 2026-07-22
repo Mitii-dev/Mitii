@@ -7,6 +7,7 @@ import { AGENT_NAME } from '../../../shared/brand';
 import { CHAT_HISTORY_GUIDANCE, STATE_MACHINE_GUIDANCE } from '../runtime/taskStatePrompt';
 import { buildAuditBootstrapBlock } from '../runtime/auditRouting';
 import { buildMdxRepairBootstrapBlock } from '../runtime/mdxRepairRouting';
+import { buildMdxRepairPromptGuidance } from '../skills/documentationProfile';
 import { ASK_DEEP_RESPONSE_TEMPLATE } from '../modes/ask/askPrompts';
 import { PLAN_SKILL_TOOL_GUIDANCE } from '../modes/plan/planSkillRouting';
 import { ACT_SKILL_TOOL_GUIDANCE } from '../modes/agent/actSkillRouting';
@@ -138,21 +139,7 @@ DOCUMENTATION TASKS:
 - Decide one URL/directory naming convention before writing pages; do not mix component names such as text/text-input or radio/radio-button.
 - Verify with the docs build or the closest available docs validation command.`;
 
-const MDX_REPAIR_GUIDANCE = `
-MDX / DOCUSAURUS BUILD REPAIRS:
-- If the build output names an MDX/Markdown file, fix that exact file first.
-- Before editing, read_file a working sibling doc in the same folder that already uses LiveCodeBlock (for example form-builder.md).
-- If the error says "Unexpected character \`,\` in name" or "expected a name character", inspect Markdown table cells for raw TypeScript generics.
-- Escape or code-span TypeScript generics in Markdown tables. Raw Record<string, any> is invalid MDX table text; use \`Record<string, any>\`. For function types, code-span the whole cell, e.g. \`(values: Record<string, any>) => void\`.
-- If the error says "Could not parse expression with acorn" on a LiveCodeBlock line, fix the JSX attribute expression:
-  - Correct: \`<LiveCodeBlock code={\` ... \`} componentName="Foo" />\`
-  - Wrong: \`code={\` on one line and the opening backtick on the next line.
-  - Wrong: closing the template with \`\` then jumping straight to componentName without \`}\`.
-  - Wrong: putting \`render(<Foo />)\` inside the code string — live-demo adds render automatically.
-- If the build says "Can't resolve 'package-name'", check apps/docs/package.json for workspace:* deps, confirm the package exists under packages/, run pnpm install from the monorepo root, and build that package if dist/ is missing. This is part of the same failure — do NOT dismiss it as unrelated.
-- MDX imports must be top-level: move component imports near the frontmatter/top of the file and remove duplicate imports inside the body.
-- Before verify, read package.json scripts — do NOT assume npm run lint exists. Use the docs build command (often cd apps/docs && npm run build).
-- After each edit, rerun the docs build. If it fails, fix only the next exact file from the build output.`;
+const MDX_REPAIR_GUIDANCE = buildMdxRepairPromptGuidance();
 
 export function buildSystemPrompt(
   mode: ThunderMode,
@@ -196,7 +183,7 @@ export function collectSystemPromptSections(
   mode: ThunderMode,
   toolsEnabled: boolean,
   options: Required<Pick<SystemPromptOptions, 'auditMode' | 'docsMode' | 'mdxRepairMode' | 'isContinuation'>> &
-    Pick<SystemPromptOptions, 'askProfile' | 'allowedToolNames'>
+    Pick<SystemPromptOptions, 'askProfile' | 'allowedToolNames' | 'workspaceRoot'>
 ): PromptSectionMap {
   const modeInstructions = buildModeInstructions(mode, options);
   const baseToolGuidance = toolsEnabled
@@ -214,7 +201,9 @@ export function collectSystemPromptSections(
   const skillGuidance = toolsEnabled && mode === 'agent' ? ACT_SKILL_TOOL_GUIDANCE : '';
   const routeParts: string[] = [];
   if (toolsEnabled && options.docsMode) routeParts.push(DOCS_TASK_GUIDANCE);
-  if (toolsEnabled && options.mdxRepairMode) routeParts.push(MDX_REPAIR_GUIDANCE);
+  if (toolsEnabled && options.mdxRepairMode) {
+    routeParts.push(buildMdxRepairPromptGuidance(options.workspaceRoot) || MDX_REPAIR_GUIDANCE);
+  }
   if (toolsEnabled && options.auditMode) routeParts.push(AUDIT_GUIDANCE);
   const continuation =
     toolsEnabled && options.isContinuation
@@ -349,13 +338,14 @@ export interface SystemPromptOptions {
   isContinuation?: boolean;
   askProfile?: AskResponseProfile;
   allowedToolNames?: string[];
+  workspaceRoot?: string;
 }
 
 function normalizeSystemPromptOptions(
   auditModeOrOptions: boolean | SystemPromptOptions,
   isContinuation: boolean
 ): Required<Pick<SystemPromptOptions, 'auditMode' | 'docsMode' | 'mdxRepairMode' | 'isContinuation'>> &
-  Pick<SystemPromptOptions, 'askProfile'> & { allowedToolNames: string[] } {
+  Pick<SystemPromptOptions, 'askProfile' | 'workspaceRoot'> & { allowedToolNames: string[] } {
   if (typeof auditModeOrOptions === 'boolean') {
     return {
       auditMode: auditModeOrOptions,
@@ -371,6 +361,7 @@ function normalizeSystemPromptOptions(
     mdxRepairMode: Boolean(auditModeOrOptions.mdxRepairMode),
     isContinuation: Boolean(auditModeOrOptions.isContinuation),
     askProfile: auditModeOrOptions.askProfile,
+    workspaceRoot: auditModeOrOptions.workspaceRoot,
     allowedToolNames: auditModeOrOptions.allowedToolNames ?? [],
   };
 }
@@ -410,7 +401,7 @@ export function buildPrompt(
 
   const mdxBootstrap =
     mdxRepairMode && mode === 'agent' && !isContinuation
-      ? `\n\n${buildMdxRepairBootstrapBlock(mdxErrorFile)}\n`
+      ? `\n\n${buildMdxRepairBootstrapBlock(mdxErrorFile, systemOptions.workspaceRoot)}\n`
       : '';
 
   const explicitBlock = explicitContextBlock?.trim()

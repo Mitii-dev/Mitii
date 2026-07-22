@@ -10,6 +10,12 @@ export function isSkippedToolOutput(text?: string): boolean {
   );
 }
 
+/** Prefer typed skip metadata when available; fall back to legacy output markers. */
+export function isSkippedToolResult(result: { skipped?: boolean; output?: string; error?: string }): boolean {
+  if (result.skipped) return true;
+  return isSkippedToolOutput(result.output ?? result.error);
+}
+
 const SKIP_REASON_LABELS: Record<string, string> = {
   scope: 'Blocked — file scope required',
   budget: 'Blocked — read budget exceeded',

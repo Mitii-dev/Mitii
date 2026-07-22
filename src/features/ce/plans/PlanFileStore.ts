@@ -1,7 +1,9 @@
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
+import { randomUUID } from 'crypto';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, renameSync } from 'fs';
 import { join } from 'path';
 import type { ThunderPlan } from './PlanActEngine';
 import { createLogger } from '../../../kernel/telemetry/Logger';
+import { assertSafeIdentifier, safeWorkspaceChild } from '../../../kernel/util/safePaths';
 
 const log = createLogger('PlanFileStore');
 
@@ -16,13 +18,17 @@ export interface PlanFileDocument {
 }
 
 export class PlanFileStore {
+  private readonly safeTaskId: string;
+
   constructor(
     private readonly workspace: string,
-    private readonly taskId: string
-  ) {}
+    taskId: string
+  ) {
+    this.safeTaskId = assertSafeIdentifier(taskId, 'taskId');
+  }
 
   private planDir(): string {
-    return join(this.workspace, '.mitii', 'tasks', this.taskId);
+    return safeWorkspaceChild(this.workspace, join('.mitii', 'tasks', this.safeTaskId));
   }
 
   private planPath(): string {
@@ -31,9 +37,10 @@ export class PlanFileStore {
 
   save(plan: ThunderPlan, status: PlanFileDocument['status'] = 'running'): void {
     try {
-      mkdirSync(this.planDir(), { recursive: true });
+      const planDir = this.planDir();
+      mkdirSync(planDir, { recursive: true });
       const doc: PlanFileDocument = {
-        taskId: this.taskId,
+        taskId: this.safeTaskId,
         status,
         goal: plan.goal,
         assumptions: plan.assumptions,
@@ -41,8 +48,11 @@ export class PlanFileStore {
         steps: plan.steps,
         updatedAt: Date.now(),
       };
-      writeFileSync(this.planPath(), JSON.stringify(doc, null, 2), 'utf-8');
-      log.info('Plan file saved', { path: this.planPath(), steps: plan.steps.length, status });
+      const destination = this.planPath();
+      const temporary = `${destination}.${process.pid}.${randomUUID()}.tmp`;
+      writeFileSync(temporary, JSON.stringify(doc, null, 2), 'utf-8');
+      renameSync(temporary, destination);
+      log.info('Plan file saved', { path: destination, steps: plan.steps.length, status });
     } catch (error) {
       log.warn('Failed to save plan file', { error: String(error) });
     }

@@ -32,7 +32,9 @@
     "when was this introduced",
     "hotspot",
     "release history",
-    "recent commits"
+    "recent commits",
+    "who last changed",
+    "when was introduced"
   ],
   "negativeTriggers": [
     "git status",

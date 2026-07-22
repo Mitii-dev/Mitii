@@ -140,6 +140,69 @@ function execFileSafe(
   return spawnCapture(file, args, options);
 }
 
+function dirExists(dir: string): boolean {
+  try {
+    return statSync(dir).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * GUI-launched hosts (VS Code extension host, Electron) inherit a bare login-less PATH
+ * (e.g. `/usr/bin:/bin:/usr/sbin:/sbin` on macOS) instead of the interactive-shell PATH
+ * that sources nvm/homebrew. Without this, the model burns several tool calls rediscovering
+ * "node: command not found" / "pnpm: command not found" on every fresh host process before
+ * it can even see real build output — see AgentLoop's write-churn budget, which counts that
+ * discovery against the round limit meant for actual editing.
+ */
+function findMissingToolPathDirs(currentPath: string): string[] {
+  const home = process.env.HOME;
+  const present = new Set(currentPath.split(':').filter(Boolean));
+  const candidates: string[] = ['/opt/homebrew/bin', '/opt/homebrew/sbin', '/usr/local/bin', '/usr/local/sbin'];
+
+  if (home) {
+    candidates.push(join(home, '.volta', 'bin'));
+    candidates.push(join(home, 'Library', 'pnpm'));
+
+    try {
+      const nvmDefault = readFileSync(join(home, '.nvm', 'alias', 'default'), 'utf-8').trim();
+      const versionsDir = join(home, '.nvm', 'versions', 'node');
+      const resolved = /^v?\d+\.\d+\.\d+$/.test(nvmDefault)
+        ? nvmDefault.startsWith('v')
+          ? nvmDefault
+          : `v${nvmDefault}`
+        : undefined;
+      if (resolved && dirExists(join(versionsDir, resolved))) {
+        candidates.push(join(versionsDir, resolved, 'bin'));
+      } else {
+        const versions = readdirSync(versionsDir).filter((v) => /^v\d+\.\d+\.\d+$/.test(v));
+        versions.sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+        if (versions[0]) candidates.push(join(versionsDir, versions[0], 'bin'));
+      }
+    } catch {
+      // nvm not installed — ignore.
+    }
+  }
+
+  return candidates.filter((dir) => !present.has(dir) && dirExists(dir));
+}
+
+let cachedShellEnv: NodeJS.ProcessEnv | undefined;
+
+/** Base env for spawned shell commands, with common Node/package-manager install dirs
+ * appended to PATH when the host process's PATH is missing them. Computed once per process. */
+function resolveShellEnv(): NodeJS.ProcessEnv {
+  if (cachedShellEnv) return cachedShellEnv;
+  const env = { ...process.env };
+  if (process.platform !== 'win32') {
+    const extra = findMissingToolPathDirs(env.PATH ?? '');
+    if (extra.length) env.PATH = [env.PATH, ...extra].filter(Boolean).join(':');
+  }
+  cachedShellEnv = env;
+  return env;
+}
+
 export type ResearchAgentRuntime = SubagentRuntime;
 
 let subagentRuntime: SubagentRuntime | undefined;
@@ -824,7 +887,7 @@ export function createExecuteWorkspaceScriptTool(
           maxBuffer: 2 * 1024 * 1024,
           timeout: 120000,
           env: {
-            ...process.env,
+            ...resolveShellEnv(),
             FORCE_COLOR: '0',
             THUNDER_CHECKPOINT_TEXT: input.text ?? process.env.THUNDER_CHECKPOINT_TEXT ?? '',
           },
@@ -1502,7 +1565,7 @@ export function createRunCommandTool(workspace: string, getMode: () => string): 
           cwd: normalized.cwd,
           maxBuffer: 4 * 1024 * 1024,
           timeout: 120000,
-          env: { ...process.env, FORCE_COLOR: '0' },
+          env: { ...resolveShellEnv(), FORCE_COLOR: '0' },
         });
         const output = [normalized.note, stdout, stderr].filter(Boolean).join('\n').slice(0, 50000);
         // Exit 0 is not enough — BSD grep etc. can still emit "invalid option" on stderr.

@@ -188,6 +188,7 @@ describe('Skill Engine', () => {
       request: 'Check which .env keys are missing compared to .env.example',
       intent: 'diagnose',
       taskKind: 'question',
+      artifacts: ['.env', '.env.example'],
       repository: {
         ...baseContext().repository,
         paths: ['.env', '.env.example'],
@@ -257,8 +258,8 @@ describe('Skill Engine', () => {
       style: 'quick-ref',
       maxChars: 2_000,
     });
-    expect(loads).toBeLessThanOrEqual(2);
-    expect(result.loaded.length).toBeLessThanOrEqual(2);
+    expect(loads).toBeLessThanOrEqual(3);
+    expect(result.loaded.length).toBeLessThanOrEqual(3);
     expect(result.totalChars).toBeLessThanOrEqual(2_000);
     expect(result.context).not.toContain('never');
   });

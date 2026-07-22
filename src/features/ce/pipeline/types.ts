@@ -15,7 +15,9 @@ export type AuditSubtype =
   | 'database'
   | 'architecture'
   | 'code_quality'
-  | 'generic';
+  | 'generic'
+  /** Bare "audit" mention with no cleanup language — a review, not a depcheck/knip cleanup. */
+  | 'review';
 
 export type DocsSubtype =
   | 'readme'
@@ -30,7 +32,6 @@ export type DocsSubtype =
 export type OperationClass =
   | 'inspect'
   | 'workspace_write'
-  | 'shell'
   | 'local_git_write'
   | 'remote_write'
   | 'release'
@@ -104,6 +105,8 @@ export interface RouteResolution {
   auditSubtype?: AuditSubtype;
   docsSubtype?: DocsSubtype;
   risk: RiskLevel;
+  /** Short factors behind `risk`, for prompt explainability — not a stable/parsed contract. */
+  riskReasons?: string[];
   operationClass: OperationClass;
   executionPath:
     | 'direct'

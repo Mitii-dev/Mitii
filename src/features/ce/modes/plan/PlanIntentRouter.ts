@@ -23,8 +23,11 @@ export interface PlanRouteOptions {
 
 export function routePlanIntent(userMessage: string, taskAnalysis?: TaskAnalysis, options: PlanRouteOptions = {}): PlanRoute {
   const text = userMessage.trim();
-  const askRoute = routeAskIntent(text, taskAnalysis?.askIntent ? { intent: taskAnalysis.askIntent } : undefined);
-  const intent = options.intent ?? inferPlanIntentFallback(text, taskAnalysis);
+  const askRoute = routeAskIntent(text, {
+    intent: taskAnalysis?.askIntent,
+    features: taskAnalysis?.features,
+  });
+  const intent = options.intent ?? inferPlanIntentFallback(text, taskAnalysis, askRoute.intent);
   const complexity = taskAnalysis?.complexity ?? inferComplexity(text, intent);
   const forcePlan = shouldForcePlan(text, askRoute.intent);
   const groundingRequired = forcePlan && askRoute.intent !== 'general_knowledge';
@@ -50,16 +53,17 @@ export function routePlanIntent(userMessage: string, taskAnalysis?: TaskAnalysis
   return route;
 }
 
-function inferPlanIntentFallback(text: string, taskAnalysis?: TaskAnalysis): PlanIntent {
-  if (taskAnalysis?.kind === 'audit' || AUDIT_RE.test(text)) return 'audit';
-  if (DOCS_RE.test(text)) return 'docs';
-  if (BUG_RE.test(text)) return 'bugfix';
+function inferPlanIntentFallback(text: string, taskAnalysis?: TaskAnalysis, askIntent?: ReturnType<typeof routeAskIntent>['intent']): PlanIntent {
+  const features = taskAnalysis?.features;
+  if (taskAnalysis?.kind === 'audit' || (features?.auditSubtype && features.auditSubtype !== 'review') || AUDIT_RE.test(text)) return 'audit';
+  if (taskAnalysis?.kind === 'docs' || features?.isDocsMention || DOCS_RE.test(text)) return 'docs';
+  if (BUG_RE.test(text) || features?.isDiagnosticRequest) return 'bugfix';
   if (REFACTOR_RE.test(text)) return 'refactor';
-  if (FEATURE_RE.test(text)) return 'feature';
+  if (FEATURE_RE.test(text) || features?.hasActionVerbs) return 'feature';
 
-  const askIntent = routeAskIntent(text).intent;
-  if (askIntent === 'architecture' || askIntent === 'cross_project' || askIntent === 'implement_here') return 'spike';
-  if (askIntent === 'debug_explain') return 'bugfix';
+  const resolvedAskIntent = askIntent ?? routeAskIntent(text, { features }).intent;
+  if (resolvedAskIntent === 'architecture' || resolvedAskIntent === 'cross_project' || resolvedAskIntent === 'implement_here') return 'spike';
+  if (resolvedAskIntent === 'debug_explain') return 'bugfix';
   return 'question';
 }
 

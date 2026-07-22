@@ -47,7 +47,7 @@ describe('Ask and Plan mode reliability', () => {
     const { AgentTaskState } = await import('../src/features/ce/runtime/AgentTaskState');
     const taskState = new AgentTaskState();
     taskState.setTaskContext('question', 'commit message', 'commit message');
-    taskState.recordToolSuccess('run_command', { command: 'git diff' }, '(no changes)');
+    taskState.recordToolSuccess('git_diff', { staged: true }, '(no changes)');
 
     const executor = new ToolExecutor(
       {
@@ -61,7 +61,7 @@ describe('Ask and Plan mode reliability', () => {
       () => taskState
     );
 
-    const result = await executor.execute('run_command', { command: 'git diff --cached' });
+    const result = await executor.execute('git_diff', { staged: true });
     expect(result.success).toBe(true);
     expect(result.output).toBe('cached diff');
   });

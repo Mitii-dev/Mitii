@@ -38,7 +38,7 @@ const VALIDATION_BLOCK_MESSAGE =
 
 const REPEATED_TOOL_INPUT_FAILURE_PREFIX = 'Stopped after repeated identical tool failure';
 
-const WRITE_TOOL_NAMES = new Set(['apply_patch', 'write_file']);
+import { WRITE_TOOL_IDS } from '../tools/toolMetadata';
 
 /**
  * Tool filtering (e.g. filterActModeTools) only controls what's advertised to the model —
@@ -60,8 +60,8 @@ const NO_WRITE_AGENT_STOP =
   'Stopped because the model tried to finish an Agent-mode edit task without calling apply_patch or write_file. No files were changed.';
 
 const WRITE_REQUIRED_CHURN_NUDGE = `SYSTEM: You are stuck in read-only exploration for an Agent-mode edit task.
-The required context is already available. In the next assistant step, call apply_patch or write_file.
-Do NOT call read_file, read_files, list_files, diagnostics, memory_search, use_skill, or ask_question again before editing.`;
+The required context is already available. Only apply_patch and write_file are offered now — every other tool is disabled until you make an edit.
+Call apply_patch or write_file in the next assistant step to fix the issue(s) already surfaced above.`;
 
 const WRITE_REQUIRED_CHURN_STOP =
   'Stopped because the model kept using read-only tools for an edit task and never called apply_patch or write_file, despite those tool calls succeeding. Try a stronger coding model or reduce the prompt scope.';
@@ -188,6 +188,7 @@ interface AgentLoopRuntimeState {
   groundingToolCallsMade?: boolean;
   requiredSideEffectMade?: boolean;
   writeToolCallsMade?: boolean;
+  validationUnresolved?: boolean;
 }
 
 type AgentLoopExecutionSource = 'run' | 'resume';
@@ -276,6 +277,7 @@ export class AgentLoop {
      *  needs, so cutting off run_command/read tools (not everything) pushes it to fix the
      *  known issue instead of stopping with a text-only report. Cleared once a write lands. */
     let writeOnlyMode = false;
+    let validationUnresolved = initialState.validationUnresolved ?? false;
     const recentToolAttempts: ToolAttemptRecord[] = [];
     const hardLimit = maxSteps + maxAutoContinues * maxSteps;
 
@@ -300,7 +302,7 @@ export class AgentLoop {
 
       for await (const delta of provider.complete({
         messages,
-        tools: synthesizeOnly ? [] : writeOnlyMode ? tools.filter((t) => WRITE_TOOL_NAMES.has(t.function.name)) : tools,
+        tools: synthesizeOnly ? [] : writeOnlyMode ? tools.filter((t) => WRITE_TOOL_IDS.has(t.function.name)) : tools,
         toolChoice: synthesizeOnly ? 'none' : 'auto',
         stream: true,
         reasoningEffort: options?.reasoningEffort,
@@ -423,6 +425,12 @@ export class AgentLoop {
           continue;
         }
         if (stepContent) {
+          if (validationUnresolved) {
+            emitCandidate(false, 'validation_unresolved');
+            messages.push({ role: 'assistant', content: stepContent });
+            messages.push({ role: 'user', content: VALIDATION_BLOCK_MESSAGE });
+            continue;
+          }
           emitCandidate(true);
           messages.push({ role: 'assistant', content: stepContent });
           const finalChunk = toAssistantStreamChunk(stepContent, undefined, 'final');
@@ -626,6 +634,7 @@ export class AgentLoop {
       }
 
       if (postWriteValidationFailed) {
+        validationUnresolved = true;
         messages.push({ role: 'user', content: VALIDATION_BLOCK_MESSAGE });
       }
 
@@ -760,6 +769,12 @@ export class AgentLoop {
           }
           if (noWriteToolRounds >= 2 && !writeChurnNudgeUsed) {
             writeChurnNudgeUsed = true;
+            // Prose alone ("do not call X") is unreliable on weaker models, and any list of
+            // named tools in the nudge is one miss away from leaving an escape hatch (e.g.
+            // search/run_command were previously left off and the model just kept using
+            // those instead of editing). Actually narrow the offered tool set, same as the
+            // noProgress detector below, so the next step can only call apply_patch/write_file.
+            writeOnlyMode = true;
             messages.push({ role: 'user', content: WRITE_REQUIRED_CHURN_NUDGE });
           }
         }
@@ -934,16 +949,26 @@ export class AgentLoop {
     if (signal?.aborted) return [];
 
     const parsedCalls = toolCalls.map((tc) => {
-      let input: Record<string, unknown> = {};
-      try {
-        input = JSON.parse(tc.function.arguments || '{}') as Record<string, unknown>;
-      } catch {
-        input = {};
-      }
-      return { tc, input };
+      const parsed = parseToolInput(tc);
+      return parsed.success
+        ? { tc, input: parsed.input }
+        : { tc, input: parsed.input, parseError: parsed.error };
     });
 
-    const runOne = async (tc: ToolCall, input: Record<string, unknown>): Promise<ExecutedToolCall> => {
+    const runOne = async (
+      tc: ToolCall,
+      input: Record<string, unknown>,
+      parseError?: string
+    ): Promise<ExecutedToolCall> => {
+      if (parseError) {
+        const execResult = {
+          success: false,
+          output: '',
+          error: parseError,
+        };
+        callbacks?.onToolEnd?.(tc.function.name, false, parseError, 0);
+        return { tc, input, execResult, durationMs: 0 };
+      }
       callbacks?.onToolStart?.(tc.function.name, input);
       const toolStartedAt = Date.now();
       const execResult = allowedToolNames.has(tc.function.name)
@@ -964,18 +989,37 @@ export class AgentLoop {
     // are byte-for-byte unaffected. Result order always matches `toolCalls` order either
     // way, so every downstream consumer (message building, counters) is unaffected.
     if (canParallelizeRound(parsedCalls.map(({ tc, input }) => ({ name: tc.function.name, input })))) {
-      return Promise.all(parsedCalls.map(({ tc, input }) => runOne(tc, input)));
+      return Promise.all(parsedCalls.map(({ tc, input, parseError }) => runOne(tc, input, parseError)));
     }
 
     const executions: ExecutedToolCall[] = [];
-    for (const { tc, input } of parsedCalls) {
+    let pendingIndex = -1;
+    for (let index = 0; index < parsedCalls.length; index += 1) {
+      const { tc, input, parseError } = parsedCalls[index];
       if (signal?.aborted) break;
 
-      const execution = await runOne(tc, input);
+      const execution = await runOne(tc, input, parseError);
       executions.push(execution);
 
       if (execution.execResult.pendingApproval) {
+        pendingIndex = index;
         break;
+      }
+    }
+
+    if (pendingIndex >= 0) {
+      for (let index = pendingIndex + 1; index < parsedCalls.length; index += 1) {
+        const deferred = parsedCalls[index].tc;
+        executions.push({
+          tc: deferred,
+          input: parsedCalls[index].input,
+          execResult: {
+            success: false,
+            output: 'Deferred because an earlier tool call requires approval.',
+            skipped: true,
+          },
+          durationMs: 0,
+        });
       }
     }
 
@@ -1334,6 +1378,30 @@ function repeatedToolFailureKey(
 
 function normalizeToolFailure(output: string): string {
   return output.replace(/\s+/g, ' ').trim().slice(0, 500);
+}
+
+function parseToolInput(
+  toolCall: ToolCall
+):
+  | { success: true; input: Record<string, unknown> }
+  | { success: false; input: Record<string, unknown>; error: string } {
+  try {
+    const parsed = JSON.parse(toolCall.function.arguments || '{}') as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {
+        success: false,
+        input: {},
+        error: 'Tool arguments must be a JSON object.',
+      };
+    }
+    return { success: true, input: parsed as Record<string, unknown> };
+  } catch {
+    return {
+      success: false,
+      input: {},
+      error: `Invalid JSON arguments for ${toolCall.function.name}.`,
+    };
+  }
 }
 
 function buildRepeatedToolInputFailureMessage(toolName: string, output: string, count: number): string {

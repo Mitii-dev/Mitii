@@ -16,7 +16,8 @@ describe('Act orchestration boundary', () => {
   it('recognizes explicit and natural saved-plan handoff phrases', () => {
     expect(shouldResumeSavedPlan('execute the plan', true)).toBe(true);
     expect(shouldResumeSavedPlan('plan looks good, implement it', true)).toBe(true);
-    expect(shouldResumeSavedPlan('go ahead', true)).toBe(true);
+    expect(shouldResumeSavedPlan('go ahead', true, false, { planAwaitingApproval: true })).toBe(true);
+    expect(shouldResumeSavedPlan('go ahead', true)).toBe(false);
     expect(shouldResumeSavedPlan('fix it', true)).toBe(true);
     expect(shouldResumeSavedPlan('please fix it', true)).toBe(true);
     expect(shouldResumeSavedPlan('fix the login bug we planned', true)).toBe(true);
@@ -47,6 +48,7 @@ describe('Act orchestration boundary', () => {
     const route = routeActIntent('Continue the current approved task from where it paused\nOriginal user request:\nFix the failing build and update tests', analysis, {
       mode: 'agent',
       hasActivePlan: true,
+      planAwaitingApproval: true,
       orchestrationEnabled: true,
       intent: 'bugfix',
     });
@@ -178,6 +180,7 @@ describe('Act orchestration boundary', () => {
 
     const plan = ActOrchestrator.prepare('go ahead', {
       hasActivePlan: true,
+      planAwaitingApproval: true,
       savedPlanId: 'plan-123',
       skillCatalog,
       verifyCommands: ['npm test'],

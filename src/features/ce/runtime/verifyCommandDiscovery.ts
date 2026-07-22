@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
 import { basename, dirname, join, relative, resolve } from 'path';
+import { safeWorkspaceChild } from '../../../kernel/util/safePaths';
 import { suggestDocsVerifyCommands } from './mdxRepairRouting';
+import { discoverDocumentationSites, resolveDocsSiteForFile } from '../skills/documentationProfile';
 
 export interface VerifyCommandPlan {
   commands: string[];
@@ -64,7 +66,7 @@ export function resolveProjectVerifyCommands(
   const discoveredScripts: Record<string, string[]> = {};
 
   const touchedFiles = options.touchedFiles ?? [];
-  const docsSuggestions = suggestDocsVerifyCommands();
+  const docsSuggestions = suggestDocsVerifyCommands(workspace);
   const docsSuggestionRequest = trimmed.length > 0 && trimmed.every((command) => docsSuggestions.includes(command));
 
   if (docsSuggestionRequest) {
@@ -264,11 +266,18 @@ function discoverPackageDirs(
     dirs.add(root);
   }
 
-  // Include apps/docs when docs paths touched but package not found walking up
+  // Include discovered docs packages when docs paths touched but package not found walking up
   for (const file of touchedFiles) {
-    const match = file.match(/^(apps\/docs|docs)\//);
-    if (match) {
-      const docsPkg = join(root, match[1] === 'docs' ? 'docs' : 'apps/docs');
+    const site = resolveDocsSiteForFile(root, file);
+    if (site) {
+      const docsPkg = resolve(root, site.packageRoot);
+      if (existsSync(join(docsPkg, 'package.json'))) dirs.add(docsPkg);
+    }
+  }
+
+  for (const site of discoverDocumentationSites(root)) {
+    if (touchedFiles.some((file) => file.replace(/\\/g, '/').startsWith(`${site.packageRoot}/`))) {
+      const docsPkg = resolve(root, site.packageRoot);
       if (existsSync(join(docsPkg, 'package.json'))) dirs.add(docsPkg);
     }
   }
@@ -515,7 +524,7 @@ function resolveRequestedCommand(workspace: string, command: string): { run: boo
       : { run: false, reason: 'Python test config/files not found' };
   }
 
-  return { run: true };
+  return { run: false, reason: 'Unsupported command shape; explicit approval required' };
 }
 
 function discoverManifestVerifyCommands(workspace: string, skipped: string[]): string[] {
@@ -574,8 +583,12 @@ function parseCdPrefix(workspace: string, command: string): { cwd: string; comma
   const match = command.match(/^cd\s+([^&;]+)\s*&&\s*([\s\S]+)$/);
   if (!match) return { cwd: workspace, command };
   const rawDir = match[1].trim().replace(/^['"]|['"]$/g, '');
-  const cwd = resolve(workspace, rawDir);
-  return cwd.startsWith(resolve(workspace)) ? { cwd, command: match[2].trim() } : { cwd: workspace, command: match[2].trim() };
+  try {
+    const cwd = safeWorkspaceChild(workspace, rawDir);
+    return { cwd, command: match[2].trim() };
+  } catch {
+    return { cwd: workspace, command: match[2].trim() };
+  }
 }
 
 function findWorkspacePackageDir(workspace: string, spec: string): string | null {

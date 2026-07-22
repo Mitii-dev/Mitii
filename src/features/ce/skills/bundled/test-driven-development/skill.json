@@ -29,7 +29,8 @@
     "write a failing test",
     "prove-it",
     "red green refactor",
-    "add tests then implement"
+    "add tests then implement",
+    "failing test first"
   ],
   "negativeTriggers": [
     "docs only",

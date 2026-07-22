@@ -1,9 +1,10 @@
-import { createHash } from 'crypto';
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { createHash, randomUUID } from 'crypto';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'fs';
 import { basename, join, relative } from 'path';
 import { createLogger } from '../../../kernel/telemetry/Logger';
 import { resolveBundledSkillsRoot } from './resolveBundledSkillsRoot';
 import { parseSkillFrontmatter } from './SkillCatalogService';
+import { validateSkillManifest } from './SkillManifestSchema';
 import { MAX_SKILL_DESCRIPTION_CHARS } from './skillLimits';
 
 const log = createLogger('BundledSkills');
@@ -11,7 +12,11 @@ const MANIFEST_FILE = '.bundled-skills.json';
 
 export interface InstallBundledSkillsResult {
   installed: string[];
+  updated: string[];
+  preserved: string[];
   skipped: string[];
+  removed: string[];
+  failed: Array<{ skillId: string; reason: string }>;
   bundledRoot: string;
   destinationRoot: string;
 }
@@ -32,17 +37,26 @@ export function installBundledSkills(
 ): InstallBundledSkillsResult {
   const bundledRoot = resolveBundledSkillsRoot(extensionRoot);
   const destinationRoot = join(workspace, '.mitii', 'skills');
-  const installed: string[] = [];
-  const skipped: string[] = [];
+  const result: InstallBundledSkillsResult = {
+    installed: [],
+    updated: [],
+    preserved: [],
+    skipped: [],
+    removed: [],
+    failed: [],
+    bundledRoot: bundledRoot ?? '',
+    destinationRoot,
+  };
 
   if (!bundledRoot || !existsSync(bundledRoot)) {
     log.warn('Bundled skills directory missing', { extensionRoot });
-    return { installed, skipped, bundledRoot: bundledRoot ?? '', destinationRoot };
+    return result;
   }
 
   mkdirSync(destinationRoot, { recursive: true });
   const manifestPath = join(destinationRoot, MANIFEST_FILE);
   const manifest = readManifest(manifestPath);
+  const bundledNames = new Set(listBundledSkillDirs(bundledRoot).map((dir) => basename(dir)));
 
   for (const skillDir of listBundledSkillDirs(bundledRoot)) {
     const skillName = basename(skillDir);
@@ -50,11 +64,20 @@ export function installBundledSkills(
     const targetDir = join(destinationRoot, skillName);
 
     if (!existsSync(sourceSkillFile)) {
-      log.warn('Bundled skill missing SKILL.md', { skillName, sourceSkillFile });
+      result.failed.push({ skillId: skillName, reason: 'Bundled skill missing SKILL.md' });
       continue;
     }
 
-    const targetSkillFile = join(targetDir, 'SKILL.md');
+    try {
+      validateInstalledSkill(skillDir);
+    } catch (error) {
+      result.failed.push({
+        skillId: skillName,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
+
     const sourceHash = hashDirectory(skillDir);
     const targetExists = existsSync(targetDir);
     const previous = manifest.skills[skillName];
@@ -68,7 +91,8 @@ export function installBundledSkills(
       if (!previous && targetHash === sourceHash) {
         manifest.skills[skillName] = { sourceHash, installedHash: targetHash };
       }
-      skipped.push(skillName);
+      result.preserved.push(skillName);
+      result.skipped.push(skillName);
       continue;
     }
 
@@ -83,39 +107,49 @@ export function installBundledSkills(
         skillName,
         targetDir,
       });
-      skipped.push(skillName);
+      result.preserved.push(skillName);
+      result.skipped.push(skillName);
       continue;
     }
 
-    mkdirSync(targetDir, { recursive: true });
-    cpSync(skillDir, targetDir, {
-      recursive: true,
-      force: true,
-      filter: (src) => basename(src) !== '.git',
-    });
-
-    if (!existsSync(targetSkillFile)) {
-      cpSync(sourceSkillFile, targetSkillFile);
+    try {
+      replaceSkillDirectory(skillDir, targetDir);
+      const installedHash = hashDirectory(targetDir);
+      manifest.skills[skillName] = { sourceHash, installedHash };
+      result.installed.push(skillName);
+      if (targetExists) result.updated.push(skillName);
+    } catch (error) {
+      result.failed.push({
+        skillId: skillName,
+        reason: error instanceof Error ? error.message : String(error),
+      });
     }
-
-    installed.push(skillName);
-    manifest.skills[skillName] = {
-      sourceHash,
-      installedHash: hashDirectory(targetDir),
-    };
   }
 
-  writeManifest(manifestPath, manifest);
+  for (const skillName of Object.keys(manifest.skills)) {
+    if (!bundledNames.has(skillName)) {
+      result.removed.push(skillName);
+    }
+  }
 
-  if (installed.length > 0 || skipped.length > 0) {
+  writeManifestAtomic(manifestPath, manifest);
+
+  if (
+    result.installed.length > 0 ||
+    result.updated.length > 0 ||
+    result.skipped.length > 0 ||
+    result.failed.length > 0
+  ) {
     log.info('Bundled skills install finished', {
-      installed: installed.length,
-      skipped: skipped.length,
+      installed: result.installed.length,
+      updated: result.updated.length,
+      skipped: result.skipped.length,
+      failed: result.failed.length,
       destinationRoot,
     });
   }
 
-  return { installed, skipped, bundledRoot, destinationRoot };
+  return result;
 }
 
 export function listBundledSkillNames(extensionRoot: string): string[] {
@@ -136,12 +170,40 @@ export function readBundledSkillManifest(extensionRoot: string): Array<{ name: s
   });
 }
 
+function replaceSkillDirectory(sourceDir: string, targetDir: string): void {
+  const temporaryDir = `${targetDir}.${process.pid}.${randomUUID()}.tmp`;
+  cpSync(sourceDir, temporaryDir, {
+    recursive: true,
+    force: true,
+    filter: (src) => basename(src) !== '.git',
+  });
+  validateInstalledSkill(temporaryDir);
+
+  if (existsSync(targetDir)) {
+    rmSync(targetDir, { recursive: true, force: true });
+  }
+  renameSync(temporaryDir, targetDir);
+}
+
+function validateInstalledSkill(skillDir: string): void {
+  const skillFile = join(skillDir, 'SKILL.md');
+  if (!existsSync(skillFile)) throw new Error('Installed skill missing SKILL.md');
+  const manifestPath = join(skillDir, 'skill.json');
+  if (!existsSync(manifestPath)) return;
+  const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as unknown;
+  const validation = validateSkillManifest(parsed);
+  if (!validation.success || !validation.manifest) {
+    throw new Error(validation.issues.map((issue) => issue.message).join('; ') || 'Invalid skill manifest');
+  }
+}
+
 function listBundledSkillDirs(bundledRoot: string): string[] {
   return readdirSync(bundledRoot)
     .map((entry) => join(bundledRoot, entry))
     .filter((absPath) => {
       try {
-        return statSync(absPath).isDirectory() && existsSync(join(absPath, 'SKILL.md'));
+        const st = statSync(absPath);
+        return st.isDirectory() && !st.isSymbolicLink() && existsSync(join(absPath, 'SKILL.md'));
       } catch {
         return false;
       }
@@ -170,8 +232,10 @@ function readManifest(path: string): BundledSkillsManifest {
   return { version: 1, skills: {} };
 }
 
-function writeManifest(path: string, manifest: BundledSkillsManifest): void {
-  writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+function writeManifestAtomic(path: string, manifest: BundledSkillsManifest): void {
+  const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  writeFileSync(temporary, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  renameSync(temporary, path);
 }
 
 function hashDirectory(root: string): string {
@@ -182,6 +246,7 @@ function hashDirectory(root: string): string {
       if (entry === '.git') continue;
       const absPath = join(dir, entry);
       const st = statSync(absPath);
+      if (st.isSymbolicLink()) continue;
       if (st.isDirectory()) {
         walk(absPath);
       } else if (st.isFile()) {

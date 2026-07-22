@@ -25,6 +25,7 @@
   "triggers": [
     "code review",
     "review this pr",
+    "pull request",
     "review the diff",
     "review changes",
     "quality review",

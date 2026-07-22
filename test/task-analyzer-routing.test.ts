@@ -58,6 +58,8 @@ describe('TaskAnalyzer routing regressions', () => {
     expect(analysis.shouldUseSubagents).toBe(false);
     expect(analysis.subagentDecision?.reasonCodes).toContain('capture_baseline_first');
     expect(analysis.actIntent).toBe('bugfix');
+    expect(analysis.summary).toContain('run one baseline check');
+    expect(analysis.summary).toContain('current diagnostic files');
   });
 
   it('keeps deterministic high-complexity verification work on direct tools', () => {

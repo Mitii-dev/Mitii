@@ -1,26 +1,15 @@
 import type { SubagentDefinition } from './types';
+import { SUBAGENT_READ_TOOL_IDS } from '../tools/toolMetadata';
+import { ToolId } from '../tools/toolIds';
 
-const READ_TOOLS = [
-  'read_file',
-  'read_files',
-  'resolve_path',
-  'list_files',
-  'search',
-  'search_batch',
-  'repo_map',
-  'retrieve_context',
-  'git_diff',
-  'diagnostics',
-  'memory_search',
-  'run_command',
-];
+const READ_TOOLS = [...SUBAGENT_READ_TOOL_IDS];
 
 export const BUILTIN_SUBAGENTS: SubagentDefinition[] = [
   {
     id: 'research',
     displayName: 'Research',
     allowedTools: READ_TOOLS,
-    deniedTools: ['write_file', 'apply_patch', 'memory_write', 'spawn_subagent', 'spawn_research_agent'],
+    deniedTools: [ToolId.WriteFile, ToolId.ApplyPatch, ToolId.MemoryWrite, ToolId.SpawnSubagent, ToolId.SpawnResearchAgent],
     writable: false,
     risk: 'low',
     maxSteps: 6,
@@ -34,12 +23,12 @@ Do NOT edit files or explore unrelated areas.`,
     displayName: 'Implementer',
     allowedTools: [
       ...READ_TOOLS,
-      'write_file',
-      'apply_patch',
-      'execute_workspace_script',
+      ToolId.WriteFile,
+      ToolId.ApplyPatch,
+      ToolId.ExecuteWorkspaceScript,
       'search_script_catalog',
     ],
-    deniedTools: ['spawn_subagent', 'spawn_research_agent', 'memory_write'],
+    deniedTools: [ToolId.SpawnSubagent, ToolId.SpawnResearchAgent, ToolId.MemoryWrite],
     writable: true,
     risk: 'high',
     maxSteps: 8,
@@ -53,7 +42,7 @@ Run diagnostics or targeted verification after edits. Return summary, files chan
     id: 'reviewer',
     displayName: 'Reviewer',
     allowedTools: [...READ_TOOLS, 'analyze_change_impact'],
-    deniedTools: ['write_file', 'apply_patch', 'memory_write', 'spawn_subagent', 'spawn_research_agent'],
+    deniedTools: [ToolId.WriteFile, ToolId.ApplyPatch, ToolId.MemoryWrite, ToolId.SpawnSubagent, ToolId.SpawnResearchAgent],
     writable: false,
     risk: 'low',
     maxSteps: 8,
@@ -65,8 +54,16 @@ Return structured sections: Critical, Major, Minor, Suggestions. Include file pa
   {
     id: 'verifier',
     displayName: 'Verifier',
-    allowedTools: ['run_command', 'read_file', 'read_files', 'list_files', 'search', 'diagnostics', 'execute_workspace_script'],
-    deniedTools: ['write_file', 'apply_patch', 'memory_write', 'spawn_subagent', 'spawn_research_agent'],
+    allowedTools: [
+      ToolId.RunCommand,
+      ToolId.ReadFile,
+      ToolId.ReadFiles,
+      'list_files',
+      'search',
+      ToolId.Diagnostics,
+      ToolId.ExecuteWorkspaceScript,
+    ],
+    deniedTools: [ToolId.WriteFile, ToolId.ApplyPatch, ToolId.MemoryWrite, ToolId.SpawnSubagent, ToolId.SpawnResearchAgent],
     writable: false,
     risk: 'medium',
     maxSteps: 6,

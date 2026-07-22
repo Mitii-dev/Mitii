@@ -1,30 +1,25 @@
 import type { ToolDefinition } from '../../../../kernel/llm/toolTypes';
-import { PLANNING_DISCOVERY_TOOLS } from '../../plans/tools/planTools';
+import {
+  PLANNING_DISCOVERY_TOOL_IDS,
+  PLAN_ALLOWED_TOOL_IDS,
+  PLAN_GROUNDING_TOOL_IDS,
+} from '../../tools/toolMetadata';
 import { routePlanIntent } from './PlanIntentRouter';
 
-export const PLAN_ALLOWED_TOOLS = new Set([
-  ...PLANNING_DISCOVERY_TOOLS,
-  'execute_workspace_script',
-  'project_catalog',
-  'analyze_change_impact',
-  'analyze_log_directory',
-  'analyze_jsonl',
-  'query_log_events',
-  'list_logs',
-]);
+/** @deprecated Use PLAN_ALLOWED_TOOL_IDS from toolMetadata. */
+export const PLAN_ALLOWED_TOOLS = PLAN_ALLOWED_TOOL_IDS;
 
-const PLAN_GROUNDING_TOOLS = new Set([
-  ...PLANNING_DISCOVERY_TOOLS,
-  'project_catalog',
-  'analyze_change_impact',
-]);
+/** @deprecated Use PLANNING_DISCOVERY_TOOL_IDS from toolMetadata. */
+export { PLANNING_DISCOVERY_TOOL_IDS as PLANNING_DISCOVERY_TOOLS };
+
+const PLAN_GROUNDING_TOOLS = PLAN_GROUNDING_TOOL_IDS;
 
 export function filterPlanModeTools(tools: ToolDefinition[]): ToolDefinition[] {
   return tools.filter((tool) => isPlanAllowedTool(tool.function.name));
 }
 
 export function isPlanAllowedTool(toolName: string): boolean {
-  return PLAN_ALLOWED_TOOLS.has(toolName) || isPlanAllowedMcpReadTool(toolName);
+  return PLAN_ALLOWED_TOOL_IDS.has(toolName) || isPlanAllowedMcpReadTool(toolName);
 }
 
 export function needsPlanGrounding(userMessage: string): boolean {

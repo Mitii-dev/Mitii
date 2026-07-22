@@ -4,6 +4,7 @@ import type {
   SkillPinRule,
 } from '../../../interfaces/skills/SkillManifest';
 import type { SkillCatalogEntry, SkillCatalogService } from './SkillCatalogService';
+import { SKILL_ENGINE_CANDIDATE_LIMIT, SKILL_ENGINE_REPORT_LIMIT } from './skillLimits';
 
 export const SKILL_ENGINE_VERSION = '1';
 
@@ -15,6 +16,13 @@ export interface RepositoryProfile {
   frameworks: string[];
   packageManagers: string[];
   paths: string[];
+  documentationSites?: Array<{
+    packageRoot: string;
+    packageName?: string;
+    framework: 'docusaurus' | 'unknown';
+    configPaths: string[];
+    suggestedVerifyCommands: string[];
+  }>;
 }
 
 export interface SkillResolutionContext {
@@ -91,7 +99,7 @@ export interface SkillRanker {
 export class CatalogSkillCandidateRetriever implements SkillCandidateRetriever {
   constructor(private readonly catalog: SkillCatalogService) {}
 
-  retrieve(context: SkillResolutionContext, limit = 40): SkillCatalogEntry[] {
+  retrieve(context: SkillResolutionContext, limit = SKILL_ENGINE_CANDIDATE_LIMIT): SkillCatalogEntry[] {
     const explicitIds = new Set([
       ...(context.manualSkillIds ?? []),
       ...(context.userPinnedSkillIds ?? []),
@@ -105,15 +113,20 @@ export class CatalogSkillCandidateRetriever implements SkillCandidateRetriever {
       ...context.repository.languages,
       ...context.repository.frameworks,
       ...context.repository.packageManagers,
-      ...context.repository.paths,
     ].filter(Boolean).join(' ');
-    const retrieved = this.catalog.search(query, limit);
+    const remainingLimit = Math.max(0, limit - explicitIds.size);
+    const retrieved = this.catalog.search(query, remainingLimit);
     const byId = new Map(retrieved.map((entry) => [entry.id, entry]));
+    const explicitlyRequested: SkillCatalogEntry[] = [];
     for (const id of explicitIds) {
       const loaded = this.catalog.get(id)?.entry;
-      if (loaded) byId.set(loaded.id, loaded);
+      if (loaded) {
+        byId.set(loaded.id, loaded);
+        explicitlyRequested.push(loaded);
+      }
     }
-    return [...byId.values()].slice(0, limit);
+    const remaining = [...byId.values()].filter((entry) => !explicitIds.has(entry.id));
+    return [...explicitlyRequested, ...remaining.slice(0, remainingLimit)];
   }
 }
 
@@ -142,8 +155,8 @@ export class ExplainableSkillRanker implements SkillRanker {
     applyRepositoryConstraint('framework', manifest.frameworks, context.repository.frameworks, rejectionReasons);
     applyRepositoryConstraint('package manager', manifest.packageManagers, context.repository.packageManagers, rejectionReasons);
     if ((manifest.pathPatterns?.length ?? 0) > 0 && !manifest.pathPatterns!.some((pattern) =>
-      [...context.repository.paths, ...(context.artifacts ?? [])].some((path) => globMatches(path, pattern)))) {
-      rejectionReasons.push('No project path matched');
+      (context.artifacts ?? []).some((path) => globMatches(path, pattern)))) {
+      rejectionReasons.push('No task artifact matched the required path patterns');
     }
 
     addMatchFactor(factors, 'intent', manifest.intents, context.intent, 24);
@@ -216,8 +229,8 @@ export class SkillResolver {
   constructor(
     private readonly retriever: SkillCandidateRetriever,
     private readonly ranker: SkillRanker,
-    private readonly candidateLimit = 40,
-    private readonly reportLimit = 10
+    private readonly candidateLimit = SKILL_ENGINE_CANDIDATE_LIMIT,
+    private readonly reportLimit = SKILL_ENGINE_REPORT_LIMIT
   ) {}
 
   resolve(context: SkillResolutionContext): SkillEngineResolution {
@@ -382,6 +395,16 @@ function matchesText(text: string, trigger: string): boolean {
     } catch {
       return false;
     }
+  }
+  const words = normalized.split(/\s+/).filter(Boolean);
+  if (words.length > 1) {
+    let idx = 0;
+    for (const word of words) {
+      const found = text.indexOf(word, idx);
+      if (found < 0) return false;
+      idx = found + word.length;
+    }
+    return true;
   }
   return text.includes(normalized);
 }

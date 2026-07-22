@@ -14,3 +14,10 @@ export const SKILL_SELECTION_SOFT_CAPS = {
   multiStep: 2,
   compound: 3,
 } as const;
+
+/** Max skills injected into a single prompt turn. */
+export const MAX_INJECTED_SKILLS = SKILL_SELECTION_SOFT_CAPS.compound;
+
+/** Skill engine retrieval and reporting limits. */
+export const SKILL_ENGINE_CANDIDATE_LIMIT = 40;
+export const SKILL_ENGINE_REPORT_LIMIT = 10;

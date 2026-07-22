@@ -1,7 +1,15 @@
 import type { TaskKind } from './TaskAnalyzer';
 import { isMdxRepairTask as isMdxRepairTaskText } from './mdxRepairRouting';
+import { buildMdxRepairGuidanceLines } from '../skills/documentationProfile';
 import { classifyCommandEffect, inferTouchedFilesFromCommand } from '../plans/PlanActEngine';
 import { isStaleDiagnosticLogPath } from '../pipeline/classify/artifactClassifier';
+import {
+  buildStepCompletionCounters,
+  emptyPlanStepToolSnapshot,
+  evaluateStepCompletion,
+  recordPlanStepToolOutcome,
+  type PlanStepToolSnapshot,
+} from './stepCompletionEvidence';
 import {
   createPhaseActor,
   getPhaseFromActor,
@@ -10,6 +18,7 @@ import {
   type TaskPhase,
 } from './agentPhaseMachine';
 import { checkIntegrityGuardrailBlock, detectIntegrityGuardrail, type IntegrityGuardrailFlag } from '../safety/integrityGuardrail';
+import { isPostEditVerificationKey } from '../tools/toolIds';
 
 export type { TaskPhase };
 
@@ -28,6 +37,7 @@ export interface AgentTaskLimits {
 }
 
 export class AgentTaskState {
+  private workspaceRoot?: string;
   private phaseActor: PhaseActor = createPhaseActor();
   private taskKind: TaskKind | undefined;
   private taskSummary = '';
@@ -56,6 +66,8 @@ export class AgentTaskState {
   private static readonly MAX_FORCE_SYNTHESIS_RESETS = 3;
   private isResumeSavedPlan = false;
   private integrityGuardrail: IntegrityGuardrailFlag | null = null;
+  private planStepId?: string;
+  private planStepToolSnapshot: PlanStepToolSnapshot = emptyPlanStepToolSnapshot();
 
   reset(): void {
     sendPhaseEvent(this.phaseActor, { type: 'RESET' });
@@ -76,6 +88,46 @@ export class AgentTaskState {
     this.forceSynthesisLatchCount = 0;
     this.isResumeSavedPlan = false;
     this.integrityGuardrail = null;
+    this.workspaceRoot = undefined;
+    this.planStepId = undefined;
+    this.planStepToolSnapshot = emptyPlanStepToolSnapshot();
+  }
+
+  setWorkspaceRoot(workspaceRoot: string): void {
+    this.workspaceRoot = workspaceRoot;
+  }
+
+  beginPlanStep(stepId: string): void {
+    this.planStepId = stepId;
+    this.planStepToolSnapshot = emptyPlanStepToolSnapshot();
+  }
+
+  getActivePlanStepId(): string | undefined {
+    return this.planStepId;
+  }
+
+  recordPlanStepToolOutcome(
+    toolName: string,
+    input: Record<string, unknown>,
+    result: { success: boolean; output?: string; error?: string; skipped?: boolean },
+    outputText?: string
+  ): void {
+    if (!this.planStepId) return;
+    this.planStepToolSnapshot = recordPlanStepToolOutcome(
+      this.planStepToolSnapshot,
+      toolName,
+      result,
+      input,
+      outputText
+    );
+  }
+
+  evaluatePlanStepCompletion(
+    step: import('../plans/PlanActEngine').ThunderPlan['steps'][number],
+    mode = 'agent'
+  ): { complete: boolean; missing: string[] } {
+    const counters = buildStepCompletionCounters(step, mode, this.planStepToolSnapshot);
+    return evaluateStepCompletion(counters);
   }
 
   setLimits(limits: AgentTaskLimits): void {
@@ -83,7 +135,7 @@ export class AgentTaskState {
       this.maxSequentialThinkingCalls = Math.max(0, limits.maxSequentialThinkingCalls);
     }
     if (typeof limits.maxFilesRead === 'number') {
-      this.maxFilesRead = limits.maxFilesRead > 0 ? limits.maxFilesRead : Infinity;
+      this.maxFilesRead = Math.max(0, limits.maxFilesRead);
     }
   }
 
@@ -115,7 +167,7 @@ export class AgentTaskState {
     this.fileScope = new Set(paths.map(normalizeScopePath).filter(Boolean));
     this.readPaths.clear();
     if (typeof maxFilesRead === 'number') {
-      this.maxFilesRead = maxFilesRead > 0 ? maxFilesRead : Infinity;
+      this.maxFilesRead = Math.max(0, maxFilesRead);
     }
   }
 
@@ -132,15 +184,12 @@ export class AgentTaskState {
     } else {
       for (const path of normalized) this.fileScope.add(path);
     }
-    if (typeof maxFilesRead === 'number' && maxFilesRead > 0) {
-      // A scope proposal is permission to inspect its accepted read targets. Keep the
-      // caller's cap, but never strand newly accepted paths behind an older exhausted
-      // session budget (common in multi-step plans).
+    if (typeof maxFilesRead === 'number') {
       const minNeeded = Math.max(this.readPaths.size, this.fileScope?.size ?? 0);
       this.maxFilesRead = Math.max(
-        maxFilesRead,
+        Math.max(0, maxFilesRead),
         minNeeded,
-        this.maxFilesRead === Infinity ? maxFilesRead : this.maxFilesRead
+        this.maxFilesRead === Infinity ? Math.max(0, maxFilesRead) : this.maxFilesRead
       );
     }
   }
@@ -241,6 +290,15 @@ export class AgentTaskState {
       summary: summarizeEvidence(output),
       timestamp: Date.now(),
     });
+    if (this.planStepId) {
+      this.planStepToolSnapshot = recordPlanStepToolOutcome(
+        this.planStepToolSnapshot,
+        toolName,
+        { success: true, output },
+        input,
+        output
+      );
+    }
     if (this.toolResults.length > 12) {
       this.toolResults = this.toolResults.slice(-12);
     }
@@ -642,16 +700,7 @@ export class AgentTaskState {
     }
 
     if (this.isMdxRepairTask()) {
-      return [
-        'Follow the MDX repair loop:',
-        '1. Read the exact MDX file named by the error.',
-        '2. Read a working sibling doc in the same folder that already uses LiveCodeBlock (for example form-builder.md).',
-        '3. For "Unexpected character `,` in name", code-span raw TypeScript generics in Markdown table cells.',
-        '4. For "Could not parse expression with acorn", fix LiveCodeBlock syntax: use `code={` + backtick on the same line, close with `` `} ``, and do not include render() in the code string.',
-        '5. For "Can\'t resolve", check workspace deps in apps/docs/package.json and run pnpm install from the monorepo root.',
-        '6. Run the docs build (read package.json scripts first — do not assume npm run lint exists).',
-        '7. If the build fails, fix only the next exact file from the build output.',
-      ];
+      return buildMdxRepairGuidanceLines(this.workspaceRoot);
     }
 
     return [
@@ -879,16 +928,6 @@ function commandProjectScope(command: string): string {
   const yarnWorkspace = command.match(/\byarn\s+workspace\s+(\S+)/);
   if (yarnWorkspace) return normalizeScopePath(yarnWorkspace[1].replace(/^['"]|['"]$/g, ''));
   return '.';
-}
-
-function isPostEditVerificationKey(key: string): boolean {
-  const capability = key.split(':', 1)[0];
-  return ['docs-build', 'build', 'compile', 'test', 'lint', 'typecheck', 'check', 'verify', 'validate', 'doctor'].includes(capability) ||
-    capability === 'tsc' ||
-    capability === 'eslint' ||
-    key === 'npm-ls' ||
-    key === 'git-diff' ||
-    key.startsWith('git-diff:');
 }
 
 function isSequentialThinkingTool(toolName: string): boolean {

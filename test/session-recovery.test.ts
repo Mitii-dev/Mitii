@@ -65,34 +65,41 @@ describe('session recovery', () => {
 
   it('keeps active plans addressable by the original restored session id', async () => {
     const plan = JSON.parse(readFileSync(fixturePlanPath(), 'utf8'));
-    const rows = new Map<string, { id: string; session_id: string; plan_json: string; status: string; updated_at: number }>();
+    const rows = new Map<string, { id: string; session_id: string; plan_json: string; status: string; updated_at: number; revision: number }>();
     const db = {
       tryRaw: () => ({
+        exec: (sql: string) => {
+          if (sql === 'BEGIN IMMEDIATE' || sql === 'COMMIT' || sql === 'ROLLBACK') return;
+        },
         prepare: (sql: string) => ({
           get: (sessionId: string) => {
-            if (!sql.includes('SELECT id, plan_json, status FROM task_plans')) return undefined;
+            if (!sql.includes('SELECT id, plan_json, status, revision FROM task_plans')) return undefined;
             return [...rows.values()]
               .filter((row) => row.session_id === sessionId && ['active', 'running'].includes(row.status))
               .sort((a, b) => b.updated_at - a.updated_at)[0];
           },
           run: (...args: unknown[]) => {
             if (sql.includes('INSERT INTO task_plans')) {
-              const [id, sessionId, , status, planJson, , updatedAt] = args as [string, string, string, string, string, number, number];
-              rows.set(id, { id, session_id: sessionId, plan_json: planJson, status, updated_at: updatedAt });
+              const [id, sessionId, , status, planJson, , updatedAt, revision] = args as [string, string, string, string, string, number, number, number];
+              rows.set(id, { id, session_id: sessionId, plan_json: planJson, status, updated_at: updatedAt, revision });
+              return { changes: 1 };
             }
+            return { changes: 0 };
           },
         }),
       }),
     };
     const persistence = new PlanPersistence(db as never);
 
-    persistence.save('ollama-thread-1', plan, 'running');
+    const saved = persistence.save('ollama-thread-1', plan, 'running');
+    expect(saved.ok).toBe(true);
 
     expect(persistence.getActive('new-session-after-reload')).toBeNull();
     expect(persistence.getActive('ollama-thread-1')).toEqual({
       id: expect.any(String),
       plan,
       status: 'running',
+      revision: 1,
     });
   });
 });

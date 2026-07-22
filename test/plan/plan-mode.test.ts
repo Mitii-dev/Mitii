@@ -124,7 +124,6 @@ describe('Plan mode orchestration', () => {
     expect(filtered).toEqual([
       'read_file',
       'search_batch',
-      'execute_workspace_script',
       'mcp__github__search',
     ]);
   });
@@ -228,7 +227,6 @@ describe('Plan mode orchestration', () => {
 
   it('marks duplicate reproduction steps done when discovery already captured the failing signal', async () => {
     const { PlanExecutor } = await import('../../src/features/ce/runtime/PlanExecutor');
-    const { analyzeTask } = await import('../../src/features/ce/runtime/TaskAnalyzer');
     const provider = {
       id: 'fake',
       capabilities: {
@@ -311,14 +309,24 @@ describe('Plan mode orchestration', () => {
       "src/features/document-parser/services/manual-resume-service.ts(415,25): error TS2339: Property 'subtitle' does not exist on type 'ResumeProject'.",
     ].join('\n');
 
+    const userMessage =
+      'Fix the failing build after a half implemented restructuring, restore the original structure, and verify ai-service';
     const plan = await executor.generatePlan(
       provider,
       'agent',
       pack,
-      'Fix all build issues in ai-service',
+      userMessage,
       'Need to repair the failing build.',
       discovery,
-      analyzeTask('Fix all build issues in ai-service', 'agent')
+      {
+        kind: 'implementation',
+        complexity: 'medium',
+        shouldPlan: true,
+        shouldVerify: true,
+        shouldUseSubagents: false,
+        actIntent: 'bugfix',
+        summary: 'Repository restoration bugfix — fix failing build after half implemented restructuring.',
+      }
     );
 
     expect(plan?.steps[0].status).toBe('done');

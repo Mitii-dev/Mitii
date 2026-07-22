@@ -4,11 +4,13 @@ import {
   resolveRoute,
   resolveAuditSubtype,
   resolveDocsSubtype,
+  isDependencyCleanupAudit,
   resolveSkillsForRoute,
   resolveCapabilities,
   filterToolsByCapabilities,
   minStepsForAxis,
   resolvePlanningDepthAxis,
+  buildRoutePolicyText,
   classifyArtifacts,
   classifyArtifactPath,
 } from '../../src/features/ce/pipeline/index';
@@ -107,7 +109,7 @@ describe('pipeline route + subtypes', () => {
     expect(resolveSkillsForRoute(route, analysis).activeSkill).toBe('bugfix-workflow');
   });
 
-  it('keeps broad project repairs canonical when Agent depth is deep', () => {
+  it('plans broad project repairs through the orchestrated bugfix loop when Agent depth is deep', () => {
     const msg = 'Can you please fix all the issues in this project @ai-service';
     const analysis = analyzeTask(msg, 'agent', { actIntent: 'feature' });
     const pipeline = resolveTurnPipeline(msg, analysis, {
@@ -122,6 +124,19 @@ describe('pipeline route + subtypes', () => {
     expect(pipeline.internalDepth).toBe('full');
     expect(pipeline.shouldUsePlanner).toBe(true);
     expect(pipeline.skills.activeSkill).toBe('bugfix-workflow');
+  });
+
+  it('adds an evidence-first bugfix contract to route policy text', () => {
+    const msg = 'Can you please fix all the issues in this project @ai-service';
+    const analysis = analyzeTask(msg, 'agent');
+    const route = resolveRoute(msg, analysis);
+    const policy = buildRoutePolicyText(route);
+
+    expect(policy).toContain('## Bugfix contract');
+    expect(policy).toContain('Current build/test/runtime diagnostics outrank previous-session hypotheses');
+    expect(policy).toContain('Run one baseline reproduction check');
+    expect(policy).toContain('do not rerun equivalent checks before editing');
+    expect(policy).toContain('Do not propose structural rewrites');
   });
 
   it('classifies @project mentions as structured project artifacts', () => {
@@ -162,6 +177,20 @@ describe('pipeline route + subtypes', () => {
     ]));
   });
 
+  it('does not silently resolve an @mention to one of two equally-scored catalog projects', () => {
+    const result = classifyArtifacts('Please fix the bug in @api', {
+      knownProjects: [
+        { id: 'api-gateway', root: 'services/api-gateway', name: 'api-gateway' },
+        { id: 'api-worker', root: 'services/api-worker', name: 'api-worker' },
+      ],
+    });
+    // Neither catalog project scores higher than the other for "api" (substring match on both),
+    // so this must fall back to the unresolved-mention path rather than guessing one of them.
+    const projectMatch = result.artifacts.find((artifact) => artifact.kind === 'project');
+    expect(projectMatch?.confidence).toBeLessThan(1);
+    expect(['api-gateway', 'api-worker']).not.toContain(projectMatch?.projectId);
+  });
+
   it('does not allow direct execution to carry deep planning depth', () => {
     const msg = 'fix typo in src/auth.ts';
     const analysis = analyzeTask(msg, 'agent');
@@ -180,6 +209,54 @@ describe('pipeline route + subtypes', () => {
   it('resolves docs subtypes', () => {
     expect(resolveDocsSubtype('update the README')).toBe('readme');
     expect(resolveDocsSubtype('fix docusaurus sidebar')).toBe('docusaurus');
+  });
+
+  it('distinguishes a bare "audit" review from cleanup-shaped audits', () => {
+    expect(resolveAuditSubtype('Audit our API authorization and fix the findings')).toBe('review');
+    expect(isDependencyCleanupAudit('review')).toBe(false);
+    expect(resolveAuditSubtype('Please clean up unused files in this repo')).toBe('generic');
+    expect(isDependencyCleanupAudit('generic')).toBe(true);
+  });
+
+  it('does not force inspect when askIntent is present alongside a write-authorizing actIntent', () => {
+    const route = resolveRoute('Explain what is broken, then fix it', {
+      kind: 'implementation',
+      complexity: 'low',
+      shouldPlan: false,
+      shouldVerify: true,
+      shouldUseSubagents: false,
+      summary: 'Explain what is broken, then fix it',
+      askIntent: 'debug_explain',
+      actIntent: 'bugfix',
+    });
+    expect(route.operationClass).not.toBe('inspect');
+  });
+
+  it('defaults unrecognized workspace mutations to medium risk, not low', () => {
+    const route = resolveRoute('Please wire up the new integration module', {
+      kind: 'implementation',
+      complexity: 'medium',
+      shouldPlan: false,
+      shouldVerify: true,
+      shouldUseSubagents: false,
+      summary: 'Please wire up the new integration module',
+      actIntent: 'feature',
+    });
+    expect(route.operationClass).toBe('workspace_write');
+    expect(route.risk).toBe('medium');
+  });
+
+  it('resolves audit/diagnose fallback to inspect, never a shell pseudo-class', () => {
+    const route = resolveRoute('Audit the architecture of this service', {
+      kind: 'audit',
+      complexity: 'medium',
+      shouldPlan: false,
+      shouldVerify: true,
+      shouldUseSubagents: false,
+      summary: 'Audit the architecture of this service',
+      actIntent: 'audit',
+    });
+    expect(route.operationClass).toBe('inspect');
   });
 });
 
@@ -252,6 +329,52 @@ describe('pipeline skills 0-1', () => {
     expect(skills.activeSkill).toBe('git-commit-message');
     expect(skills.deferredSkills).toContain('using-agent-skills');
   });
+
+  it('does not default a bare Git-intent route with no taskAnalysis to test-driven-development', () => {
+    const gitRoute: ReturnType<typeof resolveRoute> = {
+      intent: 'git',
+      risk: 'low',
+      operationClass: 'inspect',
+      executionPath: 'direct',
+      isGitTask: true,
+      summary: 'git route with no selected skill',
+    };
+    expect(resolveSkillsForRoute(gitRoute).activeSkill).not.toBe('test-driven-development');
+  });
+
+  it('does not default a non-cleanup audit subtype to test-driven-development', () => {
+    const architectureAuditRoute = resolveRoute('Do an architecture audit of this service', {
+      kind: 'audit',
+      complexity: 'medium',
+      shouldPlan: false,
+      shouldVerify: true,
+      shouldUseSubagents: false,
+      summary: 'Do an architecture audit of this service',
+      actIntent: 'audit',
+      auditSubtype: 'architecture',
+    });
+    expect(
+      resolveSkillsForRoute(architectureAuditRoute, undefined, 'Do an architecture audit of this service').activeSkill
+    ).not.toBe('test-driven-development');
+  });
+
+  it('matches domain skills against the raw user message even when the task summary is generic', () => {
+    const route = resolveRoute('add an accessible aria-labelled component with keyboard navigation', {
+      kind: 'implementation',
+      complexity: 'low',
+      shouldPlan: false,
+      shouldVerify: true,
+      shouldUseSubagents: false,
+      actIntent: 'feature',
+      summary: 'Small targeted edit — execute directly with validation.',
+    });
+    const skills = resolveSkillsForRoute(
+      route,
+      undefined,
+      'add an accessible aria-labelled component with keyboard navigation'
+    );
+    expect(skills.activeSkill).toBe('building-components');
+  });
 });
 
 describe('pipeline capabilities + MCP', () => {
@@ -311,6 +434,69 @@ describe('pipeline capabilities + MCP', () => {
     expect(filtered).toContain('mcp__memory__search');
     expect(filtered).not.toContain('release_plan_controller');
     expect(filtered).not.toContain('mcp__filesystem__read_text_file');
+  });
+
+  it('keeps Git read tools available on a read-only Git route but still hides write/release tools', () => {
+    const inspectRoute = {
+      intent: 'git' as const,
+      risk: 'low' as const,
+      operationClass: 'inspect' as const,
+      executionPath: 'direct' as const,
+      isGitTask: true,
+      summary: 'inspect git route',
+    };
+    const caps = resolveCapabilities(inspectRoute, { mode: 'agent', toolExposure: 'full' });
+    expect(caps.excludedTools.has('github_verify_repository')).toBe(false);
+    expect(caps.excludedTools.has('discover_github_workflows')).toBe(false);
+    expect(caps.excludedTools.has('git_commit')).toBe(true);
+    expect(caps.excludedTools.has('release_plan_controller')).toBe(true);
+  });
+
+  it('hides Git read tools entirely on a non-Git route', () => {
+    const featureRoute = {
+      intent: 'feature' as const,
+      risk: 'medium' as const,
+      operationClass: 'workspace_write' as const,
+      executionPath: 'direct' as const,
+      isGitTask: false,
+      summary: 'non-git feature route',
+    };
+    const caps = resolveCapabilities(featureRoute, { mode: 'agent', toolExposure: 'full' });
+    expect(caps.excludedTools.has('github_verify_repository')).toBe(true);
+    expect(caps.excludedTools.has('git_commit')).toBe(true);
+  });
+
+  it('never leaks Git write/release tools on a non-Git route even if operationClass claims remote_write', () => {
+    // Defensive regression: resolveRoute() never actually produces this combination today,
+    // but resolveCapabilities is a public function and must not trust operationClass alone.
+    const malformedRoute = {
+      intent: 'feature' as const,
+      risk: 'high' as const,
+      operationClass: 'remote_write' as const,
+      executionPath: 'direct' as const,
+      isGitTask: false,
+      summary: 'non-git route incorrectly tagged remote_write',
+    };
+    const caps = resolveCapabilities(malformedRoute, { mode: 'agent', toolExposure: 'full' });
+    expect(caps.excludedTools.has('git_commit')).toBe(true);
+    expect(caps.excludedTools.has('release_plan_controller')).toBe(true);
+    expect(caps.excludedTools.has('github_create_release')).toBe(true);
+  });
+
+  it('returns a fully locked-down read-only policy when the provider does not support tools', () => {
+    const route = resolveRoute('fix the bug', {
+      kind: 'implementation',
+      complexity: 'low',
+      shouldPlan: false,
+      shouldVerify: true,
+      shouldUseSubagents: false,
+      summary: 'fix the bug',
+      actIntent: 'bugfix',
+    });
+    const caps = resolveCapabilities(route, { mode: 'agent', supportsTools: false });
+    expect(caps.approvalProfile).toBe('read_only');
+    expect(caps.mcpPolicy).toBe('none');
+    expect(caps.maxProposeFileScopePerStep).toBe(0);
   });
 });
 

@@ -20,6 +20,18 @@ describe('fingerprintToolCall', () => {
     const buildFp = fingerprintToolCall('run_command', { command: 'pnpm run build' });
     expect(tscFp).not.toBe(buildFp);
   });
+
+  it('fingerprints identically regardless of object key insertion order', () => {
+    const a = fingerprintToolCall('write_file', { path: 'src/a.ts', content: 'x' });
+    const b = fingerprintToolCall('write_file', { content: 'x', path: 'src/a.ts' });
+    expect(a).toBe(b);
+  });
+
+  it('still distinguishes genuinely different argument values', () => {
+    const a = fingerprintToolCall('write_file', { path: 'src/a.ts', content: 'x' });
+    const b = fingerprintToolCall('write_file', { path: 'src/b.ts', content: 'x' });
+    expect(a).not.toBe(b);
+  });
 });
 
 describe('evaluateNoProgress', () => {

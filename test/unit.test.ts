@@ -1972,6 +1972,69 @@ describe('Plan parser', () => {
     expect(output).toContain('without a successful verification command');
   });
 
+  it('does not complete a verification step from captured failing diagnostics alone', async () => {
+    const { PlanExecutor } = await import('../src/features/ce/runtime/PlanExecutor');
+    const plan = {
+      goal: 'Verify package',
+      assumptions: [],
+      requiredApprovals: [],
+      steps: [{
+        id: 'verify',
+        title: 'Verify build',
+        status: 'pending' as const,
+        risk: 'low' as const,
+        phase: 'verify' as const,
+      }],
+    };
+    const persistence = {
+      save: () => 'plan-id',
+      updatePlan: () => undefined,
+      complete: () => undefined,
+    };
+    const agentLoop = {
+      hadPendingApproval: () => false,
+      async *run(_provider: unknown, _messages: unknown, _tools: unknown, _signal: unknown, callbacks: {
+        onToolStart?: (name: string, input: Record<string, unknown>) => void;
+        onToolEnd?: (name: string, success: boolean, output: string) => void;
+      }) {
+        callbacks.onToolStart?.('run_command', { command: 'npm run build' });
+        callbacks.onToolEnd?.(
+          'run_command',
+          false,
+          'Command failed with exit code 1\nerror TS2304: Cannot find name foo'
+        );
+      },
+    };
+    const executor = new PlanExecutor(agentLoop as never, persistence as never);
+    const pack = {
+      items: [],
+      totalTokens: 0,
+      formatted: '',
+      budgetLimit: 100,
+      retrievedCount: 0,
+      truncatedCount: 0,
+      dropped: [],
+    };
+    let output = '';
+
+    for await (const chunk of executor.executePlan(
+      { id: 's1', mode: 'agent' } as never,
+      {} as never,
+      plan,
+      pack,
+      [],
+      undefined,
+      undefined,
+      undefined,
+      { stepMaxRetries: 0 }
+    )) {
+      output += chunk;
+    }
+
+    expect(plan.steps[0].status).toBe('failed');
+    expect(output).toMatch(/without a successful verification command|Verification step failed/);
+  });
+
   it('does not complete a generic (non-write, non-verify) step whose tool calls all failed', async () => {
     const { PlanExecutor } = await import('../src/features/ce/runtime/PlanExecutor');
     const plan = {
@@ -2450,8 +2513,20 @@ describe('contextRelevance', () => {
 
 describe('context query expansion', () => {
   it('adds docs routing and package export hints for broad docs tasks', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
     const { expandContextQuery } = await import('../src/features/ce/context/contextQueryExpansion');
-    const expanded = expandContextQuery('add docs for all ffb-mui features');
+
+    const workspace = mkdtempSync(join(tmpdir(), 'mitii-docs-'));
+    mkdirSync(join(workspace, 'apps/docs'), { recursive: true });
+    writeFileSync(join(workspace, 'apps/docs/docusaurus.config.ts'), 'export default {}');
+    writeFileSync(
+      join(workspace, 'apps/docs/package.json'),
+      JSON.stringify({ name: 'docs', dependencies: { '@docusaurus/core': '3.0.0' } })
+    );
+
+    const expanded = expandContextQuery('add docs for all ffb-mui features', workspace);
 
     expect(expanded).toContain('apps/docs/docusaurus.config.ts');
     expect(expanded).toContain('sidebars.ts');
@@ -2727,7 +2802,7 @@ describe('AgentTaskState', () => {
     expect(soft).toContain('Read the exact MDX file');
     expect(soft).toContain('Unexpected character `,` in name');
     expect(soft).toContain('Could not parse expression with acorn');
-    expect(soft).toContain('form-builder.md');
+    expect(soft).toContain('LiveCodeBlock successfully');
     expect(soft).toContain('Run the docs build');
     expect(soft).not.toContain('Remove unused dependencies');
     expect(state.buildApprovalResumeInstruction()).toContain('fix only the next exact MDX/Docusaurus failure');
@@ -3342,7 +3417,10 @@ describe('verifyCommandDiscovery', () => {
         'npm run build',
       ]);
 
-      expect(plan.commands).toEqual(['cd apps/docs && npm run build']);
+      expect(plan.commands).toEqual([
+        'cd apps/docs && npm run build',
+        'npm run build',
+      ]);
       expect(plan.skipped.join('\n')).not.toContain('npm run build:');
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
@@ -3553,7 +3631,7 @@ describe('promptBuilder', () => {
     expect(prompt).toContain('Record<string, any>');
     expect(prompt).toContain('Could not parse expression with acorn');
     expect(prompt).toContain("Can't resolve");
-    expect(prompt).toContain('form-builder.md');
+    expect(prompt).toContain('LiveCodeBlock successfully');
   });
 });
 
@@ -4077,7 +4155,7 @@ Cause: Could not parse expression with acorn`;
 
     expect(isMdxRepairTask(text)).toBe(true);
     expect(extractMdxErrorFile(text)).toContain('formik-renderer.md');
-    expect(buildMdxRepairBootstrapBlock(extractMdxErrorFile(text))).toContain('form-builder.md');
+    expect(buildMdxRepairBootstrapBlock(extractMdxErrorFile(text))).toContain('LiveCodeBlock');
     expect(buildMdxRepairBootstrapBlock(extractMdxErrorFile(text))).toContain("Can't resolve");
   });
 });
@@ -4373,7 +4451,7 @@ describe('Ask v2 routing, scope, and impact', () => {
 
       expect(impact.summary).toContain('OAuth');
       expect(impact.files.modify.some((file) => file.path === 'src/core/auth/session.ts')).toBe(true);
-      expect(impact.files.create.some((file) => file.path.includes('OAuthProvider.ts'))).toBe(true);
+      expect(impact.files.create.some((file) => file.path.includes('<new-module>'))).toBe(true);
       expect(impact.files.maybe.some((file) => file.path === 'package.json')).toBe(true);
       expect(impact.files.tests).toContain('test/unit.test.ts');
       expect(impact.suggestedOrder.join('\n')).toContain('npm run test');

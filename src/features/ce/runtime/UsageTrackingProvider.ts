@@ -41,6 +41,7 @@ export class UsageTrackingProvider implements LlmProvider {
 
     const inputTokens = fitted.afterTokens;
     let outputText = '';
+    let assembledToolCalls: unknown[] | undefined;
 
     try {
       for await (const delta of this.inner.complete(fitted.request)) {
@@ -50,20 +51,27 @@ export class UsageTrackingProvider implements LlmProvider {
         if (delta.reasoning) {
           outputText += delta.reasoning;
         }
-        if (delta.tool_calls) {
-          outputText += JSON.stringify(delta.tool_calls);
+        if (delta.tool_calls?.length) {
+          assembledToolCalls = delta.tool_calls;
         }
         yield delta;
       }
     } finally {
-      const outputTokens = estimateTokens(outputText);
-      this.onUsage({
-        providerId: this.inner.id,
-        inputTokens,
-        outputTokens,
-        totalTokens: inputTokens + outputTokens,
-        estimated: true,
-      });
+      const toolCallTokens = assembledToolCalls?.length
+        ? estimateTokens(JSON.stringify(assembledToolCalls))
+        : 0;
+      const outputTokens = estimateTokens(outputText) + toolCallTokens;
+      try {
+        this.onUsage({
+          providerId: this.inner.id,
+          inputTokens,
+          outputTokens,
+          totalTokens: inputTokens + outputTokens,
+          estimated: true,
+        });
+      } catch (error) {
+        log.warn('Usage callback failed', { error: String(error) });
+      }
     }
   }
 

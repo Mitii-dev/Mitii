@@ -29,7 +29,9 @@
     "create a commit",
     "commit these changes",
     "stage and commit",
-    "make a commit"
+    "make a commit",
+    "commit staged changes",
+    "commit my changes"
   ],
   "negativeTriggers": [
     "commit message only",

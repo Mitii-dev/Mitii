@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
 import { basename, extname, join, relative, resolve } from 'path';
 import { createHash } from 'crypto';
 import type { RepositoryProfile } from './SkillEngine';
+import { discoverDocumentationSites } from './documentationProfile';
 
 const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   '.ts': 'typescript',
@@ -95,6 +96,13 @@ export class WorkspaceRepositoryProfileProvider implements RepositoryProfileProv
       frameworks: [...frameworks],
       packageManagers: [...packageManagers],
       paths: paths.slice(0, 2_000),
+      documentationSites: discoverDocumentationSites(this.workspace).map((site) => ({
+        packageRoot: site.packageRoot,
+        packageName: site.packageName,
+        framework: site.framework,
+        configPaths: site.configPaths,
+        suggestedVerifyCommands: site.suggestedVerifyCommands,
+      })),
     };
     this.cached.set(scopeKey, profile);
     return profile;

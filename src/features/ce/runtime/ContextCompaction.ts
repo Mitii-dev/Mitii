@@ -53,10 +53,11 @@ export async function compactMessagesWithLlm(
     if (!summary.trim()) return deterministic;
 
     const recent = messages.slice(-6);
-    return [
+    const compacted = enforceMessageBudget([
       { role: 'user', content: `## Earlier conversation (LLM-compacted)\n\n${summary.trim()}` },
       ...recent,
-    ];
+    ], maxTokens);
+    return compacted;
   } catch (error) {
     log.warn('LLM compaction failed, using deterministic fallback', {
       error: error instanceof Error ? error.message : String(error),
@@ -86,6 +87,12 @@ export function compactMessages(messages: ChatMessage[], maxTokens: number): Cha
     if ((m.content?.length ?? 0) <= maxChars) return m;
     return { ...m, content: `${m.content.slice(0, maxChars)}\n…[truncated]` };
   });
+}
+
+function enforceMessageBudget(messages: ChatMessage[], maxTokens: number): ChatMessage[] {
+  if (estimateMessageTokens(messages) <= maxTokens) return messages;
+  if (messages.length <= 1) return messages;
+  return enforceMessageBudget(messages.slice(1), maxTokens);
 }
 
 function summarizeOlderMessages(older: ChatMessage[], budgetTokens: number): ChatMessage | null {

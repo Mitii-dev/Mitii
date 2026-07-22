@@ -44,7 +44,7 @@ function validateLiveCodeBlock(content: string): string | undefined {
       'Invalid LiveCodeBlock: `code={` must be followed immediately by the opening backtick on the same line.',
       'Use `code={` + newline + `import ...` + newline + `  `}` before componentName.',
       'Splitting `code={` and the template literal across lines causes: Could not parse expression with acorn.',
-      'Compare with a working sibling doc such as form-builder.md in the same folder.',
+      'Compare with a working sibling doc in the same folder that already uses LiveCodeBlock successfully.',
     ].join(' ');
   }
 

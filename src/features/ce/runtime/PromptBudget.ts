@@ -6,6 +6,21 @@ import { estimateTokens } from '../../../kernel/llm/tokenEstimate';
 /** Reserve headroom so the model can still produce a reply. */
 export const OUTPUT_RESERVE_RATIO = 0.15;
 
+export class PromptBudgetExceededError extends Error {
+  constructor(
+    readonly report: {
+      maxInputTokens: number;
+      beforeTokens: number;
+      afterTokens: number;
+    }
+  ) {
+    super(
+      `Prompt exceeds input budget after compaction (${report.afterTokens}/${report.maxInputTokens} tokens)`
+    );
+    this.name = 'PromptBudgetExceededError';
+  }
+}
+
 export function getMaxInputTokens(contextWindow: number): number {
   return Math.floor(contextWindow * (1 - OUTPUT_RESERVE_RATIO));
 }
@@ -37,24 +52,64 @@ export function fitChatRequestToBudget(
   trimmed = true;
   let afterTokens = estimateChatRequestTokens({ ...request, messages });
   if (afterTokens <= maxInputTokens) {
-    return { request: { ...request, messages }, trimmed, beforeTokens, afterTokens };
+    return finalizeFit(request, messages, trimmed, beforeTokens, maxInputTokens);
   }
 
   messages = compactTranscriptAroundUser(messages, request.tools, maxInputTokens);
   afterTokens = estimateChatRequestTokens({ ...request, messages });
   if (afterTokens <= maxInputTokens) {
-    return { request: { ...request, messages }, trimmed, beforeTokens, afterTokens };
+    return finalizeFit(request, messages, trimmed, beforeTokens, maxInputTokens);
   }
 
   messages = shrinkCodebaseContext(messages, request.tools, maxInputTokens);
   afterTokens = estimateChatRequestTokens({ ...request, messages });
   if (afterTokens <= maxInputTokens) {
-    return { request: { ...request, messages }, trimmed, beforeTokens, afterTokens };
+    return finalizeFit(request, messages, trimmed, beforeTokens, maxInputTokens);
   }
 
   messages = hardTruncateTail(messages, request.tools, maxInputTokens);
-  afterTokens = estimateChatRequestTokens({ ...request, messages });
-  return { request: { ...request, messages }, trimmed: true, beforeTokens, afterTokens };
+  return finalizeFit(request, messages, true, beforeTokens, maxInputTokens);
+}
+
+function finalizeFit(
+  request: ChatRequest,
+  messages: ChatMessage[],
+  trimmed: boolean,
+  beforeTokens: number,
+  maxInputTokens: number
+): FitChatRequestResult {
+  let fittedMessages = [...messages];
+  let afterTokens = estimateChatRequestTokens({ ...request, messages: fittedMessages });
+
+  while (afterTokens > maxInputTokens && fittedMessages.length > 1) {
+    const emergencyIndex = fittedMessages.findIndex(
+      (message, index) => message.role !== 'system' && index < fittedMessages.length - 1
+    );
+    if (emergencyIndex < 0) break;
+    fittedMessages.splice(emergencyIndex, 1);
+    afterTokens = estimateChatRequestTokens({ ...request, messages: fittedMessages });
+    trimmed = true;
+  }
+
+  const lastUserIndex = findLastIndex(fittedMessages, (message) => message.role === 'user');
+  if (lastUserIndex >= 0 && afterTokens > maxInputTokens) {
+    const overhead = estimateChatRequestTokens({
+      messages: fittedMessages.filter((_, index) => index !== lastUserIndex),
+      tools: request.tools,
+    });
+    const userBudget = Math.max(64, maxInputTokens - overhead);
+    fittedMessages[lastUserIndex] = {
+      ...fittedMessages[lastUserIndex],
+      content: truncateToTokenBudget(fittedMessages[lastUserIndex].content, userBudget),
+    };
+    afterTokens = estimateChatRequestTokens({ ...request, messages: fittedMessages });
+    trimmed = true;
+  }
+
+  if (afterTokens > maxInputTokens) {
+    throw new PromptBudgetExceededError({ maxInputTokens, beforeTokens, afterTokens });
+  }
+  return { request: { ...request, messages: fittedMessages }, trimmed, beforeTokens, afterTokens };
 }
 
 function truncateOlderToolOutputs(messages: ChatMessage[]): ChatMessage[] {
@@ -125,18 +180,66 @@ function shrinkCodebaseContext(
   return messages.map((message, index) => (index === lastUserIndex ? nextUser : message));
 }
 
+interface RemovableUnit {
+  indices: number[];
+}
+
+/** Assistant tool-call messages and their tool results must stay together. */
+function buildRemovableUnits(messages: ChatMessage[]): RemovableUnit[] {
+  const units: RemovableUnit[] = [];
+  const linkedToolIndices = new Set<number>();
+
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (message.role !== 'assistant' || !message.tool_calls?.length) continue;
+
+    const toolCallIds = new Set(message.tool_calls.map((call) => call.id));
+    const indices = [index];
+    for (let toolIndex = index + 1; toolIndex < messages.length; toolIndex += 1) {
+      const toolMessage = messages[toolIndex];
+      if (toolMessage.role !== 'tool') break;
+      if (toolMessage.tool_call_id && toolCallIds.has(toolMessage.tool_call_id)) {
+        indices.push(toolIndex);
+        linkedToolIndices.add(toolIndex);
+      }
+    }
+    units.push({ indices });
+  }
+
+  for (let index = 0; index < messages.length; index += 1) {
+    if (messages[index].role === 'system') continue;
+    if (linkedToolIndices.has(index)) continue;
+    if (units.some((unit) => unit.indices.includes(index))) continue;
+    units.push({ indices: [index] });
+  }
+
+  return units;
+}
+
 function hardTruncateTail(
   messages: ChatMessage[],
   tools: ChatRequest['tools'],
   maxInputTokens: number
 ): ChatMessage[] {
   const fitted = [...messages];
+  const units = buildRemovableUnits(fitted);
+
   while (fitted.length > 2 && estimateChatRequestTokens({ messages: fitted, tools }) > maxInputTokens) {
-    const removable = fitted.findIndex(
-      (message, index) => message.role !== 'system' && index < fitted.length - 1
+    const removableUnit = units.find(
+      (unit) =>
+        unit.indices.length > 0 &&
+        unit.indices.every((index) => index < fitted.length - 1 && fitted[index]?.role !== 'system')
     );
-    if (removable < 0) break;
-    fitted.splice(removable, 1);
+    if (!removableUnit) break;
+
+    for (const index of [...removableUnit.indices].sort((a, b) => b - a)) {
+      fitted.splice(index, 1);
+    }
+    for (const unit of units) {
+      unit.indices = unit.indices
+        .filter((index) => !removableUnit.indices.includes(index))
+        .map((index) => index - removableUnit.indices.filter((removed) => removed < index).length);
+    }
   }
 
   const lastUserIndex = findLastIndex(fitted, (message) => message.role === 'user');

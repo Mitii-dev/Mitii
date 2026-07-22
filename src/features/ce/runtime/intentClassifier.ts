@@ -102,7 +102,8 @@ export async function classifyIntent<T extends string>(
   const fastPath = classifyIntentFastPath(mode, userMessage, intents);
   if (fastPath) return fastPath;
 
-  const response = await collectProviderText(provider, {
+  try {
+    const response = await collectProviderText(provider, {
     messages: [
       {
         role: 'system',
@@ -128,11 +129,22 @@ export async function classifyIntent<T extends string>(
     toolChoice: 'none',
   });
 
-  return {
-    ...parseIntentClassification(response, intents),
-    source: 'llm',
-    gated: false,
-  };
+    return {
+      ...parseIntentClassification(response, intents),
+      source: 'llm',
+      gated: false,
+    };
+  } catch {
+    return {
+      intent: safeDefaultIntent(mode, intents),
+      confidence: 0,
+      alternatives: [],
+      needsClarification: true,
+      source: 'fallback',
+      gated: false,
+      gateReason: 'classifier_failure',
+    };
+  }
 }
 
 export function classifyIntentFastPath<T extends string>(

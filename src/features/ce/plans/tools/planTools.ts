@@ -1,47 +1,22 @@
-import type { PlanPersistence } from '../PlanPersistence';
+import type { PlanPersistence, PlanUpdateResult } from '../PlanPersistence';
 import type { ThunderPlan } from '../PlanActEngine';
 import type { Tool, ToolResult } from '../../../../kernel/tools/types';
 import { z } from 'zod';
 import { PlanFileStore } from '../PlanFileStore';
 import { createLogger } from '../../../../kernel/telemetry/Logger';
+import type { AgentTaskState } from '../../runtime/AgentTaskState';
+import {
+  PLANNING_DISCOVERY_TOOL_IDS,
+  PLAN_EXECUTION_TOOL_IDS,
+} from '../../tools/toolMetadata';
 
 const log = createLogger('PlanTools');
 
-/** Read-only tools allowed during planning discovery phase. */
-export const PLANNING_DISCOVERY_TOOLS = new Set([
-  'read_file',
-  'read_files',
-  'resolve_path',
-  'list_files',
-  'search',
-  'search_batch',
-  'search_script_catalog',
-  'use_skill',
-  'repo_map',
-  'retrieve_context',
-  'git_diff',
-  'diagnostics',
-  'memory_search',
-  'run_command',
-  'execute_workspace_script',
-  'spawn_research_agent',
-  'spawn_subagent',
-  'fetch_web',
-  'ask_question',
-  'propose_file_scope',
-]);
+/** @deprecated Use PLANNING_DISCOVERY_TOOL_IDS from toolMetadata. */
+export const PLANNING_DISCOVERY_TOOLS = PLANNING_DISCOVERY_TOOL_IDS;
 
-/** Tools available during plan step execution. */
-export const PLAN_EXECUTION_TOOLS = new Set([
-  ...PLANNING_DISCOVERY_TOOLS,
-  'write_file',
-  'apply_patch',
-  'execute_workspace_script',
-  'memory_write',
-  'save_task_state',
-  'mark_step_complete',
-  'propose_plan_mutation',
-]);
+/** @deprecated Use PLAN_EXECUTION_TOOL_IDS from toolMetadata. */
+export const PLAN_EXECUTION_TOOLS = PLAN_EXECUTION_TOOL_IDS;
 
 export interface PlanToolsContext {
   getPlan: () => ThunderPlan | null;
@@ -49,8 +24,28 @@ export interface PlanToolsContext {
   planPersistence?: PlanPersistence;
   planFileStore?: PlanFileStore;
   getSessionId: () => string;
+  getTaskState?: () => AgentTaskState | undefined;
+  getMode?: () => string;
   /** Unlocks write tools when a mutation pivots to execute phase mid-step. */
   setPlanPhaseLock?: (phase: import('../PlanActEngine').PlanPhase | undefined) => void;
+}
+
+function persistPlanUpdate(
+  ctx: PlanToolsContext,
+  plan: ThunderPlan,
+  status?: string
+): PlanUpdateResult | undefined {
+  const sessionId = ctx.getSessionId();
+  if (!sessionId || !ctx.planPersistence) return undefined;
+  const active = ctx.planPersistence.getActive(sessionId);
+  const result = ctx.planPersistence.updatePlan(sessionId, plan, status, active?.revision);
+  if (!result.ok && result.reason === 'revision_conflict') {
+    log.warn('Plan persistence revision conflict while updating plan tools', {
+      sessionId,
+      currentRevision: result.currentRevision,
+    });
+  }
+  return result;
 }
 
 export function createMarkStepCompleteTool(ctx: PlanToolsContext): Tool<{ stepId: string }> {
@@ -81,6 +76,33 @@ export function createMarkStepCompleteTool(ctx: PlanToolsContext): Tool<{ stepId
         return { success: false, output: '', error: `Step not found: ${input.stepId}` };
       }
 
+      if (step.status !== 'running') {
+        return {
+          success: false,
+          output: '',
+          error: `Step ${resolvedId} is ${step.status}; only a running step can be marked complete.`,
+        };
+      }
+
+      const taskState = ctx.getTaskState?.();
+      if (taskState) {
+        if (taskState.getActivePlanStepId() && taskState.getActivePlanStepId() !== resolvedId) {
+          return {
+            success: false,
+            output: '',
+            error: `Step ${resolvedId} is not the active plan step. Continue the current step before marking another complete.`,
+          };
+        }
+        const decision = taskState.evaluatePlanStepCompletion(step, ctx.getMode?.() ?? 'agent');
+        if (!decision.complete) {
+          return {
+            success: false,
+            output: '',
+            error: `Step ${resolvedId} cannot be marked complete yet:\n- ${decision.missing.join('\n- ')}`,
+          };
+        }
+      }
+
       step.status = 'done';
 
       for (const s of plan.steps) {
@@ -94,7 +116,7 @@ export function createMarkStepCompleteTool(ctx: PlanToolsContext): Tool<{ stepId
       }
 
       ctx.setPlan(plan);
-      ctx.planPersistence?.updatePlan(ctx.getSessionId(), plan, 'running');
+      persistPlanUpdate(ctx, plan, 'running');
       ctx.planFileStore?.markStepComplete(resolvedId);
 
       log.info('Step marked complete', { stepId: resolvedId });
@@ -208,22 +230,16 @@ export function createProposePlanMutationTool(ctx: PlanToolsContext): Tool<{
         if (shouldRunNow) firstNewRunning = true;
       }
 
-      const hasExecutePhase = input.newSteps.some((s) => (s.phase ?? 'execute') === 'execute');
-      if (hasExecutePhase) {
-        ctx.setPlanPhaseLock?.('execute');
-      }
-
       plan.assumptions.push(`Plan mutation: ${input.reason}`);
       plan.assumptions.push('Plan mutation preserved existing unfinished steps; running steps were blocked rather than marked done.');
       ctx.setPlan(plan);
-      ctx.planPersistence?.updatePlan(ctx.getSessionId(), plan, 'running');
+      persistPlanUpdate(ctx, plan, 'running');
       ctx.planFileStore?.mutatePlan(plan, 'running');
 
       log.info('Plan mutated', { reason: input.reason, newSteps: input.newSteps.length });
-      const phaseNote = hasExecutePhase ? ' Phase lock set to execute — write_file/apply_patch allowed.' : '';
       return {
         success: true,
-        output: `Plan updated: ${input.newSteps.length} new step(s) added. Reason: ${input.reason}.${phaseNote}`,
+        output: `Plan updated: ${input.newSteps.length} new step(s) added. Reason: ${input.reason}. Execution authority unchanged — the orchestrator controls phase locks.`,
       };
     },
   };

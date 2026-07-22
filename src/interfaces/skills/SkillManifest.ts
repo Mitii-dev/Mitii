@@ -33,6 +33,8 @@ export interface SkillRoutingTestCase {
   };
   availableTools?: readonly string[];
   availableCapabilities?: readonly string[];
+  /** When true, pin this skill for the test (manual attachment). Default: organic selection only. */
+  manualAttachment?: boolean;
   expected: 'selected' | 'suggested' | 'rejected' | 'not-selected';
   maxInjectionChars?: number;
 }

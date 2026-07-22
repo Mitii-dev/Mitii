@@ -933,7 +933,7 @@ export class ChatOrchestrator {
       userPathTokens
     );
 
-    const retrievalText = expandContextQuery(taskEnrichment.retrievalText);
+    const retrievalText = expandContextQuery(taskEnrichment.retrievalText, this.deps.workspace);
     let items;
     const retrievalKey = JSON.stringify({
       text: retrievalText,
@@ -1074,6 +1074,9 @@ export class ChatOrchestrator {
       taskForClassification,
       actPlan?.executionPath === 'resume_saved_plan'
     );
+    if (this.deps.workspace) {
+      this.deps.taskState?.setWorkspaceRoot(this.deps.workspace);
+    }
     if (!isResume) {
       this.suspendContext = undefined;
       this.agentLoop?.clearSuspendState();
@@ -1672,6 +1675,7 @@ export class ChatOrchestrator {
           mdxRepairMode,
           askProfile: askPlan?.route.profile,
           allowedToolNames: tools.map((tool) => tool.function.name),
+          workspaceRoot: this.deps.workspace,
         }
       ), options?.attachments);
       const promptSections = describePromptSections(
@@ -1822,7 +1826,7 @@ export class ChatOrchestrator {
             this.setLiveStatus('Running verify hooks');
             this.emitActivity('info', 'Discovering and running project verification…');
             const verifyCommands = mdxRepairMode
-              ? suggestDocsVerifyCommands()
+              ? suggestDocsVerifyCommands(this.deps.workspace)
               : (agentConfig.verifyCommands ?? []);
             const verifyOutput = await this.deps.runVerifyHooks?.(
               verifyCommands,

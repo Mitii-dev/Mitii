@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
-import { basename, join } from 'path';
+import { join } from 'path';
+import { safeWorkspaceChild } from '../../../../kernel/util/safePaths';
 import type { ImpactAnalysis, ImpactFile, ProjectCatalog } from './askTypes';
 import { discoverProjectCatalog } from './ProjectCatalog';
 import { resolveAskScope } from './AskScopeResolver';
@@ -19,7 +20,7 @@ export function analyzeChangeImpact(
     : resolveAskScope(feature, catalog).projects[0];
   const root = scope?.root ?? scopeRoot ?? '.';
   const projectRoot = root === '.' ? '' : root;
-  const absRoot = join(workspaceRoot, projectRoot);
+  const absRoot = resolveSafeScopeRoot(workspaceRoot, projectRoot);
   const terms = [...extractFeatureTerms(feature), ...entrySymbols.map((symbol) => symbol.toLowerCase())];
   const files = walkFiles(absRoot, projectRoot, 700);
   const scored = scoreFiles(workspaceRoot, files, terms, feature);
@@ -96,22 +97,16 @@ function scoreFiles(
 }
 
 function inferCreateFiles(feature: string, root: string, modify: ImpactFile[]): ImpactFile[] {
+  const isImplementation = /\b(implement|add|create|build|introduce|support)\b/i.test(feature);
+  if (modify.length > 0 && !isImplementation) return [];
   const base = root === '.' ? 'src' : `${root}/src`;
-  const lower = feature.toLowerCase();
-  const create: ImpactFile[] = [];
-  if (/\boauth|auth|login|session\b/.test(lower)) {
-    create.push({ path: `${base}/core/auth/OAuthProvider.ts`, reason: 'new provider/session adapter if no auth module exists', confidence: 'medium' });
-  }
-  if (/\brate limit|rate-limit|throttl/.test(lower)) {
-    create.push({ path: `${base}/middleware/rateLimit.ts`, reason: 'central reusable rate-limiting middleware', confidence: 'medium' });
-  }
-  if (/\bsdk\b/.test(lower)) {
-    create.push({ path: `${root === '.' ? 'packages' : root}/mitii-sdk/src/index.ts`, reason: 'public SDK entry point', confidence: 'low' });
-  }
-  if (modify.length === 0) {
-    create.push({ path: `${base}/feature/${slugFeature(feature)}.ts`, reason: 'no existing implementation surface matched strongly', confidence: 'low' });
-  }
-  return uniqueByPath(create).slice(0, 5);
+  return [{
+    path: `${base}/<new-module>`,
+    reason: modify.length > 0
+      ? 'Implementation may still require a dedicated new module alongside existing touch points'
+      : 'No strongly matched existing files; a new module may be required adjacent to related code',
+    confidence: 'low',
+  }];
 }
 
 function inferMaybeFiles(root: string, files: string[], feature: string): ImpactFile[] {
@@ -131,10 +126,15 @@ function inferMaybeFiles(root: string, files: string[], feature: string): Impact
   return uniqueByPath(maybe).slice(0, 8);
 }
 
-function inferTestFiles(files: string[], root: string): string[] {
+function inferTestFiles(files: string[], _root: string): string[] {
   const tests = files.filter((file) => /(?:^|\/)(test|tests|__tests__)\/|\.test\.|\.spec\./i.test(file));
-  if (tests.length > 0) return tests.slice(0, 8);
-  return [root === '.' ? 'test/unit.test.ts' : `${root}/test/unit.test.ts`];
+  return tests.slice(0, 8);
+}
+
+function resolveSafeScopeRoot(workspaceRoot: string, scopeRoot: string): string {
+  const relativePath = scopeRoot === '.' ? '' : scopeRoot;
+  if (!relativePath) return workspaceRoot;
+  return safeWorkspaceChild(workspaceRoot, relativePath);
 }
 
 function inferDependencies(feature: string): string[] {
@@ -275,10 +275,6 @@ function countOccurrences(text: string, term: string): number {
 
 function confidenceWeight(confidence: ImpactFile['confidence']): number {
   return confidence === 'high' ? 3 : confidence === 'medium' ? 2 : 1;
-}
-
-function slugFeature(feature: string): string {
-  return basename(feature.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')).slice(0, 40) || 'new-feature';
 }
 
 function unique(values: string[]): string[] {

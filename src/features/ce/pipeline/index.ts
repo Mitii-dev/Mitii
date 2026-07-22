@@ -12,6 +12,13 @@ export {
 } from './classify/artifactClassifier';
 
 export {
+  extractTaskFeatures,
+  askIntentFromFeatures,
+  type TaskFeatureSignals,
+  type InteractionIntent,
+} from './classify/taskFeatures';
+
+export {
   classifyTaskSignals,
   resolveRoute,
   resolveAuditSubtype,
@@ -78,6 +85,24 @@ export interface ResolvePipelineOptions {
 }
 
 /**
+ * Skill resolution branches on 'agent' vs everything else (e.g. picking the agent-plan vs
+ * planning-and-task-breakdown support skill). Collapsing an unrecognized mode straight to
+ * 'agent' silently gave Review-mode turns agent-flavored skill selection; only fold truly
+ * unknown values into 'agent', and let known non-agent modes (ask/plan/review) stay themselves.
+ */
+function normalizeSourceMode(mode: string): 'ask' | 'plan' | 'agent' | 'review' {
+  switch (mode) {
+    case 'ask':
+    case 'plan':
+    case 'agent':
+    case 'review':
+      return mode;
+    default:
+      return 'agent';
+  }
+}
+
+/**
  * Single call that produces route + depth + skills + capabilities for a turn.
  */
 export function resolveTurnPipeline(
@@ -94,8 +119,8 @@ export function resolveTurnPipeline(
   });
   const depthAxis = resolvePlanningDepthAxis(route, taskAnalysis, options.userDepth);
   const internalDepth = toInternalPlanningDepth(depthAxis, taskAnalysis);
-  const skills = options.skillResolution ?? resolveSkillsForRoute(route, taskAnalysis, {
-      sourceMode: options.mode === 'ask' || options.mode === 'plan' || options.mode === 'agent' ? options.mode : 'agent',
+  const skills = options.skillResolution ?? resolveSkillsForRoute(route, taskAnalysis, userMessage, {
+      sourceMode: normalizeSourceMode(options.mode),
       planning: options.planning ?? options.mode === 'plan',
     });
   const capabilities = resolveCapabilities(route, {

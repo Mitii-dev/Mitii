@@ -47,8 +47,7 @@ export class SkillCatalogService {
     }
 
     const skillFiles = findSkillFiles(root);
-    const seen = new Set<string>();
-    this.entries = skillFiles.map((absPath) => {
+    const provisionalEntries = skillFiles.map((absPath) => {
       const content = readFileSync(absPath, 'utf8');
       const frontmatter = parseSkillFrontmatter(content);
       const folderName = skillNameFromPath(absPath);
@@ -62,10 +61,6 @@ export class SkillCatalogService {
         : validateSkillManifest(rawManifest);
       const manifest = validation.manifest ?? legacySkillManifest({ id: folderName, name, description });
       const issues = [...validation.issues];
-      if (seen.has(manifest.id)) {
-        issues.push({ path: 'id', code: 'duplicate_id', message: `Duplicate skill id: ${manifest.id}` });
-      }
-      seen.add(manifest.id);
 
       if (!frontmatter.name || !frontmatter.description) {
         log.warn('Skill missing required frontmatter fields', {
@@ -106,6 +101,37 @@ export class SkillCatalogService {
         issues,
         manifestPath: rawManifest === undefined ? absPath : manifestPath,
         manifestHash: hashManifest(rawManifest ?? manifest),
+      };
+    });
+
+    const idCounts = new Map<string, number>();
+    for (const entry of provisionalEntries) {
+      idCounts.set(entry.id, (idCounts.get(entry.id) ?? 0) + 1);
+    }
+    const knownIds = new Set(provisionalEntries.map((entry) => entry.id));
+    this.entries = provisionalEntries.map((entry) => {
+      let issues = [...entry.issues];
+      if ((idCounts.get(entry.id) ?? 0) > 1) {
+        issues.push({
+          path: 'id',
+          code: 'duplicate_id',
+          message: `Duplicate skill id: ${entry.id}`,
+        });
+      }
+      const dependencies = resolveSkillDependencies(entry.manifest);
+      for (const dependency of dependencies) {
+        if (!knownIds.has(dependency)) {
+          issues.push({
+            path: 'dependencies',
+            code: 'missing_dependency',
+            message: `Missing skill dependency: ${dependency}`,
+          });
+        }
+      }
+      return {
+        ...entry,
+        issues,
+        valid: issues.length === 0,
       };
     });
 
@@ -366,7 +392,7 @@ function catalogScore(entry: SkillCatalogEntry, terms: string[]): number {
 function detectDependencyCycles(entries: SkillCatalogEntry[]): Set<string> {
   const dependencies = new Map(entries.map((entry) => [
     entry.id,
-    (entry.manifest.dependencies ?? entry.manifest.requires ?? []).filter(Boolean),
+    resolveSkillDependencies(entry.manifest),
   ]));
   const visiting = new Set<string>();
   const visited = new Set<string>();
@@ -390,6 +416,12 @@ function detectDependencyCycles(entries: SkillCatalogEntry[]): Set<string> {
 
   for (const id of dependencies.keys()) visit(id, []);
   return cyclic;
+}
+
+function resolveSkillDependencies(manifest: SkillManifest): string[] {
+  const dependencies = manifest.dependencies;
+  if (dependencies !== undefined) return [...dependencies];
+  return [...(manifest.requires ?? [])];
 }
 
 export { parseSkillFrontmatter };

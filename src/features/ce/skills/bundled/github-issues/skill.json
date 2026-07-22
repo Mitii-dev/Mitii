@@ -31,7 +31,8 @@
     "create an issue",
     "draft an issue",
     "file a bug report",
-    "update the issue"
+    "update the issue",
+    "draft a github issue"
   ],
   "negativeTriggers": [
     "create pull request",

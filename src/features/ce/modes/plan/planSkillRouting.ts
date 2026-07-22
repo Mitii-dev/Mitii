@@ -35,7 +35,7 @@ export function resolvePlanningSkillNames(
   if (intent === 'audit') route.intent = 'audit';
   if (intent === 'bugfix') route.intent = 'bugfix';
   if (intent === 'refactor') route.intent = 'refactor';
-  const skills = resolveSkillsForRoute(route, analysis, {
+  const skills = resolveSkillsForRoute(route, analysis, summary, {
     sourceMode: options.sourceMode ?? 'plan',
     planning: true,
   });

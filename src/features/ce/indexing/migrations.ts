@@ -307,6 +307,15 @@ export const MIGRATIONS: Migration[] = [
       db.raw.exec(`UPDATE agent_sessions SET mode = 'agent' WHERE mode = 'act';`);
     },
   },
+  {
+    version: 16,
+    name: 'add_task_plans_revision',
+    up: (db) => {
+      db.raw.exec(`
+        ALTER TABLE task_plans ADD COLUMN revision INTEGER NOT NULL DEFAULT 0;
+      `);
+    },
+  },
 ];
 
 export class MigrationRunner {

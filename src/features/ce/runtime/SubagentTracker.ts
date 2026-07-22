@@ -18,6 +18,9 @@ export interface SubagentRun {
 
 export type SubagentUpdateCallback = (runs: SubagentRun[]) => void;
 
+const TERMINAL_STATUSES = new Set<SubagentStatus>(['done', 'error']);
+const MAX_TERMINAL_RUNS = 12;
+
 export class SubagentTracker {
   private runs: SubagentRun[] = [];
   private onUpdate: SubagentUpdateCallback | undefined;
@@ -42,7 +45,8 @@ export class SubagentTracker {
       status: 'running',
       startedAt: Date.now(),
     };
-    this.runs = [...this.runs, run].slice(-12);
+    this.runs = [...this.runs, run];
+    this.pruneTerminalRuns();
     this.notify();
     return run.id;
   }
@@ -53,6 +57,7 @@ export class SubagentTracker {
         ? { ...r, status: 'done' as const, finishedAt: Date.now(), progress: metadata.progress ?? r.progress, summary: summary.slice(0, 300) }
         : r
     );
+    this.pruneTerminalRuns();
     this.notify();
   }
 
@@ -62,11 +67,19 @@ export class SubagentTracker {
         ? { ...r, status: 'error' as const, finishedAt: Date.now(), error: error.slice(0, 200) }
         : r
     );
+    this.pruneTerminalRuns();
     this.notify();
   }
 
   getRuns(): SubagentRun[] {
     return [...this.runs];
+  }
+
+  /** Retain all non-terminal runs; prune only finished/error history. */
+  private pruneTerminalRuns(): void {
+    const active = this.runs.filter((run) => !TERMINAL_STATUSES.has(run.status));
+    const terminal = this.runs.filter((run) => TERMINAL_STATUSES.has(run.status));
+    this.runs = [...active, ...terminal.slice(-MAX_TERMINAL_RUNS)];
   }
 
   private notify(): void {

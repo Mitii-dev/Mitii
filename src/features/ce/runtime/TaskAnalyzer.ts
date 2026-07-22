@@ -6,7 +6,11 @@ import type { PlanIntent } from '../modes/plan/planTypes';
 import type { ActIntent } from '../modes/agent/actTypes';
 import { isLogAuditTask } from './logAudit';
 import { resolveGitRoute, type GitRouteResolution } from '../../../features/ce/git/intents';
-import { resolveAuditSubtype, resolveDocsSubtype } from '../pipeline/route/routeResolver';
+import { resolveAuditSubtype, resolveDocsSubtype, isDependencyCleanupAudit } from '../pipeline/route/routeResolver';
+import { DESTRUCTIVE_OPERATION_RE } from '../pipeline/route/constants';
+import type { AuditSubtype, DocsSubtype } from '../pipeline/types';
+import type { TaskFeatureSignals } from '../pipeline/classify/taskFeatures';
+import { extractTaskFeatures } from '../pipeline/classify/taskFeatures';
 import { DIAGNOSTIC_REQUEST } from './diagnosticRequest';
 
 export type TaskKind =
@@ -36,29 +40,7 @@ export interface SubagentDecision {
   reasonCodes: string[];
 }
 
-export type AuditSubtype =
-  | 'unused_deps'
-  | 'dead_code'
-  | 'vulnerability'
-  | 'log'
-  | 'prompt'
-  | 'security_config'
-  | 'git_history'
-  | 'ci'
-  | 'database'
-  | 'architecture'
-  | 'code_quality'
-  | 'generic';
-
-export type DocsSubtype =
-  | 'readme'
-  | 'api_reference'
-  | 'architecture'
-  | 'docusaurus'
-  | 'mdx_repair'
-  | 'changelog'
-  | 'examples'
-  | 'generic';
+export type { AuditSubtype, DocsSubtype };
 
 export interface TaskAnalysis {
   kind: TaskKind;
@@ -77,6 +59,8 @@ export interface TaskAnalysis {
   auditSubtype?: AuditSubtype;
   /** Set for documentation tasks (README vs Docusaurus, etc.). */
   docsSubtype?: DocsSubtype;
+  /** Canonical features extracted once per turn — routers should prefer this over re-parsing text. */
+  features?: TaskFeatureSignals;
 }
 
 export interface TaskAnalysisOptions {
@@ -193,6 +177,8 @@ const SEQUENTIAL_ROOT_CAUSE_WORK =
 
 export function analyzeTask(userMessage: string, mode: string, options: TaskAnalysisOptions = {}): TaskAnalysis {
   const text = userMessage.trim();
+  const interaction = mode === 'ask' ? 'answer' : mode === 'plan' ? 'plan' : 'execute';
+  const features = extractTaskFeatures(text, interaction);
   const isContinuation = isApprovalContinuationMessage(text);
   const taskText = extractOriginalTaskMessage(text) ?? text;
 
@@ -200,6 +186,7 @@ export function analyzeTask(userMessage: string, mode: string, options: TaskAnal
     const original = classifyTask(taskText);
     return {
       ...original,
+      features,
       shouldPlan: mode === 'plan' ? original.shouldPlan : false,
       shouldUseSubagents: false,
       summary: mode === 'plan'
@@ -236,7 +223,10 @@ export function analyzeTask(userMessage: string, mode: string, options: TaskAnal
     if (mode === 'agent') return gitAnalysis;
   }
   if (mode === 'ask') {
-    const askRoute = routeAskIntent(taskText, options.askIntent ? { intent: options.askIntent } : undefined);
+    const askRoute = routeAskIntent(taskText, {
+      intent: options.askIntent,
+      features: extractTaskFeatures(taskText, 'answer'),
+    });
     if (askRoute.intent === 'log_analysis' || isLogAuditTask(taskText)) {
       return {
         kind: 'log_audit',
@@ -259,11 +249,13 @@ export function analyzeTask(userMessage: string, mode: string, options: TaskAnal
       summary: askRoute.summary,
       askIntent: askRoute.intent,
       askProfile: askRoute.profile,
+      features,
     };
   }
 
   if (mode === 'plan') {
-    const planRoute = routePlanIntent(taskText, classified, options.planIntent ? { intent: options.planIntent } : undefined);
+    const planFeatures = extractTaskFeatures(taskText, 'plan');
+    const planRoute = routePlanIntent(taskText, { ...classified, features: planFeatures }, options.planIntent ? { intent: options.planIntent } : undefined);
     return {
       ...classified,
       complexity: planRoute.complexity,
@@ -275,6 +267,7 @@ export function analyzeTask(userMessage: string, mode: string, options: TaskAnal
         (classified.kind === 'audit' && !/\bdependenc/i.test(taskText)),
       summary: planRoute.summary,
       planIntent: planRoute.intent,
+      features: planFeatures,
     };
   }
 
@@ -289,7 +282,7 @@ export function analyzeTask(userMessage: string, mode: string, options: TaskAnal
     };
   }
 
-  return applyActIntent(classified, options.actIntent, taskText);
+  return { ...applyActIntent(classified, options.actIntent, taskText), features };
 }
 
 function estimateAskComplexity(
@@ -323,13 +316,13 @@ function classifyTask(text: string): TaskAnalysis {
   }
 
   // Dependency / dead-code cleanup only — bare "audit" is handled later as generic review.
+  // This gate already requires cleanup-shaped target language, so a bare-audit 'review'
+  // result from the shared resolver (meant for the ungated top-level route) is coerced
+  // back to 'generic' here rather than silently falling out of the cleanup bucket.
   if (isAuditCleanupRequest(text)) {
-    const auditSubtype = resolveAuditSubtype(text) ?? 'generic';
-    const isCleanup =
-      auditSubtype === 'unused_deps' ||
-      auditSubtype === 'dead_code' ||
-      auditSubtype === 'vulnerability' ||
-      auditSubtype === 'generic';
+    const resolvedSubtype = resolveAuditSubtype(text);
+    const auditSubtype: AuditSubtype = resolvedSubtype && resolvedSubtype !== 'review' ? resolvedSubtype : 'generic';
+    const isCleanup = isDependencyCleanupAudit(auditSubtype);
     return {
       kind: 'audit',
       complexity: isCleanup ? 'high' : 'medium',
@@ -473,7 +466,7 @@ function classifyTask(text: string): TaskAnalysis {
 
   if (isImplementation) {
     const hasMigration = /\b(migrat(?:e|ion)|schema change|data backfill|breaking change)\b/i.test(primary);
-    const hasDestructiveOperation = /\b(delete|drop|purge|rewrite history|force push|reset --hard)\b/i.test(primary);
+    const hasDestructiveOperation = DESTRUCTIVE_OPERATION_RE.test(primary);
     const hasMaterialAmbiguity =
       /\b(figure out|decide|choose the best|whatever is needed|as appropriate|unsure)\b/i.test(primary);
     const hasDependentComponents =
@@ -501,7 +494,7 @@ function classifyTask(text: string): TaskAnalysis {
       subagentDecision,
       actIntent: broadProjectRepair ? 'bugfix' : undefined,
       summary: broadProjectRepair
-        ? `Project repair task (${complexity} complexity) — reproduce the current failures, scope to the first error cluster, patch, then verify.`
+        ? `Project repair task (${complexity} complexity) — run one baseline check, scope to current diagnostic files, patch the first error cluster, then verify.`
         : shouldPlan
         ? `Implementation task (${complexity} complexity) — plan because risk, dependencies, or ambiguity require coordination.`
         : `Implementation task (${complexity} complexity) — execute directly with focused verification.`,
@@ -578,10 +571,7 @@ function applyActIntent(
 
     case 'audit': {
       const auditSubtype = analysis.auditSubtype ?? resolveAuditSubtype(taskText) ?? 'generic';
-      const isCleanup =
-        auditSubtype === 'unused_deps' ||
-        auditSubtype === 'dead_code' ||
-        auditSubtype === 'vulnerability';
+      const isCleanup = isDependencyCleanupAudit(auditSubtype);
       return {
         ...analysis,
         kind: 'audit',

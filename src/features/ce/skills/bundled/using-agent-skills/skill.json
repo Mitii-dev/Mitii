@@ -58,6 +58,7 @@
         "use_skill"
       ],
       "availableCapabilities": [],
+      "manualAttachment": true,
       "expected": "selected",
       "maxInjectionChars": 5000
     },

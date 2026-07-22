@@ -51,7 +51,7 @@ export function resolveActSkillResolution(intent: ActIntent, taskAnalysis?: Task
     route.intent = 'log_audit';
     route.executionPath = 'log_audit';
   }
-  return resolveSkillsForRoute(route, analysis, { sourceMode: 'agent', planning: false });
+  return resolveSkillsForRoute(route, analysis, summary, { sourceMode: 'agent', planning: false });
 }
 
 export function loadActSkillPlaybooks(

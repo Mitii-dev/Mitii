@@ -32,6 +32,7 @@ export interface ActPrepareOptions {
   mdxRepairMode?: boolean;
   githubIssueMode?: boolean;
   hasActivePlan?: boolean;
+  planAwaitingApproval?: boolean;
   savedPlanId?: string;
   /** Empty = discover verify commands from project manifests at runtime */
   verifyCommands?: string[];
@@ -48,6 +49,7 @@ export class ActOrchestrator {
     const route = routeActIntent(userMessage, taskAnalysis, {
       mode: 'agent',
       hasActivePlan: options.hasActivePlan,
+      planAwaitingApproval: options.planAwaitingApproval,
       orchestrationEnabled: options.orchestrationEnabled,
       auditMode: options.auditMode,
       logAuditMode: options.logAuditMode,

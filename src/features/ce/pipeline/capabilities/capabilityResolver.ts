@@ -1,55 +1,31 @@
 import type { ToolExposure } from '../../../../kernel/policy/tierPolicy';
 import type { CapabilityResolution, McpPolicy, RouteResolution } from '../types';
+import { PLAN_CONTROL_TOOL_IDS } from '../../tools/toolIds';
+import {
+  GIT_READ_TOOL_IDS,
+  GIT_WRITE_TOOL_IDS,
+  MCP_FILESYSTEM_TOOL_IDS,
+  RELEASE_TOOL_IDS,
+} from '../../tools/toolMetadata';
 
 export type CapabilityMode = 'ask' | 'plan' | 'agent' | 'review' | string;
 
-/** Git / release / GitHub tools — only for git routes (or read-only git_status/diff when useful). */
-export const GIT_WRITE_AND_RELEASE_TOOLS = [
-  'git_stage_files',
-  'git_unstage_files',
-  'git_commit',
-  'git_branch_create',
-  'git_branch_switch',
-  'git_branch_delete',
-  'git_merge',
-  'git_rebase',
-  'git_tag_create',
-  'git_tag_delete_local',
-  'detect_changelog_strategy',
-  'aggregate_changelog',
-  'generate_changelog_patch',
-  'release_plan_controller',
-  'discover_github_workflows',
-  'analyze_github_workflow',
-  'github_dispatch_workflow',
-  'github_get_workflow_run',
-  'github_verify_repository',
-  'github_draft_pull_request',
-  'github_create_pull_request',
-  'github_draft_issue',
-  'github_find_duplicate_issues',
-  'github_create_issue',
-  'github_create_release',
-] as const;
+/** @deprecated Use GIT_READ_TOOL_IDS from toolMetadata. */
+export const GIT_READ_TOOLS = GIT_READ_TOOL_IDS;
 
-/** MCP filesystem tools that duplicate Mitii builtins. */
-export const MCP_FILESYSTEM_TOOLS = [
-  'mcp__filesystem__read_text_file',
-  'mcp__filesystem__read_multiple_files',
-  'mcp__filesystem__read_media_file',
-  'mcp__filesystem__read_file',
-  'mcp__filesystem__list_directory',
-  'mcp__filesystem__directory_tree',
-  'mcp__filesystem__search_files',
-  'mcp__filesystem__get_file_info',
-  'mcp__filesystem__list_allowed_directories',
-  'mcp__filesystem__create_directory',
-  'mcp__filesystem__move_file',
-  'mcp__filesystem__write_file',
-  'mcp__filesystem__edit_file',
-] as const;
+/** @deprecated Use GIT_WRITE_TOOL_IDS from toolMetadata. */
+export const GIT_WRITE_TOOLS = GIT_WRITE_TOOL_IDS;
 
-const PLAN_CONTROL_TOOLS = ['mark_step_complete', 'propose_plan_mutation'] as const;
+/** @deprecated Use RELEASE_TOOL_IDS from toolMetadata. */
+export const RELEASE_TOOLS = RELEASE_TOOL_IDS;
+
+/** @deprecated Kept for external callers; now correctly write/release-only (no longer includes read tools). */
+export const GIT_WRITE_AND_RELEASE_TOOLS = [...GIT_WRITE_TOOL_IDS, ...RELEASE_TOOL_IDS] as const;
+
+/** @deprecated Use MCP_FILESYSTEM_TOOL_IDS from toolMetadata. */
+export const MCP_FILESYSTEM_TOOLS = MCP_FILESYSTEM_TOOL_IDS;
+
+const PLAN_CONTROL_TOOLS = [...PLAN_CONTROL_TOOL_IDS] as const;
 
 export interface ResolveCapabilitiesOptions {
   mode: CapabilityMode;
@@ -74,6 +50,16 @@ export function resolveCapabilities(
   route: RouteResolution,
   options: ResolveCapabilitiesOptions
 ): CapabilityResolution {
+  if (options.supportsTools === false) {
+    return {
+      excludedTools: new Set(),
+      mcpPolicy: 'none',
+      preferBuiltinFilesystem: true,
+      maxProposeFileScopePerStep: 0,
+      approvalProfile: 'read_only',
+    };
+  }
+
   const excluded = new Set<string>();
   const mcpPolicy = mcpPolicyFor(route, options.toolExposure);
   const preferBuiltinFilesystem = true;
@@ -81,37 +67,29 @@ export function resolveCapabilities(
   if (mcpPolicy === 'none') {
     // Caller strips all mcp__*
   } else if (mcpPolicy === 'no_filesystem' || preferBuiltinFilesystem) {
-    for (const name of MCP_FILESYSTEM_TOOLS) excluded.add(name);
+    for (const name of MCP_FILESYSTEM_TOOL_IDS) excluded.add(name);
   }
 
-  // Never expose release/git-write tools on non-git routes (docs README bug).
-  if (!route.isGitTask || route.operationClass === 'workspace_write' || route.operationClass === 'inspect') {
-    if (
-      route.operationClass !== 'local_git_write' &&
-      route.operationClass !== 'remote_write' &&
-      route.operationClass !== 'release'
-    ) {
-      for (const name of GIT_WRITE_AND_RELEASE_TOOLS) excluded.add(name);
-    }
+  const allowsGitWrite =
+    route.isGitTask &&
+    (route.operationClass === 'local_git_write' ||
+      route.operationClass === 'remote_write' ||
+      route.operationClass === 'release');
+  if (!allowsGitWrite) {
+    for (const name of GIT_WRITE_TOOL_IDS) excluded.add(name);
+    for (const name of RELEASE_TOOL_IDS) excluded.add(name);
+  }
+  if (!route.isGitTask) {
+    for (const name of GIT_READ_TOOL_IDS) excluded.add(name);
   }
 
-  if (route.operationClass === 'release') {
-    // release path keeps release tools; still hide unrelated github issue tools? keep allow-all git set via git intents
-  } else if (route.isGitTask && route.operationClass === 'inspect') {
-    for (const name of GIT_WRITE_AND_RELEASE_TOOLS) excluded.add(name);
-  }
-
-  // Direct Act loop: plan-control tools are not available (phase orchestrator advances steps).
   if (options.mode === 'agent' && !options.planExecution) {
     for (const name of PLAN_CONTROL_TOOLS) excluded.add(name);
   }
 
-  // mark_step_complete is orchestrator-owned during plan execution — hide from model to avoid
-  // "tool not available" loops (prompt must not advertise it either).
   if (options.planExecution) {
     excluded.add('mark_step_complete');
     excluded.add('propose_plan_mutation');
-    // Extra safety: release controller must never appear mid plan unless release op.
     if (route.operationClass !== 'release') {
       excluded.add('release_plan_controller');
     }

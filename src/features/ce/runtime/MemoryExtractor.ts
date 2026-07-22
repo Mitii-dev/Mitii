@@ -1,6 +1,7 @@
 import type { LlmProvider } from '../../../kernel/llm/types';
 import type { MemoryService, ObservationType } from '../../../features/ce/memory/MemoryService';
 import type { ToolCallAudit } from '../../../kernel/tools/types';
+import { isWorkspaceWriteTool } from '../tools/toolIds';
 import { PostTaskMemoryWorker } from '../../../features/ce/memory/PostTaskMemoryWorker';
 import type { AutoMemoryFileWriter } from '../../../features/ce/memory/AutoMemoryFileWriter';
 import { createLogger } from '../../../kernel/telemetry/Logger';
@@ -44,6 +45,8 @@ export class MemoryExtractor {
   ): Promise<void> {
     const filesTouched = new Set<string>();
     for (const entry of toolAudit) {
+      if (!entry.result.success || entry.result.skipped) continue;
+      if (!isWorkspaceWriteTool(entry.toolName)) continue;
       const input = entry.input as Record<string, unknown>;
       if (typeof input.path === 'string') filesTouched.add(input.path);
     }

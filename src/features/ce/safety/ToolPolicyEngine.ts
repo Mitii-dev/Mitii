@@ -1,6 +1,20 @@
 import { existsSync, statSync } from 'fs';
 import { isAbsolute } from 'path';
 import { isReadOnlyCommand } from '../../../features/ce/plans/PlanActEngine';
+import {
+  GIT_EXPLICIT_APPROVAL_TOOL_IDS,
+  GIT_POLICY_WRITE_TOOL_IDS,
+  LOG_AUDIT_PATH_TOOL_IDS,
+  MCP_FILESYSTEM_WRITE_PATTERN,
+  PATH_READ_TOOL_IDS,
+  POLICY_READ_ONLY_TOOL_IDS,
+  SHELL_TOOL_IDS,
+  WRITE_TOOL_IDS,
+  isMcpFilesystemReadToolName,
+  isMcpFilesystemWriteToolName,
+  usesReadPathSemanticsTool,
+} from '../tools/toolMetadata';
+import { ToolId } from '../tools/toolIds';
 
 export type PolicyDecision = 'allow' | 'require_approval' | 'block';
 
@@ -23,38 +37,6 @@ const DANGEROUS_COMMANDS = [
   /\bgit\s+rebase\s+--onto\b/i,
   /\bgit\s+(?:filter-branch|filter-repo)\b/i,
 ];
-
-const READ_ONLY_TOOLS = new Set([
-  'read_file', 'read_files', 'resolve_path', 'list_files', 'search', 'search_batch', 'repo_map',
-  'retrieve_context', 'git_diff', 'diagnostics', 'memory_search', 'spawn_research_agent', 'spawn_subagent',
-  'save_task_state', 'search_script_catalog', 'execute_workspace_script', 'use_skill',
-  'fetch_web', 'ask_question', 'mark_step_complete', 'propose_plan_mutation', 'propose_file_scope',
-  'analyze_log_directory', 'analyze_jsonl', 'query_log_events', 'list_logs',
-  'git_status', 'git_log', 'git_show', 'git_blame', 'git_compare_branches', 'git_tag_list',
-  'detect_changelog_strategy', 'aggregate_changelog', 'discover_github_workflows', 'analyze_github_workflow',
-  'github_verify_repository', 'github_draft_pull_request', 'github_draft_issue', 'github_find_duplicate_issues',
-  'github_get_workflow_run',
-]);
-
-/** Read tools that take a workspace-relative path — checked against the workspace
- *  boundary so reaching outside it goes through approval instead of being silently allowed. */
-const PATH_READ_TOOLS = new Set(['read_file', 'read_files', 'list_files', 'resolve_path']);
-const LOG_AUDIT_PATH_TOOLS = new Set(['analyze_log_directory', 'analyze_jsonl', 'query_log_events']);
-
-const WRITE_TOOLS = new Set(['write_file', 'apply_patch', 'memory_write']);
-const SHELL_TOOLS = new Set(['run_command']);
-const GIT_POLICY_WRITE_TOOLS = new Set([
-  'git_stage_files', 'git_unstage_files', 'generate_changelog_patch',
-  'git_branch_create', 'git_branch_switch',
-]);
-const GIT_EXPLICIT_TOOLS = new Set([
-  'git_commit', 'git_branch_delete', 'git_merge', 'git_rebase', 'git_tag_create', 'git_tag_delete_local',
-  'github_create_pull_request', 'github_create_issue', 'github_dispatch_workflow', 'github_create_release',
-  'release_plan_controller',
-]);
-
-const MCP_FILESYSTEM_WRITE =
-  /^mcp__filesystem__(create_directory|move_file|write_file|edit_file)$/i;
 
 export interface SafetyConfig {
   requireApprovalForWrites: boolean;
@@ -89,7 +71,7 @@ export class ToolPolicyEngine {
     if (
       !this.isWorkspaceTrusted() &&
       !this.safetyConfig.allowUntrustedWorkspace &&
-      (WRITE_TOOLS.has(toolName) || SHELL_TOOLS.has(toolName) || MCP_FILESYSTEM_WRITE.test(toolName))
+      (WRITE_TOOL_IDS.has(toolName) || SHELL_TOOL_IDS.has(toolName) || isMcpFilesystemWriteTool(toolName))
     ) {
       return {
         decision: 'block',
@@ -97,14 +79,14 @@ export class ToolPolicyEngine {
       };
     }
 
-    if (READ_ONLY_TOOLS.has(toolName) || isMcpFilesystemReadTool(toolName)) {
-      if (toolName === 'fetch_web' && !this.safetyConfig.allowNetwork) {
+    if (POLICY_READ_ONLY_TOOL_IDS.has(toolName) || isMcpFilesystemReadTool(toolName)) {
+      if (toolName === ToolId.FetchWeb && !this.safetyConfig.allowNetwork) {
         return { decision: 'block', reason: 'Network access disabled' };
       }
-      if (toolName === 'ask_question') {
+      if (toolName === ToolId.AskQuestion) {
         return { decision: 'require_approval', reason: 'Clarifying question requires user response' };
       }
-      if (PATH_READ_TOOLS.has(toolName) || isMcpFilesystemReadTool(toolName)) {
+      if (PATH_READ_TOOL_IDS.has(toolName) || isMcpFilesystemReadTool(toolName)) {
         const externalPath = this.findExternalFilePath(toolName, input);
         if (externalPath) {
           return {
@@ -116,29 +98,29 @@ export class ToolPolicyEngine {
       return { decision: 'allow', reason: 'Read-only tool' };
     }
 
-    if (GIT_POLICY_WRITE_TOOLS.has(toolName)) {
+    if (GIT_POLICY_WRITE_TOOL_IDS.has(toolName)) {
       if (this.requiresWriteApproval()) {
         return { decision: 'require_approval', reason: 'Git workspace/local write requires approval by policy' };
       }
       return { decision: 'allow', reason: 'Git policy-write auto-approved by current policy' };
     }
 
-    if (GIT_EXPLICIT_TOOLS.has(toolName)) {
+    if (GIT_EXPLICIT_APPROVAL_TOOL_IDS.has(toolName)) {
       return { decision: 'require_approval', reason: 'Git or GitHub operation requires explicit approval' };
     }
 
-    if (toolName === 'memory_write') {
+    if (toolName === ToolId.MemoryWrite) {
       return { decision: 'allow', reason: 'Memory writes are low risk' };
     }
 
-    if (WRITE_TOOLS.has(toolName) || MCP_FILESYSTEM_WRITE.test(toolName)) {
+    if (WRITE_TOOL_IDS.has(toolName) || isMcpFilesystemWriteTool(toolName)) {
       if (this.requiresWriteApproval()) {
         return { decision: 'require_approval', reason: 'Write operations require approval' };
       }
       return { decision: 'allow', reason: 'Writes auto-approved by policy' };
     }
 
-    if (SHELL_TOOLS.has(toolName)) {
+    if (SHELL_TOOL_IDS.has(toolName)) {
       const command = typeof input.command === 'string' ? input.command : '';
       if (this.safetyConfig.blockDangerousCommands && isDangerousCommand(command)) {
         return {
@@ -172,7 +154,7 @@ export class ToolPolicyEngine {
       candidates.push(...input.paths.filter((p): p is string => typeof p === 'string'));
     }
     for (const raw of candidates) {
-      if (LOG_AUDIT_PATH_TOOLS.has(toolName) && isLogAuditReadablePath(raw)) continue;
+      if (LOG_AUDIT_PATH_TOOL_IDS.has(toolName) && isLogAuditReadablePath(raw)) continue;
       if (this.isIgnoredPath(raw, { forRead })) return raw;
     }
     void toolName;
@@ -184,10 +166,10 @@ export class ToolPolicyEngine {
    *  tool's normal "not found" error rather than prompting for approval). */
   private findExternalFilePath(toolName: string, input: Record<string, unknown>): string | undefined {
     const candidates: string[] = [];
-    if ((toolName === 'read_file' || isMcpFilesystemReadTool(toolName)) && typeof input.path === 'string') {
+    if ((toolName === ToolId.ReadFile || isMcpFilesystemReadTool(toolName)) && typeof input.path === 'string') {
       candidates.push(input.path);
     }
-    if (toolName === 'read_files' && Array.isArray(input.paths)) {
+    if (toolName === ToolId.ReadFiles && Array.isArray(input.paths)) {
       candidates.push(...input.paths.filter((p): p is string => typeof p === 'string'));
     }
 
@@ -238,8 +220,7 @@ export class ToolPolicyEngine {
 
 /** Native + MCP tools that inspect paths and should use IgnoreService forRead exceptions. */
 export function usesReadPathSemantics(toolName: string): boolean {
-  if (PATH_READ_TOOLS.has(toolName) || LOG_AUDIT_PATH_TOOLS.has(toolName) || toolName === 'propose_file_scope') return true;
-  return isMcpFilesystemReadTool(toolName);
+  return usesReadPathSemanticsTool(toolName);
 }
 
 function isLogAuditReadablePath(path: string): boolean {
@@ -251,12 +232,11 @@ function isLogAuditReadablePath(path: string): boolean {
 }
 
 export function isMcpFilesystemReadTool(toolName: string): boolean {
-  if (!toolName.startsWith('mcp__filesystem__')) return false;
-  return !MCP_FILESYSTEM_WRITE.test(toolName);
+  return isMcpFilesystemReadToolName(toolName);
 }
 
 export function isMcpFilesystemWriteTool(toolName: string): boolean {
-  return MCP_FILESYSTEM_WRITE.test(toolName);
+  return isMcpFilesystemWriteToolName(toolName);
 }
 
 export function isDangerousCommand(command: string): boolean {
@@ -288,3 +268,6 @@ export function isDeleteLikeCommand(command: string): boolean {
     /\bfind\b[\s\S]*\s-delete\b/i,
   ].some((p) => p.test(command));
 }
+
+/** @deprecated Use MCP_FILESYSTEM_WRITE_PATTERN from toolMetadata. */
+export { MCP_FILESYSTEM_WRITE_PATTERN as MCP_FILESYSTEM_WRITE };

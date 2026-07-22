@@ -180,7 +180,15 @@ function matchKnownProject(
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score);
 
-  return scored[0]?.score >= 40 ? scored[0].project : undefined;
+  const top = scored[0];
+  if (!top || top.score < 40) return undefined;
+  // Two catalog projects tied for the top score is genuinely ambiguous (e.g. a mention that
+  // matches both "api" and "api-gateway" equally) — silently picking the first by array order
+  // risks scoping the whole turn to the wrong project. Fall back to the unresolved-mention
+  // path below instead of guessing.
+  const second = scored[1];
+  if (second && second.score === top.score) return undefined;
+  return top.project;
 }
 
 function pushArtifact(

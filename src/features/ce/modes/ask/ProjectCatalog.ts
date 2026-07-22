@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
-import { basename, join } from 'path';
+import { basename, join, relative } from 'path';
+import { safeWorkspaceChild } from '../../../../kernel/util/safePaths';
 import type { ContextItem, ContextQuery, ContextSource } from '../../../../features/ce/context/types';
 import type { ProjectCatalog, ProjectNode } from './askTypes';
 
@@ -211,9 +212,21 @@ function readPnpmWorkspacePatterns(workspaceRoot: string): string[] {
 }
 
 function expandWorkspacePattern(workspaceRoot: string, pattern: string): string[] {
-  if (!pattern.endsWith('/*')) return [pattern.replace(/\/+$/, '')];
-  const base = pattern.slice(0, -2);
-  const absBase = join(workspaceRoot, base);
+  const normalized = pattern.replace(/\/+$/, '');
+  if (!normalized.endsWith('/*')) {
+    try {
+      return [relative(workspaceRoot, safeWorkspaceChild(workspaceRoot, normalized)).replace(/\\/g, '/')];
+    } catch {
+      return [];
+    }
+  }
+  const base = normalized.slice(0, -2);
+  let absBase: string;
+  try {
+    absBase = safeWorkspaceChild(workspaceRoot, base);
+  } catch {
+    return [];
+  }
   if (!existsSync(absBase)) return [];
   return readdirSync(absBase)
     .filter((entry) => isDirectory(join(absBase, entry)))

@@ -31,7 +31,8 @@
     "create pr",
     "open pr",
     "draft pr",
-    "github pr"
+    "github pr",
+    "generate a pr description"
   ],
   "negativeTriggers": [
     "merge pull request",

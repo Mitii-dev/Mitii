@@ -88,10 +88,13 @@ export class FileSkillRepository implements SkillRepository {
     if (!validation.success || !validation.manifest) {
       throw new Error(validation.issues.map((issue) => `${issue.path}: ${issue.message}`).join('; '));
     }
-    const manifest = validation.manifest;
+    const existing = this.get(validation.manifest.id);
+    const manifest = {
+      ...validation.manifest,
+      trust: existing?.manifest.trust ?? 'workspace',
+    };
     assertSafeSkillId(manifest.id);
     assertDataOnlyManifest(manifest);
-    const existing = this.get(manifest.id);
     if (expectedRevision !== undefined && existing?.revision !== expectedRevision) {
       throw new Error('Skill changed on disk; reload before saving');
     }
