@@ -1,23 +1,27 @@
 {
-    "cSpell.words": [
-        "Agentic",
-        "codewithshinde",
-        "emnapi",
-        "lancedb",
-        "lockfiles",
-        "minilm",
-        "mitii",
-        "modelcontextprotocol",
-        "napi",
-        "ollama",
-        "qwen",
-        "Rerank",
-        "reranker",
-        "reranking",
-        "shiki",
-        "tiktoken",
-        "tybys",
-        "wasms",
-        "xenova"
-    ]
+  "terminal.integrated.automationProfile.osx": {
+    "path": "/bin/zsh",
+    "args": ["-i", "-l"]
+  },
+  "cSpell.words": [
+    "Agentic",
+    "codewithshinde",
+    "emnapi",
+    "lancedb",
+    "lockfiles",
+    "minilm",
+    "mitii",
+    "modelcontextprotocol",
+    "napi",
+    "ollama",
+    "qwen",
+    "Rerank",
+    "reranker",
+    "reranking",
+    "shiki",
+    "tiktoken",
+    "tybys",
+    "wasms",
+    "xenova"
+  ]
 }
