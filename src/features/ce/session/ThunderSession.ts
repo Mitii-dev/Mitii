@@ -1,7 +1,9 @@
 import { randomUUID } from 'crypto';
 import type { ProviderType } from '../../../kernel/config/schema';
 
+
 export type ThunderMode = 'ask' | 'plan' | 'agent' | 'review';
+
 
 /** Map legacy persisted values and unknown strings to a valid mode. */
 export function normalizeThunderMode(mode: string): ThunderMode {

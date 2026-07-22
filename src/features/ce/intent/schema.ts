@@ -7,25 +7,20 @@ export const intentCandidateSchema = z.object({
   confidence: z.number().min(0).max(1),
 });
 
+export const InteractionIntentEnum = z.enum([
+  'question',
+  'plan',
+  'act',
+  'help',
+  'unknown',
+]);
+
 export const intentClassificationSchema = z.object({
-  interactionIntent: z.enum([
-    'question',
-    'plan',
-    'act',
-    'help',
-    'unknown',
-  ]),
-
-  // Updated to match the 20-item standard intent catalog
+  interactionIntent: InteractionIntentEnum,
   primaryTaskIntent: taskIntentEnum,
-
-  // Replaced generic z.string() with strict intent typing
   secondaryTaskIntents: z.array(taskIntentEnum).default([]),
-
   confidence: z.number().min(0).max(1),
-  
   alternatives: z.array(intentCandidateSchema).default([]),
-
   needsClarification: z.boolean(),
   reason: z.string().optional(),
 });
@@ -33,3 +28,4 @@ export const intentClassificationSchema = z.object({
 // Exported inference for use in your agent's typing
 export type IntentCandidate = z.infer<typeof intentCandidateSchema>;
 export type IntentClassification = z.infer<typeof intentClassificationSchema>;
+export type InteractionIntent = z.infer<typeof InteractionIntentEnum>;
