@@ -1,18 +1,19 @@
 import {
+  TaskClarityAnalyzer,
+  TaskComplexityAnalyzer,
   TaskConstraintExtractor,
+  TaskOutcomeExtractor,
+  TaskRiskAnalyzer,
   TaskScopeAnalyzer,
   TaskTargetExtractor,
-  TaskComplexityAnalyzer,
-  TaskRiskAnalyzer,
-  TaskClarityAnalyzer,
 } from "../../analyzer";
 import { TASK_ANALYZER_CONSTANTS } from "../../constants";
 import type {
   TaskAnalysis,
-  TaskAnalyzerInput,
   TaskAnalysisSignal,
-  TaskScope,
+  TaskAnalyzerInput,
   TaskComplexity,
+  TaskScope,
 } from "../../types";
 
 export class RulewiseTaskAnalyzer {
@@ -22,6 +23,7 @@ export class RulewiseTaskAnalyzer {
   private readonly complexityAnalyzer: TaskComplexityAnalyzer;
   private readonly riskAnalyzer: TaskRiskAnalyzer;
   private readonly clarityAnalyzer: TaskClarityAnalyzer;
+  private readonly outcomeExtractor: TaskOutcomeExtractor;
 
   constructor() {
     this.targetExtractor = new TaskTargetExtractor();
@@ -30,6 +32,7 @@ export class RulewiseTaskAnalyzer {
     this.complexityAnalyzer = new TaskComplexityAnalyzer();
     this.riskAnalyzer = new TaskRiskAnalyzer();
     this.clarityAnalyzer = new TaskClarityAnalyzer();
+    this.outcomeExtractor = new TaskOutcomeExtractor();
   }
 
   /**
@@ -65,6 +68,10 @@ export class RulewiseTaskAnalyzer {
     const constraintResult = this.constraintExtractor.extract(text);
 
     allSignals.push(...constraintResult.signals);
+
+    const outcomeResult = this.outcomeExtractor.extract(text);
+
+    allSignals.push(...outcomeResult.signals);
 
     /*
      * 3. Analyze scope
@@ -200,15 +207,9 @@ export class RulewiseTaskAnalyzer {
       complexity: complexityResult.complexity,
       risk: riskResult.risk,
       clarity: clarityResult.clarity,
-
       targets: targetResult.targets,
       constraints: constraintResult.values,
-
-      /*
-       * Requested outcome extraction belongs in a separate module.
-       * Keep this empty until that extractor is added.
-       */
-      requestedOutcomes: [],
+      requestedOutcomes: outcomeResult.values,
 
       requiresRepositoryDiscovery,
       requiresPlanning,

@@ -2,16 +2,16 @@ import type {
   InteractionIntent,
   SuperIntentResult,
   TaskIntent,
-} from '../intent';
+} from "../intent";
 
 /**
  * REFERENCED ARTIFACTS
  */
 export type ReferencedArtifactKind =
-  | 'file'
-  | 'folder'
-  | 'attachment'
-  | 'selection';
+  | "file"
+  | "folder"
+  | "attachment"
+  | "selection";
 
 export interface ReferencedArtifact {
   name: string;
@@ -32,40 +32,33 @@ export interface TaskAnalyzerInput {
 }
 
 export type TaskScope =
-  | 'single_location'
-  | 'multi_file'
-  | 'package'
-  | 'repository'
-  | 'workspace'
-  | 'unknown';
+  | "single_location"
+  | "multi_file"
+  | "package"
+  | "repository"
+  | "workspace"
+  | "unknown";
 
 export type TaskComplexity =
-  | 'trivial'
-  | 'simple'
-  | 'moderate'
-  | 'complex'
-  | 'very_complex';
+  | "trivial"
+  | "simple"
+  | "moderate"
+  | "complex"
+  | "very_complex";
 
-export type TaskRisk =
-  | 'low'
-  | 'medium'
-  | 'high'
-  | 'critical';
+export type TaskRisk = "low" | "medium" | "high" | "critical";
 
-export type TaskClarity =
-  | 'clear'
-  | 'partially_clear'
-  | 'unclear';
+export type TaskClarity = "clear" | "partially_clear" | "unclear";
 
 export interface TaskTarget {
   kind:
-    | 'file'
-    | 'folder'
-    | 'symbol'
-    | 'package'
-    | 'repository'
-    | 'workspace'
-    | 'unknown';
+    | "file"
+    | "folder"
+    | "symbol"
+    | "package"
+    | "repository"
+    | "workspace"
+    | "unknown";
 
   value: string;
 
@@ -77,12 +70,12 @@ export interface TaskTarget {
 }
 
 export type TaskAnalysisSignalType =
-  | 'scope'
-  | 'complexity'
-  | 'risk'
-  | 'clarity'
-  | 'constraint'
-  | 'verification';
+  | "scope"
+  | "complexity"
+  | "risk"
+  | "clarity"
+  | "constraint"
+  | "verification";
 
 export interface TaskAnalysisSignal {
   type: TaskAnalysisSignalType;
@@ -201,14 +194,14 @@ export interface TaskScopeAnalyzerInput {
  */
 
 export type TaskConstraintKind =
-  | 'prohibition'
-  | 'restriction'
-  | 'requirement'
-  | 'preservation'
-  | 'technology'
-  | 'scope'
-  | 'verification'
-  | 'unknown';
+  | "prohibition"
+  | "restriction"
+  | "requirement"
+  | "preservation"
+  | "technology"
+  | "scope"
+  | "verification"
+  | "unknown";
 
 export interface TaskConstraint {
   kind: TaskConstraintKind;
@@ -280,4 +273,48 @@ export interface TaskRiskAnalyzerInput {
    * Structured constraints returned by TaskConstraintExtractor.
    */
   constraints?: readonly TaskConstraint[];
+}
+
+export interface TaskOutcome {
+  /**
+   * Normalized requested outcome.
+   *
+   * Example:
+   * "Fix the authentication bug"
+   */
+  value: string;
+
+  /**
+   * Original clause extracted from the user message.
+   */
+  sourceText: string;
+
+  /**
+   * Main action detected in the outcome.
+   *
+   * Example:
+   * "fix"
+   */
+  action: string;
+
+  confidence: number;
+}
+
+export interface TaskOutcomeExtraction {
+  outcomes: TaskOutcome[];
+
+  /**
+   * Flattened outcome values for TaskAnalysis.requestedOutcomes.
+   */
+  values: string[];
+
+  signals: TaskAnalysisSignal[];
+
+  confidence: number;
+}
+
+export interface OutcomeCandidate {
+  sourceText: string;
+  action: string;
+  confidence: number;
 }

@@ -12,7 +12,7 @@ const ACTION_PATTERN =
   /\b(?:implement|build|create|add|fix|resolve|repair|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|generate|document|deploy|test|validate|install|upgrade|scaffold)\b/gi;
 
 const FILE_REFERENCE_PATTERN =
-  /[`'"]?((?:(?:[a-zA-Z]:[\\/])|(?:\.{0,2}[\\/])|(?:[a-zA-Z0-9_-]+[\\/]))*[a-zA-Z0-9_.-]+\.(?:tsx?|jsx?|mjs|cjs|py|go|rs|java|kt|kts|cs|cpp|cc|cxx|c|h|hpp|rb|php|swift|scala|sql|graphql|json|jsonl|ya?ml|toml|xml|md|mdx|css|scss|sass|less|html|vue|svelte|sh|bash|tf|proto))[`'"]?/gi;
+  /[`'"]?((?:(?:[a-zA-Z]:[\\/])|(?:\.{0,2}[\\/])|(?:[a-zA-Z0-9_-]+[\\/]))*[a-zA-Z0-9_.-]+\.(?:tsx?|jsx?|mjs|cjs|py|go|rs|java|kt|kts|cs|cpp|cc|cxx|c|h|hpp|rb|php|swift|scala|sql|graphql|json|jsonl|ya?ml|toml|string mdx|string css|string scss|string sass|string less|string html|string vue|string svelte|string sh|string bash|string tf|string proto))[`'"]?/gi;
 
 const BROAD_SCOPE_PATTERN =
   /\b(?:entire|whole|full)\s+(?:repository|repo|project|application|app|codebase|workspace|monorepo|package|module|service)|\b(?:repository-wide|repo-wide|project-wide|workspace-wide|system-wide|end-to-end|across all packages|across the codebase|throughout the project)\b/i;
@@ -329,6 +329,34 @@ const REPOSITORY_DEPENDENT = [
   "format",
 ] as const satisfies readonly TaskIntent[];
 
+const ACTION_AT_START_PATTERN =
+  /^\s*(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|let(?:'s|\s+us)\s+)?(implement|build|create|add|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|generate|document|deploy|test|validate|verify|review|audit|analyze|diagnose|investigate|troubleshoot|explain|compare|identify|find|trace|format|style|scaffold|install|upgrade|downgrade|rename|extract|restructure|reorganize|plan|outline|propose)\b/i;
+
+const OUTCOME_CONNECTOR_PATTERN =
+  /\s*(?:,?\s+\band\s+then\b\s+|,?\s+\bthen\b\s+|;\s*|\n+|,\s+(?=(?:and\s+)?(?:implement|build|create|add|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|generate|document|deploy|test|validate|verify|review|audit|analyze|diagnose|investigate|troubleshoot|explain|compare|identify|find|trace|format|style|scaffold|install|upgrade|downgrade|rename|extract|restructure|reorganize|plan|outline|propose)\b)|\s+\band\b\s+(?=(?:also\s+)?(?:implement|build|create|add|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|generate|document|deploy|test|validate|verify|review|audit|analyze|diagnose|investigate|troubleshoot|explain|compare|identify|find|trace|format|style|scaffold|install|upgrade|downgrade|rename|extract|restructure|reorganize|plan|outline|propose)\b))/gi;
+
+const SENTENCE_BOUNDARY_PATTERN = /[.!?]+(?:\s+|$)/g;
+
+const POLITE_PREFIX_PATTERN =
+  /^(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|will\s+you\s+|i\s+want\s+you\s+to\s+|i\s+would\s+like\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|we\s+should\s+|let(?:'s|\s+us)\s+)/i;
+
+const LEADING_CONNECTOR_PATTERN =
+  /^(?:and\s+then|then|and|also|next|after\s+that)\s+/i;
+
+const TRAILING_CONNECTOR_PATTERN =
+  /\s+(?:and\s+then|then|and|also|next|after\s+that)$/i;
+
+const NEGATED_ACTION_PATTERN =
+  /\b(?:do not|don't|dont|never|avoid|without)\s+(?:trying\s+to\s+)?(?:implement|build|create|add|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|generate|document|deploy|test|validate|verify|format|style|install|upgrade|downgrade|rename)\b/i;
+
+const QUESTION_PREFIX_PATTERN = /^(?:how|why|what|where|when|which|who)\b/i;
+
+const ACKNOWLEDGEMENT_PATTERN =
+  /^(?:hi|hello|hey|thanks|thank\s+you|ok|okay|got\s+it|makes\s+sense)[\s.!?,]*$/i;
+
+const OUTCOME_ACTION_PATTERN =
+  /\b(?:implement|build|create|add|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|generate|document|deploy|test|validate|verify|review|audit|analyze|diagnose|investigate|troubleshoot|explain|compare|identify|find|trace|format|style|scaffold|install|upgrade|downgrade|rename|extract|restructure|reorganize|plan|outline|propose)\b/i;
+
 export const TASK_ANALYZER_CONSTANTS = {
   ANALYSIS_PATTERNS: {
     CONNECTOR_PATTERN,
@@ -374,7 +402,18 @@ export const TASK_ANALYZER_CONSTANTS = {
     DEFINITIONS: RISK_PATTERNS,
     SAFE_CONSTRAINT_PATTERN,
   },
-
+  OUTCOME_PATTERNS: {
+    ACTION_PATTERN: OUTCOME_ACTION_PATTERN,
+    ACTION_AT_START_PATTERN,
+    OUTCOME_CONNECTOR_PATTERN,
+    SENTENCE_BOUNDARY_PATTERN,
+    POLITE_PREFIX_PATTERN,
+    LEADING_CONNECTOR_PATTERN,
+    TRAILING_CONNECTOR_PATTERN,
+    NEGATED_ACTION_PATTERN,
+    QUESTION_PREFIX_PATTERN,
+    ACKNOWLEDGEMENT_PATTERN,
+  },
   INTENT_DEFAULTS: {
     VERIFICATION_REQUIRED,
     PLANNING_RECOMMENDED,
