@@ -1,4 +1,4 @@
-import { ThunderSession } from "../../session";
+import { ThunderSession } from "../../../features/ce/session";
 import type { IntentClassification, InteractionIntent } from "../schema";
 
 /** Refer ModePolicy.md for more information. **/

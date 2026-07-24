@@ -1,4 +1,4 @@
-import { ChatRequest, LlmProvider } from "../../../../../kernel/llm/types";
+import { ChatRequest, LlmProvider } from "../../../../kernel/llm/types";
 import { IntentClassification, intentClassificationSchema } from "../../schema";
 import { IntentClassificationInput, ReferencedArtifact } from "../../types";
 import { LLM_INTENT_CLASSIFICATION_SYSTEM_PROMPT } from "./prompts";

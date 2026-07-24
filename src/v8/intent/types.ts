@@ -1,4 +1,4 @@
-import { ThunderSession } from "../session";
+import { ThunderSession } from "../../features/ce/session";
 import { LlmIntentClassifier, RuleIntentClassifier } from "./classifiers";
 import { INTENT_CONSTANTS } from "./constants";
 import { IntentClassification, InteractionIntent } from "./schema";

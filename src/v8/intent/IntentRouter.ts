@@ -1,4 +1,4 @@
-import type { LlmProvider } from "../../../kernel/llm/types";
+import type { LlmProvider } from "../../kernel/llm/types";
 import { LlmIntentClassifier, RuleIntentClassifier } from "./classifiers";
 import { ModeIntentPolicy } from "./policy";
 import { SuperIntent } from "./resolution";

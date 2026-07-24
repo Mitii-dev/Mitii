@@ -1,4 +1,4 @@
-import { ThunderSession } from "../../session";
+import { ThunderSession } from "../../../features/ce/session";
 import { INTENT_CATALOG } from "../catalog";
 import { INTENT_CONSTANTS } from "../constants";
 
