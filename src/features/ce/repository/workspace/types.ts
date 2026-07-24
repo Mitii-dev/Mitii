@@ -200,7 +200,7 @@ export interface WorkspaceSnapshotStatistics {
 
 export interface WorkspaceSnapshot {
   schemaVersion: 1;
-
+  snapshotId: string;
   roots: WorkspaceRoot[];
   entries: WorkspaceEntry[];
 

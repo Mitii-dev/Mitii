@@ -1,13 +1,17 @@
 import {
+  BOUNDED_WALKER_CONSTANTS,
+  BoundedWalker,
+  PathNormalizer,
+} from "../shared";
+
+import type {
   BoundedWalkEntry,
   BoundedWalkInput,
   BoundedWalkResult,
-  PathNormalizer,
-  BOUNDED_WALKER_CONSTANTS,
-  BoundedWalker,
 } from "../shared";
 
 import { workspaceSnapshotSchema } from "./schema";
+import { WorkspaceIgnorePolicy, WorkspaceSnapshotIdBuilder } from "./utils";
 
 import type {
   WorkspaceEntry,
@@ -20,13 +24,12 @@ import type {
   WorkspaceSnapshotWarning,
 } from "./types";
 
-import { WorkspaceIgnorePolicy } from "./policies";
-
 export class WorkspaceScanner {
   constructor(
     private readonly walker: BoundedWalker,
     private readonly ignorePolicy: WorkspaceIgnorePolicy,
     private readonly pathNormalizer: PathNormalizer = new PathNormalizer(),
+    private readonly snapshotIdBuilder: WorkspaceSnapshotIdBuilder = new WorkspaceSnapshotIdBuilder(),
   ) {}
 
   public async scan(input: WorkspaceScanInput): Promise<WorkspaceSnapshot> {
@@ -66,35 +69,42 @@ export class WorkspaceScanner {
       }),
     );
 
+    const status = this.resolveStatus(walkResult);
+    const generatedAt = new Date().toISOString();
+
+    const statistics = {
+      files: this.countEntries(entries, "file"),
+      directories: this.countEntries(entries, "directory"),
+      symbolicLinks: this.countEntries(entries, "symbolic_link"),
+      otherEntries: this.countEntries(entries, "other"),
+      ignoredEntries: walkResult.ignoredEntries,
+      warnings: warnings.length,
+      durationMs: Math.max(0, Date.now() - startedAt),
+    };
+
+    /*
+     * The snapshot ID must be derived from stable workspace data.
+     *
+     * Do not include generatedAt or durationMs because those values
+     * change on every scan even when the workspace is unchanged.
+     */
+    const snapshotId = await this.snapshotIdBuilder.build({
+      roots: workspaceRoots,
+      entries,
+      status,
+    });
+
     const snapshot: WorkspaceSnapshot = {
       schemaVersion: 1,
+      snapshotId,
 
       roots: workspaceRoots,
       entries,
-
       warnings,
-
-      statistics: {
-        files: this.countEntries(entries, "file"),
-
-        directories: this.countEntries(entries, "directory"),
-
-        symbolicLinks: this.countEntries(entries, "symbolic_link"),
-
-        otherEntries: this.countEntries(entries, "other"),
-
-        ignoredEntries: walkResult.ignoredEntries,
-
-        warnings: warnings.length,
-
-        durationMs: Math.max(0, Date.now() - startedAt),
-      },
-
+      statistics,
       limits,
-
-      status: this.resolveStatus(walkResult),
-
-      generatedAt: new Date().toISOString(),
+      status,
+      generatedAt,
     };
 
     return workspaceSnapshotSchema.parse(snapshot) as WorkspaceSnapshot;
@@ -255,8 +265,7 @@ export class WorkspaceScanner {
                 modifiedAt: entry.modifiedAt,
               }
             : {}),
-
-          ...(entry.linkTarget
+          ...(entry.linkTarget !== undefined
             ? {
                 linkTarget: entry.linkTarget,
               }

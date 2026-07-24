@@ -104,19 +104,13 @@ const workspaceSnapshotStatusSchema = z.enum([
 export const workspaceSnapshotSchema = z
   .object({
     schemaVersion: z.literal(1),
-
+    snapshotId: z.string().regex(/^[a-f0-9]{64}$/),
     roots: z.array(workspaceRootSchema),
-
     entries: z.array(workspaceEntrySchema),
-
     warnings: z.array(workspaceSnapshotWarningSchema),
-
     statistics: workspaceSnapshotStatisticsSchema,
-
     limits: workspaceSnapshotLimitsSchema,
-
     status: workspaceSnapshotStatusSchema,
-
     generatedAt: utcTimestampSchema,
   })
   .superRefine((snapshot, context) => {
