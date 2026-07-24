@@ -1,3 +1,16 @@
+import type { ProjectCatalog, ProjectDefinition } from "../../catalog";
+import { throwIfCodeIndexAborted } from "../../code-index";
+
+import type {
+  CodeIndexContext,
+  CodeIndexFile,
+  CodeIndexImport,
+  CodeIndexReadPort,
+  CodeIndexReference,
+  CodeIndexSymbol,
+} from "../../code-index";
+import { CODE_INDEX_DEFAULTS } from "../../code-index/constants";
+
 import {
   REPO_MAP_DEFAULTS,
   REPO_MAP_PATTERNS,
@@ -5,27 +18,25 @@ import {
   REPO_MAP_SYMBOL_KIND_PRIORITY,
 } from "../constants";
 
-import { throwIfRepoMapAborted } from "../data-source";
-
-import type { ProjectCatalog, ProjectDefinition } from "../../catalog";
-
 import type {
-  RepoMapDataSource,
-  RepoMapDataSourceContext,
   RepoMapEntry,
   RepoMapFile,
   RepoMapFileSelection,
-  RepoMapImport,
   RepoMapRankerOptions,
+  RepoMapRankingContext,
   RepoMapRankingInput,
   RepoMapRankingResult,
-  RepoMapReference,
   RepoMapScoreReason,
   RepoMapScoreReasonType,
-  RepoMapSymbol,
 } from "../types";
 
 import { computePageRank } from "./pageRank";
+
+interface RepoMapRankingAttempt {
+  result: Omit<RepoMapRankingResult, "consistencyRetries">;
+
+  changeToken: string;
+}
 
 export class RepoMapRanker {
   private readonly maximumFiles: number;
@@ -34,9 +45,11 @@ export class RepoMapRanker {
   private readonly maximumSymbolsPerFile: number;
   private readonly pageRankIterations: number;
   private readonly pageRankDamping: number;
+  private readonly maximumConsistencyRetries: number;
 
   constructor(
-    private readonly dataSource: RepoMapDataSource,
+    private readonly codeIndex: CodeIndexReadPort,
+
     options: RepoMapRankerOptions = {},
   ) {
     this.maximumFiles = options.maximumFiles ?? REPO_MAP_DEFAULTS.MAXIMUM_FILES;
@@ -57,15 +70,19 @@ export class RepoMapRanker {
     this.pageRankDamping =
       options.pageRankDamping ?? REPO_MAP_DEFAULTS.PAGE_RANK_DAMPING;
 
+    this.maximumConsistencyRetries =
+      options.maximumConsistencyRetries ??
+      REPO_MAP_DEFAULTS.MAXIMUM_CONSISTENCY_RETRIES;
+
     this.validateOptions();
   }
 
   public async rank(input: RepoMapRankingInput): Promise<RepoMapRankingResult> {
-    throwIfRepoMapAborted(input.abortSignal);
+    throwIfCodeIndexAborted(input.abortSignal);
 
     this.validateSnapshotCatalog(input);
 
-    const dataSourceContext: RepoMapDataSourceContext = {
+    const context: CodeIndexContext = {
       snapshot: input.snapshot,
 
       ...(input.abortSignal
@@ -75,7 +92,53 @@ export class RepoMapRanker {
         : {}),
     };
 
-    const fileResult = await this.dataSource.getFiles(
+    let lastAttempt: RepoMapRankingAttempt | undefined;
+
+    for (let retry = 0; retry <= this.maximumConsistencyRetries; retry += 1) {
+      throwIfCodeIndexAborted(input.abortSignal);
+
+      const changeTokenBefore = await this.codeIndex.getChangeToken(context);
+
+      const result = await this.rankOnce(input, context);
+
+      const changeTokenAfter = await this.codeIndex.getChangeToken(context);
+
+      lastAttempt = {
+        result,
+        changeToken: changeTokenAfter,
+      };
+
+      if (changeTokenBefore === changeTokenAfter) {
+        return {
+          ...result,
+          consistencyRetries: retry,
+        };
+      }
+    }
+
+    if (!lastAttempt) {
+      throw new Error("Repo Map ranking did not produce an attempt.");
+    }
+
+    /*
+     * The index continued changing after all retries.
+     *
+     * Return the latest bounded result as partial instead of
+     * claiming that it represents one consistent index version.
+     */
+    return {
+      ...lastAttempt.result,
+      complete: false,
+
+      consistencyRetries: this.maximumConsistencyRetries,
+    };
+  }
+
+  private async rankOnce(
+    input: RepoMapRankingInput,
+    context: CodeIndexContext,
+  ): Promise<Omit<RepoMapRankingResult, "consistencyRetries">> {
+    const fileResult = await this.codeIndex.getFiles(
       {
         rootIds: input.context.rootIds,
 
@@ -83,12 +146,12 @@ export class RepoMapRanker {
 
         maximumFiles: this.maximumFiles,
       },
-      dataSourceContext,
+      context,
     );
 
     if (fileResult.files.length > this.maximumFiles) {
       throw new Error(
-        `Repo Map data source "${this.dataSource.id}" returned ` +
+        `Code Index "${this.codeIndex.id}" returned ` +
           `${fileResult.files.length} files, exceeding maximumFiles ` +
           `of ${this.maximumFiles}.`,
       );
@@ -111,27 +174,33 @@ export class RepoMapRanker {
       return left.relativePath.localeCompare(right.relativePath);
     });
 
-    throwIfRepoMapAborted(input.abortSignal);
+    throwIfCodeIndexAborted(input.abortSignal);
 
     const fileIds = files.map((file) => file.id);
 
     const [symbolsByFile, imports, references] = await Promise.all([
-      this.loadSymbolsInBatches(fileIds, dataSourceContext),
+      this.loadSymbolsInBatches(fileIds, context),
 
-      this.loadImportsInBatches(fileIds, dataSourceContext),
+      this.loadImportsInBatches(fileIds, context),
 
-      this.loadReferencesInBatches(fileIds, dataSourceContext),
+      this.loadReferencesInBatches(fileIds, context),
     ]);
 
-    throwIfRepoMapAborted(input.abortSignal);
+    throwIfCodeIndexAborted(input.abortSignal);
 
     const fileIdSet = new Set(fileIds);
 
-    const validImports = imports.filter(
-      (item) =>
-        fileIdSet.has(item.fromFileId) &&
-        (!item.toFileId || fileIdSet.has(item.toFileId)),
-    );
+    const validImports = imports.filter((item) => {
+      if (!fileIdSet.has(item.fromFileId)) {
+        return false;
+      }
+
+      if (item.resolution === "unresolved") {
+        return true;
+      }
+
+      return fileIdSet.has(item.toFileId);
+    });
 
     const validReferences = references.filter(
       (item) =>
@@ -192,36 +261,52 @@ export class RepoMapRanker {
     return {
       files,
       entries,
+
       totalAvailableFiles: fileResult.totalAvailable,
+
       complete: !fileResult.truncated && !membershipReduced,
     };
   }
 
   private async loadSymbolsInBatches(
     fileIds: readonly string[],
-    context: RepoMapDataSourceContext,
-  ): Promise<ReadonlyMap<string, readonly RepoMapSymbol[]>> {
-    const result = new Map<string, readonly RepoMapSymbol[]>();
+    context: CodeIndexContext,
+  ): Promise<ReadonlyMap<string, readonly CodeIndexSymbol[]>> {
+    const result = new Map<string, readonly CodeIndexSymbol[]>();
 
     for (let index = 0; index < fileIds.length; index += this.symbolBatchSize) {
-      throwIfRepoMapAborted(context.abortSignal);
+      throwIfCodeIndexAborted(context.abortSignal);
 
       const batch = fileIds.slice(index, index + this.symbolBatchSize);
 
-      const batchResult = await this.dataSource.getSymbols(batch, context);
+      const batchResult = await this.codeIndex.getSymbols(
+        {
+          fileIds: batch,
+
+          maximumSymbolsPerFile: CODE_INDEX_DEFAULTS.MAXIMUM_SYMBOLS_PER_FILE,
+        },
+        context,
+      );
 
       const requestedIds = new Set(batch);
 
       for (const returnedId of batchResult.keys()) {
         if (!requestedIds.has(returnedId)) {
           throw new Error(
-            `Repo Map data source "${this.dataSource.id}" returned ` +
+            `Code Index "${this.codeIndex.id}" returned ` +
               `symbols for unrequested file ID "${returnedId}".`,
           );
         }
       }
 
       for (const fileId of batch) {
+        if (!batchResult.has(fileId)) {
+          throw new Error(
+            `Code Index "${this.codeIndex.id}" did not return ` +
+              `a symbol result for requested file ID "${fileId}".`,
+          );
+        }
+
         result.set(fileId, batchResult.get(fileId) ?? []);
       }
     }
@@ -231,16 +316,16 @@ export class RepoMapRanker {
 
   private async loadImportsInBatches(
     fileIds: readonly string[],
-    context: RepoMapDataSourceContext,
-  ): Promise<RepoMapImport[]> {
-    const result: RepoMapImport[] = [];
+    context: CodeIndexContext,
+  ): Promise<CodeIndexImport[]> {
+    const result: CodeIndexImport[] = [];
 
     for (let index = 0; index < fileIds.length; index += this.graphBatchSize) {
-      throwIfRepoMapAborted(context.abortSignal);
+      throwIfCodeIndexAborted(context.abortSignal);
 
       const batch = fileIds.slice(index, index + this.graphBatchSize);
 
-      result.push(...(await this.dataSource.getImports(batch, context)));
+      result.push(...(await this.codeIndex.getImports(batch, context)));
     }
 
     return result;
@@ -248,16 +333,16 @@ export class RepoMapRanker {
 
   private async loadReferencesInBatches(
     fileIds: readonly string[],
-    context: RepoMapDataSourceContext,
-  ): Promise<RepoMapReference[]> {
-    const result: RepoMapReference[] = [];
+    context: CodeIndexContext,
+  ): Promise<CodeIndexReference[]> {
+    const result: CodeIndexReference[] = [];
 
     for (let index = 0; index < fileIds.length; index += this.graphBatchSize) {
-      throwIfRepoMapAborted(context.abortSignal);
+      throwIfCodeIndexAborted(context.abortSignal);
 
       const batch = fileIds.slice(index, index + this.graphBatchSize);
 
-      result.push(...(await this.dataSource.getReferences(batch, context)));
+      result.push(...(await this.codeIndex.getReferences(batch, context)));
     }
 
     return result;
@@ -265,9 +350,9 @@ export class RepoMapRanker {
 
   private scoreFile(
     file: RepoMapFile,
-    symbols: RepoMapSymbol[],
+    symbols: CodeIndexSymbol[],
     queryTerms: readonly string[],
-    context: RepoMapRankingInput["context"],
+    context: RepoMapRankingContext,
     pageRank: number,
     inboundImportCount: number,
     outboundImportCount: number,
@@ -437,8 +522,8 @@ export class RepoMapRanker {
 
   private computeFilePageRank(
     files: readonly RepoMapFile[],
-    imports: readonly RepoMapImport[],
-    references: readonly RepoMapReference[],
+    imports: readonly CodeIndexImport[],
+    references: readonly CodeIndexReference[],
     personalization: ReadonlyMap<string, number>,
   ): Map<string, number> {
     const fileIds = new Set(files.map((file) => file.id));
@@ -451,7 +536,7 @@ export class RepoMapRanker {
 
     for (const item of imports) {
       if (
-        !item.toFileId ||
+        item.resolution !== "resolved" ||
         !fileIds.has(item.toFileId) ||
         item.fromFileId === item.toFileId
       ) {
@@ -498,7 +583,7 @@ export class RepoMapRanker {
 
   private buildPersonalization(
     files: readonly RepoMapFile[],
-    context: RepoMapRankingInput["context"],
+    context: RepoMapRankingContext,
   ): Map<string, number> {
     const result = new Map<string, number>();
 
@@ -532,7 +617,7 @@ export class RepoMapRanker {
   }
 
   private enforceSnapshotMembership(
-    files: readonly RepoMapFile[],
+    files: readonly CodeIndexFile[],
     snapshot: RepoMapRankingInput["snapshot"],
   ): RepoMapFile[] {
     const allowed = new Set(
@@ -542,6 +627,7 @@ export class RepoMapRanker {
     );
 
     const seenIds = new Set<string>();
+
     const seenPaths = new Set<string>();
 
     const result: RepoMapFile[] = [];
@@ -559,7 +645,10 @@ export class RepoMapRanker {
 
       seenIds.add(file.id);
       seenPaths.add(pathKey);
-      result.push({ ...file });
+
+      result.push({
+        ...file,
+      });
     }
 
     return result;
@@ -602,7 +691,9 @@ export class RepoMapRanker {
       )[0];
   }
 
-  private selectSymbols(symbols: readonly RepoMapSymbol[]): RepoMapSymbol[] {
+  private selectSymbols(
+    symbols: readonly CodeIndexSymbol[],
+  ): CodeIndexSymbol[] {
     return [...symbols]
       .sort((left, right) => {
         const priorityDifference =
@@ -627,12 +718,12 @@ export class RepoMapRanker {
   }
 
   private countInboundImports(
-    imports: readonly RepoMapImport[],
+    imports: readonly CodeIndexImport[],
   ): Map<string, number> {
     const counts = new Map<string, number>();
 
     for (const item of imports) {
-      if (!item.toFileId) {
+      if (item.resolution !== "resolved") {
         continue;
       }
 
@@ -643,7 +734,7 @@ export class RepoMapRanker {
   }
 
   private countOutboundImports(
-    imports: readonly RepoMapImport[],
+    imports: readonly CodeIndexImport[],
   ): Map<string, number> {
     const counts = new Map<string, number>();
 
@@ -655,7 +746,7 @@ export class RepoMapRanker {
   }
 
   private countReferences(
-    references: readonly RepoMapReference[],
+    references: readonly CodeIndexReference[],
   ): Map<string, number> {
     const counts = new Map<string, number>();
 
@@ -809,6 +900,11 @@ export class RepoMapRanker {
     this.validateNonNegativeInteger(
       this.pageRankIterations,
       "pageRankIterations",
+    );
+
+    this.validateNonNegativeInteger(
+      this.maximumConsistencyRetries,
+      "maximumConsistencyRetries",
     );
 
     if (

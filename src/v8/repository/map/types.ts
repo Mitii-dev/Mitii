@@ -1,79 +1,35 @@
 import type { ProjectCatalog } from "../catalog";
+
+import type {
+  CodeIndexFile,
+  CodeIndexImport,
+  CodeIndexReference,
+  CodeIndexSymbol,
+} from "../code-index";
+
 import type { WorkspaceSnapshot } from "../workspace";
 
 /**
- * FILES AND SYMBOLS
+ * CODE INDEX COMPATIBILITY
+ *
+ * Code Index remains the source of truth for factual file,
+ * symbol, import, and reference structures.
  */
 
-export type RepoMapSymbolKind =
-  | "class"
-  | "interface"
-  | "struct"
-  | "function"
-  | "method"
-  | "type"
-  | "enum"
-  | "const"
-  | "variable"
-  | "module"
-  | "namespace"
-  | "property"
-  | "symbol";
+export type RepoMapSymbol = CodeIndexSymbol;
 
-export interface RepoMapFile {
-  /**
-   * Stable ID within this snapshot/data source.
-   */
-  id: string;
+export type RepoMapImport = CodeIndexImport;
 
-  rootId: string;
-  relativePath: string;
+export type RepoMapReference = CodeIndexReference;
 
+/**
+ * REPO MAP FILE
+ *
+ * Repo Map enriches a factual CodeIndexFile with optional
+ * project ownership from ProjectCatalog.
+ */
+export interface RepoMapFile extends CodeIndexFile {
   projectId?: string;
-  language?: string;
-
-  size?: number;
-  modifiedAt?: string;
-  contentHash?: string;
-}
-
-export interface RepoMapSymbol {
-  id: string;
-  fileId: string;
-
-  name: string;
-  kind: RepoMapSymbolKind | string;
-
-  exported?: boolean;
-  signature?: string;
-
-  startLine?: number;
-  endLine?: number;
-}
-
-export interface RepoMapImport {
-  fromFileId: string;
-
-  /**
-   * Present when the import resolves to a file
-   * inside the current snapshot.
-   */
-  toFileId?: string;
-
-  /**
-   * Original import specifier.
-   */
-  specifier: string;
-
-  importedNames: string[];
-}
-
-export interface RepoMapReference {
-  fromFileId: string;
-  symbolName: string;
-
-  toSymbolId?: string;
-  toFileId?: string;
 }
 
 /**
@@ -82,9 +38,9 @@ export interface RepoMapReference {
 
 export interface RepoMapFileLocator {
   /**
-   * Optional for backward-compatible path-only callers.
+   * Optional for backward-compatible, path-only callers.
    *
-   * Supplying rootId is recommended in multi-root workspaces.
+   * Supplying rootId is recommended for multi-root workspaces.
    */
   rootId?: string;
 
@@ -101,19 +57,29 @@ export interface RepoMapRankingContext {
   query?: string;
 
   /**
-   * Restricts the complete map to selected workspace roots.
+   * Restricts Repo Map generation to selected workspace roots.
    */
   rootIds?: readonly string[];
 
+  /**
+   * Canonical workspace-relative folder prefix.
+   */
   folderPrefix?: string;
 
   currentFile?: RepoMapFileSelection;
 
   openFiles?: readonly RepoMapFileSelection[];
+
   gitDiffFiles?: readonly RepoMapFileSelection[];
+
   diagnosticFiles?: readonly RepoMapFileSelection[];
+
   recentEditFiles?: readonly RepoMapFileSelection[];
 }
+
+/**
+ * RANKING REASONS
+ */
 
 export type RepoMapScoreReasonType =
   | "current_file"
@@ -134,9 +100,17 @@ export interface RepoMapScoreReason {
   evidence: string;
 }
 
+/**
+ * RANKED REPO MAP ENTRY
+ */
+
 export interface RepoMapEntry {
   file: RepoMapFile;
-  symbols: RepoMapSymbol[];
+
+  /**
+   * Selected factual symbols from Code Index.
+   */
+  symbols: CodeIndexSymbol[];
 
   score: number;
   pageRank: number;
@@ -145,7 +119,7 @@ export interface RepoMapEntry {
   outboundImportCount: number;
 
   /**
-   * Number of references originating from this file.
+   * Number of indexed references originating from this file.
    */
   referenceCount: number;
 
@@ -158,12 +132,14 @@ export interface RepoMapEntry {
 
 export interface RepoMapBudget {
   maximumEntries?: number;
+
   maximumSymbolsPerEntry?: number;
+
   maximumEstimatedTokens?: number;
 
   /**
    * Retain at least this many entries when available,
-   * even when their estimated size exceeds the token budget.
+   * even if their estimated size exceeds the token budget.
    */
   minimumEntries?: number;
 }
@@ -176,7 +152,7 @@ export interface RepoMapBudgetResult {
 }
 
 /**
- * BUILD INPUT AND OUTPUT
+ * BUILD INPUT
  */
 
 export interface RepoMapBuildInput {
@@ -189,27 +165,37 @@ export interface RepoMapBuildInput {
   abortSignal?: AbortSignal;
 }
 
+/**
+ * REPO MAP OUTPUT
+ */
+
 export type RepoMapStatus = "complete" | "partial" | "cancelled";
 
 export interface RepoMapStatistics {
   /**
-   * Number of files available before maximumFiles
-   * and output-budget restrictions.
+   * Files matching the Code Index query before maximumFiles
+   * and output-budget limits.
    */
   availableFiles: number;
 
   /**
-   * Number of files actually ranked.
+   * Files actually analyzed by RepoMapRanker.
    */
   rankedFiles: number;
 
   /**
-   * Number of files included after applying output budget.
+   * Files retained after RepoMapBudgetApplier.
    */
   includedFiles: number;
 
   includedSymbols: number;
+
+  /**
+   * Approximation only. Final model-specific token counting
+   * belongs to the context-budgeting layer.
+   */
   estimatedTokens: number;
+
   durationMs: number;
 }
 
@@ -227,111 +213,46 @@ export interface RepoMap {
 }
 
 /**
- * DATA SOURCE
- */
-
-export interface RepoMapDataSourceContext {
-  snapshot: WorkspaceSnapshot;
-  abortSignal?: AbortSignal;
-}
-
-export interface RepoMapFileQuery {
-  rootIds?: readonly string[];
-  folderPrefix?: string;
-
-  /**
-   * Hard safety bound.
-   */
-  maximumFiles: number;
-}
-
-export interface RepoMapFileQueryResult {
-  files: readonly RepoMapFile[];
-
-  /**
-   * Number of matching files before maximumFiles was applied.
-   */
-  totalAvailable: number;
-
-  truncated: boolean;
-}
-
-export interface RepoMapDataSource {
-  readonly id: string;
-
-  /**
-   * Must be inexpensive, deterministic and side-effect-free.
-   */
-  getChangeToken(context: RepoMapDataSourceContext): Promise<string>;
-
-  /**
-   * Returned files must be members of context.snapshot.
-   */
-  getFiles(
-    query: RepoMapFileQuery,
-    context: RepoMapDataSourceContext,
-  ): Promise<RepoMapFileQueryResult>;
-
-  /**
-   * The returned map must contain every requested file ID.
-   *
-   * Files without symbols must map to an empty array.
-   * Unrequested file IDs must not be returned.
-   */
-  getSymbols(
-    fileIds: readonly string[],
-    context: RepoMapDataSourceContext,
-  ): Promise<ReadonlyMap<string, readonly RepoMapSymbol[]>>;
-
-  /**
-   * Returns imports originating from requested files.
-   */
-  getImports(
-    fromFileIds: readonly string[],
-    context: RepoMapDataSourceContext,
-  ): Promise<readonly RepoMapImport[]>;
-
-  /**
-   * Returns references originating from requested files.
-   */
-  getReferences(
-    fromFileIds: readonly string[],
-    context: RepoMapDataSourceContext,
-  ): Promise<readonly RepoMapReference[]>;
-}
-
-/**
- * DATA-SOURCE ERRORS
- */
-
-export type RepoMapDataSourceOperation =
-  | "get_change_token"
-  | "get_files"
-  | "get_symbols"
-  | "get_imports"
-  | "get_references";
-
-export interface RepoMapDataSourceErrorOptions {
-  operation: RepoMapDataSourceOperation;
-  dataSourceId: string;
-  cause?: unknown;
-}
-
-/**
- * RANKING
+ * RANKER OPTIONS
  */
 
 export interface RepoMapRankerOptions {
+  /**
+   * Maximum files requested from CodeIndexReadPort.
+   */
   maximumFiles?: number;
 
+  /**
+   * Number of file IDs supplied to getSymbols() per request.
+   */
   symbolBatchSize?: number;
+
+  /**
+   * Number of file IDs supplied to getImports() and
+   * getReferences() per request.
+   */
   graphBatchSize?: number;
 
+  /**
+   * Number of ranked symbols retained per Repo Map file.
+   *
+   * This is separate from the larger Code Index retrieval limit.
+   */
   maximumSymbolsPerFile?: number;
 
   pageRankIterations?: number;
   pageRankDamping?: number;
+
+  /**
+   * Number of times ranking may retry when the Code Index
+   * change token changes during a build.
+   */
+  maximumConsistencyRetries?: number;
 }
+
+/**
+ * RANKING INPUT AND RESULT
+ */
 
 export interface RepoMapRankingInput {
   snapshot: WorkspaceSnapshot;
@@ -347,7 +268,17 @@ export interface RepoMapRankingResult {
   entries: RepoMapEntry[];
 
   totalAvailableFiles: number;
+
+  /**
+   * False when maximumFiles, stale-index filtering, or another
+   * safe bound prevented a complete ranking.
+   */
   complete: boolean;
+
+  /**
+   * Number of consistency retries used during this ranking.
+   */
+  consistencyRetries: number;
 }
 
 /**
@@ -357,12 +288,14 @@ export interface RepoMapRankingResult {
 export interface PageRankEdge {
   from: string;
   to: string;
+
   weight?: number;
 }
 
 export interface PageRankOptions {
   damping?: number;
   iterations?: number;
+
   personalization?: ReadonlyMap<string, number>;
 }
 

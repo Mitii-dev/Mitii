@@ -1,8 +1,4 @@
-import type {
-  RepoMapScoreReasonType,
-  RepoMapSymbolKind,
-  RepoMapStatus,
-} from "./types";
+import type { RepoMapScoreReasonType, RepoMapStatus } from "./types";
 
 export const REPO_MAP_SCHEMA_VERSION = 1 as const;
 
@@ -40,7 +36,7 @@ export const REPO_MAP_SYMBOL_KINDS = [
   "namespace",
   "property",
   "symbol",
-] as const satisfies readonly RepoMapSymbolKind[];
+] as const;
 
 export const REPO_MAP_DEFAULTS = {
   MAXIMUM_FILES: 20_000,
@@ -52,6 +48,8 @@ export const REPO_MAP_DEFAULTS = {
 
   PAGE_RANK_ITERATIONS: 30,
   PAGE_RANK_DAMPING: 0.85,
+
+  MAXIMUM_CONSISTENCY_RETRIES: 1,
 
   MAXIMUM_ENTRIES: 100,
   MAXIMUM_SYMBOLS_PER_ENTRY: 20,
