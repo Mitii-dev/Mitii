@@ -133,6 +133,10 @@ export const workspaceSnapshotSchema = z
     for (let index = 0; index < snapshot.entries.length; index += 1) {
       const entry = snapshot.entries[index];
 
+      if (!entry) {
+        continue;
+      }
+
       if (!rootIds.has(entry.rootId)) {
         context.addIssue({
           code: z.ZodIssueCode.custom,

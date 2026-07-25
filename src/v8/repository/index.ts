@@ -5,6 +5,7 @@ export * from "./chunking";
 export * from "./code-index";
 export * from "./code-indexing";
 export * from "./context-assembly";
+export * from "./context-pipeline";
 export * from "./context-selection";
 export * from "./embedding";
 export * from "./hybrid-retrieval";

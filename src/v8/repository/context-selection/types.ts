@@ -1,4 +1,8 @@
 import type {
+  AgentMode,
+} from "../../interaction-mode";
+
+import type {
   HybridRetrievalCandidate,
   HybridRetrievalResult,
   RetrievalEntityKind,
@@ -9,9 +13,7 @@ import type {
  */
 
 export type ContextSelectionMode =
-  | "ask"
-  | "plan"
-  | "agent";
+  AgentMode;
 
 export type ContextSelectionBreadth =
   | "focused"

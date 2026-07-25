@@ -1,15 +1,15 @@
 import type {
   ProjectCatalog,
-} from "../catalog";
+} from "../catalog/types";
 
 import type {
   CodeIndexFile,
   CodeIndexReadPort,
-} from "../code-index";
+} from "../code-index/types";
 
 import type {
   WorkspaceSnapshot,
-} from "../workspace";
+} from "../workspace/types";
 
 /**
  * NODES
@@ -231,4 +231,3 @@ export interface RepoGraphIncludedFileResult {
   sourceTruncated: boolean;
   nodeLimitTruncated: boolean;
 }
-

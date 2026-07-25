@@ -111,7 +111,12 @@ export class RuleIntentClassifier {
       return null;
     }
 
-    const matchedRule = matchedRules[0];
+    const matchedRule =
+      matchedRules[0];
+
+    if (!matchedRule) {
+      return null;
+    }
 
     return this.buildClassification({
       intent: matchedRule.intent,
@@ -136,7 +141,13 @@ export class RuleIntentClassifier {
       return null;
     }
 
-    const command = commandMatch[1].toLowerCase();
+    const command =
+      commandMatch[1]
+        ?.toLowerCase();
+
+    if (!command) {
+      return null;
+    }
 
     return this.hasIntent(command) ? command : null;
   }

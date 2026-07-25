@@ -1,7 +1,20 @@
-import { ThunderSession } from "../../features/ce/session";
-import { LlmIntentClassifier, RuleIntentClassifier } from "./classifiers";
-import { INTENT_CONSTANTS } from "./constants";
-import { IntentClassification, InteractionIntent } from "./schema";
+import type {
+  AgentMode,
+} from "../interaction-mode";
+
+import type {
+  RequestArtifactKind,
+  RequestArtifactReference,
+} from "../request-envelope";
+
+import {
+  INTENT_CONSTANTS,
+} from "./constants";
+
+import type {
+  IntentClassification,
+  InteractionIntent,
+} from "./schema";
 export type TaskIntent = (typeof INTENT_CONSTANTS.TASK_INTENTS)[number];
 
 export interface IntentDefinition {
@@ -20,62 +33,35 @@ export interface IntentRule {
 }
 
 export type ReferencedArtifactKind =
-  | "file"
-  | "folder"
-  | "attachment"
-  | "selection";
+  RequestArtifactKind;
 
 export interface IntentClassificationInput {
-  mode: ThunderSession["mode"];
+  mode: AgentMode;
   userMessage: string;
   referencedArtifacts?: readonly ReferencedArtifact[];
 }
 
 export interface IntentRouterDependencies {
-  ruleClassifier?: RuleIntentClassifier;
-  llmClassifier?: LlmIntentClassifier;
+  ruleClassifier?:
+    RuleIntentClassifierPort;
+  llmClassifier?:
+    LlmIntentClassifierPort;
 }
 
-export interface ReferencedArtifact {
-  /**
-   * Display name of the file, folder, attachment, or selection.
-   *
-   * Examples:
-   * - session.jsonl
-   * - src/auth
-   * - login.ts
-   */
-  name: string;
-
-  /**
-   * Optional repository-relative or workspace-relative path.
-   *
-   * Do not read the path inside the intent classifier.
-   */
-  path?: string;
-
-  kind: ReferencedArtifactKind;
-
-  /**
-   * Optional extension including the period.
-   *
-   * Examples:
-   * - .ts
-   * - .jsonl
-   * - .md
-   */
-  extension?: string;
-
-  /**
-   * Optional language associated with a selected code block or file.
-   *
-   * Examples:
-   * - typescript
-   * - python
-   * - json
-   */
-  language?: string;
+export interface RuleIntentClassifierPort {
+  classifyMessage(
+    message: string,
+  ): IntentClassification | null;
 }
+
+export interface LlmIntentClassifierPort {
+  classify(
+    input: IntentClassificationInput,
+  ): Promise<IntentClassification>;
+}
+
+export type ReferencedArtifact =
+  RequestArtifactReference;
 
 export type IntentClassifierSource = "explicit_rule" | "heuristic_rule" | "llm";
 
@@ -164,7 +150,7 @@ export interface SuperIntentResult {
 }
 
 export interface SuperIntentInput {
-  mode: ThunderSession["mode"];
+  mode: AgentMode;
 
   /**
    * Rule result can be absent when no deterministic rule matched.

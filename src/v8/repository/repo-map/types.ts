@@ -1,6 +1,6 @@
 import type {
   RepoGraph,
-} from "../repo-graph";
+} from "../repo-graph/types";
 
 /**
  * FILES AND SYMBOLS
@@ -189,4 +189,3 @@ export interface RepoMapRendererOptions {
   includeEmptyFiles?: boolean;
   includeStatistics?: boolean;
 }
-

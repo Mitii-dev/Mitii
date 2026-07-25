@@ -1,4 +1,6 @@
-import type { WorkspaceSnapshot } from "../workspace";
+import type {
+  WorkspaceSnapshot,
+} from "../workspace/types";
 
 /**
  * CODE INDEX FACTS

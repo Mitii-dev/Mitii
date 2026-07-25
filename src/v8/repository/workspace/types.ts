@@ -1,7 +1,7 @@
 import type {
   BoundedWalkIgnoreContext,
   BoundedWalkWarningCode,
-} from "../shared";
+} from "../shared/bounded-walker/types";
 
 /**
  * WORKSPACE IGNORE POLICY

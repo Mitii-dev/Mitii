@@ -1,4 +1,7 @@
-import type { WorkspaceFileEntry, WorkspaceSnapshot } from "../workspace";
+import type {
+  WorkspaceFileEntry,
+  WorkspaceSnapshot,
+} from "../workspace/types";
 
 /**
  * PROJECT ECOSYSTEM

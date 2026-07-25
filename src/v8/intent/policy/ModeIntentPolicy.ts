@@ -1,10 +1,13 @@
-import { ThunderSession } from "../../../features/ce/session";
+import type {
+  AgentMode,
+} from "../../interaction-mode";
+
 import type { IntentClassification, InteractionIntent } from "../schema";
 
 /** Refer ModePolicy.md for more information. **/
 export class ModeIntentPolicy {
   apply(
-    mode: ThunderSession["mode"],
+    mode: AgentMode,
     classification: IntentClassification,
   ): IntentClassification {
     const interactionIntent = this.resolveInteractionIntent(
@@ -24,27 +27,23 @@ export class ModeIntentPolicy {
   }
 
   private resolveInteractionIntent(
-    mode: ThunderSession["mode"],
+    mode: AgentMode,
     classifiedInteraction: InteractionIntent,
   ): InteractionIntent {
     switch (mode) {
       case "ask":
-      case "review":
         return "question";
 
       case "plan":
         return "plan";
 
       case "agent":
-        return "act";
-      default:
-        // Fallback to the classified interaction for any unknown/unsupported mode
         return classifiedInteraction;
     }
   }
 
   private buildReason(
-    mode: ThunderSession["mode"],
+    mode: AgentMode,
     classification: IntentClassification,
   ): string {
     const originalReason = classification.reason?.trim();
@@ -52,19 +51,16 @@ export class ModeIntentPolicy {
 
     switch (mode) {
       case "ask":
-      case "review":
         policyReason =
-          "Ask/Review mode constrains the interaction to read-only question behavior.";
+          "Ask mode constrains the interaction to read-only question behavior.";
         break;
       case "plan":
         policyReason =
           "Plan mode constrains the interaction to planning behavior.";
         break;
       case "agent":
-        policyReason = "Agent mode defaults to action execution.";
-        break;
-      default:
-        policyReason = `Mode policy override applied for mode: ${mode}.`;
+        policyReason =
+          "Agent mode permits execution without changing the classified interaction.";
     }
 
     return originalReason ? `${originalReason} ${policyReason}` : policyReason;

@@ -1,4 +1,7 @@
-import { ThunderSession } from "../../../features/ce/session";
+import type {
+  AgentMode,
+} from "../../interaction-mode";
+
 import { INTENT_CATALOG } from "../catalog";
 import { INTENT_CONSTANTS } from "../constants";
 
@@ -49,7 +52,7 @@ export class SuperIntent {
   }
 
   private resolveExplicitRule(
-    mode: ThunderSession["mode"],
+    mode: AgentMode,
     ruleResult: IntentClassifierResult,
     llmResult: IntentClassifierResult,
   ): SuperIntentResult {
@@ -99,7 +102,14 @@ export class SuperIntent {
       requiresClarification: false,
       diagnostics: {
         ruleSource: ruleResult.source,
-        matchedRule: ruleResult.matchedRule,
+        ...(ruleResult
+          .matchedRule
+          ? {
+              matchedRule:
+                ruleResult
+                  .matchedRule,
+            }
+          : {}),
 
         rulePrimaryIntent: ruleClassification.primaryTaskIntent,
         llmPrimaryIntent: llmPrimary,
@@ -151,11 +161,20 @@ export class SuperIntent {
         llmClassification.interactionIntent,
     );
 
-    const interactionIntent = this.resolveInteractionIntent({
-      mode,
-      ruleInteraction: ruleClassification?.interactionIntent,
-      llmInteraction: llmClassification.interactionIntent,
-    });
+    const interactionIntent =
+      this.resolveInteractionIntent({
+        mode,
+        ...(ruleClassification
+          ? {
+              ruleInteraction:
+                ruleClassification
+                  .interactionIntent,
+            }
+          : {}),
+        llmInteraction:
+          llmClassification
+            .interactionIntent,
+      });
 
     /*
      * Ask and Plan modes deterministically resolve the interaction boundary.
@@ -198,7 +217,8 @@ export class SuperIntent {
       throw new Error("SuperIntent could not produce any task-intent score.");
     }
 
-    const primaryScore = sortedScores[0];
+    const primaryScore =
+      sortedScores[0]!;
 
     const alternativeScores = sortedScores.slice(
       1,
@@ -213,7 +233,11 @@ export class SuperIntent {
 
     const secondaryTaskIntents = this.resolveSecondaryIntents({
       primaryIntent: primaryScore.intent,
-      ruleClassification,
+      ...(ruleClassification
+        ? {
+            ruleClassification,
+          }
+        : {}),
       llmClassification,
     });
 
@@ -221,7 +245,11 @@ export class SuperIntent {
       primaryConfidence: primaryScore.score,
       confidenceMargin,
       interactionConflict,
-      ruleClassification,
+      ...(ruleClassification
+        ? {
+            ruleClassification,
+          }
+        : {}),
       llmClassification,
     });
 
@@ -255,14 +283,34 @@ export class SuperIntent {
       requiresClarification,
 
       diagnostics: {
-        ruleSource: ruleResult?.source,
-        matchedRule: ruleResult?.matchedRule,
+        ...(ruleResult
+          ? {
+              ruleSource:
+                ruleResult
+                  .source,
+            }
+          : {}),
+        ...(ruleResult
+          ?.matchedRule
+          ? {
+              matchedRule:
+                ruleResult
+                  .matchedRule,
+            }
+          : {}),
 
-        rulePrimaryIntent: ruleClassification?.primaryTaskIntent,
+        ...(ruleClassification
+          ? {
+              rulePrimaryIntent:
+                ruleClassification
+                  .primaryTaskIntent,
+              ruleInteractionIntent:
+                ruleClassification
+                  .interactionIntent,
+            }
+          : {}),
 
         llmPrimaryIntent: llmClassification.primaryTaskIntent,
-
-        ruleInteractionIntent: ruleClassification?.interactionIntent,
 
         llmInteractionIntent: llmClassification.interactionIntent,
 
@@ -382,7 +430,7 @@ export class SuperIntent {
     ruleInteraction,
     llmInteraction,
   }: {
-    mode: ThunderSession["mode"];
+    mode: AgentMode;
     ruleInteraction?: InteractionIntent;
     llmInteraction: InteractionIntent;
   }): InteractionIntent {
@@ -414,7 +462,7 @@ export class SuperIntent {
   }
 
   private applyModePolicy(
-    mode: ThunderSession["mode"],
+    mode: AgentMode,
     interactionIntent: InteractionIntent,
   ): InteractionIntent {
     if (mode === "ask") {

@@ -3,6 +3,10 @@ import {
 } from "zod";
 
 import {
+  agentModeSchema,
+} from "../../interaction-mode/schema";
+
+import {
   hybridRetrievalCandidateSchema,
   hybridRetrievalResultSchema,
 } from "../hybrid-retrieval/schema";
@@ -35,11 +39,7 @@ const canonicalRelativePathSchema =
     );
 
 const modeSchema =
-  z.enum([
-    "ask",
-    "plan",
-    "agent",
-  ]);
+  agentModeSchema;
 
 const breadthSchema =
   z.enum([

@@ -1,11 +1,21 @@
-import { ChatRequest, LlmProvider } from "../../../../kernel/llm/types";
+import {
+  modelRequestSchema,
+  modelResponseDeltaSchema,
+} from "../../../model-gateway";
+
+import type {
+  LlmPort,
+  ModelRequest,
+  ModelResponseDelta,
+} from "../../../model-gateway";
+
 import { IntentClassification, intentClassificationSchema } from "../../schema";
 import { IntentClassificationInput, ReferencedArtifact } from "../../types";
 import { LLM_INTENT_CLASSIFICATION_SYSTEM_PROMPT } from "./prompts";
 
 
 export class LlmIntentClassifier {
-  constructor(private readonly provider: LlmProvider) {}
+  constructor(private readonly provider: LlmPort) {}
 
   async classify(
     input: IntentClassificationInput,
@@ -22,7 +32,8 @@ export class LlmIntentClassifier {
       );
     }
 
-    const request: ChatRequest = {
+    const request =
+      modelRequestSchema.parse({
       messages: [
         {
           role: "system",
@@ -34,13 +45,15 @@ export class LlmIntentClassifier {
         },
       ],
       temperature: 0,
-      maxTokens: 1000,
+      maximumOutputTokens: 1000,
       stream: false,
       toolChoice: "none",
-      reasoningEffort: "low",
-      disableReasoning: true,
-      includeReasoning: false,
-    };
+      reasoning: {
+        enabled: false,
+        effort: "low",
+        includeInResponse: false,
+      },
+    }) as ModelRequest;
 
     const response = await this.collectProviderText(request);
 
@@ -139,12 +152,26 @@ export class LlmIntentClassifier {
   /**
    * Collects text from the provider's AsyncIterable response.
    */
-  private async collectProviderText(request: ChatRequest): Promise<string> {
+  private async collectProviderText(request: ModelRequest): Promise<string> {
     let response = "";
 
-    for await (const delta of this.provider.complete(request)) {
+    for await (
+      const rawDelta of
+      this.provider
+        .complete(request)
+    ) {
+      const delta =
+        modelResponseDeltaSchema
+          .parse(
+            rawDelta,
+          ) as ModelResponseDelta;
+
       if (delta.error) {
-        throw new Error(`Intent classifier provider error: ${delta.error}`);
+        throw new Error(
+          `Intent classifier provider error ` +
+          `(${delta.error.code}): ` +
+          delta.error.message,
+        );
       }
 
       if (delta.content) {
@@ -172,7 +199,17 @@ export class LlmIntentClassifier {
 
     for (let index = objects.length - 1; index >= 0; index -= 1) {
       try {
-        const parsed: unknown = JSON.parse(objects[index]);
+        const candidate =
+          objects[index];
+
+        if (!candidate) {
+          continue;
+        }
+
+        const parsed: unknown =
+          JSON.parse(
+            candidate,
+          );
 
         return intentClassificationSchema.parse(parsed);
       } catch (error) {

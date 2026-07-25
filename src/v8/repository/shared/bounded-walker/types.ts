@@ -2,7 +2,9 @@
  * BOUNDED FILESYSTEM WALKING
  */
 
-import { FileSystemEntryKind } from "../filesystem";
+import type {
+  FileSystemEntryKind,
+} from "../filesystem/types/FileSystemReadPort";
 import { BOUNDED_WALKER_CONSTANTS } from "./constants";
 
 export interface BoundedWalkEntry {

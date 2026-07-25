@@ -13,7 +13,7 @@ import type {
 
 import type {
   FileSystemReadPort,
-} from "../shared";
+} from "../shared/filesystem/types";
 
 import type {
   WorkspaceSnapshot,

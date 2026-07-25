@@ -1,6 +1,6 @@
 import type {
   WorkspaceFileEntry,
-} from "../workspace";
+} from "../workspace/types";
 
 /**
  * LANGUAGE DETECTION

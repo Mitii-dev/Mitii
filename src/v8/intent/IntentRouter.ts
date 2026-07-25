@@ -1,4 +1,6 @@
-import type { LlmProvider } from "../../kernel/llm/types";
+import type {
+  LlmPort,
+} from "../model-gateway";
 import { LlmIntentClassifier, RuleIntentClassifier } from "./classifiers";
 import { ModeIntentPolicy } from "./policy";
 import { SuperIntent } from "./resolution";
@@ -6,17 +8,21 @@ import {
   IntentClassificationInput,
   IntentClassifierResult,
   IntentRouterDependencies,
+  LlmIntentClassifierPort,
+  RuleIntentClassifierPort,
   SuperIntentResult,
 } from "./types";
 
 /** Pending: Emitting Activity:  emitActivity */
 export class IntentRouter {
-  private readonly ruleClassifier: RuleIntentClassifier;
-  private readonly llmClassifier: LlmIntentClassifier;
+  private readonly ruleClassifier:
+    RuleIntentClassifierPort;
+  private readonly llmClassifier:
+    LlmIntentClassifierPort;
   private readonly modePolicy: ModeIntentPolicy;
 
   constructor(
-    provider: LlmProvider,
+    provider: LlmPort,
     dependencies: IntentRouterDependencies = {},
   ) {
     this.ruleClassifier =
@@ -42,7 +48,14 @@ export class IntentRouter {
               ? ("explicit_rule" as const)
               : ("heuristic_rule" as const),
           classification: ruleClassification,
-          matchedRule: ruleClassification.reason,
+          ...(ruleClassification
+            .reason
+            ? {
+                matchedRule:
+                  ruleClassification
+                    .reason,
+              }
+            : {}),
         }
       : null;
 
