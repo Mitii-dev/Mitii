@@ -1,6 +1,6 @@
 import type {
   AgentMode,
-} from "../../interaction-mode";
+} from "../../core/interaction-mode";
 
 import { INTENT_CATALOG } from "../catalog";
 import { INTENT_CONSTANTS } from "../constants";

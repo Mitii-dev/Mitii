@@ -7,6 +7,7 @@ export * from "./CodeIndexImportResolver";
 export * from "./CodeIndexDocumentMapper";
 export * from "./CodeIndexUpdatePlanner";
 export * from "./CodeIndexUpdater";
+export * from "./CodeIndexPreparedFileIndexer";
 export * from "./CodeIndexCoordinator";
 
 export * from "./adapters/node/NodeSha256ContentHasher";

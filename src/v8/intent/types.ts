@@ -1,11 +1,11 @@
 import type {
   AgentMode,
-} from "../interaction-mode";
+} from "../core/interaction-mode";
 
 import type {
   RequestArtifactKind,
   RequestArtifactReference,
-} from "../request-envelope";
+} from "../core/request-envelope";
 
 import {
   INTENT_CONSTANTS,

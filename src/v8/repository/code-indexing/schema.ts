@@ -5,6 +5,10 @@ import {
   CODE_INDEXING_SCHEMA_VERSION,
 } from "./constants";
 
+import {
+  sourceAnalysisSchema,
+} from "../source-analysis/schema";
+
 const canonicalRelativePathSchema = z
   .string()
   .min(1)
@@ -312,3 +316,125 @@ export const codeIndexUpdatePlanSchema = z
     ]),
   })
   .strict();
+
+const codeIndexWriteResultSchema = z
+  .object({
+    action: z.enum([
+      "inserted",
+      "replaced",
+      "metadata_refreshed",
+      "removed",
+      "not_found",
+    ]),
+    file:
+      codeIndexFileLocatorSchema,
+    revision:
+      z.number()
+        .int()
+        .nonnegative(),
+    counts:
+      z.object({
+        symbols:
+          z.number()
+            .int()
+            .nonnegative(),
+        imports:
+          z.number()
+            .int()
+            .nonnegative(),
+        references:
+          z.number()
+            .int()
+            .nonnegative(),
+      }).strict(),
+  }).strict();
+
+export const codeIndexUpdateResultSchema = z
+  .object({
+    status: z.enum([
+      "indexed",
+      "metadata_refreshed",
+      "unchanged",
+      "removed",
+      "not_found",
+    ]),
+    plan:
+      codeIndexUpdatePlanSchema,
+    write:
+      codeIndexWriteResultSchema
+        .optional(),
+  }).strict();
+
+export const codeIndexCoordinatorResultSchema = z
+  .object({
+    status: z.enum([
+      "indexed",
+      "metadata_refreshed",
+      "unchanged",
+      "unsupported",
+      "analysis_failed",
+    ]),
+    analysis:
+      sourceAnalysisSchema,
+    update:
+      codeIndexUpdateResultSchema
+        .optional(),
+  }).strict()
+    .superRefine(
+      (
+        result,
+        context,
+      ) => {
+        if (
+          result.status ===
+            "analysis_failed" &&
+          result.analysis.status !==
+            "failed"
+        ) {
+          context.addIssue({
+            code:
+              z.ZodIssueCode.custom,
+            path: [
+              "analysis",
+              "status",
+            ],
+            message:
+              "analysis_failed requires a failed SourceAnalysis.",
+          });
+        }
+
+        if (
+          result.status !==
+            "analysis_failed" &&
+          !result.update
+        ) {
+          context.addIssue({
+            code:
+              z.ZodIssueCode.custom,
+            path: [
+              "update",
+            ],
+            message:
+              "Indexed coordinator results require an update result.",
+          });
+        }
+
+        if (
+          result.status ===
+            "unsupported" &&
+          result.analysis.status !==
+            "unsupported"
+        ) {
+          context.addIssue({
+            code:
+              z.ZodIssueCode.custom,
+            path: [
+              "analysis",
+              "status",
+            ],
+            message:
+              "unsupported requires an unsupported SourceAnalysis.",
+          });
+        }
+      },
+    );

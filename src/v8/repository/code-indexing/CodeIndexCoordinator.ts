@@ -3,8 +3,16 @@ import {
 } from "./constants";
 
 import {
+  codeIndexCoordinatorResultSchema,
+} from "./schema";
+
+import {
   CodeIndexDocumentMapper,
 } from "./CodeIndexDocumentMapper";
+
+import {
+  CodeIndexPreparedFileIndexer,
+} from "./CodeIndexPreparedFileIndexer";
 
 import {
   throwIfCodeIndexWriteAborted,
@@ -23,6 +31,9 @@ import {
 } from "./CodeIndexUpdater";
 
 export class CodeIndexCoordinator {
+  private readonly preparedIndexer:
+    CodeIndexPreparedFileIndexer;
+
   constructor(
     private readonly reader:
       CodeIndexSourceReader,
@@ -30,11 +41,17 @@ export class CodeIndexCoordinator {
       CodeIndexSourceAnalyzer,
     private readonly hasher:
       CodeIndexContentHasher,
-    private readonly mapper:
+    mapper:
       CodeIndexDocumentMapper,
-    private readonly updater:
+    updater:
       CodeIndexUpdater,
-  ) {}
+  ) {
+    this.preparedIndexer =
+      new CodeIndexPreparedFileIndexer(
+        mapper,
+        updater,
+      );
+  }
 
   public async processFile(
     input: CodeIndexCoordinatorInput,
@@ -92,10 +109,11 @@ export class CodeIndexCoordinator {
     if (
       analysis.status === "failed"
     ) {
-      return {
-        status: "analysis_failed",
+      return this.validateResult({
+        status:
+          "analysis_failed",
         analysis,
-      };
+      });
     }
 
     /*
@@ -107,27 +125,22 @@ export class CodeIndexCoordinator {
         source.content,
       );
 
-    const document =
-      this.mapper.map({
+    return this.preparedIndexer
+      .index({
         workspace:
           input.workspace,
         snapshot:
           input.snapshot,
         file:
           input.file,
+        analysis,
         contentHash,
         analysisVersion:
           input.analysisVersion ??
           CODE_INDEXING_DEFAULTS
             .ANALYSIS_VERSION,
-        analysis,
         indexedAt:
           input.indexedAt,
-      });
-
-    const update =
-      await this.updater.update({
-        document,
         ...(input.abortSignal
           ? {
               abortSignal:
@@ -135,34 +148,16 @@ export class CodeIndexCoordinator {
             }
           : {}),
       });
+  }
 
-    if (
-      analysis.status ===
-        "unsupported"
-    ) {
-      return {
-        status: "unsupported",
-        analysis,
-        update,
-      };
-    }
-
-    if (
-      update.status !== "indexed" &&
-      update.status !==
-        "metadata_refreshed" &&
-      update.status !== "unchanged"
-    ) {
-      throw new Error(
-        `Unexpected coordinator update status "${update.status}".`,
-      );
-    }
-
-    return {
-      status: update.status,
-      analysis,
-      update,
-    };
+  private validateResult(
+    result:
+      CodeIndexCoordinatorResult,
+  ): CodeIndexCoordinatorResult {
+    return codeIndexCoordinatorResultSchema
+      .parse(
+        result,
+      ) as CodeIndexCoordinatorResult;
   }
 
   private validateInput(

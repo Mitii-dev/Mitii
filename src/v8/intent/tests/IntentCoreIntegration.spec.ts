@@ -6,7 +6,7 @@ import type {
   ModelCapabilities,
   ModelRequest,
   ModelResponseDelta,
-} from "../../model-gateway";
+} from "../../core/model-gateway";
 
 import {
   IntentRouter,

@@ -11,7 +11,7 @@ import type {
 import type {
   WorkspaceFileEntry,
   WorkspaceSnapshot,
-} from "../workspace";
+} from "../workspace/types";
 
 import type {
   SqliteDatabasePort,
@@ -325,6 +325,20 @@ export interface CodeIndexCoordinatorInput {
   abortSignal?: AbortSignal;
 }
 
+export interface CodeIndexPreparedFileInput {
+  workspace: string;
+  snapshot: WorkspaceSnapshot;
+  file: WorkspaceFileEntry;
+
+  analysis: SourceAnalysis;
+  contentHash: string;
+
+  analysisVersion?: string;
+  indexedAt: number;
+
+  abortSignal?: AbortSignal;
+}
+
 export type CodeIndexCoordinatorStatus =
   | "indexed"
   | "metadata_refreshed"
@@ -336,6 +350,12 @@ export interface CodeIndexCoordinatorResult {
   status: CodeIndexCoordinatorStatus;
   analysis: SourceAnalysis;
   update?: CodeIndexUpdateResult;
+}
+
+export interface CodeIndexPreparedFileIndexerPort {
+  index(
+    input: CodeIndexPreparedFileInput,
+  ): Promise<CodeIndexCoordinatorResult>;
 }
 
 /**

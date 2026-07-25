@@ -1,5 +1,6 @@
 export * from "./shared";
 export * from "./workspace";
+export * from "./ws-indexing-pipeline";
 export * from "./catalog";
 export * from "./chunking";
 export * from "./code-index";

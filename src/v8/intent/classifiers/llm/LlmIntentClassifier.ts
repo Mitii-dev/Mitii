@@ -1,13 +1,13 @@
 import {
   modelRequestSchema,
   modelResponseDeltaSchema,
-} from "../../../model-gateway";
+} from "../../../core/model-gateway";
 
 import type {
   LlmPort,
   ModelRequest,
   ModelResponseDelta,
-} from "../../../model-gateway";
+} from "../../../core/model-gateway";
 
 import { IntentClassification, intentClassificationSchema } from "../../schema";
 import { IntentClassificationInput, ReferencedArtifact } from "../../types";

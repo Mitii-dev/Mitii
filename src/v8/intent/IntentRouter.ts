@@ -1,6 +1,6 @@
 import type {
   LlmPort,
-} from "../model-gateway";
+} from "../core/model-gateway";
 import { LlmIntentClassifier, RuleIntentClassifier } from "./classifiers";
 import { ModeIntentPolicy } from "./policy";
 import { SuperIntent } from "./resolution";

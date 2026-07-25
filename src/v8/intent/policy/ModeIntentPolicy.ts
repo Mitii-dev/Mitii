@@ -1,6 +1,6 @@
 import type {
   AgentMode,
-} from "../../interaction-mode";
+} from "../../core/interaction-mode";
 
 import type { IntentClassification, InteractionIntent } from "../schema";
 
