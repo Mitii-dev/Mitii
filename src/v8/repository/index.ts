@@ -5,6 +5,7 @@ export * from "./chunking";
 export * from "./code-index";
 export * from "./code-indexing";
 export * from "./embedding";
+export * from "./hybrid-retrieval";
 export * from "./repo-graph";
 export * from "./repo-map";
 export * from "./source-analysis";
