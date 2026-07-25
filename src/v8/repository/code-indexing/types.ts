@@ -13,6 +13,12 @@ import type {
   WorkspaceSnapshot,
 } from "../workspace";
 
+import type {
+  SqliteDatabasePort,
+  SqliteRunResult,
+  SqliteStatementPort,
+} from "../shared/sqlite";
+
 /**
  * FILE VERSION AND PERSISTED DOCUMENT
  */
@@ -336,27 +342,14 @@ export interface CodeIndexCoordinatorResult {
  * SQLITE PORTS
  */
 
-export interface SqliteCodeIndexRunResult {
-  changes: number;
-  lastInsertRowid: number | bigint;
-}
+export type SqliteCodeIndexRunResult =
+  SqliteRunResult;
 
-export interface SqliteCodeIndexStatementPort {
-  get(...parameters: unknown[]): unknown;
-  all(...parameters: unknown[]): unknown[];
-  run(...parameters: unknown[]): SqliteCodeIndexRunResult;
-}
+export type SqliteCodeIndexStatementPort =
+  SqliteStatementPort;
 
-export interface SqliteCodeIndexDatabasePort {
-  prepare(sql: string): SqliteCodeIndexStatementPort;
-  exec(sql: string): void;
-
-  /**
-   * Executes the callback atomically and rolls it back when the
-   * callback throws.
-   */
-  transaction<T>(operation: () => T): T;
-}
+export type SqliteCodeIndexDatabasePort =
+  SqliteDatabasePort;
 
 export interface SqliteCodeIndexWriterOptions {
   adapterId?: string;

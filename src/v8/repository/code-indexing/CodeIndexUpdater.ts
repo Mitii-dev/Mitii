@@ -33,8 +33,12 @@ export class CodeIndexUpdater {
       await this.writer.getFileState(
         input.document.file,
         {
-          abortSignal:
-            input.abortSignal,
+          ...(input.abortSignal
+            ? {
+                abortSignal:
+                  input.abortSignal,
+              }
+            : {}),
         },
       );
 
@@ -55,8 +59,13 @@ export class CodeIndexUpdater {
             .replaceDocument(
               input.document,
               {
-                abortSignal:
-                  input.abortSignal,
+                ...(input.abortSignal
+                  ? {
+                      abortSignal:
+                        input
+                          .abortSignal,
+                    }
+                  : {}),
               },
             );
 
@@ -76,8 +85,13 @@ export class CodeIndexUpdater {
                 .workspaceSnapshotId,
               input.document.indexedAt,
               {
-                abortSignal:
-                  input.abortSignal,
+                ...(input.abortSignal
+                  ? {
+                      abortSignal:
+                        input
+                          .abortSignal,
+                    }
+                  : {}),
               },
             );
 
@@ -113,8 +127,12 @@ export class CodeIndexUpdater {
       await this.writer.getFileState(
         input.file,
         {
-          abortSignal:
-            input.abortSignal,
+          ...(input.abortSignal
+            ? {
+                abortSignal:
+                  input.abortSignal,
+              }
+            : {}),
         },
       );
 
@@ -129,8 +147,12 @@ export class CodeIndexUpdater {
         input.workspaceSnapshotId,
         input.changedAt,
         {
-          abortSignal:
-            input.abortSignal,
+          ...(input.abortSignal
+            ? {
+                abortSignal:
+                  input.abortSignal,
+              }
+            : {}),
         },
       );
 

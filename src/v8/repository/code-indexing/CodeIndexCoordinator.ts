@@ -128,8 +128,12 @@ export class CodeIndexCoordinator {
     const update =
       await this.updater.update({
         document,
-        abortSignal:
-          input.abortSignal,
+        ...(input.abortSignal
+          ? {
+              abortSignal:
+                input.abortSignal,
+            }
+          : {}),
       });
 
     if (
