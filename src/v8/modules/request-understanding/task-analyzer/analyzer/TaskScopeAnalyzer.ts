@@ -5,31 +5,25 @@ import type {
   TaskScopeAnalyzerInput,
   TaskScopeSignal,
   TaskTarget,
-} from "../types";
+} from "../contracts";
 
 export class TaskScopeAnalyzer {
-  /**
-   * Returns only the final scope.
-   */
   public estimateScope(input: TaskScopeAnalyzerInput): TaskScope {
     return this.analyzeScope(input).scope;
   }
 
-  /**
-   * Determines scope from explicit scope language and extracted targets.
-   */
   public analyzeScope(input: TaskScopeAnalyzerInput): TaskScopeAnalysis {
     const text = input.userMessage.trim();
     const targets = this.deduplicateTargets(input.targets);
-
     const signals: TaskScopeSignal[] = [];
+    const scopeThresholds = TASK_ANALYZER_CONSTANTS.THRESHOLDS.SCOPE;
 
     if (
       TASK_ANALYZER_CONSTANTS.SCOPE_PATTERNS.WORKSPACE_SCOPE_PATTERN.test(text)
     ) {
       signals.push({
         scope: "workspace",
-        confidence: 0.97,
+        confidence: scopeThresholds.WORKSPACE,
         evidence: "Workspace-wide or cross-package language was detected.",
       });
 
@@ -41,7 +35,7 @@ export class TaskScopeAnalyzer {
     ) {
       signals.push({
         scope: "repository",
-        confidence: 0.95,
+        confidence: scopeThresholds.REPOSITORY,
         evidence: "Repository-wide or project-wide language was detected.",
       });
 
@@ -53,7 +47,7 @@ export class TaskScopeAnalyzer {
     ) {
       signals.push({
         scope: "package",
-        confidence: 0.9,
+        confidence: scopeThresholds.PACKAGE,
         evidence: "Package, module, library, or service scope was detected.",
       });
 
@@ -65,12 +59,12 @@ export class TaskScopeAnalyzer {
     ) {
       signals.push({
         scope: "multi_file",
-        confidence: 0.88,
+        confidence: scopeThresholds.MULTI_FILE,
         evidence: "The request explicitly mentions multiple files.",
       });
     }
 
-    const targetScope = this.analyzeTargetScope(targets);
+    const targetScope = this.analyzeTargetScope(targets, scopeThresholds);
 
     if (targetScope) {
       signals.push(targetScope);
@@ -79,7 +73,7 @@ export class TaskScopeAnalyzer {
     if (TASK_ANALYZER_CONSTANTS.SCOPE_PATTERNS.LOCAL_SCOPE_PATTERN.test(text)) {
       signals.push({
         scope: "single_location",
-        confidence: 0.8,
+        confidence: scopeThresholds.LOCAL,
         evidence: "The request explicitly refers to one local code location.",
       });
     }
@@ -87,11 +81,11 @@ export class TaskScopeAnalyzer {
     if (signals.length === 0) {
       return {
         scope: "unknown",
-        confidence: 0.3,
+        confidence: scopeThresholds.UNKNOWN,
         signals: [
           {
             scope: "unknown",
-            confidence: 0.3,
+            confidence: scopeThresholds.UNKNOWN,
             evidence:
               "No explicit scope language or usable targets were detected.",
           },
@@ -104,6 +98,7 @@ export class TaskScopeAnalyzer {
 
   private analyzeTargetScope(
     targets: readonly TaskTarget[],
+    scopeThresholds: typeof TASK_ANALYZER_CONSTANTS.THRESHOLDS.SCOPE,
   ): TaskScopeSignal | null {
     if (targets.length === 0) {
       return null;
@@ -112,7 +107,7 @@ export class TaskScopeAnalyzer {
     if (targets.length > 1) {
       return {
         scope: "multi_file",
-        confidence: 0.92,
+        confidence: scopeThresholds.MULTI_TARGET,
         evidence: `${targets.length} distinct task targets were identified.`,
       };
     }
@@ -122,7 +117,7 @@ export class TaskScopeAnalyzer {
     if (target.kind === "package") {
       return {
         scope: "package",
-        confidence: 0.95,
+        confidence: scopeThresholds.PACKAGE_TARGET,
         evidence: `A package target was identified: ${target.value}.`,
       };
     }
@@ -130,7 +125,7 @@ export class TaskScopeAnalyzer {
     if (target.kind === "repository") {
       return {
         scope: "repository",
-        confidence: 0.95,
+        confidence: scopeThresholds.PACKAGE_TARGET,
         evidence: `A repository target was identified: ${target.value}.`,
       };
     }
@@ -138,7 +133,7 @@ export class TaskScopeAnalyzer {
     if (target.kind === "workspace") {
       return {
         scope: "workspace",
-        confidence: 0.95,
+        confidence: scopeThresholds.PACKAGE_TARGET,
         evidence: `A workspace target was identified: ${target.value}.`,
       };
     }
@@ -146,27 +141,20 @@ export class TaskScopeAnalyzer {
     if (target.kind === "folder" && this.looksLikePackageTarget(target.value)) {
       return {
         scope: "package",
-        confidence: 0.78,
+        confidence: scopeThresholds.PACKAGE_FOLDER,
         evidence: `The folder target appears to identify a package or service: ${target.value}.`,
       };
     }
 
     return {
       scope: "single_location",
-      confidence: 0.9,
+      confidence: scopeThresholds.SINGLE_TARGET,
       evidence: `One explicit target was identified: ${target.value}.`,
     };
   }
 
   private buildResult(signals: TaskScopeSignal[]): TaskScopeAnalysis {
-    const priority: Record<TaskScope, number> = {
-      unknown: 0,
-      single_location: 1,
-      multi_file: 2,
-      package: 3,
-      repository: 4,
-      workspace: 5,
-    };
+    const priority = TASK_ANALYZER_CONSTANTS.SCOPE_PRIORITY;
 
     const sorted = [...signals].sort((first, second) => {
       const priorityDifference = priority[second.scope] - priority[first.scope];
@@ -209,7 +197,7 @@ export class TaskScopeAnalyzer {
   }
 
   private looksLikePackageTarget(value: string): boolean {
-    return /(?:^|\/)(?:packages?|services?|apps?|libs?|modules?)\/[^/]+\/?$/i.test(
+    return TASK_ANALYZER_CONSTANTS.TARGET_PATTERNS.PACKAGE_FOLDER.test(
       value.replace(/\\/g, "/"),
     );
   }

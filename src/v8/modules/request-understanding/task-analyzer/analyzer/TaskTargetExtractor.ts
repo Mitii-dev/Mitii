@@ -3,13 +3,7 @@ import type {
   ReferencedArtifact,
   TaskAnalysisSignal,
   TaskTarget,
-} from "../types";
-
-const FOLDER_REFERENCE_PATTERN =
-  /(?:^|[\s"'`])((?:\.{1,2}\/|[a-zA-Z0-9_-]+\/)(?:[a-zA-Z0-9_.-]+\/)+)(?=$|[\s"'`,.;:!?)\]}])/g;
-
-const SYMBOL_REFERENCE_PATTERN =
-  /(?:^|[\s"'`])(?:function|method|class|interface|type|component|symbol)\s+[`'"]?([a-zA-Z_$][a-zA-Z0-9_$]*)[`'"]?/gi;
+} from "../contracts";
 
 export class TaskTargetExtractor {
   public extract(
@@ -36,11 +30,12 @@ export class TaskTargetExtractor {
     signals: TaskAnalysisSignal[];
   } {
     const targets = this.extract(userMessage, referencedArtifacts);
+    const weights = TASK_ANALYZER_CONSTANTS.THRESHOLDS.TARGET_SIGNAL_WEIGHT;
 
     const signals: TaskAnalysisSignal[] = targets.map((target) => ({
       type: "scope",
       value: `${target.kind}:${target.value}`,
-      weight: target.explicit ? 0.9 : 1,
+      weight: target.explicit ? weights.EXPLICIT : weights.IMPLICIT,
       evidence: target.explicit
         ? `Explicit ${target.kind} target found in the user message: ${target.value}`
         : `Implicit ${target.kind} target supplied through referenced artifacts: ${target.value}`,
@@ -102,10 +97,16 @@ export class TaskTargetExtractor {
     targets: TaskTarget[],
     seen: Set<string>,
   ): void {
-    for (const match of userMessage.matchAll(FOLDER_REFERENCE_PATTERN)) {
+    const pattern =
+      TASK_ANALYZER_CONSTANTS.TARGET_PATTERNS.FOLDER_REFERENCE;
+
+    for (const match of userMessage.matchAll(pattern)) {
       const value = this.cleanTargetValue(match[1] ?? match[0]);
 
-      if (!value || this.looksLikeFile(value)) {
+      if (
+        !value ||
+        TASK_ANALYZER_CONSTANTS.TARGET_PATTERNS.LOOKS_LIKE_FILE.test(value)
+      ) {
         continue;
       }
 
@@ -122,7 +123,10 @@ export class TaskTargetExtractor {
     targets: TaskTarget[],
     seen: Set<string>,
   ): void {
-    for (const match of userMessage.matchAll(SYMBOL_REFERENCE_PATTERN)) {
+    const pattern =
+      TASK_ANALYZER_CONSTANTS.TARGET_PATTERNS.SYMBOL_REFERENCE;
+
+    for (const match of userMessage.matchAll(pattern)) {
       const value = match[1]?.trim();
 
       if (!value) {
@@ -206,10 +210,6 @@ export class TaskTargetExtractor {
 
     seen.add(key);
     targets.push(target);
-  }
-
-  private looksLikeFile(value: string): boolean {
-    return /(?:^|\/)[^/]+\.[a-zA-Z0-9]+$/.test(value);
   }
 
   private cleanTargetValue(value: string): string {

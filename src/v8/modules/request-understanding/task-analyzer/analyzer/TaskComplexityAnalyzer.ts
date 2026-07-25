@@ -3,12 +3,9 @@ import type {
   TaskComplexity,
   TaskComplexityDetails,
   TaskComplexitySignal,
-} from "../types";
+} from "../contracts";
 
 export class TaskComplexityAnalyzer {
-  constructor() {
-    const {} = TASK_ANALYZER_CONSTANTS.ANALYSIS_PATTERNS;
-  }
   /**
    * Returns only the final complexity classification.
    */
@@ -24,6 +21,7 @@ export class TaskComplexityAnalyzer {
    */
   public analyzeComplexityByText(text: string): TaskComplexityDetails {
     const normalizedText = text.trim();
+    const thresholds = TASK_ANALYZER_CONSTANTS.THRESHOLDS;
 
     if (!normalizedText) {
       return {
@@ -44,17 +42,22 @@ export class TaskComplexityAnalyzer {
 
     let score = 0;
 
-    score += this.scoreDescriptionLength(normalizedText, signals);
-    score += this.scoreConnectors(normalizedText, signals);
-    score += this.scoreActions(normalizedText, signals);
-    score += this.scoreFileReferences(normalizedText, signals);
+    score += this.scoreDescriptionLength(normalizedText, signals, thresholds);
+    score += this.scoreConnectors(normalizedText, signals, thresholds);
+    score += this.scoreActions(normalizedText, signals, thresholds);
+    score += this.scoreFileReferences(normalizedText, signals, thresholds);
     score += this.scoreScope(normalizedText, signals);
     score += this.scoreTechnicalFactors(normalizedText, signals);
-    score += this.scoreVerification(normalizedText, signals);
-    score += this.scoreSimpleTaskSignals(normalizedText, score, signals);
+    score += this.scoreVerification(normalizedText, signals, thresholds);
+    score += this.scoreSimpleTaskSignals(
+      normalizedText,
+      score,
+      signals,
+      thresholds,
+    );
     const normalizedScore = Math.max(0, score);
     return {
-      complexity: this.mapScoreToComplexity(normalizedScore),
+      complexity: this.mapScoreToComplexity(normalizedScore, thresholds),
       score: normalizedScore,
       signals,
     };
@@ -63,12 +66,9 @@ export class TaskComplexityAnalyzer {
   private scoreDescriptionLength(
     text: string,
     signals: TaskComplexitySignal[],
+    thresholds: typeof TASK_ANALYZER_CONSTANTS.THRESHOLDS,
   ): number {
-    /*
-     * Message length is weak evidence. A long explanation can still
-     * describe a simple task, so length contributes at most one point.
-     */
-    if (text.length > 500) {
+    if (text.length > thresholds.LONG_DESCRIPTION_CHARACTERS) {
       signals.push({
         name: "long_description",
         score: 1,
@@ -84,13 +84,14 @@ export class TaskComplexityAnalyzer {
   private scoreConnectors(
     text: string,
     signals: TaskComplexitySignal[],
+    thresholds: typeof TASK_ANALYZER_CONSTANTS.THRESHOLDS,
   ): number {
     const connectors = this.countMatches(
       text,
       TASK_ANALYZER_CONSTANTS.ANALYSIS_PATTERNS.CONNECTOR_PATTERN,
     );
 
-    if (connectors >= 4) {
+    if (connectors >= thresholds.CONNECTORS.MANY) {
       signals.push({
         name: "multiple_steps",
         score: 2,
@@ -100,7 +101,7 @@ export class TaskComplexityAnalyzer {
       return 2;
     }
 
-    if (connectors >= 2) {
+    if (connectors >= thresholds.CONNECTORS.SEVERAL) {
       signals.push({
         name: "several_steps",
         score: 1,
@@ -113,13 +114,17 @@ export class TaskComplexityAnalyzer {
     return 0;
   }
 
-  private scoreActions(text: string, signals: TaskComplexitySignal[]): number {
+  private scoreActions(
+    text: string,
+    signals: TaskComplexitySignal[],
+    thresholds: typeof TASK_ANALYZER_CONSTANTS.THRESHOLDS,
+  ): number {
     const actions = this.countMatches(
       text,
       TASK_ANALYZER_CONSTANTS.ANALYSIS_PATTERNS.ACTION_PATTERN,
     );
 
-    if (actions >= 4) {
+    if (actions >= thresholds.ACTIONS.MANY) {
       signals.push({
         name: "many_actions",
         score: 3,
@@ -129,7 +134,7 @@ export class TaskComplexityAnalyzer {
       return 3;
     }
 
-    if (actions >= 2) {
+    if (actions >= thresholds.ACTIONS.MULTIPLE) {
       signals.push({
         name: "multiple_actions",
         score: 2,
@@ -155,10 +160,11 @@ export class TaskComplexityAnalyzer {
   private scoreFileReferences(
     text: string,
     signals: TaskComplexitySignal[],
+    thresholds: typeof TASK_ANALYZER_CONSTANTS.THRESHOLDS,
   ): number {
     const files = this.extractUniqueFileReferences(text);
 
-    if (files.length >= 6) {
+    if (files.length >= thresholds.FILE_REFERENCES.MANY) {
       signals.push({
         name: "many_files",
         score: 3,
@@ -168,7 +174,7 @@ export class TaskComplexityAnalyzer {
       return 3;
     }
 
-    if (files.length >= 3) {
+    if (files.length >= thresholds.FILE_REFERENCES.MULTIPLE) {
       signals.push({
         name: "multiple_files",
         score: 2,
@@ -178,7 +184,7 @@ export class TaskComplexityAnalyzer {
       return 2;
     }
 
-    if (files.length >= 1) {
+    if (files.length >= thresholds.FILE_REFERENCES.EXPLICIT) {
       signals.push({
         name: "explicit_files",
         score: 1,
@@ -304,13 +310,14 @@ export class TaskComplexityAnalyzer {
   private scoreVerification(
     text: string,
     signals: TaskComplexitySignal[],
+    thresholds: typeof TASK_ANALYZER_CONSTANTS.THRESHOLDS,
   ): number {
     const verificationActivities = this.countMatches(
       text,
       TASK_ANALYZER_CONSTANTS.ANALYSIS_PATTERNS.VERIFICATION_PATTERN,
     );
 
-    if (verificationActivities >= 3) {
+    if (verificationActivities >= thresholds.VERIFICATION_ACTIVITIES.MULTIPLE) {
       signals.push({
         name: "multiple_verification_steps",
         score: 2,
@@ -320,7 +327,7 @@ export class TaskComplexityAnalyzer {
       return 2;
     }
 
-    if (verificationActivities >= 1) {
+    if (verificationActivities >= thresholds.VERIFICATION_ACTIVITIES.EXPLICIT) {
       signals.push({
         name: "verification",
         score: 1,
@@ -337,14 +344,10 @@ export class TaskComplexityAnalyzer {
     text: string,
     currentScore: number,
     signals: TaskComplexitySignal[],
+    thresholds: typeof TASK_ANALYZER_CONSTANTS.THRESHOLDS,
   ): number {
-    /*
-     * Only reduce the score when no strong complexity evidence exists.
-     * A repository-wide formatting task should not become simple merely
-     * because it contains the word "format".
-     */
     if (
-      currentScore <= 3 &&
+      currentScore <= thresholds.SIMPLE_TASK_MAX_SCORE &&
       TASK_ANALYZER_CONSTANTS.ANALYSIS_PATTERNS.SIMPLE_TASK_PATTERN.test(
         text,
       )
@@ -410,16 +413,19 @@ export class TaskComplexityAnalyzer {
     return [...files];
   }
 
-  private mapScoreToComplexity(score: number): TaskComplexity {
-    if (score >= 10) {
+  private mapScoreToComplexity(
+    score: number,
+    thresholds: typeof TASK_ANALYZER_CONSTANTS.THRESHOLDS,
+  ): TaskComplexity {
+    if (score >= thresholds.COMPLEXITY.VERY_COMPLEX) {
       return "very_complex";
     }
 
-    if (score >= 6) {
+    if (score >= thresholds.COMPLEXITY.COMPLEX) {
       return "complex";
     }
 
-    if (score >= 3) {
+    if (score >= thresholds.COMPLEXITY.MODERATE) {
       return "moderate";
     }
 

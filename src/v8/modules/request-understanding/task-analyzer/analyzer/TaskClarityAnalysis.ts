@@ -5,7 +5,7 @@ import type {
   TaskClarityAnalyzerInput,
   TaskClaritySignal,
   TaskTarget,
-} from "../types";
+} from "../contracts";
 
 export class TaskClarityAnalyzer {
   /**
@@ -22,6 +22,7 @@ export class TaskClarityAnalyzer {
   public analyzeClarity(input: TaskClarityAnalyzerInput): TaskClarityAnalysis {
     const text = input.userMessage.trim();
     const signals: TaskClaritySignal[] = [];
+    const clarityThresholds = TASK_ANALYZER_CONSTANTS.THRESHOLDS.CLARITY;
 
     if (!text) {
       return {
@@ -51,13 +52,13 @@ export class TaskClarityAnalyzer {
       };
     }
 
-    if (input.intentConfidence < 0.6) {
+    if (input.intentConfidence < clarityThresholds.INTENT_LOW) {
       signals.push({
         clarity: "unclear",
         confidence: 0.9,
         evidence: `Intent confidence is below the acceptance threshold: ${input.intentConfidence.toFixed(2)}.`,
       });
-    } else if (input.intentConfidence >= 0.8) {
+    } else if (input.intentConfidence >= clarityThresholds.INTENT_HIGH) {
       signals.push({
         clarity: "clear",
         confidence: 0.8,
@@ -71,7 +72,7 @@ export class TaskClarityAnalyzer {
       });
     }
 
-    if (input.confidenceMargin < 0.15) {
+    if (input.confidenceMargin < clarityThresholds.CONFIDENCE_MARGIN_LOW) {
       signals.push({
         clarity: "unclear",
         confidence: 0.88,
@@ -196,12 +197,13 @@ export class TaskClarityAnalyzer {
       scores[signal.clarity] += signal.confidence;
     }
 
-    /*
-     * Strong uncertainty evidence should prevent positive signals from
-     * silently marking a task clear.
-     */
+    const strongUnclearThreshold =
+      TASK_ANALYZER_CONSTANTS.THRESHOLDS.CLARITY.STRONG_UNCLEAR;
+
     const strongUnclearSignal = signals.some(
-      (signal) => signal.clarity === "unclear" && signal.confidence >= 0.88,
+      (signal) =>
+        signal.clarity === "unclear" &&
+        signal.confidence >= strongUnclearThreshold,
     );
 
     if (strongUnclearSignal) {

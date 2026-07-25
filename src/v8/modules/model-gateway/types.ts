@@ -135,16 +135,40 @@ export interface ModelError {
   providerCode?: string;
 }
 
-export interface ModelResponseDelta {
-  content?: string;
-  reasoning?: string;
-  toolCalls?: readonly ModelToolCallDelta[];
+export type ModelEvent =
+  | {
+      type: "content_delta";
+      content: string;
+    }
+  | {
+      type: "reasoning_delta";
+      reasoning: string;
+    }
+  | {
+      type: "tool_call_delta";
+      toolCalls: readonly ModelToolCallDelta[];
+    }
+  | {
+      type: "usage";
+      usage: ModelTokenUsage;
+    }
+  | {
+      type: "completed";
+      finishReason: ModelFinishReason;
+      usage?: ModelTokenUsage;
+    }
+  | {
+      type: "failed";
+      error: ModelError;
+      finishReason?: ModelFinishReason;
+    }
+  | {
+      type: "cancelled";
+      error: ModelError;
+    };
 
-  done?: boolean;
-  finishReason?: ModelFinishReason;
-  usage?: ModelTokenUsage;
-  error?: ModelError;
-}
+/** @deprecated Use ModelEvent. Kept briefly for mechanical import repairs. */
+export type ModelResponseDelta = ModelEvent;
 
 export type ModelAgenticTier =
   | "basic"
@@ -206,7 +230,7 @@ export interface LlmPort {
   complete(
     request: ModelRequest,
     context?: ModelCallContext,
-  ): AsyncIterable<ModelResponseDelta>;
+  ): AsyncIterable<ModelEvent>;
 
   countTokens?(
     text: string,

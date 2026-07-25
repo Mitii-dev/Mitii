@@ -7,7 +7,50 @@ import type {
 export const MODEL_GATEWAY_IDS = {
   CAPABILITY_RESOLVER:
     "model-capability-resolver",
+  ECHO_PORT:
+    "echo",
+  OPENAI_COMPATIBLE_PORT:
+    "openai-compatible",
 } as const;
+
+/**
+ * Explicit provider support matrix for Phase 1.
+ * Unsupported providers must stay listed until dedicated adapters land.
+ */
+export const MODEL_PROVIDER_SUPPORT = {
+  echo: {
+    status: "supported",
+    adapter: "EchoLlmPort",
+    notes: "Deterministic offline/test adapter.",
+  },
+  openai: {
+    status: "supported",
+    adapter: "OpenAiCompatibleLlmPort",
+    notes: "Use OpenAiCompatibleLlmPort with https://api.openai.com/v1.",
+  },
+  ollama: {
+    status: "supported",
+    adapter: "OpenAiCompatibleLlmPort",
+    notes: "Default OpenAiCompatibleLlmPort base URL targets Ollama.",
+  },
+  "openai-compatible": {
+    status: "supported",
+    adapter: "OpenAiCompatibleLlmPort",
+    notes: "Generic OpenAI-compatible chat completions.",
+  },
+  anthropic: {
+    status: "unsupported",
+    adapter: null,
+    notes: "Native Anthropic Messages API adapter not implemented yet.",
+  },
+  gemini: {
+    status: "unsupported",
+    adapter: null,
+    notes: "Native Gemini adapter not implemented yet.",
+  },
+} as const;
+
+export type ModelProviderId = keyof typeof MODEL_PROVIDER_SUPPORT;
 
 export const MODEL_TOOL_CHOICES = [
   "auto",
@@ -55,6 +98,8 @@ export const MODEL_GATEWAY_DEFAULTS = {
     false,
   SUPPORTS_EMBEDDINGS:
     false,
+  TEMPERATURE:
+    0.2,
 } as const;
 
 export const MODEL_GATEWAY_LIMITS = {
@@ -78,6 +123,12 @@ export const MODEL_GATEWAY_LIMITS = {
     2,
   MAXIMUM_RETRY_AFTER_MS:
     24 * 60 * 60 * 1_000,
+  ERROR_BODY_PREVIEW_CHARACTERS:
+    200,
+  ECHO_CHUNK_CHARACTERS:
+    4,
+  APPROXIMATE_CHARS_PER_TOKEN:
+    4,
 } as const;
 
 export const MODEL_GATEWAY_PATTERNS = {
@@ -96,4 +147,36 @@ export const MODEL_GATEWAY_MESSAGES = {
     "A tool-result message requires toolCallId.",
   JSON_SCHEMA_REQUIRES_CAPABILITY:
     "JSON schema output requires structured-output model capability.",
+  EMPTY_RESPONSE_BODY:
+    "Empty response body from provider.",
+  AUTHENTICATION_FAILED:
+    "Authentication failed. Check your API key.",
+  MODEL_NOT_FOUND:
+    "Model not found.",
 } as const;
+
+export const OPENAI_COMPATIBLE_DEFAULTS = {
+  BASE_URL:
+    "http://localhost:11434/v1",
+  CHAT_COMPLETIONS_PATH:
+    "chat/completions",
+  AUTH_HEADER:
+    "authorization" as const,
+  CONTEXT_WINDOW_TOKENS:
+    8_192,
+} as const;
+
+export const HTTP_STATUS_TO_MODEL_ERROR: Readonly<
+  Record<number, ModelErrorCode>
+> = {
+  400: "invalid_request",
+  401: "authentication_failed",
+  403: "authentication_failed",
+  404: "invalid_request",
+  408: "provider_unavailable",
+  429: "rate_limited",
+  500: "provider_unavailable",
+  502: "provider_unavailable",
+  503: "provider_unavailable",
+  504: "provider_unavailable",
+};

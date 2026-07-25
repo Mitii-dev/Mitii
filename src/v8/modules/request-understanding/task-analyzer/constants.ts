@@ -1,5 +1,76 @@
-import { TaskIntent } from "..";
-import type { TaskConstraintKind, TaskRisk } from "./types";
+import type { TaskIntent } from "../intent/types";
+import type { TaskConstraintKind, TaskRisk } from "./contracts";
+
+/**
+ * Source file extensions aligned with repository-state language coverage.
+ * Supports the top programming languages plus common config/markup formats.
+ */
+export const TASK_ANALYZER_SOURCE_FILE_EXTENSIONS = [
+  "ts",
+  "tsx",
+  "mts",
+  "cts",
+  "js",
+  "jsx",
+  "mjs",
+  "cjs",
+  "py",
+  "pyi",
+  "pyw",
+  "java",
+  "kt",
+  "kts",
+  "go",
+  "rs",
+  "c",
+  "h",
+  "cpp",
+  "cc",
+  "cxx",
+  "hpp",
+  "hxx",
+  "cs",
+  "rb",
+  "php",
+  "swift",
+  "scala",
+  "lua",
+  "dart",
+  "ex",
+  "exs",
+  "sol",
+  "zig",
+  "sql",
+  "json",
+  "jsonl",
+  "yaml",
+  "yml",
+  "toml",
+  "xml",
+  "md",
+  "mdx",
+  "css",
+  "scss",
+  "sass",
+  "less",
+  "html",
+  "htm",
+  "vue",
+  "svelte",
+  "sh",
+  "bash",
+  "zsh",
+  "tf",
+  "tfvars",
+  "proto",
+  "graphql",
+] as const;
+
+const SOURCE_FILE_EXTENSION_PATTERN = [
+  ...TASK_ANALYZER_SOURCE_FILE_EXTENSIONS,
+]
+  .sort((first, second) => second.length - first.length)
+  .join("|");
 
 /**
  * TASK COMPLEXITY PATTERNS
@@ -11,8 +82,23 @@ const CONNECTOR_PATTERN =
 const ACTION_PATTERN =
   /\b(?:implement|build|create|add|fix|resolve|repair|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|generate|document|deploy|test|validate|install|upgrade|scaffold)\b/gi;
 
-const FILE_REFERENCE_PATTERN =
-  /[`'"]?((?:(?:[a-zA-Z]:[\\/])|(?:\.{0,2}[\\/])|(?:[a-zA-Z0-9_-]+[\\/]))*[a-zA-Z0-9_.-]+\.(?:tsx?|jsx?|mjs|cjs|py|go|rs|java|kt|kts|cs|cpp|cc|cxx|c|h|hpp|rb|php|swift|scala|sql|graphql|json|jsonl|ya?ml|toml|string mdx|string css|string scss|string sass|string less|string html|string vue|string svelte|string sh|string bash|string tf|string proto))[`'"]?/gi;
+const FILE_REFERENCE_PATTERN = new RegExp(
+  "[`'\"]?((?:(?:[a-zA-Z]:[\\\\/])|(?:\\.{0,2}[\\\\/])|(?:[a-zA-Z0-9_-]+[\\\\/]))*[a-zA-Z0-9_.-]+\\.(?:" +
+    SOURCE_FILE_EXTENSION_PATTERN +
+    "))[`'\"]?",
+  "gi",
+);
+
+const FOLDER_REFERENCE_PATTERN =
+  /(?:^|[\s"'`])((?:\.{1,2}\/|[a-zA-Z0-9_-]+\/)(?:[a-zA-Z0-9_.-]+\/)+)(?=$|[\s"'`,.;:!?)\]}])/g;
+
+const SYMBOL_REFERENCE_PATTERN =
+  /(?:^|[\s"'`])(?:function|method|class|interface|type|component|symbol|struct|trait|enum|module|namespace|def|fn)\s+[`'"]?([a-zA-Z_$][a-zA-Z0-9_$]*)[`'"]?/gi;
+
+const LOOKS_LIKE_FILE_PATTERN = /(?:^|\/)[^/]+\.[a-zA-Z0-9]+$/;
+
+const PACKAGE_FOLDER_PATTERN =
+  /(?:^|\/)(?:packages?|services?|apps?|libs?|modules?)\/[^/]+\/?$/i;
 
 const BROAD_SCOPE_PATTERN =
   /\b(?:entire|whole|full)\s+(?:repository|repo|project|application|app|codebase|workspace|monorepo|package|module|service)|\b(?:repository-wide|repo-wide|project-wide|workspace-wide|system-wide|end-to-end|across all packages|across the codebase|throughout the project)\b/i;
@@ -357,7 +443,140 @@ const ACKNOWLEDGEMENT_PATTERN =
 const OUTCOME_ACTION_PATTERN =
   /\b(?:implement|build|create|add|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|generate|document|deploy|test|validate|verify|review|audit|analyze|diagnose|investigate|troubleshoot|explain|compare|identify|find|trace|format|style|scaffold|install|upgrade|downgrade|rename|extract|restructure|reorganize|plan|outline|propose)\b/i;
 
+const COMPLEXITY_SCORE_THRESHOLDS = {
+  VERY_COMPLEX: 10,
+  COMPLEX: 6,
+  MODERATE: 3,
+} as const;
+
+const RISK_SCORE_THRESHOLDS = {
+  CRITICAL: 10,
+  HIGH: 6,
+  MEDIUM: 3,
+} as const;
+
 export const TASK_ANALYZER_CONSTANTS = {
+  THRESHOLDS: {
+    LONG_DESCRIPTION_CHARACTERS: 500,
+    CONNECTORS: {
+      MANY: 4,
+      SEVERAL: 2,
+    },
+    ACTIONS: {
+      MANY: 4,
+      MULTIPLE: 2,
+    },
+    FILE_REFERENCES: {
+      MANY: 6,
+      MULTIPLE: 3,
+      EXPLICIT: 1,
+    },
+    VERIFICATION_ACTIVITIES: {
+      MULTIPLE: 3,
+      EXPLICIT: 1,
+    },
+    SIMPLE_TASK_MAX_SCORE: 3,
+    COMPLEXITY: COMPLEXITY_SCORE_THRESHOLDS,
+    RISK: RISK_SCORE_THRESHOLDS,
+    CLARITY: {
+      INTENT_LOW: 0.6,
+      INTENT_HIGH: 0.8,
+      CONFIDENCE_MARGIN_LOW: 0.15,
+      STRONG_UNCLEAR: 0.88,
+    },
+    SCOPE: {
+      WORKSPACE: 0.97,
+      REPOSITORY: 0.95,
+      PACKAGE: 0.9,
+      MULTI_FILE: 0.88,
+      LOCAL: 0.8,
+      UNKNOWN: 0.3,
+      SINGLE_TARGET: 0.9,
+      MULTI_TARGET: 0.92,
+      PACKAGE_TARGET: 0.95,
+      PACKAGE_FOLDER: 0.78,
+    },
+    RISK_INTENTS: {
+      HIGH: ["security", "migrate", "schema", "dependency", "config"] as const,
+      MEDIUM: ["feature", "refactor", "optimize", "scaffold"] as const,
+    },
+    RISK_SCOPES: {
+      WORKSPACE: 3,
+      REPOSITORY: 2,
+      MULTI_LOCATION: 1,
+    },
+    READ_ONLY_RISK_REDUCTION_FACTOR: 0.35,
+    READ_ONLY_RISK_REDUCTION_MAX: 3,
+    EMPTY_CONSTRAINT_CONFIDENCE: 0.5,
+    EMPTY_OUTCOME_CONFIDENCE: 0.5,
+    DEFAULT_RISK_CONFIDENCE: 0.65,
+    BASE_RISK_CONFIDENCE: 0.7,
+    SIGNAL_NORMALIZATION: {
+      COMPLEXITY_DIVISOR: 3,
+      RISK_DIVISOR: 7,
+    },
+    COMPLEXITY_CONFIDENCE: {
+      EMPTY_SIMPLE: 0.65,
+      EMPTY_OTHER: 0.55,
+      BASE: 0.65,
+      PER_SIGNAL: 0.04,
+      MAX_BONUS: 0.25,
+    },
+    TARGET_SIGNAL_WEIGHT: {
+      EXPLICIT: 0.9,
+      IMPLICIT: 1,
+    },
+  },
+
+  SCOPE_PRIORITY: {
+    unknown: 0,
+    single_location: 1,
+    multi_file: 2,
+    package: 3,
+    repository: 4,
+    workspace: 5,
+  } as const satisfies Record<
+    import("./contracts").TaskScope,
+    number
+  >,
+
+  FILE_IMPACT: {
+    single_location: {
+      minimum: 1,
+      complexMaximum: 3,
+      defaultMaximum: 1,
+    },
+    multi_file: {
+      minimum: 2,
+      veryComplexMaximum: 15,
+      complexMaximum: 10,
+      defaultMaximum: 6,
+    },
+    package: {
+      minimum: 3,
+      veryComplexMaximum: 25,
+      defaultMaximum: 15,
+    },
+    repository: {
+      minimum: 5,
+      veryComplexMaximum: 50,
+      defaultMaximum: 30,
+    },
+    workspace: {
+      minimum: 5,
+    },
+    unknown: {
+      minimum: 1,
+    },
+  } as const,
+
+  TARGET_PATTERNS: {
+    FOLDER_REFERENCE: FOLDER_REFERENCE_PATTERN,
+    SYMBOL_REFERENCE: SYMBOL_REFERENCE_PATTERN,
+    LOOKS_LIKE_FILE: LOOKS_LIKE_FILE_PATTERN,
+    PACKAGE_FOLDER: PACKAGE_FOLDER_PATTERN,
+  },
+
   ANALYSIS_PATTERNS: {
     CONNECTOR_PATTERN,
     ACTION_PATTERN,

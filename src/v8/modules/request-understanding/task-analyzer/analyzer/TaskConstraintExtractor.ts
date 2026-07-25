@@ -4,7 +4,7 @@ import type {
   TaskConstraint,
   TaskConstraintExtraction,
   TaskConstraintKind,
-} from "../types";
+} from "../contracts";
 
 interface ConstraintPatternDefinition {
   kind: TaskConstraintKind;
@@ -118,7 +118,7 @@ export class TaskConstraintExtractor {
 
   private calculateConfidence(constraints: readonly TaskConstraint[]): number {
     if (constraints.length === 0) {
-      return 0.5;
+      return TASK_ANALYZER_CONSTANTS.THRESHOLDS.EMPTY_CONSTRAINT_CONFIDENCE;
     }
 
     const average =

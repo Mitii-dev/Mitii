@@ -1,12 +1,11 @@
 import {
+  modelEventSchema,
   modelRequestSchema,
-  modelResponseDeltaSchema,
 } from "../../../../model-gateway";
 
 import type {
   LlmPort,
   ModelRequest,
-  ModelResponseDelta,
 } from "../../../../model-gateway";
 
 import { IntentClassification, intentClassificationSchema } from "../../schema";
@@ -155,27 +154,19 @@ export class LlmIntentClassifier {
   private async collectProviderText(request: ModelRequest): Promise<string> {
     let response = "";
 
-    for await (
-      const rawDelta of
-      this.provider
-        .complete(request)
-    ) {
-      const delta =
-        modelResponseDeltaSchema
-          .parse(
-            rawDelta,
-          ) as ModelResponseDelta;
+    for await (const rawEvent of this.provider.complete(request)) {
+      const event = modelEventSchema.parse(rawEvent);
 
-      if (delta.error) {
+      if (event.type === "failed" || event.type === "cancelled") {
         throw new Error(
           `Intent classifier provider error ` +
-          `(${delta.error.code}): ` +
-          delta.error.message,
+            `(${event.error.code}): ` +
+            event.error.message,
         );
       }
 
-      if (delta.content) {
-        response += delta.content;
+      if (event.type === "content_delta") {
+        response += event.content;
       }
     }
 

@@ -1,5 +1,21 @@
-export * from "./pipeline/ws-indexing-pipeline";
 export { WorkspaceIndexingPipeline } from "./pipeline/ws-indexing-pipeline/WorkspaceIndexingPipeline";
+
+export {
+  LANGUAGE_IDS,
+  languageIdSchema,
+  languageProfileSchema,
+  languageDetectionEvidenceSchema,
+  projectDescriptorSchema,
+  LanguageProfileRegistry,
+  defaultLanguageProfileRegistry,
+} from "./contracts";
+export type {
+  LanguageId,
+  LanguageProfile,
+  LanguageDetectionEvidence,
+  ProjectDescriptor,
+  LanguageCapabilityLevel,
+} from "./contracts";
 
 // Cross-module contracts consumed by repository-context and application hosts.
 export type {

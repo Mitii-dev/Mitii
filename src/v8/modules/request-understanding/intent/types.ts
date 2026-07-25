@@ -143,7 +143,7 @@ export interface SuperIntentResult {
    */
   confidenceMargin: number;
 
-  requiresClarification: boolean;
+  recommendsClarification: boolean;
   clarification?: SuperIntentClarification;
 
   diagnostics: SuperIntentDiagnostics;

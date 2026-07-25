@@ -4,7 +4,7 @@ import type {
   TaskAnalysisSignal,
   TaskOutcome,
   TaskOutcomeExtraction,
-} from "../types";
+} from "../contracts";
 
 export class TaskOutcomeExtractor {
   public extract(userMessage: string): TaskOutcomeExtraction {
@@ -20,7 +20,7 @@ export class TaskOutcomeExtractor {
         outcomes: [],
         values: [],
         signals: [],
-        confidence: 0.5,
+        confidence: TASK_ANALYZER_CONSTANTS.THRESHOLDS.EMPTY_OUTCOME_CONFIDENCE,
       };
     }
 
@@ -218,7 +218,7 @@ export class TaskOutcomeExtractor {
        * No extracted outcome does not necessarily mean failure.
        * The message may be an acknowledgement or incomplete request.
        */
-      return 0.5;
+      return TASK_ANALYZER_CONSTANTS.THRESHOLDS.EMPTY_OUTCOME_CONFIDENCE;
     }
 
     const totalConfidence = outcomes.reduce(

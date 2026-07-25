@@ -13,7 +13,7 @@ const PUBLIC_MODULES = [
   'model-gateway',
 ] as const;
 
-describe('v8 module boundaries (Phase 0)', () => {
+describe('v8 module boundaries (Phase 0/1)', () => {
   it('places all runtime code under src/v8/modules/', () => {
     expect(existsSync(modulesRoot)).toBe(true);
     expect(existsSync(join(repoRoot, 'src/v8/core'))).toBe(false);
@@ -21,12 +21,33 @@ describe('v8 module boundaries (Phase 0)', () => {
     expect(existsSync(join(repoRoot, 'src/v8/intent'))).toBe(false);
   });
 
-  it('exposes the four Phase 0 public pipelines from src/v8/index.ts', () => {
+  it('exposes Phase 1 public facades from src/v8/index.ts', () => {
     const index = readFileSync(join(repoRoot, 'src/v8/index.ts'), 'utf8');
+    expect(index).toContain('RequestIntakePipeline');
     expect(index).toContain('UserRequestEnvelopeBuilder');
-    expect(index).toContain('IntentRouter');
+    expect(index).toContain('RequestUnderstandingPipeline');
     expect(index).toContain('WorkspaceIndexingPipeline');
     expect(index).toContain('RepositoryContextPipeline');
+    expect(index).toContain('EchoLlmPort');
+    expect(index).toContain('OpenAiCompatibleLlmPort');
+    expect(index).toContain('MODEL_PROVIDER_SUPPORT');
+    expect(index).toContain('LanguageProfileRegistry');
+    expect(index).not.toContain('IntentRouter');
+    expect(index).not.toContain('TaskAnalyzer');
+    expect(index).not.toContain('export *');
+  });
+
+  it('keeps request-understanding classifiers private at the module root', () => {
+    const index = readFileSync(
+      join(modulesRoot, 'request-understanding/index.ts'),
+      'utf8',
+    );
+    expect(index).toContain('RequestUnderstandingPipeline');
+    expect(index).not.toContain('export * from "./intent"');
+    expect(index).not.toContain('RuleIntentClassifier');
+    expect(index).not.toContain('LlmIntentClassifier');
+    expect(index).not.toContain('export { IntentRouter');
+    expect(index).not.toContain('export { TaskAnalyzer');
   });
 
   it('does not import features/ce or legacy host code from v8 modules', () => {
@@ -70,6 +91,24 @@ describe('v8 module boundaries (Phase 0)', () => {
       statSync(join(modulesRoot, entry)).isDirectory(),
     );
     expect(dirs.sort()).toEqual([...PUBLIC_MODULES].sort());
+  });
+
+  it('keeps module root barrels free of wildcard re-exports', () => {
+    const violations: string[] = [];
+
+    for (const moduleName of PUBLIC_MODULES) {
+      const indexPath = join(modulesRoot, moduleName, 'index.ts');
+      const content = readFileSync(indexPath, 'utf8');
+      for (const [index, line] of content.split(/\r?\n/).entries()) {
+        if (/^\s*export\s+\*/.test(line)) {
+          violations.push(
+            `${relative(repoRoot, indexPath)}:${index + 1}: ${line.trim()}`,
+          );
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
   });
 });
 

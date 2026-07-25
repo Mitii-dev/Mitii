@@ -1,27 +1,29 @@
 # V8 Pipeline Library
 
-V8 is the headless capability plane for the Engine runtime. Phase 0 consolidates
-existing code under `modules/` with four public orchestration pipelines.
+V8 is the headless capability plane for the Engine runtime. Phase 0 consolidated
+code under `modules/`. Phase 1 completed public contracts: intake and
+understanding facades, recommendation-only task analysis, discriminated model
+events, provider support matrix, and language registry contracts.
 
 ## Module layout
 
 ```text
 src/v8/modules/
-├── request-intake/          UserRequestEnvelopeBuilder (mode + envelope)
-├── request-understanding/   IntentRouter (intent + task analysis internals)
-├── repository-state/        WorkspaceIndexingPipeline (indexing orchestration)
+├── request-intake/          RequestIntakePipeline (mode + envelope)
+├── request-understanding/   RequestUnderstandingPipeline (intent + task analysis)
+├── repository-state/        WorkspaceIndexingPipeline + language registry
 ├── repository-context/      RepositoryContextPipeline (retrieval → selection → assembly)
-└── model-gateway/           ModelCapabilityResolver + provider contracts
+└── model-gateway/           LlmPort + Echo / OpenAI-compatible adapters
 ```
 
-## Public pipelines (Phase 0)
+## Public pipelines
 
 | Module | Pipeline | Input → Output |
 |--------|----------|----------------|
-| `request-intake` | `UserRequestEnvelopeBuilder` | `CreateUserRequestInput` → `UserRequestEnvelope` |
-| `request-understanding` | `IntentRouter` | `IntentClassificationInput` → `SuperIntentResult` |
-| `repository-state` | `WorkspaceIndexingPipeline` | `WorkspaceIndexingPipelineInput` → `WorkspaceIndexingPipelineResult` |
-| `repository-context` | `RepositoryContextPipeline` | `RepositoryContextPipelineInput` → `RepositoryContextPipelineResult` |
+| `request-intake` | `RequestIntakePipeline` | `CreateUserRequestInput` → `UserRequestEnvelope` |
+| `request-understanding` | `RequestUnderstandingPipeline` | `UserRequestEnvelope` → `RequestUnderstandingResult` |
+| `repository-state` | `WorkspaceIndexingPipeline` | indexing input → indexing result |
+| `repository-context` | `RepositoryContextPipeline` | context input → context result |
 
 ## Import policy
 
@@ -29,10 +31,14 @@ Applications import only from `src/v8/index.ts` or a module's public `index.ts`:
 
 ```ts
 import {
-  UserRequestEnvelopeBuilder,
-  IntentRouter,
+  RequestIntakePipeline,
+  RequestUnderstandingPipeline,
   WorkspaceIndexingPipeline,
   RepositoryContextPipeline,
+  EchoLlmPort,
+  OpenAiCompatibleLlmPort,
+  MODEL_PROVIDER_SUPPORT,
+  defaultLanguageProfileRegistry,
 } from "./v8";
 ```
 
@@ -40,7 +46,7 @@ Never import another module's `internal/` or `actions/` paths from outside that 
 
 ## Tests
 
-Fourteen contract and integration specs live under `src/v8/modules/**/tests/` and
+Contract and integration specs live under `src/v8/modules/**/tests/` and
 `*.spec.ts` files. Run them with:
 
 ```bash

@@ -284,72 +284,82 @@ export const modelErrorSchema =
         .optional(),
   }).strict();
 
-export const modelResponseDeltaSchema =
-  z.object({
-    content:
-      z.string()
-        .optional(),
-    reasoning:
-      z.string()
-        .optional(),
-    toolCalls:
-      z.array(
-        z.object({
-          index:
-            z.number()
-              .int()
-              .nonnegative(),
-          id:
-            z.string()
-              .min(1)
-              .optional(),
-          name:
-            z.string()
-              .min(1)
-              .optional(),
-          arguments:
-            z.string()
-              .optional(),
-        }).strict(),
-      )
-        .optional(),
-    done:
-      z.boolean()
-        .optional(),
-    finishReason:
-      z.enum([
-        "stop",
-        "length",
-        "tool_calls",
-        "content_filter",
-        "cancelled",
-        "error",
-        "unknown",
-      ])
-        .optional(),
-    usage:
-      z.object({
-        inputTokens:
-          z.number()
-            .int()
-            .nonnegative()
-            .optional(),
-        outputTokens:
-          z.number()
-            .int()
-            .nonnegative()
-            .optional(),
-        totalTokens:
-          z.number()
-            .int()
-            .nonnegative()
-            .optional(),
-      }).strict()
-        .optional(),
-    error:
-      modelErrorSchema
-        .optional(),
-  }).strict();
+const modelToolCallDeltaSchema = z
+  .object({
+    index: z.number().int().nonnegative(),
+    id: z.string().min(1).optional(),
+    name: z.string().min(1).optional(),
+    arguments: z.string().optional(),
+  })
+  .strict();
+
+const modelTokenUsageSchema = z
+  .object({
+    inputTokens: z.number().int().nonnegative().optional(),
+    outputTokens: z.number().int().nonnegative().optional(),
+    totalTokens: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+const modelFinishReasonSchema = z.enum([
+  "stop",
+  "length",
+  "tool_calls",
+  "content_filter",
+  "cancelled",
+  "error",
+  "unknown",
+]);
+
+export const modelEventSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("content_delta"),
+      content: z.string(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("reasoning_delta"),
+      reasoning: z.string(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("tool_call_delta"),
+      toolCalls: z.array(modelToolCallDeltaSchema).min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("usage"),
+      usage: modelTokenUsageSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("completed"),
+      finishReason: modelFinishReasonSchema,
+      usage: modelTokenUsageSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("failed"),
+      error: modelErrorSchema,
+      finishReason: modelFinishReasonSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("cancelled"),
+      error: modelErrorSchema,
+    })
+    .strict(),
+]);
+
+/** @deprecated Use modelEventSchema */
+export const modelResponseDeltaSchema = modelEventSchema;
 
 export const modelCapabilitiesSchema =
   z.object({

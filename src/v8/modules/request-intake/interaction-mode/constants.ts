@@ -1,13 +1,9 @@
-import type {
-  AgentMode,
-} from "./types";
-
 export const AGENT_MODES = [
   "ask",
   "plan",
   "agent",
-] as const satisfies
-  readonly AgentMode[];
+] as const;
 
-export const INTERACTION_MODE_DEFAULT =
-  "plan" as AgentMode;
+export type AgentMode = (typeof AGENT_MODES)[number];
+
+export const INTERACTION_MODE_DEFAULT: AgentMode = "plan";

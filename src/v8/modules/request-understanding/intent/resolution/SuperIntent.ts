@@ -99,7 +99,7 @@ export class SuperIntent {
         },
       ],
       confidenceMargin: 1,
-      requiresClarification: false,
+      recommendsClarification: false,
       diagnostics: {
         ruleSource: ruleResult.source,
         ...(ruleResult
@@ -241,7 +241,7 @@ export class SuperIntent {
       llmClassification,
     });
 
-    const requiresClarification = this.requiresClarification({
+    const recommendsClarification = this.evaluateClarificationRecommendation({
       primaryConfidence: primaryScore.score,
       confidenceMargin,
       interactionConflict,
@@ -258,7 +258,7 @@ export class SuperIntent {
       primaryConfidence: primaryScore.score,
       taskAgreement,
       interactionConflict,
-      requiresClarification,
+      recommendsClarification,
     });
 
     const finalClassification = intentClassificationSchema.parse({
@@ -270,17 +270,17 @@ export class SuperIntent {
         intent: alternative.intent,
         confidence: alternative.score,
       })),
-      needsClarification: requiresClarification,
+      needsClarification: recommendsClarification,
       reason,
     });
 
     const result: SuperIntentResult = {
-      status: requiresClarification ? "clarification_required" : "accepted",
+      status: recommendsClarification ? "clarification_required" : "accepted",
 
       classification: finalClassification,
       scores: sortedScores,
       confidenceMargin,
-      requiresClarification,
+      recommendsClarification,
 
       diagnostics: {
         ...(ruleResult
@@ -326,7 +326,7 @@ export class SuperIntent {
       },
     };
 
-    if (requiresClarification) {
+    if (recommendsClarification) {
       result.clarification = this.buildClarification(finalClassification);
     }
 
@@ -502,7 +502,7 @@ export class SuperIntent {
     return [...secondaryIntents].slice(0, this.options.maximumSecondaryIntents);
   }
 
-  private requiresClarification({
+  private evaluateClarificationRecommendation({
     primaryConfidence,
     confidenceMargin,
     interactionConflict,
@@ -542,13 +542,13 @@ export class SuperIntent {
     primaryConfidence,
     taskAgreement,
     interactionConflict,
-    requiresClarification,
+    recommendsClarification,
   }: {
     primaryIntent: TaskIntent;
     primaryConfidence: number;
     taskAgreement: boolean;
     interactionConflict: boolean;
-    requiresClarification: boolean;
+    recommendsClarification: boolean;
   }): string {
     if (interactionConflict) {
       return (
@@ -557,7 +557,7 @@ export class SuperIntent {
       );
     }
 
-    if (requiresClarification) {
+    if (recommendsClarification) {
       return (
         `The combined classification favors ${primaryIntent} ` +
         `with confidence ${primaryConfidence.toFixed(2)}, but the ` +

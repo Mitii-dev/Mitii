@@ -6,17 +6,13 @@ import type {
   TaskRiskAnalyzerInput,
   TaskRiskSignal,
   TaskScope,
-} from "../types";
+} from "../contracts";
 
 interface RiskPatternDefinition {
   pattern: RegExp;
   score: number;
   risk: TaskRisk;
   evidence: string;
-
-  /**
-   * When true, this risk applies only when the user wants changes made.
-   */
   requiresAct?: boolean;
 }
 
@@ -24,6 +20,7 @@ export class TaskRiskAnalyzer {
   public analyze(input: TaskRiskAnalyzerInput): TaskRiskAnalysis {
     const signals: TaskRiskSignal[] = [];
     const isMutationRequest = input.interactionIntent === "act";
+    const thresholds = TASK_ANALYZER_CONSTANTS.THRESHOLDS;
 
     let score = 0;
 
@@ -33,22 +30,22 @@ export class TaskRiskAnalyzer {
       signals,
     );
 
-    score += this.evaluateScope(input.scope, isMutationRequest, signals);
+    score += this.evaluateScope(input.scope, isMutationRequest, signals, thresholds);
 
     score += this.evaluateIntent(
       input.primaryTaskIntent,
       isMutationRequest,
       signals,
+      thresholds,
     );
 
     score += this.evaluateConstraints(input.constraints ?? [], signals);
 
-    /*
-     * Read-only requests can still involve sensitive areas, but their
-     * execution risk is lower because no project state is being changed.
-     */
     if (!isMutationRequest && score > 0) {
-      const reduction = Math.min(3, Math.floor(score * 0.35));
+      const reduction = Math.min(
+        thresholds.READ_ONLY_RISK_REDUCTION_MAX,
+        Math.floor(score * thresholds.READ_ONLY_RISK_REDUCTION_FACTOR),
+      );
 
       if (reduction > 0) {
         score -= reduction;
@@ -64,9 +61,9 @@ export class TaskRiskAnalyzer {
     score = Math.max(0, score);
 
     return {
-      risk: this.scoreToRisk(score),
+      risk: this.scoreToRisk(score, thresholds),
       score,
-      confidence: this.calculateConfidence(signals),
+      confidence: this.calculateConfidence(signals, thresholds),
       signals,
     };
   }
@@ -84,13 +81,6 @@ export class TaskRiskAnalyzer {
     for (let index = 0; index < definitions.length; index += 1) {
       const definition = definitions[index];
 
-      /*
-       * Skip execution-specific risks for question and plan requests.
-       *
-       * Example:
-       * "Explain what rm -rf does" should not be treated as though
-       * the user asked the agent to execute it.
-       */
       if (definition.requiresAct && !isMutationRequest) {
         continue;
       }
@@ -117,6 +107,7 @@ export class TaskRiskAnalyzer {
     scope: TaskScope,
     isMutationRequest: boolean,
     signals: TaskRiskSignal[],
+    thresholds: typeof TASK_ANALYZER_CONSTANTS.THRESHOLDS,
   ): number {
     if (!isMutationRequest) {
       return 0;
@@ -126,34 +117,34 @@ export class TaskRiskAnalyzer {
       case "workspace": {
         signals.push({
           name: "workspace_scope",
-          score: 3,
+          score: thresholds.RISK_SCOPES.WORKSPACE,
           evidence:
             "The requested change may affect the entire workspace or monorepo.",
         });
 
-        return 3;
+        return thresholds.RISK_SCOPES.WORKSPACE;
       }
 
       case "repository": {
         signals.push({
           name: "repository_scope",
-          score: 2,
+          score: thresholds.RISK_SCOPES.REPOSITORY,
           evidence: "The requested change may affect the entire repository.",
         });
 
-        return 2;
+        return thresholds.RISK_SCOPES.REPOSITORY;
       }
 
       case "package":
       case "multi_file": {
         signals.push({
           name: "multi_location_scope",
-          score: 1,
+          score: thresholds.RISK_SCOPES.MULTI_LOCATION,
           evidence:
             "The requested change affects multiple files or a complete package.",
         });
 
-        return 1;
+        return thresholds.RISK_SCOPES.MULTI_LOCATION;
       }
 
       case "single_location":
@@ -167,25 +158,14 @@ export class TaskRiskAnalyzer {
     primaryTaskIntent: TaskRiskAnalyzerInput["primaryTaskIntent"],
     isMutationRequest: boolean,
     signals: TaskRiskSignal[],
+    thresholds: typeof TASK_ANALYZER_CONSTANTS.THRESHOLDS,
   ): number {
     if (!isMutationRequest) {
       return 0;
     }
 
-    const highRiskIntents = new Set<string>([
-      "security",
-      "migrate",
-      "schema",
-      "dependency",
-      "config",
-    ]);
-
-    const mediumRiskIntents = new Set<string>([
-      "feature",
-      "refactor",
-      "optimize",
-      "scaffold",
-    ]);
+    const highRiskIntents = new Set<string>(thresholds.RISK_INTENTS.HIGH);
+    const mediumRiskIntents = new Set<string>(thresholds.RISK_INTENTS.MEDIUM);
 
     if (highRiskIntents.has(primaryTaskIntent)) {
       signals.push({
@@ -246,25 +226,31 @@ export class TaskRiskAnalyzer {
     return -1;
   }
 
-  private scoreToRisk(score: number): TaskRisk {
-    if (score >= 10) {
+  private scoreToRisk(
+    score: number,
+    thresholds: typeof TASK_ANALYZER_CONSTANTS.THRESHOLDS,
+  ): TaskRisk {
+    if (score >= thresholds.RISK.CRITICAL) {
       return "critical";
     }
 
-    if (score >= 6) {
+    if (score >= thresholds.RISK.HIGH) {
       return "high";
     }
 
-    if (score >= 3) {
+    if (score >= thresholds.RISK.MEDIUM) {
       return "medium";
     }
 
     return "low";
   }
 
-  private calculateConfidence(signals: readonly TaskRiskSignal[]): number {
+  private calculateConfidence(
+    signals: readonly TaskRiskSignal[],
+    thresholds: typeof TASK_ANALYZER_CONSTANTS.THRESHOLDS,
+  ): number {
     if (signals.length === 0) {
-      return 0.65;
+      return thresholds.DEFAULT_RISK_CONFIDENCE;
     }
 
     const positiveSignalCount = signals.filter(
@@ -276,16 +262,13 @@ export class TaskRiskAnalyzer {
     ).length;
 
     const evidenceStrength = Math.min(0.25, positiveSignalCount * 0.05);
-
     const conflictPenalty = Math.min(0.1, negativeSignalCount * 0.03);
 
-    return this.clamp(0.7 + evidenceStrength - conflictPenalty);
+    return this.clamp(
+      thresholds.BASE_RISK_CONFIDENCE + evidenceStrength - conflictPenalty,
+    );
   }
 
-  /**
-   * Creates a stable signal name because the risk catalog currently
-   * provides risk/evidence but does not provide an explicit name.
-   */
   private createPatternSignalName(
     definition: RiskPatternDefinition,
     index: number,
@@ -301,10 +284,6 @@ export class TaskRiskAnalyzer {
       : `${definition.risk}_risk_pattern_${index + 1}`;
   }
 
-  /**
-   * Resets lastIndex so global or sticky catalog regexes behave
-   * consistently across repeated analyzer calls.
-   */
   private matches(pattern: RegExp, text: string): boolean {
     pattern.lastIndex = 0;
 

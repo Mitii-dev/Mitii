@@ -14,7 +14,7 @@ import type {
   TaskAnalyzerInput,
   TaskComplexity,
   TaskScope,
-} from "../../types";
+} from "../../contracts";
 
 export class RulewiseTaskAnalyzer {
   private readonly targetExtractor: TaskTargetExtractor;
@@ -138,7 +138,7 @@ export class RulewiseTaskAnalyzer {
       userMessage: text,
       targets: targetResult.targets,
 
-      intentRequiresClarification: input.intent.requiresClarification,
+      intentRequiresClarification: input.intent.recommendsClarification,
 
       intentConfidence: classification.confidence,
 
@@ -157,24 +157,24 @@ export class RulewiseTaskAnalyzer {
     );
 
     /*
-     * 7. Determine downstream recommendations
+     * 7. Determine downstream recommendations (evidence only — Decision Policy authorizes)
      */
     const isActionable = interactionIntent === "act";
 
-    const requiresRepositoryDiscovery = this.requiresRepositoryDiscovery(
+    const recommendsRepositoryDiscovery = this.recommendsRepositoryDiscovery(
       primaryTaskIntent,
       targetResult.targets.length,
       scopeResult.scope,
     );
 
-    const requiresVerification =
+    const recommendsVerification =
       isActionable &&
       this.isIntentIncluded(
         primaryTaskIntent,
         TASK_ANALYZER_CONSTANTS.INTENT_DEFAULTS.VERIFICATION_REQUIRED,
       );
 
-    const requiresPlanning =
+    const recommendsPlanning =
       interactionIntent === "plan" ||
       (isActionable &&
         (this.isIntentIncluded(
@@ -184,8 +184,8 @@ export class RulewiseTaskAnalyzer {
           complexityResult.complexity === "complex" ||
           complexityResult.complexity === "very_complex"));
 
-    const requiresTaskClarification =
-      input.intent.requiresClarification ||
+    const recommendsTaskClarification =
+      input.intent.recommendsClarification ||
       (isActionable && clarityResult.clarity === "unclear");
 
     /*
@@ -211,10 +211,10 @@ export class RulewiseTaskAnalyzer {
       constraints: constraintResult.values,
       requestedOutcomes: outcomeResult.values,
 
-      requiresRepositoryDiscovery,
-      requiresPlanning,
-      requiresVerification,
-      requiresTaskClarification,
+      recommendsRepositoryDiscovery,
+      recommendsPlanning,
+      recommendsVerification,
+      recommendsTaskClarification,
 
       estimatedFilesAffected: this.estimateFilesAffected(
         scopeResult.scope,
@@ -226,7 +226,7 @@ export class RulewiseTaskAnalyzer {
     };
   }
 
-  private requiresRepositoryDiscovery(
+  private recommendsRepositoryDiscovery(
     primaryTaskIntent: TaskAnalyzerInput["intent"]["classification"]["primaryTaskIntent"],
     targetCount: number,
     scope: TaskScope,
@@ -297,27 +297,33 @@ export class RulewiseTaskAnalyzer {
     complexity: TaskComplexity,
     signalCount: number,
   ): number {
+    const thresholds = TASK_ANALYZER_CONSTANTS.THRESHOLDS.COMPLEXITY_CONFIDENCE;
+
     if (signalCount === 0) {
-      return complexity === "simple" || complexity === "trivial" ? 0.65 : 0.55;
+      return complexity === "simple" || complexity === "trivial"
+        ? thresholds.EMPTY_SIMPLE
+        : thresholds.EMPTY_OTHER;
     }
 
-    return this.clamp(0.65 + Math.min(0.25, signalCount * 0.04));
+    return this.clamp(
+      thresholds.BASE +
+        Math.min(thresholds.MAX_BONUS, signalCount * thresholds.PER_SIGNAL),
+    );
   }
 
   private normalizeComplexitySignalScore(score: number): number {
-    /*
-     * Complexity scores can be larger than 1.
-     * TaskAnalysisSignal.weight must remain between 0 and 1.
-     */
-    return this.clamp(Math.abs(score) / 3);
+    return this.clamp(
+      Math.abs(score) /
+        TASK_ANALYZER_CONSTANTS.THRESHOLDS.SIGNAL_NORMALIZATION
+          .COMPLEXITY_DIVISOR,
+    );
   }
 
   private normalizeRiskSignalScore(score: number): number {
-    /*
-     * Risk scores can be positive or negative.
-     * Weight represents evidence strength, not direction.
-     */
-    return this.clamp(Math.abs(score) / 7);
+    return this.clamp(
+      Math.abs(score) /
+        TASK_ANALYZER_CONSTANTS.THRESHOLDS.SIGNAL_NORMALIZATION.RISK_DIVISOR,
+    );
   }
 
   private estimateFilesAffected(
@@ -327,46 +333,56 @@ export class RulewiseTaskAnalyzer {
     minimum: number;
     maximum?: number;
   } {
+    const impact = TASK_ANALYZER_CONSTANTS.FILE_IMPACT;
+
     switch (scope) {
       case "single_location":
         return {
-          minimum: 1,
+          minimum: impact.single_location.minimum,
           maximum:
-            complexity === "complex" || complexity === "very_complex" ? 3 : 1,
+            complexity === "complex" || complexity === "very_complex"
+              ? impact.single_location.complexMaximum
+              : impact.single_location.defaultMaximum,
         };
 
       case "multi_file":
         return {
-          minimum: 2,
+          minimum: impact.multi_file.minimum,
           maximum:
             complexity === "very_complex"
-              ? 15
+              ? impact.multi_file.veryComplexMaximum
               : complexity === "complex"
-                ? 10
-                : 6,
+                ? impact.multi_file.complexMaximum
+                : impact.multi_file.defaultMaximum,
         };
 
       case "package":
         return {
-          minimum: 3,
-          maximum: complexity === "very_complex" ? 25 : 15,
+          minimum: impact.package.minimum,
+          maximum:
+            complexity === "very_complex"
+              ? impact.package.veryComplexMaximum
+              : impact.package.defaultMaximum,
         };
 
       case "repository":
         return {
-          minimum: 5,
-          maximum: complexity === "very_complex" ? 50 : 30,
+          minimum: impact.repository.minimum,
+          maximum:
+            complexity === "very_complex"
+              ? impact.repository.veryComplexMaximum
+              : impact.repository.defaultMaximum,
         };
 
       case "workspace":
         return {
-          minimum: 5,
+          minimum: impact.workspace.minimum,
         };
 
       case "unknown":
       default:
         return {
-          minimum: 1,
+          minimum: impact.unknown.minimum,
         };
     }
   }

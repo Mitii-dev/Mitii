@@ -4,8 +4,8 @@ import test from "node:test";
 import type {
   LlmPort,
   ModelCapabilities,
+  ModelEvent,
   ModelRequest,
-  ModelResponseDelta,
 } from "../../../model-gateway";
 
 import {
@@ -58,18 +58,22 @@ class StaticLlmPort
   public async *complete(
     request: ModelRequest,
   ): AsyncIterable<
-    ModelResponseDelta
+    ModelEvent
   > {
     this.lastRequest =
       request;
 
     yield {
+      type:
+        "content_delta",
       content:
         JSON.stringify(
           this.response,
         ),
-      done:
-        true,
+    };
+    yield {
+      type:
+        "completed",
       finishReason:
         "stop",
     };
