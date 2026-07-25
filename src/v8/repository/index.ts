@@ -4,6 +4,7 @@ export * from "./catalog";
 export * from "./chunking";
 export * from "./code-index";
 export * from "./code-indexing";
+export * from "./context-selection";
 export * from "./embedding";
 export * from "./hybrid-retrieval";
 export * from "./repo-graph";
