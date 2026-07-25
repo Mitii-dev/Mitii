@@ -351,6 +351,152 @@ test(
 );
 
 test(
+  "never splits one change revision across pages",
+  async () => {
+    const fixture =
+      await createFixture();
+
+    try {
+      const large =
+        await fixture.chunker
+          .chunk(
+            {
+              sourceId:
+                "source:large",
+              rootId:
+                "workspace",
+              relativePath:
+                "src/large.txt",
+              content:
+                Array.from(
+                  {
+                    length: 20,
+                  },
+                  (_, index) =>
+                    `Paragraph ${index} contains enough searchable text for a bounded chunk.`,
+                ).join(
+                  "\n\n",
+                ),
+            },
+            {
+              targetChunkCharacters:
+                200,
+              maximumChunkCharacters:
+                240,
+              minimumChunkCharacters:
+                50,
+              overlapCharacters:
+                0,
+              maximumChunks: 20,
+            },
+          );
+
+      assert.ok(
+        large.chunks.length >
+          1,
+      );
+
+      await fixture.textIndex
+        .coordinator.index({
+          workspace:
+            "/repo",
+          workspaceSnapshotId:
+            "snapshot-1",
+          indexedAt: 100,
+          chunking: large,
+        });
+
+      const small =
+        await fixture.chunker
+          .chunk({
+            sourceId:
+              "source:small",
+            rootId:
+              "workspace",
+            relativePath:
+              "src/small.txt",
+            content:
+              "A second document creates revision two.",
+          });
+
+      await fixture.textIndex
+        .coordinator.index({
+          workspace:
+            "/repo",
+          workspaceSnapshotId:
+            "snapshot-2",
+          indexedAt: 200,
+          chunking: small,
+        });
+
+      const firstPage =
+        await fixture.textIndex
+          .reader.getChanges({
+            workspace:
+              "/repo",
+            rootId:
+              "workspace",
+            afterRevision: 0,
+            maximumChanges: 1,
+          });
+
+      assert.equal(
+        firstPage.changes
+          .length,
+        large.chunks.length,
+      );
+
+      assert.ok(
+        firstPage.changes
+          .every(
+            (change) =>
+              change.revision ===
+              1,
+          ),
+      );
+
+      assert.equal(
+        firstPage.truncated,
+        true,
+      );
+
+      const secondPage =
+        await fixture.textIndex
+          .reader.getChanges({
+            workspace:
+              "/repo",
+            rootId:
+              "workspace",
+            afterRevision: 1,
+            maximumChanges: 1,
+          });
+
+      assert.equal(
+        secondPage.changes
+          .length,
+        small.chunks.length,
+      );
+
+      assert.ok(
+        secondPage.changes
+          .every(
+            (change) =>
+              change.revision ===
+              2,
+          ),
+      );
+
+      assert.equal(
+        secondPage.truncated,
+        false,
+      );
+    } finally {
+      fixture.database.close();
+    }
+  },
+);
+
+test(
   "does not overwrite valid data with rejected Chunking output",
   async () => {
     const fixture =

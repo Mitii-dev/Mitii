@@ -305,7 +305,9 @@ export class SqliteTextIndexReader
             query.workspace,
             query.rootId,
             query.afterRevision,
-            query.maximumChanges + 1,
+            query.maximumChanges,
+            query.workspace,
+            query.rootId,
           ) as
           SqliteTextIndexChangeRow[];
 
@@ -316,20 +318,18 @@ export class SqliteTextIndexReader
           context,
         );
 
+      const lastReturnedRevision =
+        rows.at(-1)?.revision ??
+        query.afterRevision;
+
       const truncated =
-        rows.length >
-        query.maximumChanges;
+        lastReturnedRevision <
+        latestRevision;
 
       return textIndexChangeQueryResultSchema
         .parse({
           changes:
-            rows
-              .slice(
-                0,
-                query
-                  .maximumChanges,
-              )
-              .map((row) => ({
+            rows.map((row) => ({
                 revision:
                   row.revision,
                 kind: row.kind,

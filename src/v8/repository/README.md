@@ -5,6 +5,7 @@ This bundle contains aligned replacements for:
 - `chunking`
 - `code-index`
 - `code-indexing`
+- `embedding`
 - `repo-graph`
 - `repo-map`
 - `source-analysis`
@@ -60,6 +61,21 @@ v8-repository-intelligence/
 │   ├── CodeIndexUpdatePlanner.ts
 │   ├── CodeIndexUpdater.ts
 │   ├── CodeIndexWriteError.ts
+│   ├── constants.ts
+│   ├── index.ts
+│   ├── README.md
+│   ├── schema.ts
+│   └── types.ts
+├── embedding/
+│   ├── tests/
+│   │   └── Embedding.spec.ts
+│   ├── EmbeddingChangePlanner.ts
+│   ├── EmbeddingError.ts
+│   ├── EmbeddingFactory.ts
+│   ├── EmbeddingGenerator.ts
+│   ├── EmbeddingSynchronizer.ts
+│   ├── EmbeddingTextPreparer.ts
+│   ├── EmbeddingVectorValidator.ts
 │   ├── constants.ts
 │   ├── index.ts
 │   ├── README.md
@@ -156,6 +172,7 @@ Add these files in addition to replacing existing files:
 - `shared/sqlite/index.ts`
 - `shared/sqlite/types.ts`
 - the complete `text-index/` module
+- the complete `embedding/` module
 
 Because Code Indexing now reuses the shared SQLite contract, replace:
 
@@ -207,6 +224,13 @@ Adjust those two relative import paths if your folder names differ.
 17. Text Index revisions and chunk changes support incremental embedding.
 18. Cancelled, rejected, and failed Chunking results preserve the last valid
     Text Index document.
+19. Text Index change pages never split a revision boundary.
+20. Embedding profiles isolate model, dimension, and normalization changes.
+21. Embedding output count, dimensions, finite values, and vector norms are
+    validated before writes.
+22. Vector mutations and Text Index checkpoint advancement share one atomic
+    write-port call.
+23. Embedding provider failures never silently switch to a fallback model.
 
 ## Deliberately kept outside these libraries
 
@@ -220,6 +244,8 @@ Adjust those two relative import paths if your folder names differ.
   Chunking does not own those stores.
 - Text Index owns lexical persistence but not vector persistence, hybrid
   retrieval, or context budgeting.
+- Embedding generates vectors but does not own LanceDB, vector search,
+  provider discovery, scheduling, or retry policy.
 
 This keeps every current module deterministic and directly testable from
 input to output.
@@ -246,5 +272,11 @@ input to output.
   - revisioned chunk change feed and chunk lookup
   - preservation of valid text data after rejected Chunking output
   - identical chunk IDs isolated safely across workspaces
+  - revision-atomic Text Index change pagination
+  - bounded embedding provider batching and explicit input truncation
+  - vector count, dimension, finite-value, and norm validation
+  - revision-based embedding synchronization and unchanged resume
+  - missing-upsert deletion and empty-revision checkpoint advancement
+  - synchronization batch-limit partial results
   - legacy SQLite schema migration and idempotent re-migration
   - atomic Code Index insert, unchanged skip, and removal

@@ -49,7 +49,7 @@ export const TEXT_INDEX_DEFAULTS = {
     100,
 
   MAXIMUM_CHUNK_QUERY_SIZE:
-    1_000,
+    2_500,
 
   SQL_BATCH_SIZE:
     400,
@@ -423,19 +423,50 @@ export const TEXT_INDEX_SQL = {
   `,
 
   GET_CHANGES: `
+    WITH revision_counts AS (
+      SELECT
+        revision,
+        COUNT(*) AS change_count
+      FROM text_index_changes
+      WHERE workspace = ?
+        AND root_id = ?
+        AND revision > ?
+      GROUP BY revision
+    ),
+    revision_windows AS (
+      SELECT
+        revision,
+        COALESCE(
+          SUM(change_count) OVER (
+            ORDER BY revision
+            ROWS BETWEEN UNBOUNDED PRECEDING
+              AND 1 PRECEDING
+          ),
+          0
+        ) AS preceding_change_count
+      FROM revision_counts
+    ),
+    selected_revisions AS (
+      SELECT revision
+      FROM revision_windows
+      WHERE preceding_change_count < ?
+    )
     SELECT
-      revision AS revision,
-      operation AS kind,
-      chunk_id AS chunkId,
-      root_id AS rootId,
-      relative_path AS relativePath,
-      changed_at AS changedAt
-    FROM text_index_changes
-    WHERE workspace = ?
-      AND root_id = ?
-      AND revision > ?
-    ORDER BY revision, operation, chunk_id
-    LIMIT ?
+      changes.revision AS revision,
+      changes.operation AS kind,
+      changes.chunk_id AS chunkId,
+      changes.root_id AS rootId,
+      changes.relative_path AS relativePath,
+      changes.changed_at AS changedAt
+    FROM text_index_changes AS changes
+    INNER JOIN selected_revisions
+      ON selected_revisions.revision = changes.revision
+    WHERE changes.workspace = ?
+      AND changes.root_id = ?
+    ORDER BY
+      changes.revision,
+      changes.operation,
+      changes.chunk_id
   `,
 } as const;
 
