@@ -190,6 +190,7 @@ export interface SqliteCodeIndexSymbolRow {
   name: string;
   kind: string;
   signature: string | null;
+  exported: number | null;
   startLine: number | null;
   endLine: number | null;
   parentName: string | null;
@@ -203,6 +204,7 @@ export interface SqliteCodeIndexImportRow {
   targetRelativePath: string | null;
   specifier: string;
   line: number;
+  importedNamesJson: string | null;
 }
 
 export interface SqliteCodeIndexReferenceRow {
@@ -239,4 +241,3 @@ export interface CodeIndexErrorOptions {
   adapterId: string;
   cause?: unknown;
 }
-

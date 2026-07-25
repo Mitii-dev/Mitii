@@ -414,11 +414,10 @@ export class SqliteCodeIndexAdapter
                   }
                 : {}),
 
-              ...(row.signature?.includes(
-                "export",
-              )
+              ...(row.exported !== null
                 ? {
-                    exported: true,
+                    exported:
+                      row.exported === 1,
                   }
                 : {}),
 
@@ -549,7 +548,10 @@ export class SqliteCodeIndexAdapter
                     row.line,
                   ),
 
-                  importedNames: [],
+                  importedNames:
+                    this.parseImportedNames(
+                      row.importedNamesJson,
+                    ),
                 })
               : codeIndexImportSchema.parse({
                   resolution:
@@ -572,7 +574,10 @@ export class SqliteCodeIndexAdapter
                       }
                     : {}),
 
-                  importedNames: [],
+                  importedNames:
+                    this.parseImportedNames(
+                      row.importedNamesJson,
+                    ),
                 });
 
           imports.push(
@@ -1011,6 +1016,42 @@ export class SqliteCodeIndexAdapter
           language,
         }
       : {};
+  }
+
+  private parseImportedNames(
+    value: string | null,
+  ): string[] {
+    if (!value) {
+      return [];
+    }
+
+    try {
+      const parsed: unknown =
+        JSON.parse(value);
+
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+
+      return [
+        ...new Set(
+          parsed
+            .filter(
+              (
+                item,
+              ): item is string =>
+                typeof item ===
+                  "string" &&
+                Boolean(item.trim()),
+            )
+            .map((item) =>
+              item.trim(),
+            ),
+        ),
+      ];
+    } catch {
+      return [];
+    }
   }
 
   private deduplicateImports(

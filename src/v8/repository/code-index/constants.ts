@@ -92,6 +92,7 @@ export const SQLITE_CODE_INDEX_SQL = {
       s.name AS name,
       s.kind AS kind,
       s.signature AS signature,
+      s.exported AS exported,
       s.start_line AS startLine,
       s.end_line AS endLine,
       parent_symbol.name AS parentName,
@@ -112,7 +113,8 @@ export const SQLITE_CODE_INDEX_SQL = {
       target_file.id AS targetFileId,
       fi.to_rel_path AS targetRelativePath,
       fi.specifier AS specifier,
-      fi.line AS line
+      fi.line AS line,
+      fi.imported_names_json AS importedNamesJson
     FROM file_imports fi
     JOIN files source_file
       ON source_file.id = fi.from_file_id
@@ -146,4 +148,3 @@ export const SQLITE_CODE_INDEX_SQL = {
       AND sr.file_id IN
   `,
 } as const;
-
