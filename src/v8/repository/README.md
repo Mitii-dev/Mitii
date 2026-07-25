@@ -2,6 +2,7 @@
 
 This bundle contains aligned replacements for:
 
+- `chunking`
 - `code-index`
 - `code-indexing`
 - `repo-graph`
@@ -12,6 +13,29 @@ This bundle contains aligned replacements for:
 
 ```text
 v8-repository-intelligence/
+├── chunking/
+│   ├── adapters/
+│   │   └── node/
+│   │       └── NodeSha256ChunkHasher.ts
+│   ├── strategies/
+│   │   ├── ChunkingStrategyRegistry.ts
+│   │   ├── CodeChunker.ts
+│   │   ├── MarkdownChunker.ts
+│   │   └── TextChunker.ts
+│   ├── tests/
+│   │   └── ChunkingService.spec.ts
+│   ├── CharacterTokenEstimator.ts
+│   ├── ChunkIdBuilder.ts
+│   ├── ChunkNormalizer.ts
+│   ├── ChunkSpanSplitter.ts
+│   ├── ChunkTextIndex.ts
+│   ├── ChunkingFactory.ts
+│   ├── ChunkingService.ts
+│   ├── constants.ts
+│   ├── index.ts
+│   ├── README.md
+│   ├── schema.ts
+│   └── types.ts
 ├── code-index/
 │   ├── adapters/
 │   │   └── sqlite/
@@ -83,6 +107,8 @@ v8-repository-intelligence/
 
 The implementation follows these boundaries:
 
+- Chunking converts already-read text and optional Source Analysis into
+  deterministic, bounded chunks.
 - Code Index exposes factual files, symbols, imports, and references.
 - Code Indexing incrementally persists Source Analysis facts in SQLite.
 - Repo Graph converts Code Index facts into a bounded structural graph.
@@ -135,6 +161,9 @@ Adjust those two relative import paths if your folder names differ.
 9. Code Indexing replaces a file's structured facts in one transaction.
 10. Failed source analysis preserves the last valid indexed document.
 11. Content hashes are computed from the exact text that was analyzed.
+12. Chunking prefers Source Analysis ranges but never reparses source code.
+13. Chunking makes oversized-input rejection or truncation explicit.
+14. Chunk hashing, token estimation, and strategies are injected boundaries.
 
 ## Deliberately kept outside these libraries
 
@@ -144,6 +173,8 @@ Adjust those two relative import paths if your folder names differ.
 - Incremental graph mutation belongs in a future `RepoGraphUpdater`.
 - Vector retrieval and LanceDB do not belong in Repo Map or Repo Graph.
 - Focused traversal and impact analysis belong above the immutable graph.
+- FTS persistence, embeddings, and vector writes consume Chunking output;
+  Chunking does not own those stores.
 
 This keeps every current module deterministic and directly testable from
 input to output.
@@ -161,5 +192,8 @@ input to output.
   - Regex fallback analysis
   - unsupported-language analysis
   - bounded source-file reading
+  - code, Markdown, and fallback text chunking
+  - oversized-input truncation and rejection
+  - cancellation and deterministic chunk IDs
   - legacy SQLite schema migration and idempotent re-migration
   - atomic Code Index insert, unchanged skip, and removal
