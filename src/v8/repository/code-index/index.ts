@@ -1,5 +1,7 @@
-export * from "./schema";
 export * from "./types";
-export * from "./adapters";
+export * from "./constants";
+export * from "./schema";
 export * from "./CodeIndexError";
-export * from "./CodeIndexReadPort";
+export * from "./CodeIndexIdBuilder";
+export * from "./adapters/sqlite/SqliteCodeIndexAdapter";
+

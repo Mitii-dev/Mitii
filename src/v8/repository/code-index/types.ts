@@ -1,17 +1,14 @@
 import type { WorkspaceSnapshot } from "../workspace";
 
 /**
- * CODE INDEX FILES
+ * CODE INDEX FACTS
  */
 
 export interface CodeIndexFile {
   id: string;
-
   rootId: string;
   relativePath: string;
-
   language?: string;
-
   size?: number;
   modifiedAt?: string;
   contentHash?: string;
@@ -20,22 +17,48 @@ export interface CodeIndexFile {
 export interface CodeIndexSymbol {
   id: string;
   fileId: string;
-
   name: string;
   kind: string;
-
+  parentSymbolId?: string;
   exported?: boolean;
   signature?: string;
-
   startLine?: number;
   endLine?: number;
 }
 
+export interface CodeIndexResolvedImport {
+  resolution: "resolved";
+  fromFileId: string;
+  toFileId: string;
+  resolvedRelativePath: string;
+  specifier: string;
+  line?: number;
+  importedNames: string[];
+}
+
+export interface CodeIndexUnresolvedImport {
+  resolution: "unresolved";
+  fromFileId: string;
+  specifier: string;
+  line?: number;
+  candidateRelativePath?: string;
+  importedNames: string[];
+}
+
+export type CodeIndexImport =
+  | CodeIndexResolvedImport
+  | CodeIndexUnresolvedImport;
+
+export type CodeIndexReferenceResolution =
+  | "resolved"
+  | "ambiguous"
+  | "unresolved";
+
 export interface CodeIndexReference {
   fromFileId: string;
-
   symbolName: string;
-
+  line?: number;
+  resolution: CodeIndexReferenceResolution;
   toFileId?: string;
   toSymbolId?: string;
 }
@@ -52,25 +75,89 @@ export interface CodeIndexContext {
 export interface CodeIndexFileQuery {
   rootIds?: readonly string[];
   folderPrefix?: string;
-
   maximumFiles: number;
 }
 
 export interface CodeIndexFileQueryResult {
   files: readonly CodeIndexFile[];
-
   totalAvailable: number;
   truncated: boolean;
 }
 
+export interface CodeIndexSymbolQuery {
+  fileIds: readonly string[];
+  maximumSymbolsPerFile: number;
+  kinds?: readonly string[];
+  namePrefix?: string;
+}
+
+export interface CodeIndexSymbolQueryResult {
+  symbolsByFile: ReadonlyMap<
+    string,
+    readonly CodeIndexSymbol[]
+  >;
+  truncatedFileIds: readonly string[];
+}
 
 /**
- * SQLITE READ PORT
+ * CODE INDEX PORT
+ */
+
+export interface CodeIndexReadPort {
+  readonly id: string;
+
+  getChangeToken(
+    context: CodeIndexContext,
+  ): Promise<string>;
+
+  getFiles(
+    query: CodeIndexFileQuery,
+    context: CodeIndexContext,
+  ): Promise<CodeIndexFileQueryResult>;
+
+  getSymbols(
+    query: CodeIndexSymbolQuery,
+    context: CodeIndexContext,
+  ): Promise<CodeIndexSymbolQueryResult>;
+
+  getImports(
+    fromFileIds: readonly string[],
+    context: CodeIndexContext,
+  ): Promise<readonly CodeIndexImport[]>;
+
+  getReferences(
+    fromFileIds: readonly string[],
+    context: CodeIndexContext,
+  ): Promise<readonly CodeIndexReference[]>;
+}
+
+/**
+ * STABLE IDENTITIES
+ */
+
+export interface CodeIndexFileIdentityInput {
+  rootId: string;
+  relativePath: string;
+}
+
+export interface CodeIndexFileIdentity {
+  rootId: string;
+  relativePath: string;
+}
+
+export interface CodeIndexSymbolIdentityInput {
+  fileId: string;
+  kind: string;
+  name: string;
+  startLine?: number;
+}
+
+/**
+ * SQLITE PORT
  */
 
 export interface SqlitePreparedStatementPort {
   get(...parameters: unknown[]): unknown;
-
   all(...parameters: unknown[]): unknown[];
 }
 
@@ -78,23 +165,17 @@ export interface SqliteReadPort {
   prepare(sql: string): SqlitePreparedStatementPort;
 }
 
-/**
- * SQLITE ADAPTER OPTIONS
- */
-
 export interface SqliteCodeIndexAdapterOptions {
   workspace: string;
-
-  /**
-   * WorkspaceRoot.id represented by this SQLite workspace.
-   */
   rootId: string;
-
   sqlBatchSize?: number;
 }
 
 /**
- * SQLITE DATABASE ROWS
+ * SQLITE ROWS
+ *
+ * These are adapter transport types. SQLite numeric identifiers never
+ * become public Code Index identifiers.
  */
 
 export interface SqliteCodeIndexFileRow {
@@ -106,34 +187,40 @@ export interface SqliteCodeIndexFileRow {
 export interface SqliteCodeIndexSymbolRow {
   id: number;
   fileId: number;
-
   name: string;
   kind: string;
-
   signature: string | null;
-
   startLine: number | null;
   endLine: number | null;
+  parentName: string | null;
+  parentKind: string | null;
+  parentStartLine: number | null;
 }
 
 export interface SqliteCodeIndexImportRow {
   fromFileId: number;
-
   targetFileId: number | null;
   targetRelativePath: string | null;
+  specifier: string;
+  line: number;
 }
 
 export interface SqliteCodeIndexReferenceRow {
   fromFileId: number;
-
   symbolName: string;
-
-  targetSymbolId: number | null;
+  line: number;
   targetFileId: number | null;
+  targetRelativePath: string | null;
+  targetSymbolName: string | null;
+  targetSymbolKind: string | null;
+  targetSymbolStartLine: number | null;
 }
 
 export interface SqliteCodeIndexWatermarkRow {
-  watermark: number | null;
+  fileCount: number;
+  indexedAtMaximum: number | null;
+  indexedAtSum: number | null;
+  idSum: number | null;
 }
 
 /**
@@ -153,58 +240,3 @@ export interface CodeIndexErrorOptions {
   cause?: unknown;
 }
 
-export interface CodeIndexSymbolQuery {
-  fileIds: readonly string[];
-
-  /**
-   * Hard adapter-level safety limit per file.
-   */
-  maximumSymbolsPerFile: number;
-
-  kinds?: readonly string[];
-  namePrefix?: string;
-}
-
-export interface CodeIndexResolvedImport {
-  resolution: "resolved";
-
-  fromFileId: string;
-  toFileId: string;
-
-  /**
-   * Canonical workspace-relative path of the resolved target.
-   */
-  resolvedRelativePath: string;
-
-  /**
-   * Original import specifier.
-   *
-   * Example: "../utils" or "@app/auth"
-   */
-  specifier?: string;
-
-  importedNames: string[];
-}
-
-export interface CodeIndexUnresolvedImport {
-  resolution: "unresolved";
-
-  fromFileId: string;
-
-  /**
-   * Original import specifier.
-   */
-  specifier?: string;
-
-  /**
-   * Best-effort path produced by the indexer when resolution
-   * did not produce a file inside the current snapshot.
-   */
-  candidateRelativePath?: string;
-
-  importedNames: string[];
-}
-
-export type CodeIndexImport =
-  | CodeIndexResolvedImport
-  | CodeIndexUnresolvedImport;
