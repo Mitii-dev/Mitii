@@ -16,6 +16,7 @@
     "napi",
     "ollama",
     "qwen",
+    "redactions",
     "Rerank",
     "reranker",
     "reranking",

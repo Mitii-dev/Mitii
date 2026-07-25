@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-import { BOUNDED_WALK_WARNING_CODES } from "../shared";
+import {
+  BOUNDED_WALK_WARNING_CODES,
+} from "../shared/bounded-walker/constants";
 
 const canonicalRelativePathSchema = z
   .string()
