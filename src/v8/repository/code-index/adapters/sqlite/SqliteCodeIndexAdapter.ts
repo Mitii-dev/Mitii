@@ -12,6 +12,7 @@ import {
   codeIndexFileQueryResultSchema,
   codeIndexImportSchema,
   codeIndexReferenceSchema,
+  codeIndexSymbolQuerySchema,
   codeIndexSymbolSchema,
 } from "../../schema";
 
@@ -21,7 +22,6 @@ import type {
   CodeIndexFileQuery,
   CodeIndexFileQueryResult,
   CodeIndexImport,
-  CodeIndexReadPort,
   CodeIndexReference,
   CodeIndexSymbol,
   CodeIndexSymbolQuery,
@@ -35,6 +35,7 @@ import type {
 } from "../../types";
 
 import type { WorkspaceFileEntry } from "../../../workspace";
+import { CodeIndexReadPort } from "../../CodeIndexReadPort";
 
 export class SqliteCodeIndexAdapter implements CodeIndexReadPort {
   public readonly id = CODE_INDEX_IDS.SQLITE_ADAPTER;
@@ -45,11 +46,9 @@ export class SqliteCodeIndexAdapter implements CodeIndexReadPort {
 
   constructor(
     private readonly database: SqliteReadPort,
-
     options: SqliteCodeIndexAdapterOptions,
   ) {
     this.workspace = options.workspace.trim();
-
     this.rootId = options.rootId.trim();
 
     this.sqlBatchSize =
@@ -206,13 +205,17 @@ export class SqliteCodeIndexAdapter implements CodeIndexReadPort {
   ): Promise<ReadonlyMap<string, readonly CodeIndexSymbol[]>> {
     throwIfCodeIndexAborted(context.abortSignal);
 
+    const validatedQuery = codeIndexSymbolQuerySchema.parse(
+      query,
+    ) as CodeIndexSymbolQuery;
+
     const result = new Map<string, CodeIndexSymbol[]>();
 
-    for (const fileId of query.fileIds) {
+    for (const fileId of validatedQuery.fileIds) {
       result.set(fileId, []);
     }
 
-    const databaseIds = this.parseFileIds(query.fileIds);
+    const databaseIds = this.parseFileIds(validatedQuery.fileIds);
 
     try {
       for (const batch of this.createBatches(databaseIds)) {
@@ -229,7 +232,32 @@ export class SqliteCodeIndexAdapter implements CodeIndexReadPort {
         for (const row of rows) {
           const fileId = this.createFileId(row.fileId);
 
-          if (!result.has(fileId)) {
+          const fileSymbols = result.get(fileId);
+
+          if (!fileSymbols) {
+            continue;
+          }
+
+          if (fileSymbols.length >= validatedQuery.maximumSymbolsPerFile) {
+            continue;
+          }
+
+          const kind = row.kind || "symbol";
+
+          if (
+            validatedQuery.kinds &&
+            validatedQuery.kinds.length > 0 &&
+            !validatedQuery.kinds.includes(kind)
+          ) {
+            continue;
+          }
+
+          if (
+            validatedQuery.namePrefix &&
+            !row.name
+              .toLowerCase()
+              .startsWith(validatedQuery.namePrefix.toLowerCase())
+          ) {
             continue;
           }
 
@@ -239,7 +267,7 @@ export class SqliteCodeIndexAdapter implements CodeIndexReadPort {
             fileId,
 
             name: row.name,
-            kind: row.kind || "symbol",
+            kind,
 
             ...(row.signature
               ? {
@@ -266,13 +294,17 @@ export class SqliteCodeIndexAdapter implements CodeIndexReadPort {
               : {}),
           }) as CodeIndexSymbol;
 
-          result.get(fileId)?.push(symbol);
+          fileSymbols.push(symbol);
         }
       }
 
       return result;
     } catch (error) {
       if (this.isAbortError(error)) {
+        throw error;
+      }
+
+      if (error instanceof CodeIndexError) {
         throw error;
       }
 
@@ -307,25 +339,47 @@ export class SqliteCodeIndexAdapter implements CodeIndexReadPort {
           .all(this.workspace, ...batch) as SqliteCodeIndexImportRow[];
 
         for (const row of rows) {
-          const importEntry = codeIndexImportSchema.parse({
-            fromFileId: this.createFileId(row.fromFileId),
+          const fromFileId = this.createFileId(row.fromFileId);
 
-            ...(row.targetFileId !== null
-              ? {
-                  toFileId: this.createFileId(row.targetFileId),
-                }
-              : {}),
+          let importEntry: CodeIndexImport;
 
-            ...(row.targetRelativePath
-              ? {
-                  resolvedRelativePath: this.normalizePath(
-                    row.targetRelativePath,
-                  ),
-                }
-              : {}),
+          if (row.targetFileId !== null) {
+            if (!row.targetRelativePath) {
+              throw new Error(
+                `Resolved import from "${fromFileId}" ` +
+                  "has a target file ID but no " +
+                  "resolved relative path.",
+              );
+            }
 
-            importedNames: [],
-          }) as CodeIndexImport;
+            importEntry = codeIndexImportSchema.parse({
+              resolution: "resolved",
+
+              fromFileId,
+
+              toFileId: this.createFileId(row.targetFileId),
+
+              resolvedRelativePath: this.normalizePath(row.targetRelativePath),
+
+              importedNames: [],
+            }) as CodeIndexImport;
+          } else {
+            importEntry = codeIndexImportSchema.parse({
+              resolution: "unresolved",
+
+              fromFileId,
+
+              ...(row.targetRelativePath
+                ? {
+                    candidateRelativePath: this.normalizePath(
+                      row.targetRelativePath,
+                    ),
+                  }
+                : {}),
+
+              importedNames: [],
+            }) as CodeIndexImport;
+          }
 
           imports.push(importEntry);
         }
@@ -334,6 +388,10 @@ export class SqliteCodeIndexAdapter implements CodeIndexReadPort {
       return this.deduplicateImports(imports);
     } catch (error) {
       if (this.isAbortError(error)) {
+        throw error;
+      }
+
+      if (error instanceof CodeIndexError) {
         throw error;
       }
 
@@ -393,6 +451,10 @@ export class SqliteCodeIndexAdapter implements CodeIndexReadPort {
       return this.deduplicateReferences(references);
     } catch (error) {
       if (this.isAbortError(error)) {
+        throw error;
+      }
+
+      if (error instanceof CodeIndexError) {
         throw error;
       }
 
@@ -512,13 +574,17 @@ export class SqliteCodeIndexAdapter implements CodeIndexReadPort {
     const result = new Map<string, CodeIndexImport>();
 
     for (const item of imports) {
-      const toFileId = "toFileId" in item ? (item.toFileId ?? "") : "";
+      const target =
+        item.resolution === "resolved"
+          ? [item.toFileId, item.resolvedRelativePath].join(":")
+          : (item.candidateRelativePath ?? "");
 
       const key = [
+        item.resolution,
         item.fromFileId,
-        toFileId,
+        target,
         item.specifier ?? "",
-        "resolvedRelativePath" in item ? (item.resolvedRelativePath ?? "") : "",
+        [...item.importedNames].sort().join(","),
       ].join("\u0000");
 
       if (!result.has(key)) {
@@ -564,9 +630,12 @@ export class SqliteCodeIndexAdapter implements CodeIndexReadPort {
       return true;
     }
 
-    const path = this.normalizePath(relativePath);
+    const normalizedPath = this.normalizePath(relativePath);
 
-    return path === folderPrefix || path.startsWith(`${folderPrefix}/`);
+    return (
+      normalizedPath === folderPrefix ||
+      normalizedPath.startsWith(`${folderPrefix}/`)
+    );
   }
 
   private validLine(value: number | null): value is number {

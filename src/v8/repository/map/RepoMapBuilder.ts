@@ -11,7 +11,6 @@ import type { RepoMap, RepoMapBuildInput } from "./types";
 export class RepoMapBuilder {
   constructor(
     private readonly ranker: RepoMapRanker,
-
     private readonly budgetApplier: RepoMapBudgetApplier = new RepoMapBudgetApplier(),
   ) {}
 

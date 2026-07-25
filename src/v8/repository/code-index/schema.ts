@@ -2,6 +2,10 @@ import { z } from "zod";
 
 import { CODE_INDEX_PATTERNS } from "./constants";
 
+/**
+ * SHARED SCHEMAS
+ */
+
 export const codeIndexRelativePathSchema = z
   .string()
   .min(1)
@@ -18,9 +22,20 @@ export const codeIndexRelativePathSchema = z
     },
   );
 
+const uniqueStringArraySchema = z
+  .array(z.string().min(1))
+  .refine((values) => new Set(values).size === values.length, {
+    message: "Values must be unique.",
+  });
+
+/**
+ * FILES
+ */
+
 export const codeIndexFileSchema = z
   .object({
     id: z.string().min(1),
+
     rootId: z.string().min(1),
 
     relativePath: codeIndexRelativePathSchema,
@@ -35,12 +50,18 @@ export const codeIndexFileSchema = z
   })
   .strict();
 
+/**
+ * SYMBOLS
+ */
+
 export const codeIndexSymbolSchema = z
   .object({
     id: z.string().min(1),
+
     fileId: z.string().min(1),
 
     name: z.string().min(1),
+
     kind: z.string().min(1),
 
     exported: z.boolean().optional(),
@@ -52,33 +73,74 @@ export const codeIndexSymbolSchema = z
     endLine: z.number().int().positive().optional(),
   })
   .strict()
-  .refine(
-    (symbol) =>
-      symbol.startLine === undefined ||
-      symbol.endLine === undefined ||
-      symbol.endLine >= symbol.startLine,
-    {
-      message: "endLine must be greater than or equal to startLine.",
-    },
-  );
+  .superRefine((symbol, context) => {
+    if (
+      symbol.startLine !== undefined &&
+      symbol.endLine !== undefined &&
+      symbol.endLine < symbol.startLine
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endLine"],
+        message: "endLine must be greater than or equal to startLine.",
+      });
+    }
+  });
 
-export const codeIndexImportSchema = z
+export const codeIndexSymbolQuerySchema = z
   .object({
+    fileIds: uniqueStringArraySchema,
+
+    maximumSymbolsPerFile: z.number().int().positive(),
+
+    kinds: uniqueStringArraySchema.optional(),
+
+    namePrefix: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+/**
+ * IMPORTS
+ */
+
+export const codeIndexResolvedImportSchema = z
+  .object({
+    resolution: z.literal("resolved"),
+
     fromFileId: z.string().min(1),
 
-    toFileId: z.string().min(1).optional(),
+    toFileId: z.string().min(1),
+
+    resolvedRelativePath: codeIndexRelativePathSchema,
 
     specifier: z.string().min(1).optional(),
 
-    resolvedRelativePath: codeIndexRelativePathSchema.optional(),
-
-    importedNames: z
-      .array(z.string().min(1))
-      .refine((values) => new Set(values).size === values.length, {
-        message: "Imported names must be unique.",
-      }),
+    importedNames: uniqueStringArraySchema,
   })
   .strict();
+
+export const codeIndexUnresolvedImportSchema = z
+  .object({
+    resolution: z.literal("unresolved"),
+
+    fromFileId: z.string().min(1),
+
+    specifier: z.string().min(1).optional(),
+
+    candidateRelativePath: codeIndexRelativePathSchema.optional(),
+
+    importedNames: uniqueStringArraySchema,
+  })
+  .strict();
+
+export const codeIndexImportSchema = z.discriminatedUnion("resolution", [
+  codeIndexResolvedImportSchema,
+  codeIndexUnresolvedImportSchema,
+]);
+
+/**
+ * REFERENCES
+ */
 
 export const codeIndexReferenceSchema = z
   .object({
@@ -91,6 +153,10 @@ export const codeIndexReferenceSchema = z
     toSymbolId: z.string().min(1).optional(),
   })
   .strict();
+
+/**
+ * FILE QUERY RESULTS
+ */
 
 export const codeIndexFileQueryResultSchema = z
   .object({
@@ -112,7 +178,9 @@ export const codeIndexFileQueryResultSchema = z
       });
     }
 
-    if (result.truncated !== result.totalAvailable > result.files.length) {
+    const expectedTruncated = result.totalAvailable > result.files.length;
+
+    if (result.truncated !== expectedTruncated) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
 
@@ -123,6 +191,7 @@ export const codeIndexFileQueryResultSchema = z
     }
 
     const fileIds = new Set<string>();
+    const fileLocations = new Set<string>();
 
     for (let index = 0; index < result.files.length; index += 1) {
       const file = result.files[index];
@@ -138,5 +207,21 @@ export const codeIndexFileQueryResultSchema = z
       }
 
       fileIds.add(file.id);
+
+      const locationKey = [file.rootId, file.relativePath].join("\u0000");
+
+      if (fileLocations.has(locationKey)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+
+          path: ["files", index, "relativePath"],
+
+          message:
+            "Duplicate Code Index file location " +
+            `"${file.rootId}:${file.relativePath}".`,
+        });
+      }
+
+      fileLocations.add(locationKey);
     }
   });
