@@ -1,9 +1,9 @@
 # V8 Pipeline Library
 
 V8 is the headless capability plane for the Engine runtime. Phase 0 consolidated
-code under `modules/`. Phase 1 completed public contracts: intake and
-understanding facades, recommendation-only task analysis, discriminated model
-events, provider support matrix, and language registry contracts.
+code under `modules/`. Phase 1 completed public contracts. Phase 2 completed
+authoritative repository state publication, state-reference-only context intake,
+and baseline language conformance.
 
 ## Module layout
 
@@ -11,8 +11,8 @@ events, provider support matrix, and language registry contracts.
 src/v8/modules/
 ├── request-intake/          RequestIntakePipeline (mode + envelope)
 ├── request-understanding/   RequestUnderstandingPipeline (intent + task analysis)
-├── repository-state/        WorkspaceIndexingPipeline + language registry
-├── repository-context/      RepositoryContextPipeline (retrieval → selection → assembly)
+├── repository-state/        RepositoryStatePipeline + WorkspaceIndexingPipeline + language registry
+├── repository-context/      RepositoryContextPipeline (state ref → retrieval → selection → assembly)
 └── model-gateway/           LlmPort + Echo / OpenAI-compatible adapters
 ```
 
@@ -22,8 +22,8 @@ src/v8/modules/
 |--------|----------|----------------|
 | `request-intake` | `RequestIntakePipeline` | `CreateUserRequestInput` → `UserRequestEnvelope` |
 | `request-understanding` | `RequestUnderstandingPipeline` | `UserRequestEnvelope` → `RequestUnderstandingResult` |
-| `repository-state` | `WorkspaceIndexingPipeline` | indexing input → indexing result |
-| `repository-context` | `RepositoryContextPipeline` | context input → context result |
+| `repository-state` | `RepositoryStatePipeline` | candidate → published `RepositoryStateReference` |
+| `repository-context` | `RepositoryContextPipeline` | `RepositoryStateReference` + query → context result |
 
 ## Import policy
 
@@ -33,7 +33,7 @@ Applications import only from `src/v8/index.ts` or a module's public `index.ts`:
 import {
   RequestIntakePipeline,
   RequestUnderstandingPipeline,
-  WorkspaceIndexingPipeline,
+  RepositoryStatePipeline,
   RepositoryContextPipeline,
   EchoLlmPort,
   OpenAiCompatibleLlmPort,
@@ -43,6 +43,7 @@ import {
 ```
 
 Never import another module's `internal/` or `actions/` paths from outside that module.
+
 
 ## Tests
 

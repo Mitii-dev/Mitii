@@ -7,6 +7,10 @@ import {
 } from "../../../request-intake";
 
 import {
+  repositoryStateReferenceSchema,
+} from "../../../repository-state/index";
+
+import {
   contextAssemblyResultSchema,
 } from "../../internal/context-assembly/schema";
 
@@ -19,20 +23,7 @@ import {
 } from "../../internal/hybrid-retrieval/schema";
 
 import {
-  repoGraphSchema,
-} from "../../../repository-state/index";
-
-import {
-  repoMapSchema,
-} from "../../../repository-state/index";
-
-import {
-  workspaceSnapshotSchema,
-} from "../../../repository-state/index";
-
-import {
   REPOSITORY_CONTEXT_PIPELINE_LIMITS,
-  REPOSITORY_CONTEXT_PIPELINE_MESSAGES,
   REPOSITORY_CONTEXT_PIPELINE_SCHEMA_VERSION,
 } from "./constants";
 
@@ -180,14 +171,8 @@ const selectionBudgetSchema =
 
 export const repositoryContextPipelineInputSchema =
   z.object({
-    workspace:
-      z.string()
-        .trim()
-        .min(1)
-        .max(
-          REPOSITORY_CONTEXT_PIPELINE_LIMITS
-            .MAXIMUM_WORKSPACE_CHARACTERS,
-        ),
+    state:
+      repositoryStateReferenceSchema,
     query:
       z.string()
         .trim()
@@ -198,18 +183,6 @@ export const repositoryContextPipelineInputSchema =
         ),
     mode:
       agentModeSchema,
-    snapshot:
-      workspaceSnapshotSchema,
-    repoMap:
-      repoMapSchema
-        .optional(),
-    repoGraph:
-      repoGraphSchema
-        .optional(),
-    codeIndexChangeToken:
-      z.string()
-        .min(1)
-        .optional(),
     rootIds:
       z.array(
         z.string()
@@ -272,121 +245,13 @@ export const repositoryContextPipelineInputSchema =
           "aborted" in value,
       )
         .optional(),
-  }).strict()
-    .superRefine(
-      (
-        input,
-        context,
-      ) => {
-        const snapshotId =
-          input.snapshot
-            .snapshotId;
-
-        if (
-          input.repoMap &&
-          input.repoMap
-            .workspaceSnapshotId !==
-            snapshotId
-        ) {
-          context.addIssue({
-            code:
-              z.ZodIssueCode
-                .custom,
-            path: [
-              "repoMap",
-            ],
-            message:
-              REPOSITORY_CONTEXT_PIPELINE_MESSAGES
-                .SNAPSHOT_MISMATCH,
-          });
-        }
-
-        if (
-          input.repoGraph &&
-          input.repoGraph
-            .workspaceSnapshotId !==
-            snapshotId
-        ) {
-          context.addIssue({
-            code:
-              z.ZodIssueCode
-                .custom,
-            path: [
-              "repoGraph",
-            ],
-            message:
-              REPOSITORY_CONTEXT_PIPELINE_MESSAGES
-                .SNAPSHOT_MISMATCH,
-          });
-        }
-
-        if (
-          input.repoMap &&
-          input.repoGraph &&
-          input.repoMap
-            .codeIndexChangeToken !==
-            input.repoGraph
-              .codeIndexChangeToken
-        ) {
-          context.addIssue({
-            code:
-              z.ZodIssueCode
-                .custom,
-            path: [
-              "repoMap",
-            ],
-            message:
-              REPOSITORY_CONTEXT_PIPELINE_MESSAGES
-                .CHANGE_TOKEN_MISMATCH,
-          });
-        }
-
-        if (
-          input.codeIndexChangeToken &&
-          input.repoMap &&
-          input.codeIndexChangeToken !==
-            input.repoMap
-              .codeIndexChangeToken
-        ) {
-          context.addIssue({
-            code:
-              z.ZodIssueCode
-                .custom,
-            path: [
-              "codeIndexChangeToken",
-            ],
-            message:
-              REPOSITORY_CONTEXT_PIPELINE_MESSAGES
-                .CHANGE_TOKEN_MISMATCH,
-          });
-        }
-
-        if (
-          input.codeIndexChangeToken &&
-          input.repoGraph &&
-          input.codeIndexChangeToken !==
-            input.repoGraph
-              .codeIndexChangeToken
-        ) {
-          context.addIssue({
-            code:
-              z.ZodIssueCode
-                .custom,
-            path: [
-              "codeIndexChangeToken",
-            ],
-            message:
-              REPOSITORY_CONTEXT_PIPELINE_MESSAGES
-                .CHANGE_TOKEN_MISMATCH,
-          });
-        }
-      },
-    );
+  }).strict();
 
 const pipelineWarningSchema =
   z.object({
     stage:
       z.enum([
+        "state_resolution",
         "retrieval",
         "selection",
         "assembly",
@@ -405,6 +270,9 @@ export const repositoryContextPipelineResultSchema =
       z.literal(
         REPOSITORY_CONTEXT_PIPELINE_SCHEMA_VERSION,
       ),
+    stateToken:
+      z.string()
+        .min(1),
     workspaceSnapshotId:
       z.string()
         .min(1),

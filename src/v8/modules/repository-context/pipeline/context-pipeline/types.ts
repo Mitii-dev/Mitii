@@ -4,6 +4,11 @@ import type {
 
 import type {
   ChunkKind,
+  RepoGraph,
+  RepoMap,
+  RepositoryStateDescriptor,
+  RepositoryStateReference,
+  WorkspaceSnapshot,
 } from "../../../repository-state/index";
 
 import type {
@@ -24,28 +29,50 @@ import type {
   HybridRetrievalResult,
 } from "../../internal/hybrid-retrieval/types";
 
-import type {
-  RepoGraph,
-} from "../../../repository-state/index";
-
-import type {
-  RepoMap,
-} from "../../../repository-state/index";
-
-import type {
-  WorkspaceSnapshot,
-} from "../../../repository-state/index";
-
-export interface RepositoryContextPipelineInput {
-  workspace: string;
-  query: string;
-  mode: AgentMode;
-
+/**
+ * Artifacts bound to one published repository state.
+ * Callers must obtain these only through state resolution — never supply them
+ * independently on the public pipeline input.
+ */
+export interface RepositoryContextResolvedState {
+  descriptor: RepositoryStateDescriptor;
   snapshot: WorkspaceSnapshot;
-
   repoMap?: RepoMap;
   repoGraph?: RepoGraph;
-  codeIndexChangeToken?: string;
+}
+
+export type RepositoryContextStateResolveStatus =
+  | "resolved"
+  | "not_found"
+  | "unavailable";
+
+export type RepositoryContextStateResolveResult =
+  | {
+      status: "resolved";
+      artifacts: RepositoryContextResolvedState;
+    }
+  | {
+      status: "not_found";
+      code: "unknown_state_token" | "workspace_mismatch";
+      message: string;
+    }
+  | {
+      status: "unavailable";
+      code: "state_unavailable";
+      message: string;
+      descriptor: RepositoryStateDescriptor;
+    };
+
+export interface RepositoryContextStateResolverPort {
+  resolve(
+    reference: RepositoryStateReference,
+  ): Promise<RepositoryContextStateResolveResult>;
+}
+
+export interface RepositoryContextPipelineInput {
+  state: RepositoryStateReference;
+  query: string;
+  mode: AgentMode;
 
   rootIds?: readonly string[];
   folderPrefix?: string;
@@ -70,6 +97,7 @@ export type RepositoryContextPipelineStatus =
   | "failed";
 
 export type RepositoryContextPipelineStage =
+  | "state_resolution"
   | "retrieval"
   | "selection"
   | "assembly";
@@ -91,6 +119,7 @@ export interface RepositoryContextPipelineStatistics {
 export interface RepositoryContextPipelineResult {
   schemaVersion: 1;
 
+  stateToken: string;
   workspaceSnapshotId: string;
   query: string;
   mode: AgentMode;
@@ -123,6 +152,7 @@ export interface RepositoryContextAssemblerPort {
 }
 
 export interface RepositoryContextPipelineDependencies {
+  stateResolver: RepositoryContextStateResolverPort;
   retriever: RepositoryContextRetrieverPort;
   selector: RepositoryContextSelectorPort;
   assembler: RepositoryContextAssemblerPort;

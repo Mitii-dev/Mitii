@@ -27,7 +27,10 @@ describe('v8 module boundaries (Phase 0/1)', () => {
     expect(index).toContain('UserRequestEnvelopeBuilder');
     expect(index).toContain('RequestUnderstandingPipeline');
     expect(index).toContain('WorkspaceIndexingPipeline');
+    expect(index).toContain('RepositoryStatePipeline');
+    expect(index).toContain('repositoryStateReferenceSchema');
     expect(index).toContain('RepositoryContextPipeline');
+    expect(index).toContain('repositoryContextPipelineInputSchema');
     expect(index).toContain('EchoLlmPort');
     expect(index).toContain('OpenAiCompatibleLlmPort');
     expect(index).toContain('MODEL_PROVIDER_SUPPORT');

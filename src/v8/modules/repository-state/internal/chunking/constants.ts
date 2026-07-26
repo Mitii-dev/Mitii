@@ -104,6 +104,7 @@ export const CHUNKING_CODE_LANGUAGES =
     "zig",
     "dart",
     "bash",
+    "shell",
     "sql",
     "hcl",
     "proto",

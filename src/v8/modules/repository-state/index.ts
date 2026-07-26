@@ -1,4 +1,18 @@
 export { WorkspaceIndexingPipeline } from "./pipeline/ws-indexing-pipeline/WorkspaceIndexingPipeline";
+export { WORKSPACE_INDEXING_PIPELINE_MESSAGES } from "./pipeline/ws-indexing-pipeline/constants";
+export { RepositoryStatePipeline } from "./pipeline/RepositoryStatePipeline";
+export type {
+  RepositoryStatePipelineClock,
+  RepositoryStatePipelineDependencies,
+} from "./pipeline/RepositoryStatePipeline";
+export { InMemoryRepositoryStateStore } from "./adapters/InMemoryRepositoryStateStore";
+export {
+  buildPublishCandidateFromIndexing,
+} from "./actions/buildPublishCandidateFromIndexing";
+export type {
+  BuildPublishCandidateFromIndexingResult,
+  PublishCandidateFromIndexingOptions,
+} from "./actions/buildPublishCandidateFromIndexing";
 
 export {
   LANGUAGE_IDS,
@@ -8,6 +22,24 @@ export {
   projectDescriptorSchema,
   LanguageProfileRegistry,
   defaultLanguageProfileRegistry,
+  publishRepositoryStateInputSchema,
+  readRepositoryStateInputSchema,
+  pinRepositoryStateInputSchema,
+  unpinRepositoryStateInputSchema,
+  repositoryStateReferenceSchema,
+  repositoryCapabilityIdSchema,
+  repositoryCapabilityStatusSchema,
+  repositoryRootStateSchema,
+  repositoryStateReasonSchema,
+  repositoryStateReadinessSchema,
+  repositoryStateScanCompletenessSchema,
+  repositoryStateDescriptorSchema,
+  publishRepositoryStateResultSchema,
+  readRepositoryStateResultSchema,
+  pinRepositoryStateResultSchema,
+  unpinRepositoryStateResultSchema,
+  repositoryStateErrorCodeSchema,
+  RepositoryStateError,
 } from "./contracts";
 export type {
   LanguageId,
@@ -15,7 +47,37 @@ export type {
   LanguageDetectionEvidence,
   ProjectDescriptor,
   LanguageCapabilityLevel,
+  PublishRepositoryStateInput,
+  ReadRepositoryStateInput,
+  PinRepositoryStateInput,
+  UnpinRepositoryStateInput,
+  RepositoryStateReference,
+  RepositoryCapabilityStatus,
+  RepositoryRootState,
+  RepositoryStateReason,
+  RepositoryStateReadiness,
+  RepositoryStateScanCompleteness,
+  RepositoryStateDescriptor,
+  PublishRepositoryStateResult,
+  ReadRepositoryStateResult,
+  PinRepositoryStateResult,
+  UnpinRepositoryStateResult,
+  RepositoryStateErrorCode,
+  RepositoryStatePublisherPort,
+  RepositoryStateReaderPort,
+  ActiveRunStateRetentionPort,
+  RepositoryStateStorePort,
 } from "./contracts";
+
+export {
+  REPOSITORY_STATE_SCHEMA_VERSION,
+  REPOSITORY_STATE_READINESS,
+  REPOSITORY_STATE_SCAN_COMPLETENESS,
+  REPOSITORY_CAPABILITY_IDS,
+  REPOSITORY_CAPABILITY_STATUSES,
+  REPOSITORY_STATE_REASON_CODES,
+  REPOSITORY_STATE_ERROR_CODES,
+} from "./constants";
 
 // Cross-module contracts consumed by repository-context and application hosts.
 export type {

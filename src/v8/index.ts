@@ -22,20 +22,41 @@ export {
   TaskAnalysisSchema,
 } from "./modules/request-understanding";
 
-export { WorkspaceIndexingPipeline } from "./modules/repository-state";
+export {
+  WorkspaceIndexingPipeline,
+  RepositoryStatePipeline,
+  InMemoryRepositoryStateStore,
+  buildPublishCandidateFromIndexing,
+} from "./modules/repository-state";
 export {
   LANGUAGE_IDS,
   languageIdSchema,
   LanguageProfileRegistry,
   defaultLanguageProfileRegistry,
+  repositoryStateReferenceSchema,
+  repositoryStateDescriptorSchema,
+  publishRepositoryStateInputSchema,
 } from "./modules/repository-state";
 export type {
   LanguageId,
   LanguageProfile,
   ProjectDescriptor,
+  RepositoryStateReference,
+  RepositoryStateDescriptor,
+  PublishRepositoryStateInput,
+  PublishRepositoryStateResult,
 } from "./modules/repository-state";
 
 export { RepositoryContextPipeline } from "./modules/repository-context";
+export {
+  repositoryContextPipelineInputSchema,
+  repositoryContextPipelineResultSchema,
+} from "./modules/repository-context";
+export type {
+  RepositoryContextPipelineInput,
+  RepositoryContextPipelineResult,
+  RepositoryContextStateResolverPort,
+} from "./modules/repository-context";
 
 export type {
   LlmPort,

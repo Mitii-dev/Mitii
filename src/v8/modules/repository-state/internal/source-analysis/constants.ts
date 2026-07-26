@@ -59,7 +59,7 @@ export const SOURCE_LANGUAGE_EXTENSIONS: Readonly<
   ".ts": "typescript",
   ".mts": "typescript",
   ".cts": "typescript",
-  ".tsx": "tsx",
+  ".tsx": "typescript",
 
   ".js": "javascript",
   ".mjs": "javascript",
@@ -98,9 +98,9 @@ export const SOURCE_LANGUAGE_EXTENSIONS: Readonly<
   ".zig": "zig",
   ".dart": "dart",
 
-  ".sh": "bash",
-  ".bash": "bash",
-  ".zsh": "bash",
+  ".sh": "shell",
+  ".bash": "shell",
+  ".zsh": "shell",
 
   ".sql": "sql",
   ".tf": "hcl",
@@ -493,6 +493,14 @@ export const SOURCE_REGEX_SYMBOL_PATTERNS: Readonly<
   ],
 
   bash: [
+    {
+      pattern:
+        /^(?:function\s+)?([A-Za-z_]\w*)\s*\(\)\s*\{/,
+      kind: "function",
+    },
+  ],
+
+  shell: [
     {
       pattern:
         /^(?:function\s+)?([A-Za-z_]\w*)\s*\(\)\s*\{/,

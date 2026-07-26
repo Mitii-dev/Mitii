@@ -1,4 +1,9 @@
 import {
+  defaultLanguageProfileRegistry,
+  type LanguageProfileRegistry,
+} from "../../contracts/language";
+
+import {
   SOURCE_LANGUAGE_BASENAMES,
   SOURCE_LANGUAGE_EXTENSIONS,
 } from "./constants";
@@ -8,6 +13,12 @@ import type {
   SourceLanguageDetectorOptions,
 } from "./types";
 
+/**
+ * Detects source language for analysis.
+ * V8 target languages resolve through LanguageProfileRegistry so core
+ * pipelines receive normalized LanguageId values (e.g. shell, not bash).
+ * Legacy basename/extension maps remain as a fallback for non-target dialects.
+ */
 export class LanguageDetector {
   private readonly basenames:
     Readonly<Record<string, string>>;
@@ -15,10 +26,16 @@ export class LanguageDetector {
   private readonly extensions:
     Readonly<Record<string, string>>;
 
+  private readonly registry: LanguageProfileRegistry;
+
   constructor(
     options:
       SourceLanguageDetectorOptions = {},
+    registry:
+      LanguageProfileRegistry =
+        defaultLanguageProfileRegistry,
   ) {
+    this.registry = registry;
     this.basenames = {
       ...SOURCE_LANGUAGE_BASENAMES,
       ...this.normalizeMap(
@@ -44,11 +61,29 @@ export class LanguageDetector {
       explicitLanguage?.trim();
 
     if (explicit) {
+      const normalized =
+        this.registry.resolveAlias(explicit) ??
+        explicit;
+
       return {
-        language: explicit,
+        language: normalized,
         source: "explicit",
         evidence:
-          `Language "${explicit}" was supplied explicitly.`,
+          `Language "${normalized}" was supplied explicitly.`,
+      };
+    }
+
+    const registryDetection =
+      this.registry.detectFromPath(relativePath);
+
+    if (registryDetection.languageId !== "unknown") {
+      return {
+        language: registryDetection.languageId,
+        source:
+          registryDetection.source === "filename"
+            ? "basename"
+            : "extension",
+        evidence: registryDetection.evidence,
       };
     }
 
@@ -67,9 +102,12 @@ export class LanguageDetector {
       this.basenames[basename];
 
     if (basenameLanguage) {
+      const normalized =
+        this.registry.resolveAlias(basenameLanguage) ??
+        basenameLanguage;
+
       return {
-        language:
-          basenameLanguage,
+        language: normalized,
         source: "basename",
         evidence:
           `Matched source basename "${basename}".`,
@@ -87,9 +125,12 @@ export class LanguageDetector {
         this.extensions[extension];
 
       if (extensionLanguage) {
+        const normalized =
+          this.registry.resolveAlias(extensionLanguage) ??
+          extensionLanguage;
+
         return {
-          language:
-            extensionLanguage,
+          language: normalized,
           source: "extension",
           evidence:
             `Matched source extension "${extension}".`,
@@ -147,4 +188,3 @@ export class LanguageDetector {
     return normalized;
   }
 }
-
