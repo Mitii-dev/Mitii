@@ -1,0 +1,92 @@
+import type {
+  DecisionPolicyInput,
+  ExecutionDecision,
+} from "../../../decision-policy";
+import type { LlmPort, ModelToolDefinition } from "../../../model-gateway";
+import type {
+  PromptConstructionInput,
+  PromptConstructionResult,
+} from "../../../prompt-construction";
+import type {
+  RepositoryContextPipelineInput,
+  RepositoryContextPipelineResult,
+} from "../../../repository-context";
+import type {
+  PinRepositoryStateInput,
+  PinRepositoryStateResult,
+  RepositoryStateDescriptor,
+  UnpinRepositoryStateInput,
+  UnpinRepositoryStateResult,
+} from "../../../repository-state";
+import type { CreateUserRequestInput, UserRequestEnvelope } from "../../../request-intake";
+import type { RequestUnderstandingResult } from "../../../request-understanding";
+import type {
+  ToolInvocationInput,
+  ToolResult,
+} from "../../../tool-runtime";
+import type { ToolGrant } from "../../../decision-policy";
+
+export interface AgentEngineClockPort {
+  now(): Date;
+}
+
+export interface AgentEngineIdGeneratorPort {
+  next(prefix: string): string;
+}
+
+export interface AgentEngineIntakePort {
+  intake(input: CreateUserRequestInput): UserRequestEnvelope;
+}
+
+export interface AgentEngineUnderstandingPort {
+  understand(
+    input: UserRequestEnvelope,
+  ): Promise<RequestUnderstandingResult>;
+}
+
+export interface AgentEngineDecisionPort {
+  decide(input: DecisionPolicyInput): ExecutionDecision;
+}
+
+export interface AgentEnginePromptPort {
+  construct(input: PromptConstructionInput): PromptConstructionResult;
+}
+
+export interface AgentEngineRepositoryStatePort {
+  pin(input: PinRepositoryStateInput): Promise<PinRepositoryStateResult>;
+  unpin(input: UnpinRepositoryStateInput): Promise<UnpinRepositoryStateResult>;
+  getLatest(workspaceId: string): Promise<RepositoryStateDescriptor | undefined>;
+}
+
+export interface AgentEngineRepositoryContextPort {
+  execute(
+    input: RepositoryContextPipelineInput,
+  ): Promise<RepositoryContextPipelineResult>;
+}
+
+export interface AgentEngineToolRuntimePort {
+  execute(
+    input: ToolInvocationInput,
+    options?: { signal?: AbortSignal },
+  ): Promise<ToolResult>;
+  createBudget?(grant: ToolGrant): unknown;
+}
+
+/**
+ * Dependencies injected by the Application layer / tests.
+ * Engine coordinates these public facades; it does not reimplement them.
+ */
+export interface AgentEngineDependencies {
+  intake: AgentEngineIntakePort;
+  understanding: AgentEngineUnderstandingPort;
+  decision: AgentEngineDecisionPort;
+  prompt: AgentEnginePromptPort;
+  llm: LlmPort;
+  repositoryState?: AgentEngineRepositoryStatePort;
+  repositoryContext?: AgentEngineRepositoryContextPort;
+  tools?: AgentEngineToolRuntimePort;
+  /** Defaults to policy DEFAULT_READ_ONLY_TOOL_DEFINITIONS when omitted. */
+  toolDefinitions?: readonly ModelToolDefinition[];
+  clock?: AgentEngineClockPort;
+  idGenerator?: AgentEngineIdGeneratorPort;
+}

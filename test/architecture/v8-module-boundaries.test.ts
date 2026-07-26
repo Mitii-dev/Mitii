@@ -15,9 +15,10 @@ const PUBLIC_MODULES = [
   'model-gateway',
   'tool-runtime',
   'verification',
+  'agent-engine',
 ] as const;
 
-describe('v8 module boundaries (Phase 0/1/2/3/4/5/6)', () => {
+describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7)', () => {
   it('places all runtime code under src/v8/modules/', () => {
     expect(existsSync(modulesRoot)).toBe(true);
     expect(existsSync(join(repoRoot, 'src/v8/core'))).toBe(false);
@@ -52,10 +53,27 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6)', () => {
     expect(index).toContain('VerificationPipeline');
     expect(index).toContain('verificationInputSchema');
     expect(index).toContain('verificationResultSchema');
+    expect(index).toContain('AgentEnginePipeline');
+    expect(index).toContain('agentEngineStartInputSchema');
+    expect(index).toContain('agentRunResultSchema');
+    expect(index).toContain('runEventSchema');
+    expect(index).toContain('composeReadOnlyAgentEngine');
     expect(index).not.toContain('IntentRouter');
     expect(index).not.toContain('TaskAnalyzer');
     expect(index).not.toContain('resolveRoute');
     expect(index).not.toContain('export *');
+  });
+
+  it('keeps agent-engine actions private at the module root', () => {
+    const index = readFileSync(
+      join(modulesRoot, 'agent-engine/index.ts'),
+      'utf8',
+    );
+    expect(index).toContain('AgentEnginePipeline');
+    expect(index).toContain('agentRunResultSchema');
+    expect(index).not.toContain('export * from "./actions"');
+    expect(index).not.toContain('assembleToolCalls');
+    expect(index).not.toContain('runModelToolLoop');
   });
 
   it('keeps verification actions private at the module root', () => {
@@ -121,6 +139,30 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6)', () => {
     expect(index).not.toContain('scanPromptInjection');
   });
 
+  it('blocks other modules from importing agent-engine', () => {
+    const violations: string[] = [];
+
+    for (const file of listTypeScriptFiles(modulesRoot)) {
+      const relFile = relative(modulesRoot, file);
+      const owningModule = relFile.split('/')[0];
+      if (owningModule === 'agent-engine') continue;
+
+      const content = readFileSync(file, 'utf8');
+      for (const [index, line] of content.split(/\r?\n/).entries()) {
+        if (
+          /from ['"][^'"]*agent-engine/.test(line) ||
+          /from ['"]\.\.\/agent-engine/.test(line)
+        ) {
+          violations.push(
+            `${relative(repoRoot, file)}:${index + 1}: ${line.trim()}`,
+          );
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
   it('does not import features/ce or legacy host code from v8 modules', () => {
     const violations = scanImports(modulesRoot, [
       /from ['"].*(?:^|\/)features\/ce(?:\/|['"])/,
@@ -143,7 +185,7 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6)', () => {
       const content = readFileSync(file, 'utf8');
       for (const line of content.split(/\r?\n/)) {
         const match = line.match(
-          /from ['"]((?:\.\.\/)+)(request-intake|request-understanding|repository-state|repository-context|decision-policy|prompt-construction|model-gateway|tool-runtime|verification)\/internal\//,
+          /from ['"]((?:\.\.\/)+)(request-intake|request-understanding|repository-state|repository-context|decision-policy|prompt-construction|model-gateway|tool-runtime|verification|agent-engine)\/internal\//,
         );
         if (!match) continue;
 

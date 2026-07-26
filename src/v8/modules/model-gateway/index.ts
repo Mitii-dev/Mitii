@@ -34,6 +34,7 @@ export type {
   ModelError,
   ModelFinishReason,
   ModelTokenUsage,
+  ModelToolCall,
   ModelToolCallDelta,
   ModelToolDefinition,
   ResolveModelCapabilitiesInput,

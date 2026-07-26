@@ -124,3 +124,20 @@ export type {
   VerificationToolExecutorPort,
   VerificationManifestReaderPort,
 } from "./modules/verification";
+
+export { AgentEnginePipeline } from "./modules/agent-engine";
+export {
+  agentEngineStartInputSchema,
+  agentRunResultSchema,
+  runEventSchema,
+  AGENT_ENGINE_SCHEMA_VERSION,
+  composeReadOnlyAgentEngine,
+} from "./modules/agent-engine";
+export type {
+  AgentEngineStartInput,
+  AgentRunResult,
+  AgentRunHandle,
+  RunEvent,
+  AgentEngineDependencies,
+  ComposeReadOnlyAgentEngineOptions,
+} from "./modules/agent-engine";

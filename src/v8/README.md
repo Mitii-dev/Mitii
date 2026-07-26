@@ -1,8 +1,9 @@
 # V8 Pipeline Library
 
 V8 is the headless capability plane for the Engine runtime. Phase 0 consolidated
-code under `modules/`. Phases 1–5 completed public contracts through Prompt
-Construction. Phase 6 adds the Verification Pipeline.
+code under `modules/`. Phases 1–7 completed public contracts through the
+single-agent read-only Agent Engine. Phase 8 adds mutation, approval, and
+checkpoints.
 
 ## Module layout
 
@@ -16,7 +17,8 @@ src/v8/modules/
 ├── prompt-construction/     PromptConstructionPipeline (budgeted ModelRequest)
 ├── model-gateway/           LlmPort + Echo / OpenAI-compatible adapters
 ├── tool-runtime/            ToolRuntimePipeline (granted tool execution)
-└── verification/            VerificationPipeline (evidence-gated completion)
+├── verification/            VerificationPipeline (evidence-gated completion)
+└── agent-engine/            AgentEnginePipeline (read-only run orchestration)
 ```
 
 ## Public pipelines
@@ -31,6 +33,7 @@ src/v8/modules/
 | `prompt-construction` | `PromptConstructionPipeline` | decision + context → `ModelRequest` + budget |
 | `tool-runtime` | `ToolRuntimePipeline` | authorized call → `ToolResult` |
 | `verification` | `VerificationPipeline` | change + state + policy → verification result |
+| `agent-engine` | `AgentEnginePipeline` | start request → `AgentRunHandle` |
 
 ## Import policy
 
@@ -46,6 +49,8 @@ import {
   PromptConstructionPipeline,
   ToolRuntimePipeline,
   VerificationPipeline,
+  AgentEnginePipeline,
+  composeReadOnlyAgentEngine,
   EchoLlmPort,
   OpenAiCompatibleLlmPort,
   MODEL_PROVIDER_SUPPORT,
