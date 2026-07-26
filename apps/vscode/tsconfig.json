@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "composite": false,
+    "noEmit": true,
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "types": ["node", "vscode"],
+    "lib": ["ES2022"]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist", "node_modules"]
+}

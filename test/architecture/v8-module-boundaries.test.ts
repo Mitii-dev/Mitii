@@ -46,7 +46,7 @@ const FORBIDDEN_V8_IMPORT_PATTERNS = [
   /from ['"](?:\.\.\/)+(?:kernel|interfaces|features|composition|adapters)(?:\/|['"])/,
 ] as const;
 
-describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12)', () => {
+describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
   it('places live V8 under packages/v8 with no parallel src/v8 tree', () => {
     expect(existsSync(v8PackageRoot)).toBe(true);
     expect(existsSync(modulesRoot)).toBe(true);
@@ -409,6 +409,98 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12)', () => {
     expect(index).toContain('MitiiClient');
     expect(index).not.toContain('HeadlessAgentHost');
     expect(index).not.toContain('DaemonClient');
+  });
+
+  it('places host packages under apps/ over @mitii/sdk (Phase 13)', () => {
+    const cliRoot = join(repoRoot, 'apps/cli');
+    const vscodeRoot = join(repoRoot, 'apps/vscode');
+    const rootPkg = JSON.parse(
+      readFileSync(join(repoRoot, 'package.json'), 'utf8'),
+    ) as {
+      private?: boolean;
+      bin?: unknown;
+      contributes?: unknown;
+      activationEvents?: unknown;
+      main?: unknown;
+      engines?: { vscode?: string };
+    };
+
+    expect(rootPkg.private).toBe(true);
+    expect(rootPkg.bin).toBeUndefined();
+    expect(rootPkg.contributes).toBeUndefined();
+    expect(rootPkg.activationEvents).toBeUndefined();
+    expect(rootPkg.main).toBeUndefined();
+    expect(rootPkg.engines?.vscode).toBeUndefined();
+
+    expect(existsSync(cliRoot)).toBe(true);
+    expect(existsSync(vscodeRoot)).toBe(true);
+    expect(existsSync(join(repoRoot, 'packages/cli'))).toBe(false);
+    expect(existsSync(join(repoRoot, 'packages/daemon'))).toBe(false);
+    expect(existsSync(join(repoRoot, 'legacy/packages/daemon'))).toBe(true);
+
+    const cliPkg = JSON.parse(
+      readFileSync(join(cliRoot, 'package.json'), 'utf8'),
+    ) as {
+      name: string;
+      bin?: Record<string, string>;
+      dependencies?: Record<string, string>;
+    };
+    expect(cliPkg.name).toBe('@mitii/cli');
+    expect(cliPkg.bin?.mitii).toBeTruthy();
+    expect(cliPkg.dependencies?.['@mitii/sdk']).toBeTruthy();
+
+    const vscodePkg = JSON.parse(
+      readFileSync(join(vscodeRoot, 'package.json'), 'utf8'),
+    ) as {
+      name: string;
+      contributes?: unknown;
+      activationEvents?: unknown;
+      engines?: { vscode?: string };
+      main?: string;
+      dependencies?: Record<string, string>;
+    };
+    expect(vscodePkg.name).toBe('@mitii/vscode');
+    expect(vscodePkg.contributes).toBeTruthy();
+    expect(vscodePkg.activationEvents).toBeTruthy();
+    expect(vscodePkg.engines?.vscode).toBeTruthy();
+    expect(vscodePkg.main).toContain('extension.js');
+    expect(vscodePkg.dependencies?.['@mitii/sdk']).toBeTruthy();
+
+    const forbiddenHostPatterns = [
+      /from ['"].*(?:kernel|HeadlessAgentHost|ThunderController)(?:\/|['"])/,
+      /from ['"]@mitii\/v8\/.*(?:actions|internal)(?:\/|['"])/,
+      /from ['"].*packages\/v8\/src\/.*\/(?:actions|internal)(?:\/|['"])/,
+      /from ['"].*\/(?:actions|internal)\/[^'"]+['"]/,
+    ] as const;
+
+    expect(scanImports(join(cliRoot, 'src'), forbiddenHostPatterns)).toEqual(
+      [],
+    );
+    expect(
+      scanImports(join(vscodeRoot, 'src'), forbiddenHostPatterns),
+    ).toEqual([]);
+
+    const vscodeExtension = readFileSync(
+      join(vscodeRoot, 'src/extension.ts'),
+      'utf8',
+    );
+    expect(vscodeExtension).toContain('@mitii/sdk');
+    expect(vscodeExtension).toContain('createMitiiClient');
+    expect(vscodeExtension).not.toMatch(
+      /from ['"].*ThunderController['"]/,
+    );
+
+    const cliSrc = readFileSync(join(cliRoot, 'src/cli.ts'), 'utf8');
+    expect(cliSrc).toContain('@mitii/sdk');
+    expect(cliSrc).toContain('createMitiiClient');
+  });
+
+  it('forbids V8 from importing apps packages (Phase 13)', () => {
+    const violations = scanImports(v8SrcRoot, [
+      /from ['"]@mitii\/(?:cli|vscode|daemon)['"]/,
+      /from ['"].*(?:^|\/)apps\/(?:cli|vscode|daemon)/,
+    ]);
+    expect(violations).toEqual([]);
   });
 });
 

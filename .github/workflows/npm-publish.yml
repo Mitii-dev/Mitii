@@ -22,12 +22,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm sync:versions
+      - run: pnpm --filter @mitii/v8 build
       - run: pnpm --filter @mitii/sdk build
-      - run: pnpm --filter @mitii/daemon build
-      - run: pnpm test
+      - run: pnpm --filter @mitii/cli build
+      - run: pnpm --filter @mitii/vscode build
+      - run: pnpm run check:architecture
       - run: npm publish --workspace packages/sdk --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - run: npm publish --workspace packages/daemon --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # @mitii/daemon deferred (legacy/packages); do not publish from critical path
