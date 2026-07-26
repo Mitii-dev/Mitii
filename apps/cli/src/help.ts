@@ -4,18 +4,34 @@ Usage:
   mitii --help
   mitii help
   mitii version
-  mitii ask <prompt> [--cwd <path>] [--json]
+  mitii ask <prompt> [options]
+  mitii index [--cwd <path>] [--json]
+  mitii status [--cwd <path>] [--json]
+  mitii session [--cwd <path>] [--echo]
+  mitii export-session <prompt> --out <file> [--echo]
 
 Options:
-  --cwd <path>   Workspace root (default: process.cwd())
-  --json         Emit terminal result as JSON on stdout
-  --echo         Force EchoLlmPort even when API keys are set
+  --cwd <path>       Workspace root (default: process.cwd())
+  --json             Emit machine-readable JSON on stdout
+  --echo             Force EchoLlmPort even when API keys are set
+  --clarify <text>   Non-interactive clarification resume
+  --approve / --deny Non-interactive approval resume
+  --out <file>       Session export path (export-session)
+
+Signals:
+  SIGINT (Ctrl-C)    Cancel the active run via SDK run.cancel()
+
+Config (no secrets):
+  .mitii/config.json or ~/.mitii/config.json
+  Fields: provider, model, baseUrl, workspaceId, defaultMode
+  API keys: MITII_API_KEY / OPENAI_API_KEY only (never in config files)
 
 Environment:
   MITII_API_KEY / OPENAI_API_KEY   Provider API key (optional)
   MITII_BASE_URL                   OpenAI-compatible base URL
   MITII_MODEL                      Model id (default: gpt-4o-mini)
 
-Phase 13 note: ask/plan/agent modes beyond ask, index, and deferred
-daemon/board/team commands land in Phase 15 host UX — not here.
+Phase 15 hosts stream events, cancel, clarify/approve, index/status,
+usage/context inspection, and secret-free session export.
+Deferred: daemon/board/channels (see legacy/packages/).
 `;

@@ -4,15 +4,16 @@ VS Code extension package. Owns `contributes`, `activationEvents`, and `engines.
 
 ```bash
 pnpm --filter @mitii/vscode build
+pnpm --filter @mitii/vscode package
 ```
 
-## Phase 13 boundary
+## Phase 15 host surface
 
-- Activation composes `@mitii/sdk` (Echo + local understanding ports for smoke).
-- Does **not** import legacy `ThunderController` / `src/kernel`.
-- Full webview chat, SCM, indexing UX, and settings wiring is **Phase 15**.
-- Legacy sources under repo-root `src/extension.ts`, `src/vscode/`, `src/webview-ui/` remain reference until Phase 15 migration deletes them.
+- `@mitii/sdk` only (no legacy kernel / ThunderController)
+- Chat: InputBox + Output Channel + sidebar WebviewView
+- Cancel / clarify / approve via progress + QuickInput
+- Settings → provider ports; API key via SecretStorage `mitii.provider.apiKey` or env
+- Index / commit-message / session export commands
+- Full React `webview-ui` polish deferred (see roadmap Phase 15 deferrals)
 
-## Packaging
-
-`vsce package` runs from this package. Workspace root no longer carries the extension manifest.
+Release: `docs/RELEASE.md`

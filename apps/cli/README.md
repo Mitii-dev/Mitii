@@ -4,21 +4,22 @@ Headless Mitii CLI. Runs go through `@mitii/sdk` → `@mitii/v8` only (no legacy
 
 ```bash
 pnpm --filter @mitii/cli build
-pnpm --filter @mitii/cli exec mitii --help
-pnpm --filter @mitii/cli exec mitii ask "What is recursion?"
+node apps/cli/bin/mitii.js --help
+node apps/cli/bin/mitii.js ask "What is recursion?" --echo
+node apps/cli/bin/mitii.js index --echo
+node apps/cli/bin/mitii.js status --json
 ```
 
-## Commands (Phase 13 smoke surface)
+## Commands (Phase 15)
 
 | Command | Behavior |
 |---|---|
-| `mitii --help` / `mitii help` | Print usage |
-| `mitii ask <prompt>` | Non-mutating ask-mode run via SDK |
-| `mitii version` | Print package version |
+| `ask` | SDK ask with streaming, cancel, clarify/approve |
+| `session` | Interactive prompt loop |
+| `index` | Publish host workspace snapshot via Repository State |
+| `status` | Show latest persisted repository state |
+| `export-session` | Run ask and write secret-free JSON export |
 
-Deferred from legacy CLI (daemon, board, teams, jobs, channels): see `legacy/packages/` and Phase 15.
+Config: `.mitii/config.json` (no secrets). API keys via `MITII_API_KEY` / `OPENAI_API_KEY`.
 
-## Provider wiring
-
-- Default smoke path uses `EchoLlmPort` (no network).
-- Set `MITII_API_KEY` or `OPENAI_API_KEY` (and optional `MITII_BASE_URL` / `MITII_MODEL`) to use `OpenAiCompatibleLlmPort`.
+Deferred: daemon/board/channels — `legacy/packages/`.

@@ -1,0 +1,125 @@
+import { describe, expect, it } from 'vitest';
+
+import { AGENT_ENGINE_SCHEMA_VERSION } from '@mitii/sdk';
+import type { AgentRunResult } from '@mitii/sdk';
+
+import { buildResumeInput } from '../src/session.js';
+import { parseCliArgs } from '../src/cli.js';
+
+function suspendedClarification(): AgentRunResult {
+  return {
+    schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+    runId: 'run_clarify',
+    requestId: 'req_1',
+    status: 'suspended',
+    reasonCodes: ['clarification_suspended'],
+    warnings: [],
+    usage: {
+      modelCalls: 0,
+      toolCalls: 0,
+      loopIterations: 0,
+    },
+    durationMs: 1,
+    suspension: {
+      kind: 'clarification_required',
+      rationale: 'Need target file',
+      clarificationPrompt: 'Which file?',
+    },
+  };
+}
+
+function suspendedApproval(): AgentRunResult {
+  return {
+    schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+    runId: 'run_approve',
+    requestId: 'req_2',
+    status: 'suspended',
+    reasonCodes: ['approval_suspended'],
+    warnings: [],
+    usage: {
+      modelCalls: 1,
+      toolCalls: 1,
+      loopIterations: 1,
+    },
+    durationMs: 2,
+    suspension: {
+      kind: 'approval_required',
+      rationale: 'Write requires approval',
+      approval: {
+        approvalId: 'appr_1',
+        fingerprint: 'fp_1',
+        toolName: 'apply_patch',
+        callId: 'call_1',
+        paths: ['src/a.ts'],
+      },
+    },
+  };
+}
+
+describe('CLI Phase 15 session resume helpers', () => {
+  it('builds clarification resume input', () => {
+    const resume = buildResumeInput(suspendedClarification(), {
+      kind: 'clarification',
+      answer: 'src/foo.ts',
+    });
+    expect(resume).toEqual({
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: 'run_clarify',
+      clarificationAnswer: 'src/foo.ts',
+    });
+  });
+
+  it('builds approval resume input for approve and deny', () => {
+    expect(
+      buildResumeInput(suspendedApproval(), {
+        kind: 'approval',
+        decision: 'approved',
+      }),
+    ).toEqual({
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: 'run_approve',
+      approval: { approvalId: 'appr_1', decision: 'approved' },
+    });
+    expect(
+      buildResumeInput(suspendedApproval(), {
+        kind: 'approval',
+        decision: 'denied',
+      })?.approval?.decision,
+    ).toBe('denied');
+  });
+
+  it('rejects empty clarification answers', () => {
+    expect(
+      buildResumeInput(suspendedClarification(), {
+        kind: 'clarification',
+        answer: '   ',
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('CLI parseCliArgs Phase 15 flags', () => {
+  it('parses clarify / approve / deny', () => {
+    const clarified = parseCliArgs([
+      'node',
+      'mitii',
+      'ask',
+      'fix it',
+      '--clarify',
+      'src/a.ts',
+    ]);
+    expect(clarified.autoClarify).toBe('src/a.ts');
+
+    const approved = parseCliArgs([
+      'node',
+      'mitii',
+      'ask',
+      'patch',
+      '--approve',
+    ]);
+    expect(approved.autoApproval).toBe('approved');
+
+    const denied = parseCliArgs(['node', 'mitii', 'ask', 'patch', '--deny']);
+    expect(denied.autoApproval).toBe('denied');
+  });
+});

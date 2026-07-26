@@ -5,8 +5,8 @@
     "outDir": "dist",
     "composite": false,
     "noEmit": true,
-    "module": "CommonJS",
-    "moduleResolution": "node",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "types": ["node", "vscode"],
     "lib": ["ES2022"]
   },

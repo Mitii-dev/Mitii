@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { main } from '../src/cli.js';
 
-describe('CLI ask smoke (Phase 13)', () => {
+describe('CLI ask smoke (Phase 15)', () => {
   it('completes a non-mutating ask via @mitii/sdk with Echo', async () => {
     const chunks: string[] = [];
     const errChunks: string[] = [];

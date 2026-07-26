@@ -162,6 +162,23 @@ export class MitiiClient {
       throw mapToSdkError(error);
     }
   }
+
+  /**
+   * Read the latest published descriptor for a workspace (host status UX).
+   */
+  async getLatestRepositoryState(workspaceId: string) {
+    if (!this.repositoryState) {
+      throw new MitiiSdkError(
+        'unsupported',
+        'getLatestRepositoryState requires a repositoryState pipeline on the client.',
+      );
+    }
+    try {
+      return await this.repositoryState.getLatest(workspaceId);
+    } catch (error) {
+      throw mapToSdkError(error);
+    }
+  }
 }
 
 export function createMitiiClient(options: CreateMitiiClientOptions): MitiiClient {

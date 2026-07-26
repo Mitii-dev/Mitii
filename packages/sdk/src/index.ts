@@ -33,6 +33,8 @@ export {
   InMemoryRepositoryStateStore,
   InMemoryRunCheckpointStore,
   RepositoryStatePipeline,
+  publishRepositoryStateInputSchema,
+  REPOSITORY_STATE_SCHEMA_VERSION,
   AGENT_ENGINE_SCHEMA_VERSION,
   agentEngineStartInputSchema,
   agentEngineResumeInputSchema,
@@ -46,4 +48,5 @@ export type {
   ComposeReadOnlyAgentEngineOptions,
   PublishRepositoryStateInput,
   PublishRepositoryStateResult,
+  RepositoryStateDescriptor,
 } from '@mitii/v8';

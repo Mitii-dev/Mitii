@@ -1,79 +1,225 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ExtensionContext } from 'vscode';
 import * as vscode from 'vscode';
-import { createMitiiClient, EchoLlmPort } from '@mitii/sdk';
-import type { LlmPort, ModelCapabilities, ModelEvent, ModelRequest } from '@mitii/v8';
+
+import type { MitiiClient } from '@mitii/sdk';
+
+import { runAskInOutputChannel } from './hostAsk.js';
+import { createVscodeClient } from './ports.js';
+import { buildSessionExport } from './runReport.js';
+import { MitiiSidebarProvider } from './sidebar.js';
+import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
+
+const execFileAsync = promisify(execFile);
 
 /**
- * Phase 13 host package: activation composes @mitii/sdk only.
- * Full chat/webview/SCM parity is Phase 15 — this entry proves the package boundary.
+ * Phase 15 host package: activation composes @mitii/sdk only.
  */
-class LocalUnderstandingLlmPort implements LlmPort {
-  readonly id = 'vscode-local-understanding';
-  readonly capabilities: ModelCapabilities = {
-    modelId: 'vscode/local-understanding',
-    supportsStreaming: true,
-    supportsTools: false,
-    supportsParallelToolCalls: false,
-    supportsVision: false,
-    supportsStructuredOutput: true,
-    supportsReasoning: false,
-    supportsPromptCaching: false,
-    supportsEmbeddings: false,
-    contextWindowTokens: 8_192,
-    maximumOutputTokens: 1_000,
+export function activate(context: ExtensionContext): void {
+  const channel = vscode.window.createOutputChannel('Mitii');
+  context.subscriptions.push(channel);
+
+  let client: MitiiClient | undefined;
+  let workspaceId = 'vscode_workspace';
+
+  const workspaceRoot = (): string | undefined =>
+    vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+  const ensureClient = async (): Promise<MitiiClient> => {
+    const composed = await createVscodeClient(
+      vscode,
+      context.secrets,
+      workspaceRoot(),
+    );
+    client = composed.client;
+    workspaceId = composed.ports.workspaceId;
+    channel.appendLine(`[mitii] provider=${composed.ports.providerLabel}`);
+    return client;
   };
 
-  async *complete(_request: ModelRequest): AsyncIterable<ModelEvent> {
-    yield {
-      type: 'content_delta',
-      content: JSON.stringify({
-        interactionIntent: 'question',
-        primaryTaskIntent: 'question',
-        secondaryTaskIntents: [],
-        confidence: 0.9,
-        alternatives: [],
-        needsClarification: false,
-        reason: 'VS Code Phase 13 local understanding.',
-      }),
-    };
-    yield { type: 'completed', finishReason: 'stop' };
-  }
-}
+  const openChat = async (): Promise<void> => {
+    const prompt = await vscode.window.showInputBox({
+      prompt: 'Ask Mitii',
+      placeHolder: 'What should Mitii answer?',
+      ignoreFocusOut: true,
+    });
+    if (!prompt?.trim()) return;
+    const c = await ensureClient();
+    try {
+      const outcome = await runAskInOutputChannel({
+        vs: vscode,
+        client: c,
+        prompt: prompt.trim(),
+        workspaceRoot: workspaceRoot(),
+        channel,
+      });
+      if (outcome.result.status === 'cancelled') {
+        void vscode.window.showWarningMessage('Mitii run cancelled.');
+      } else if (outcome.result.status === 'failed') {
+        void vscode.window.showErrorMessage(
+          outcome.result.error?.message ?? 'Mitii run failed.',
+        );
+      } else if (outcome.result.status === 'completed') {
+        void vscode.window.showInformationMessage('Mitii ask completed.');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      channel.appendLine(`[error] ${message}`);
+      void vscode.window.showErrorMessage(`Mitii ask failed: ${message}`);
+    }
+  };
 
-export function activate(context: ExtensionContext): void {
-  const workspaceRoot =
-    vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? undefined;
+  const indexWorkspace = async (): Promise<void> => {
+    const root = workspaceRoot();
+    if (!root) {
+      void vscode.window.showWarningMessage('Open a folder to index.');
+      return;
+    }
+    const c = await ensureClient();
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: 'Mitii: indexing workspace',
+        cancellable: false,
+      },
+      async () => {
+        const snapshot = await buildWorkspaceSnapshot({
+          workspaceRoot: root,
+          workspaceId,
+        });
+        const published = await c.publishRepositoryState(snapshot.candidate);
+        if (published.status === 'published') {
+          const dir = join(root, '.mitii');
+          mkdirSync(dir, { recursive: true });
+          writeFileSync(
+            join(dir, 'last-repository-state.json'),
+            `${JSON.stringify(published.descriptor, null, 2)}\n`,
+          );
+          channel.appendLine(
+            `[index] readiness=${published.descriptor.readiness} token=${published.reference.stateToken.slice(0, 16)}… files=${snapshot.fileCount}`,
+          );
+          for (const reason of published.descriptor.reasons) {
+            channel.appendLine(`[index] ${reason.code}: ${reason.message}`);
+          }
+          void vscode.window.showInformationMessage(
+            `Mitii indexed (${published.descriptor.readiness}).`,
+          );
+        } else {
+          void vscode.window.showErrorMessage('Mitii index failed.');
+        }
+      },
+    );
+  };
 
-  const client = createMitiiClient({
-    understandingLlm: new LocalUnderstandingLlmPort(),
-    runLlm: new EchoLlmPort(),
+  const generateCommitMessage = async (): Promise<void> => {
+    const root = workspaceRoot();
+    if (!root) {
+      void vscode.window.showWarningMessage('Open a git folder first.');
+      return;
+    }
+    let statusText = '';
+    try {
+      const { stdout } = await execFileAsync(
+        'git',
+        ['status', '--porcelain', '-b'],
+        { cwd: root, timeout: 10_000 },
+      );
+      statusText = stdout.trim() || '(clean)';
+    } catch {
+      void vscode.window.showErrorMessage('Unable to read git status.');
+      return;
+    }
+    const c = await ensureClient();
+    const prompt = `Write a concise git commit message for this repository status:\n\n${statusText}`;
+    const outcome = await runAskInOutputChannel({
+      vs: vscode,
+      client: c,
+      prompt,
+      workspaceRoot: root,
+      channel,
+      mode: 'ask',
+    });
+    const message =
+      outcome.result.answer?.trim() ||
+      'chore: update workspace';
+    await vscode.env.clipboard.writeText(message);
+    void vscode.window.showInformationMessage(
+      'Commit message copied to clipboard.',
+    );
+  };
+
+  const exportSession = async (): Promise<void> => {
+    const prompt = await vscode.window.showInputBox({
+      prompt: 'Prompt to run before exporting session log',
+      value: 'Summarize the current workspace briefly.',
+    });
+    if (!prompt?.trim()) return;
+    const root = workspaceRoot();
+    const c = await ensureClient();
+    const outcome = await runAskInOutputChannel({
+      vs: vscode,
+      client: c,
+      prompt: prompt.trim(),
+      workspaceRoot: root,
+      channel,
+    });
+    const payload = buildSessionExport({
+      result: outcome.result,
+      events: outcome.events,
+    });
+    const outPath = join(root ?? context.globalStorageUri.fsPath, '.mitii-session-export.json');
+    writeFileSync(outPath, `${JSON.stringify(payload, null, 2)}\n`);
+    channel.appendLine(`[export] wrote ${outPath}`);
+    void vscode.window.showInformationMessage(`Exported session to ${outPath}`);
+  };
+
+  const sidebar = new MitiiSidebarProvider(
+    vscode,
+    ensureClient,
     workspaceRoot,
-    defaultMode: 'ask',
-    defaultSessionId: 'vscode_session',
-  });
+    channel,
+  );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('mitii.openChat', async () => {
-      await vscode.window.showInformationMessage(
-        'Mitii Phase 13: extension host uses @mitii/sdk. Full chat UI lands in Phase 15.',
-      );
-    }),
-    vscode.commands.registerCommand('thunder.openChat', async () => {
-      await vscode.commands.executeCommand('mitii.openChat');
-    }),
+    vscode.window.registerWebviewViewProvider(
+      MitiiSidebarProvider.viewType,
+      sidebar,
+    ),
+    vscode.commands.registerCommand('mitii.openChat', openChat),
+    vscode.commands.registerCommand('thunder.openChat', openChat),
+    vscode.commands.registerCommand('mitii.indexWorkspace', indexWorkspace),
+    vscode.commands.registerCommand('thunder.indexWorkspace', indexWorkspace),
+    vscode.commands.registerCommand(
+      'mitii.generateCommitMessage',
+      generateCommitMessage,
+    ),
+    vscode.commands.registerCommand(
+      'thunder.generateCommitMessage',
+      generateCommitMessage,
+    ),
+    vscode.commands.registerCommand('mitii.exportSessionLog', exportSession),
+    vscode.commands.registerCommand('thunder.exportSessionLog', exportSession),
+    vscode.commands.registerCommand('mitii.exportAuditPack', exportSession),
+    vscode.commands.registerCommand('thunder.exportAuditPack', exportSession),
     vscode.commands.registerCommand('mitii.showSettings', async () => {
       await vscode.commands.executeCommand(
         'workbench.action.openSettings',
         '@ext:mitii.mitii-ai-agent',
       );
     }),
+    vscode.commands.registerCommand('thunder.showSettings', async () => {
+      await vscode.commands.executeCommand('mitii.showSettings');
+    }),
   );
 
-  // Retain client on the activation bag so tree-shaking cannot drop the SDK import.
-  context.subscriptions.push({
-    dispose: () => {
-      void client;
-    },
+  // Warm client so sidebar asks work after first openChat/index.
+  void ensureClient().catch((error) => {
+    channel.appendLine(
+      `[mitii] client init deferred: ${error instanceof Error ? error.message : String(error)}`,
+    );
   });
 }
 

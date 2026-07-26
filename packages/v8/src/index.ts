@@ -36,6 +36,7 @@ export {
   repositoryStateReferenceSchema,
   repositoryStateDescriptorSchema,
   publishRepositoryStateInputSchema,
+  REPOSITORY_STATE_SCHEMA_VERSION,
 } from "./modules/repository-state";
 export type {
   LanguageId,

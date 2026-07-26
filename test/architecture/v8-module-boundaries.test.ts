@@ -480,19 +480,32 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
       scanImports(join(vscodeRoot, 'src'), forbiddenHostPatterns),
     ).toEqual([]);
 
-    const vscodeExtension = readFileSync(
+    const vscodeSrcFiles = [
       join(vscodeRoot, 'src/extension.ts'),
-      'utf8',
-    );
-    expect(vscodeExtension).toContain('@mitii/sdk');
-    expect(vscodeExtension).toContain('createMitiiClient');
-    expect(vscodeExtension).not.toMatch(
+      join(vscodeRoot, 'src/hostAsk.ts'),
+      join(vscodeRoot, 'src/ports.ts'),
+      join(vscodeRoot, 'src/sidebar.ts'),
+    ];
+    const vscodeHostSrc = vscodeSrcFiles
+      .filter((file) => existsSync(file))
+      .map((file) => readFileSync(file, 'utf8'))
+      .join('\n');
+    expect(vscodeHostSrc).toContain('@mitii/sdk');
+    expect(vscodeHostSrc).toContain('createMitiiClient');
+    expect(vscodeHostSrc).not.toMatch(
       /from ['"].*ThunderController['"]/,
     );
 
-    const cliSrc = readFileSync(join(cliRoot, 'src/cli.ts'), 'utf8');
-    expect(cliSrc).toContain('@mitii/sdk');
-    expect(cliSrc).toContain('createMitiiClient');
+    const cliSrcFiles = [
+      join(cliRoot, 'src/cli.ts'),
+      join(cliRoot, 'src/ports.ts'),
+      join(cliRoot, 'src/session.ts'),
+    ];
+    const cliHostSrc = cliSrcFiles
+      .map((file) => readFileSync(file, 'utf8'))
+      .join('\n');
+    expect(cliHostSrc).toContain('@mitii/sdk');
+    expect(cliHostSrc).toContain('createMitiiClient');
   });
 
   it('forbids V8 from importing apps packages (Phase 13)', () => {
