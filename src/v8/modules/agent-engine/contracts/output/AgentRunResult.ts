@@ -34,6 +34,16 @@ export const agentRunSuspensionSchema = z
     kind: agentSuspensionKindSchema,
     rationale: z.string().min(1),
     clarificationPrompt: z.string().min(1).optional(),
+    approval: z
+      .object({
+        approvalId: z.string().min(1),
+        fingerprint: z.string().min(1),
+        toolName: z.string().min(1),
+        callId: z.string().min(1),
+        paths: z.array(z.string()).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

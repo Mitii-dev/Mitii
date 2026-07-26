@@ -6,6 +6,7 @@ import type {
   ToolResult,
   ToolRuntimePorts,
 } from "../contracts";
+import { fingerprintToolCall, MutationTransactionRegistry } from "../internal/mutation";
 import { SessionBudget } from "../internal/SessionBudget";
 import type { ToolRegistry } from "../internal/ToolRegistry";
 import type { ToolExecutionResult } from "../internal/ToolRegistry";
@@ -23,18 +24,30 @@ import type {
 export type { ToolExecuteOptions, ToolRuntimePipelineOptions } from "./types";
 
 /**
+ * Re-exported so the module root barrel can expose it without reaching
+ * into `internal/` directly (architecture boundary requires public
+ * facade files, not internal paths, in `index.ts`).
+ */
+export { fingerprintToolCall };
+
+export interface RollbackMutationInput {
+  checkpointId: string;
+}
+
+/**
  * Tool Runtime facade.
  *
  * Flow:
  *   parse input
  *   → begin session budget
- *   → preflight (registry + grant + args)
+ *   → preflight (registry + grant + approval + args)
  *   → execute registered handler
  *   → finish result / map error
  */
 export class ToolRuntimePipeline {
   private readonly ports: ToolRuntimePorts;
   private readonly registry: ToolRegistry;
+  private readonly transactions: MutationTransactionRegistry;
 
   constructor(
     ports: ToolRuntimePorts,
@@ -48,6 +61,7 @@ export class ToolRuntimePipeline {
     }
     this.ports = ports;
     this.registry = options.registry ?? createBuiltinToolRegistry();
+    this.transactions = new MutationTransactionRegistry();
   }
 
   public createBudget(grant: ToolInvocationInput["grant"]): SessionBudget {
@@ -92,6 +106,9 @@ export class ToolRuntimePipeline {
         timeoutMs: registered.definition.timeoutMs,
         maxOutputBytes,
         signal: options.signal,
+        transactions: this.transactions,
+        dirtyPaths: options.dirtyPaths,
+        alreadyMutatedPaths: options.alreadyMutatedPaths,
       });
 
       return buildFinishedResult({
@@ -103,6 +120,66 @@ export class ToolRuntimePipeline {
     } catch (error) {
       return mapExecutionError({ error, parsed, clock });
     }
+  }
+
+  /**
+   * Restore a prior mutation checkpoint. Only files in the checkpoint are
+   * touched — user edits outside the transaction are preserved.
+   */
+  public async rollbackMutation(
+    input: RollbackMutationInput,
+  ): Promise<ToolResult> {
+    const clock: CallClock = {
+      startedAt: new Date(),
+      startedMs: Date.now(),
+    };
+    const synthetic: ToolInvocationInput = {
+      schemaVersion: 1,
+      callId: `rollback_${input.checkpointId}`,
+      toolName: "apply_patch",
+      arguments: {},
+      grant: {
+        maximumWorkspaceEffect: "write",
+        allowedTools: ["apply_patch"],
+        allowedEffects: ["workspace_write"],
+        pathScopes: ["."],
+        approvalMode: "never",
+        limits: {
+          maxToolCalls: 1,
+          maxWallTimeMs: 60_000,
+          maxOutputBytes: 64_000,
+        },
+      },
+      workspaceRoot: ".",
+    };
+
+    try {
+      const restored = await this.transactions.rollback({
+        checkpointId: input.checkpointId,
+        fileSystem: this.ports.fileSystem,
+      });
+      return buildFinishedResult({
+        parsed: synthetic,
+        clock,
+        budget: new SessionBudget(synthetic.grant),
+        body: {
+          status: "succeeded",
+          truncated: false,
+          redacted: false,
+          output: {
+            checkpointId: input.checkpointId,
+            restoredFiles: restored,
+          },
+          warnings: [],
+        },
+      });
+    } catch (error) {
+      return mapExecutionError({ error, parsed: synthetic, clock });
+    }
+  }
+
+  public commitMutation(checkpointId: string): void {
+    this.transactions.commit(checkpointId);
   }
 }
 

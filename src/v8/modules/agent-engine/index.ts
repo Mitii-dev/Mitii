@@ -18,7 +18,10 @@ export {
 
 export {
   PHASE7_SUPPORTED_ROUTES,
+  PHASE8_SUPPORTED_ROUTES,
   DEFAULT_READ_ONLY_TOOL_DEFINITIONS,
+  DEFAULT_MUTATION_TOOL_DEFINITIONS,
+  DEFAULT_TOOL_DEFINITIONS,
 } from "./policy";
 
 export { AgentEnginePipeline } from "./pipeline/AgentEnginePipeline";
@@ -26,11 +29,13 @@ export type { AgentEnginePipelineDependencies } from "./pipeline/AgentEnginePipe
 
 export {
   composeReadOnlyAgentEngine,
+  InMemoryRunCheckpointStore,
 } from "./adapters";
 export type { ComposeReadOnlyAgentEngineOptions } from "./adapters";
 
 export {
   agentEngineStartInputSchema,
+  agentEngineResumeInputSchema,
   agentRunBudgetSchema,
   agentRunResultSchema,
   agentRunStatusSchema,
@@ -46,6 +51,7 @@ export {
 } from "./contracts";
 export type {
   AgentEngineStartInput,
+  AgentEngineResumeInput,
   AgentRunBudget,
   AgentRunResult,
   AgentRunStatus,
@@ -67,4 +73,5 @@ export type {
   AgentEngineRepositoryStatePort,
   AgentEngineRepositoryContextPort,
   AgentEngineToolRuntimePort,
+  AgentEngineVerificationPort,
 } from "./contracts";

@@ -20,11 +20,16 @@ export {
   DEFAULT_READONLY_COMMAND_PREFIXES,
 } from "./defaults";
 
-export { ToolRuntimePipeline } from "./pipeline/ToolRuntimePipeline";
+export {
+  ToolRuntimePipeline,
+  fingerprintToolCall,
+} from "./pipeline/ToolRuntimePipeline";
 export type {
   ToolExecuteOptions,
   ToolRuntimePipelineOptions,
+  RollbackMutationInput,
 } from "./pipeline/ToolRuntimePipeline";
+export type { ToolApprovalToken } from "./pipeline/types";
 
 export {
   ToolRegistry,

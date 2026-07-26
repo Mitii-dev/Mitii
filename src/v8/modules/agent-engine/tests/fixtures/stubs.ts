@@ -37,6 +37,7 @@ import type {
 } from "../../../tool-runtime";
 import { TOOL_RUNTIME_SCHEMA_VERSION } from "../../../tool-runtime";
 
+import { InMemoryRunCheckpointStore } from "../..";
 import type { AgentEngineDependencies } from "../../contracts";
 
 export function createCapabilities(
@@ -266,6 +267,7 @@ export function createStubDependencies(options: {
   }>;
   toolResults?: Record<string, Partial<ToolResult>>;
   pinFails?: boolean;
+  checkpointStore?: AgentEngineDependencies["checkpointStore"];
 }): AgentEngineDependencies {
   const decision = options.decision ?? createDecision();
   const understanding = options.understanding ?? createUnderstanding();
@@ -447,6 +449,7 @@ export function createStubDependencies(options: {
         };
       },
     },
+    checkpointStore: options.checkpointStore ?? new InMemoryRunCheckpointStore(),
     clock: {
       now: () => new Date("2026-07-25T12:00:00.000Z"),
     },

@@ -2,6 +2,8 @@ import { ZodError } from "zod";
 
 import { GrantValidationError, validateToolAgainstGrant } from "../../actions";
 import type { ToolInvocationInput, ToolResult } from "../../contracts";
+import { assertApprovalSatisfied } from "../../internal/mutation/assertApprovalSatisfied";
+import { fingerprintToolCall } from "../../internal/mutation";
 import type { SessionBudget } from "../../internal/SessionBudget";
 import { SessionBudgetError } from "../../internal/SessionBudget";
 import type { RegisteredTool, ToolRegistry } from "../../internal/ToolRegistry";
@@ -22,7 +24,7 @@ export type PreflightFailure = {
 export type PreflightOutcome = PreflightSuccess | PreflightFailure;
 
 /**
- * Budget, cancellation, registration, grant, and argument checks.
+ * Budget, cancellation, registration, grant, approval, and argument checks.
  * Returns a rejected ToolResult when preflight fails.
  */
 export function preflightToolCall(params: {
@@ -114,6 +116,42 @@ export function preflightToolCall(params: {
     throw error;
   }
 
+  try {
+    assertApprovalSatisfied({
+      tool: registered.definition,
+      grant: parsed.grant,
+      arguments: parsed.arguments,
+      approval: options.approval,
+    });
+  } catch (error) {
+    if (error instanceof GrantValidationError) {
+      const fingerprint = fingerprintToolCall(
+        parsed.toolName,
+        parsed.arguments,
+      );
+      return {
+        ok: false,
+        result: buildRejectedResult({
+          parsed,
+          clock,
+          status: "rejected",
+          reasonCode: error.reasonCode,
+          warnings: [error.message],
+          output:
+            error.reasonCode === "approval_required"
+              ? {
+                  approvalRequired: true,
+                  fingerprint,
+                  toolName: parsed.toolName,
+                  paths: extractPatchPaths(parsed.arguments),
+                }
+              : undefined,
+        }),
+      };
+    }
+    throw error;
+  }
+
   const maxOutputBytes = Math.min(
     registered.definition.maxOutputBytes,
     budget.remainingOutputBytes() || registered.definition.maxOutputBytes,
@@ -121,4 +159,18 @@ export function preflightToolCall(params: {
   );
 
   return { ok: true, registered, maxOutputBytes };
+}
+
+function extractPatchPaths(argumentsValue: unknown): string[] {
+  if (
+    !argumentsValue ||
+    typeof argumentsValue !== "object" ||
+    !("patches" in argumentsValue) ||
+    !Array.isArray((argumentsValue as { patches: unknown }).patches)
+  ) {
+    return [];
+  }
+  return (argumentsValue as { patches: Array<{ path?: unknown }> }).patches
+    .map((patch) => (typeof patch.path === "string" ? patch.path : undefined))
+    .filter((path): path is string => typeof path === "string");
 }

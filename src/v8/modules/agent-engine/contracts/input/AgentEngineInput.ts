@@ -40,10 +40,11 @@ export const agentRunBudgetSchema = z
 export type AgentRunBudget = z.infer<typeof agentRunBudgetSchema>;
 
 /**
- * Boundary input for starting a Phase 7 read-only agent run.
+ * Boundary input for starting an agent run.
  *
  * Hosts supply the raw request plus optional pinned/known repository state.
  * Engine pins state when Decision Policy requires repository context.
+ * Optional dirtyPaths list user-dirty files for overlap checks.
  */
 export const agentEngineStartInputSchema = z
   .object({
@@ -54,13 +55,50 @@ export const agentEngineStartInputSchema = z
     repositoryState: repositoryStateCapabilitySummarySchema.optional(),
     conversation: z.array(modelMessageSchema).default([]),
     instructions: promptInstructionsSchema.optional(),
-    /** Optional override; otherwise Engine uses default read-only definitions. */
+    /** Optional override; otherwise Engine uses default tool definitions. */
     tools: z.array(modelToolDefinitionSchema).optional(),
     budget: agentRunBudgetSchema.optional(),
     model: z.string().min(1).optional(),
     temperature: z.number().min(0).max(2).optional(),
     stream: z.boolean().optional(),
+    /**
+     * Workspace-relative paths dirty before the run (user edits).
+     * Used for dirty-overlap rejection on mutation tools.
+     */
+    dirtyPaths: z.array(z.string().min(1)).optional(),
   })
   .strict();
 
 export type AgentEngineStartInput = z.infer<typeof agentEngineStartInputSchema>;
+
+/**
+ * Resume a suspended run after clarification or approval.
+ * Resume continues from the persisted checkpoint and does not replay
+ * completed tool callIds.
+ */
+export const agentEngineResumeInputSchema = z
+  .object({
+    schemaVersion: z.literal(AGENT_ENGINE_SCHEMA_VERSION),
+    runId: z.string().min(1),
+    approval: z
+      .object({
+        approvalId: z.string().min(1),
+        decision: z.enum(["approved", "denied"]),
+      })
+      .strict()
+      .optional(),
+    clarificationAnswer: z.string().min(1).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (!value.approval && !value.clarificationAnswer) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Resume requires approval or clarificationAnswer.",
+      });
+    }
+  });
+
+export type AgentEngineResumeInput = z.infer<
+  typeof agentEngineResumeInputSchema
+>;

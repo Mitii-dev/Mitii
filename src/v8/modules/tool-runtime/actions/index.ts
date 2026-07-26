@@ -6,4 +6,4 @@ export { executeReadDiagnostics } from "./ExecuteReadDiagnostics";
 export { executeReadGitStatus } from "./ExecuteReadGitStatus";
 export { executeRunReadonlyCommand } from "./ExecuteRunReadonlyCommand";
 export { executeFetchUrl } from "./ExecuteFetchUrl";
-
+export { executeApplyPatch } from "./ExecuteApplyPatch";

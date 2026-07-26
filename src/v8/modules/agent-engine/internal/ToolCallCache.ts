@@ -2,7 +2,7 @@ import type { ToolResult } from "../../tool-runtime";
 
 /**
  * Idempotency cache for completed tool calls within a single run.
- * Resume (Phase 8) will persist this; Phase 7 keeps it in-memory.
+ * Persisted across resume via entries().
  */
 export class ToolCallCache {
   private readonly completed = new Map<string, ToolResult>();
@@ -17,5 +17,19 @@ export class ToolCallCache {
 
   public has(callId: string): boolean {
     return this.completed.has(callId);
+  }
+
+  public entries(): Array<[string, ToolResult]> {
+    return [...this.completed.entries()];
+  }
+
+  public static fromEntries(
+    entries: ReadonlyArray<[string, ToolResult]>,
+  ): ToolCallCache {
+    const cache = new ToolCallCache();
+    for (const [callId, result] of entries) {
+      cache.set(callId, result);
+    }
+    return cache;
   }
 }

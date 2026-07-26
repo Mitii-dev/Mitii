@@ -123,13 +123,15 @@ export async function resolveContainedPath(params: {
   let realPath: string;
   try {
     realPath = await params.fileSystem.realpath(absolutePath);
-  } catch (error) {
+  } catch {
     if (params.mustExist === false) {
-      // For create paths we would allow missing; Phase 4 is read-only.
-      throw new PathContainmentError(
-        "path_escape",
-        `Unable to resolve path: "${params.requestedPath}".`,
-      );
+      await assertCreatablePathWithinRoot({
+        fileSystem: params.fileSystem,
+        absoluteRoot,
+        absolutePath,
+        requestedPath: params.requestedPath,
+      });
+      return { relativePath, absolutePath, realPath: absolutePath };
     }
     throw new PathContainmentError(
       "execution_failed",
@@ -168,6 +170,50 @@ export async function resolveContainedPath(params: {
   }
 
   return { relativePath, absolutePath, realPath };
+}
+
+/**
+ * For create paths: walk up to an existing ancestor and ensure the logical
+ * target stays inside the workspace (no symlink escape via parents).
+ */
+async function assertCreatablePathWithinRoot(params: {
+  fileSystem: WorkspaceFileSystemPort;
+  absoluteRoot: string;
+  absolutePath: string;
+  requestedPath: string;
+}): Promise<void> {
+  let cursor = path.dirname(params.absolutePath);
+  for (let depth = 0; depth < 64; depth += 1) {
+    if (!isPhysicalPathWithinRoot(params.absoluteRoot, cursor)) {
+      throw new PathContainmentError(
+        "path_escape",
+        `Create path escapes workspace: "${params.requestedPath}".`,
+      );
+    }
+    try {
+      const realAncestor = await params.fileSystem.realpath(cursor);
+      if (!isPhysicalPathWithinRoot(params.absoluteRoot, realAncestor)) {
+        throw new PathContainmentError(
+          "symlink_escape",
+          `Create path parent escapes workspace: "${params.requestedPath}".`,
+        );
+      }
+      return;
+    } catch (error) {
+      if (error instanceof PathContainmentError) {
+        throw error;
+      }
+      const parent = path.dirname(cursor);
+      if (parent === cursor) {
+        break;
+      }
+      cursor = parent;
+    }
+  }
+  throw new PathContainmentError(
+    "path_escape",
+    `Unable to resolve create path: "${params.requestedPath}".`,
+  );
 }
 
 function assertNoNullBytes(targetPath: string): void {

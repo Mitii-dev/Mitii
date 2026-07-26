@@ -186,7 +186,7 @@ export class InMemoryFileSystemAdapter implements WorkspaceFileSystemPort {
       if (current.kind !== "directory") {
         return undefined;
       }
-      const next = current.children[part];
+      const next: InMemoryNode | undefined = current.children[part];
       if (!next) {
         return undefined;
       }
@@ -203,6 +203,86 @@ export class InMemoryFileSystemAdapter implements WorkspaceFileSystemPort {
       kind: "file",
       content,
     });
+  }
+
+  public async writeFile(absolutePath: string, content: string): Promise<void> {
+    const absolute = path.resolve(absolutePath);
+    const relative = path.relative(this.workspaceRoot, absolute);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new Error(`EPERM: write outside workspace ${absolutePath}`);
+    }
+    const parts =
+      relative === "" ? [] : relative.split(path.sep).filter(Boolean);
+    if (parts.length === 0) {
+      throw new Error(`EISDIR: ${absolutePath}`);
+    }
+    let current: InMemoryDirectoryNode = this.root;
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      const part = parts[i]!;
+      const next = current.children[part];
+      if (!next) {
+        const created: InMemoryDirectoryNode = {
+          kind: "directory",
+          children: {},
+        };
+        current.children[part] = created;
+        current = created;
+        continue;
+      }
+      if (next.kind !== "directory") {
+        throw new Error(`ENOTDIR: ${absolutePath}`);
+      }
+      current = next;
+    }
+    const fileName = parts[parts.length - 1]!;
+    current.children[fileName] = { kind: "file", content };
+  }
+
+  public async unlink(absolutePath: string): Promise<void> {
+    const absolute = path.resolve(absolutePath);
+    const relative = path.relative(this.workspaceRoot, absolute);
+    if (relative.startsWith("..") || path.isAbsolute(relative) || relative === "") {
+      return;
+    }
+    const parts = relative.split(path.sep).filter(Boolean);
+    let current: InMemoryDirectoryNode = this.root;
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      const next = current.children[parts[i]!];
+      if (!next || next.kind !== "directory") {
+        return;
+      }
+      current = next;
+    }
+    delete current.children[parts[parts.length - 1]!];
+  }
+
+  public async mkdirp(absolutePath: string): Promise<void> {
+    const absolute = path.resolve(absolutePath);
+    const relative = path.relative(this.workspaceRoot, absolute);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new Error(`EPERM: mkdir outside workspace ${absolutePath}`);
+    }
+    if (relative === "") {
+      return;
+    }
+    const parts = relative.split(path.sep).filter(Boolean);
+    let current: InMemoryDirectoryNode = this.root;
+    for (const part of parts) {
+      const next = current.children[part];
+      if (!next) {
+        const created: InMemoryDirectoryNode = {
+          kind: "directory",
+          children: {},
+        };
+        current.children[part] = created;
+        current = created;
+        continue;
+      }
+      if (next.kind !== "directory") {
+        throw new Error(`ENOTDIR: ${absolutePath}`);
+      }
+      current = next;
+    }
   }
 }
 

@@ -1,9 +1,11 @@
 export {
   agentEngineStartInputSchema,
+  agentEngineResumeInputSchema,
   agentRunBudgetSchema,
 } from "./input/AgentEngineInput";
 export type {
   AgentEngineStartInput,
+  AgentEngineResumeInput,
   AgentRunBudget,
 } from "./input/AgentEngineInput";
 
@@ -50,4 +52,5 @@ export type {
   AgentEngineRepositoryStatePort,
   AgentEngineRepositoryContextPort,
   AgentEngineToolRuntimePort,
+  AgentEngineVerificationPort,
 } from "./ports/AgentEnginePorts";

@@ -1,9 +1,19 @@
 import type { ModelToolDefinition } from "../model-gateway";
 
 /**
- * Phase 7 is read-only. Mutation routes suspend/fail closed rather than
- * inventing patch/approval behavior (Phase 8).
+ * Routes supported by the single-agent Engine after Phase 8.
+ * Skills/memory/subagents remain deferred.
  */
+export const PHASE8_SUPPORTED_ROUTES = [
+  "direct_answer",
+  "repository_answer",
+  "clarify",
+  "diagnose",
+  "plan",
+  "execute",
+] as const;
+
+/** @deprecated Use PHASE8_SUPPORTED_ROUTES. Kept for existing Phase 7 tests. */
 export const PHASE7_SUPPORTED_ROUTES = [
   "direct_answer",
   "repository_answer",
@@ -91,3 +101,37 @@ export const DEFAULT_READ_ONLY_TOOL_DEFINITIONS: readonly ModelToolDefinition[] 
       },
     },
   ];
+
+export const DEFAULT_MUTATION_TOOL_DEFINITIONS: readonly ModelToolDefinition[] =
+  [
+    {
+      name: "apply_patch",
+      description:
+        "Apply structured oldText/newText patches inside a recoverable transaction.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          patches: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                path: { type: "string" },
+                oldText: { type: "string" },
+                newText: { type: "string" },
+                expectedHash: { type: "string" },
+              },
+              required: ["path", "oldText", "newText"],
+            },
+            minItems: 1,
+          },
+        },
+        required: ["patches"],
+      },
+    },
+  ];
+
+export const DEFAULT_TOOL_DEFINITIONS: readonly ModelToolDefinition[] = [
+  ...DEFAULT_READ_ONLY_TOOL_DEFINITIONS,
+  ...DEFAULT_MUTATION_TOOL_DEFINITIONS,
+];

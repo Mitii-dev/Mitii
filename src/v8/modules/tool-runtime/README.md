@@ -53,7 +53,7 @@ const registry = createBuiltinToolRegistry().register({
 const runtime = new ToolRuntimePipeline(ports, { registry });
 ```
 
-## Phase 4 tools
+## Read-only tools (Phase 4)
 
 - `list_directory`
 - `read_file`
@@ -64,6 +64,39 @@ const runtime = new ToolRuntimePipeline(ports, { registry });
 
 `fetch_url` is catalogued for capability negotiation and network-grant tests
 but is not executable in this phase.
+
+## Mutation tool (Phase 8)
+
+- `apply_patch` — applies structured `oldText`/`newText` patches inside a
+  recoverable transaction.
+
+Mutation calls are grant-gated (`maximumWorkspaceEffect: "write"`,
+`workspace_write` effect) and additionally approval-gated when the grant's
+`approvalMode` is `"when_required"`:
+
+```text
+execute(apply_patch, …)
+  → grant/effect/schema preflight
+  → dirty-overlap check (options.dirtyPaths vs. patch paths)
+  → approval preflight (skipped when approvalMode is "never")
+      no/mismatched approval → status "rejected", reasonCode "approval_required",
+        output.fingerprint = fingerprintToolCall(toolName, arguments)
+      matching approval     → proceed
+  → begin MutationTransactionRegistry checkpoint
+  → apply patches, capture changedFiles
+  → ToolResult.output = { checkpointId, changedFiles }
+```
+
+Callers (Agent Engine) re-submit the same call with
+`options.approval = { approvalId, fingerprint, decision: "approved" }` to
+proceed; the fingerprint must match the one returned on the rejected call.
+
+`ToolRuntimePipeline.rollbackMutation({ checkpointId })` restores exactly the
+files touched by that transaction — user edits outside the transaction are
+left untouched. `ToolRuntimePipeline.commitMutation(checkpointId)` discards
+the recovery snapshot once a caller (e.g. Verification) confirms the change
+is durable. `fingerprintToolCall` is exported for callers that need to
+compute or compare fingerprints without invoking the tool.
 
 ## Flow
 
@@ -87,11 +120,12 @@ Pipeline sources:
 
 ## Do not put here
 
-- Route / planning / approval policy (`decision-policy`)
+- Route / planning / approval *policy* (which routes require approval,
+  verification requirements) — that's `decision-policy`
 - Model invocation (`model-gateway`)
 - Prompt construction
-- Agent run state machine (`agent-engine`)
-- Mutation transactions (Phase 8)
+- Agent run state machine, checkpoints, resume (`agent-engine`)
+- Verification algorithms (`verification`)
 
 ## Tests
 

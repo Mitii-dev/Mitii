@@ -225,7 +225,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.answer).toContain("Root cause");
   });
 
-  it("defers plan/execute mutation routes in Phase 7", async () => {
+  it("suspends execute routes for approval when a mutation tool requires it (Phase 8)", async () => {
     const engine = new AgentEnginePipeline(
       createStubDependencies({
         decision: createDecision({
@@ -234,15 +234,51 @@ describe("AgentEnginePipeline (Phase 7)", () => {
             maximumWorkspaceEffect: "write",
             allowedTools: ["apply_patch"],
             allowedEffects: ["workspace_write"],
+            approvalMode: "when_required",
           }),
           reasonCodes: ["mutation_execute"],
         }),
+        llm: new ScriptedLlmPort([
+          {
+            toolCalls: [
+              {
+                id: "call_patch",
+                name: "apply_patch",
+                arguments: JSON.stringify({
+                  patches: [
+                    {
+                      path: "src/a.ts",
+                      oldText: "old",
+                      newText: "new",
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        ]),
+        toolResults: {
+          apply_patch: {
+            status: "rejected",
+            reasonCode: "approval_required",
+            output: {
+              fingerprint: "fp_1",
+              paths: ["src/a.ts"],
+            },
+          },
+        },
       }),
     );
 
-    const result = await engine.start(baseStartInput()).result;
-    expect(result.status).toBe("failed");
-    expect(result.error?.code).toBe("mutation_deferred");
+    const result = await engine.start(
+      baseStartInput({ workspaceRoot: "/repo" }),
+    ).result;
+
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("approval_required");
+    expect(result.suspension?.approval?.toolName).toBe("apply_patch");
+    expect(result.suspension?.approval?.paths).toEqual(["src/a.ts"]);
+    expect(result.reasonCodes).toContain("approval_suspended");
   });
 
   it("cancels an in-flight model turn", async () => {

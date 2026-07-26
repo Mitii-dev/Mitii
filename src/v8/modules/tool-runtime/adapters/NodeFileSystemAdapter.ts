@@ -119,4 +119,27 @@ export class NodeWorkspaceFileSystemAdapter implements WorkspaceFileSystemPort {
     await walk(absoluteDirectory);
     return results;
   }
+
+  public async writeFile(absolutePath: string, content: string): Promise<void> {
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    await fs.writeFile(absolutePath, content, "utf8");
+  }
+
+  public async unlink(absolutePath: string): Promise<void> {
+    try {
+      await fs.unlink(absolutePath);
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? (error as { code?: string }).code
+          : undefined;
+      if (code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+
+  public async mkdirp(absolutePath: string): Promise<void> {
+    await fs.mkdir(absolutePath, { recursive: true });
+  }
 }

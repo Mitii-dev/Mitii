@@ -1,6 +1,7 @@
 import type {
   DecisionPolicyInput,
   ExecutionDecision,
+  ToolGrant,
 } from "../../../decision-policy";
 import type { LlmPort, ModelToolDefinition } from "../../../model-gateway";
 import type {
@@ -21,10 +22,17 @@ import type {
 import type { CreateUserRequestInput, UserRequestEnvelope } from "../../../request-intake";
 import type { RequestUnderstandingResult } from "../../../request-understanding";
 import type {
+  ToolApprovalToken,
+  ToolExecuteOptions,
   ToolInvocationInput,
   ToolResult,
 } from "../../../tool-runtime";
-import type { ToolGrant } from "../../../decision-policy";
+import type {
+  VerificationInput,
+  VerificationResult,
+} from "../../../verification";
+
+import type { AgentEngineRunCheckpointStorePort } from "../../internal/RunCheckpoint";
 
 export interface AgentEngineClockPort {
   now(): Date;
@@ -67,9 +75,17 @@ export interface AgentEngineRepositoryContextPort {
 export interface AgentEngineToolRuntimePort {
   execute(
     input: ToolInvocationInput,
-    options?: { signal?: AbortSignal },
+    options?: ToolExecuteOptions,
   ): Promise<ToolResult>;
   createBudget?(grant: ToolGrant): unknown;
+  rollbackMutation?(input: {
+    checkpointId: string;
+  }): Promise<ToolResult>;
+  commitMutation?(checkpointId: string): void;
+}
+
+export interface AgentEngineVerificationPort {
+  verify(input: VerificationInput): Promise<VerificationResult>;
 }
 
 /**
@@ -85,8 +101,12 @@ export interface AgentEngineDependencies {
   repositoryState?: AgentEngineRepositoryStatePort;
   repositoryContext?: AgentEngineRepositoryContextPort;
   tools?: AgentEngineToolRuntimePort;
-  /** Defaults to policy DEFAULT_READ_ONLY_TOOL_DEFINITIONS when omitted. */
+  verification?: AgentEngineVerificationPort;
+  checkpointStore?: AgentEngineRunCheckpointStorePort;
+  /** Defaults to policy DEFAULT_TOOL_DEFINITIONS when omitted. */
   toolDefinitions?: readonly ModelToolDefinition[];
   clock?: AgentEngineClockPort;
   idGenerator?: AgentEngineIdGeneratorPort;
 }
+
+export type { ToolApprovalToken };

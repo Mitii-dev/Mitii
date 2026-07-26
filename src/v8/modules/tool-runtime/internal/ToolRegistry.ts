@@ -4,6 +4,7 @@ import type {
   ToolCapabilityDescriptor,
   ToolRuntimePorts,
 } from "../contracts";
+import type { MutationTransactionRegistry } from "./mutation";
 import type { ToolDefinition } from "./ToolCatalog";
 
 export interface ToolExecutionContext {
@@ -14,6 +15,10 @@ export interface ToolExecutionContext {
   timeoutMs: number;
   maxOutputBytes: number;
   signal?: AbortSignal;
+  /** Present when Tool Runtime is configured for Phase 8 mutations. */
+  transactions?: MutationTransactionRegistry;
+  dirtyPaths?: readonly string[];
+  alreadyMutatedPaths?: readonly string[];
 }
 
 export interface ToolExecutionResult {

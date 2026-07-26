@@ -13,6 +13,7 @@ import type {
   ToolResultStatus,
 } from "../../contracts";
 import { CommandPolicyError } from "../../internal/CommandPolicy";
+import { MutationError } from "../../internal/mutation";
 import {
   measureJsonBytes,
   previewForAudit,
@@ -42,6 +43,7 @@ export function buildRejectedResult(params: {
   path?: string;
   argv?: string[];
   outputPreview?: string;
+  output?: unknown;
 }): ToolResult {
   const {
     parsed,
@@ -52,6 +54,7 @@ export function buildRejectedResult(params: {
     path,
     argv,
     outputPreview,
+    output,
   } = params;
   const endedAt = new Date();
   const durationMs = Date.now() - clock.startedMs;
@@ -62,6 +65,7 @@ export function buildRejectedResult(params: {
     toolName: parsed.toolName,
     status,
     reasonCode,
+    output,
     truncated: false,
     redacted: false,
     durationMs,
@@ -171,7 +175,8 @@ export function mapExecutionError(params: {
     error instanceof GrantValidationError ||
     error instanceof PathContainmentError ||
     error instanceof CommandPolicyError ||
-    error instanceof SessionBudgetError
+    error instanceof SessionBudgetError ||
+    error instanceof MutationError
   ) {
     reasonCode = error.reasonCode;
     status = "rejected";

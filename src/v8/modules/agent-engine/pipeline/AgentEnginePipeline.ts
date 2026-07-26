@@ -16,7 +16,12 @@ import { PROMPT_CONSTRUCTION_SCHEMA_VERSION } from "../../prompt-construction";
 import type { PromptRepositoryContext } from "../../prompt-construction";
 import type { RepositoryStateReference } from "../../repository-state";
 import type { UserRequestEnvelope } from "../../request-intake";
-import { TOOL_RUNTIME_SCHEMA_VERSION } from "../../tool-runtime";
+import {
+  TOOL_RUNTIME_SCHEMA_VERSION,
+  fingerprintToolCall,
+} from "../../tool-runtime";
+import type { ToolApprovalToken } from "../../tool-runtime";
+import { VERIFICATION_SCHEMA_VERSION } from "../../verification";
 
 import {
   assembleToolCalls,
@@ -24,10 +29,9 @@ import {
   mapContextToPromptSlice,
   serializeToolResultForModel,
 } from "../actions";
+import { AGENT_ENGINE_SCHEMA_VERSION } from "../constants";
 import {
-  AGENT_ENGINE_SCHEMA_VERSION,
-} from "../constants";
-import {
+  agentEngineResumeInputSchema,
   agentEngineStartInputSchema,
   agentRunBudgetSchema,
   agentRunResultSchema,
@@ -36,6 +40,7 @@ import {
 import type {
   AgentActiveStage,
   AgentEngineDependencies,
+  AgentEngineResumeInput,
   AgentEngineStartInput,
   AgentReasonCode,
   AgentRunHandle,
@@ -45,21 +50,67 @@ import type {
 } from "../contracts";
 import { EventBus } from "../internal/EventBus";
 import { RunBudgetTracker } from "../internal/RunBudget";
+import type { PendingApprovalState } from "../internal/RunCheckpoint";
 import { ToolCallCache } from "../internal/ToolCallCache";
-import { PHASE7_SUPPORTED_ROUTES } from "../policy";
+import { DEFAULT_TOOL_DEFINITIONS, PHASE8_SUPPORTED_ROUTES } from "../policy";
 
 export type AgentEnginePipelineDependencies = AgentEngineDependencies;
 
+type ToolCallOutcome =
+  | { kind: "message"; message: ModelMessage }
+  | {
+      kind: "approval_required";
+      toolName: string;
+      callId: string;
+      fingerprint: string;
+      arguments: unknown;
+      paths: string[];
+    };
+
+type ToolLoopOutcome =
+  | {
+      kind: "completed";
+      answer: string;
+      changedFiles: string[];
+      mutationCheckpointIds: string[];
+      messages: ModelMessage[];
+      toolCache: ToolCallCache;
+    }
+  | {
+      kind: "approval_required";
+      messages: ModelMessage[];
+      toolCache: ToolCallCache;
+      pendingApproval: PendingApprovalState;
+      changedFiles: string[];
+      mutationCheckpointIds: string[];
+      answer?: string;
+    }
+  | { kind: "cancelled" }
+  | { kind: "budget_exhausted"; answer?: string; message: string }
+  | {
+      kind: "failed";
+      answer?: string;
+      extraReasons: AgentReasonCode[];
+      error: { code: string; message: string };
+    };
+
+type VerificationGateOutcome =
+  | { kind: "ok" }
+  | { kind: "failed"; error: { code: string; message: string } };
+
 /**
- * Agent Engine facade (Phase 7 read-only).
+ * Agent Engine facade (Phase 8: mutation, approval, checkpoints, rollback).
  *
  * Flow:
  *   Intake → Understand → Decide → pin Repository State
  *   → retrieve Context → construct Prompt → invoke Model
- *   → execute authorized read-only Tools as needed → Result
+ *   → execute authorized Tools (read-only or mutating) as needed
+ *   → verify changes → produce Result
  *
- * Does not implement understanding, policy, retrieval, prompting,
- * tool enforcement, or verification algorithms.
+ * Mutation tool calls that require approval suspend the run with a
+ * persisted checkpoint; `resume()` continues without replaying completed
+ * tool callIds. Does not implement understanding, policy, retrieval,
+ * prompting, tool enforcement, or verification algorithms.
  */
 export class AgentEnginePipeline {
   private readonly deps: Required<
@@ -79,6 +130,8 @@ export class AgentEnginePipeline {
       | "repositoryState"
       | "repositoryContext"
       | "tools"
+      | "verification"
+      | "checkpointStore"
       | "toolDefinitions"
     >;
 
@@ -105,6 +158,8 @@ export class AgentEnginePipeline {
       repositoryState: dependencies.repositoryState,
       repositoryContext: dependencies.repositoryContext,
       tools: dependencies.tools,
+      verification: dependencies.verification,
+      checkpointStore: dependencies.checkpointStore,
       toolDefinitions: dependencies.toolDefinitions,
       clock: dependencies.clock ?? { now: () => new Date() },
       idGenerator: dependencies.idGenerator ?? {
@@ -129,19 +184,52 @@ export class AgentEnginePipeline {
     }
 
     const runId = this.deps.idGenerator.next("run");
+    return this.createRunHandle(runId, (bus, signal, getCancelReason) =>
+      this.executeRun({ runId, input: parsed, bus, signal, getCancelReason }),
+    );
+  }
+
+  /**
+   * Resume a suspended run after clarification or approval.
+   * Continues from the persisted checkpoint; does not replay completed
+   * tool callIds.
+   */
+  public resume(input: AgentEngineResumeInput): AgentRunHandle {
+    let parsed: AgentEngineResumeInput;
+    try {
+      parsed = agentEngineResumeInputSchema.parse(input);
+    } catch (error) {
+      throw new AgentEngineError(
+        "invalid_input",
+        "Agent Engine resume input failed schema validation.",
+        {
+          cause: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
+
+    return this.createRunHandle(parsed.runId, (bus, signal, getCancelReason) =>
+      this.executeResume({ input: parsed, bus, signal, getCancelReason }),
+    );
+  }
+
+  private createRunHandle(
+    runId: string,
+    execute: (
+      bus: EventBus,
+      signal: AbortSignal,
+      getCancelReason: () => string | undefined,
+    ) => Promise<AgentRunResult>,
+  ): AgentRunHandle {
     const bus = new EventBus();
     const abort = new AbortController();
     let cancelReason: string | undefined;
 
-    const resultPromise = this.executeRun({
-      runId,
-      input: parsed,
-      bus,
-      signal: abort.signal,
-      getCancelReason: () => cancelReason,
-    }).finally(() => {
-      bus.end();
-    });
+    const resultPromise = execute(bus, abort.signal, () => cancelReason).finally(
+      () => {
+        bus.end();
+      },
+    );
 
     return {
       runId,
@@ -297,6 +385,25 @@ export class AgentEnginePipeline {
         const rationale =
           decision.rationale ||
           "Material clarification is required before continuing.";
+        if (this.deps.checkpointStore) {
+          await this.deps.checkpointStore.save({
+            runId,
+            requestId,
+            suspensionKind: "clarification_required",
+            input,
+            decision,
+            pinnedState: undefined,
+            messages: [],
+            toolCacheEntries: [],
+            pendingApproval: undefined,
+            changedFiles: [],
+            mutationCheckpointIds: [],
+            reasonCodes,
+            warnings,
+            usage: budget.snapshot(),
+            startedAtMs: startedMs,
+          });
+        }
         this.emit(bus, {
           type: "suspended",
           runId,
@@ -317,20 +424,20 @@ export class AgentEnginePipeline {
         });
       }
 
-      // Phase 7: mutation routes are deferred.
+      // All Phase 8 routes are supported; this only guards against a
+      // future/unregistered route reaching the Engine unchanged.
       if (
-        !(PHASE7_SUPPORTED_ROUTES as readonly string[]).includes(decision.route)
+        !(PHASE8_SUPPORTED_ROUTES as readonly string[]).includes(decision.route)
       ) {
-        reasonCodes.push("mutation_deferred");
+        reasonCodes.push("misconfigured");
         return finish({
           status: "failed",
           route: decision.route,
           planningDepth: decision.planningDepth,
           reasonCodes,
           error: {
-            code: "mutation_deferred",
-            message:
-              "Phase 7 Agent Engine supports read-only routes only. Mutation requires Phase 8.",
+            code: "misconfigured",
+            message: `Unsupported execution route: ${decision.route}.`,
           },
         });
       }
@@ -418,7 +525,8 @@ export class AgentEnginePipeline {
       // --- Prompt ---
       const tools = filterToolDefinitions({
         grant: decision.toolGrant,
-        definitions: input.tools ?? this.deps.toolDefinitions,
+        definitions:
+          input.tools ?? this.deps.toolDefinitions ?? DEFAULT_TOOL_DEFINITIONS,
         supportsTools: this.deps.llm.capabilities.supportsTools,
       });
 
@@ -453,10 +561,16 @@ export class AgentEnginePipeline {
       reasonCodes.push("prompt_constructed");
 
       // --- Model / tool loop ---
+      const messages: ModelMessage[] = [...promptResult.request.messages];
+      const toolCache = new ToolCallCache();
+      const changedFiles: string[] = [];
+      const mutationCheckpointIds: string[] = [];
+
       const loopOutcome = await this.runModelToolLoop({
         runId,
         request: promptResult.request,
-        grant: decision.toolGrant,
+        decision,
+        dirtyPaths: input.dirtyPaths,
         pinnedState,
         workspaceRoot: input.workspaceRoot,
         bus,
@@ -464,39 +578,26 @@ export class AgentEnginePipeline {
         budget,
         reasonCodes,
         warnings,
+        messages,
+        toolCache,
+        changedFiles,
+        mutationCheckpointIds,
       });
 
-      await this.safeUnpin(runId, pinnedState);
-
-      if (loopOutcome.kind === "cancelled") {
-        return cancelledResult();
-      }
-      if (loopOutcome.kind === "budget_exhausted") {
-        reasonCodes.push("budget_exhausted");
-        return finish({
-          status: "budget_exhausted",
-          answer: loopOutcome.answer,
-          reasonCodes,
-          error: {
-            code: "budget_exhausted",
-            message: loopOutcome.message,
-          },
-        });
-      }
-      if (loopOutcome.kind === "failed") {
-        return finish({
-          status: "failed",
-          answer: loopOutcome.answer,
-          reasonCodes: [...reasonCodes, ...loopOutcome.extraReasons],
-          error: loopOutcome.error,
-        });
-      }
-
-      reasonCodes.push("answer_produced");
-      return finish({
-        status: "completed",
-        answer: loopOutcome.answer,
+      return await this.finishAfterLoop({
+        runId,
+        requestId,
+        input,
+        decision,
+        bus,
+        pinnedState,
+        loopOutcome,
         reasonCodes,
+        warnings,
+        budget,
+        startedAtMs: startedMs,
+        finish,
+        cancelledResult,
       });
     } catch (error) {
       await this.safeUnpin(runId, pinnedState);
@@ -513,6 +614,479 @@ export class AgentEnginePipeline {
         },
       });
     }
+  }
+
+  private async executeResume(params: {
+    input: AgentEngineResumeInput;
+    bus: EventBus;
+    signal: AbortSignal;
+    getCancelReason: () => string | undefined;
+  }): Promise<AgentRunResult> {
+    const { input, bus, signal, getCancelReason } = params;
+    const runId = input.runId;
+
+    if (!this.deps.checkpointStore) {
+      throw new AgentEngineError(
+        "misconfigured_ports",
+        "Resume requires a checkpoint store.",
+      );
+    }
+
+    const checkpoint = await this.deps.checkpointStore.load(runId);
+    if (!checkpoint) {
+      throw new AgentEngineError(
+        "invalid_input",
+        `No suspended run checkpoint found for run "${runId}".`,
+      );
+    }
+
+    const requestId = checkpoint.requestId;
+    const decision = checkpoint.decision;
+    const startInput = checkpoint.input;
+    const pinnedState = checkpoint.pinnedState;
+    const reasonCodes: AgentReasonCode[] = [...checkpoint.reasonCodes];
+    const warnings: string[] = [...checkpoint.warnings];
+    const budget = new RunBudgetTracker(
+      agentRunBudgetSchema.parse(startInput.budget ?? {}),
+      checkpoint.startedAtMs,
+      checkpoint.usage,
+    );
+
+    const finish = (
+      partial: Omit<
+        AgentRunResult,
+        | "schemaVersion"
+        | "runId"
+        | "requestId"
+        | "usage"
+        | "durationMs"
+        | "warnings"
+        | "reasonCodes"
+      > & {
+        reasonCodes?: AgentReasonCode[];
+        warnings?: string[];
+      },
+    ): AgentRunResult => {
+      const usageSnap = budget.snapshot();
+      const result = agentRunResultSchema.parse({
+        schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+        runId,
+        requestId,
+        status: partial.status,
+        route: partial.route ?? decision.route,
+        planningDepth: partial.planningDepth ?? decision.planningDepth,
+        answer: partial.answer,
+        suspension: partial.suspension,
+        pinnedState: partial.pinnedState ?? pinnedState,
+        reasonCodes: partial.reasonCodes ?? reasonCodes,
+        warnings: [...warnings, ...(partial.warnings ?? [])],
+        usage: {
+          modelCalls: usageSnap.modelCalls,
+          toolCalls: usageSnap.toolCalls,
+          loopIterations: usageSnap.loopIterations,
+          ...(usageSnap.inputTokens > 0
+            ? { inputTokens: usageSnap.inputTokens }
+            : {}),
+          ...(usageSnap.outputTokens > 0
+            ? { outputTokens: usageSnap.outputTokens }
+            : {}),
+        },
+        durationMs: Date.now() - checkpoint.startedAtMs,
+        error: partial.error,
+      });
+
+      this.emit(bus, {
+        type: "terminal",
+        runId,
+        status: result.status,
+        result,
+        at: this.isoNow(),
+      });
+
+      return result;
+    };
+
+    const cancelledResult = (): AgentRunResult =>
+      finish({
+        status: "cancelled",
+        reasonCodes: [...reasonCodes, "cancelled"],
+        error: {
+          code: "cancelled",
+          message: getCancelReason() ?? "Run cancelled.",
+        },
+      });
+
+    try {
+      if (signal.aborted) {
+        return cancelledResult();
+      }
+
+      if (checkpoint.suspensionKind === "clarification_required") {
+        if (!input.clarificationAnswer) {
+          throw new AgentEngineError(
+            "invalid_input",
+            "Resuming a clarification-required run requires clarificationAnswer.",
+          );
+        }
+        await this.deps.checkpointStore.delete(runId);
+        reasonCodes.push("resume_complete");
+        const amendedInput: AgentEngineStartInput = {
+          ...startInput,
+          conversation: [
+            ...startInput.conversation,
+            { role: "user", content: input.clarificationAnswer },
+          ],
+        };
+        return this.executeRun({
+          runId,
+          input: amendedInput,
+          bus,
+          signal,
+          getCancelReason,
+        });
+      }
+
+      // suspensionKind === "approval_required"
+      if (!input.approval) {
+        throw new AgentEngineError(
+          "invalid_input",
+          "Resuming an approval-required run requires an approval decision.",
+        );
+      }
+      const pending = checkpoint.pendingApproval;
+      if (!pending || pending.approvalId !== input.approval.approvalId) {
+        throw new AgentEngineError(
+          "invalid_input",
+          "Approval id does not match the pending checkpoint.",
+        );
+      }
+
+      if (input.approval.decision === "denied") {
+        await this.deps.checkpointStore.delete(runId);
+        await this.safeUnpin(runId, pinnedState);
+        reasonCodes.push("approval_denied");
+        return finish({
+          status: "approval_denied",
+          reasonCodes,
+          error: {
+            code: "approval_denied",
+            message: "The requested mutation was denied.",
+          },
+        });
+      }
+
+      reasonCodes.push("approval_granted", "resume_complete");
+
+      if (!this.deps.tools) {
+        await this.safeUnpin(runId, pinnedState);
+        return finish({
+          status: "failed",
+          reasonCodes: [...reasonCodes, "misconfigured"],
+          error: {
+            code: "misconfigured",
+            message: "Model requested tools but Tool Runtime is not configured.",
+          },
+        });
+      }
+      if (!startInput.workspaceRoot) {
+        await this.safeUnpin(runId, pinnedState);
+        return finish({
+          status: "failed",
+          reasonCodes: [...reasonCodes, "misconfigured"],
+          error: {
+            code: "misconfigured",
+            message: "workspaceRoot is required to resume a mutation.",
+          },
+        });
+      }
+
+      const messages: ModelMessage[] = [...checkpoint.messages];
+      const toolCache = ToolCallCache.fromEntries(checkpoint.toolCacheEntries);
+      const changedFiles = [...checkpoint.changedFiles];
+      const mutationCheckpointIds = [...checkpoint.mutationCheckpointIds];
+
+      const approvalToken: ToolApprovalToken = {
+        approvalId: pending.approvalId,
+        fingerprint: pending.fingerprint,
+        decision: "approved",
+      };
+      const pendingToolCall: ModelToolCall = {
+        id: pending.callId,
+        name: pending.toolName,
+        arguments: JSON.stringify(pending.arguments ?? {}),
+      };
+
+      const toolOutcome = await this.executeOneTool({
+        runId,
+        toolCall: pendingToolCall,
+        grant: decision.toolGrant,
+        pinnedState,
+        workspaceRoot: startInput.workspaceRoot,
+        bus,
+        signal,
+        toolCache,
+        budget,
+        warnings,
+        reasonCodes,
+        dirtyPaths: startInput.dirtyPaths,
+        changedFiles,
+        mutationCheckpointIds,
+        approvalToken,
+      });
+
+      if (toolOutcome.kind === "approval_required") {
+        // Tool Runtime did not accept the approval token (mismatch/expired).
+        await this.safeUnpin(runId, pinnedState);
+        await this.deps.checkpointStore.delete(runId);
+        return finish({
+          status: "failed",
+          reasonCodes: [...reasonCodes, "misconfigured"],
+          error: {
+            code: "approval_required",
+            message: "Approval was not accepted for the pending mutation.",
+          },
+        });
+      }
+
+      messages.push(toolOutcome.message);
+      await this.deps.checkpointStore.delete(runId);
+
+      const toolDefinitions = filterToolDefinitions({
+        grant: decision.toolGrant,
+        definitions:
+          startInput.tools ??
+          this.deps.toolDefinitions ??
+          DEFAULT_TOOL_DEFINITIONS,
+        supportsTools: this.deps.llm.capabilities.supportsTools,
+      });
+
+      const loopOutcome = await this.runModelToolLoop({
+        runId,
+        request: {
+          messages: [...messages],
+          model: startInput.model,
+          temperature: startInput.temperature,
+          stream: startInput.stream,
+          tools: toolDefinitions,
+        },
+        decision,
+        dirtyPaths: startInput.dirtyPaths,
+        pinnedState,
+        workspaceRoot: startInput.workspaceRoot,
+        bus,
+        signal,
+        budget,
+        reasonCodes,
+        warnings,
+        messages,
+        toolCache,
+        changedFiles,
+        mutationCheckpointIds,
+      });
+
+      return await this.finishAfterLoop({
+        runId,
+        requestId,
+        input: startInput,
+        decision,
+        bus,
+        pinnedState,
+        loopOutcome,
+        reasonCodes,
+        warnings,
+        budget,
+        startedAtMs: checkpoint.startedAtMs,
+        finish,
+        cancelledResult,
+      });
+    } catch (error) {
+      if (error instanceof AgentEngineError) {
+        throw error;
+      }
+      await this.safeUnpin(runId, pinnedState);
+      if (signal.aborted) {
+        return cancelledResult();
+      }
+      return finish({
+        status: "failed",
+        reasonCodes: [...reasonCodes, "provider_failed"],
+        error: {
+          code: "execution_failed",
+          message:
+            error instanceof Error ? error.message : "Agent resume failed.",
+        },
+      });
+    }
+  }
+
+  /**
+   * Shared tail for start() and resume(): interpret the model/tool loop
+   * outcome, suspend for approval, gate on verification, and unpin state.
+   */
+  private async finishAfterLoop(params: {
+    runId: string;
+    requestId: string;
+    input: AgentEngineStartInput;
+    decision: ExecutionDecision;
+    bus: EventBus;
+    pinnedState: RepositoryStateReference | undefined;
+    loopOutcome: ToolLoopOutcome;
+    reasonCodes: AgentReasonCode[];
+    warnings: string[];
+    budget: RunBudgetTracker;
+    startedAtMs: number;
+    finish: (partial: {
+      status: AgentRunStatus;
+      route?: AgentRunResult["route"];
+      planningDepth?: AgentRunResult["planningDepth"];
+      answer?: string;
+      suspension?: AgentRunResult["suspension"];
+      pinnedState?: RepositoryStateReference;
+      reasonCodes?: AgentReasonCode[];
+      warnings?: string[];
+      error?: { code: string; message: string };
+    }) => AgentRunResult;
+    cancelledResult: () => AgentRunResult;
+  }): Promise<AgentRunResult> {
+    const {
+      runId,
+      requestId,
+      input,
+      decision,
+      bus,
+      pinnedState,
+      loopOutcome,
+      reasonCodes,
+      warnings,
+      budget,
+      startedAtMs,
+      finish,
+      cancelledResult,
+    } = params;
+
+    if (loopOutcome.kind === "approval_required") {
+      if (!this.deps.checkpointStore) {
+        await this.safeUnpin(runId, pinnedState);
+        reasonCodes.push("misconfigured");
+        return finish({
+          status: "failed",
+          reasonCodes,
+          error: {
+            code: "misconfigured",
+            message: "Approval suspend requires a checkpoint store.",
+          },
+        });
+      }
+
+      reasonCodes.push("approval_suspended");
+      await this.deps.checkpointStore.save({
+        runId,
+        requestId,
+        suspensionKind: "approval_required",
+        input,
+        decision,
+        pinnedState,
+        messages: loopOutcome.messages,
+        toolCacheEntries: loopOutcome.toolCache.entries(),
+        pendingApproval: loopOutcome.pendingApproval,
+        changedFiles: loopOutcome.changedFiles,
+        mutationCheckpointIds: loopOutcome.mutationCheckpointIds,
+        reasonCodes,
+        warnings,
+        usage: budget.snapshot(),
+        startedAtMs,
+      });
+
+      const rationale = `Approval required for "${loopOutcome.pendingApproval.toolName}".`;
+      this.emit(bus, {
+        type: "suspended",
+        runId,
+        kind: "approval_required",
+        rationale,
+        at: this.isoNow(),
+      });
+
+      // Keep the repository state pinned across suspension so resume can
+      // continue against the same pinned snapshot.
+      return finish({
+        status: "suspended",
+        route: decision.route,
+        planningDepth: decision.planningDepth,
+        suspension: {
+          kind: "approval_required",
+          rationale,
+          approval: {
+            approvalId: loopOutcome.pendingApproval.approvalId,
+            fingerprint: loopOutcome.pendingApproval.fingerprint,
+            toolName: loopOutcome.pendingApproval.toolName,
+            callId: loopOutcome.pendingApproval.callId,
+            paths: loopOutcome.pendingApproval.paths,
+          },
+        },
+        reasonCodes,
+      });
+    }
+
+    if (loopOutcome.kind === "cancelled") {
+      await this.safeUnpin(runId, pinnedState);
+      return cancelledResult();
+    }
+
+    if (loopOutcome.kind === "budget_exhausted") {
+      await this.safeUnpin(runId, pinnedState);
+      reasonCodes.push("budget_exhausted");
+      return finish({
+        status: "budget_exhausted",
+        answer: loopOutcome.answer,
+        reasonCodes,
+        error: {
+          code: "budget_exhausted",
+          message: loopOutcome.message,
+        },
+      });
+    }
+
+    if (loopOutcome.kind === "failed") {
+      await this.safeUnpin(runId, pinnedState);
+      return finish({
+        status: "failed",
+        answer: loopOutcome.answer,
+        reasonCodes: [...reasonCodes, ...loopOutcome.extraReasons],
+        error: loopOutcome.error,
+      });
+    }
+
+    // loopOutcome.kind === "completed"
+    reasonCodes.push("answer_produced");
+
+    const verificationOutcome = await this.runVerificationGate({
+      runId,
+      bus,
+      decision,
+      input,
+      pinnedState,
+      changedFiles: loopOutcome.changedFiles,
+      mutationCheckpointIds: loopOutcome.mutationCheckpointIds,
+      reasonCodes,
+      warnings,
+    });
+
+    await this.safeUnpin(runId, pinnedState);
+
+    if (verificationOutcome.kind === "failed") {
+      return finish({
+        status: "failed",
+        answer: loopOutcome.answer,
+        reasonCodes,
+        error: verificationOutcome.error,
+      });
+    }
+
+    return finish({
+      status: "completed",
+      answer: loopOutcome.answer,
+      reasonCodes,
+    });
   }
 
   private async resolveAndPinState(params: {
@@ -572,10 +1146,154 @@ export class AgentEnginePipeline {
     return reference;
   }
 
+  /**
+   * Gate completion on Verification when the decision requires it and a
+   * mutation changed files. Rolls back applied mutations on failure and
+   * commits them on success (or when verification is skipped safely).
+   */
+  private async runVerificationGate(params: {
+    runId: string;
+    bus: EventBus;
+    decision: ExecutionDecision;
+    input: AgentEngineStartInput;
+    pinnedState: RepositoryStateReference | undefined;
+    changedFiles: string[];
+    mutationCheckpointIds: string[];
+    reasonCodes: AgentReasonCode[];
+    warnings: string[];
+  }): Promise<VerificationGateOutcome> {
+    const {
+      runId,
+      bus,
+      decision,
+      input,
+      pinnedState,
+      changedFiles,
+      mutationCheckpointIds,
+      reasonCodes,
+      warnings,
+    } = params;
+
+    if (!decision.verification.required || changedFiles.length === 0) {
+      this.commitMutations(mutationCheckpointIds);
+      return { kind: "ok" };
+    }
+
+    const canVerify =
+      this.deps.verification !== undefined &&
+      pinnedState !== undefined &&
+      input.workspaceRoot !== undefined;
+
+    if (!canVerify) {
+      if (decision.verification.allowUnavailable) {
+        reasonCodes.push("verification_skipped");
+        this.commitMutations(mutationCheckpointIds);
+        return { kind: "ok" };
+      }
+      await this.rollbackMutations(mutationCheckpointIds, warnings);
+      reasonCodes.push("mutation_rolled_back", "verification_failed");
+      return {
+        kind: "failed",
+        error: {
+          code: "verification_failed",
+          message:
+            "Verification is required but unavailable (missing verification port or pinned state).",
+        },
+      };
+    }
+
+    this.emitStage(bus, runId, "verifying", "started");
+    const verificationResult = await this.deps.verification!.verify({
+      schemaVersion: VERIFICATION_SCHEMA_VERSION,
+      workspaceRoot: input.workspaceRoot!,
+      pinnedState: pinnedState!,
+      changedFiles,
+      projects: [],
+      verification: decision.verification,
+      grant: decision.toolGrant,
+      changeScope: "localized",
+      stateReadiness: input.repositoryState?.readiness ?? "ready",
+    });
+
+    if (verificationResult.status === "verified_success") {
+      this.emitStage(bus, runId, "verifying", "completed", [
+        "verification_passed",
+      ]);
+      reasonCodes.push("verification_passed");
+      this.commitMutations(mutationCheckpointIds);
+      return { kind: "ok" };
+    }
+
+    if (decision.verification.allowUnavailable) {
+      this.emitStage(bus, runId, "verifying", "completed", [
+        "verification_skipped",
+      ]);
+      reasonCodes.push("verification_skipped");
+      warnings.push(
+        `Verification did not confirm success (status: ${verificationResult.status}); implementation kept unverified.`,
+      );
+      this.commitMutations(mutationCheckpointIds);
+      return { kind: "ok" };
+    }
+
+    this.emitStage(bus, runId, "verifying", "completed", [
+      "verification_failed",
+    ]);
+    await this.rollbackMutations(mutationCheckpointIds, warnings);
+    reasonCodes.push("mutation_rolled_back", "verification_failed");
+    return {
+      kind: "failed",
+      error: {
+        code: "verification_failed",
+        message: `Verification did not succeed (status: ${verificationResult.status}).`,
+      },
+    };
+  }
+
+  private commitMutations(mutationCheckpointIds: readonly string[]): void {
+    if (mutationCheckpointIds.length === 0 || !this.deps.tools?.commitMutation) {
+      return;
+    }
+    for (const checkpointId of mutationCheckpointIds) {
+      try {
+        this.deps.tools.commitMutation(checkpointId);
+      } catch {
+        // Commit is best-effort; the mutation already applied successfully.
+      }
+    }
+  }
+
+  private async rollbackMutations(
+    mutationCheckpointIds: readonly string[],
+    warnings: string[],
+  ): Promise<void> {
+    if (mutationCheckpointIds.length === 0) {
+      return;
+    }
+    if (!this.deps.tools?.rollbackMutation) {
+      warnings.push(
+        "Mutation rollback was required but no rollback port is configured.",
+      );
+      return;
+    }
+    for (const checkpointId of mutationCheckpointIds) {
+      try {
+        await this.deps.tools.rollbackMutation({ checkpointId });
+      } catch (error) {
+        warnings.push(
+          `Failed to roll back checkpoint "${checkpointId}": ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+  }
+
   private async runModelToolLoop(params: {
     runId: string;
     request: ModelRequest;
-    grant: ToolGrant;
+    decision: ExecutionDecision;
+    dirtyPaths: readonly string[] | undefined;
     pinnedState: RepositoryStateReference | undefined;
     workspaceRoot: string | undefined;
     bus: EventBus;
@@ -583,20 +1301,15 @@ export class AgentEnginePipeline {
     budget: RunBudgetTracker;
     reasonCodes: AgentReasonCode[];
     warnings: string[];
-  }): Promise<
-    | { kind: "completed"; answer: string }
-    | { kind: "cancelled" }
-    | { kind: "budget_exhausted"; answer?: string; message: string }
-    | {
-        kind: "failed";
-        answer?: string;
-        extraReasons: AgentReasonCode[];
-        error: { code: string; message: string };
-      }
-  > {
+    messages: ModelMessage[];
+    toolCache: ToolCallCache;
+    changedFiles: string[];
+    mutationCheckpointIds: string[];
+  }): Promise<ToolLoopOutcome> {
     const {
       runId,
-      grant,
+      decision,
+      dirtyPaths,
       pinnedState,
       workspaceRoot,
       bus,
@@ -604,10 +1317,12 @@ export class AgentEnginePipeline {
       budget,
       reasonCodes,
       warnings,
+      messages,
+      toolCache,
+      changedFiles,
+      mutationCheckpointIds,
     } = params;
-
-    const messages: ModelMessage[] = [...params.request.messages];
-    const toolCache = new ToolCallCache();
+    const grant = decision.toolGrant;
     let answer = "";
 
     while (true) {
@@ -684,7 +1399,14 @@ export class AgentEnginePipeline {
       ]);
 
       if (turn.toolCalls.length === 0) {
-        return { kind: "completed", answer };
+        return {
+          kind: "completed",
+          answer,
+          changedFiles,
+          mutationCheckpointIds,
+          messages,
+          toolCache,
+        };
       }
 
       // Tool phase
@@ -731,7 +1453,7 @@ export class AgentEnginePipeline {
           };
         }
 
-        const toolMessage = await this.executeOneTool({
+        const outcome = await this.executeOneTool({
           runId,
           toolCall,
           grant,
@@ -742,9 +1464,34 @@ export class AgentEnginePipeline {
           toolCache,
           budget,
           warnings,
+          reasonCodes,
+          dirtyPaths,
+          changedFiles,
+          mutationCheckpointIds,
+          approvalToken: undefined,
         });
 
-        messages.push(toolMessage);
+        if (outcome.kind === "approval_required") {
+          const approvalId = this.deps.idGenerator.next("appr");
+          return {
+            kind: "approval_required",
+            messages,
+            toolCache,
+            pendingApproval: {
+              approvalId,
+              fingerprint: outcome.fingerprint,
+              toolName: outcome.toolName,
+              callId: outcome.callId,
+              arguments: outcome.arguments,
+              paths: outcome.paths,
+            },
+            changedFiles,
+            mutationCheckpointIds,
+            answer: answer || undefined,
+          };
+        }
+
+        messages.push(outcome.message);
       }
 
       reasonCodes.push("tools_executed");
@@ -765,7 +1512,12 @@ export class AgentEnginePipeline {
     toolCache: ToolCallCache;
     budget: RunBudgetTracker;
     warnings: string[];
-  }): Promise<ModelMessage> {
+    reasonCodes: AgentReasonCode[];
+    dirtyPaths: readonly string[] | undefined;
+    changedFiles: string[];
+    mutationCheckpointIds: string[];
+    approvalToken: ToolApprovalToken | undefined;
+  }): Promise<ToolCallOutcome> {
     const {
       runId,
       toolCall,
@@ -777,6 +1529,11 @@ export class AgentEnginePipeline {
       toolCache,
       budget,
       warnings,
+      reasonCodes,
+      dirtyPaths,
+      changedFiles,
+      mutationCheckpointIds,
+      approvalToken,
     } = params;
 
     this.emit(bus, {
@@ -798,9 +1555,12 @@ export class AgentEnginePipeline {
         at: this.isoNow(),
       });
       return {
-        role: "tool",
-        toolCallId: toolCall.id,
-        content: serializeToolResultForModel(cached),
+        kind: "message",
+        message: {
+          role: "tool",
+          toolCallId: toolCall.id,
+          content: serializeToolResultForModel(cached),
+        },
       };
     }
 
@@ -827,10 +1587,54 @@ export class AgentEnginePipeline {
         workspaceRoot,
         pinnedState,
       },
-      { signal },
+      {
+        signal,
+        dirtyPaths,
+        alreadyMutatedPaths: changedFiles,
+        approval: approvalToken,
+      },
     );
 
+    if (result.status === "rejected" && result.reasonCode === "approval_required") {
+      const output = result.output as
+        | { fingerprint?: string; paths?: string[] }
+        | undefined;
+      this.emit(bus, {
+        type: "tool_completed",
+        runId,
+        callId: toolCall.id,
+        toolName: toolCall.name,
+        status: result.status,
+        at: this.isoNow(),
+      });
+      // Do not cache: resume must re-execute this call once approved.
+      return {
+        kind: "approval_required",
+        toolName: toolCall.name,
+        callId: toolCall.id,
+        fingerprint:
+          output?.fingerprint ?? fingerprintToolCall(toolCall.name, argumentsValue),
+        arguments: argumentsValue,
+        paths: output?.paths ?? [],
+      };
+    }
+
     toolCache.set(toolCall.id, result);
+
+    if (result.status === "succeeded" && toolCall.name === "apply_patch") {
+      const output = result.output as
+        | { checkpointId?: string; changedFiles?: string[] }
+        | undefined;
+      if (output?.checkpointId) {
+        mutationCheckpointIds.push(output.checkpointId);
+      }
+      for (const changed of output?.changedFiles ?? []) {
+        if (!changedFiles.includes(changed)) {
+          changedFiles.push(changed);
+        }
+      }
+      reasonCodes.push("mutation_applied");
+    }
 
     if (result.status === "failed" || result.status === "rejected") {
       warnings.push(
@@ -850,9 +1654,12 @@ export class AgentEnginePipeline {
     });
 
     return {
-      role: "tool",
-      toolCallId: toolCall.id,
-      content: serializeToolResultForModel(result),
+      kind: "message",
+      message: {
+        role: "tool",
+        toolCallId: toolCall.id,
+        content: serializeToolResultForModel(result),
+      },
     };
   }
 

@@ -9,11 +9,13 @@ import {
 } from "../../request-intake";
 import { RequestUnderstandingPipeline } from "../../request-understanding";
 import type { ToolRuntimePipeline } from "../../tool-runtime";
+import type { VerificationPipeline } from "../../verification";
 
 import type {
   AgentEngineClockPort,
   AgentEngineIdGeneratorPort,
 } from "../contracts";
+import type { AgentEngineRunCheckpointStorePort } from "../internal/RunCheckpoint";
 import { AgentEnginePipeline } from "../pipeline/AgentEnginePipeline";
 
 export interface ComposeReadOnlyAgentEngineOptions {
@@ -24,6 +26,10 @@ export interface ComposeReadOnlyAgentEngineOptions {
   repositoryState?: RepositoryStatePipeline;
   repositoryContext?: RepositoryContextPipeline;
   tools?: ToolRuntimePipeline;
+  /** Enables verification-gated completion for mutation routes (Phase 8). */
+  verification?: VerificationPipeline;
+  /** Required to suspend/resume mutation approvals across process turns. */
+  checkpointStore?: AgentEngineRunCheckpointStorePort;
   toolDefinitions?: readonly ModelToolDefinition[];
   intake?: Partial<RequestIntakePipelineDependencies>;
   clock?: AgentEngineClockPort;
@@ -31,11 +37,14 @@ export interface ComposeReadOnlyAgentEngineOptions {
 }
 
 /**
- * Wire real Phase 7 facades into AgentEnginePipeline.
+ * Wire real V8 facades into AgentEnginePipeline.
  *
- * Application hosts inject provider LLMs and optional repository/tool
- * pipelines. This helper does not invent a second orchestration layer —
- * it only constructs the public facades Engine already depends on.
+ * Application hosts inject provider LLMs and optional repository/tool/
+ * verification pipelines plus a checkpoint store. This helper does not
+ * invent a second orchestration layer — it only constructs the public
+ * facades Engine already depends on. The name is kept for compatibility;
+ * it composes the full Phase 8 engine (read-only and mutating routes)
+ * once `tools`, `verification`, and `checkpointStore` are supplied.
  */
 export function composeReadOnlyAgentEngine(
   options: ComposeReadOnlyAgentEngineOptions,
@@ -59,6 +68,8 @@ export function composeReadOnlyAgentEngine(
     repositoryState: options.repositoryState,
     repositoryContext: options.repositoryContext,
     tools: options.tools,
+    verification: options.verification,
+    checkpointStore: options.checkpointStore,
     toolDefinitions: options.toolDefinitions,
     clock: options.clock,
     idGenerator: options.idGenerator,

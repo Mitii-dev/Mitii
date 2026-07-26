@@ -128,13 +128,16 @@ export type {
 export { AgentEnginePipeline } from "./modules/agent-engine";
 export {
   agentEngineStartInputSchema,
+  agentEngineResumeInputSchema,
   agentRunResultSchema,
   runEventSchema,
   AGENT_ENGINE_SCHEMA_VERSION,
   composeReadOnlyAgentEngine,
+  InMemoryRunCheckpointStore,
 } from "./modules/agent-engine";
 export type {
   AgentEngineStartInput,
+  AgentEngineResumeInput,
   AgentRunResult,
   AgentRunHandle,
   RunEvent,

@@ -152,6 +152,53 @@ export const fetchUrlOutputSchema = z
   })
   .strict();
 
+export const structuredPatchSchema = z
+  .object({
+    path: z.string().min(1),
+    oldText: z.string(),
+    newText: z.string(),
+    expectedHash: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const applyPatchInputSchema = z
+  .object({
+    patches: z.array(structuredPatchSchema).min(1).max(50),
+  })
+  .strict();
+
+export const applyPatchOutputSchema = z
+  .object({
+    checkpointId: z.string().min(1),
+    changedFiles: z.array(z.string().min(1)),
+    applied: z.array(
+      z
+        .object({
+          path: z.string(),
+          created: z.boolean(),
+          bytesWritten: z.number().int().nonnegative(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
+export const runCommandInputSchema = z
+  .object({
+    argv: z.array(z.string().min(1)).min(1),
+  })
+  .strict();
+
+export const runCommandOutputSchema = z
+  .object({
+    argv: z.array(z.string()),
+    exitCode: z.number().nullable(),
+    stdout: z.string(),
+    stderr: z.string(),
+    truncated: z.boolean(),
+  })
+  .strict();
+
 export interface ToolDefinition {
   name: string;
   effects: readonly ToolEffect[];

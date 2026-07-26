@@ -9,6 +9,7 @@ export const AGENT_RUN_STATUSES = [
   "cancelled",
   "budget_exhausted",
   "failed",
+  "approval_denied",
 ] as const;
 
 export const AGENT_SUSPENSION_KINDS = [
@@ -23,6 +24,7 @@ export const AGENT_ACTIVE_STAGES = [
   "context_ready",
   "model_running",
   "tool_running",
+  "verifying",
 ] as const;
 
 export const AGENT_REASON_CODES = [
@@ -31,6 +33,9 @@ export const AGENT_REASON_CODES = [
   "understanding_complete",
   "decision_complete",
   "clarification_suspended",
+  "approval_suspended",
+  "approval_denied",
+  "approval_granted",
   "mutation_deferred",
   "state_pinned",
   "context_retrieved",
@@ -38,6 +43,11 @@ export const AGENT_REASON_CODES = [
   "prompt_constructed",
   "model_completed",
   "tools_executed",
+  "mutation_applied",
+  "mutation_rolled_back",
+  "verification_passed",
+  "verification_failed",
+  "verification_skipped",
   "answer_produced",
   "cancelled",
   "budget_exhausted",
@@ -48,6 +58,7 @@ export const AGENT_REASON_CODES = [
   "prompt_blocked",
   "context_failed",
   "state_unavailable",
+  "resume_complete",
 ] as const;
 
 export const AGENT_ERROR_CODES = [

@@ -16,7 +16,7 @@ export const READ_ONLY_TOOL_IDS = [
 /** Catalogued but not granted by Decision Policy in Phase 4. */
 export const NETWORK_TOOL_IDS = ["fetch_url"] as const;
 
-/** Deferred until Phase 8 mutation work. */
+/** Phase 8 mutation tools. `run_command` remains catalogued but unavailable. */
 export const MUTATION_TOOL_IDS = ["apply_patch", "run_command"] as const;
 
 export const TOOL_BACKENDS = ["local", "host", "mcp"] as const;
@@ -46,6 +46,11 @@ export const TOOL_REASON_CODES = [
   "timeout",
   "cancelled",
   "approval_required",
+  "approval_mismatch",
+  "dirty_overlap",
+  "patch_conflict",
+  "checkpoint_missing",
+  "rollback_failed",
   "pinned_state_missing",
   "execution_failed",
 ] as const;

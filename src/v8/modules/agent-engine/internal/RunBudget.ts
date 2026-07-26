@@ -11,8 +11,20 @@ export class RunBudgetTracker {
   constructor(
     private readonly limits: AgentRunBudget,
     startedMs: number = Date.now(),
+    initialUsage?: {
+      modelCalls?: number;
+      toolCalls?: number;
+      loopIterations?: number;
+      inputTokens?: number;
+      outputTokens?: number;
+    },
   ) {
     this.startedMs = startedMs;
+    this.modelCalls = initialUsage?.modelCalls ?? 0;
+    this.toolCalls = initialUsage?.toolCalls ?? 0;
+    this.loopIterations = initialUsage?.loopIterations ?? 0;
+    this.inputTokens = initialUsage?.inputTokens ?? 0;
+    this.outputTokens = initialUsage?.outputTokens ?? 0;
   }
 
   public recordModelCall(): void {
