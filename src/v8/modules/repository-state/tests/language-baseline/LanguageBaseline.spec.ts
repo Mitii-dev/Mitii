@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  ChunkingFactory,
   LANGUAGE_IDS,
   defaultLanguageProfileRegistry,
 } from "../../index";
+import { ChunkingFactory } from "../../internal/chunking/ChunkingFactory";
 import { NodeSha256ChunkHasher } from "../../internal/chunking/adapters/node/NodeSha256ChunkHasher";
 import { LanguageDetector } from "../../internal/source-analysis/LanguageDetector";
 import { createSourceAnalysisBuilder } from "../../internal/source-analysis/SourceAnalysisFactory";

@@ -66,20 +66,6 @@ export interface UserRequestEnvelope {
   createdAt: string;
 }
 
-export interface CreateUserRequestInput {
-  requestId?: string;
-  sessionId: string;
-
-  mode: AgentMode;
-  origin?: UserRequestOrigin;
-
-  userMessage: string;
-  referencedArtifacts?: readonly RequestArtifactReference[];
-
-  workspace?: UserRequestWorkspaceScope;
-  correlation?: UserRequestCorrelation;
-}
-
 export interface RequestEnvelopeClockPort {
   now(): number;
 }

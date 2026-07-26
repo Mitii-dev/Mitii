@@ -26,7 +26,6 @@ export {
   WorkspaceIndexingPipeline,
   RepositoryStatePipeline,
   InMemoryRepositoryStateStore,
-  buildPublishCandidateFromIndexing,
 } from "./modules/repository-state";
 export {
   LANGUAGE_IDS,

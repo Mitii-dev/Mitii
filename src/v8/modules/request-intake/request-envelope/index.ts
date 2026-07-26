@@ -1,6 +1,6 @@
 export { UserRequestEnvelopeBuilder } from "./UserRequestEnvelopeBuilder";
+export type { CreateUserRequestInput } from "../contracts/input/CreateUserRequestInput";
 export type {
-  CreateUserRequestInput,
   UserRequestEnvelope,
   UserRequestEnvelopeBuilderDependencies,
   RequestArtifactReference,
@@ -14,6 +14,8 @@ export type {
 export {
   userRequestEnvelopeSchema,
   requestArtifactReferenceSchema,
+  userRequestWorkspaceScopeSchema,
+  userRequestCorrelationSchema,
 } from "./schema";
 export {
   REQUEST_ENVELOPE_SCHEMA_VERSION,

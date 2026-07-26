@@ -31,12 +31,15 @@ Does **not** own prompting, retrieval, tool execution, or model calls.
 
 ## Public exports
 
-- `RepositoryStatePipeline`
-- `buildPublishCandidateFromIndexing`
-- `InMemoryRepositoryStateStore`
+- `RepositoryStatePipeline` (includes `publishFromIndexing`)
+- `InMemoryRepositoryStateStore` and other public adapters
 - State reference/descriptor schemas and types
-- Language profile registry (Phase 1)
+- Cross-module artifact contracts (snapshot/graph/map/ports)
+- Language profile registry
 - `WorkspaceIndexingPipeline` (candidate producer; not the authority facade)
+
+`buildPublishCandidateFromIndexing` remains an internal action used by
+`publishFromIndexing`; it is not root-exported.
 
 ## Failure modes
 

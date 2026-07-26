@@ -13,7 +13,7 @@ const PUBLIC_MODULES = [
   'model-gateway',
 ] as const;
 
-describe('v8 module boundaries (Phase 0/1)', () => {
+describe('v8 module boundaries (Phase 0/1/2)', () => {
   it('places all runtime code under src/v8/modules/', () => {
     expect(existsSync(modulesRoot)).toBe(true);
     expect(existsSync(join(repoRoot, 'src/v8/core'))).toBe(false);
@@ -31,6 +31,7 @@ describe('v8 module boundaries (Phase 0/1)', () => {
     expect(index).toContain('repositoryStateReferenceSchema');
     expect(index).toContain('RepositoryContextPipeline');
     expect(index).toContain('repositoryContextPipelineInputSchema');
+    expect(index).not.toContain('buildPublishCandidateFromIndexing');
     expect(index).toContain('EchoLlmPort');
     expect(index).toContain('OpenAiCompatibleLlmPort');
     expect(index).toContain('MODEL_PROVIDER_SUPPORT');
@@ -104,6 +105,30 @@ describe('v8 module boundaries (Phase 0/1)', () => {
       const content = readFileSync(indexPath, 'utf8');
       for (const [index, line] of content.split(/\r?\n/).entries()) {
         if (/^\s*export\s+\*/.test(line)) {
+          violations.push(
+            `${relative(repoRoot, indexPath)}:${index + 1}: ${line.trim()}`,
+          );
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it('keeps module root barrels free of internal/ and actions/ export paths', () => {
+    const violations: string[] = [];
+
+    for (const moduleName of PUBLIC_MODULES) {
+      const indexPath = join(modulesRoot, moduleName, 'index.ts');
+      const content = readFileSync(indexPath, 'utf8');
+      for (const [index, line] of content.split(/\r?\n/).entries()) {
+        if (!/^\s*export\s+/.test(line)) {
+          continue;
+        }
+        if (
+          /from\s+['"]\.\/(?:internal|actions)(?:\/|['"])/.test(line) ||
+          /from\s+['"]\.\/(?:internal|actions)$/.test(line)
+        ) {
           violations.push(
             `${relative(repoRoot, indexPath)}:${index + 1}: ${line.trim()}`,
           );

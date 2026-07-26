@@ -8,8 +8,8 @@ import {
   userRequestEnvelopeSchema,
 } from "./schema";
 
+import type { CreateUserRequestInput } from "../contracts/input/CreateUserRequestInput";
 import type {
-  CreateUserRequestInput,
   RequestArtifactReference,
   UserRequestCorrelation,
   UserRequestEnvelope,

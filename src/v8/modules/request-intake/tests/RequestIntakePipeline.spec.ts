@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createUserRequestInputSchema } from "../contracts/input/CreateUserRequestInput";
 import { agentModeSchema } from "../interaction-mode/schema";
 import { RequestIntakePipeline } from "../pipeline/RequestIntakePipeline";
 import { userRequestEnvelopeSchema } from "../request-envelope/schema";
@@ -37,4 +38,42 @@ test("request intake facade rejects invalid modes", () => {
       userMessage: "hi",
     }),
   );
+});
+
+test("createUserRequestInputSchema rejects unknown nested shapes", () => {
+  const invalidArtifacts = createUserRequestInputSchema.safeParse({
+    sessionId: "session-1",
+    mode: "ask",
+    userMessage: "hi",
+    referencedArtifacts: [{ notAnArtifact: true }],
+  });
+  assert.equal(invalidArtifacts.success, false);
+
+  const invalidWorkspace = createUserRequestInputSchema.safeParse({
+    sessionId: "session-1",
+    mode: "ask",
+    userMessage: "hi",
+    workspace: { unexpected: true },
+  });
+  assert.equal(invalidWorkspace.success, false);
+
+  const valid = createUserRequestInputSchema.safeParse({
+    sessionId: "session-1",
+    mode: "ask",
+    userMessage: "hi",
+    referencedArtifacts: [
+      {
+        name: "auth.ts",
+        path: "src/auth.ts",
+        kind: "file",
+      },
+    ],
+    workspace: {
+      workspaceId: "ws-1",
+    },
+    correlation: {
+      traceId: "trace-1",
+    },
+  });
+  assert.equal(valid.success, true);
 });

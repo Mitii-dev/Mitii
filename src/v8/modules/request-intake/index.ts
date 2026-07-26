@@ -1,6 +1,6 @@
 export { UserRequestEnvelopeBuilder } from "./request-envelope/UserRequestEnvelopeBuilder";
+export type { CreateUserRequestInput } from "./contracts/input/CreateUserRequestInput";
 export type {
-  CreateUserRequestInput,
   UserRequestEnvelope,
   UserRequestEnvelopeBuilderDependencies,
   RequestArtifactReference,

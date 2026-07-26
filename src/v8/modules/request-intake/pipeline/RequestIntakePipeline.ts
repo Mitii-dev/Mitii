@@ -1,7 +1,7 @@
-import { agentModeSchema } from "../interaction-mode/schema";
+import { createUserRequestInputSchema } from "../contracts/input/CreateUserRequestInput";
+import type { CreateUserRequestInput } from "../contracts/input/CreateUserRequestInput";
 import { UserRequestEnvelopeBuilder } from "../request-envelope/UserRequestEnvelopeBuilder";
 import type {
-  CreateUserRequestInput,
   UserRequestEnvelope,
   UserRequestEnvelopeBuilderDependencies,
 } from "../request-envelope/types";
@@ -10,7 +10,7 @@ export type RequestIntakePipelineDependencies =
   UserRequestEnvelopeBuilderDependencies;
 
 /**
- * Primary request-intake facade: validates interaction mode and builds
+ * Primary request-intake facade: validates boundary input and builds
  * a normalized UserRequestEnvelope from raw host input.
  */
 export class RequestIntakePipeline {
@@ -21,10 +21,7 @@ export class RequestIntakePipeline {
   }
 
   public intake(input: CreateUserRequestInput): UserRequestEnvelope {
-    const mode = agentModeSchema.parse(input.mode);
-    return this.builder.build({
-      ...input,
-      mode,
-    });
+    const validated = createUserRequestInputSchema.parse(input);
+    return this.builder.build(validated);
   }
 }

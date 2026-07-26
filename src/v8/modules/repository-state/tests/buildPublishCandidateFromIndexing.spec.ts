@@ -4,9 +4,11 @@ import test from "node:test";
 import {
   InMemoryRepositoryStateStore,
   RepositoryStatePipeline,
-  WORKSPACE_INDEXING_PIPELINE_MESSAGES,
-  buildPublishCandidateFromIndexing,
 } from "../index";
+import { WORKSPACE_INDEXING_PIPELINE_MESSAGES } from "../pipeline/ws-indexing-pipeline/constants";
+import {
+  buildPublishCandidateFromIndexing,
+} from "../actions/buildPublishCandidateFromIndexing";
 import type { WorkspaceIndexingPipelineResult } from "../pipeline/ws-indexing-pipeline/types";
 
 const SNAPSHOT_ID = "c".repeat(64);

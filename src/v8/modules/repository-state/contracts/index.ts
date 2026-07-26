@@ -88,3 +88,32 @@ export type {
   ActiveRunStateRetentionPort,
   RepositoryStateStorePort,
 } from "./ports/RepositoryStateStorePorts";
+
+export {
+  workspaceSnapshotSchema,
+  workspaceEntrySchema,
+  repoGraphSchema,
+  repoMapSchema,
+} from "./artifacts";
+export type {
+  WorkspaceSnapshot,
+  WorkspaceFileEntry,
+  RepoGraph,
+  RepoGraphFileNode,
+  RepoGraphNode,
+  RepoGraphSymbolNode,
+  RepoGraphEdge,
+  RepoMap,
+  RepoMapEntry,
+  Chunk,
+  ChunkKind,
+  ChunkTokenEstimator,
+  TextSearchMatch,
+  TextIndexReadPort,
+  VectorSearchMatch,
+  VectorIndexReadPort,
+  EmbeddingProfile,
+  EmbeddingProvider,
+  FileSystemReadPort,
+  FileSystemPort,
+} from "./artifacts";
