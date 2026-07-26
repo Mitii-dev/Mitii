@@ -1,43 +1,59 @@
 # @mitii/sdk
 
-Run Mitii headless ask, plan, and agent sessions from Node 20+.
+Host-neutral programmatic API over `@mitii/v8` Agent Engine. Apps and tests use this package instead of importing V8 internals or legacy controllers.
 
 ```bash
-npm install @mitii/sdk
+pnpm --filter @mitii/sdk build
+pnpm --filter @mitii/sdk test
 ```
 
 ```ts
-import { query } from '@mitii/sdk';
+import { createMitiiClient, EchoLlmPort } from '@mitii/sdk';
+import type { LlmPort, ModelEvent, ModelRequest } from '@mitii/v8';
 
-for await (const event of query({
-  cwd: process.cwd(),
-  prompt: 'Find the test command for this repo',
-  mode: 'agent',
-  runtime: 'real',
-  provider: 'openai-compatible',
-  baseUrl: 'http://localhost:11434/v1',
-  model: 'qwen3-coder:30b',
-  approval: 'auto',
-  allowNetwork: false,
-})) {
-  if (event.type === 'assistant_delta') process.stdout.write(event.content);
-  if (event.type === 'tool_start') console.error('tool:', event.tool);
+// Hosts inject real provider ports; Echo is for local smoke only.
+const understandingLlm: LlmPort = /* structured classification LLM */;
+const runLlm = new EchoLlmPort();
+
+const client = createMitiiClient({
+  understandingLlm,
+  runLlm,
+  workspaceRoot: process.cwd(),
+  defaultMode: 'ask',
+});
+
+const run = client.start({
+  prompt: 'What is recursion?',
+  mode: 'ask',
+});
+
+for await (const event of run.events) {
+  if (event.type === 'model_delta' && event.preview) {
+    process.stdout.write(event.preview);
+  }
 }
+
+const result = await run.result;
+// result.status: completed | failed | cancelled | suspended
 ```
 
-## Event Contract
+## Public surface
 
-`query()` returns an async iterable of NDJSON-friendly events:
+| API | Role |
+|---|---|
+| `createMitiiClient(options)` | Compose default V8 facades; inject `LlmPort`s (secrets stay on the port) |
+| `client.start(input)` | Validate intake-facing input → Agent Engine run handle |
+| `run.events` | Async iterable of V8 `RunEvent` |
+| `run.result` | Terminal `AgentRunResult` |
+| `run.cancel()` | Cancel in-flight model/tool work |
+| `client.resume(input)` | Resume after `clarification_required` / `approval_required` |
+| `client.publishRepositoryState(input)` | Optional; calls V8 Repository State facade |
 
-- `session_start`: session id, mode, and workspace.
-- `assistant_delta`: streamed assistant text.
-- `reasoning_delta`: streamed reasoning text when the provider returns it.
-- `tool_start` / `tool_end`: sanitized tool activity with path/command previews.
-- `approval_required` / `approval_resolved`: manual approval lifecycle.
-- `plan`: plan object for Plan mode or plan creation events.
-- `metrics`: duration, tool count, session log path, and audit tool names.
-- `error`: normalized runtime error.
-- `done`: terminal content event.
-- `log`: additional sanitized session log events.
+## Must not
 
-Tool inputs and outputs are previews only. Session log sanitization redacts API-key-like values before SDK events are emitted.
+- Import V8 `actions/` or `internal/`
+- Import `vscode` or webview protocols
+- Own intent classification, retrieval, prompting, tools, or verification algorithms
+- Reintroduce `HeadlessAgentHost` / ThunderController
+
+See `LEGACY_EXPORTS.md` for adapt/defer/delete decisions on the pre-Phase-12 SDK.

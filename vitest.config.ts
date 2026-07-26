@@ -6,8 +6,13 @@ export default defineConfig({
     environment: 'node',
     include: [
       'test/**/*.test.ts',
-      'src/v8/modules/**/*.spec.ts',
-      'src/v8/engine/**/*.spec.ts',
+      // Vitest-owned @mitii/v8 suites only (node:test specs stay on disk).
+      'packages/v8/src/engine/**/*.spec.ts',
+      'packages/v8/src/modules/decision-policy/**/*.spec.ts',
+      'packages/v8/src/modules/memory/**/*.spec.ts',
+      'packages/v8/src/modules/prompt-construction/**/*.spec.ts',
+      'packages/v8/src/modules/skills/**/*.spec.ts',
+      'packages/v8/src/modules/verification/**/*.spec.ts',
     ],
     setupFiles: ['./test/setup.ts'],
   },

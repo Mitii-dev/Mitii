@@ -1,7 +1,7 @@
 {
-  "name": "@mitii/sdk",
+  "name": "@mitii/v8",
   "version": "2.7.114",
-  "description": "Host-neutral Mitii programmatic API over @mitii/v8 Agent Engine.",
+  "description": "Host-neutral Mitii V8 agent runtime (modules + engine).",
   "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",
@@ -16,8 +16,8 @@
   },
   "files": [
     "dist",
+    "ARCHITECTURE.md",
     "README.md",
-    "LEGACY_EXPORTS.md",
     "LICENSE"
   ],
   "engines": {
@@ -29,12 +29,15 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@mitii/v8": "workspace:*",
+    "fast-xml-parser": "^5.10.1",
+    "typescript": "^5.5.2",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^20.14.0",
-    "typescript": "^5.5.2",
+    "@types/vscode": "^1.85.0",
+    "better-sqlite3": "^12.11.1",
     "vitest": "^3.2.7"
   }
 }

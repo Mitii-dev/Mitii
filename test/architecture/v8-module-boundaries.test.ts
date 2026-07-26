@@ -1,10 +1,12 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
-import { dirname, join, relative } from 'path';
+import { dirname, join, relative, sep } from 'path';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = process.cwd();
-const modulesRoot = join(repoRoot, 'src/v8/modules');
-const engineRoot = join(repoRoot, 'src/v8/engine');
+const v8PackageRoot = join(repoRoot, 'packages/v8');
+const v8SrcRoot = join(v8PackageRoot, 'src');
+const modulesRoot = join(v8SrcRoot, 'modules');
+const engineRoot = join(v8SrcRoot, 'engine');
 
 const PUBLIC_MODULES = [
   'request-intake',
@@ -35,21 +37,53 @@ const PUBLIC_ROOTS = [
   })),
 ] as const;
 
-describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9)', () => {
-  it('places business modules and engine components under their canonical roots', () => {
+const FORBIDDEN_V8_IMPORT_PATTERNS = [
+  /from ['"]vscode['"]/,
+  /from ['"].*webview(?:-ui)?(?:\/|['"])/,
+  /from ['"]@mitii\/sdk['"]/,
+  /from ['"].*(?:^|\/)(?:apps\/|packages\/sdk)(?:\/|['"])/,
+  /from ['"].*(?:^|\/)(?:kernel|interfaces|features|composition)(?:\/|['"])/,
+  /from ['"](?:\.\.\/)+(?:kernel|interfaces|features|composition|adapters)(?:\/|['"])/,
+] as const;
+
+describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12)', () => {
+  it('places live V8 under packages/v8 with no parallel src/v8 tree', () => {
+    expect(existsSync(v8PackageRoot)).toBe(true);
     expect(existsSync(modulesRoot)).toBe(true);
     expect(existsSync(engineRoot)).toBe(true);
+    expect(existsSync(join(v8PackageRoot, 'package.json'))).toBe(true);
+    expect(existsSync(join(repoRoot, 'src/v8'))).toBe(false);
     expect(existsSync(join(modulesRoot, 'agent-engine'))).toBe(false);
     expect(existsSync(join(modulesRoot, 'tool-runtime'))).toBe(false);
-    expect(existsSync(join(repoRoot, 'src/v8/core'))).toBe(false);
-    expect(existsSync(join(repoRoot, 'src/v8/repository'))).toBe(false);
-    expect(existsSync(join(repoRoot, 'src/v8/intent'))).toBe(false);
+    expect(existsSync(join(v8SrcRoot, 'core'))).toBe(false);
+    expect(existsSync(join(v8SrcRoot, 'repository'))).toBe(false);
+    expect(existsSync(join(v8SrcRoot, 'intent'))).toBe(false);
   });
 
-  it('exposes Phase 1 public facades from src/v8/index.ts', () => {
-    const index = readFileSync(join(repoRoot, 'src/v8/index.ts'), 'utf8');
+  it('names the package @mitii/v8 without vscode or sdk runtime deps', () => {
+    const pkg = JSON.parse(
+      readFileSync(join(v8PackageRoot, 'package.json'), 'utf8'),
+    ) as {
+      name: string;
+      dependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    expect(pkg.name).toBe('@mitii/v8');
+    const runtimeDeps = {
+      ...(pkg.dependencies ?? {}),
+      ...(pkg.peerDependencies ?? {}),
+    };
+    expect(runtimeDeps).not.toHaveProperty('vscode');
+    expect(runtimeDeps).not.toHaveProperty('@mitii/sdk');
+    expect(runtimeDeps).not.toHaveProperty('@types/vscode');
+  });
+
+  it('exposes Phase 1 public facades from packages/v8/src/index.ts', () => {
+    const index = readFileSync(join(v8SrcRoot, 'index.ts'), 'utf8');
     expect(index).toContain('RequestIntakePipeline');
     expect(index).toContain('UserRequestEnvelopeBuilder');
+    expect(index).toContain('createUserRequestInputSchema');
     expect(index).toContain('RequestUnderstandingPipeline');
     expect(index).toContain('WorkspaceIndexingPipeline');
     expect(index).toContain('RepositoryStatePipeline');
@@ -204,20 +238,10 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9)', () => {
     expect(violations).toEqual([]);
   });
 
-  it('does not import features/ce or legacy host code from v8 modules', () => {
+  it('does not import features/ce, legacy host, sdk, apps, or vscode from v8', () => {
     const violations = [
-      ...scanImports(modulesRoot, [
-        /from ['"].*(?:^|\/)features\/ce(?:\/|['"])/,
-        /from ['"](?:\.\.\/)+adapters(?:\/|['"])/,
-        /from ['"]adapters(?:\/|['"])/,
-        /from ['"]vscode['"]/,
-      ]),
-      ...scanImports(engineRoot, [
-        /from ['"].*(?:^|\/)features\/ce(?:\/|['"])/,
-        /from ['"](?:\.\.\/)+adapters(?:\/|['"])/,
-        /from ['"]adapters(?:\/|['"])/,
-        /from ['"]vscode['"]/,
-      ]),
+      ...scanImports(modulesRoot, FORBIDDEN_V8_IMPORT_PATTERNS),
+      ...scanImports(engineRoot, FORBIDDEN_V8_IMPORT_PATTERNS),
     ].filter((line) => !line.includes('VsCodeFileSystemAdapter'));
 
     expect(violations).toEqual([]);
@@ -244,6 +268,42 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9)', () => {
           targetUnit !== owningUnit
         ) {
           violations.push(`${relative(repoRoot, file)}: ${line.trim()}`);
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it('blocks deep actions/internal imports from outside the owning module', () => {
+    const violations: string[] = [];
+
+    for (const file of listRuntimeTypeScriptFiles()) {
+      const owningUnit = owningPublicUnit(file);
+      if (!owningUnit) continue;
+
+      const content = readFileSync(file, 'utf8');
+      for (const [index, line] of content.split(/\r?\n/).entries()) {
+        const specifier = line.match(/from ['"]([^'"]+)['"]/)?.[1];
+        if (!specifier?.startsWith('.')) continue;
+
+        const target = join(dirname(file), specifier);
+        const targetUnit = owningPublicUnit(target);
+        if (!targetUnit || targetUnit === owningUnit) continue;
+
+        const relToTarget = relative(
+          PUBLIC_ROOTS.find((unit) => unit.name === targetUnit)!.root,
+          target,
+        );
+        if (
+          relToTarget.startsWith(`actions${sep}`) ||
+          relToTarget === 'actions' ||
+          relToTarget.startsWith(`internal${sep}`) ||
+          relToTarget === 'internal'
+        ) {
+          violations.push(
+            `${relative(repoRoot, file)}:${index + 1}: ${line.trim()}`,
+          );
         }
       }
     }
@@ -305,6 +365,50 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9)', () => {
     }
 
     expect(violations).toEqual([]);
+  });
+
+  it('keeps @mitii/sdk host-neutral over public @mitii/v8 only (Phase 12)', () => {
+    const sdkRoot = join(repoRoot, 'packages/sdk');
+    const sdkSrc = join(sdkRoot, 'src');
+    expect(existsSync(sdkRoot)).toBe(true);
+    expect(existsSync(join(sdkRoot, 'package.json'))).toBe(true);
+
+    const pkg = JSON.parse(
+      readFileSync(join(sdkRoot, 'package.json'), 'utf8'),
+    ) as {
+      name: string;
+      dependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+      exports?: Record<string, unknown>;
+    };
+    expect(pkg.name).toBe('@mitii/sdk');
+    expect(pkg.dependencies?.['@mitii/v8']).toBeTruthy();
+    expect(pkg.dependencies).not.toHaveProperty('vscode');
+    expect(pkg.peerDependencies ?? {}).not.toHaveProperty('vscode');
+    expect(pkg.exports).not.toHaveProperty('./daemon');
+
+    const forbiddenSdkPatterns = [
+      /from ['"]vscode['"]/,
+      /from ['"].*webview(?:-ui)?(?:\/|['"])/,
+      /from ['"].*(?:kernel|HeadlessAgentHost|ThunderController)(?:\/|['"])/,
+      /from ['"]@mitii\/v8\/.*(?:actions|internal)(?:\/|['"])/,
+      /from ['"].*packages\/v8\/src\/.*\/(?:actions|internal)(?:\/|['"])/,
+      /from ['"].*\/(?:actions|internal)\/[^'"]+['"]/,
+    ] as const;
+
+    const violations = scanImports(sdkSrc, forbiddenSdkPatterns).filter(
+      (line) =>
+        // Allow documenting forbidden paths in comments only — scanImports
+        // matches import lines; keep filter for defensive clarity.
+        /from ['"]/.test(line),
+    );
+    expect(violations).toEqual([]);
+
+    const index = readFileSync(join(sdkSrc, 'index.ts'), 'utf8');
+    expect(index).toContain('createMitiiClient');
+    expect(index).toContain('MitiiClient');
+    expect(index).not.toContain('HeadlessAgentHost');
+    expect(index).not.toContain('DaemonClient');
   });
 });
 

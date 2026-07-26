@@ -1,125 +1,169 @@
-import { HeadlessAgentHost } from '../../../src/adapters/node/HeadlessAgentHost';
-import type { ProviderType } from '../../../src/kernel/config/schema';
-import type { MitiiClientOptions, MitiiEvent, MitiiQueryOptions, MitiiResult } from './types';
+import {
+  AgentEnginePipeline,
+  InMemoryRepositoryStateStore,
+  InMemoryRunCheckpointStore,
+  RepositoryStatePipeline,
+  composeReadOnlyAgentEngine,
+} from '@mitii/v8';
+import type {
+  AgentMode,
+  ComposeReadOnlyAgentEngineOptions,
+  LlmPort,
+  MemoryStorePort,
+  PublishRepositoryStateInput,
+  PublishRepositoryStateResult,
+  RepositoryContextPipeline,
+  RepositoryStatePipeline as RepositoryStatePipelineType,
+  SkillsCatalogPort,
+  ToolRuntimePipeline,
+  VerificationPipeline,
+} from '@mitii/v8';
 
+import {
+  mitiiResumeInputSchema,
+  toAgentEngineStartInput,
+} from './contracts';
+import type { MitiiResumeInput, MitiiStartInput } from './contracts';
+import { MitiiSdkError, mapToSdkError } from './errors';
+import { MitiiRun } from './run';
+
+export interface CreateMitiiClientOptions {
+  /** LLM used by Request Understanding (structured classification). */
+  understandingLlm: LlmPort;
+  /** LLM used by the Engine model/tool loop. */
+  runLlm: LlmPort;
+  /** Absolute workspace root when tools may execute. */
+  workspaceRoot?: string;
+  /** Default workspace id attached to intake envelopes. */
+  workspaceId?: string;
+  /** Default interaction mode when start() omits mode. */
+  defaultMode?: AgentMode;
+  /** Default session id when start() omits sessionId. */
+  defaultSessionId?: string;
+  repositoryState?: RepositoryStatePipelineType;
+  repositoryContext?: RepositoryContextPipeline;
+  tools?: ToolRuntimePipeline;
+  verification?: VerificationPipeline;
+  /** Enables clarification/approval resume across process turns. */
+  checkpointStore?: ComposeReadOnlyAgentEngineOptions['checkpointStore'];
+  skillsCatalog?: SkillsCatalogPort;
+  memoryStore?: MemoryStorePort;
+  toolDefinitions?: ComposeReadOnlyAgentEngineOptions['toolDefinitions'];
+  /**
+   * When true (default), create an in-memory checkpoint store if none is
+   * provided so clarification/approval resume works in-process.
+   */
+  enableInMemoryCheckpoints?: boolean;
+  /**
+   * When true and no repositoryState is provided, create an in-memory
+   * Repository State pipeline for optional publish helpers.
+   */
+  enableInMemoryRepositoryState?: boolean;
+}
+
+/**
+ * Host-neutral client over V8 Agent Engine.
+ * Secrets (API keys) stay on injected LlmPort adapters — never on this options bag.
+ */
 export class MitiiClient {
-  private host?: HeadlessAgentHost;
-  private initialized = false;
-
-  constructor(private readonly options: MitiiClientOptions) {}
-
-  async initialize(): Promise<void> {
-    if (this.initialized) return;
-    this.host = new HeadlessAgentHost(toHeadlessOptions(this.options));
-    await this.host.initialize();
-    this.initialized = true;
-  }
-
-  async ask(prompt: string): Promise<string> {
-    await this.initialize();
-    return this.host!.ask(prompt);
-  }
-
-  async plan(prompt: string): Promise<Record<string, unknown>> {
-    await this.initialize();
-    return await this.host!.plan(prompt) as Record<string, unknown>;
-  }
-
-  async *agent(prompt: string, signal?: AbortSignal): AsyncIterable<MitiiEvent> {
-    await this.initialize();
-    for await (const event of this.host!.agent(prompt) as AsyncIterable<MitiiEvent>) {
-      if (signal?.aborted) throw new Error('Mitii query aborted');
-      yield event;
-    }
-  }
-
-  async *query(options: Omit<MitiiQueryOptions, keyof MitiiClientOptions | 'prompt'> & { prompt: string }): AsyncIterable<MitiiEvent> {
-    const mode = options.mode ?? 'agent';
-    const started = Date.now();
-    const events: MitiiEvent[] = [];
-    let content = '';
-    const emit = async function* (event: MitiiEvent): AsyncIterable<MitiiEvent> {
-      events.push(event);
-      yield event;
-    };
-
-    if (mode === 'ask') {
-      content = await this.ask(options.prompt);
-      yield* emit({ type: 'assistant_delta', content });
-    } else if (mode === 'plan') {
-      const plan = await this.plan(options.prompt);
-      yield* emit({ type: 'plan', plan });
-      content = JSON.stringify(plan);
-    } else {
-      for await (const event of this.agent(options.prompt, options.signal)) {
-        if (event.type === 'assistant_delta') content += event.content;
-        if (event.type === 'done') {
-          content = event.content;
-          continue;
-        }
-        yield* emit(event);
-      }
-    }
-
-    yield* emit({
-      type: 'metrics',
-      durationMs: Date.now() - started,
-      toolCalls: this.host?.getToolAudit().length ?? 0,
-      sessionLogPath: this.host?.getSessionLog().getLogPath() || undefined,
-      auditTools: this.host?.getToolAudit().map((entry) => entry.toolName),
-    });
-    yield* emit({ type: 'done', content });
-  }
-
-  async run(options: Omit<MitiiQueryOptions, keyof MitiiClientOptions | 'prompt'> & { prompt: string }): Promise<MitiiResult> {
-    const events: MitiiEvent[] = [];
-    let content = '';
-    for await (const event of this.query(options)) {
-      events.push(event);
-      if (event.type === 'done') content = event.content;
-    }
-    return { content, events };
-  }
-
-  resolveApproval(id: string, decision: 'approved' | 'denied'): boolean {
-    return this.host?.resolveApproval(id, decision) ?? false;
-  }
-
-  async dispose(): Promise<void> {
-    await this.host?.dispose();
-    this.host = undefined;
-    this.initialized = false;
-  }
-}
-
-export function createClient(options: MitiiClientOptions): MitiiClient {
-  return new MitiiClient(options);
-}
-
-export async function* query(options: MitiiQueryOptions): AsyncIterable<MitiiEvent> {
-  const client = createClient(options);
-  try {
-    yield* client.query(options);
-  } finally {
-    await client.dispose();
-  }
-}
-
-function toHeadlessOptions(options: MitiiClientOptions): ConstructorParameters<typeof HeadlessAgentHost>[0] {
-  return {
-    cwd: options.cwd,
-    packageRoot: options.packageRoot,
-    runtime: options.runtime,
-    providerType: (options.providerType ?? options.provider) as ProviderType | undefined,
-    baseUrl: options.baseUrl,
-    model: options.model,
-    apiKey: options.apiKey,
-    approval: options.approval,
-    allowNetwork: options.allowNetwork,
-    enablePuppeteer: options.enablePuppeteer,
-    indexWorkspace: options.indexWorkspace,
-    configOverrides: options.vectors === undefined
-      ? undefined
-      : { indexing: { vectorsEnabled: options.vectors } } as never,
+  private readonly engine: AgentEnginePipeline;
+  private readonly defaults: {
+    mode: AgentMode;
+    sessionId: string;
+    workspaceRoot?: string;
+    workspaceId?: string;
   };
+  private readonly repositoryState?: RepositoryStatePipelineType;
+
+  constructor(options: CreateMitiiClientOptions) {
+    if (!options.understandingLlm || !options.runLlm) {
+      throw new MitiiSdkError(
+        'invalid_input',
+        'createMitiiClient requires understandingLlm and runLlm ports.',
+      );
+    }
+
+    const checkpointStore =
+      options.checkpointStore ??
+      (options.enableInMemoryCheckpoints === false
+        ? undefined
+        : new InMemoryRunCheckpointStore());
+
+    const repositoryState =
+      options.repositoryState ??
+      (options.enableInMemoryRepositoryState
+        ? new RepositoryStatePipeline({
+            store: new InMemoryRepositoryStateStore(),
+          })
+        : undefined);
+
+    this.engine = composeReadOnlyAgentEngine({
+      understandingLlm: options.understandingLlm,
+      runLlm: options.runLlm,
+      repositoryState,
+      repositoryContext: options.repositoryContext,
+      tools: options.tools,
+      verification: options.verification,
+      checkpointStore,
+      skillsCatalog: options.skillsCatalog,
+      memoryStore: options.memoryStore,
+      toolDefinitions: options.toolDefinitions,
+    });
+
+    this.repositoryState = repositoryState;
+    this.defaults = {
+      mode: options.defaultMode ?? 'ask',
+      sessionId: options.defaultSessionId ?? 'sdk_session',
+      workspaceRoot: options.workspaceRoot,
+      workspaceId: options.workspaceId,
+    };
+  }
+
+  /**
+   * Start a run. Returns an opaque handle with events + terminal result.
+   */
+  start(input: MitiiStartInput): MitiiRun {
+    try {
+      const engineInput = toAgentEngineStartInput(input, this.defaults);
+      return new MitiiRun(this.engine.start(engineInput));
+    } catch (error) {
+      throw mapToSdkError(error);
+    }
+  }
+
+  /**
+   * Resume after clarification_required or approval_required suspension.
+   */
+  resume(input: MitiiResumeInput): MitiiRun {
+    try {
+      const parsed = mitiiResumeInputSchema.parse(input);
+      return new MitiiRun(this.engine.resume(parsed));
+    } catch (error) {
+      throw mapToSdkError(error);
+    }
+  }
+
+  /**
+   * Optional publish helper — calls V8 Repository State facade only.
+   * Requires repositoryState on the client (injected or enableInMemoryRepositoryState).
+   */
+  async publishRepositoryState(
+    input: PublishRepositoryStateInput,
+  ): Promise<PublishRepositoryStateResult> {
+    if (!this.repositoryState) {
+      throw new MitiiSdkError(
+        'unsupported',
+        'publishRepositoryState requires a repositoryState pipeline on the client.',
+      );
+    }
+    try {
+      return await this.repositoryState.publish(input);
+    } catch (error) {
+      throw mapToSdkError(error);
+    }
+  }
+}
+
+export function createMitiiClient(options: CreateMitiiClientOptions): MitiiClient {
+  return new MitiiClient(options);
 }

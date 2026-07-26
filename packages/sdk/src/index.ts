@@ -1,13 +1,49 @@
-export { MitiiClient, createClient, query } from './client';
-export { DaemonClient, DaemonSessionClient, parseSseStream } from './daemon';
-export { isMitiiEvent, isTerminalEvent } from './events';
+export { createMitiiClient, MitiiClient } from './client';
+export type { CreateMitiiClientOptions } from './client';
+
+export { MitiiRun, isRunEvent, isTerminalRunEvent, isSuspendedRunEvent } from './run';
+export type { AgentRunResult, RunEvent } from './run';
+
+export {
+  mitiiStartInputSchema,
+  mitiiResumeInputSchema,
+  toAgentEngineStartInput,
+} from './contracts';
 export type {
-  MitiiApprovalDecision,
-  MitiiApprovalMode,
-  MitiiClientOptions,
-  MitiiEvent,
-  MitiiMode,
-  MitiiQueryOptions,
-  MitiiResult,
-  MitiiRuntime,
-} from './types';
+  MitiiStartInput,
+  MitiiResumeInput,
+  MitiiStartDefaults,
+  AgentMode,
+  AgentRunBudget,
+  RepositoryStateReference,
+} from './contracts';
+
+export {
+  MitiiSdkError,
+  MITII_SDK_ERROR_CODES,
+  mapToSdkError,
+} from './errors';
+export type { MitiiSdkErrorCode } from './errors';
+
+/** Re-export selected V8 composition helpers for advanced host wiring. */
+export {
+  composeReadOnlyAgentEngine,
+  EchoLlmPort,
+  OpenAiCompatibleLlmPort,
+  InMemoryRepositoryStateStore,
+  InMemoryRunCheckpointStore,
+  RepositoryStatePipeline,
+  AGENT_ENGINE_SCHEMA_VERSION,
+  agentEngineStartInputSchema,
+  agentEngineResumeInputSchema,
+  agentRunResultSchema,
+  runEventSchema,
+} from '@mitii/v8';
+export type {
+  LlmPort,
+  AgentEngineStartInput,
+  AgentEngineResumeInput,
+  ComposeReadOnlyAgentEngineOptions,
+  PublishRepositoryStateInput,
+  PublishRepositoryStateResult,
+} from '@mitii/v8';
