@@ -52,8 +52,6 @@ export function matchSkills(params: {
         score += SKILLS_THRESHOLDS.routeWeight;
         reasons.push("route");
       }
-    } else if (!skill.alwaysApply && skill.intents.length === 0) {
-      // Untagged skills are only loaded via keyword overlap.
     }
 
     if (skill.tags.length > 0 && queryTokens.size > 0) {
@@ -67,12 +65,21 @@ export function matchSkills(params: {
       }
     }
 
+    const hasIntentMatch =
+      reasons.includes("primary_intent") ||
+      reasons.includes("secondary_intent");
+    const hasRouteMatch = reasons.includes("route");
+
+    // Intent-scoped skills require an intent hit; route/keyword only boost.
+    // Route-scoped skills (no intents) require a route hit.
+    // Unscoped skills may load from keyword overlap alone.
     const applicable =
       skill.alwaysApply ||
-      reasons.includes("primary_intent") ||
-      reasons.includes("secondary_intent") ||
-      reasons.includes("route") ||
-      reasons.includes("keyword");
+      (skill.intents.length > 0
+        ? hasIntentMatch
+        : skill.routes.length > 0
+          ? hasRouteMatch
+          : reasons.includes("keyword"));
 
     if (!applicable) {
       continue;

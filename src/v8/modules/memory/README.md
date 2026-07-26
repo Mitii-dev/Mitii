@@ -66,3 +66,7 @@ const result = await memory.retrieve({
 ```bash
 pnpm exec vitest run src/v8/modules/memory
 ```
+
+Includes contract/unit coverage and the labeled evaluation gate in
+`tests/evaluation/MemoryEvaluation.spec.ts` (recall ≥90%, irrelevant
+rate <10%, stale accepted = 0, budget never exceeded).

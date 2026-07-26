@@ -95,6 +95,12 @@ export function scoreMemoryRelevance(params: {
 
     if (score >= MEMORY_THRESHOLDS.minimumRelevanceScore) {
       scored.push({ fact, score });
+    } else if (tagHits > 0 && tagScore >= 0.5) {
+      // A strong tag hit (majority of tags matched) is enough material relevance.
+      scored.push({
+        fact,
+        score: Math.max(score, MEMORY_THRESHOLDS.minimumRelevanceScore),
+      });
     }
   }
 

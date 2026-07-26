@@ -132,6 +132,8 @@ pnpm exec vitest run src/v8/engine/agent-engine
 ```
 
 Includes contract/unit coverage, wired-facade e2e (direct answer, repository
-answer, clarification, diagnose, cancellation, budget exhaustion), and
+answer, clarification, diagnose, cancellation, budget exhaustion),
 mutation approval coverage (deny, approve + resume without replay,
-verification-triggered rollback) in `AgentEngineMutation.spec.ts`.
+verification-triggered rollback) in `AgentEngineMutation.spec.ts`, and
+Phase 9 skills/memory evaluation in `AgentEnginePhase9Evaluation.spec.ts`
+(disable leaves core functional; enable improves grounding; budgets hold).

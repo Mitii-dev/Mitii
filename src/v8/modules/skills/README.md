@@ -64,3 +64,7 @@ const result = await skills.select({
 ```bash
 pnpm exec vitest run src/v8/modules/skills
 ```
+
+Includes contract/unit coverage and the labeled evaluation gate in
+`tests/evaluation/SkillsEvaluation.spec.ts` (recall ≥90%, irrelevant
+instruction rate <10%, budget never exceeded).
