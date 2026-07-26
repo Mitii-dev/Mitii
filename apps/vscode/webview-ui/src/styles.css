@@ -1,30 +1,19 @@
 :root {
-  --mitii-accent: #c4a35a;
-  --mitii-accent-soft: color-mix(in srgb, var(--mitii-accent) 22%, transparent);
-  --mitii-accent-strong: color-mix(in srgb, var(--mitii-accent) 55%, #1a1612);
-  --mitii-surface: color-mix(
+  --mitii-accent: var(--vscode-focusBorder, #0078d4);
+  --mitii-accent-soft: color-mix(
     in srgb,
-    var(--vscode-sideBar-background) 88%,
-    #0e0c0a
-  );
-  --mitii-panel: color-mix(
-    in srgb,
-    var(--vscode-editor-background) 92%,
+    var(--vscode-focusBorder, #0078d4) 18%,
     transparent
   );
-  --mitii-border: color-mix(
-    in srgb,
-    var(--vscode-panel-border, #3a3530) 70%,
-    transparent
-  );
+  --mitii-surface: var(--vscode-sideBar-background);
+  --mitii-panel: var(--vscode-editor-background);
+  --mitii-border: var(--vscode-panel-border, var(--vscode-widget-border, #3c3c3c));
   --mitii-text: var(--vscode-foreground);
-  --mitii-muted: color-mix(in srgb, var(--vscode-foreground) 58%, transparent);
+  --mitii-muted: var(--vscode-descriptionForeground, color-mix(in srgb, var(--vscode-foreground) 65%, transparent));
   --mitii-danger: var(--vscode-errorForeground, #e06c75);
   --mitii-ok: var(--vscode-testing-iconPassed, #89b86c);
-  --mitii-radius: 10px;
-  --mitii-font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia,
-    'Times New Roman', serif;
-  --mitii-font-ui: 'Segoe UI Variable', 'SF Pro Text', var(--vscode-font-family);
+  --mitii-radius: 4px;
+  --mitii-font-ui: var(--vscode-font-family);
   --mitii-font-mono: var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
   color-scheme: light dark;
 }
@@ -44,17 +33,7 @@ body {
   font-family: var(--mitii-font-ui);
   font-size: 13px;
   color: var(--mitii-text);
-  background:
-    radial-gradient(
-      120% 80% at 10% -10%,
-      var(--mitii-accent-soft),
-      transparent 55%
-    ),
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--vscode-sideBar-background) 94%, #1c1814),
-      var(--vscode-sideBar-background)
-    );
+  background: var(--vscode-sideBar-background);
   overflow: hidden;
 }
 
@@ -82,9 +61,9 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 14px 14px 10px;
+  padding: 10px 12px 8px;
   border-bottom: 1px solid var(--mitii-border);
-  animation: rise 420ms ease-out;
+  flex-wrap: wrap;
 }
 
 .brand {
@@ -95,57 +74,46 @@ button {
 }
 
 .brand-mark {
-  font-family: var(--mitii-font-display);
-  font-size: 22px;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  background: linear-gradient(
-    120deg,
-    var(--mitii-text) 20%,
-    var(--mitii-accent) 95%
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  color: var(--mitii-text);
 }
 
 .brand-sub {
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-size: 11px;
   color: var(--mitii-muted);
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .nav-pills {
   display: flex;
-  gap: 4px;
-  padding: 3px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--mitii-panel) 80%, transparent);
-  border: 1px solid var(--mitii-border);
+  gap: 2px;
+  padding: 0;
+  border-radius: var(--mitii-radius);
+  background: transparent;
+  border: 0;
 }
 
 .nav-pill {
   border: 0;
   background: transparent;
   color: var(--mitii-muted);
-  padding: 5px 10px;
-  border-radius: 999px;
-  transition:
-    background 180ms ease,
-    color 180ms ease,
-    transform 180ms ease;
+  padding: 4px 8px;
+  border-radius: var(--mitii-radius);
 }
 
 .nav-pill.active {
-  background: var(--mitii-accent-soft);
-  color: var(--mitii-text);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mitii-accent) 35%, transparent);
+  background: var(--vscode-list-activeSelectionBackground, var(--mitii-accent-soft));
+  color: var(--vscode-list-activeSelectionForeground, var(--mitii-text));
+  box-shadow: none;
 }
 
 .nav-pill:hover {
   color: var(--mitii-text);
-  transform: translateY(-1px);
+  background: var(--vscode-list-hoverBackground, transparent);
 }
 
 .shell-body {
@@ -161,17 +129,15 @@ button {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  animation: fade-slide 320ms ease;
 }
 
 .messages {
   flex: 1;
   overflow: auto;
-  padding: 12px 14px 8px;
+  padding: 10px 12px 8px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  scroll-behavior: smooth;
+  gap: 10px;
 }
 
 .empty-state {
@@ -179,13 +145,11 @@ button {
   text-align: center;
   max-width: 240px;
   padding: 24px 8px 40px;
-  animation: rise 500ms ease;
 }
 
 .empty-state h2 {
-  font-family: var(--mitii-font-display);
-  font-weight: 500;
-  font-size: 20px;
+  font-weight: 600;
+  font-size: 15px;
   margin: 0 0 8px;
 }
 
@@ -199,7 +163,6 @@ button {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  animation: rise 280ms ease;
 }
 
 .bubble {
@@ -231,7 +194,6 @@ button {
   margin-left: 3px;
   vertical-align: text-bottom;
   background: var(--mitii-accent);
-  animation: blink 1s steps(1) infinite;
 }
 
 .meta-row {
@@ -258,16 +220,15 @@ button {
   grid-template-columns: 14px 1fr;
   gap: 8px;
   align-items: start;
-  animation: fade-slide 200ms ease;
 }
 
 .activity-dot {
-  width: 8px;
-  height: 8px;
-  margin-top: 4px;
+  width: 6px;
+  height: 6px;
+  margin-top: 5px;
   border-radius: 50%;
   background: var(--mitii-accent);
-  box-shadow: 0 0 0 3px var(--mitii-accent-soft);
+  box-shadow: none;
 }
 
 .activity-item.tool .activity-dot {
@@ -308,9 +269,8 @@ button {
 
 .composer-dock {
   border-top: 1px solid var(--mitii-border);
-  padding: 10px 12px 12px;
-  background: color-mix(in srgb, var(--mitii-surface) 85%, transparent);
-  backdrop-filter: blur(8px);
+  padding: 8px 10px 10px;
+  background: var(--vscode-sideBar-background);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -318,10 +278,10 @@ button {
 
 .mode-switch {
   display: flex;
-  gap: 4px;
-  padding: 3px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--mitii-panel) 70%, transparent);
+  gap: 2px;
+  padding: 0;
+  border-radius: var(--mitii-radius);
+  background: transparent;
   border: 1px solid var(--mitii-border);
 }
 
@@ -330,21 +290,17 @@ button {
   border: 0;
   background: transparent;
   color: var(--mitii-muted);
-  padding: 7px 6px;
-  border-radius: 6px;
+  padding: 6px 6px;
+  border-radius: 0;
   font-size: 11px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  transition:
-    background 160ms ease,
-    color 160ms ease,
-    box-shadow 160ms ease;
 }
 
 .mode-btn.active {
   color: var(--mitii-text);
   background: var(--mitii-accent-soft);
-  box-shadow: inset 0 -2px 0 var(--mitii-accent);
+  box-shadow: none;
 }
 
 .mode-hint {
@@ -356,17 +312,18 @@ button {
 .pins {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
 }
 
 .pin-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--mitii-accent) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--mitii-accent) 30%, transparent);
+  padding: 2px 6px;
+  border-radius: var(--mitii-radius);
+  background: var(--vscode-badge-background, var(--mitii-accent-soft));
+  color: var(--vscode-badge-foreground, var(--mitii-text));
+  border: 1px solid var(--mitii-border);
   font-family: var(--mitii-font-mono);
   font-size: 11px;
 }
@@ -382,19 +339,14 @@ button {
 .composer-box {
   position: relative;
   border: 1px solid var(--mitii-border);
-  border-radius: 12px;
-  background: var(--mitii-panel);
-  box-shadow: 0 10px 30px color-mix(in srgb, #000 18%, transparent);
-  transition:
-    border-color 160ms ease,
-    box-shadow 160ms ease;
+  border-radius: var(--mitii-radius);
+  background: var(--vscode-input-background, var(--mitii-panel));
+  box-shadow: none;
 }
 
 .composer-box:focus-within {
-  border-color: color-mix(in srgb, var(--mitii-accent) 55%, var(--mitii-border));
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--mitii-accent) 35%, transparent),
-    0 12px 28px color-mix(in srgb, #000 22%, transparent);
+  border-color: var(--vscode-focusBorder, var(--mitii-accent));
+  box-shadow: none;
 }
 
 .composer-box textarea {
@@ -429,27 +381,21 @@ button {
 
 .btn {
   border: 0;
-  border-radius: 8px;
-  padding: 7px 12px;
-  background: var(--mitii-accent-strong);
-  color: #f7f1e6;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  transition:
-    transform 140ms ease,
-    filter 140ms ease,
-    opacity 140ms ease;
+  border-radius: var(--mitii-radius);
+  padding: 6px 10px;
+  background: var(--vscode-button-background, var(--mitii-accent));
+  color: var(--vscode-button-foreground, #fff);
+  font-weight: 500;
 }
 
 .btn:hover {
-  filter: brightness(1.08);
-  transform: translateY(-1px);
+  filter: none;
+  background: var(--vscode-button-hoverBackground, var(--mitii-accent));
 }
 
 .btn:disabled {
   opacity: 0.45;
   cursor: default;
-  transform: none;
 }
 
 .btn.ghost {
@@ -459,7 +405,8 @@ button {
 }
 
 .btn.danger {
-  background: color-mix(in srgb, var(--mitii-danger) 75%, #2a1010);
+  background: var(--vscode-inputValidation-errorBackground, var(--mitii-danger));
+  color: var(--vscode-inputValidation-errorForeground, #fff);
 }
 
 .suggest-pop {
@@ -469,10 +416,10 @@ button {
   bottom: calc(100% + 6px);
   max-height: 160px;
   overflow: auto;
-  border-radius: 8px;
+  border-radius: var(--mitii-radius);
   border: 1px solid var(--mitii-border);
   background: var(--vscode-editorSuggestWidget-background, var(--mitii-panel));
-  box-shadow: 0 12px 28px color-mix(in srgb, #000 28%, transparent);
+  box-shadow: none;
   z-index: 5;
 }
 
@@ -502,12 +449,11 @@ button {
 .card {
   border: 1px solid var(--mitii-border);
   border-radius: var(--mitii-radius);
-  padding: 12px;
+  padding: 10px;
   background: var(--mitii-panel);
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  animation: rise 280ms ease;
+  gap: 8px;
 }
 
 .card h3 {
@@ -544,7 +490,7 @@ button {
   border: 1px solid var(--mitii-border);
   background: transparent;
   color: var(--mitii-muted);
-  border-radius: 999px;
+  border-radius: var(--mitii-radius);
   padding: 6px 12px;
   white-space: nowrap;
   transition:
@@ -609,7 +555,6 @@ button {
 }
 
 .stat-value {
-  font-family: var(--mitii-font-display);
   font-size: 22px;
   line-height: 1.1;
 }
@@ -700,7 +645,7 @@ button {
   border: 1px solid var(--mitii-border);
   background: color-mix(in srgb, var(--mitii-panel) 70%, transparent);
   color: var(--mitii-muted);
-  border-radius: 999px;
+  border-radius: var(--mitii-radius);
   padding: 4px 8px;
   font-size: 11px;
   font-family: var(--mitii-font-mono);
@@ -738,9 +683,8 @@ button {
   border: 1px solid var(--mitii-border);
   border-radius: 10px;
   background: var(--vscode-editor-background, var(--mitii-panel));
-  box-shadow: 0 10px 28px color-mix(in srgb, #000 35%, transparent);
+  box-shadow: none;
   z-index: 20;
-  animation: rise 180ms ease;
 }
 
 .token-popover__header {
@@ -787,32 +731,564 @@ button {
   border: 1px solid color-mix(in srgb, var(--mitii-danger) 40%, transparent);
   color: var(--mitii-text);
   font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.error-banner__text {
+  flex: 1;
+  min-width: 0;
 }
 
-@keyframes fade-slide {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.error-banner__actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 
-@keyframes blink {
-  50% {
-    opacity: 0;
-  }
+.error-banner__dismiss {
+  border: 0;
+  background: transparent;
+  color: var(--mitii-muted);
+  padding: 0 4px;
+  font-size: 16px;
+  line-height: 1;
 }
+
+.icon-btn {
+  border: 0;
+  background: transparent;
+  color: var(--mitii-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.icon-btn:hover,
+.icon-btn--active {
+  color: var(--mitii-text);
+  background: var(--mitii-accent-soft);
+}
+
+.indexing-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 160px;
+  margin-left: auto;
+}
+
+.indexing-chip__label {
+  border: 0;
+  background: transparent;
+  color: var(--mitii-muted);
+  font-size: 10px;
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.workspace-banner {
+  margin: 0 14px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.workspace-banner--warn {
+  background: color-mix(in srgb, var(--vscode-charts-orange, #d19a66) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-charts-orange, #d19a66) 40%, transparent);
+}
+
+.workspace-banner--info {
+  background: color-mix(in srgb, var(--vscode-charts-blue, #5b9bd5) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-charts-blue, #5b9bd5) 30%, transparent);
+}
+
+.panel-view {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.panel-header-row h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.panel-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.panel-empty {
+  color: var(--mitii-muted);
+  font-size: 12px;
+  margin: 0;
+}
+
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--mitii-border);
+  padding-top: 12px;
+}
+
+.markdown-message {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  line-height: 1.45;
+}
+
+.markdown-message p {
+  margin: 0;
+}
+
+.markdown-message h2,
+.markdown-message h3,
+.markdown-message h4 {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.markdown-message ul,
+.markdown-message ol {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.markdown-message blockquote {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--mitii-accent);
+  color: var(--mitii-muted);
+}
+
+.md-inline-code {
+  font-family: var(--mitii-font-mono);
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--mitii-accent) 12%, transparent);
+}
+
+.md-code-block {
+  position: relative;
+  margin: 0;
+  padding: 22px 10px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--mitii-border);
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, #000);
+  overflow: auto;
+  font-family: var(--mitii-font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.md-code-lang {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  font-size: 10px;
+  color: var(--mitii-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.md-pending {
+  margin: 0;
+  color: var(--mitii-muted);
+}
+
+.bubble.assistant {
+  white-space: normal;
+}
+
+.bubble.assistant .markdown-message {
+  white-space: normal;
+}
+
+.plan-panel {
+  margin: 8px 14px 0;
+  border: 1px solid var(--mitii-border);
+  border-radius: var(--mitii-radius);
+  background: var(--mitii-panel);
+  padding: 10px;
+}
+
+.plan-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.plan-panel__title {
+  margin: 0;
+  font-size: 13px;
+}
+
+.plan-panel__progress {
+  font-size: 11px;
+  color: var(--mitii-muted);
+  font-family: var(--mitii-font-mono);
+}
+
+.plan-panel__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plan-step {
+  display: grid;
+  grid-template-columns: 16px 18px 1fr auto;
+  gap: 6px;
+  align-items: start;
+  font-size: 12px;
+}
+
+.plan-step__check {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 1px solid var(--mitii-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+}
+
+.plan-step__check--done {
+  background: color-mix(in srgb, var(--mitii-ok) 35%, transparent);
+  border-color: var(--mitii-ok);
+}
+
+.plan-step__check--active {
+  background: var(--mitii-accent-soft);
+  border-color: var(--mitii-accent);
+}
+
+.plan-step__index {
+  color: var(--mitii-muted);
+  font-family: var(--mitii-font-mono);
+  font-size: 10px;
+}
+
+.plan-step__title {
+  display: block;
+  font-weight: 600;
+}
+
+.plan-step__detail {
+  display: block;
+  color: var(--mitii-muted);
+  font-size: 11px;
+}
+
+.plan-step__status {
+  color: var(--mitii-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.review-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.review-panel__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.review-panel__title {
+  margin: 0;
+  font-size: 15px;
+}
+
+.review-panel__subtitle {
+  margin: 4px 0 0;
+  color: var(--mitii-muted);
+  font-size: 11px;
+}
+
+.review-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.review-file {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid var(--mitii-border);
+  border-radius: 8px;
+  background: var(--mitii-panel);
+}
+
+.review-file__status {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--mitii-muted);
+}
+
+.review-file__path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.review-patch {
+  margin: 0;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--mitii-border);
+  background: var(--mitii-panel);
+  overflow: auto;
+  max-height: 240px;
+  font-family: var(--mitii-font-mono);
+  font-size: 11px;
+}
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-item {
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+  border: 1px solid var(--mitii-border);
+  border-radius: 8px;
+  background: var(--mitii-panel);
+}
+
+.history-item--active {
+  border-color: color-mix(in srgb, var(--mitii-accent) 50%, var(--mitii-border));
+}
+
+.history-item__open {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-item__title {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.history-item__meta {
+  font-size: 11px;
+  color: var(--mitii-muted);
+}
+
+.history-item__delete {
+  border: 0;
+  background: transparent;
+  color: var(--mitii-muted);
+  padding: 0 10px;
+  font-size: 16px;
+}
+
+.onboarding {
+  margin: 16px 14px;
+  padding: 16px;
+  border: 1px solid var(--mitii-border);
+  border-radius: 12px;
+  background: var(--mitii-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.onboarding__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.onboarding__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.onboarding__subtitle {
+  margin: 4px 0 0;
+  color: var(--mitii-muted);
+}
+
+.onboarding__body h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
+.onboarding__body p {
+  margin: 0 0 10px;
+  color: var(--mitii-muted);
+  line-height: 1.4;
+}
+
+.memory-list,
+.checkpoint-list,
+.skill-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.memory-item,
+.checkpoint-item,
+.skill-item {
+  border: 1px solid var(--mitii-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--mitii-panel) 80%, transparent);
+}
+
+.memory-item__meta,
+.checkpoint-item__meta,
+.skill-item__top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.memory-item__text,
+.skill-item__desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.memory-item__delete {
+  border: 0;
+  background: transparent;
+  color: var(--mitii-muted);
+  padding: 0;
+  font-size: 14px;
+}
+
+.checkpoint-item__label {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.context-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.context-panel {
+  margin-bottom: 2px;
+}
+
+.context-panel--empty {
+  margin: 0;
+}
+
+.approval-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--mitii-muted);
+}
+
+.skill-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--mitii-muted);
+}
+
+.skill-badge.on {
+  color: var(--mitii-ok);
+}
+
+.skill-management input {
+  border: 1px solid var(--mitii-border);
+  background: var(--vscode-input-background, var(--mitii-panel));
+  color: var(--vscode-input-foreground, var(--mitii-text));
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.markdown-table-wrap {
+  overflow: auto;
+}
+
+.markdown-message table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 11px;
+}
+
+.markdown-message th,
+.markdown-message td {
+  border: 1px solid var(--mitii-border);
+  padding: 4px 6px;
+  text-align: left;
+}
+

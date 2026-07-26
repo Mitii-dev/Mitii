@@ -1,42 +1,52 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { onHostMessage, postToHost } from './bridge';
-import { getProviderPreset, PROVIDER_OPTIONS } from './providerOptions';
+import { ContextPanel } from './components/ContextPanel';
+import { ErrorBanner } from './components/ErrorBanner';
+import { HistoryPanel } from './components/HistoryPanel';
+import { IconButton } from './components/IconButton';
+import {
+  IconChat,
+  IconHistory,
+  IconPlus,
+  IconSettings,
+  IconSkills,
+} from './components/Icons';
+import { IndexingStatusBar } from './components/IndexingStatusBar';
+import type { ChatTurn } from './components/MessageList';
+import { MessageList } from './components/MessageList';
+import { MODE_HINT, ModeIndicator } from './components/ModeIndicator';
+import { OnboardingPanel } from './components/OnboardingPanel';
+import { PlanPanel } from './components/PlanPanel';
+import { ReviewPanel } from './components/ReviewPanel';
+import { SettingsPanel } from './components/SettingsPanel';
+import { SkillManagementPanel } from './components/skills/SkillManagementPanel';
+import { WorkspaceBanner } from './components/WorkspaceBanner';
+import { getProviderPreset } from './providerOptions';
 import type {
-  ActivityEventPayload,
   AgentUiDepth,
   AgentUiMode,
+  ChatThreadSummary,
+  CheckpointItemView,
+  ContextToggles,
   HostToWebviewMessage,
   IndexStatusSnapshot,
+  McpRuntimeStatus,
   McpSettings,
+  MemoryItemView,
   PathSuggestion,
+  PlanView,
   ProviderSettingsSnapshot,
+  ReviewDiffView,
   SettingsTab,
-  SuspensionPayload,
+  SkillCatalogItem,
   TokenUsageSnapshot,
   UiNav,
   UiSettingsSnapshot,
+  WorkspaceNoticeView,
   WorkspaceSnapshotInfo,
 } from './protocol';
 import { TokenMeter } from './TokenMeter';
-
-interface ChatTurn {
-  id: string;
-  role: 'user' | 'assistant';
-  text: string;
-  mode?: AgentUiMode;
-  streaming?: boolean;
-  activity: ActivityEventPayload[];
-  status?: string;
-  route?: string | null;
-  suspension?: SuspensionPayload;
-}
-
-const MODE_HINT: Record<AgentUiMode, string> = {
-  ask: 'Explore and answer — read-only.',
-  plan: 'Analyze and propose a structured plan.',
-  agent: 'Implement changes with controlled execution.',
-};
 
 const EMPTY_TOKEN_USAGE: TokenUsageSnapshot = {
   sessionTotal: 0,
@@ -54,6 +64,23 @@ const EMPTY_TOKEN_USAGE: TokenUsageSnapshot = {
   turnCount: 0,
   contextWindow: 8192,
   estimated: true,
+};
+
+const DEFAULT_CONTEXT_TOGGLES: ContextToggles = {
+  repoMap: true,
+  diagnostics: true,
+  gitDiff: true,
+  editor: true,
+  openTabs: false,
+  memory: true,
+};
+
+const DEFAULT_UI: UiSettingsSnapshot = {
+  showReasoning: true,
+  reasoningPreviewMaxChars: 8000,
+  depth: 'auto',
+  contextToggles: DEFAULT_CONTEXT_TOGGLES,
+  approvalMode: 'guided',
 };
 
 function uid(prefix: string): string {
@@ -106,34 +133,75 @@ export function App() {
     truncated: false,
   });
   const [mcp, setMcp] = useState<McpSettings>({ enabled: false, servers: [] });
-  const [ui, setUi] = useState<UiSettingsSnapshot>({
-    showReasoning: true,
-    reasoningPreviewMaxChars: 8000,
-    depth: 'auto',
-  });
+  const [mcpRuntimeStatus, setMcpRuntimeStatus] =
+    useState<McpRuntimeStatus>('disabled');
+  const [ui, setUi] = useState<UiSettingsSnapshot>(DEFAULT_UI);
   const [clarifyText, setClarifyText] = useState('');
   const [activityOpen, setActivityOpen] = useState(true);
   const [overrideDraft, setOverrideDraft] = useState('');
+  const [notice, setNotice] = useState<WorkspaceNoticeView | null>(null);
+  const [onboardingRequired, setOnboardingRequired] = useState(false);
+  const [skillManagement, setSkillManagement] = useState(false);
+  const [history, setHistory] = useState<ChatThreadSummary[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string | undefined>();
+  const [memories, setMemories] = useState<MemoryItemView[]>([]);
+  const [checkpoints, setCheckpoints] = useState<CheckpointItemView[]>([]);
+  const [plan, setPlan] = useState<PlanView | null>(null);
+  const [review, setReview] = useState<ReviewDiffView | null>(null);
+  const [skillItems, setSkillItems] = useState<SkillCatalogItem[]>([]);
+  const [skillError, setSkillError] = useState<string | null>(null);
+  const [skillLoading, setSkillLoading] = useState(false);
 
   const searchReq = useRef(0);
   const lastSearchId = useRef('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const activeAssistantId = useRef<string | null>(null);
 
+  const navigate = useCallback(
+    (next: UiNav, nextSettingsTab?: SettingsTab) => {
+      setNav(next);
+      if (nextSettingsTab) setSettingsTab(nextSettingsTab);
+      postToHost({
+        type: 'navigate',
+        nav: next,
+        settingsTab: nextSettingsTab,
+      });
+      postToHost({ type: 'setTab', tab: next });
+    },
+    [],
+  );
+
   const applyBootstrap = useCallback((msg: HostToWebviewMessage) => {
     if (msg.type === 'bootstrap' || msg.type === 'settings') {
       setWorkspace(msg.workspace);
       setProvider(msg.provider);
       setMcp(msg.mcp);
-      setUi(msg.ui);
+      setMcpRuntimeStatus(msg.mcpRuntimeStatus);
+      setUi({
+        ...DEFAULT_UI,
+        ...msg.ui,
+        contextToggles: {
+          ...DEFAULT_CONTEXT_TOGGLES,
+          ...msg.ui.contextToggles,
+        },
+      });
       setDepth(msg.ui.depth);
       setOverrideDraft(msg.workspace.rootOverride ?? '');
       setTokenUsage(msg.tokenUsage);
+      setNotice(msg.notice);
       setCustomModel(false);
       if (msg.provider.connectionStatus) {
         setConnectionMessage(msg.provider.connectionStatus);
       }
-      if (msg.type === 'bootstrap') setIndex(msg.index);
+      if (msg.type === 'bootstrap') {
+        setIndex(msg.index);
+        setOnboardingRequired(msg.onboardingRequired);
+        setSkillManagement(msg.flags.skillManagement);
+        setHistory(msg.history);
+        setActiveThreadId(msg.activeThreadId);
+        setMemories(msg.memories);
+        setCheckpoints(msg.checkpoints);
+      }
     }
   }, []);
 
@@ -155,7 +223,13 @@ export function App() {
           activeAssistantId.current = asstId;
           setTurns((prev) => [
             ...prev,
-            { id: userId, role: 'user', text: msg.prompt, mode: msg.mode, activity: [] },
+            {
+              id: userId,
+              role: 'user',
+              text: msg.prompt,
+              mode: msg.mode,
+              activity: [],
+            },
             {
               id: asstId,
               role: 'assistant',
@@ -191,7 +265,6 @@ export function App() {
                 return t;
               }
               if (msg.event.kind === 'delta') {
-                // Content previews stream into the assistant bubble via run.delta.
                 return t;
               }
               nextActivity.push(msg.event);
@@ -215,7 +288,9 @@ export function App() {
           if (!id) break;
           setTurns((prev) =>
             prev.map((t) =>
-              t.id === id ? { ...t, suspension: msg.suspension, streaming: false } : t,
+              t.id === id
+                ? { ...t, suspension: msg.suspension, streaming: false }
+                : t,
             ),
           );
           break;
@@ -224,6 +299,7 @@ export function App() {
           setRunning(false);
           const id = activeAssistantId.current;
           activeAssistantId.current = null;
+          if (msg.plan !== undefined) setPlan(msg.plan ?? null);
           setTurns((prev) =>
             prev.map((t) => {
               if (!id || t.id !== id) return t;
@@ -260,6 +336,54 @@ export function App() {
         case 'openSettings':
           setNav('settings');
           if (msg.tab) setSettingsTab(msg.tab);
+          break;
+        case 'setTab':
+          setNav(msg.tab);
+          break;
+        case 'editorPin':
+          setPinned((prev) =>
+            prev.includes(msg.path) ? prev : [...prev, msg.path],
+          );
+          break;
+        case 'workspaceNotice':
+          setNotice(msg.notice);
+          break;
+        case 'history':
+          setHistory(msg.threads);
+          setActiveThreadId(msg.activeThreadId);
+          break;
+        case 'thread.loaded':
+          setActiveThreadId(msg.threadId);
+          setTurns(
+            msg.messages.map((m) => ({
+              id: m.id,
+              role: m.role,
+              text: m.text,
+              mode: m.mode,
+              activity: [],
+            })),
+          );
+          setNav('chat');
+          break;
+        case 'setPlan':
+          setPlan(msg.plan);
+          break;
+        case 'setReviewDiff':
+          setReview(msg.review);
+          break;
+        case 'setMemories':
+          setMemories(msg.memories);
+          break;
+        case 'setCheckpoints':
+          setCheckpoints(msg.checkpoints);
+          break;
+        case 'skillCatalogResult':
+          setSkillItems(msg.items);
+          setSkillError(msg.error ?? null);
+          setSkillLoading(false);
+          break;
+        case 'onboarding':
+          setOnboardingRequired(msg.required);
           break;
         case 'provider.connectionResult':
           setTestingConnection(Boolean(msg.testing));
@@ -310,9 +434,7 @@ export function App() {
 
   const onPromptChange = (value: string) => {
     setPrompt(value);
-    const cursor = value.length;
-    const before = value.slice(0, cursor);
-    const match = before.match(/@([\w./_-]*)$/);
+    const match = value.match(/@([\w./_-]*)$/);
     if (match) {
       const q = match[1] ?? '';
       setSuggestQuery(q);
@@ -383,10 +505,20 @@ export function App() {
   };
 
   const saveUi = (patch: Partial<UiSettingsSnapshot>) => {
-    const next = { ...ui, ...patch };
+    const next = {
+      ...ui,
+      ...patch,
+      contextToggles: patch.contextToggles
+        ? { ...ui.contextToggles, ...patch.contextToggles }
+        : ui.contextToggles,
+    };
     setUi(next);
     if (patch.depth) setDepth(patch.depth);
-    postToHost({ type: 'settings.set', ui: patch });
+    postToHost({
+      type: 'settings.set',
+      ui: patch,
+      approvalMode: patch.approvalMode,
+    });
   };
 
   const saveMcp = (next: McpSettings) => {
@@ -394,750 +526,387 @@ export function App() {
     postToHost({ type: 'settings.set', mcp: next });
   };
 
-  const header = useMemo(
-    () => (
+  const requestSkills = () => {
+    setSkillLoading(true);
+    postToHost({ type: 'requestSkillCatalog', requestId: uid('skill') });
+  };
+
+  useEffect(() => {
+    if (nav === 'skills' && skillManagement) requestSkills();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nav, skillManagement]);
+
+  if (onboardingRequired) {
+    return (
+      <div className="app">
+        <header className="shell-header">
+          <div className="brand">
+            <div className="brand-mark">Mitii</div>
+            <div className="brand-sub">First-run setup</div>
+          </div>
+        </header>
+        <OnboardingPanel
+          index={index}
+          onIndex={() => postToHost({ type: 'index.reindex' })}
+          onComplete={() => {
+            postToHost({ type: 'completeOnboarding' });
+            setOnboardingRequired(false);
+          }}
+          onOpenSettings={() => {
+            setOnboardingRequired(false);
+            navigate('settings', 'model');
+          }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="app">
       <header className="shell-header">
         <div className="brand">
           <div className="brand-mark">Mitii</div>
           <div className="brand-sub">Enterprise agent</div>
         </div>
         <nav className="nav-pills" aria-label="Primary">
-          <button
-            type="button"
-            className={`nav-pill ${nav === 'chat' ? 'active' : ''}`}
-            onClick={() => {
-              setNav('chat');
-              postToHost({ type: 'navigate', nav: 'chat' });
-            }}
+          {nav === 'chat' ? (
+            <IconButton
+              label="New chat"
+              onClick={() => {
+                postToHost({ type: 'newChat' });
+                setTurns([]);
+                setPlan(null);
+                setActiveThreadId(undefined);
+              }}
+            >
+              <IconPlus />
+            </IconButton>
+          ) : null}
+          <IconButton
+            label="Chat"
+            active={nav === 'chat'}
+            onClick={() => navigate('chat')}
           >
-            Chat
-          </button>
-          <button
-            type="button"
-            className={`nav-pill ${nav === 'settings' ? 'active' : ''}`}
-            onClick={() => {
-              setNav('settings');
-              postToHost({ type: 'navigate', nav: 'settings', settingsTab });
-            }}
+            <IconChat />
+          </IconButton>
+          <IconButton
+            label="History"
+            active={nav === 'history'}
+            onClick={() => navigate('history')}
           >
-            Settings
-          </button>
+            <IconHistory />
+          </IconButton>
+          <IconButton
+            label="Settings"
+            active={nav === 'settings'}
+            onClick={() => navigate('settings', settingsTab)}
+          >
+            <IconSettings />
+          </IconButton>
+          {skillManagement ? (
+            <IconButton
+              label="Skills"
+              active={nav === 'skills'}
+              onClick={() => navigate('skills')}
+            >
+              <IconSkills />
+            </IconButton>
+          ) : null}
         </nav>
+        <IndexingStatusBar
+          index={index}
+          onRefresh={() => postToHost({ type: 'index.refresh' })}
+          onReindex={() => postToHost({ type: 'index.reindex' })}
+        />
       </header>
-    ),
-    [nav, settingsTab],
-  );
 
-  return (
-    <div className="app">
-      {header}
-      {error ? <div className="error-banner">{error}</div> : null}
+      <ErrorBanner
+        error={error}
+        onDismiss={() => setError(null)}
+        onSettings={() => navigate('settings', 'model')}
+      />
+      <WorkspaceBanner notice={notice} workspace={workspace} />
 
       {nav === 'chat' ? (
-        <div className="chat-view">
-          <div className="messages">
-            {turns.length === 0 ? (
-              <div className="empty-state">
-                <h2>Ready when you are</h2>
-                <p>
-                  Choose Ask, Plan, or Agent. Use @ to pin files. Watch thinking,
-                  reading, and tools as they happen.
-                </p>
-              </div>
-            ) : (
-              turns.map((turn) => (
-                <div key={turn.id} className="turn">
-                  {turn.role === 'user' ? (
-                    <>
-                      <div className="meta-row">
-                        <span>You</span>
-                        {turn.mode ? <span>{turn.mode}</span> : null}
-                      </div>
-                      <div className="bubble user">{turn.text}</div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="meta-row">
-                        <span>Mitii</span>
-                        {turn.status ? <span>{turn.status}</span> : null}
-                        {turn.route ? <span>{turn.route}</span> : null}
-                      </div>
-                      {turn.activity.length > 0 ? (
-                        <div className="activity">
-                          <button
-                            type="button"
-                            className="activity-toggle"
-                            onClick={() => setActivityOpen((v) => !v)}
-                          >
-                            {activityOpen ? 'Hide activity' : 'Show activity'} ·{' '}
-                            {turn.activity.length}
-                          </button>
-                          {activityOpen
-                            ? turn.activity.map((item) => (
-                                <div
-                                  key={item.id}
-                                  className={`activity-item ${item.kind}`}
-                                >
-                                  <span className="activity-dot" />
-                                  <div>
-                                    <div className="activity-title">{item.title}</div>
-                                    {item.detail ? (
-                                      <div className="activity-detail">{item.detail}</div>
-                                    ) : null}
-                                  </div>
-                                </div>
-                              ))
-                            : null}
-                        </div>
-                      ) : null}
-                      {turn.text || turn.streaming ? (
-                        <div
-                          className={`bubble assistant ${turn.streaming ? 'streaming' : ''}`}
-                        >
-                          {turn.text || (turn.streaming ? 'Working…' : '')}
-                        </div>
-                      ) : null}
-                      {turn.suspension ? (
-                        <div className="card">
-                          <h3>
-                            {turn.suspension.kind === 'clarification_required'
-                              ? 'Clarification needed'
-                              : 'Approval required'}
-                          </h3>
-                          <p>
-                            {turn.suspension.clarificationPrompt ??
-                              turn.suspension.rationale ??
-                              'Continue the run.'}
-                          </p>
-                          {turn.suspension.kind === 'clarification_required' ? (
-                            <>
-                              <textarea
-                                rows={3}
-                                value={clarifyText}
-                                onChange={(e) => setClarifyText(e.target.value)}
-                                placeholder="Your answer"
-                              />
-                              <div className="card-actions">
-                                <button
-                                  type="button"
-                                  className="btn"
-                                  onClick={() => {
-                                    postToHost({
-                                      type: 'resume',
-                                      runId: turn.suspension!.runId,
-                                      clarificationAnswer: clarifyText,
-                                    });
-                                    setClarifyText('');
-                                  }}
-                                >
-                                  Submit
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn ghost"
-                                  onClick={() =>
-                                    postToHost({
-                                      type: 'resume',
-                                      runId: turn.suspension!.runId,
-                                    })
-                                  }
-                                >
-                                  Stop
-                                </button>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="card-actions">
-                              <button
-                                type="button"
-                                className="btn"
-                                onClick={() =>
-                                  postToHost({
-                                    type: 'resume',
-                                    runId: turn.suspension!.runId,
-                                    approval: {
-                                      approvalId: turn.suspension!.approval!.approvalId,
-                                      decision: 'approved',
-                                    },
-                                  })
-                                }
-                              >
-                                Approve
-                              </button>
-                              <button
-                                type="button"
-                                className="btn ghost"
-                                onClick={() =>
-                                  postToHost({
-                                    type: 'resume',
-                                    runId: turn.suspension!.runId,
-                                    approval: {
-                                      approvalId: turn.suspension!.approval!.approvalId,
-                                      decision: 'denied',
-                                    },
-                                  })
-                                }
-                              >
-                                Deny
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ) : null}
-                    </>
-                  )}
-                </div>
-              ))
-            )}
-            <div ref={bottomRef} />
-          </div>
-
-          <div className="composer-dock">
-            {pinned.length > 0 ? (
-              <div className="pins">
-                {pinned.map((p) => (
-                  <span key={p} className="pin-chip">
-                    @{p}
-                    <button
-                      type="button"
-                      aria-label={`Unpin ${p}`}
-                      onClick={() => setPinned((prev) => prev.filter((x) => x !== p))}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-            ) : null}
-
-            <div className="mode-switch" role="tablist" aria-label="Mode">
-              {(['ask', 'plan', 'agent'] as AgentUiMode[]).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === m}
-                  className={`mode-btn ${mode === m ? 'active' : ''}`}
-                  onClick={() => setMode(m)}
-                >
-                  {m}
-                </button>
-              ))}
+        mode === 'review' ? (
+          <div className="chat-view">
+            <ReviewPanel
+              review={review}
+              onRefresh={() => postToHost({ type: 'refreshReviewDiff' })}
+            />
+            <div className="composer-dock">
+              <ModeIndicator mode={mode} onChange={setMode} />
+              <div className="mode-hint">{MODE_HINT[mode]}</div>
             </div>
-            <div className="mode-hint">{MODE_HINT[mode]}</div>
+          </div>
+        ) : (
+          <div className="chat-view">
+            <PlanPanel plan={plan} />
+            <MessageList
+              turns={turns}
+              activityOpen={activityOpen}
+              onToggleActivity={() => setActivityOpen((v) => !v)}
+              clarifyText={clarifyText}
+              onClarifyChange={setClarifyText}
+              onResumeClarify={(runId, answer) => {
+                postToHost({
+                  type: 'resume',
+                  runId,
+                  clarificationAnswer: answer,
+                });
+                setClarifyText('');
+              }}
+              onResumeStop={(runId) => postToHost({ type: 'resume', runId })}
+              onApprove={(runId, approvalId) =>
+                postToHost({
+                  type: 'resume',
+                  runId,
+                  approval: { approvalId, decision: 'approved' },
+                })
+              }
+              onDeny={(runId, approvalId) =>
+                postToHost({
+                  type: 'resume',
+                  runId,
+                  approval: { approvalId, decision: 'denied' },
+                })
+              }
+              onShowInlineDiff={(approvalId) =>
+                postToHost({ type: 'showInlineDiff', approvalId })
+              }
+              bottomRef={bottomRef}
+            />
 
-            <div className="composer-box">
-              {suggestOpen ? (
-                <div className="suggest-pop" role="listbox">
-                  {suggestions.map((s, i) => (
-                    <button
-                      key={s.path}
-                      type="button"
-                      className={`suggest-item ${i === activeSuggest ? 'active' : ''}`}
-                      onClick={() => insertMention(s.path)}
-                    >
-                      <span className="mono">@{s.path}</span>
-                      <span className="suggest-kind">{s.kind}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              <textarea
-                value={prompt}
-                placeholder={`Message Mitii… type @ for context (${suggestQuery ? `filter: ${suggestQuery}` : 'files'})`}
-                onChange={(e) => onPromptChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (suggestOpen && suggestions.length) {
-                    if (e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      setActiveSuggest((i) => (i + 1) % suggestions.length);
-                      return;
-                    }
-                    if (e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      setActiveSuggest(
-                        (i) => (i - 1 + suggestions.length) % suggestions.length,
-                      );
-                      return;
-                    }
-                    if (e.key === 'Enter' || e.key === 'Tab') {
-                      e.preventDefault();
-                      insertMention(suggestions[activeSuggest]!.path);
-                      return;
-                    }
-                    if (e.key === 'Escape') {
-                      setSuggestOpen(false);
-                      return;
-                    }
-                  }
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    send();
-                  }
-                }}
+            <div className="composer-dock">
+              <ContextPanel
+                paths={pinned}
+                onRemove={(path) =>
+                  setPinned((prev) => prev.filter((x) => x !== path))
+                }
+                onClear={() => setPinned([])}
+                onPick={() => postToHost({ type: 'pickContextPath' })}
               />
-              <div className="composer-actions">
-                <select
-                  className="depth-select"
-                  value={
-                    customModel || !modelOptions.includes(provider.model)
-                      ? '__custom__'
-                      : provider.model
-                  }
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    if (next === '__custom__') {
-                      setCustomModel(true);
-                      return;
+
+              <ModeIndicator mode={mode} onChange={setMode} />
+              <div className="mode-hint">{MODE_HINT[mode]}</div>
+
+              <div className="composer-box">
+                {suggestOpen ? (
+                  <div className="suggest-pop" role="listbox">
+                    {suggestions.map((s, i) => (
+                      <button
+                        key={s.path}
+                        type="button"
+                        className={`suggest-item ${i === activeSuggest ? 'active' : ''}`}
+                        onClick={() => insertMention(s.path)}
+                      >
+                        <span className="mono">@{s.path}</span>
+                        <span className="suggest-kind">{s.kind}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <textarea
+                  value={prompt}
+                  placeholder={`Message Mitii… type @ for context (${suggestQuery ? `filter: ${suggestQuery}` : 'files'})`}
+                  onChange={(e) => onPromptChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (suggestOpen && suggestions.length) {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setActiveSuggest((i) => (i + 1) % suggestions.length);
+                        return;
+                      }
+                      if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setActiveSuggest(
+                          (i) =>
+                            (i - 1 + suggestions.length) % suggestions.length,
+                        );
+                        return;
+                      }
+                      if (e.key === 'Enter' || e.key === 'Tab') {
+                        e.preventDefault();
+                        insertMention(suggestions[activeSuggest]!.path);
+                        return;
+                      }
+                      if (e.key === 'Escape') {
+                        setSuggestOpen(false);
+                        return;
+                      }
                     }
-                    setCustomModel(false);
-                    saveModel(next);
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      send();
+                    }
                   }}
-                  title="Model"
-                  aria-label="Model"
-                >
-                  {modelOptions.map((id) => (
-                    <option key={id} value={id}>
-                      {id}
-                    </option>
-                  ))}
-                  <option value="__custom__">Custom…</option>
-                </select>
-                {customModel || !modelOptions.includes(provider.model) ? (
-                  <input
-                    className="model-custom-input"
-                    value={provider.model}
-                    placeholder="model id"
-                    onChange={(e) =>
-                      setProvider((p) => ({ ...p, model: e.target.value }))
+                />
+                <div className="composer-actions">
+                  <select
+                    className="depth-select"
+                    value={
+                      customModel || !modelOptions.includes(provider.model)
+                        ? '__custom__'
+                        : provider.model
                     }
-                    onBlur={() => {
-                      if (provider.model.trim()) saveModel(provider.model.trim());
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      if (next === '__custom__') {
+                        setCustomModel(true);
+                        return;
+                      }
+                      setCustomModel(false);
+                      saveModel(next);
                     }}
-                    title="Custom model id"
-                  />
-                ) : null}
-                <select
-                  className="depth-select"
-                  value={depth}
-                  onChange={(e) => {
-                    const next = e.target.value as AgentUiDepth;
-                    setDepth(next);
-                    saveUi({ depth: next });
-                  }}
-                  title="Depth"
-                >
-                  <option value="auto">Auto</option>
-                  <option value="quick">Quick</option>
-                  <option value="deep">Deep</option>
-                </select>
-                <TokenMeter usage={tokenUsage} />
-                {running ? (
-                  <button
-                    type="button"
-                    className="btn danger"
-                    onClick={() => postToHost({ type: 'cancel' })}
+                    title="Model"
+                    aria-label="Model"
                   >
-                    Stop
-                  </button>
-                ) : (
-                  <button type="button" className="btn" onClick={send} disabled={!prompt.trim()}>
-                    Send
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="settings-view">
-          <div className="settings-tabs">
-            {(
-              [
-                ['workspace', 'Workspace'],
-                ['index', 'Index'],
-                ['settings', 'Provider'],
-                ['mcp', 'MCP'],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                className={`settings-tab ${settingsTab === id ? 'active' : ''}`}
-                onClick={() => {
-                  setSettingsTab(id);
-                  postToHost({ type: 'navigate', nav: 'settings', settingsTab: id });
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {settingsTab === 'workspace' ? (
-            <div className="settings-panel">
-              <div className="stat">
-                <div className="stat-label">Active workspace</div>
-                <div className="mono" style={{ marginTop: 8 }}>
-                  {workspace.displayRoot ?? 'No folder open'}
-                </div>
-              </div>
-              <div className="field">
-                <label htmlFor="override">Root path override</label>
-                <input
-                  id="override"
-                  value={overrideDraft}
-                  placeholder={workspace.root ?? '/path/to/repo'}
-                  onChange={(e) => setOverrideDraft(e.target.value)}
-                />
-              </div>
-              <div className="row">
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() =>
-                    postToHost({
-                      type: 'settings.set',
-                      workspaceRootOverride: overrideDraft.trim() || null,
-                    })
-                  }
-                >
-                  Save override
-                </button>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={() => {
-                    setOverrideDraft('');
-                    postToHost({ type: 'settings.set', workspaceRootOverride: null });
-                  }}
-                >
-                  Clear
-                </button>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={() => postToHost({ type: 'openFolder' })}
-                >
-                  Open folder
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {settingsTab === 'index' ? (
-            <div className="settings-panel">
-              <div className="stat-grid">
-                <div className="stat">
-                  <div className="stat-value">{index.fileCount}</div>
-                  <div className="stat-label">Indexed items</div>
-                </div>
-                <div className="stat">
-                  <div className="stat-value" style={{ fontSize: 16 }}>
-                    {index.readiness ?? '—'}
-                  </div>
-                  <div className="stat-label">Readiness</div>
-                </div>
-              </div>
-              <p className="mono" style={{ color: 'var(--mitii-muted)', margin: 0 }}>
-                {index.message ?? 'No index yet'}
-                {index.truncated ? ' · truncated' : ''}
-                {index.stateTokenPreview ? ` · token ${index.stateTokenPreview}…` : ''}
-              </p>
-              {index.lastIndexedAt ? (
-                <p className="mono" style={{ color: 'var(--mitii-muted)', margin: 0 }}>
-                  Last: {index.lastIndexedAt}
-                </p>
-              ) : null}
-              <div className="row">
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => postToHost({ type: 'index.reindex' })}
-                >
-                  Reindex
-                </button>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={() => postToHost({ type: 'index.refresh' })}
-                >
-                  Refresh
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {settingsTab === 'settings' ? (
-            <div className="settings-panel">
-              <div className="field">
-                <label htmlFor="ptype">Provider</label>
-                <select
-                  id="ptype"
-                  value={provider.type}
-                  onChange={(e) => onProviderTypeChange(e.target.value)}
-                >
-                  {PROVIDER_OPTIONS.map((option) => (
-                    <option key={option.type} value={option.type}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {provider.type === 'openai-compatible' ? (
-                <div className="field">
-                  <label htmlFor="base">Base URL</label>
-                  <input
-                    id="base"
-                    value={provider.baseUrl}
-                    placeholder="http://localhost:11434/v1"
-                    onChange={(e) =>
-                      setProvider((p) => ({ ...p, baseUrl: e.target.value }))
-                    }
-                  />
-                </div>
-              ) : null}
-              <div className="field">
-                <label htmlFor="model">Model</label>
-                <select
-                  id="model"
-                  value={
-                    customModel || !modelOptions.includes(provider.model)
-                      ? '__custom__'
-                      : provider.model
-                  }
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    if (next === '__custom__') {
-                      setCustomModel(true);
-                      return;
-                    }
-                    setCustomModel(false);
-                    setProvider((p) => ({ ...p, model: next }));
-                  }}
-                >
-                  {modelOptions.map((id) => (
-                    <option key={id} value={id}>
-                      {id}
-                    </option>
-                  ))}
-                  <option value="__custom__">Custom…</option>
-                </select>
-                {customModel || !modelOptions.includes(provider.model) ? (
-                  <input
-                    style={{ marginTop: 8 }}
-                    value={provider.model}
-                    placeholder="custom model id"
-                    onChange={(e) =>
-                      setProvider((p) => ({ ...p, model: e.target.value }))
-                    }
-                  />
-                ) : null}
-                <span className="field-hint">
-                  Use Test connection to refresh models from the endpoint.
-                </span>
-              </div>
-              <div className="row">
-                <span className="mono">
-                  API key: {provider.hasApiKey ? 'configured' : 'not set'}
-                </span>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={() => postToHost({ type: 'settings.setApiKey' })}
-                >
-                  Set key
-                </button>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={() => postToHost({ type: 'settings.clearApiKey' })}
-                >
-                  Clear key
-                </button>
-              </div>
-              {provider.type === 'openai-compatible' && !provider.hasApiKey ? (
-                <p className="field-hint">
-                  Local endpoints (Ollama / LM Studio) work without an API key.
-                  Cloud endpoints need a key.
-                </p>
-              ) : null}
-              <div className="row">
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={testConnection}
-                  disabled={testingConnection}
-                >
-                  {testingConnection ? 'Testing…' : 'Test connection'}
-                </button>
-                {connectionMessage || provider.connectionStatus ? (
-                  <span
-                    className={`settings-status-pill ${
-                      provider.connectionOk
-                        ? 'settings-status-pill--ok'
-                        : provider.connectionOk === false
-                          ? 'settings-status-pill--err'
-                          : ''
-                    }`}
+                    {modelOptions.map((id) => (
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
+                    ))}
+                    <option value="__custom__">Custom…</option>
+                  </select>
+                  {customModel || !modelOptions.includes(provider.model) ? (
+                    <input
+                      className="model-custom-input"
+                      value={provider.model}
+                      placeholder="model id"
+                      onChange={(e) =>
+                        setProvider((p) => ({ ...p, model: e.target.value }))
+                      }
+                      onBlur={() => {
+                        if (provider.model.trim())
+                          saveModel(provider.model.trim());
+                      }}
+                      title="Custom model id"
+                    />
+                  ) : null}
+                  <select
+                    className="depth-select"
+                    value={depth}
+                    onChange={(e) => {
+                      const next = e.target.value as AgentUiDepth;
+                      setDepth(next);
+                      saveUi({ depth: next });
+                    }}
+                    title="Depth"
                   >
-                    {connectionMessage ?? provider.connectionStatus}
-                  </span>
-                ) : null}
-              </div>
-              <div className="field">
-                <label className="toggle">
-                  <input
-                    type="checkbox"
-                    checked={ui.showReasoning}
-                    onChange={(e) => saveUi({ showReasoning: e.target.checked })}
-                  />
-                  Show reasoning stream
-                </label>
-              </div>
-              <div className="field">
-                <label htmlFor="preview">Reasoning preview chars</label>
-                <input
-                  id="preview"
-                  type="number"
-                  min={500}
-                  max={50000}
-                  value={ui.reasoningPreviewMaxChars}
-                  onChange={(e) =>
-                    saveUi({
-                      reasoningPreviewMaxChars: Number(e.target.value) || 8000,
-                    })
-                  }
-                />
-              </div>
-              <div className="row">
-                <button type="button" className="btn" onClick={saveProvider}>
-                  Save provider
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {settingsTab === 'mcp' ? (
-            <div className="settings-panel">
-              <label className="toggle">
-                <input
-                  type="checkbox"
-                  checked={mcp.enabled}
-                  onChange={(e) =>
-                    saveMcp({ ...mcp, enabled: e.target.checked })
-                  }
-                />
-                Enable MCP servers
-              </label>
-              {mcp.servers.map((server, idx) => (
-                <div key={`${server.name}-${idx}`} className="mcp-server">
-                  <div className="field">
-                    <label>Name</label>
-                    <input
-                      value={server.name}
-                      onChange={(e) => {
-                        const servers = mcp.servers.slice();
-                        servers[idx] = { ...server, name: e.target.value };
-                        setMcp({ ...mcp, servers });
-                      }}
-                    />
-                  </div>
-                  <div className="field">
-                    <label>Transport</label>
-                    <select
-                      value={server.transport}
-                      onChange={(e) => {
-                        const servers = mcp.servers.slice();
-                        servers[idx] = {
-                          ...server,
-                          transport: e.target.value as typeof server.transport,
-                        };
-                        setMcp({ ...mcp, servers });
-                      }}
-                    >
-                      <option value="stdio">stdio</option>
-                      <option value="sse">sse</option>
-                      <option value="streamable-http">streamable-http</option>
-                    </select>
-                  </div>
-                  {server.transport === 'stdio' ? (
-                    <div className="field">
-                      <label>Command</label>
-                      <input
-                        value={server.command ?? ''}
-                        onChange={(e) => {
-                          const servers = mcp.servers.slice();
-                          servers[idx] = { ...server, command: e.target.value };
-                          setMcp({ ...mcp, servers });
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="field">
-                      <label>URL</label>
-                      <input
-                        value={server.url ?? ''}
-                        onChange={(e) => {
-                          const servers = mcp.servers.slice();
-                          servers[idx] = { ...server, url: e.target.value };
-                          setMcp({ ...mcp, servers });
-                        }}
-                      />
-                    </div>
-                  )}
-                  <label className="toggle">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(server.disabled)}
-                      onChange={(e) => {
-                        const servers = mcp.servers.slice();
-                        servers[idx] = { ...server, disabled: e.target.checked };
-                        setMcp({ ...mcp, servers });
-                      }}
-                    />
-                    Disabled
-                  </label>
+                    <option value="auto">Auto</option>
+                    <option value="quick">Quick</option>
+                    <option value="deep">Deep</option>
+                  </select>
+                  <TokenMeter usage={tokenUsage} />
                   <button
                     type="button"
                     className="btn ghost"
-                    onClick={() => {
-                      const servers = mcp.servers.filter((_, i) => i !== idx);
-                      setMcp({ ...mcp, servers });
-                    }}
+                    title="Copy last response"
+                    onClick={() => postToHost({ type: 'copyLastResponse' })}
                   >
-                    Remove
+                    Copy
                   </button>
+                  {running ? (
+                    <button
+                      type="button"
+                      className="btn danger"
+                      onClick={() => postToHost({ type: 'cancel' })}
+                    >
+                      Stop
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={send}
+                      disabled={!prompt.trim()}
+                    >
+                      Send
+                    </button>
+                  )}
                 </div>
-              ))}
-              <div className="row">
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={() =>
-                    setMcp({
-                      ...mcp,
-                      servers: [
-                        ...mcp.servers,
-                        {
-                          name: `server-${mcp.servers.length + 1}`,
-                          transport: 'stdio',
-                          command: '',
-                        },
-                      ],
-                    })
-                  }
-                >
-                  Add server
-                </button>
-                <button type="button" className="btn" onClick={() => saveMcp(mcp)}>
-                  Save MCP
-                </button>
               </div>
             </div>
-          ) : null}
-        </div>
-      )}
+          </div>
+        )
+      ) : null}
+
+      {nav === 'history' ? (
+        <HistoryPanel
+          threads={history}
+          activeThreadId={activeThreadId}
+          onOpen={(id) => postToHost({ type: 'openChatThread', id })}
+          onDelete={(id) => postToHost({ type: 'deleteChatThread', id })}
+          onClear={() => postToHost({ type: 'clearChatHistory' })}
+        />
+      ) : null}
+
+      {nav === 'settings' ? (
+        <SettingsPanel
+          tab={settingsTab}
+          onTabChange={(tab) => {
+            setSettingsTab(tab);
+            navigate('settings', tab);
+          }}
+          workspace={workspace}
+          overrideDraft={overrideDraft}
+          onOverrideDraftChange={setOverrideDraft}
+          onSaveOverride={() =>
+            postToHost({
+              type: 'settings.set',
+              workspaceRootOverride: overrideDraft.trim() || null,
+            })
+          }
+          onClearOverride={() => {
+            setOverrideDraft('');
+            postToHost({ type: 'settings.set', workspaceRootOverride: null });
+          }}
+          onOpenFolder={() => postToHost({ type: 'openFolder' })}
+          provider={provider}
+          onProviderChange={setProvider}
+          onProviderTypeChange={onProviderTypeChange}
+          onSaveProvider={saveProvider}
+          onSetApiKey={() => postToHost({ type: 'settings.setApiKey' })}
+          onClearApiKey={() => postToHost({ type: 'settings.clearApiKey' })}
+          onTestConnection={testConnection}
+          testingConnection={testingConnection}
+          connectionMessage={connectionMessage}
+          customModel={customModel}
+          onCustomModelChange={setCustomModel}
+          modelOptions={modelOptions}
+          ui={ui}
+          onSaveUi={saveUi}
+          mcp={mcp}
+          mcpRuntimeStatus={mcpRuntimeStatus}
+          onMcpChange={setMcp}
+          onSaveMcp={saveMcp}
+          index={index}
+          onReindex={() => postToHost({ type: 'index.reindex' })}
+          onRefreshIndex={() => postToHost({ type: 'index.refresh' })}
+          memories={memories}
+          onDeleteMemory={(id) => postToHost({ type: 'deleteMemory', id })}
+          onClearMemory={() => postToHost({ type: 'clearMemory' })}
+          checkpoints={checkpoints}
+          onRestoreCheckpoint={(id) =>
+            postToHost({ type: 'restoreCheckpoint', id })
+          }
+          onToggleContext={(source, enabled) => {
+            setUi((prev) => ({
+              ...prev,
+              contextToggles: { ...prev.contextToggles, [source]: enabled },
+            }));
+            postToHost({ type: 'toggleContextSource', source, enabled });
+          }}
+        />
+      ) : null}
+
+      {nav === 'skills' && skillManagement ? (
+        <SkillManagementPanel
+          items={skillItems}
+          error={skillError}
+          loading={skillLoading}
+        />
+      ) : null}
     </div>
   );
 }

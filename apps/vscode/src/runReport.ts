@@ -63,11 +63,40 @@ export function buildSessionExport(options: {
   events: RunEvent[];
 }): {
   exportedAt: string;
+  kind: 'session';
   result: AgentRunResult;
   events: RunEvent[];
 } {
   return {
     exportedAt: new Date().toISOString(),
+    kind: 'session',
+    result: options.result,
+    events: options.events,
+  };
+}
+
+/** Distinct audit pack: session + redacted settings + index meta. */
+export function buildAuditPack(options: {
+  result: AgentRunResult;
+  events: RunEvent[];
+  settingsRedacted: Record<string, unknown>;
+  indexMeta?: Record<string, unknown>;
+  workspaceRoot?: string;
+}): {
+  exportedAt: string;
+  kind: 'audit';
+  workspaceRoot?: string;
+  settings: Record<string, unknown>;
+  index: Record<string, unknown> | undefined;
+  result: AgentRunResult;
+  events: RunEvent[];
+} {
+  return {
+    exportedAt: new Date().toISOString(),
+    kind: 'audit',
+    workspaceRoot: options.workspaceRoot,
+    settings: options.settingsRedacted,
+    index: options.indexMeta,
     result: options.result,
     events: options.events,
   };

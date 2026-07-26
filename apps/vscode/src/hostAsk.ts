@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   AGENT_ENGINE_SCHEMA_VERSION,
   type AgentRunResult,
@@ -7,12 +9,18 @@ import {
 } from '@mitii/sdk';
 import type * as vscode from 'vscode';
 
+import { loadMemories } from './chatHistory.js';
+import { formatDiagnosticsPromptBlock } from './context/diagnosticsContext.js';
+import { captureEditorContext } from './context/editorContext.js';
 import type { ActivityEventPayload, SuspensionPayload } from './protocol.js';
+import { buildReviewDiff } from './reviewDiff.js';
 import {
   formatContextInspection,
   formatDiffReview,
   formatUsageLine,
 } from './runReport.js';
+import { appendSessionLog } from './sessionLog.js';
+import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 
 export function formatRunEventLine(event: RunEvent): string | undefined {
   switch (event.type) {
@@ -228,9 +236,6 @@ async function resolveSuspensionNative(
   }
 
   if (suspension.kind === 'approval_required' && suspension.approval) {
-    for (const line of formatDiffReview(result)) {
-      void line;
-    }
     const choice = await vs.window.showQuickPick(
       [
         {
@@ -276,22 +281,95 @@ export interface HostAskHandlers {
   cancelToken?: vscode.CancellationToken;
 }
 
+export interface ContextToggleFlags {
+  editor?: boolean;
+  openTabs?: boolean;
+  diagnostics?: boolean;
+  repoMap?: boolean;
+  gitDiff?: boolean;
+  memory?: boolean;
+  mcpSummary?: string;
+}
+
 function composePrompt(options: {
   prompt: string;
   depth?: string;
   pinnedPaths?: string[];
+  pinnedContents?: string;
+  editorBlock?: string;
+  diagnosticsBlock?: string;
+  repoMapBlock?: string;
+  gitDiffBlock?: string;
+  memoryBlock?: string;
+  mcpSummary?: string;
 }): string {
   const parts: string[] = [];
   if (options.depth && options.depth !== 'auto') {
     parts.push(`[depth:${options.depth}]`);
   }
-  if (options.pinnedPaths?.length) {
+  if (options.mcpSummary) {
+    parts.push(options.mcpSummary);
+  }
+  if (options.memoryBlock) {
+    parts.push(options.memoryBlock);
+  }
+  if (options.repoMapBlock) {
+    parts.push(options.repoMapBlock);
+  }
+  if (options.gitDiffBlock) {
+    parts.push(options.gitDiffBlock);
+  }
+  if (options.editorBlock) {
+    parts.push(options.editorBlock);
+  }
+  if (options.diagnosticsBlock) {
+    parts.push(options.diagnosticsBlock);
+  }
+  if (options.pinnedContents) {
+    parts.push(options.pinnedContents);
+  } else if (options.pinnedPaths?.length) {
     parts.push(
       `Pinned context:\n${options.pinnedPaths.map((p) => `- @${p}`).join('\n')}`,
     );
   }
   parts.push(options.prompt);
   return parts.join('\n\n');
+}
+
+function readContextToggles(vs: typeof vscode): ContextToggleFlags {
+  const cfg = vs.workspace.getConfiguration('mitii.ui.contextToggles');
+  return {
+    editor: cfg.get<boolean>('editor') ?? true,
+    openTabs: cfg.get<boolean>('openTabs') ?? false,
+    diagnostics: cfg.get<boolean>('diagnostics') ?? true,
+    repoMap: cfg.get<boolean>('repoMap') ?? true,
+    gitDiff: cfg.get<boolean>('gitDiff') ?? true,
+    memory: cfg.get<boolean>('memory') ?? true,
+  };
+}
+
+function readPinnedFileContents(
+  workspaceRoot: string,
+  paths: string[],
+  options: { maxFiles?: number; maxCharsPerFile?: number } = {},
+): string {
+  const maxFiles = options.maxFiles ?? 6;
+  const maxCharsPerFile = options.maxCharsPerFile ?? 8_000;
+  const blocks: string[] = [];
+  for (const rel of paths.slice(0, maxFiles)) {
+    try {
+      const raw = readFileSync(join(workspaceRoot, rel), 'utf8');
+      const truncated =
+        raw.length > maxCharsPerFile
+          ? `${raw.slice(0, maxCharsPerFile)}\n…(truncated)`
+          : raw;
+      blocks.push(`Pinned file @${rel}:\n\`\`\`\n${truncated}\n\`\`\``);
+    } catch {
+      blocks.push(`Pinned file @${rel}: (unreadable)`);
+    }
+  }
+  if (!blocks.length) return '';
+  return `Pinned file contents:\n\n${blocks.join('\n\n')}`;
 }
 
 /**
@@ -306,16 +384,136 @@ export async function runAskInOutputChannel(options: {
   mode?: 'ask' | 'plan' | 'agent';
   depth?: string;
   pinnedPaths?: string[];
+  mcpSummary?: string;
+  workspaceState?: vscode.Memento;
+  workspaceId?: string;
   handlers?: HostAskHandlers;
 }): Promise<HostAskOutcome> {
   const { vs, client, workspaceRoot, channel, handlers } = options;
+  const toggles = readContextToggles(vs);
+  const editor = toggles.editor
+    ? captureEditorContext(vs, workspaceRoot, {
+        includeOpenTabs: toggles.openTabs,
+      })
+    : undefined;
+  const diagnosticsBlock = toggles.diagnostics
+    ? formatDiagnosticsPromptBlock(vs, workspaceRoot)
+    : '';
+  const pinnedPaths = [...(options.pinnedPaths ?? [])];
+  if (editor?.activeRelPath && !pinnedPaths.includes(editor.activeRelPath)) {
+    pinnedPaths.unshift(editor.activeRelPath);
+  }
+
+  let repoMapBlock: string | undefined;
+  if (toggles.repoMap && workspaceRoot) {
+    try {
+      const snap = await buildWorkspaceSnapshot({
+        workspaceRoot,
+        workspaceId: options.workspaceId ?? 'vscode_workspace',
+        maxFiles: 400,
+      });
+      const listed = snap.relativePaths.slice(0, 400);
+      repoMapBlock = `Workspace file map (${snap.fileCount} files${
+        snap.truncated ? ', truncated' : ''
+      }):\n${listed.map((p) => `- ${p}`).join('\n')}`;
+    } catch (error) {
+      channel.appendLine(
+        `[context] repo map failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  let gitDiffBlock: string | undefined;
+  if (toggles.gitDiff && workspaceRoot) {
+    try {
+      const review = await buildReviewDiff(workspaceRoot);
+      const fileLines = review.files
+        .slice(0, 40)
+        .map((f) => `- ${f.status} ${f.path}`)
+        .join('\n');
+      gitDiffBlock = [
+        `Git status: ${review.summary}`,
+        fileLines ? `Changed files:\n${fileLines}` : undefined,
+        review.patchPreview ? `Diff stat:\n${review.patchPreview}` : undefined,
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+    } catch (error) {
+      channel.appendLine(
+        `[context] git diff failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  let memoryBlock: string | undefined;
+  if (toggles.memory && options.workspaceState) {
+    const memories = loadMemories(options.workspaceState).slice(0, 20);
+    if (memories.length) {
+      memoryBlock = `Workspace memories:\n${memories
+        .map((m) => `- ${m.text}`)
+        .join('\n')}`;
+    }
+  }
+
+  const pinnedContents =
+    workspaceRoot && pinnedPaths.length
+      ? readPinnedFileContents(workspaceRoot, pinnedPaths)
+      : undefined;
+
   const prompt = composePrompt({
     prompt: options.prompt,
     depth: options.depth,
-    pinnedPaths: options.pinnedPaths,
+    pinnedPaths,
+    pinnedContents: pinnedContents || undefined,
+    editorBlock: editor?.promptBlock,
+    diagnosticsBlock: diagnosticsBlock || undefined,
+    repoMapBlock,
+    gitDiffBlock,
+    memoryBlock,
+    mcpSummary: options.mcpSummary,
   });
   channel.show(true);
   channel.appendLine(`> ${options.prompt}`);
+  if (editor?.activeRelPath) {
+    channel.appendLine(`[context] activeEditor=@${editor.activeRelPath}`);
+  }
+  if (diagnosticsBlock) {
+    channel.appendLine('[context] diagnostics attached');
+  }
+  if (repoMapBlock) {
+    channel.appendLine('[context] repo map attached');
+  }
+  if (gitDiffBlock) {
+    channel.appendLine('[context] git diff attached');
+  }
+  if (pinnedContents) {
+    channel.appendLine(
+      `[context] pinned file contents (${pinnedPaths.length})`,
+    );
+  }
+
+  // Ensure repository state exists so context/tool routes can pin.
+  if (workspaceRoot) {
+    try {
+      const latest = await client.getLatestRepositoryState(
+        options.workspaceId ?? 'vscode_workspace',
+      );
+      if (!latest) {
+        const snap = await buildWorkspaceSnapshot({
+          workspaceRoot,
+          workspaceId: options.workspaceId ?? 'vscode_workspace',
+        });
+        await client.publishRepositoryState(snap.candidate);
+        channel.appendLine(
+          `[index] auto-published host snapshot (${snap.fileCount} files)`,
+        );
+      }
+    } catch (error) {
+      channel.appendLine(
+        `[index] auto-publish skipped: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
 
   const execute = async (
     token: vscode.CancellationToken,
@@ -367,6 +565,17 @@ export async function runAskInOutputChannel(options: {
           channel.appendLine(
             `[mitii] status=${result.status} route=${result.route ?? 'n/a'}`,
           );
+          const logPath = appendSessionLog(workspaceRoot, {
+            kind: 'run',
+            at: new Date().toISOString(),
+            prompt: options.prompt,
+            mode: options.mode,
+            result,
+            events,
+          });
+          if (logPath) {
+            channel.appendLine(`[log] ${logPath}`);
+          }
           return { result, events };
         }
 
@@ -386,6 +595,17 @@ export async function runAskInOutputChannel(options: {
           resume = await resolveSuspensionNative(vs, result);
         }
         if (resume === 'stop') {
+          const logPath = appendSessionLog(workspaceRoot, {
+            kind: 'run',
+            at: new Date().toISOString(),
+            prompt: options.prompt,
+            mode: options.mode,
+            result,
+            events,
+          });
+          if (logPath) {
+            channel.appendLine(`[log] ${logPath}`);
+          }
           return { result, events };
         }
         channel.appendLine('[mitii] resuming…');

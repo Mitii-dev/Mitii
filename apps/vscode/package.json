@@ -33,6 +33,12 @@
     "onCommand:mitii.generateCommitMessage",
     "onCommand:mitii.exportSessionLog",
     "onCommand:mitii.exportAuditPack",
+    "onCommand:mitii.openSessionLog",
+    "onCommand:mitii.generateChangelog",
+    "onCommand:mitii.prepareRelease",
+    "onCommand:mitii.showInlineDiff",
+    "onCommand:mitii.acceptInlineDiff",
+    "onCommand:mitii.rejectInlineDiff",
     "onCommand:mitii.setApiKey",
     "onCommand:mitii.clearApiKey"
   ],
@@ -72,6 +78,36 @@
         "category": "Mitii"
       },
       {
+        "command": "mitii.openSessionLog",
+        "title": "Mitii: Open Session Log",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.generateChangelog",
+        "title": "Mitii: Generate Changelog",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.prepareRelease",
+        "title": "Mitii: Prepare Release Notes",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.showInlineDiff",
+        "title": "Mitii: Show Inline Diff",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.acceptInlineDiff",
+        "title": "Mitii: Accept Inline Diff",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.rejectInlineDiff",
+        "title": "Mitii: Reject Inline Diff",
+        "category": "Mitii"
+      },
+      {
         "command": "mitii.generateCommitMessage",
         "title": "Mitii: Generate Commit Message",
         "category": "Mitii",
@@ -88,12 +124,36 @@
         "category": "Mitii"
       }
     ],
+    "keybindings": [
+      {
+        "command": "mitii.acceptInlineDiff",
+        "key": "ctrl+shift+enter",
+        "mac": "cmd+shift+enter",
+        "when": "mitii.inlineDiffPending"
+      },
+      {
+        "command": "mitii.rejectInlineDiff",
+        "key": "ctrl+shift+backspace",
+        "mac": "cmd+shift+backspace",
+        "when": "mitii.inlineDiffPending"
+      }
+    ],
     "menus": {
       "scm/title": [
         {
           "command": "mitii.generateCommitMessage",
           "when": "scmProvider == git && gitOpenRepositoryCount != 0",
           "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "mitii.acceptInlineDiff",
+          "when": "mitii.inlineDiffPending"
+        },
+        {
+          "command": "mitii.rejectInlineDiff",
+          "when": "mitii.inlineDiffPending"
         }
       ]
     },
@@ -168,6 +228,61 @@
           ],
           "default": "auto",
           "description": "Default planning depth hint for chat turns"
+        },
+        "mitii.ui.contextToggles.repoMap": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include repository map hints in agent context"
+        },
+        "mitii.ui.contextToggles.diagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include Problems diagnostics in agent context"
+        },
+        "mitii.ui.contextToggles.gitDiff": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include git status/diff hints in agent context"
+        },
+        "mitii.ui.contextToggles.editor": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-include the active editor in agent context"
+        },
+        "mitii.ui.contextToggles.openTabs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include open editor tab paths in agent context"
+        },
+        "mitii.ui.contextToggles.memory": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include session memory when available"
+        },
+        "mitii.scm.commitMessageStyle": {
+          "type": "string",
+          "enum": [
+            "conventional",
+            "plain"
+          ],
+          "default": "conventional",
+          "description": "Style hint for generated commit messages"
+        },
+        "mitii.safety.approvalMode": {
+          "type": "string",
+          "enum": [
+            "safe",
+            "guided",
+            "builder",
+            "pilot"
+          ],
+          "default": "guided",
+          "description": "Default approval autonomy preset for the chat UI"
+        },
+        "mitii.onboarding.completed": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether first-run onboarding has been completed for this workspace"
         },
         "mitii.mcp": {
           "type": "object",

@@ -1,28 +1,55 @@
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type * as vscode from 'vscode';
 
 import {
   AGENT_ENGINE_SCHEMA_VERSION,
+  DEFAULT_HOST_SKILLS,
   type MitiiClient,
   type MitiiResumeInput,
 } from '@mitii/sdk';
+import type { SkillDescriptor } from '@mitii/v8';
 
+import {
+  appendTurn,
+  clearHistory,
+  deleteThread,
+  loadCheckpoints,
+  loadHistory,
+  loadMemories,
+  newThreadId,
+  saveCheckpoints,
+  saveHistory,
+  saveMemories,
+  toThreadSummaries,
+} from './chatHistory.js';
+import type { InlineDiffManager } from './diff/inlineDiffManager.js';
+import {
+  showPatchDiffPreview,
+  showWriteDiffPreview,
+} from './diff/diffPreview.js';
 import { runAskInOutputChannel } from './hostAsk.js';
 import { readMcpSettings, writeMcpSettings } from './mcpConfig.js';
+import { scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
 import { LOCAL_MODEL_PRESETS } from './modelPresets.js';
 import { searchWorkspacePaths } from './pathSearch.js';
 import type {
+  ContextToggles,
   HostToWebviewMessage,
   IndexStatusSnapshot,
+  McpRuntimeStatus,
+  PlanView,
   ProviderSettingsSnapshot,
   RunUsagePayload,
   TokenUsageSnapshot,
   UiSettingsSnapshot,
   WebviewToHostMessage,
+  WorkspaceNoticeView,
   WorkspaceSnapshotInfo,
 } from './protocol.js';
+import { buildReviewDiff } from './reviewDiff.js';
 import { testProviderConnection } from './testConnection.js';
+import { getWorkspaceTrustSnapshot } from './workspace/trust.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 
 const DEFAULT_CONTEXT_WINDOW = 8192;
@@ -47,6 +74,28 @@ function emptyTokenUsage(): TokenUsageSnapshot {
   };
 }
 
+function defaultContextToggles(): ContextToggles {
+  return {
+    repoMap: true,
+    diagnostics: true,
+    gitDiff: true,
+    editor: true,
+    openTabs: false,
+    memory: true,
+  };
+}
+
+export interface SidebarHostOptions {
+  extensionMode: vscode.ExtensionMode;
+  workspaceState: vscode.Memento;
+  inlineDiff: InlineDiffManager;
+  onInlineDiffPending: (pending: boolean) => void;
+}
+
+export interface SidebarHostHelpers {
+  showWriteDiffPreview: (relPath: string, content: string) => Promise<void>;
+}
+
 /**
  * Premium React sidebar host bridge over @mitii/sdk.
  */
@@ -67,6 +116,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   private connectionOk?: boolean;
   private connectionStatus?: string;
   private tokenUsage: TokenUsageSnapshot = emptyTokenUsage();
+  private hostHelpers?: SidebarHostHelpers;
+  private lastAssistantText = '';
+  private activeThreadId?: string;
+  private lastSuspensionRunId?: string;
 
   constructor(
     private readonly vs: typeof vscode,
@@ -78,7 +131,38 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     private readonly secrets: vscode.SecretStorage,
     private readonly invalidateClient: () => void,
     private readonly onIndexWorkspace: () => Promise<IndexStatusSnapshot>,
-  ) {}
+    private readonly host: SidebarHostOptions,
+  ) {
+    const history = loadHistory(host.workspaceState);
+    this.activeThreadId = history.activeThreadId;
+  }
+
+  attachHostHelpers(helpers: SidebarHostHelpers): void {
+    this.hostHelpers = helpers;
+  }
+
+  resolveInlineDiffDecision(
+    approvalId: string,
+    decision: 'approved' | 'denied',
+  ): void {
+    this.host.onInlineDiffPending(false);
+    if (!this.pendingResume || !this.lastSuspensionRunId) return;
+    const { resolve } = this.pendingResume;
+    this.pendingResume = undefined;
+    resolve({
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: this.lastSuspensionRunId,
+      approval: { approvalId, decision },
+    });
+  }
+
+  async readIndexStatusPublic(): Promise<IndexStatusSnapshot> {
+    return this.readIndexStatus();
+  }
+
+  postTrustAndNotices(notice: WorkspaceNoticeView): void {
+    this.post({ type: 'workspaceNotice', notice });
+  }
 
   resolveWebviewView(
     webviewView: vscode.WebviewView,
@@ -100,12 +184,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  /** Focus sidebar from commands. */
   async reveal(): Promise<void> {
     await this.vs.commands.executeCommand('mitii.sidebar.focus');
   }
 
-  /** Re-push settings after VS Code configuration changes. */
   async refreshBootstrap(): Promise<void> {
     await this.sendBootstrap();
   }
@@ -129,6 +211,214 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       case 'resume':
         this.handleResume(message);
         return;
+      case 'navigate':
+      case 'setTab':
+        return;
+      case 'newChat': {
+        this.activeThreadId = newThreadId();
+        const store = loadHistory(this.host.workspaceState);
+        store.activeThreadId = this.activeThreadId;
+        store.threads.unshift({
+          id: this.activeThreadId,
+          title: 'New chat',
+          updatedAt: new Date().toISOString(),
+          messages: [],
+        });
+        await saveHistory(this.host.workspaceState, store);
+        this.post({
+          type: 'history',
+          threads: toThreadSummaries(store),
+          activeThreadId: this.activeThreadId,
+        });
+        this.post({
+          type: 'thread.loaded',
+          threadId: this.activeThreadId,
+          messages: [],
+        });
+        return;
+      }
+      case 'openChatThread': {
+        const store = loadHistory(this.host.workspaceState);
+        const thread = store.threads.find((t) => t.id === message.id);
+        if (!thread) return;
+        this.activeThreadId = thread.id;
+        store.activeThreadId = thread.id;
+        await saveHistory(this.host.workspaceState, store);
+        this.post({
+          type: 'thread.loaded',
+          threadId: thread.id,
+          messages: thread.messages,
+        });
+        this.post({
+          type: 'history',
+          threads: toThreadSummaries(store),
+          activeThreadId: thread.id,
+        });
+        return;
+      }
+      case 'deleteChatThread': {
+        const store = await deleteThread(this.host.workspaceState, message.id);
+        this.activeThreadId = store.activeThreadId;
+        this.post({
+          type: 'history',
+          threads: toThreadSummaries(store),
+          activeThreadId: store.activeThreadId,
+        });
+        return;
+      }
+      case 'clearChatHistory': {
+        await clearHistory(this.host.workspaceState);
+        this.activeThreadId = undefined;
+        this.post({
+          type: 'history',
+          threads: [],
+          activeThreadId: undefined,
+        });
+        return;
+      }
+      case 'completeOnboarding': {
+        await this.vs.workspace
+          .getConfiguration('mitii')
+          .update(
+            'onboarding.completed',
+            true,
+            this.vs.ConfigurationTarget.Workspace,
+          );
+        this.post({ type: 'onboarding', required: false });
+        return;
+      }
+      case 'showInlineDiff': {
+        await this.showInlineDiffForApproval(message.approvalId);
+        return;
+      }
+      case 'openDiffPreview': {
+        const root = this.effectiveRoot();
+        if (!root) return;
+        if (message.oldText !== undefined && message.proposedText !== undefined) {
+          await showPatchDiffPreview(
+            this.vs,
+            root,
+            message.path,
+            message.oldText,
+            message.proposedText,
+          );
+        } else if (message.proposedText !== undefined) {
+          await (this.hostHelpers?.showWriteDiffPreview(
+            message.path,
+            message.proposedText,
+          ) ??
+            showWriteDiffPreview(
+              this.vs,
+              root,
+              message.path,
+              message.proposedText,
+            ));
+        }
+        return;
+      }
+      case 'toggleContextSource': {
+        await this.vs.workspace
+          .getConfiguration('mitii')
+          .update(
+            `ui.contextToggles.${message.source}`,
+            message.enabled,
+            this.vs.ConfigurationTarget.Workspace,
+          );
+        await this.sendBootstrap();
+        return;
+      }
+      case 'refreshReviewDiff': {
+        const root = this.effectiveRoot();
+        if (!root) {
+          this.post({
+            type: 'setReviewDiff',
+            review: { summary: 'No workspace', files: [] },
+          });
+          return;
+        }
+        this.post({
+          type: 'setReviewDiff',
+          review: await buildReviewDiff(root),
+        });
+        return;
+      }
+      case 'restoreCheckpoint': {
+        void this.vs.window.showInformationMessage(
+          `Mitii: Checkpoint restore for ${message.id} is recorded. Full V8 restore lands when checkpoint APIs are exposed on the SDK.`,
+        );
+        return;
+      }
+      case 'deleteMemory': {
+        const items = loadMemories(this.host.workspaceState).filter(
+          (m) => m.id !== message.id,
+        );
+        await saveMemories(this.host.workspaceState, items);
+        this.post({ type: 'setMemories', memories: items });
+        return;
+      }
+      case 'clearMemory': {
+        await saveMemories(this.host.workspaceState, []);
+        this.post({ type: 'setMemories', memories: [] });
+        return;
+      }
+      case 'requestSkillCatalog': {
+        const q = (message.query ?? '').toLowerCase();
+        const catalog: readonly SkillDescriptor[] = DEFAULT_HOST_SKILLS;
+        const items = catalog
+          .filter((skill: SkillDescriptor) => {
+            return (
+              !q ||
+              skill.id.toLowerCase().includes(q) ||
+              skill.title.toLowerCase().includes(q)
+            );
+          })
+          .map((skill: SkillDescriptor) => ({
+            id: skill.id,
+            name: skill.title,
+            description: skill.content.slice(0, 160),
+            enabled: true,
+          }));
+        this.post({
+          type: 'skillCatalogResult',
+          requestId: message.requestId,
+          items,
+        });
+        return;
+      }
+      case 'pickContextPath': {
+        const picked = await this.vs.window.showOpenDialog({
+          canSelectMany: true,
+          openLabel: 'Pin to Mitii context',
+        });
+        if (!picked?.length) return;
+        const root = this.effectiveRoot();
+        for (const uri of picked) {
+          let rel = uri.fsPath;
+          if (root && rel.startsWith(root)) {
+            rel = rel.slice(root.length).replace(/^[\\/]/, '');
+          }
+          this.post({ type: 'editorPin', path: rel.replace(/\\/g, '/') });
+        }
+        return;
+      }
+      case 'copyLastResponse': {
+        if (this.lastAssistantText) {
+          await this.vs.env.clipboard.writeText(this.lastAssistantText);
+          void this.vs.window.showInformationMessage(
+            'Mitii: Last response copied.',
+          );
+        }
+        return;
+      }
+      case 'approveAllPending': {
+        if (this.pendingResume) {
+          // Webview should send explicit resume; this is a no-op hint
+          void this.vs.window.showInformationMessage(
+            'Use the approval card to approve or deny.',
+          );
+        }
+        return;
+      }
       case 'settings.get':
         await this.sendBootstrap();
         return;
@@ -170,14 +460,35 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       case 'openFolder':
         await this.vs.commands.executeCommand('vscode.openFolder');
         return;
-      case 'navigate':
-        return;
       default:
         return;
     }
   }
 
-  private handleResume(message: Extract<WebviewToHostMessage, { type: 'resume' }>): void {
+  private async showInlineDiffForApproval(approvalId: string): Promise<void> {
+    const pending = this.host.inlineDiff.getPending();
+    if (pending && pending.approvalId === approvalId) {
+      const root = this.effectiveRoot();
+      if (!root) return;
+      await this.host.inlineDiff.showForApproval(
+        root,
+        pending.approvalId,
+        pending.relPath,
+        pending.toolName,
+        pending.proposedText,
+        pending.originalText,
+      );
+      this.host.onInlineDiffPending(true);
+      return;
+    }
+    void this.vs.window.showInformationMessage(
+      'No pending inline diff for that approval. Approve from the card, or wait for a file mutation approval.',
+    );
+  }
+
+  private handleResume(
+    message: Extract<WebviewToHostMessage, { type: 'resume' }>,
+  ): void {
     if (!this.pendingResume) return;
     const { resolve } = this.pendingResume;
     this.pendingResume = undefined;
@@ -190,6 +501,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
     if (message.approval) {
+      this.host.inlineDiff.setPending(undefined);
+      this.host.onInlineDiffPending(false);
       resolve({
         schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
         runId: message.runId,
@@ -200,6 +513,26 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     resolve('stop');
   }
 
+  private mcpPromptSummary(): string | undefined {
+    const mcp = readMcpSettings(this.vs, this.effectiveRoot());
+    if (!mcp.enabled || !mcp.servers.length) return undefined;
+    const enabled = mcp.servers.filter((s) => !s.disabled);
+    if (!enabled.length) return undefined;
+    return `Configured MCP servers (runtime tool wiring not yet in SDK — treat as available integrations):\n${enabled
+      .map(
+        (s) =>
+          `- ${s.name} (${s.transport}${s.command ? `: ${s.command}` : s.url ? `: ${s.url}` : ''})`,
+      )
+      .join('\n')}`;
+  }
+
+  private mcpRuntimeStatus(): McpRuntimeStatus {
+    const mcp = readMcpSettings(this.vs, this.effectiveRoot());
+    if (!mcp.enabled) return 'disabled';
+    if (!mcp.servers.filter((s) => !s.disabled).length) return 'configured';
+    return 'prompt_injected';
+  }
+
   private async handleAsk(
     message: Extract<WebviewToHostMessage, { type: 'ask' }>,
   ): Promise<void> {
@@ -207,19 +540,34 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     if (!prompt) return;
     this.runCancel?.dispose();
     this.runCancel = new this.vs.CancellationTokenSource();
-    const mode = message.mode ?? 'ask';
-    this.post({ type: 'run.started', mode, prompt });
+    const mode = message.mode === 'review' ? 'ask' : (message.mode ?? 'ask');
+    if (message.mode === 'review') {
+      const root = this.effectiveRoot();
+      if (root) {
+        this.post({
+          type: 'setReviewDiff',
+          review: await buildReviewDiff(root),
+        });
+      }
+    }
+    this.post({ type: 'run.started', mode: message.mode, prompt });
     try {
       const client = await this.ensureClient();
       const outcome = await runAskInOutputChannel({
         vs: this.vs,
         client,
-        prompt,
+        prompt:
+          message.mode === 'review'
+            ? `Review the current git changes and suggest improvements / risks.\n\n${prompt}`
+            : prompt,
         workspaceRoot: this.effectiveRoot(),
         channel: this.channel,
-        mode,
+        mode: mode === 'plan' || mode === 'agent' ? mode : 'ask',
         depth: message.depth,
         pinnedPaths: message.pinnedPaths,
+        mcpSummary: this.mcpPromptSummary(),
+        workspaceState: this.host.workspaceState,
+        workspaceId: this.getWorkspaceId(),
         handlers: {
           cancelToken: this.runCancel.token,
           onEvent: (_event, activity) => {
@@ -229,6 +577,26 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
             this.post({ type: 'run.delta', text });
           },
           onSuspended: async (_result, suspension) => {
+            if (
+              suspension.kind === 'approval_required' &&
+              suspension.approval?.paths?.[0]
+            ) {
+              const root = this.effectiveRoot();
+              const relPath = suspension.approval.paths[0];
+              if (root) {
+                // Best-effort: show path in inline manager with empty proposed until webview opens preview
+                await this.host.inlineDiff.showForApproval(
+                  root,
+                  suspension.approval.approvalId,
+                  relPath,
+                  suspension.approval.toolName,
+                  suspension.approval.proposedText ??
+                    `(pending ${suspension.approval.toolName} on ${relPath})`,
+                );
+                this.host.onInlineDiffPending(true);
+              }
+            }
+            this.lastSuspensionRunId = suspension.runId;
             this.post({ type: 'run.suspended', suspension });
             return new Promise<MitiiResumeInput | 'stop'>((resolve) => {
               this.pendingResume = { resolve };
@@ -240,15 +608,43 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         this.post({ type: 'run.cancelled' });
       }
       const usage = this.recordUsage(outcome.result);
+      const answer = outcome.result.answer ?? '';
+      this.lastAssistantText = answer;
+      const plan = this.planFromAnswer(message.mode, answer);
       this.post({
         type: 'run.result',
         status: outcome.result.status,
-        answer: outcome.result.answer ?? '',
+        answer,
         route: outcome.result.route ?? null,
         error: outcome.result.error?.message,
         usage,
+        plan,
       });
+      if (plan) this.post({ type: 'setPlan', plan });
       this.post({ type: 'tokenUsage', usage: this.tokenUsage });
+      const store = await appendTurn(this.host.workspaceState, {
+        threadId: this.activeThreadId,
+        userText: prompt,
+        assistantText: answer,
+        mode: message.mode,
+      });
+      this.activeThreadId = store.activeThreadId;
+      this.post({
+        type: 'history',
+        threads: toThreadSummaries(store),
+        activeThreadId: store.activeThreadId,
+      });
+      // Snapshot a checkpoint label after successful runs
+      if (outcome.result.status === 'completed') {
+        const checkpoints = loadCheckpoints(this.host.workspaceState);
+        checkpoints.unshift({
+          id: `cp_${Date.now().toString(36)}`,
+          label: `After: ${prompt.slice(0, 40)}`,
+          createdAt: new Date().toISOString(),
+        });
+        await saveCheckpoints(this.host.workspaceState, checkpoints.slice(0, 30));
+        this.post({ type: 'setCheckpoints', checkpoints: checkpoints.slice(0, 30) });
+      }
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
       this.post({ type: 'error', message: text });
@@ -265,6 +661,38 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         this.pendingResume = undefined;
       }
     }
+  }
+
+  private planFromAnswer(
+    mode: string | undefined,
+    answer: string,
+  ): PlanView | null {
+    if (mode !== 'plan' || !answer.trim()) return null;
+    const lines = answer
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => /^[-*\d.]/.test(l))
+      .slice(0, 12);
+    if (!lines.length) {
+      return {
+        title: 'Plan',
+        steps: [
+          {
+            id: 'step_1',
+            title: 'See assistant reply for plan details',
+            status: 'pending',
+          },
+        ],
+      };
+    }
+    return {
+      title: 'Plan',
+      steps: lines.map((title, i) => ({
+        id: `step_${i + 1}`,
+        title: title.replace(/^[-*\d.)\s]+/, '').slice(0, 120),
+        status: i === 0 ? 'active' : 'pending',
+      })),
+    };
   }
 
   private async handleTestConnection(
@@ -399,6 +827,23 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           this.vs.ConfigurationTarget.Global,
         );
       }
+      if (message.ui.contextToggles) {
+        for (const [key, value] of Object.entries(message.ui.contextToggles)) {
+          if (value === undefined) continue;
+          await cfg.update(
+            `ui.contextToggles.${key}`,
+            value,
+            this.vs.ConfigurationTarget.Workspace,
+          );
+        }
+      }
+    }
+    if (message.approvalMode !== undefined) {
+      await cfg.update(
+        'safety.approvalMode',
+        message.approvalMode,
+        this.vs.ConfigurationTarget.Workspace,
+      );
     }
     if (message.workspaceRootOverride !== undefined) {
       await cfg.update(
@@ -409,6 +854,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     }
     if (message.mcp) {
       await writeMcpSettings(this.vs, this.effectiveRoot(), message.mcp);
+      this.invalidateClient();
     }
     await this.sendBootstrap();
   }
@@ -453,11 +899,18 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
 
   private readUi(): UiSettingsSnapshot {
     const cfg = this.vs.workspace.getConfiguration('mitii');
+    const toggles = defaultContextToggles();
+    for (const key of Object.keys(toggles) as (keyof ContextToggles)[]) {
+      toggles[key] =
+        cfg.get<boolean>(`ui.contextToggles.${key}`) ?? toggles[key];
+    }
     return {
       showReasoning: cfg.get<boolean>('ui.showReasoning') ?? true,
       reasoningPreviewMaxChars:
         cfg.get<number>('ui.reasoningPreviewMaxChars') ?? 8000,
       depth: (cfg.get<string>('ui.depth') as UiSettingsSnapshot['depth']) ?? 'auto',
+      contextToggles: toggles,
+      approvalMode: cfg.get<string>('safety.approvalMode') ?? 'guided',
     };
   }
 
@@ -536,8 +989,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       workspaceId: this.getWorkspaceId(),
     });
     const published = await client.publishRepositoryState(snapshot.candidate);
-    const dir = join(root, '.mitii');
-    mkdirSync(dir, { recursive: true });
+    const dir = scaffoldMitiiWorkspace(root);
     if (published.status === 'published') {
       writeFileSync(
         join(dir, 'last-repository-state.json'),
@@ -564,14 +1016,30 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private async sendBootstrap(): Promise<void> {
+    const history = loadHistory(this.host.workspaceState);
+    const onboardingCompleted =
+      this.vs.workspace
+        .getConfiguration('mitii')
+        .get<boolean>('onboarding.completed') ?? false;
     this.post({
       type: 'bootstrap',
       workspace: this.readWorkspace(),
       provider: await this.readProvider(),
       index: await this.readIndexStatus(),
       mcp: readMcpSettings(this.vs, this.effectiveRoot()),
+      mcpRuntimeStatus: this.mcpRuntimeStatus(),
       ui: this.readUi(),
       tokenUsage: this.tokenUsage,
+      notice: getWorkspaceTrustSnapshot(this.vs),
+      onboardingRequired: !onboardingCompleted,
+      flags: {
+        skillManagement:
+          this.host.extensionMode === this.vs.ExtensionMode.Development,
+      },
+      history: toThreadSummaries(history),
+      activeThreadId: history.activeThreadId,
+      memories: loadMemories(this.host.workspaceState),
+      checkpoints: loadCheckpoints(this.host.workspaceState),
     });
   }
 

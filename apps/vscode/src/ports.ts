@@ -3,12 +3,23 @@ import {
   OpenAiCompatibleLlmPort,
   createDefaultSkillsCatalog,
   createMitiiClient,
+  InMemoryRepositoryStateStore,
+  RepositoryStatePipeline,
   type LlmPort,
   type MitiiClient,
   type SkillsCatalogPort,
 } from '@mitii/sdk';
-import type { ModelCapabilities, ModelEvent, ModelRequest } from '@mitii/v8';
+import {
+  NodeProcessAdapter,
+  NodeWorkspaceFileSystemAdapter,
+  ToolRuntimePipeline,
+  type ModelCapabilities,
+  type ModelEvent,
+  type ModelRequest,
+} from '@mitii/v8';
 import type * as vscode from 'vscode';
+
+import { createHostRepositoryContext } from './repositoryContextHost.js';
 
 export class LocalUnderstandingLlmPort implements LlmPort {
   readonly id = 'vscode-local-understanding';
@@ -109,6 +120,26 @@ export async function createVscodeClient(
   options: { skillsCatalog?: SkillsCatalogPort } = {},
 ): Promise<{ client: MitiiClient; ports: VscodePortResolution }> {
   const ports = await resolveVscodePorts(vs, secrets);
+  const repositoryState = new RepositoryStatePipeline({
+    store: new InMemoryRepositoryStateStore(),
+  });
+
+  const tools = workspaceRoot
+    ? new ToolRuntimePipeline({
+        fileSystem: new NodeWorkspaceFileSystemAdapter(),
+        process: new NodeProcessAdapter(),
+      })
+    : undefined;
+
+  const repositoryContext = workspaceRoot
+    ? createHostRepositoryContext({
+        repositoryState,
+        workspaceRoot,
+      })
+    : undefined;
+
+  // MCP: settings are persisted via mcpConfig; enabled servers are injected
+  // into run prompts by the sidebar (SDK has no MCP tool runtime yet).
   const client = createMitiiClient({
     understandingLlm: ports.understandingLlm,
     runLlm: ports.runLlm,
@@ -116,7 +147,9 @@ export async function createVscodeClient(
     defaultMode: 'ask',
     defaultSessionId: 'vscode_session',
     workspaceId: ports.workspaceId,
-    enableInMemoryRepositoryState: true,
+    repositoryState,
+    repositoryContext,
+    tools,
     enableInMemoryCheckpoints: true,
     skillsCatalog: options.skillsCatalog ?? createDefaultSkillsCatalog(),
   });

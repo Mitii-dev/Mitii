@@ -25,6 +25,8 @@ export interface WorkspaceSnapshot {
   candidate: PublishRepositoryStateInput;
   fileCount: number;
   truncated: boolean;
+  /** Workspace-relative file paths (for prompt repo-map injection). */
+  relativePaths: string[];
 }
 
 /**
@@ -36,7 +38,8 @@ export async function buildWorkspaceSnapshot(
   options: WorkspaceSnapshotOptions,
 ): Promise<WorkspaceSnapshot> {
   const maxFiles = options.maxFiles ?? 2_000;
-  const entries: string[] = [];
+  const fingerprintEntries: string[] = [];
+  const relativePaths: string[] = [];
   let truncated = false;
 
   async function walk(dir: string): Promise<void> {
@@ -62,10 +65,12 @@ export async function buildWorkspaceSnapshot(
         continue;
       }
       if (!info.isFile()) continue;
-      entries.push(
-        `${relative(options.workspaceRoot, full)}:${info.size}:${Math.trunc(info.mtimeMs)}`,
+      const rel = relative(options.workspaceRoot, full).replace(/\\/g, '/');
+      relativePaths.push(rel);
+      fingerprintEntries.push(
+        `${rel}:${info.size}:${Math.trunc(info.mtimeMs)}`,
       );
-      if (entries.length >= maxFiles) {
+      if (fingerprintEntries.length >= maxFiles) {
         truncated = true;
         return;
       }
@@ -73,9 +78,10 @@ export async function buildWorkspaceSnapshot(
   }
 
   await walk(options.workspaceRoot);
-  entries.sort();
+  fingerprintEntries.sort();
+  relativePaths.sort();
   const digest = createHash('sha256')
-    .update(entries.join('\n'))
+    .update(fingerprintEntries.join('\n'))
     .digest('hex');
   const rev = digest.slice(0, 16);
   const generatedAt = new Date().toISOString();
@@ -115,7 +121,7 @@ export async function buildWorkspaceSnapshot(
         code: truncated ? 'scan_truncated' : 'capability_degraded',
         message: truncated
           ? `Host snapshot truncated after ${maxFiles} files.`
-          : `Host snapshot of ${entries.length} files (full vector/code index deferred).`,
+          : `Host snapshot of ${fingerprintEntries.length} files (full vector/code index deferred).`,
         rootId: 'workspace',
       },
     ],
@@ -124,7 +130,8 @@ export async function buildWorkspaceSnapshot(
 
   return {
     candidate,
-    fileCount: entries.length,
+    fileCount: fingerprintEntries.length,
     truncated,
+    relativePaths,
   };
 }
