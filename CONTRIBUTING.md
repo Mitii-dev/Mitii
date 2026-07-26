@@ -72,9 +72,8 @@ mitii-ai-agent/
 ├── packages/sdk/                 # @mitii/sdk — public API over V8
 ├── apps/vscode/                  # VS Code extension
 ├── apps/cli/                     # Headless CLI
-├── benchmark/                    # Solid benchmark (→ tests/benchmark in Phase 14)
+├── tests/                        # Phase 14 architecture, consumer, solid benchmark
 ├── docs/
-├── test/architecture/            # Thin-hold boundary tests
 ├── scripts/
 ├── pnpm-workspace.yaml
 └── package.json                  # Private workspace orchestrator
@@ -94,7 +93,7 @@ pnpm run benchmark:validate
 pnpm run benchmark
 ```
 
-See [benchmark/README.md](benchmark/README.md). The old `tools/benchmark` harness was purged with `legacy/` (2026-07-26).
+See [tests/benchmark/README.md](tests/benchmark/README.md) and [docs/TESTS.md](docs/TESTS.md). The old `tools/benchmark` harness was purged with `legacy/` (2026-07-26).
 
 ---
 

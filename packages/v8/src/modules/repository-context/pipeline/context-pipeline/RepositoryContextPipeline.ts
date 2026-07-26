@@ -8,7 +8,7 @@ import {
 import {
   repositoryContextPipelineInputSchema,
   repositoryContextPipelineResultSchema,
-} from "./schema";
+} from "../../contracts/schema";
 
 import type { ContextAssemblyResult, ContextAssemblyStatus } from "../../internal/context-assembly/types";
 
@@ -24,7 +24,7 @@ import type {
   RepositoryContextPipelineWarning,
   RepositoryContextPipelineStage,
   RepositoryContextResolvedState,
-} from "./types";
+} from "../../contracts/types";
 
 function deriveCodeIndexChangeToken(
   artifacts: RepositoryContextResolvedState,

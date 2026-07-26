@@ -21,7 +21,7 @@ export {
   modelEventSchema,
   modelResponseDeltaSchema,
   modelCapabilitiesSchema,
-} from "./schema";
+} from "./contracts/schema";
 
 export type {
   LlmPort,
@@ -39,7 +39,7 @@ export type {
   ModelToolChoice,
   ModelToolDefinition,
   ResolveModelCapabilitiesInput,
-} from "./types";
+} from "./contracts/types";
 
 export { ModelCapabilityResolver } from "./ModelCapabilityResolver";
 

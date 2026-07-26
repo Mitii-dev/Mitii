@@ -5,12 +5,12 @@ import {
 
 import {
   modelCapabilitiesSchema,
-} from "./schema";
+} from "./contracts/schema";
 
 import type {
   ModelCapabilities,
   ResolveModelCapabilitiesInput,
-} from "./types";
+} from "./contracts/types";
 
 export class ModelCapabilityResolver {
   public readonly id =

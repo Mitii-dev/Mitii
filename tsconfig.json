@@ -6,8 +6,12 @@
     "noEmit": true
   },
   "include": [
-    "test/architecture/**/*.ts",
-    "test/setup.ts"
+    "tests/architecture/**/*.ts",
+    "tests/packages/**/*.ts",
+    "tests/contract/**/*.ts",
+    "tests/integration/**/*.ts",
+    "tests/e2e/**/*.ts",
+    "tests/setup.ts"
   ],
   "exclude": [
     "node_modules",
@@ -15,6 +19,6 @@
     "legacy",
     "packages",
     "apps",
-    "benchmark"
+    "tests/benchmark"
   ]
 }

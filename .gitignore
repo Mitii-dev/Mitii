@@ -26,6 +26,16 @@ legacy/tools-benchmark/tasks/eval/generated/
 legacy/tools-benchmark/tasks/eval/generated-smoke/
 legacy/tools-benchmark/results/
 
+# Solid benchmark (Phase 14 under tests/)
+tests/benchmark/results/
+tests/benchmark/benchmark.config.json
+tests/benchmark/fixtures/**/.mitii/
+tests/benchmark/fixtures/**/.next/
+tests/benchmark/fixtures/**/dist/
+tests/benchmark/fixtures/**/node_modules/
+tests/benchmark/fixtures/**/package-lock.json
+tests/benchmark/fixtures/**/pnpm-lock.yaml
+
 # Fixture sandboxes — deps, builds, Mitii session state
 legacy/tools-benchmark/fixtures/**/.mitii/
 legacy/tools-benchmark/fixtures/**/.next/

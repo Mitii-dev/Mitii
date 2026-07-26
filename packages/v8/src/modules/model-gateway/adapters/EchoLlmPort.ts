@@ -9,7 +9,7 @@ import type {
   ModelCapabilities,
   ModelEvent,
   ModelRequest,
-} from "../types";
+} from "../contracts/types";
 
 export interface EchoLlmPortOptions {
   id?: string;

@@ -8,7 +8,7 @@ import {
   modelRequestSchema,
   MODEL_PROVIDER_SUPPORT,
 } from "../index";
-import type { ModelEvent } from "../types";
+import type { ModelEvent } from "../contracts/types";
 
 async function collectContent(
   stream: AsyncIterable<ModelEvent>,

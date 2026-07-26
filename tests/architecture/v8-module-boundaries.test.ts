@@ -79,6 +79,13 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(runtimeDeps).not.toHaveProperty('@types/vscode');
   });
 
+  it('places contracts/ under every public module and engine root', () => {
+    const missing = PUBLIC_ROOTS.filter(
+      ({ root }) => !existsSync(join(root, 'contracts')),
+    ).map(({ name }) => name);
+    expect(missing).toEqual([]);
+  });
+
   it('exposes Phase 1 public facades from packages/v8/src/index.ts', () => {
     const index = readFileSync(join(v8SrcRoot, 'index.ts'), 'utf8');
     expect(index).toContain('RequestIntakePipeline');
@@ -521,10 +528,14 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     // Human ran MITII_PURGE_LEGACY=1 pnpm run legacy:purge (2026-07-26).
     expect(existsSync(join(repoRoot, 'legacy'))).toBe(false);
     expect(existsSync(join(repoRoot, 'scripts/legacy-purge.mjs'))).toBe(true);
-    // Active tree must not keep a second kernel or benchmark system beside solid `benchmark/`.
+    // Active tree must not keep a second kernel or old tools/benchmark beside solid suite.
     expect(existsSync(join(repoRoot, 'src'))).toBe(false);
     expect(existsSync(join(repoRoot, 'tools/benchmark'))).toBe(false);
     expect(existsSync(join(repoRoot, 'tools'))).toBe(false);
+    // Phase 14: solid benchmark lives under tests/benchmark; flat test/ dump is gone.
+    expect(existsSync(join(repoRoot, 'tests/benchmark/package.json'))).toBe(true);
+    expect(existsSync(join(repoRoot, 'benchmark'))).toBe(false);
+    expect(existsSync(join(repoRoot, 'test'))).toBe(false);
 
     const rootPkg = JSON.parse(
       readFileSync(join(repoRoot, 'package.json'), 'utf8'),

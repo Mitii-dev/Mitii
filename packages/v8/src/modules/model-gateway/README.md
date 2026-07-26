@@ -51,6 +51,17 @@ for await (const event of port.complete({
 | Anthropic | unsupported | — |
 | Gemini | unsupported | — |
 
+## Layout
+
+```text
+model-gateway/
+├── contracts/          # request/event/capability schemas + types
+├── adapters/
+├── ModelCapabilityResolver.ts
+├── constants.ts
+└── index.ts
+```
+
 ## Adapters
 
 ```text

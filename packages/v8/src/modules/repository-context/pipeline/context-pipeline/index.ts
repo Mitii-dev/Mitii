@@ -1,4 +1,4 @@
 export * from "./constants";
-export * from "./schema";
-export * from "./types";
+export * from "../../contracts/schema";
+export * from "../../contracts/types";
 export * from "./RepositoryContextPipeline";

@@ -7,7 +7,7 @@ import {
   OPENAI_COMPATIBLE_DEFAULTS,
 } from "../constants";
 import { ModelCapabilityResolver } from "../ModelCapabilityResolver";
-import { modelRequestSchema } from "../schema";
+import { modelRequestSchema } from "../contracts/schema";
 import type {
   LlmPort,
   ModelCallContext,
@@ -19,7 +19,7 @@ import type {
   ModelRequest,
   ModelToolCallDelta,
   ResolveModelCapabilitiesInput,
-} from "../types";
+} from "../contracts/types";
 
 export type OpenAiCompatibleAuthHeader =
   | "authorization"

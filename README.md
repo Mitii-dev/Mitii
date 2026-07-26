@@ -169,9 +169,8 @@ mitii-ai-agent/
 ├── apps/
 │   ├── vscode/               # VS Code extension (F5 target after Phase 17)
 │   └── cli/                  # headless CLI
-├── benchmark/                # solid benchmark suite (→ tests/benchmark in Phase 14)
+├── tests/                    # Phase 14 consumer suites + solid benchmark
 ├── docs/                     # user, developer, and enterprise guides
-├── test/architecture/        # thin-hold boundary tests (full tests/ in Phase 14)
 ├── scripts/                  # build, release, and audit automation
 └── legacy/                   # frozen obsolete trees (optional purge)
 ```
@@ -203,7 +202,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for coding conventions and pull request g
 - [Repository layout](docs/REPO_LAYOUT.md)
 - [User and developer guides](docs/)
 - [Enterprise pack](docs/enterprise/README.md)
-- [Solid benchmark](benchmark/README.md)
+- [Solid benchmark](tests/benchmark/README.md)
+- [Tests layout](docs/TESTS.md)
 - [Website](https://mitii.dev)
 - [Hosted documentation](https://docs.mitii.dev)
 

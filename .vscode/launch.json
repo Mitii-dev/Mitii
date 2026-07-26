@@ -18,7 +18,7 @@
       "request": "launch",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}/apps/vscode",
-        "${workspaceFolder}/benchmark/fixtures/node-express"
+        "${workspaceFolder}/tests/benchmark/fixtures/node-express"
       ],
       "outFiles": ["${workspaceFolder}/apps/vscode/dist/**/*.js"],
       "preLaunchTask": "mitii: prelaunch"

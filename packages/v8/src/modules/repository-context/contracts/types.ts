@@ -1,6 +1,6 @@
 import type {
   AgentMode,
-} from "../../../request-intake";
+} from "../../request-intake";
 
 import type {
   ChunkKind,
@@ -9,12 +9,12 @@ import type {
   RepositoryStateDescriptor,
   RepositoryStateReference,
   WorkspaceSnapshot,
-} from "../../../repository-state/index";
+} from "../../repository-state/index";
 
 import type {
   ContextAssemblyInput,
   ContextAssemblyResult,
-} from "../../internal/context-assembly/types";
+} from "../internal/context-assembly/types";
 
 import type {
   ContextSelectionBreadth,
@@ -22,12 +22,12 @@ import type {
   ContextSelectionInput,
   ContextSelectionReferences,
   ContextSelectionResult,
-} from "../../internal/context-selection/types";
+} from "../internal/context-selection/types";
 
 import type {
   HybridRetrievalInput,
   HybridRetrievalResult,
-} from "../../internal/hybrid-retrieval/types";
+} from "../internal/hybrid-retrieval/types";
 
 /**
  * Artifacts bound to one published repository state.

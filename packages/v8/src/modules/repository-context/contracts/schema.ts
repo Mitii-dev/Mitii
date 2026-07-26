@@ -4,28 +4,28 @@ import {
 
 import {
   agentModeSchema,
-} from "../../../request-intake";
+} from "../../request-intake";
 
 import {
   repositoryStateReferenceSchema,
-} from "../../../repository-state/index";
+} from "../../repository-state/index";
 
 import {
   contextAssemblyResultSchema,
-} from "../../internal/context-assembly/schema";
+} from "../internal/context-assembly/schema";
 
 import {
   contextSelectionResultSchema,
-} from "../../internal/context-selection/schema";
+} from "../internal/context-selection/schema";
 
 import {
   hybridRetrievalResultSchema,
-} from "../../internal/hybrid-retrieval/schema";
+} from "../internal/hybrid-retrieval/schema";
 
 import {
   REPOSITORY_CONTEXT_PIPELINE_LIMITS,
   REPOSITORY_CONTEXT_PIPELINE_SCHEMA_VERSION,
-} from "./constants";
+} from "../pipeline/context-pipeline/constants";
 
 const canonicalRelativePathSchema =
   z.string()

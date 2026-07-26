@@ -1,8 +1,7 @@
-export { RepositoryContextPipeline } from "./pipeline/context-pipeline/RepositoryContextPipeline";
 export {
   repositoryContextPipelineInputSchema,
   repositoryContextPipelineResultSchema,
-} from "./contracts/schema";
+} from "./schema";
 export type {
   RepositoryContextPipelineInput,
   RepositoryContextPipelineResult,
@@ -10,4 +9,12 @@ export type {
   RepositoryContextStateResolverPort,
   RepositoryContextResolvedState,
   RepositoryContextStateResolveResult,
-} from "./contracts/types";
+  RepositoryContextPipelineStatus,
+  RepositoryContextPipelineWarning,
+  RepositoryContextPipelineStage,
+  RepositoryContextPipelineStatistics,
+  RepositoryContextRetrieverPort,
+  RepositoryContextSelectorPort,
+  RepositoryContextAssemblerPort,
+  RepositoryContextStateResolveStatus,
+} from "./types";

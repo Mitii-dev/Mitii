@@ -1,6 +1,6 @@
 # Mitii repository layout (Phases 10–17)
 
-Status: Phase 17 **complete** (2026-07-26); **Phase 14 next** (tests + solid benchmark)  
+Status: Phase 17 **complete**; Phase 14 **in progress** (2026-07-26 — `tests/` + solid benchmark relocated)  
 Canonical V8 architecture: `packages/v8/ARCHITECTURE.md`  
 Capability decisions: `docs/CAPABILITY_INVENTORY.md`  
 F5 operator guide: `docs/INITIAL_LAUNCH.md`  
@@ -12,7 +12,7 @@ Execution order:
 
 1. **Phase 16** — clean active tree; one `legacy/` vault + one-click purge; strip new-code compat — **done** (vault purged 2026-07-26)
 2. **Phase 17** — F5 / initial launch wiring for `apps/vscode` — **done** (`pnpm run phase17:verify`)
-3. **Phase 14** — `tests/` + solid benchmark + package consumer suites (last) — **next**
+3. **Phase 14** — `tests/` + solid benchmark + package consumer suites (last) — **in progress**
 
 ## 1. Target dependency graph
 
@@ -66,7 +66,7 @@ After Phase 16 + human purge the active root must not keep a second `src/` kerne
 | SDK | `@mitii/sdk` | hosts/tests use this |
 | CLI | `@mitii/cli` | solid benchmark agent target |
 | VS Code extension | `@mitii/vscode` | VSIX; F5 development path |
-| Solid benchmark | `@mitii/solid-benchmark` | `tests/benchmark` after Phase 14 |
+| Solid benchmark | `@mitii/solid-benchmark` | `tests/benchmark` |
 | Workspace root | private | never published as product |
 
 ## 4. Binding decisions
@@ -86,7 +86,7 @@ After Phase 16 + human purge the active root must not keep a second `src/` kerne
 | Deprecated V8/SDK aliases | Phase 16 |
 | Root scripts pointing at `src/extension.ts` | Phase 16 |
 | `.vscode` thunder prelaunch / root extensionPath | Phase 17 — **done** |
-| Repo-root `benchmark/` (before move) | Phase 14 → `tests/benchmark/` |
+| Repo-root `benchmark/` | **Moved** to `tests/benchmark/` (Phase 14) |
 | `legacy/` vault itself | **Purged** 2026-07-26 (`MITII_PURGE_LEGACY=1 pnpm run legacy:purge`) |
 
 ## 6. Phase checkpoints

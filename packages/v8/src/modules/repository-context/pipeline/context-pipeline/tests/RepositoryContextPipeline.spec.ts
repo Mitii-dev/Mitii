@@ -31,7 +31,7 @@ import type {
   RepositoryContextResolvedState,
   RepositoryContextStateResolveResult,
   RepositoryContextStateResolverPort,
-} from "../types";
+} from "../../../contracts/types";
 
 const SNAPSHOT_ID = "a".repeat(64);
 const STATE_TOKEN = "b".repeat(64);

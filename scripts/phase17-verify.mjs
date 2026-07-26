@@ -168,7 +168,7 @@ step('CLI index fixture (honest degraded OK)', () => {
     'bin/mitii.js',
     'index',
     '--cwd',
-    '../../benchmark/fixtures/node-express',
+    '../../tests/benchmark/fixtures/node-express',
     '--echo',
     '--json',
   ]);
@@ -188,7 +188,7 @@ step('architecture gates', () => {
 
 step('benchmark example points at apps/cli', () => {
   const cfg = JSON.parse(
-    readFileSync(join(repoRoot, 'benchmark/benchmark.config.example.json'), 'utf8'),
+    readFileSync(join(repoRoot, 'tests/benchmark/benchmark.config.example.json'), 'utf8'),
   );
   const args = cfg.agent?.args ?? [];
   const joined = args.join(' ');

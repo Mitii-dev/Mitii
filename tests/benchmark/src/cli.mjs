@@ -62,7 +62,7 @@ if (command === 'validate') {
     },
   });
   const report = buildReport(results, config, startedAt, new Date());
-  const reportPath = resolve(valueOf(args, '--output') ?? join(rootDir, 'results', 'latest.json'));
+  const reportPath = resolve(valueOf(args, '--output') ?? join(rootDir, '..', 'reports', 'latest.json'));
   const paths = writeReport(report, reportPath);
   console.log(`\nSignal: ${report.signal}`);
   console.log(`JSON: ${paths.json}`);
