@@ -515,6 +515,91 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     ]);
     expect(violations).toEqual([]);
   });
+
+  it('keeps one legacy vault and no active kernel dump (Phase 16)', () => {
+    expect(existsSync(join(repoRoot, 'legacy/README.md'))).toBe(true);
+    expect(existsSync(join(repoRoot, 'legacy/DELETE.md'))).toBe(true);
+    expect(existsSync(join(repoRoot, 'scripts/legacy-purge.mjs'))).toBe(true);
+    expect(existsSync(join(repoRoot, 'legacy/src'))).toBe(true);
+    expect(existsSync(join(repoRoot, 'legacy/test'))).toBe(true);
+    expect(existsSync(join(repoRoot, 'legacy/tools-benchmark'))).toBe(true);
+
+    expect(existsSync(join(repoRoot, 'src'))).toBe(false);
+    expect(existsSync(join(repoRoot, 'tools/benchmark'))).toBe(false);
+    expect(existsSync(join(repoRoot, 'tools'))).toBe(false);
+
+    const rootPkg = JSON.parse(
+      readFileSync(join(repoRoot, 'package.json'), 'utf8'),
+    ) as { scripts?: Record<string, string> };
+    expect(rootPkg.scripts?.['legacy:purge']).toContain('legacy-purge');
+
+    const productRoots = [
+      join(repoRoot, 'packages/v8/src'),
+      join(repoRoot, 'packages/sdk/src'),
+      join(repoRoot, 'apps/cli/src'),
+      join(repoRoot, 'apps/vscode/src'),
+    ];
+    const legacyImportPatterns = [
+      /from ['"].*(?:^|\/)legacy(?:\/|['"])/,
+      /from ['"].*(?:^|\/)(?:src\/kernel|src\/interfaces|src\/composition)(?:\/|['"])/,
+      /require\(['"].*(?:^|\/)legacy(?:\/|['"])/,
+    ] as const;
+    for (const root of productRoots) {
+      expect(scanImports(root, legacyImportPatterns)).toEqual([]);
+    }
+  });
+
+  it('strips thunder dual brand from apps/vscode (Phase 16)', () => {
+    const vscodeRoot = join(repoRoot, 'apps/vscode');
+    const pkg = JSON.parse(
+      readFileSync(join(vscodeRoot, 'package.json'), 'utf8'),
+    ) as {
+      activationEvents?: string[];
+      contributes?: {
+        commands?: Array<{ command?: string }>;
+        views?: Record<string, Array<{ id?: string }>>;
+        viewsContainers?: { activitybar?: Array<{ id?: string }> };
+        configuration?: { properties?: Record<string, unknown> };
+      };
+    };
+
+    const activation = pkg.activationEvents ?? [];
+    expect(activation.every((e) => !e.includes('thunder.'))).toBe(true);
+    expect(activation.some((e) => e.includes('mitii.'))).toBe(true);
+
+    const commands = pkg.contributes?.commands ?? [];
+    expect(commands.every((c) => String(c.command).startsWith('mitii.'))).toBe(
+      true,
+    );
+    expect(
+      commands.some((c) => c.command === 'mitii.migrateThunderSettings'),
+    ).toBe(false);
+
+    const props = Object.keys(pkg.contributes?.configuration?.properties ?? {});
+    expect(props.every((key) => key.startsWith('mitii.'))).toBe(true);
+    expect(props.some((key) => key.startsWith('thunder.'))).toBe(false);
+
+    const viewIds = Object.values(pkg.contributes?.views ?? {})
+      .flat()
+      .map((v) => v.id);
+    expect(viewIds).toContain('mitii.sidebar');
+    expect(viewIds).not.toContain('thunder.sidebar');
+
+    const containerIds = (
+      pkg.contributes?.viewsContainers?.activitybar ?? []
+    ).map((c) => c.id);
+    expect(containerIds).toContain('mitii');
+    expect(containerIds).not.toContain('thunder');
+
+    const hostSrc = [
+      join(vscodeRoot, 'src/extension.ts'),
+      join(vscodeRoot, 'src/sidebar.ts'),
+    ]
+      .map((file) => readFileSync(file, 'utf8'))
+      .join('\n');
+    expect(hostSrc).not.toMatch(/thunder\./);
+    expect(hostSrc).toContain('mitii.sidebar');
+  });
 });
 
 function scanImports(root: string, patterns: readonly RegExp[]): string[] {

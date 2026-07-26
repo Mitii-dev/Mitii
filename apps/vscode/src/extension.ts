@@ -189,29 +189,18 @@ export function activate(context: ExtensionContext): void {
       sidebar,
     ),
     vscode.commands.registerCommand('mitii.openChat', openChat),
-    vscode.commands.registerCommand('thunder.openChat', openChat),
     vscode.commands.registerCommand('mitii.indexWorkspace', indexWorkspace),
-    vscode.commands.registerCommand('thunder.indexWorkspace', indexWorkspace),
     vscode.commands.registerCommand(
       'mitii.generateCommitMessage',
       generateCommitMessage,
     ),
-    vscode.commands.registerCommand(
-      'thunder.generateCommitMessage',
-      generateCommitMessage,
-    ),
     vscode.commands.registerCommand('mitii.exportSessionLog', exportSession),
-    vscode.commands.registerCommand('thunder.exportSessionLog', exportSession),
     vscode.commands.registerCommand('mitii.exportAuditPack', exportSession),
-    vscode.commands.registerCommand('thunder.exportAuditPack', exportSession),
     vscode.commands.registerCommand('mitii.showSettings', async () => {
       await vscode.commands.executeCommand(
         'workbench.action.openSettings',
         '@ext:mitii.mitii-ai-agent',
       );
-    }),
-    vscode.commands.registerCommand('thunder.showSettings', async () => {
-      await vscode.commands.executeCommand('mitii.showSettings');
     }),
   );
 

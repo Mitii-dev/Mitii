@@ -39,7 +39,6 @@ import type {
   RepoGraphBuildAttempt,
   RepoGraphBuildInput,
   RepoGraphBuilderOptions,
-  RepoGraphEdge,
   RepoGraphEdgeType,
   RepoGraphFileNode,
   RepoGraphIncludedFileResult,

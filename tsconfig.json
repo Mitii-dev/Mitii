@@ -2,8 +2,19 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "."
+    "rootDir": ".",
+    "noEmit": true
   },
-  "include": ["src/**/*", "test/**/*"],
-  "exclude": ["node_modules", "dist", "src/webview-ui", "packages/v8"]
+  "include": [
+    "test/architecture/**/*.ts",
+    "test/setup.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "legacy",
+    "packages",
+    "apps",
+    "benchmark"
+  ]
 }

@@ -36,6 +36,7 @@ export type {
   ModelTokenUsage,
   ModelToolCall,
   ModelToolCallDelta,
+  ModelToolChoice,
   ModelToolDefinition,
   ResolveModelCapabilitiesInput,
 } from "./types";

@@ -1,7 +1,7 @@
 # Mitii AI Agent
 
 <p align="center">
-  <img src="media/Mitii.png" alt="Mitii AI Agent logo" width="160" />
+  <img src="apps/vscode/media/Mitii.png" alt="Mitii AI Agent logo" width="160" />
 </p>
 
 <p align="center">
@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.7.62" src="https://img.shields.io/badge/version-2.7.62-111111">
+  <img alt="Version 2.7.117" src="https://img.shields.io/badge/version-2.7.117-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
 
@@ -23,7 +23,7 @@
 Mitii understands a repository before it changes it. It combines local indexing, Ask/Plan/Agent workflows, approval-aware tools, checkpoints, memory, and audit logs in one VS Code experience. Use a local model for privacy or connect a supported cloud provider when more capability is required.
 
 <p align="center">
-  <img src="media/mitii-vs-code-chat-ui.png" alt="Mitii chat interface in VS Code" width="520" />
+  <img src="apps/vscode/media/mitii-vs-code-chat-ui.png" alt="Mitii chat interface in VS Code" width="520" />
 </p>
 
 ## What Mitii provides
@@ -52,7 +52,7 @@ flowchart LR
   Loop --> Provider[Local or cloud model]
 ```
 
-The extension can run the engine in-process or connect to the HTTP/SSE daemon. The CLI and `@mitii/sdk` use the same headless event model. See [ARCHITECTURE.md](ARCHITECTURE.md) for component boundaries, request flows, storage, security, and an end-to-end example.
+The extension and CLI talk to the agent through `@mitii/sdk` → `@mitii/v8`. See [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md) for component boundaries, request flows, storage, security, and an end-to-end example.
 
 ## Quick start
 
@@ -163,32 +163,28 @@ Security, compliance, procurement, and deployment guidance is available in [docs
 
 ```text
 mitii-ai-agent/
-├── src/
-│   ├── extension.ts          # VS Code entry point
-│   ├── core/                 # runtime, context, safety, tools, providers
-│   ├── vscode/               # editor adapters and webview bridge
-│   ├── webview-ui/           # React sidebar
-│   └── node/                 # CLI entry point and VS Code shim
 ├── packages/
-│   ├── sdk/                  # @mitii/sdk
-│   ├── daemon/               # HTTP/SSE runtime
-│   ├── cli/                  # platform launcher
-│   ├── channels/             # external channel adapters
-│   └── board/                # parallel-agent task board
-├── tools/benchmark/          # benchmark and evaluation harness
+│   ├── v8/                   # @mitii/v8 — host-neutral agent runtime
+│   └── sdk/                  # @mitii/sdk — public API over V8
+├── apps/
+│   ├── vscode/               # VS Code extension (F5 target after Phase 17)
+│   └── cli/                  # headless CLI
+├── benchmark/                # solid benchmark suite (→ tests/benchmark in Phase 14)
 ├── docs/                     # user, developer, and enterprise guides
-├── test/                     # Vitest suite
-└── scripts/                  # build, release, and audit automation
+├── test/architecture/        # thin-hold boundary tests (full tests/ in Phase 14)
+├── scripts/                  # build, release, and audit automation
+└── legacy/                   # frozen obsolete trees (optional purge)
 ```
+
+See [docs/REPO_LAYOUT.md](docs/REPO_LAYOUT.md). Canonical architecture: [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md).
 
 ## Development
 
 ```bash
-pnpm run watch              # extension and webview watch builds
-pnpm run lint               # TypeScript validation
-pnpm test                   # full Vitest suite
-pnpm run smoke              # smoke tests
-pnpm run package            # build the VSIX
+pnpm run build              # build vscode + cli via workspace packages
+pnpm run lint               # typecheck @mitii/v8 + @mitii/sdk
+pnpm test                   # architecture + selected V8 Vitest suites
+pnpm run package            # build the VSIX (@mitii/vscode)
 pnpm run package:preflight  # release checks, tests, and package
 ```
 
@@ -203,10 +199,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for coding conventions and pull request g
 
 ## Documentation
 
-- [Architecture](ARCHITECTURE.md)
+- [Architecture](packages/v8/ARCHITECTURE.md)
+- [Repository layout](docs/REPO_LAYOUT.md)
 - [User and developer guides](docs/)
 - [Enterprise pack](docs/enterprise/README.md)
-- [Benchmark harness](tools/benchmark/README.md)
+- [Solid benchmark](benchmark/README.md)
 - [Website](https://mitii.dev)
 - [Hosted documentation](https://docs.mitii.dev)
 

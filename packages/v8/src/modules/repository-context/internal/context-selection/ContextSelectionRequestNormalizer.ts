@@ -20,7 +20,6 @@ import type {
   ContextSelectionNormalization,
   ContextSelectionWarning,
   NormalizedContextSelectionBudget,
-  NormalizedContextSelectionRequest,
   NormalizedEditorSelectionReference,
   NormalizedPinnedContextReference,
 } from "./types";

@@ -7,6 +7,13 @@ type InstructionBlock = {
   priority?: number;
 };
 
+type RequiredPriorityBlock = {
+  id: string;
+  title?: string;
+  content: string;
+  priority: number;
+};
+
 /**
  * Merge host-supplied instructions with Skills/Memory selections.
  * Host projectRules always win as-is. Selected skills/memory are appended
@@ -42,18 +49,18 @@ export function mergePromptInstructions(params: {
 function mergeBlocks(
   host: readonly InstructionBlock[] | undefined,
   selected: readonly InstructionBlock[] | undefined,
-): InstructionBlock[] | undefined {
+): RequiredPriorityBlock[] | undefined {
   if ((!host || host.length === 0) && (!selected || selected.length === 0)) {
     return undefined;
   }
 
-  const byId = new Map<string, InstructionBlock>();
+  const byId = new Map<string, RequiredPriorityBlock>();
   for (const block of host ?? []) {
     byId.set(block.id, {
       id: block.id,
       title: block.title,
       content: block.content,
-      priority: block.priority,
+      priority: block.priority ?? 100,
     });
   }
   for (const block of selected ?? []) {
@@ -64,8 +71,9 @@ function mergeBlocks(
       id: block.id,
       title: block.title,
       content: block.content,
-      priority: block.priority,
+      priority: block.priority ?? 100,
     });
   }
+
   return [...byId.values()];
 }

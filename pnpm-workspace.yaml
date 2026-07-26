@@ -1,7 +1,7 @@
 packages:
-  - 'tools/*'
   - 'packages/*'
   - 'apps/*'
+  - 'benchmark'
 
 overrides:
   protobufjs: ^7.6.3

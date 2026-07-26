@@ -9,7 +9,7 @@ import { runAskInOutputChannel } from './hostAsk.js';
  * Full React webview-ui remains deferred; this satisfies the host chat boundary.
  */
 export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = 'thunder.sidebar';
+  public static readonly viewType = 'mitii.sidebar';
 
   constructor(
     private readonly vs: typeof vscode,

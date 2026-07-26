@@ -4,6 +4,7 @@ export {
 } from "./input/SkillsSelectInput";
 export type {
   SkillsSelectInput,
+  SkillsSelectParsedInput,
   SkillTaskEvidence,
 } from "./input/SkillsSelectInput";
 

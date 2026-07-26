@@ -5,7 +5,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: [
-      'test/**/*.test.ts',
+      // Phase 16 thin-hold — full tests/ layout is Phase 14
+      'test/architecture/**/*.test.ts',
       // Vitest-owned @mitii/v8 suites only (node:test specs stay on disk).
       'packages/v8/src/engine/**/*.spec.ts',
       'packages/v8/src/modules/decision-policy/**/*.spec.ts',
@@ -15,5 +16,6 @@ export default defineConfig({
       'packages/v8/src/modules/verification/**/*.spec.ts',
     ],
     setupFiles: ['./test/setup.ts'],
+    exclude: ['**/node_modules/**', 'legacy/**', 'benchmark/**'],
   },
 });

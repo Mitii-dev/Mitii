@@ -1,6 +1,5 @@
 import { DEFAULT_CHARACTERS_PER_TOKEN } from "../defaults";
-import type { SkillDescriptor } from "../contracts";
-import type { SkillsSelectInput } from "../contracts";
+import type { SkillDescriptor, SkillsSelectParsedInput } from "../contracts";
 import { SKILLS_THRESHOLDS } from "../policy";
 
 export interface ScoredSkill {
@@ -14,7 +13,7 @@ export interface ScoredSkill {
  */
 export function matchSkills(params: {
   catalog: readonly SkillDescriptor[];
-  input: SkillsSelectInput;
+  input: SkillsSelectParsedInput;
 }): ScoredSkill[] {
   const { catalog, input } = params;
   const queryTokens = tokenize(input.query);

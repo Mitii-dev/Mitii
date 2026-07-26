@@ -24,7 +24,10 @@ export const memoryRetrieveInputSchema = z
   })
   .strict();
 
-export type MemoryRetrieveInput = z.infer<typeof memoryRetrieveInputSchema>;
+export type MemoryRetrieveInput = z.input<typeof memoryRetrieveInputSchema>;
+export type MemoryRetrieveParsedInput = z.infer<
+  typeof memoryRetrieveInputSchema
+>;
 
 export const memoryCommitInputSchema = z
   .object({

@@ -44,4 +44,5 @@ export const skillsSelectInputSchema = z
   })
   .strict();
 
-export type SkillsSelectInput = z.infer<typeof skillsSelectInputSchema>;
+export type SkillsSelectInput = z.input<typeof skillsSelectInputSchema>;
+export type SkillsSelectParsedInput = z.infer<typeof skillsSelectInputSchema>;

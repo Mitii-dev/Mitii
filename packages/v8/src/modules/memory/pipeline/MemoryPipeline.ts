@@ -19,6 +19,7 @@ import type {
   MemoryIdGeneratorPort,
   MemoryReasonCode,
   MemoryRetrieveInput,
+  MemoryRetrieveParsedInput,
   MemoryRetrieveResult,
   MemoryStorePort,
 } from "../contracts";
@@ -63,7 +64,7 @@ export class MemoryPipeline {
   ): Promise<MemoryRetrieveResult> {
     const startedMs = Date.now();
 
-    let parsed: MemoryRetrieveInput;
+    let parsed: MemoryRetrieveParsedInput;
     try {
       parsed = memoryRetrieveInputSchema.parse(input);
     } catch (error) {

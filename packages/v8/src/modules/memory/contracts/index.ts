@@ -4,6 +4,7 @@ export {
 } from "./input/MemoryInput";
 export type {
   MemoryRetrieveInput,
+  MemoryRetrieveParsedInput,
   MemoryCommitInput,
 } from "./input/MemoryInput";
 

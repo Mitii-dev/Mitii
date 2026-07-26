@@ -48,16 +48,6 @@ const canonicalRelativeRootSchema = z
     },
   );
 
-const uniqueStringArraySchema = z
-  .array(z.string().min(1))
-  .refine(
-    (values) =>
-      new Set(values).size === values.length,
-    {
-      message: "Values must be unique.",
-    },
-  );
-
 const uniqueNonEmptyStringArraySchema = z
   .array(z.string().min(1))
   .min(1)

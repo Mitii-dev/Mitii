@@ -1,0 +1,34 @@
+{
+  "id": "easy-0501-your-case-name-v1",
+  "familyId": "your-case-name",
+  "variant": 1,
+  "difficulty": "easy",
+  "mode": "agent",
+  "capability": "bugfix",
+  "fixture": "node-express",
+  "prompt": "Fix the specific problem described here.",
+  "rationale": "Explain what capability this case isolates.",
+  "preconditions": [
+    {
+      "type": "file_contains",
+      "path": "src/routes/users.js",
+      "value": "known broken text"
+    }
+  ],
+  "checks": [
+    {
+      "type": "agent_exit",
+      "equals": 0
+    },
+    {
+      "type": "file_not_contains",
+      "path": "src/routes/users.js",
+      "value": "known broken text"
+    },
+    {
+      "type": "command",
+      "command": "npm test",
+      "timeoutMs": 120000
+    }
+  ]
+}

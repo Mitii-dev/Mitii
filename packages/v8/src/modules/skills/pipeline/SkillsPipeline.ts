@@ -17,6 +17,7 @@ import type {
   SkillsSelectResult,
   SkillReasonCode,
 } from "../contracts";
+import type { z } from "zod";
 
 export interface SkillsPipelineDependencies {
   catalog: SkillsCatalogPort;
@@ -51,7 +52,7 @@ export class SkillsPipeline {
   public async select(input: SkillsSelectInput): Promise<SkillsSelectResult> {
     const startedMs = Date.now();
 
-    let parsed: SkillsSelectInput;
+    let parsed: z.infer<typeof skillsSelectInputSchema>;
     try {
       parsed = skillsSelectInputSchema.parse(input);
     } catch (error) {
