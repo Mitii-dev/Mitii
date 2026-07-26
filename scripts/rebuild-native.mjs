@@ -2,8 +2,7 @@
 /**
  * Rebuild native modules for VS Code / Cursor Electron.
  * A normal install compiles for Node.js; the extension host uses Electron's ABI.
- * Also ensures sharp carries vendored libvips so MiniLM text embeddings do not fail
- * when @xenova/transformers imports its image utility module.
+ * Rebuilds better-sqlite3 for the Extension Host Electron ABI from @mitii/v8.
  *
  * Override: MITII_ELECTRON_VERSION=42.2.0 pnpm run rebuild:native
  * Override editor: MITII_EDITOR=cursor pnpm run rebuild:native
@@ -14,22 +13,8 @@ import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 const MODULES = ['better-sqlite3'];
-const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-
-function ensureSharpVendor() {
-  console.log('Ensuring sharp vendored libvips is installed for MiniLM embeddings…');
-  const result = spawnSync(
-    'pnpm',
-    ['rebuild', 'sharp'],
-    {
-      cwd: packageRoot,
-      stdio: 'inherit',
-      shell: process.platform === 'win32',
-      env: { ...process.env, SHARP_IGNORE_GLOBAL_LIBVIPS: '1' },
-    }
-  );
-  return result.status === 0;
-}
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const v8PackageRoot = resolve(repoRoot, 'packages/v8');
 
 function readElectronFromPlist(plistPath) {
   if (!existsSync(plistPath)) return null;
@@ -76,11 +61,6 @@ function detectElectronVersion() {
 }
 
 function main() {
-  if (!ensureSharpVendor()) {
-    console.error('\nRebuild failed for sharp/libvips.');
-    process.exit(1);
-  }
-
   const electronVersion = detectElectronVersion();
   console.log(`Rebuilding native modules for Electron ${electronVersion}…`);
 
@@ -93,11 +73,11 @@ function main() {
       '-v',
       electronVersion,
       '-m',
-      '.',
+      v8PackageRoot,
       '-w',
       ...MODULES,
     ],
-    { cwd: packageRoot, stdio: 'inherit', shell: true }
+    { cwd: repoRoot, stdio: 'inherit', shell: true }
   );
 
   if (result.status !== 0) {

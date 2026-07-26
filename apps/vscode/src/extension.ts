@@ -197,9 +197,10 @@ export function activate(context: ExtensionContext): void {
     vscode.commands.registerCommand('mitii.exportSessionLog', exportSession),
     vscode.commands.registerCommand('mitii.exportAuditPack', exportSession),
     vscode.commands.registerCommand('mitii.showSettings', async () => {
+      // Query by setting prefix so it works regardless of npm-scoped package name.
       await vscode.commands.executeCommand(
         'workbench.action.openSettings',
-        '@ext:mitii.mitii-ai-agent',
+        '@id:mitii.provider.type',
       );
     }),
   );

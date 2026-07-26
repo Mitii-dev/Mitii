@@ -22,8 +22,8 @@ tests/
 
 | Old surface | Fate |
 |---|---|
-| `test/**` (kernel / HeadlessAgentHost / …) | Phase 16 → `legacy/test/`; **not** ported; human may purge |
-| `tools/benchmark` (~490M old system) | Phase 16 → `legacy/tools-benchmark/`; replaced by solid suite |
+| `test/**` (kernel / HeadlessAgentHost / …) | Phase 16 → `legacy/test/` then **purged**; **not** ported |
+| `tools/benchmark` (~490M old system) | Phase 16 vault then **purged**; replaced by solid suite |
 | Repo-root `benchmark/` (solid, 1500 cases) | Phase 14 → `tests/benchmark/` |
 | Co-located `packages/v8/**/tests/*.spec.ts` | **Keep** in package (module ownership) |
 
@@ -50,6 +50,6 @@ pnpm --filter @mitii/tests test   # or root wrappers into tests/packages/*
 ## Rules
 
 - Prefer `@mitii/sdk` / public `@mitii/v8` entry points.
-- Never import `legacy/**`.
+- Never import purged `legacy/**` paths.
 - Never keep two active benchmark systems.
 - Do not block Phase 16/17 on the full 1500-case gate.

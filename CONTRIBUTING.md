@@ -38,7 +38,7 @@ git clone https://github.com/Mitii-dev/Mitii.git
 cd Mitii
 pnpm install
 pnpm run rebuild:native   # required for better-sqlite3 in VS Code
-pnpm run compile
+pnpm run build
 ```
 
 Git hooks are installed automatically via `pnpm install` -> `prepare` -> `scripts/install-git-hooks.mjs`. The pre-commit hook stages version bumps from `scripts/bump-version.mjs`.
@@ -74,7 +74,6 @@ mitii-ai-agent/
 ├── docs/
 ├── test/architecture/            # Thin-hold boundary tests
 ├── scripts/
-├── legacy/                       # Frozen obsolete trees (optional purge)
 ├── pnpm-workspace.yaml
 └── package.json                  # Private workspace orchestrator
 ```
@@ -84,7 +83,7 @@ mitii-ai-agent/
 - [mitii-docs](https://github.com/codewithshinde/mitii-docs) → docs.mitii.dev
 - [mitii-website](https://github.com/codewithshinde/mitii-website) → mitii.dev
 
-**Rule of thumb:** hosts use `@mitii/sdk` only. Do not import `legacy/**` or V8 `actions/` / `internal/`. Prefer `packages → apps` dependency direction.
+**Rule of thumb:** hosts use `@mitii/sdk` only. Do not import V8 `actions/` / `internal/`. Prefer `packages → apps` dependency direction. Do not recreate purged `legacy/` or `src/kernel`.
 
 ### Benchmark
 
@@ -93,7 +92,7 @@ pnpm run benchmark:validate
 pnpm run benchmark
 ```
 
-See [benchmark/README.md](benchmark/README.md). The old `tools/benchmark` harness lives under `legacy/tools-benchmark/` until you run `pnpm run legacy:purge`.
+See [benchmark/README.md](benchmark/README.md). The old `tools/benchmark` harness was purged with `legacy/` (2026-07-26).
 
 ---
 
@@ -117,8 +116,8 @@ pnpm run lint           # typecheck @mitii/v8 + @mitii/sdk
 ### Build a VSIX
 
 ```bash
-pnpm run compile
-pnpm run package        # outputs mitii-ai-agent-<version>.vsix
+pnpm run build
+pnpm run package        # outputs mitii-ai-agent-<version>.vsix via @mitii/vscode
 ```
 
 Install locally: **Extensions → ... → Install from VSIX**.
@@ -171,7 +170,7 @@ The pre-commit hook may stage a version bump in `package.json`. Include that in 
 - Match surrounding patterns: no drive-by refactors in unrelated files
 - Prefer structured logging in V8/SDK; do not log secrets
 - New VS Code settings go in `apps/vscode/package.json` contributes (`mitii.*` only)
-- Do not import `legacy/**` from product packages
+- Do not recreate purged `legacy/` or import vaulted kernel paths from product packages
 
 ### Adding a tool
 

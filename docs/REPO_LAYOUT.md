@@ -1,6 +1,6 @@
 # Mitii repository layout (Phases 10–17)
 
-Status: Phase 16 complete (2026-07-26); **Phase 17 next** (F5) → Phase 14 last  
+Status: Phase 16 complete + human purge done (2026-07-26); **Phase 17 next** (F5) → Phase 14 last  
 Canonical V8 architecture: `packages/v8/ARCHITECTURE.md`  
 Capability decisions: `docs/CAPABILITY_INVENTORY.md`  
 F5 operator guide: `docs/INITIAL_LAUNCH.md`  
@@ -10,8 +10,8 @@ This document freezes **product package boundaries**. It does not redesign V8 mo
 
 Execution order:
 
-1. **Phase 16** — clean active tree; one `legacy/` vault + one-click purge; strip new-code compat — **done**  
-2. **Phase 17** — F5 / initial launch wiring for `apps/vscode`  
+1. **Phase 16** — clean active tree; one `legacy/` vault + one-click purge; strip new-code compat — **done** (vault purged 2026-07-26)
+2. **Phase 17** — F5 / initial launch wiring for `apps/vscode`
 3. **Phase 14** — `tests/` + solid benchmark + package consumer suites (last)
 
 ## 1. Target dependency graph
@@ -53,13 +53,10 @@ mitii/
 │   ├── integration/
 │   └── e2e/
 ├── docs/
-└── legacy/                      # Phase 16 vault — optional until human purge
-    ├── README.md
-    ├── DELETE.md
-    └── …
+└── (legacy/ purged — do not recreate)
 ```
 
-After Phase 16 the active root must not keep a second `src/` kernel, active `test/` dump, or twin `tools/benchmark` beside the solid suite.
+After Phase 16 + human purge the active root must not keep a second `src/` kernel, active `test/` dump, twin `tools/benchmark`, or a `legacy/` vault.
 
 ## 3. Package names and publish units
 
@@ -75,10 +72,10 @@ After Phase 16 the active root must not keep a second `src/` kernel, active `tes
 ## 4. Binding decisions
 
 1. Host → SDK → V8 is mandatory for VS Code and CLI.
-2. Daemon / channels / board stay in `legacy/` unless explicitly adapted with score ≥7.
-3. **One legacy vault:** all obsolete code under `legacy/` only; purge is human via `pnpm run legacy:purge`.
+2. Daemon / channels / board were purged with `legacy/`; adapt only if reintroduced as new `apps/*` over SDK with score ≥7.
+3. **Legacy vault:** purged (2026-07-26) via `pnpm run legacy:purge`. Do not recreate `src/kernel` or a second legacy tree.
 4. **F5** loads `apps/vscode` only (`docs/INITIAL_LAUNCH.md`).
-5. **Tests:** only `tests/` + package-local `*.spec.ts`; old suites are vaulted, not ported.
+5. **Tests:** only `tests/` + package-local `*.spec.ts`; old suites were vaulted then purged, not ported.
 6. Shim / dual-brand (`thunder.*`) removed in Phase 16.
 
 ## 5. Temporary shim policy
@@ -90,7 +87,7 @@ After Phase 16 the active root must not keep a second `src/` kernel, active `tes
 | Root scripts pointing at `src/extension.ts` | Phase 16 |
 | `.vscode` thunder prelaunch / root extensionPath | Phase 17 |
 | Repo-root `benchmark/` (before move) | Phase 14 → `tests/benchmark/` |
-| `legacy/` vault itself | Human `legacy:purge` when ready |
+| `legacy/` vault itself | **Purged** 2026-07-26 (`MITII_PURGE_LEGACY=1 pnpm run legacy:purge`) |
 
 ## 6. Phase checkpoints
 
@@ -98,7 +95,7 @@ After Phase 16 the active root must not keep a second `src/` kernel, active `tes
 |---|---|
 | 10–13 | Packaging — **done** |
 | 15 | Host UX on SDK/V8 — **done** |
-| 16 | Clean repo + `legacy/` vault + strip compat — **done** |
+| 16 | Clean repo + `legacy/` vault + strip compat — **done** (vault **purged**) |
 | 17 | F5 / initial launch wiring — **next** |
 | 14 | `tests/` + solid benchmark — **last** |
 
@@ -110,4 +107,4 @@ After Phase 16 the active root must not keep a second `src/` kernel, active `tes
 - `docs/INITIAL_LAUNCH.md`
 - `docs/TESTS.md`
 - `docs/RELEASE.md`
-- `legacy/README.md` / `legacy/DELETE.md`
+- `scripts/legacy-purge.mjs` (idempotent guard; exits non-zero if `legacy/` already absent)

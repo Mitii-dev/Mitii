@@ -436,7 +436,8 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(existsSync(vscodeRoot)).toBe(true);
     expect(existsSync(join(repoRoot, 'packages/cli'))).toBe(false);
     expect(existsSync(join(repoRoot, 'packages/daemon'))).toBe(false);
-    expect(existsSync(join(repoRoot, 'legacy/packages/daemon'))).toBe(true);
+    // Quarantined daemon lived under legacy/packages until human purge.
+    expect(existsSync(join(repoRoot, 'legacy'))).toBe(false);
 
     const cliPkg = JSON.parse(
       readFileSync(join(cliRoot, 'package.json'), 'utf8'),
@@ -516,14 +517,11 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(violations).toEqual([]);
   });
 
-  it('keeps one legacy vault and no active kernel dump (Phase 16)', () => {
-    expect(existsSync(join(repoRoot, 'legacy/README.md'))).toBe(true);
-    expect(existsSync(join(repoRoot, 'legacy/DELETE.md'))).toBe(true);
+  it('keeps legacy purged and no active kernel dump (Phase 16)', () => {
+    // Human ran MITII_PURGE_LEGACY=1 pnpm run legacy:purge (2026-07-26).
+    expect(existsSync(join(repoRoot, 'legacy'))).toBe(false);
     expect(existsSync(join(repoRoot, 'scripts/legacy-purge.mjs'))).toBe(true);
-    expect(existsSync(join(repoRoot, 'legacy/src'))).toBe(true);
-    expect(existsSync(join(repoRoot, 'legacy/test'))).toBe(true);
-    expect(existsSync(join(repoRoot, 'legacy/tools-benchmark'))).toBe(true);
-
+    // Active tree must not keep a second kernel or benchmark system beside solid `benchmark/`.
     expect(existsSync(join(repoRoot, 'src'))).toBe(false);
     expect(existsSync(join(repoRoot, 'tools/benchmark'))).toBe(false);
     expect(existsSync(join(repoRoot, 'tools'))).toBe(false);

@@ -31,7 +31,7 @@ Environment:
   MITII_BASE_URL                   OpenAI-compatible base URL
   MITII_MODEL                      Model id (default: gpt-4o-mini)
 
-Phase 15 hosts stream events, cancel, clarify/approve, index/status,
+Hosts stream events, cancel, clarify/approve, index/status,
 usage/context inspection, and secret-free session export.
-Deferred: daemon/board/channels (see legacy/packages/).
+Daemon/board/channels are out of scope for this CLI.
 `;

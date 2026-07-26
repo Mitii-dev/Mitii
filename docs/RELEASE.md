@@ -28,12 +28,12 @@ pnpm --filter @mitii/vscode build
 pnpm --filter @mitii/vscode package   # vsce package --no-dependencies
 ```
 
-Root helpers:
+Root helpers (thin orchestrator):
 
 ```bash
-pnpm run compile:extension   # → @mitii/vscode build
-pnpm run compile:cli         # → @mitii/cli build
-pnpm run sdk:build
+pnpm run build               # v8 + sdk + cli + vscode
+pnpm run build:vscode        # → @mitii/vscode build
+pnpm run build:cli           # → @mitii/cli build
 pnpm run package             # → @mitii/vscode package
 ```
 
@@ -67,7 +67,7 @@ Do not claim a gate passed unless it actually ran successfully.
 
 ## Legacy
 
-- After Phase 16: **one** vault at `legacy/` (`README.md` + `DELETE.md`).
-- Production hosts and F5 must not import it (architecture tests).
-- One-click purge when you are ready: `MITII_PURGE_LEGACY=1 pnpm run legacy:purge` (see `legacy/DELETE.md`).
-- Phase 14 then owns `tests/` + solid benchmark; old `test/` / `tools/benchmark` stay vaulted until purge.
+- Phase 16 vaulted obsolete trees under `legacy/`; human purge completed **2026-07-26** (`MITII_PURGE_LEGACY=1 pnpm run legacy:purge`).
+- Production hosts and F5 must not recreate or import `legacy/**` / `src/kernel` (architecture tests).
+- `scripts/legacy-purge.mjs` remains as a guard (exits non-zero if `legacy/` is already absent).
+- Phase 14 owns `tests/` + solid benchmark; old flat `test/` / `tools/benchmark` are gone with the vault.

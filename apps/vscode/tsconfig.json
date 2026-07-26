@@ -7,6 +7,7 @@
     "noEmit": true,
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "typeRoots": ["../../node_modules/@types"],
     "types": ["node", "vscode"],
     "lib": ["ES2022"]
   },
