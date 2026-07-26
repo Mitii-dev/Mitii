@@ -1,6 +1,7 @@
 import {
   EchoLlmPort,
   OpenAiCompatibleLlmPort,
+  createDefaultSkillsCatalog,
   createMitiiClient,
   type CreateMitiiClientOptions,
   type MitiiClient,
@@ -135,6 +136,7 @@ export function createCliClient(options: {
     workspaceId: ports.workspaceId,
     enableInMemoryRepositoryState: true,
     enableInMemoryCheckpoints: true,
+    skillsCatalog: createDefaultSkillsCatalog(),
     ...options.clientOverrides,
   });
   return { client, ports };

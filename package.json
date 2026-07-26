@@ -1,7 +1,7 @@
 {
   "name": "mitii-ai-agent",
   "description": "Private Mitii monorepo workspace orchestrator. Product packages: @mitii/v8, @mitii/sdk, @mitii/cli, @mitii/vscode.",
-  "version": "2.7.119",
+  "version": "2.7.120",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "author": {
@@ -41,6 +41,7 @@
     "test:sdk": "pnpm --filter @mitii/sdk test",
     "test:cli": "pnpm --filter @mitii/cli test",
     "check:architecture": "vitest run test/architecture/v8-module-boundaries.test.ts",
+    "phase17:verify": "node scripts/phase17-verify.mjs",
     "verify": "pnpm run typecheck && pnpm test && pnpm run build",
     "package": "pnpm --filter @mitii/vscode package",
     "package:preflight": "pnpm run preflight && pnpm run package",

@@ -16,7 +16,7 @@ import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 const execFileAsync = promisify(execFile);
 
 /**
- * Phase 15 host package: activation composes @mitii/sdk only.
+ * Phase 15/17 host package: activation composes @mitii/sdk only.
  */
 export function activate(context: ExtensionContext): void {
   const channel = vscode.window.createOutputChannel('Mitii');
@@ -28,7 +28,12 @@ export function activate(context: ExtensionContext): void {
   const workspaceRoot = (): string | undefined =>
     vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
+  const invalidateClient = (): void => {
+    client = undefined;
+  };
+
   const ensureClient = async (): Promise<MitiiClient> => {
+    if (client) return client;
     const composed = await createVscodeClient(
       vscode,
       context.secrets,
@@ -38,6 +43,34 @@ export function activate(context: ExtensionContext): void {
     workspaceId = composed.ports.workspaceId;
     channel.appendLine(`[mitii] provider=${composed.ports.providerLabel}`);
     return client;
+  };
+
+  const setApiKey = async (): Promise<void> => {
+    const key = await vscode.window.showInputBox({
+      prompt: 'Provider API key (stored in SecretStorage as mitii.provider.apiKey)',
+      password: true,
+      ignoreFocusOut: true,
+      placeHolder: 'sk-…',
+    });
+    if (key === undefined) return;
+    const trimmed = key.trim();
+    if (!trimmed) {
+      void vscode.window.showWarningMessage('API key not set (empty).');
+      return;
+    }
+    await context.secrets.store('mitii.provider.apiKey', trimmed);
+    invalidateClient();
+    channel.appendLine('[mitii] SecretStorage mitii.provider.apiKey updated');
+    void vscode.window.showInformationMessage(
+      'Mitii API key saved. Set mitii.provider.type to openai-compatible to use it.',
+    );
+  };
+
+  const clearApiKey = async (): Promise<void> => {
+    await context.secrets.delete('mitii.provider.apiKey');
+    invalidateClient();
+    channel.appendLine('[mitii] SecretStorage mitii.provider.apiKey cleared');
+    void vscode.window.showInformationMessage('Mitii API key cleared.');
   };
 
   const openChat = async (): Promise<void> => {
@@ -196,12 +229,20 @@ export function activate(context: ExtensionContext): void {
     ),
     vscode.commands.registerCommand('mitii.exportSessionLog', exportSession),
     vscode.commands.registerCommand('mitii.exportAuditPack', exportSession),
+    vscode.commands.registerCommand('mitii.setApiKey', setApiKey),
+    vscode.commands.registerCommand('mitii.clearApiKey', clearApiKey),
     vscode.commands.registerCommand('mitii.showSettings', async () => {
       // Query by setting prefix so it works regardless of npm-scoped package name.
       await vscode.commands.executeCommand(
         'workbench.action.openSettings',
         '@id:mitii.provider.type',
       );
+    }),
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('mitii.provider')) {
+        invalidateClient();
+        channel.appendLine('[mitii] provider settings changed; client will recompose');
+      }
     }),
   );
 

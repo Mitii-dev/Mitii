@@ -71,7 +71,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
 </head>
 <body>
   <h1>Mitii</h1>
-  <p class="meta">SDK host chat (Phase 15). Full React UI deferred.</p>
+  <p class="meta">SDK host chat (Phase 17). Full React UI deferred.</p>
   <textarea id="prompt" placeholder="Ask Mitii…"></textarea>
   <button id="send">Ask</button>
   <pre id="out"></pre>

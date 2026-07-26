@@ -31,6 +31,10 @@ export function formatRunEventLine(event: RunEvent): string | undefined {
       return `[context] blocks=${event.blockCount} status=${event.status}`;
     case 'decision_made':
       return `[decision] ${event.route}`;
+    case 'skills_ready':
+      return `[skills] selected=${event.selectedCount} omitted=${event.omittedCount} status=${event.status}`;
+    case 'memory_ready':
+      return `[memory] selected=${event.selectedCount} omitted=${event.omittedCount} status=${event.status}`;
     default:
       return undefined;
   }

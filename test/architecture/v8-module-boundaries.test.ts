@@ -572,10 +572,24 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(
       commands.some((c) => c.command === 'mitii.migrateThunderSettings'),
     ).toBe(false);
+    expect(commands.some((c) => c.command === 'mitii.setApiKey')).toBe(true);
+    expect(commands.some((c) => c.command === 'mitii.openChat')).toBe(true);
+    expect(commands.some((c) => c.command === 'mitii.generateChangelog')).toBe(
+      false,
+    );
 
     const props = Object.keys(pkg.contributes?.configuration?.properties ?? {});
     expect(props.every((key) => key.startsWith('mitii.'))).toBe(true);
     expect(props.some((key) => key.startsWith('thunder.'))).toBe(false);
+    expect(props).toEqual(
+      expect.arrayContaining([
+        'mitii.debug',
+        'mitii.provider.type',
+        'mitii.provider.baseUrl',
+        'mitii.provider.model',
+      ]),
+    );
+    expect(props.some((key) => key.startsWith('mitii.mcp.'))).toBe(false);
 
     const viewIds = Object.values(pkg.contributes?.views ?? {})
       .flat()

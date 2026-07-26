@@ -1,6 +1,6 @@
 # Tests and solid benchmark (Phase 14)
 
-Status: planned (after Phase 16 vault + Phase 17 F5). Canonical phase text: `packages/v8/ROADMAP.md` Phase 14.
+Status: planned (Phase 17 complete — unblocked). Canonical phase text: `packages/v8/ROADMAP.md` Phase 14.
 
 ## Target tree
 

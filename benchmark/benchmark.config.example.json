@@ -2,12 +2,13 @@
   "agent": {
     "command": "node",
     "args": [
-      "dist/cli.js",
+      "apps/cli/bin/mitii.js",
       "{mode}",
       "{prompt}",
       "--cwd",
       "{workspace}",
-      "--json"
+      "--json",
+      "--echo"
     ],
     "cwd": "../..",
     "timeoutMs": 120000,

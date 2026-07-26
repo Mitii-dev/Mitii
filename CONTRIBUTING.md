@@ -45,10 +45,12 @@ Git hooks are installed automatically via `pnpm install` -> `prepare` -> `script
 
 ### Launch the extension
 
-1. Open the repo root in VS Code
-2. Press **F5** — this opens an Extension Development Host
-3. In the new window, open a project folder (not the mitii-ai-agent repo itself, unless you're dogfooding)
+1. Open the repo root in VS Code / Cursor
+2. Press **F5** (loads `apps/vscode` via `.vscode/launch.json`)
+3. In the Extension Development Host, open a project folder
 4. Click the Mitii icon in the activity bar
+
+Automated F5 gate (no Extension Host): `pnpm run phase17:verify` — see [docs/INITIAL_LAUNCH.md](docs/INITIAL_LAUNCH.md).
 
 ### Watch mode (day-to-day dev)
 
@@ -56,7 +58,7 @@ Git hooks are installed automatically via `pnpm install` -> `prepare` -> `script
 pnpm --filter @mitii/vscode build
 ```
 
-Rebuild the extension package after host changes. F5 launch wiring is Phase 17 (`docs/INITIAL_LAUNCH.md`). Reload the Extension Development Host after rebuilds.
+Rebuild the extension package after host changes. Phase 17 F5 wiring is complete (`docs/INITIAL_LAUNCH.md`). Reload the Extension Development Host after rebuilds.
 
 ---
 

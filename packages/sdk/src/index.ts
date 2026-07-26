@@ -25,6 +25,11 @@ export {
 } from './errors';
 export type { MitiiSdkErrorCode } from './errors';
 
+export {
+  createDefaultSkillsCatalog,
+  DEFAULT_HOST_SKILLS,
+} from './defaultSkills';
+
 /** Re-export selected V8 composition helpers for advanced host wiring. */
 export {
   composeReadOnlyAgentEngine,
@@ -32,6 +37,7 @@ export {
   OpenAiCompatibleLlmPort,
   InMemoryRepositoryStateStore,
   InMemoryRunCheckpointStore,
+  InMemorySkillsCatalog,
   RepositoryStatePipeline,
   publishRepositoryStateInputSchema,
   REPOSITORY_STATE_SCHEMA_VERSION,
@@ -49,4 +55,6 @@ export type {
   PublishRepositoryStateInput,
   PublishRepositoryStateResult,
   RepositoryStateDescriptor,
+  SkillDescriptor,
+  SkillsCatalogPort,
 } from '@mitii/v8';

@@ -1,9 +1,11 @@
 import {
   EchoLlmPort,
   OpenAiCompatibleLlmPort,
+  createDefaultSkillsCatalog,
   createMitiiClient,
   type LlmPort,
   type MitiiClient,
+  type SkillsCatalogPort,
 } from '@mitii/sdk';
 import type { ModelCapabilities, ModelEvent, ModelRequest } from '@mitii/v8';
 import type * as vscode from 'vscode';
@@ -100,6 +102,7 @@ export async function createVscodeClient(
   vs: typeof vscode,
   secrets: vscode.SecretStorage,
   workspaceRoot: string | undefined,
+  options: { skillsCatalog?: SkillsCatalogPort } = {},
 ): Promise<{ client: MitiiClient; ports: VscodePortResolution }> {
   const ports = await resolveVscodePorts(vs, secrets);
   const client = createMitiiClient({
@@ -111,6 +114,7 @@ export async function createVscodeClient(
     workspaceId: ports.workspaceId,
     enableInMemoryRepositoryState: true,
     enableInMemoryCheckpoints: true,
+    skillsCatalog: options.skillsCatalog ?? createDefaultSkillsCatalog(),
   });
   return { client, ports };
 }

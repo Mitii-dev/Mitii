@@ -1,6 +1,6 @@
 # Mitii repository layout (Phases 10–17)
 
-Status: Phase 16 complete + human purge done (2026-07-26); **Phase 17 next** (F5) → Phase 14 last  
+Status: Phase 17 **complete** (2026-07-26); **Phase 14 next** (tests + solid benchmark)  
 Canonical V8 architecture: `packages/v8/ARCHITECTURE.md`  
 Capability decisions: `docs/CAPABILITY_INVENTORY.md`  
 F5 operator guide: `docs/INITIAL_LAUNCH.md`  
@@ -11,8 +11,8 @@ This document freezes **product package boundaries**. It does not redesign V8 mo
 Execution order:
 
 1. **Phase 16** — clean active tree; one `legacy/` vault + one-click purge; strip new-code compat — **done** (vault purged 2026-07-26)
-2. **Phase 17** — F5 / initial launch wiring for `apps/vscode`
-3. **Phase 14** — `tests/` + solid benchmark + package consumer suites (last)
+2. **Phase 17** — F5 / initial launch wiring for `apps/vscode` — **done** (`pnpm run phase17:verify`)
+3. **Phase 14** — `tests/` + solid benchmark + package consumer suites (last) — **next**
 
 ## 1. Target dependency graph
 
@@ -85,7 +85,7 @@ After Phase 16 + human purge the active root must not keep a second `src/` kerne
 | `apps/vscode` `thunder.*` dual APIs | Phase 16 |
 | Deprecated V8/SDK aliases | Phase 16 |
 | Root scripts pointing at `src/extension.ts` | Phase 16 |
-| `.vscode` thunder prelaunch / root extensionPath | Phase 17 |
+| `.vscode` thunder prelaunch / root extensionPath | Phase 17 — **done** |
 | Repo-root `benchmark/` (before move) | Phase 14 → `tests/benchmark/` |
 | `legacy/` vault itself | **Purged** 2026-07-26 (`MITII_PURGE_LEGACY=1 pnpm run legacy:purge`) |
 
@@ -96,8 +96,8 @@ After Phase 16 + human purge the active root must not keep a second `src/` kerne
 | 10–13 | Packaging — **done** |
 | 15 | Host UX on SDK/V8 — **done** |
 | 16 | Clean repo + `legacy/` vault + strip compat — **done** (vault **purged**) |
-| 17 | F5 / initial launch wiring — **next** |
-| 14 | `tests/` + solid benchmark — **last** |
+| 17 | F5 / initial launch wiring — **done** (`phase17:verify`) |
+| 14 | `tests/` + solid benchmark — **next (last)** |
 
 ## 9. Related documents
 
