@@ -110,3 +110,17 @@ export type {
   ToolRuntimePorts,
   ToolCapabilityDescriptor,
 } from "./modules/tool-runtime";
+
+export { VerificationPipeline } from "./modules/verification";
+export {
+  verificationInputSchema,
+  verificationResultSchema,
+  InMemoryManifestReader,
+} from "./modules/verification";
+export type {
+  VerificationInput,
+  VerificationResult,
+  VerificationStatus,
+  VerificationToolExecutorPort,
+  VerificationManifestReaderPort,
+} from "./modules/verification";

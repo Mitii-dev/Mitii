@@ -1,9 +1,8 @@
 # V8 Pipeline Library
 
 V8 is the headless capability plane for the Engine runtime. Phase 0 consolidated
-code under `modules/`. Phase 1 completed public contracts. Phase 2 completed
-authoritative repository state publication. Phase 3 completed Decision Policy
-for deterministic route, planning-depth, and tool-grant authority.
+code under `modules/`. Phases 1–5 completed public contracts through Prompt
+Construction. Phase 6 adds the Verification Pipeline.
 
 ## Module layout
 
@@ -14,7 +13,10 @@ src/v8/modules/
 ├── repository-state/        RepositoryStatePipeline + WorkspaceIndexingPipeline + language registry
 ├── repository-context/      RepositoryContextPipeline (state ref → retrieval → selection → assembly)
 ├── decision-policy/         DecisionPolicyPipeline (route + grant + verification policy)
-└── model-gateway/           LlmPort + Echo / OpenAI-compatible adapters
+├── prompt-construction/     PromptConstructionPipeline (budgeted ModelRequest)
+├── model-gateway/           LlmPort + Echo / OpenAI-compatible adapters
+├── tool-runtime/            ToolRuntimePipeline (granted tool execution)
+└── verification/            VerificationPipeline (evidence-gated completion)
 ```
 
 ## Public pipelines
@@ -26,6 +28,9 @@ src/v8/modules/
 | `repository-state` | `RepositoryStatePipeline` | candidate → published `RepositoryStateReference` |
 | `repository-context` | `RepositoryContextPipeline` | `RepositoryStateReference` + query → context result |
 | `decision-policy` | `DecisionPolicyPipeline` | envelope + understanding → `ExecutionDecision` |
+| `prompt-construction` | `PromptConstructionPipeline` | decision + context → `ModelRequest` + budget |
+| `tool-runtime` | `ToolRuntimePipeline` | authorized call → `ToolResult` |
+| `verification` | `VerificationPipeline` | change + state + policy → verification result |
 
 ## Import policy
 
@@ -38,6 +43,9 @@ import {
   RepositoryStatePipeline,
   RepositoryContextPipeline,
   DecisionPolicyPipeline,
+  PromptConstructionPipeline,
+  ToolRuntimePipeline,
+  VerificationPipeline,
   EchoLlmPort,
   OpenAiCompatibleLlmPort,
   MODEL_PROVIDER_SUPPORT,
