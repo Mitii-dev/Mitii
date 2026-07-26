@@ -16,6 +16,7 @@ export type { ModelProviderId } from "./constants";
 export {
   modelRequestSchema,
   modelMessageSchema,
+  modelToolDefinitionSchema,
   modelErrorSchema,
   modelEventSchema,
   modelResponseDeltaSchema,

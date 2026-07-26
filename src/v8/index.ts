@@ -71,6 +71,17 @@ export type {
   ToolGrant,
 } from "./modules/decision-policy";
 
+export { PromptConstructionPipeline } from "./modules/prompt-construction";
+export {
+  promptConstructionInputSchema,
+  promptConstructionResultSchema,
+} from "./modules/prompt-construction";
+export type {
+  PromptConstructionInput,
+  PromptConstructionResult,
+  PromptBudgetReport,
+} from "./modules/prompt-construction";
+
 export type {
   LlmPort,
   ModelRequest,

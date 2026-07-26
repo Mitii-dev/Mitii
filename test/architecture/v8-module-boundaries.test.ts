@@ -11,11 +11,12 @@ const PUBLIC_MODULES = [
   'repository-state',
   'repository-context',
   'decision-policy',
+  'prompt-construction',
   'model-gateway',
   'tool-runtime',
 ] as const;
 
-describe('v8 module boundaries (Phase 0/1/2/3/4)', () => {
+describe('v8 module boundaries (Phase 0/1/2/3/4/5)', () => {
   it('places all runtime code under src/v8/modules/', () => {
     expect(existsSync(modulesRoot)).toBe(true);
     expect(existsSync(join(repoRoot, 'src/v8/core'))).toBe(false);
@@ -37,6 +38,9 @@ describe('v8 module boundaries (Phase 0/1/2/3/4)', () => {
     expect(index).toContain('DecisionPolicyPipeline');
     expect(index).toContain('decisionPolicyInputSchema');
     expect(index).toContain('executionDecisionSchema');
+    expect(index).toContain('PromptConstructionPipeline');
+    expect(index).toContain('promptConstructionInputSchema');
+    expect(index).toContain('promptConstructionResultSchema');
     expect(index).toContain('EchoLlmPort');
     expect(index).toContain('OpenAiCompatibleLlmPort');
     expect(index).toContain('MODEL_PROVIDER_SUPPORT');
@@ -75,6 +79,18 @@ describe('v8 module boundaries (Phase 0/1/2/3/4)', () => {
     expect(index).not.toContain('export { TaskAnalyzer');
   });
 
+  it('keeps prompt-construction actions private at the module root', () => {
+    const index = readFileSync(
+      join(modulesRoot, 'prompt-construction/index.ts'),
+      'utf8',
+    );
+    expect(index).toContain('PromptConstructionPipeline');
+    expect(index).toContain('promptConstructionResultSchema');
+    expect(index).not.toContain('export * from "./actions"');
+    expect(index).not.toContain('allocateBudget');
+    expect(index).not.toContain('serializeRepositoryContext');
+  });
+
   it('keeps decision-policy actions private at the module root', () => {
     const index = readFileSync(
       join(modulesRoot, 'decision-policy/index.ts'),
@@ -110,7 +126,7 @@ describe('v8 module boundaries (Phase 0/1/2/3/4)', () => {
       const content = readFileSync(file, 'utf8');
       for (const line of content.split(/\r?\n/)) {
         const match = line.match(
-          /from ['"]((?:\.\.\/)+)(request-intake|request-understanding|repository-state|repository-context|decision-policy|model-gateway|tool-runtime)\/internal\//,
+          /from ['"]((?:\.\.\/)+)(request-intake|request-understanding|repository-state|repository-context|decision-policy|prompt-construction|model-gateway|tool-runtime)\/internal\//,
         );
         if (!match) continue;
 
