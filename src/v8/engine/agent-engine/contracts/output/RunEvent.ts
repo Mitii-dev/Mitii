@@ -56,6 +56,26 @@ export const runEventSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      type: z.literal("skills_ready"),
+      runId: z.string().min(1),
+      selectedCount: z.number().int().nonnegative(),
+      omittedCount: z.number().int().nonnegative(),
+      status: z.string().min(1),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("memory_ready"),
+      runId: z.string().min(1),
+      selectedCount: z.number().int().nonnegative(),
+      omittedCount: z.number().int().nonnegative(),
+      status: z.string().min(1),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("context_ready"),
       runId: z.string().min(1),
       stateToken: z.string().min(1),

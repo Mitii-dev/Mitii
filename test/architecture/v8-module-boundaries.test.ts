@@ -15,6 +15,8 @@ const PUBLIC_MODULES = [
   'prompt-construction',
   'model-gateway',
   'verification',
+  'skills',
+  'memory',
 ] as const;
 
 const PUBLIC_ENGINE_COMPONENTS = [
@@ -33,7 +35,7 @@ const PUBLIC_ROOTS = [
   })),
 ] as const;
 
-describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8)', () => {
+describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9)', () => {
   it('places business modules and engine components under their canonical roots', () => {
     expect(existsSync(modulesRoot)).toBe(true);
     expect(existsSync(engineRoot)).toBe(true);
@@ -76,6 +78,10 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8)', () => {
     expect(index).toContain('agentRunResultSchema');
     expect(index).toContain('runEventSchema');
     expect(index).toContain('composeReadOnlyAgentEngine');
+    expect(index).toContain('SkillsPipeline');
+    expect(index).toContain('skillsSelectInputSchema');
+    expect(index).toContain('MemoryPipeline');
+    expect(index).toContain('memoryRetrieveInputSchema');
     expect(index).not.toContain('IntentRouter');
     expect(index).not.toContain('TaskAnalyzer');
     expect(index).not.toContain('resolveRoute');
@@ -142,6 +148,24 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8)', () => {
     expect(index).not.toContain('export * from "./actions"');
     expect(index).not.toContain('allocateBudget');
     expect(index).not.toContain('serializeRepositoryContext');
+  });
+
+  it('keeps skills actions private at the module root', () => {
+    const index = readFileSync(join(modulesRoot, 'skills/index.ts'), 'utf8');
+    expect(index).toContain('SkillsPipeline');
+    expect(index).toContain('skillsSelectResultSchema');
+    expect(index).not.toContain('export * from "./actions"');
+    expect(index).not.toContain('matchSkills');
+    expect(index).not.toContain('applySkillBudget');
+  });
+
+  it('keeps memory actions private at the module root', () => {
+    const index = readFileSync(join(modulesRoot, 'memory/index.ts'), 'utf8');
+    expect(index).toContain('MemoryPipeline');
+    expect(index).toContain('memoryRetrieveResultSchema');
+    expect(index).not.toContain('export * from "./actions"');
+    expect(index).not.toContain('scoreMemoryRelevance');
+    expect(index).not.toContain('prepareMemoryCommit');
   });
 
   it('keeps decision-policy actions private at the module root', () => {

@@ -70,6 +70,8 @@ export type {
   AgentEngineUnderstandingPort,
   AgentEngineDecisionPort,
   AgentEnginePromptPort,
+  AgentEngineSkillsPort,
+  AgentEngineMemoryPort,
   AgentEngineRepositoryStatePort,
   AgentEngineRepositoryContextPort,
   AgentEngineToolRuntimePort,

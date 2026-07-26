@@ -2,7 +2,7 @@ import type { ModelToolDefinition } from "../../modules/model-gateway";
 
 /**
  * Routes supported by the single-agent Engine after Phase 8.
- * Skills/memory/subagents remain deferred.
+ * Phase 9 optionally attaches Skills/Memory before prompt construction.
  */
 export const PHASE8_SUPPORTED_ROUTES = [
   "direct_answer",

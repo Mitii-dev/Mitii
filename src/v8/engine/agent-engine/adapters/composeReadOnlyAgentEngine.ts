@@ -1,5 +1,7 @@
 import { DecisionPolicyPipeline } from "../../../modules/decision-policy";
 import type { LlmPort, ModelToolDefinition } from "../../../modules/model-gateway";
+import { MemoryPipeline } from "../../../modules/memory";
+import type { MemoryStorePort } from "../../../modules/memory";
 import { PromptConstructionPipeline } from "../../../modules/prompt-construction";
 import type { RepositoryContextPipeline } from "../../../modules/repository-context";
 import type { RepositoryStatePipeline } from "../../../modules/repository-state";
@@ -8,6 +10,8 @@ import {
   type RequestIntakePipelineDependencies,
 } from "../../../modules/request-intake";
 import { RequestUnderstandingPipeline } from "../../../modules/request-understanding";
+import { SkillsPipeline } from "../../../modules/skills";
+import type { SkillsCatalogPort } from "../../../modules/skills";
 import type { ToolRuntimePipeline } from "../../tool-runtime";
 import type { VerificationPipeline } from "../../../modules/verification";
 
@@ -30,6 +34,10 @@ export interface ComposeReadOnlyAgentEngineOptions {
   verification?: VerificationPipeline;
   /** Required to suspend/resume mutation approvals across process turns. */
   checkpointStore?: AgentEngineRunCheckpointStorePort;
+  /** Optional Skills catalog — omitting leaves the core loop intact. */
+  skillsCatalog?: SkillsCatalogPort;
+  /** Optional Memory store — omitting leaves the core loop intact. */
+  memoryStore?: MemoryStorePort;
   toolDefinitions?: readonly ModelToolDefinition[];
   intake?: Partial<RequestIntakePipelineDependencies>;
   clock?: AgentEngineClockPort;
@@ -40,11 +48,11 @@ export interface ComposeReadOnlyAgentEngineOptions {
  * Wire real V8 facades into AgentEnginePipeline.
  *
  * Application hosts inject provider LLMs and optional repository/tool/
- * verification pipelines plus a checkpoint store. This helper does not
- * invent a second orchestration layer — it only constructs the public
- * facades Engine already depends on. The name is kept for compatibility;
- * it composes the full Phase 8 engine (read-only and mutating routes)
- * once `tools`, `verification`, and `checkpointStore` are supplied.
+ * verification/skills/memory pipelines plus a checkpoint store. This helper
+ * does not invent a second orchestration layer — it only constructs the
+ * public facades Engine already depends on. The name is kept for
+ * compatibility; it composes the full Phase 8/9 engine once optional
+ * dependencies are supplied.
  */
 export function composeReadOnlyAgentEngine(
   options: ComposeReadOnlyAgentEngineOptions,
@@ -65,6 +73,12 @@ export function composeReadOnlyAgentEngine(
     decision: new DecisionPolicyPipeline(),
     prompt: new PromptConstructionPipeline(),
     llm: options.runLlm,
+    skills: options.skillsCatalog
+      ? new SkillsPipeline({ catalog: options.skillsCatalog })
+      : undefined,
+    memory: options.memoryStore
+      ? new MemoryPipeline({ store: options.memoryStore })
+      : undefined,
     repositoryState: options.repositoryState,
     repositoryContext: options.repositoryContext,
     tools: options.tools,

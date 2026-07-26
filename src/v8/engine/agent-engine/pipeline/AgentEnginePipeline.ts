@@ -12,10 +12,15 @@ import type {
   ModelToolCall,
   ModelToolCallDelta,
 } from "../../../modules/model-gateway";
+import { MEMORY_SCHEMA_VERSION } from "../../../modules/memory";
 import { PROMPT_CONSTRUCTION_SCHEMA_VERSION } from "../../../modules/prompt-construction";
-import type { PromptRepositoryContext } from "../../../modules/prompt-construction";
+import type {
+  PromptInstructions,
+  PromptRepositoryContext,
+} from "../../../modules/prompt-construction";
 import type { RepositoryStateReference } from "../../../modules/repository-state";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
+import { SKILLS_SCHEMA_VERSION } from "../../../modules/skills";
 import {
   TOOL_RUNTIME_SCHEMA_VERSION,
   fingerprintToolCall,
@@ -27,6 +32,8 @@ import {
   assembleToolCalls,
   filterToolDefinitions,
   mapContextToPromptSlice,
+  mapUnderstandingToSkillEvidence,
+  mergePromptInstructions,
   serializeToolResultForModel,
 } from "../actions";
 import { AGENT_ENGINE_SCHEMA_VERSION } from "../constants";
@@ -99,10 +106,11 @@ type VerificationGateOutcome =
   | { kind: "failed"; error: { code: string; message: string } };
 
 /**
- * Agent Engine facade (Phase 8: mutation, approval, checkpoints, rollback).
+ * Agent Engine facade (Phase 8 mutation + Phase 9 optional Skills/Memory).
  *
  * Flow:
  *   Intake → Understand → Decide → pin Repository State
+ *   → select Skills (optional) → retrieve Memory (optional)
  *   → retrieve Context → construct Prompt → invoke Model
  *   → execute authorized Tools (read-only or mutating) as needed
  *   → verify changes → produce Result
@@ -110,7 +118,7 @@ type VerificationGateOutcome =
  * Mutation tool calls that require approval suspend the run with a
  * persisted checkpoint; `resume()` continues without replaying completed
  * tool callIds. Does not implement understanding, policy, retrieval,
- * prompting, tool enforcement, or verification algorithms.
+ * prompting, tool enforcement, skills/memory selection, or verification.
  */
 export class AgentEnginePipeline {
   private readonly deps: Required<
@@ -127,6 +135,8 @@ export class AgentEnginePipeline {
   > &
     Pick<
       AgentEngineDependencies,
+      | "skills"
+      | "memory"
       | "repositoryState"
       | "repositoryContext"
       | "tools"
@@ -155,6 +165,8 @@ export class AgentEnginePipeline {
       decision: dependencies.decision,
       prompt: dependencies.prompt,
       llm: dependencies.llm,
+      skills: dependencies.skills,
+      memory: dependencies.memory,
       repositoryState: dependencies.repositoryState,
       repositoryContext: dependencies.repositoryContext,
       tools: dependencies.tools,
@@ -522,6 +534,94 @@ export class AgentEnginePipeline {
         return cancelledResult();
       }
 
+      // --- Skills (optional) ---
+      let selectedSkills: PromptInstructions["skills"];
+      if (this.deps.skills) {
+        this.emitStage(bus, runId, "skills_ready", "started");
+        const skillsResult = await this.deps.skills.select({
+          schemaVersion: SKILLS_SCHEMA_VERSION,
+          query: envelope.message,
+          mode: envelope.mode,
+          route: decision.route,
+          evidence: mapUnderstandingToSkillEvidence(understanding),
+        });
+        selectedSkills = skillsResult.instructions.map((block) => ({
+          id: block.id,
+          title: block.title,
+          content: block.content,
+          priority: block.priority,
+        }));
+        reasonCodes.push(
+          skillsResult.instructions.length > 0
+            ? "skills_selected"
+            : "skills_skipped",
+        );
+        this.emit(bus, {
+          type: "skills_ready",
+          runId,
+          selectedCount: skillsResult.instructions.length,
+          omittedCount: skillsResult.omissions.length,
+          status: skillsResult.status,
+          at: this.isoNow(),
+        });
+        this.emitStage(bus, runId, "skills_ready", "completed", [
+          skillsResult.instructions.length > 0
+            ? "skills_selected"
+            : "skills_skipped",
+        ]);
+      } else {
+        reasonCodes.push("skills_skipped");
+      }
+
+      if (signal.aborted) {
+        await this.safeUnpin(runId, pinnedState);
+        return cancelledResult();
+      }
+
+      // --- Memory (optional) ---
+      let selectedMemory: PromptInstructions["memory"];
+      const workspaceId = envelope.workspace?.workspaceId;
+      if (this.deps.memory && workspaceId) {
+        this.emitStage(bus, runId, "memory_ready", "started");
+        const memoryResult = await this.deps.memory.retrieve({
+          schemaVersion: MEMORY_SCHEMA_VERSION,
+          query: envelope.message,
+          scope: { kind: "workspace", workspaceId },
+          now: this.isoNow(),
+        });
+        selectedMemory = memoryResult.instructions.map((block) => ({
+          id: block.id,
+          title: block.title,
+          content: block.content,
+          priority: block.priority,
+        }));
+        reasonCodes.push(
+          memoryResult.instructions.length > 0
+            ? "memory_retrieved"
+            : "memory_skipped",
+        );
+        this.emit(bus, {
+          type: "memory_ready",
+          runId,
+          selectedCount: memoryResult.instructions.length,
+          omittedCount: memoryResult.omissions.length,
+          status: memoryResult.status,
+          at: this.isoNow(),
+        });
+        this.emitStage(bus, runId, "memory_ready", "completed", [
+          memoryResult.instructions.length > 0
+            ? "memory_retrieved"
+            : "memory_skipped",
+        ]);
+      } else {
+        reasonCodes.push("memory_skipped");
+      }
+
+      if (signal.aborted) {
+        await this.safeUnpin(runId, pinnedState);
+        return cancelledResult();
+      }
+
       // --- Prompt ---
       const tools = filterToolDefinitions({
         grant: decision.toolGrant,
@@ -530,13 +630,19 @@ export class AgentEnginePipeline {
         supportsTools: this.deps.llm.capabilities.supportsTools,
       });
 
+      const instructions = mergePromptInstructions({
+        host: input.instructions,
+        skills: selectedSkills,
+        memory: selectedMemory,
+      });
+
       const promptResult = this.deps.prompt.construct({
         schemaVersion: PROMPT_CONSTRUCTION_SCHEMA_VERSION,
         decision,
         userMessage: envelope.message,
         conversation: input.conversation,
         repositoryContext,
-        instructions: input.instructions,
+        instructions,
         tools,
         capabilities: this.deps.llm.capabilities,
         model: input.model,

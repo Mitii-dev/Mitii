@@ -9,6 +9,10 @@ import type {
   PromptConstructionResult,
 } from "../../../../modules/prompt-construction";
 import type {
+  MemoryRetrieveInput,
+  MemoryRetrieveResult,
+} from "../../../../modules/memory";
+import type {
   RepositoryContextPipelineInput,
   RepositoryContextPipelineResult,
 } from "../../../../modules/repository-context";
@@ -21,6 +25,10 @@ import type {
 } from "../../../../modules/repository-state";
 import type { CreateUserRequestInput, UserRequestEnvelope } from "../../../../modules/request-intake";
 import type { RequestUnderstandingResult } from "../../../../modules/request-understanding";
+import type {
+  SkillsSelectInput,
+  SkillsSelectResult,
+} from "../../../../modules/skills";
 import type {
   ToolApprovalToken,
   ToolExecuteOptions,
@@ -60,6 +68,14 @@ export interface AgentEnginePromptPort {
   construct(input: PromptConstructionInput): PromptConstructionResult;
 }
 
+export interface AgentEngineSkillsPort {
+  select(input: SkillsSelectInput): Promise<SkillsSelectResult>;
+}
+
+export interface AgentEngineMemoryPort {
+  retrieve(input: MemoryRetrieveInput): Promise<MemoryRetrieveResult>;
+}
+
 export interface AgentEngineRepositoryStatePort {
   pin(input: PinRepositoryStateInput): Promise<PinRepositoryStateResult>;
   unpin(input: UnpinRepositoryStateInput): Promise<UnpinRepositoryStateResult>;
@@ -91,6 +107,7 @@ export interface AgentEngineVerificationPort {
 /**
  * Dependencies injected by the Application layer / tests.
  * Engine coordinates these public facades; it does not reimplement them.
+ * Skills and Memory are optional — omitting either leaves the core loop intact.
  */
 export interface AgentEngineDependencies {
   intake: AgentEngineIntakePort;
@@ -98,6 +115,8 @@ export interface AgentEngineDependencies {
   decision: AgentEngineDecisionPort;
   prompt: AgentEnginePromptPort;
   llm: LlmPort;
+  skills?: AgentEngineSkillsPort;
+  memory?: AgentEngineMemoryPort;
   repositoryState?: AgentEngineRepositoryStatePort;
   repositoryContext?: AgentEngineRepositoryContextPort;
   tools?: AgentEngineToolRuntimePort;

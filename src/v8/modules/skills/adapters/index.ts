@@ -1,0 +1,1 @@
+export { InMemorySkillsCatalog } from "./InMemorySkillsCatalog";

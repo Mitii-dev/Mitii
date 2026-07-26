@@ -52,14 +52,14 @@ PromptConstructionInput
 - Every included block has provenance and a trust level.
 - Repository and tool content are wrapped as `trust="untrusted_data"` evidence.
 - Omitted/truncated content is reported by section with stable reasons.
-- Skills and memory are accepted as budgeted instruction slots; selection remains deferred.
+- Skills and memory are accepted as budgeted instruction slots; Engine selects them via the `skills` and `memory` modules.
 
 ## Do not put here
 
 - Hybrid retrieval or index access (`repository-context`)
 - Model invocation (`model-gateway`)
 - Tool execution (`tool-runtime`)
-- Skill/memory selection policy (deferred modules)
+- Skill/memory selection policy (`skills` / `memory`)
 - Agent run loop (`agent-engine`)
 
 ## Tests

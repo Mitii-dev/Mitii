@@ -125,6 +125,39 @@ export type {
   VerificationManifestReaderPort,
 } from "./modules/verification";
 
+export { SkillsPipeline } from "./modules/skills";
+export {
+  skillsSelectInputSchema,
+  skillsSelectResultSchema,
+  skillDescriptorSchema,
+  InMemorySkillsCatalog,
+  SKILLS_SCHEMA_VERSION,
+} from "./modules/skills";
+export type {
+  SkillsSelectInput,
+  SkillsSelectResult,
+  SkillDescriptor,
+  SkillsCatalogPort,
+} from "./modules/skills";
+
+export { MemoryPipeline } from "./modules/memory";
+export {
+  memoryRetrieveInputSchema,
+  memoryRetrieveResultSchema,
+  memoryCommitInputSchema,
+  memoryCommitResultSchema,
+  InMemoryMemoryStore,
+  MEMORY_SCHEMA_VERSION,
+} from "./modules/memory";
+export type {
+  MemoryRetrieveInput,
+  MemoryRetrieveResult,
+  MemoryCommitInput,
+  MemoryCommitResult,
+  MemoryFact,
+  MemoryStorePort,
+} from "./modules/memory";
+
 export { AgentEnginePipeline } from "./engine/agent-engine";
 export {
   agentEngineStartInputSchema,

@@ -16,7 +16,7 @@ tool enforcement, or verification algorithms.
 | Export | Role |
 |--------|------|
 | `AgentEnginePipeline` | Public facade (`start`, `resume`) |
-| `composeReadOnlyAgentEngine` | Wire real Intake/Understand/Decide/Prompt (+ optional State/Context/Tools/Verification/CheckpointStore) |
+| `composeReadOnlyAgentEngine` | Wire real Intake/Understand/Decide/Prompt (+ optional State/Context/Tools/Verification/CheckpointStore/Skills/Memory) |
 | `agentEngineStartInputSchema` / `AgentEngineStartInput` | Boundary input for `start` |
 | `agentEngineResumeInputSchema` / `AgentEngineResumeInput` | Boundary input for `resume` |
 | `agentRunResultSchema` / `AgentRunResult` | Terminal result |
@@ -34,6 +34,8 @@ const engine = composeReadOnlyAgentEngine({
   tools,
   verification,
   checkpointStore: new InMemoryRunCheckpointStore(),
+  skillsCatalog: new InMemorySkillsCatalog([...]),
+  memoryStore: new InMemoryMemoryStore([...]),
 });
 
 const handle = engine.start({
@@ -69,10 +71,11 @@ if (result.status === "suspended" && result.suspension?.kind === "approval_requi
 }
 ```
 
-## Flow (Phase 8)
+## Flow (Phase 8/9)
 
 ```text
 Intake → Understand → Decide → pin Repository State
+  → select Skills (optional) → retrieve Memory (optional)
   → retrieve Context → construct Prompt → invoke Model
   → execute authorized Tools (read-only or mutating) as needed
   → verify changes (when required) → produce Result
@@ -116,6 +119,8 @@ back via `tools.rollbackMutation` and the run finishes `failed`
 - Intent classifiers / task analyzers (`request-understanding`)
 - Route/grant authority (`decision-policy`)
 - Retrieval/indexing (`repository-context` / `repository-state`)
+- Skill selection / conflict resolution (`skills`)
+- Memory retrieval / retention (`memory`)
 - Prompt budgeting (`prompt-construction`)
 - Tool schema enforcement, mutation transactions, rollback (`tool-runtime`)
 - Verification algorithms (`verification`)
