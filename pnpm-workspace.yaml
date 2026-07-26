@@ -1,6 +1,7 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+  - 'apps/vscode/webview-ui'
   - 'tests'
   - 'tests/benchmark'
 

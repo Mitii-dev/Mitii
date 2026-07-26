@@ -53,6 +53,9 @@ export interface VscodePortResolution {
 /**
  * Compose LLM ports from mitii.* settings + SecretStorage / env.
  * Secrets never come from settings JSON defaults.
+ *
+ * openai-compatible does **not** require an API key (Ollama / LM Studio).
+ * Only echo forces the local stub ports.
  */
 export async function resolveVscodePorts(
   vs: typeof vscode,
@@ -60,26 +63,27 @@ export async function resolveVscodePorts(
 ): Promise<VscodePortResolution> {
   const cfg = vs.workspace.getConfiguration('mitii');
   const providerType = cfg.get<string>('provider.type') ?? 'echo';
-  const model = cfg.get<string>('provider.model') ?? 'gpt-4o-mini';
-  const baseUrl = cfg.get<string>('provider.baseUrl') ?? undefined;
+  const model = cfg.get<string>('provider.model') ?? 'qwen3-coder:30b';
+  const baseUrl =
+    cfg.get<string>('provider.baseUrl')?.trim() ||
+    'http://localhost:11434/v1';
   const workspaceId = 'vscode_workspace';
 
-  const forceEcho = providerType === 'echo';
   const secretKey =
     (await secrets.get('mitii.provider.apiKey')) ??
     process.env.MITII_API_KEY ??
     process.env.OPENAI_API_KEY;
 
-  if (!forceEcho && secretKey) {
+  if (providerType === 'openai-compatible') {
     const runLlm = new OpenAiCompatibleLlmPort({
       model,
-      apiKey: secretKey,
-      ...(baseUrl ? { baseUrl } : {}),
+      baseUrl,
+      ...(secretKey ? { apiKey: secretKey } : {}),
     });
     const understandingLlm = new OpenAiCompatibleLlmPort({
       model,
-      apiKey: secretKey,
-      ...(baseUrl ? { baseUrl } : {}),
+      baseUrl,
+      ...(secretKey ? { apiKey: secretKey } : {}),
       capabilities: { supportsStructuredOutput: true },
     });
     return {
@@ -93,7 +97,7 @@ export async function resolveVscodePorts(
   return {
     understandingLlm: new LocalUnderstandingLlmPort(),
     runLlm: new EchoLlmPort(),
-    providerLabel: forceEcho || !secretKey ? 'echo' : 'echo',
+    providerLabel: 'echo',
     workspaceId,
   };
 }

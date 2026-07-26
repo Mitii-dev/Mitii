@@ -7,15 +7,19 @@ pnpm --filter @mitii/vscode build
 pnpm --filter @mitii/vscode package
 ```
 
-## Phase 17 host surface
+## Host surface
 
-- `@mitii/sdk` only (no legacy kernel / ThunderController)
-- Chat: InputBox + Output Channel + sidebar WebviewView
-- Cancel / clarify / approve via progress + QuickInput
-- Provider settings: `mitii.provider.type|baseUrl|model` (echo or openai-compatible)
-- API key: `Mitii: Set Provider API Key` → SecretStorage `mitii.provider.apiKey`, or env
-- Default in-memory skills catalog via SDK `createDefaultSkillsCatalog`
+- `@mitii/sdk` only (no legacy kernel)
+- Premium React sidebar (`webview-ui`): Chat | Settings
+- Modes: Ask / Plan / Agent, `@` context pins, live activity stream
+- Settings tabs: Workspace · Index · Provider · MCP
+- Cancel / clarify / approve in-chat (fallback QuickInput on non-webview runs)
+- Provider settings: `mitii.provider.type|baseUrl|model` (openai-compatible works without API key for Ollama/LM Studio)
+- Provider UI: model dropdown, Test connection (`GET /models` / chat ping), session token meter
+- UI prefs: `mitii.ui.showReasoning|reasoningPreviewMaxChars|depth`
+- Workspace override: `mitii.workspace.rootPathOverride`
+- MCP: `mitii.mcp` + `.mitii/mcp.json`
+- API key: `Mitii: Set Provider API Key` → SecretStorage `mitii.provider.apiKey` (required for cloud endpoints only)
 - Index / commit-message / session export commands
-- Full React `webview-ui` polish deferred
 
 F5: `docs/INITIAL_LAUNCH.md` · Release: `docs/RELEASE.md`

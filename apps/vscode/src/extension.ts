@@ -9,6 +9,7 @@ import type { MitiiClient } from '@mitii/sdk';
 
 import { runAskInOutputChannel } from './hostAsk.js';
 import { createVscodeClient } from './ports.js';
+import type { IndexStatusSnapshot } from './protocol.js';
 import { buildSessionExport } from './runReport.js';
 import { MitiiSidebarProvider } from './sidebar.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
@@ -16,7 +17,7 @@ import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 const execFileAsync = promisify(execFile);
 
 /**
- * Phase 15/17 host package: activation composes @mitii/sdk only.
+ * VS Code host: activation composes @mitii/sdk and serves the React sidebar.
  */
 export function activate(context: ExtensionContext): void {
   const channel = vscode.window.createOutputChannel('Mitii');
@@ -62,7 +63,7 @@ export function activate(context: ExtensionContext): void {
     invalidateClient();
     channel.appendLine('[mitii] SecretStorage mitii.provider.apiKey updated');
     void vscode.window.showInformationMessage(
-      'Mitii API key saved. Set mitii.provider.type to openai-compatible to use it.',
+      'Mitii API key saved. Use Provider → openai-compatible for cloud APIs; local Ollama does not need a key.',
     );
   };
 
@@ -73,78 +74,67 @@ export function activate(context: ExtensionContext): void {
     void vscode.window.showInformationMessage('Mitii API key cleared.');
   };
 
-  const openChat = async (): Promise<void> => {
-    const prompt = await vscode.window.showInputBox({
-      prompt: 'Ask Mitii',
-      placeHolder: 'What should Mitii answer?',
-      ignoreFocusOut: true,
-    });
-    if (!prompt?.trim()) return;
-    const c = await ensureClient();
-    try {
-      const outcome = await runAskInOutputChannel({
-        vs: vscode,
-        client: c,
-        prompt: prompt.trim(),
-        workspaceRoot: workspaceRoot(),
-        channel,
-      });
-      if (outcome.result.status === 'cancelled') {
-        void vscode.window.showWarningMessage('Mitii run cancelled.');
-      } else if (outcome.result.status === 'failed') {
-        void vscode.window.showErrorMessage(
-          outcome.result.error?.message ?? 'Mitii run failed.',
-        );
-      } else if (outcome.result.status === 'completed') {
-        void vscode.window.showInformationMessage('Mitii ask completed.');
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      channel.appendLine(`[error] ${message}`);
-      void vscode.window.showErrorMessage(`Mitii ask failed: ${message}`);
-    }
-  };
+  let sidebar: MitiiSidebarProvider;
 
-  const indexWorkspace = async (): Promise<void> => {
-    const root = workspaceRoot();
+  const indexWorkspace = async (): Promise<IndexStatusSnapshot> => {
+    const root =
+      vscode.workspace
+        .getConfiguration('mitii')
+        .get<string>('workspace.rootPathOverride')
+        ?.trim() || workspaceRoot();
     if (!root) {
       void vscode.window.showWarningMessage('Open a folder to index.');
-      return;
+      return {
+        fileCount: 0,
+        truncated: false,
+        message: 'Open a workspace folder to index',
+      };
+    }
+    if (sidebar) {
+      const status = await sidebar.publishIndexSnapshot();
+      void vscode.window.showInformationMessage(
+        status.message ?? 'Mitii index updated.',
+      );
+      return status;
     }
     const c = await ensureClient();
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: 'Mitii: indexing workspace',
-        cancellable: false,
-      },
-      async () => {
-        const snapshot = await buildWorkspaceSnapshot({
-          workspaceRoot: root,
-          workspaceId,
-        });
-        const published = await c.publishRepositoryState(snapshot.candidate);
-        if (published.status === 'published') {
-          const dir = join(root, '.mitii');
-          mkdirSync(dir, { recursive: true });
-          writeFileSync(
-            join(dir, 'last-repository-state.json'),
-            `${JSON.stringify(published.descriptor, null, 2)}\n`,
-          );
-          channel.appendLine(
-            `[index] readiness=${published.descriptor.readiness} token=${published.reference.stateToken.slice(0, 16)}… files=${snapshot.fileCount}`,
-          );
-          for (const reason of published.descriptor.reasons) {
-            channel.appendLine(`[index] ${reason.code}: ${reason.message}`);
-          }
-          void vscode.window.showInformationMessage(
-            `Mitii indexed (${published.descriptor.readiness}).`,
-          );
-        } else {
-          void vscode.window.showErrorMessage('Mitii index failed.');
-        }
-      },
-    );
+    const snapshot = await buildWorkspaceSnapshot({
+      workspaceRoot: root,
+      workspaceId,
+    });
+    const published = await c.publishRepositoryState(snapshot.candidate);
+    if (published.status === 'published') {
+      const dir = join(root, '.mitii');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, 'last-repository-state.json'),
+        `${JSON.stringify(published.descriptor, null, 2)}\n`,
+      );
+      channel.appendLine(
+        `[index] readiness=${published.descriptor.readiness} token=${published.reference.stateToken.slice(0, 16)}… files=${snapshot.fileCount}`,
+      );
+      void vscode.window.showInformationMessage(
+        `Mitii indexed (${published.descriptor.readiness}).`,
+      );
+      return {
+        fileCount: snapshot.fileCount,
+        truncated: snapshot.truncated,
+        readiness: published.descriptor.readiness,
+        stateTokenPreview: published.reference.stateToken.slice(0, 16),
+        lastIndexedAt: published.descriptor.generatedAt,
+        message: `Indexed ${snapshot.fileCount} files`,
+      };
+    }
+    void vscode.window.showErrorMessage('Mitii index failed.');
+    return {
+      fileCount: snapshot.fileCount,
+      truncated: snapshot.truncated,
+      message: 'Index publish failed',
+    };
+  };
+
+  const openChat = async (): Promise<void> => {
+    await vscode.commands.executeCommand('mitii.sidebar.focus');
   };
 
   const generateCommitMessage = async (): Promise<void> => {
@@ -209,20 +199,28 @@ export function activate(context: ExtensionContext): void {
     void vscode.window.showInformationMessage(`Exported session to ${outPath}`);
   };
 
-  const sidebar = new MitiiSidebarProvider(
+  sidebar = new MitiiSidebarProvider(
     vscode,
+    context.extensionUri,
     ensureClient,
     workspaceRoot,
+    () => workspaceId,
     channel,
+    context.secrets,
+    invalidateClient,
+    indexWorkspace,
   );
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       MitiiSidebarProvider.viewType,
       sidebar,
+      { webviewOptions: { retainContextWhenHidden: true } },
     ),
     vscode.commands.registerCommand('mitii.openChat', openChat),
-    vscode.commands.registerCommand('mitii.indexWorkspace', indexWorkspace),
+    vscode.commands.registerCommand('mitii.indexWorkspace', async () => {
+      await indexWorkspace();
+    }),
     vscode.commands.registerCommand(
       'mitii.generateCommitMessage',
       generateCommitMessage,
@@ -232,21 +230,25 @@ export function activate(context: ExtensionContext): void {
     vscode.commands.registerCommand('mitii.setApiKey', setApiKey),
     vscode.commands.registerCommand('mitii.clearApiKey', clearApiKey),
     vscode.commands.registerCommand('mitii.showSettings', async () => {
-      // Query by setting prefix so it works regardless of npm-scoped package name.
-      await vscode.commands.executeCommand(
-        'workbench.action.openSettings',
-        '@id:mitii.provider.type',
-      );
+      await vscode.commands.executeCommand('mitii.sidebar.focus');
+      sidebar.post({ type: 'openSettings', tab: 'settings' });
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration('mitii.provider')) {
-        invalidateClient();
-        channel.appendLine('[mitii] provider settings changed; client will recompose');
+      if (
+        event.affectsConfiguration('mitii.provider') ||
+        event.affectsConfiguration('mitii.workspace') ||
+        event.affectsConfiguration('mitii.mcp') ||
+        event.affectsConfiguration('mitii.ui')
+      ) {
+        if (event.affectsConfiguration('mitii.provider')) {
+          invalidateClient();
+          channel.appendLine('[mitii] provider settings changed; client will recompose');
+        }
+        void sidebar.refreshBootstrap();
       }
     }),
   );
 
-  // Warm client so sidebar asks work after first openChat/index.
   void ensureClient().catch((error) => {
     channel.appendLine(
       `[mitii] client init deferred: ${error instanceof Error ? error.message : String(error)}`,

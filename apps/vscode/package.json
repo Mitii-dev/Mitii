@@ -37,6 +37,13 @@
     "onCommand:mitii.clearApiKey"
   ],
   "main": "./dist/extension.js",
+  "files": [
+    "dist/extension.js",
+    "dist/webview/**/*",
+    "media/**/*",
+    "README.md",
+    "package.json"
+  ],
   "contributes": {
     "commands": [
       {
@@ -134,13 +141,50 @@
           "type": "string",
           "default": "qwen3-coder:30b",
           "description": "Model name"
+        },
+        "mitii.workspace.rootPathOverride": {
+          "type": "string",
+          "default": "",
+          "description": "Optional workspace root override used for indexing and agent runs"
+        },
+        "mitii.ui.showReasoning": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show live reasoning / thinking activity in the Mitii chat UI"
+        },
+        "mitii.ui.reasoningPreviewMaxChars": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 500,
+          "maximum": 50000,
+          "description": "Maximum characters retained in the reasoning preview stream"
+        },
+        "mitii.ui.depth": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "quick",
+            "deep"
+          ],
+          "default": "auto",
+          "description": "Default planning depth hint for chat turns"
+        },
+        "mitii.mcp": {
+          "type": "object",
+          "default": {
+            "enabled": false,
+            "servers": []
+          },
+          "description": "MCP enable flag and server list (also mirrored to .mitii/mcp.json)"
         }
       }
     }
   },
   "scripts": {
     "build": "node scripts/build-extension.cjs",
+    "build:webview": "pnpm --filter @mitii/vscode-webview build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:webview": "pnpm --filter @mitii/vscode-webview typecheck",
     "package": "pnpm run build && pnpm exec vsce package --no-dependencies"
   },
   "dependencies": {

@@ -1,13 +1,39 @@
 const { build } = require('esbuild');
+const { spawnSync } = require('node:child_process');
 const { createRequire } = require('node:module');
-const { mkdirSync } = require('node:fs');
+const { mkdirSync, existsSync } = require('node:fs');
 const { dirname, join } = require('node:path');
 
 const root = join(__dirname, '..');
 const outfile = join(root, 'dist/extension.js');
+const webviewDir = join(root, 'webview-ui');
 const requireFromApp = createRequire(join(root, 'package.json'));
 
+function buildWebview() {
+  const viteBin = join(webviewDir, 'node_modules', 'vite', 'bin', 'vite.js');
+  const pnpmArgs = ['exec', 'vite', 'build'];
+  const useLocalVite = existsSync(viteBin);
+  const result = useLocalVite
+    ? spawnSync(process.execPath, [viteBin, 'build'], {
+        cwd: webviewDir,
+        stdio: 'inherit',
+        env: process.env,
+      })
+    : spawnSync('pnpm', pnpmArgs, {
+        cwd: webviewDir,
+        stdio: 'inherit',
+        env: process.env,
+        shell: process.platform === 'win32',
+      });
+  if (result.status !== 0) {
+    throw new Error('webview build failed');
+  }
+  console.log(`built ${join(root, 'dist/webview')}`);
+}
+
 mkdirSync(dirname(outfile), { recursive: true });
+
+buildWebview();
 
 build({
   absWorkingDir: root,
@@ -23,8 +49,6 @@ build({
     {
       name: 'workspace-node-resolve',
       setup(buildApi) {
-        // Resolve bare imports via this package's pnpm links so a user-home
-        // Yarn .pnp.cjs cannot veto workspace packages.
         buildApi.onResolve({ filter: /^[^./]/ }, (args) => {
           if (args.path === 'vscode' || args.path.startsWith('node:')) {
             return { path: args.path, external: true };
