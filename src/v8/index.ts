@@ -84,3 +84,18 @@ export {
   MODEL_PROVIDER_SUPPORT,
   modelEventSchema,
 } from "./modules/model-gateway";
+
+export { ToolRuntimePipeline } from "./modules/tool-runtime";
+export {
+  toolInvocationInputSchema,
+  toolResultSchema,
+  READ_ONLY_TOOL_IDS,
+  NodeWorkspaceFileSystemAdapter,
+  NodeProcessAdapter,
+} from "./modules/tool-runtime";
+export type {
+  ToolInvocationInput,
+  ToolResult,
+  ToolRuntimePorts,
+  ToolCapabilityDescriptor,
+} from "./modules/tool-runtime";

@@ -64,7 +64,9 @@ export function buildToolGrant(params: {
       toolGrant: {
         maximumWorkspaceEffect: "read",
         allowedTools: [...READ_ONLY_TOOL_IDS],
-        allowedEffects: ["workspace_read"],
+        // process_execute is required so Tool Runtime can run argv-only
+        // read-only commands covered by commandRules; it is not write authority.
+        allowedEffects: ["workspace_read", "process_execute"],
         pathScopes,
         commandRules: [
           {

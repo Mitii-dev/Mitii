@@ -12,9 +12,10 @@ const PUBLIC_MODULES = [
   'repository-context',
   'decision-policy',
   'model-gateway',
+  'tool-runtime',
 ] as const;
 
-describe('v8 module boundaries (Phase 0/1/2/3)', () => {
+describe('v8 module boundaries (Phase 0/1/2/3/4)', () => {
   it('places all runtime code under src/v8/modules/', () => {
     expect(existsSync(modulesRoot)).toBe(true);
     expect(existsSync(join(repoRoot, 'src/v8/core'))).toBe(false);
@@ -40,10 +41,25 @@ describe('v8 module boundaries (Phase 0/1/2/3)', () => {
     expect(index).toContain('OpenAiCompatibleLlmPort');
     expect(index).toContain('MODEL_PROVIDER_SUPPORT');
     expect(index).toContain('LanguageProfileRegistry');
+    expect(index).toContain('ToolRuntimePipeline');
+    expect(index).toContain('toolInvocationInputSchema');
+    expect(index).toContain('toolResultSchema');
     expect(index).not.toContain('IntentRouter');
     expect(index).not.toContain('TaskAnalyzer');
     expect(index).not.toContain('resolveRoute');
     expect(index).not.toContain('export *');
+  });
+
+  it('keeps tool-runtime actions private at the module root', () => {
+    const index = readFileSync(
+      join(modulesRoot, 'tool-runtime/index.ts'),
+      'utf8',
+    );
+    expect(index).toContain('ToolRuntimePipeline');
+    expect(index).toContain('toolResultSchema');
+    expect(index).not.toContain('export * from "./actions"');
+    expect(index).not.toContain('validateToolAgainstGrant');
+    expect(index).not.toContain('executeReadFile');
   });
 
   it('keeps request-understanding classifiers private at the module root', () => {
@@ -94,7 +110,7 @@ describe('v8 module boundaries (Phase 0/1/2/3)', () => {
       const content = readFileSync(file, 'utf8');
       for (const line of content.split(/\r?\n/)) {
         const match = line.match(
-          /from ['"]((?:\.\.\/)+)(request-intake|request-understanding|repository-state|repository-context|decision-policy|model-gateway)\/internal\//,
+          /from ['"]((?:\.\.\/)+)(request-intake|request-understanding|repository-state|repository-context|decision-policy|model-gateway|tool-runtime)\/internal\//,
         );
         if (!match) continue;
 
