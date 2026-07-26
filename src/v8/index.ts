@@ -57,6 +57,20 @@ export type {
   RepositoryContextStateResolverPort,
 } from "./modules/repository-context";
 
+export { DecisionPolicyPipeline } from "./modules/decision-policy";
+export {
+  decisionPolicyInputSchema,
+  executionDecisionSchema,
+  toolGrantSchema,
+} from "./modules/decision-policy";
+export type {
+  DecisionPolicyInput,
+  ExecutionDecision,
+  ExecutionRoute,
+  PlanningDepth,
+  ToolGrant,
+} from "./modules/decision-policy";
+
 export type {
   LlmPort,
   ModelRequest,

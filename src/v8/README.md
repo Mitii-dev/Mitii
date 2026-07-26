@@ -2,8 +2,8 @@
 
 V8 is the headless capability plane for the Engine runtime. Phase 0 consolidated
 code under `modules/`. Phase 1 completed public contracts. Phase 2 completed
-authoritative repository state publication, state-reference-only context intake,
-and baseline language conformance.
+authoritative repository state publication. Phase 3 completed Decision Policy
+for deterministic route, planning-depth, and tool-grant authority.
 
 ## Module layout
 
@@ -13,6 +13,7 @@ src/v8/modules/
 ├── request-understanding/   RequestUnderstandingPipeline (intent + task analysis)
 ├── repository-state/        RepositoryStatePipeline + WorkspaceIndexingPipeline + language registry
 ├── repository-context/      RepositoryContextPipeline (state ref → retrieval → selection → assembly)
+├── decision-policy/         DecisionPolicyPipeline (route + grant + verification policy)
 └── model-gateway/           LlmPort + Echo / OpenAI-compatible adapters
 ```
 
@@ -24,6 +25,7 @@ src/v8/modules/
 | `request-understanding` | `RequestUnderstandingPipeline` | `UserRequestEnvelope` → `RequestUnderstandingResult` |
 | `repository-state` | `RepositoryStatePipeline` | candidate → published `RepositoryStateReference` |
 | `repository-context` | `RepositoryContextPipeline` | `RepositoryStateReference` + query → context result |
+| `decision-policy` | `DecisionPolicyPipeline` | envelope + understanding → `ExecutionDecision` |
 
 ## Import policy
 
@@ -35,6 +37,7 @@ import {
   RequestUnderstandingPipeline,
   RepositoryStatePipeline,
   RepositoryContextPipeline,
+  DecisionPolicyPipeline,
   EchoLlmPort,
   OpenAiCompatibleLlmPort,
   MODEL_PROVIDER_SUPPORT,

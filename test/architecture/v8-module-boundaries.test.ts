@@ -10,10 +10,11 @@ const PUBLIC_MODULES = [
   'request-understanding',
   'repository-state',
   'repository-context',
+  'decision-policy',
   'model-gateway',
 ] as const;
 
-describe('v8 module boundaries (Phase 0/1/2)', () => {
+describe('v8 module boundaries (Phase 0/1/2/3)', () => {
   it('places all runtime code under src/v8/modules/', () => {
     expect(existsSync(modulesRoot)).toBe(true);
     expect(existsSync(join(repoRoot, 'src/v8/core'))).toBe(false);
@@ -32,12 +33,16 @@ describe('v8 module boundaries (Phase 0/1/2)', () => {
     expect(index).toContain('RepositoryContextPipeline');
     expect(index).toContain('repositoryContextPipelineInputSchema');
     expect(index).not.toContain('buildPublishCandidateFromIndexing');
+    expect(index).toContain('DecisionPolicyPipeline');
+    expect(index).toContain('decisionPolicyInputSchema');
+    expect(index).toContain('executionDecisionSchema');
     expect(index).toContain('EchoLlmPort');
     expect(index).toContain('OpenAiCompatibleLlmPort');
     expect(index).toContain('MODEL_PROVIDER_SUPPORT');
     expect(index).toContain('LanguageProfileRegistry');
     expect(index).not.toContain('IntentRouter');
     expect(index).not.toContain('TaskAnalyzer');
+    expect(index).not.toContain('resolveRoute');
     expect(index).not.toContain('export *');
   });
 
@@ -52,6 +57,19 @@ describe('v8 module boundaries (Phase 0/1/2)', () => {
     expect(index).not.toContain('LlmIntentClassifier');
     expect(index).not.toContain('export { IntentRouter');
     expect(index).not.toContain('export { TaskAnalyzer');
+  });
+
+  it('keeps decision-policy actions private at the module root', () => {
+    const index = readFileSync(
+      join(modulesRoot, 'decision-policy/index.ts'),
+      'utf8',
+    );
+    expect(index).toContain('DecisionPolicyPipeline');
+    expect(index).toContain('executionDecisionSchema');
+    expect(index).not.toContain('export * from "./actions"');
+    expect(index).not.toContain('resolveRoute');
+    expect(index).not.toContain('buildToolGrant');
+    expect(index).not.toContain('scanPromptInjection');
   });
 
   it('does not import features/ce or legacy host code from v8 modules', () => {
@@ -76,7 +94,7 @@ describe('v8 module boundaries (Phase 0/1/2)', () => {
       const content = readFileSync(file, 'utf8');
       for (const line of content.split(/\r?\n/)) {
         const match = line.match(
-          /from ['"]((?:\.\.\/)+)(request-intake|request-understanding|repository-state|repository-context|model-gateway)\/internal\//,
+          /from ['"]((?:\.\.\/)+)(request-intake|request-understanding|repository-state|repository-context|decision-policy|model-gateway)\/internal\//,
         );
         if (!match) continue;
 
