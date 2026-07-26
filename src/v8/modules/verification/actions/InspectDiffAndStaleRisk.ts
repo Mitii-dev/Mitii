@@ -1,6 +1,6 @@
 import type { ToolGrant } from "../../decision-policy";
 import type { RepositoryStateReference } from "../../repository-state";
-import { TOOL_RUNTIME_SCHEMA_VERSION } from "../../tool-runtime";
+import { TOOL_RUNTIME_SCHEMA_VERSION } from "../../../engine/tool-runtime";
 
 import type {
   VerificationCheckResult,

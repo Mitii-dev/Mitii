@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { ToolInvocationInput, ToolResult } from "../../tool-runtime";
-import { TOOL_RUNTIME_SCHEMA_VERSION } from "../../tool-runtime";
+import type { ToolInvocationInput, ToolResult } from "../../../engine/tool-runtime";
+import { TOOL_RUNTIME_SCHEMA_VERSION } from "../../../engine/tool-runtime";
 
 import { InMemoryManifestReader } from "..";
 import type { VerificationToolExecutorPort } from "../contracts";

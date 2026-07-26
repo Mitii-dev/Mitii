@@ -96,20 +96,20 @@ export {
   modelEventSchema,
 } from "./modules/model-gateway";
 
-export { ToolRuntimePipeline } from "./modules/tool-runtime";
+export { ToolRuntimePipeline } from "./engine/tool-runtime";
 export {
   toolInvocationInputSchema,
   toolResultSchema,
   READ_ONLY_TOOL_IDS,
   NodeWorkspaceFileSystemAdapter,
   NodeProcessAdapter,
-} from "./modules/tool-runtime";
+} from "./engine/tool-runtime";
 export type {
   ToolInvocationInput,
   ToolResult,
   ToolRuntimePorts,
   ToolCapabilityDescriptor,
-} from "./modules/tool-runtime";
+} from "./engine/tool-runtime";
 
 export { VerificationPipeline } from "./modules/verification";
 export {
@@ -125,7 +125,7 @@ export type {
   VerificationManifestReaderPort,
 } from "./modules/verification";
 
-export { AgentEnginePipeline } from "./modules/agent-engine";
+export { AgentEnginePipeline } from "./engine/agent-engine";
 export {
   agentEngineStartInputSchema,
   agentEngineResumeInputSchema,
@@ -134,7 +134,7 @@ export {
   AGENT_ENGINE_SCHEMA_VERSION,
   composeReadOnlyAgentEngine,
   InMemoryRunCheckpointStore,
-} from "./modules/agent-engine";
+} from "./engine/agent-engine";
 export type {
   AgentEngineStartInput,
   AgentEngineResumeInput,
@@ -143,4 +143,4 @@ export type {
   RunEvent,
   AgentEngineDependencies,
   ComposeReadOnlyAgentEngineOptions,
-} from "./modules/agent-engine";
+} from "./engine/agent-engine";

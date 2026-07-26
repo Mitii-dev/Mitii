@@ -1,7 +1,7 @@
 import type {
   ToolInvocationInput,
   ToolResult,
-} from "../../../tool-runtime";
+} from "../../../../engine/tool-runtime";
 
 /**
  * Thin port over Tool Runtime's public facade.

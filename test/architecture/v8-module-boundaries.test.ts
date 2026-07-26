@@ -1,9 +1,10 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
-import { join, relative } from 'path';
+import { dirname, join, relative } from 'path';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = process.cwd();
 const modulesRoot = join(repoRoot, 'src/v8/modules');
+const engineRoot = join(repoRoot, 'src/v8/engine');
 
 const PUBLIC_MODULES = [
   'request-intake',
@@ -13,14 +14,31 @@ const PUBLIC_MODULES = [
   'decision-policy',
   'prompt-construction',
   'model-gateway',
-  'tool-runtime',
   'verification',
-  'agent-engine',
 ] as const;
 
-describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7)', () => {
-  it('places all runtime code under src/v8/modules/', () => {
+const PUBLIC_ENGINE_COMPONENTS = [
+  'agent-engine',
+  'tool-runtime',
+] as const;
+
+const PUBLIC_ROOTS = [
+  ...PUBLIC_MODULES.map((name) => ({
+    name,
+    root: join(modulesRoot, name),
+  })),
+  ...PUBLIC_ENGINE_COMPONENTS.map((name) => ({
+    name,
+    root: join(engineRoot, name),
+  })),
+] as const;
+
+describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8)', () => {
+  it('places business modules and engine components under their canonical roots', () => {
     expect(existsSync(modulesRoot)).toBe(true);
+    expect(existsSync(engineRoot)).toBe(true);
+    expect(existsSync(join(modulesRoot, 'agent-engine'))).toBe(false);
+    expect(existsSync(join(modulesRoot, 'tool-runtime'))).toBe(false);
     expect(existsSync(join(repoRoot, 'src/v8/core'))).toBe(false);
     expect(existsSync(join(repoRoot, 'src/v8/repository'))).toBe(false);
     expect(existsSync(join(repoRoot, 'src/v8/intent'))).toBe(false);
@@ -66,7 +84,7 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7)', () => {
 
   it('keeps agent-engine actions private at the module root', () => {
     const index = readFileSync(
-      join(modulesRoot, 'agent-engine/index.ts'),
+      join(engineRoot, 'agent-engine/index.ts'),
       'utf8',
     );
     expect(index).toContain('AgentEnginePipeline');
@@ -91,7 +109,7 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7)', () => {
 
   it('keeps tool-runtime actions private at the module root', () => {
     const index = readFileSync(
-      join(modulesRoot, 'tool-runtime/index.ts'),
+      join(engineRoot, 'tool-runtime/index.ts'),
       'utf8',
     );
     expect(index).toContain('ToolRuntimePipeline');
@@ -142,10 +160,9 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7)', () => {
   it('blocks other modules from importing agent-engine', () => {
     const violations: string[] = [];
 
-    for (const file of listTypeScriptFiles(modulesRoot)) {
-      const relFile = relative(modulesRoot, file);
-      const owningModule = relFile.split('/')[0];
-      if (owningModule === 'agent-engine') continue;
+    for (const file of listRuntimeTypeScriptFiles()) {
+      const owningUnit = owningPublicUnit(file);
+      if (owningUnit === 'agent-engine') continue;
 
       const content = readFileSync(file, 'utf8');
       for (const [index, line] of content.split(/\r?\n/).entries()) {
@@ -164,12 +181,20 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7)', () => {
   });
 
   it('does not import features/ce or legacy host code from v8 modules', () => {
-    const violations = scanImports(modulesRoot, [
-      /from ['"].*(?:^|\/)features\/ce(?:\/|['"])/,
-      /from ['"](?:\.\.\/)+adapters(?:\/|['"])/,
-      /from ['"]adapters(?:\/|['"])/,
-      /from ['"]vscode['"]/,
-    ]).filter((line) => !line.includes('VsCodeFileSystemAdapter'));
+    const violations = [
+      ...scanImports(modulesRoot, [
+        /from ['"].*(?:^|\/)features\/ce(?:\/|['"])/,
+        /from ['"](?:\.\.\/)+adapters(?:\/|['"])/,
+        /from ['"]adapters(?:\/|['"])/,
+        /from ['"]vscode['"]/,
+      ]),
+      ...scanImports(engineRoot, [
+        /from ['"].*(?:^|\/)features\/ce(?:\/|['"])/,
+        /from ['"](?:\.\.\/)+adapters(?:\/|['"])/,
+        /from ['"]adapters(?:\/|['"])/,
+        /from ['"]vscode['"]/,
+      ]),
+    ].filter((line) => !line.includes('VsCodeFileSystemAdapter'));
 
     expect(violations).toEqual([]);
   });
@@ -177,20 +202,23 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7)', () => {
   it('blocks cross-module internal imports', () => {
     const violations: string[] = [];
 
-    for (const file of listTypeScriptFiles(modulesRoot)) {
-      const relFile = relative(modulesRoot, file);
-      const owningModule = relFile.split('/')[0];
-      if (owningModule === 'model-gateway') continue;
+    for (const file of listRuntimeTypeScriptFiles()) {
+      const owningUnit = owningPublicUnit(file);
+      if (owningUnit === 'model-gateway') continue;
 
       const content = readFileSync(file, 'utf8');
       for (const line of content.split(/\r?\n/)) {
-        const match = line.match(
-          /from ['"]((?:\.\.\/)+)(request-intake|request-understanding|repository-state|repository-context|decision-policy|prompt-construction|model-gateway|tool-runtime|verification|agent-engine)\/internal\//,
-        );
-        if (!match) continue;
+        const specifier = line.match(/from ['"]([^'"]+)['"]/)?.[1];
+        if (!specifier?.startsWith('.')) continue;
 
-        const targetModule = match[2];
-        if (targetModule !== owningModule) {
+        const target = join(dirname(file), specifier);
+        const targetUnit = owningPublicUnit(target);
+        const targetParts = specifier.split('/');
+        if (
+          targetParts.includes('internal') &&
+          targetUnit &&
+          targetUnit !== owningUnit
+        ) {
           violations.push(`${relative(repoRoot, file)}: ${line.trim()}`);
         }
       }
@@ -206,11 +234,18 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7)', () => {
     expect(dirs.sort()).toEqual([...PUBLIC_MODULES].sort());
   });
 
+  it('registers all expected public engine folders', () => {
+    const dirs = readdirSync(engineRoot).filter((entry) =>
+      statSync(join(engineRoot, entry)).isDirectory(),
+    );
+    expect(dirs.sort()).toEqual([...PUBLIC_ENGINE_COMPONENTS].sort());
+  });
+
   it('keeps module root barrels free of wildcard re-exports', () => {
     const violations: string[] = [];
 
-    for (const moduleName of PUBLIC_MODULES) {
-      const indexPath = join(modulesRoot, moduleName, 'index.ts');
+    for (const { root: publicRoot } of PUBLIC_ROOTS) {
+      const indexPath = join(publicRoot, 'index.ts');
       const content = readFileSync(indexPath, 'utf8');
       for (const [index, line] of content.split(/\r?\n/).entries()) {
         if (/^\s*export\s+\*/.test(line)) {
@@ -227,8 +262,8 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7)', () => {
   it('keeps module root barrels free of internal/ and actions/ export paths', () => {
     const violations: string[] = [];
 
-    for (const moduleName of PUBLIC_MODULES) {
-      const indexPath = join(modulesRoot, moduleName, 'index.ts');
+    for (const { root: publicRoot } of PUBLIC_ROOTS) {
+      const indexPath = join(publicRoot, 'index.ts');
       const content = readFileSync(indexPath, 'utf8');
       for (const [index, line] of content.split(/\r?\n/).entries()) {
         if (!/^\s*export\s+/.test(line)) {
@@ -260,6 +295,20 @@ function scanImports(root: string, patterns: readonly RegExp[]): string[] {
           `${relative(repoRoot, file)}:${index + 1}: ${line.trim()}`,
       ),
   );
+}
+
+function owningPublicUnit(file: string): string | undefined {
+  for (const { name, root } of PUBLIC_ROOTS) {
+    const rel = relative(root, file);
+    if (rel === '' || (!rel.startsWith('..') && !rel.startsWith('/'))) {
+      return name;
+    }
+  }
+  return undefined;
+}
+
+function listRuntimeTypeScriptFiles(): string[] {
+  return [modulesRoot, engineRoot].flatMap(listTypeScriptFiles);
 }
 
 function listTypeScriptFiles(root: string): string[] {

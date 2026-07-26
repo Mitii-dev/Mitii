@@ -1,5 +1,5 @@
 import type { ToolGrant } from "../../../decision-policy";
-import { READ_ONLY_TOOL_IDS } from "../../../tool-runtime";
+import { READ_ONLY_TOOL_IDS } from "../../../../engine/tool-runtime";
 
 import type { VerificationInput } from "../../contracts";
 

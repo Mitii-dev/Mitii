@@ -1,24 +1,26 @@
 # V8 Pipeline Library
 
 V8 is the headless capability plane for the Engine runtime. Phase 0 consolidated
-code under `modules/`. Phases 1–7 completed public contracts through the
-single-agent read-only Agent Engine. Phase 8 adds mutation, approval, and
-checkpoints.
+business facades under `modules/`. Phases 1–7 completed public contracts through
+the single-agent read-only Agent Engine. Phase 8 adds mutation, approval, and
+checkpoints. Engine orchestration now lives under `engine/`.
 
 ## Module layout
 
 ```text
-src/v8/modules/
-├── request-intake/          RequestIntakePipeline (mode + envelope)
-├── request-understanding/   RequestUnderstandingPipeline (intent + task analysis)
-├── repository-state/        RepositoryStatePipeline + WorkspaceIndexingPipeline + language registry
-├── repository-context/      RepositoryContextPipeline (state ref → retrieval → selection → assembly)
-├── decision-policy/         DecisionPolicyPipeline (route + grant + verification policy)
-├── prompt-construction/     PromptConstructionPipeline (budgeted ModelRequest)
-├── model-gateway/           LlmPort + Echo / OpenAI-compatible adapters
-├── tool-runtime/            ToolRuntimePipeline (granted tool execution)
-├── verification/            VerificationPipeline (evidence-gated completion)
-└── agent-engine/            AgentEnginePipeline (read-only run orchestration)
+src/v8/
+├── engine/
+│   ├── agent-engine/        AgentEnginePipeline (run orchestration)
+│   └── tool-runtime/        ToolRuntimePipeline (granted tool execution)
+└── modules/
+    ├── request-intake/          RequestIntakePipeline (mode + envelope)
+    ├── request-understanding/   RequestUnderstandingPipeline (intent + task analysis)
+    ├── repository-state/        RepositoryStatePipeline + WorkspaceIndexingPipeline + language registry
+    ├── repository-context/      RepositoryContextPipeline (state ref → retrieval → selection → assembly)
+    ├── decision-policy/         DecisionPolicyPipeline (route + grant + verification policy)
+    ├── prompt-construction/     PromptConstructionPipeline (budgeted ModelRequest)
+    ├── model-gateway/           LlmPort + Echo / OpenAI-compatible adapters
+    └── verification/            VerificationPipeline (evidence-gated completion)
 ```
 
 ## Public pipelines
@@ -37,7 +39,8 @@ src/v8/modules/
 
 ## Import policy
 
-Applications import only from `src/v8/index.ts` or a module's public `index.ts`:
+Applications import only from `src/v8/index.ts`, an engine public `index.ts`, or
+a module's public `index.ts`:
 
 ```ts
 import {
@@ -63,7 +66,7 @@ Never import another module's `internal/` or `actions/` paths from outside that 
 
 ## Tests
 
-Contract and integration specs live under `src/v8/modules/**/tests/` and
+Contract and integration specs live under `src/v8/**/tests/` and
 `*.spec.ts` files. Run them with:
 
 ```bash
