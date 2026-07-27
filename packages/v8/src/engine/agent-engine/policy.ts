@@ -2,7 +2,7 @@ import type { ModelToolDefinition } from "../../modules/model-gateway";
 import {
   listBuiltinMutationModelToolDefinitions,
   listBuiltinReadOnlyModelToolDefinitions,
-} from "../tool-runtime/actions/handlers";
+} from "../tool-runtime";
 
 /**
  * Tunable Agent Engine thresholds for token / truncation recovery.

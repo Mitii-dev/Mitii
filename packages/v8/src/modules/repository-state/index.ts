@@ -12,8 +12,10 @@ export type {
 export {
   InMemoryRepositoryStateStore,
   InMemoryFileSystemAdapter,
+  NodeFileSystemAdapter,
   CharacterTokenEstimator,
   TextSearchService,
+  SqliteTextIndexFactory,
   VectorSearchService,
   EmbeddingVectorValidator,
   WorkspaceIndexingAdapterFactory,

@@ -28,6 +28,8 @@ export {
   RepositoryStatePipeline,
   InMemoryRepositoryStateStore,
   WorkspaceIndexingAdapterFactory,
+  NodeFileSystemAdapter,
+  SqliteTextIndexFactory,
 } from "./modules/repository-state";
 export {
   LANGUAGE_IDS,
@@ -44,6 +46,8 @@ export type {
   LanguageProfile,
   ProjectDescriptor,
   RepositoryStateReference,
+  RepositoryCapabilityStatus,
+  RepositoryRootState,
   RepositoryStateDescriptor,
   PublishRepositoryStateInput,
   PublishRepositoryStateResult,
@@ -51,9 +55,15 @@ export type {
   WorkspaceIndexingAdapterFactoryOptions,
   WorkspaceIndexingPipelineInput,
   WorkspaceIndexingPipelineResult,
+  WorkspaceFileEntry,
 } from "./modules/repository-state";
 
 export { RepositoryContextPipeline } from "./modules/repository-context";
+export {
+  ContextAssemblyFactory,
+  ContextSelector,
+  HybridRetrievalFactory,
+} from "./modules/repository-context";
 export {
   repositoryContextPipelineInputSchema,
   repositoryContextPipelineResultSchema,
@@ -61,6 +71,15 @@ export {
 export type {
   RepositoryContextPipelineInput,
   RepositoryContextPipelineResult,
+  ContextAssemblyInput,
+  ContextAssemblyResult,
+  ContextSelectionInput,
+  ContextSelectionResult,
+  HybridRetrievalInput,
+  HybridRetrievalResult,
+  RepositoryContextAssemblerPort,
+  RepositoryContextRetrieverPort,
+  RepositoryContextSelectorPort,
   RepositoryContextStateResolverPort,
 } from "./modules/repository-context";
 

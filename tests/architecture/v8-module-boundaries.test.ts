@@ -19,6 +19,7 @@ const PUBLIC_MODULES = [
   'verification',
   'skills',
   'memory',
+  'planning',
 ] as const;
 
 const PUBLIC_ENGINE_COMPONENTS = [

@@ -89,7 +89,7 @@ export async function buildWorkspaceSnapshot(
   const candidate: PublishRepositoryStateInput = {
     schemaVersion: REPOSITORY_STATE_SCHEMA_VERSION,
     workspaceId: options.workspaceId,
-    snapshotId: `host_snap_${rev}`,
+    snapshotId: digest,
     scanCompleteness: truncated ? 'truncated' : 'complete',
     roots: [
       {

@@ -1,10 +1,28 @@
+import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { join, relative } from 'node:path';
+import Database from 'better-sqlite3';
 import {
+  ContextAssemblyFactory,
+  ContextSelector,
+  HybridRetrievalFactory,
+  NodeFileSystemAdapter,
   RepositoryContextPipeline,
+  SqliteTextIndexFactory,
   type RepositoryStateDescriptor,
   type RepositoryStatePipeline,
   type RepositoryStateReference,
+  type RepositoryContextAssemblerPort,
+  type RepositoryContextRetrieverPort,
+  type RepositoryContextSelectorPort,
+  type ContextAssemblyInput,
+  type ContextAssemblyResult,
+  type HybridRetrievalInput,
+  type HybridRetrievalResult,
+  type RepositoryCapabilityStatus,
+  type RepositoryRootState,
+  type WorkspaceFileEntry,
 } from '@mitii/v8';
 
 const SKIP_DIR_NAMES = new Set([
@@ -18,6 +36,8 @@ const SKIP_DIR_NAMES = new Set([
 
 const MAX_REPO_MAP_FILES = 400;
 const MAX_REPO_MAP_CHARS = 24_000;
+const INDEX_DB_FILE = 'repository-index.sqlite';
+const HEX_SNAPSHOT_ID = /^[a-f0-9]{64}$/;
 
 /**
  * Host-side Repository Context that does not need vector/code indexes.
@@ -27,8 +47,16 @@ const MAX_REPO_MAP_CHARS = 24_000;
 export function createHostRepositoryContext(options: {
   repositoryState: RepositoryStatePipeline;
   workspaceRoot: string;
+  textIndexDatabasePath?: string;
 }): RepositoryContextPipeline {
   const { repositoryState, workspaceRoot } = options;
+  const textIndexDatabasePath =
+    options.textIndexDatabasePath ?? join(workspaceRoot, '.mitii', INDEX_DB_FILE);
+  const resolvedDescriptors = new Map<string, RepositoryStateDescriptor>();
+  const selector: RepositoryContextSelectorPort = new ContextSelector();
+  const defaultAssembler = new ContextAssemblyFactory().create({
+    fileSystem: new NodeFileSystemAdapter(),
+  });
 
   return new RepositoryContextPipeline({
     stateResolver: {
@@ -60,156 +88,211 @@ export function createHostRepositoryContext(options: {
           workspaceRoot,
           descriptor,
         );
+        resolvedDescriptors.set(descriptor.snapshotId, descriptor);
         return {
           status: 'resolved',
           artifacts: { descriptor, snapshot },
         };
       },
     },
-    retriever: {
-      retrieve: async (input: { query: string }) => ({
-        schemaVersion: 1 as const,
-        query: input.query,
-        status: 'empty' as const,
-        candidates: [],
-        sourceReports: [],
-        warnings: [
-          {
-            code: 'required_source_unavailable',
-            message:
-              'Host context uses workspace file map; full hybrid retrieval is not configured.',
-          },
-        ],
-        truncated: false,
-        statistics: {
-          configuredSources: 0,
-          attemptedSources: 0,
-          successfulSources: 0,
-          failedSources: 0,
-          skippedSources: 0,
-          sourceCandidates: 0,
-          uniqueCandidates: 0,
-          duplicateCandidatesRemoved: 0,
-          returnedCandidates: 0,
-        },
-      }),
-    },
-    selector: {
-      select: (input: {
-        query: string;
-        mode?: 'ask' | 'plan' | 'agent';
-        breadth?: string;
-      }) => ({
-        schemaVersion: 1 as const,
-        query: input.query,
-        mode: input.mode ?? 'ask',
-        breadth: input.breadth ?? 'balanced',
-        status: 'empty' as const,
-        items: [],
-        dropped: [],
-        warnings: [],
-        budget: {
-          maximumTokens: 8_000,
-          usedTokens: 0,
-          remainingTokens: 8_000,
-          maximumItems: 20,
-          maximumFiles: 20,
-          maximumItemsPerFile: 2,
-        },
-        statistics: {
-          retrievedCandidates: 0,
-          synthesizedReferences: 0,
-          consideredCandidates: 0,
-          selectedItems: 0,
-          droppedItems: 0,
-          selectedFiles: 0,
-          selectedRoots: 0,
-          requiredItems: 0,
-          preferredItems: 0,
-          supplementaryItems: 0,
-          fullFileItems: 0,
-          exactRangeItems: 0,
-          targetedExcerptItems: 0,
-          fileOutlineItems: 0,
-          symbolSignatureItems: 0,
-        },
-      }),
-    },
-    assembler: {
-      assemble: async (input: {
-        snapshot: {
-          snapshotId: string;
-          entries: Array<{ kind: string; relativePath: string }>;
-        };
-        selection: { status: string };
-      }) => {
-        const paths = input.snapshot.entries
-          .filter((e: { kind: string }) => e.kind === 'file')
-          .map((e: { relativePath: string }) => e.relativePath)
-          .slice(0, MAX_REPO_MAP_FILES);
-        let content = `Workspace file map (${paths.length} files):\n${paths
-          .map((p: string) => `- ${p}`)
-          .join('\n')}`;
-        if (content.length > MAX_REPO_MAP_CHARS) {
-          content = `${content.slice(0, MAX_REPO_MAP_CHARS)}\n…(truncated)`;
-        }
-        const tokens = Math.max(1, Math.ceil(content.length / 4));
+    retriever: createHostRetriever({
+      textIndexDatabasePath,
+      resolvedDescriptors,
+    }),
+    selector,
+    assembler: createHostAssembler(defaultAssembler),
+  });
+}
+
+function createHostRetriever(options: {
+  textIndexDatabasePath: string;
+  resolvedDescriptors: ReadonlyMap<string, RepositoryStateDescriptor>;
+}): RepositoryContextRetrieverPort {
+  return {
+    retrieve: async (
+      input: HybridRetrievalInput,
+    ): Promise<HybridRetrievalResult> => {
+      const descriptor = input.workspaceSnapshotId
+        ? options.resolvedDescriptors.get(input.workspaceSnapshotId)
+        : undefined;
+      if (!descriptor || !hasUsableTextIndex(descriptor)) {
+        return emptyHostRetrieval(
+          input.query,
+          'Pinned repository state does not expose a ready text index; using workspace file map fallback.',
+        );
+      }
+      if (!existsSync(options.textIndexDatabasePath)) {
+        return emptyHostRetrieval(
+          input.query,
+          'SQLite text index database is not present; using workspace file map fallback.',
+        );
+      }
+
+      const database = new Database(options.textIndexDatabasePath, {
+        readonly: true,
+        fileMustExist: true,
+      });
+      try {
+        const textIndex = new SqliteTextIndexFactory().create(database).reader;
+        const retriever = new HybridRetrievalFactory().create({ textIndex });
+        const result = await retriever.retrieve(input);
         return {
-          schemaVersion: 1 as const,
-          workspaceSnapshotId: input.snapshot.snapshotId,
-          selectionStatus: input.selection.status,
-          status: 'complete' as const,
-          blocks: [
+          ...result,
+          warnings: [
+            ...result.warnings,
             {
-              id: 'host_repo_map',
-              trust: 'untrusted_repository_content' as const,
-              sourceId: 'vscode_host',
-              relativePath: 'repo-map.txt',
-              requestedRepresentation: 'file_outline' as const,
-              representation: 'file_outline' as const,
-              content,
-              lineRanges: [],
-              allocatedTokens: tokens,
-              tokenEstimate: tokens,
-              truncated: content.includes('…(truncated)'),
-              omittedCharacters: 0,
-              redactions: [],
-              provenance: {
-                selectionKey: 'host_repo_map',
-                selectionOrder: 0,
-                origins: ['retrieval' as const],
-                priority: 'preferred' as const,
-                score: 1,
-                signals: [],
-                retrievalSourceIds: [],
-              },
+              code: 'required_source_unavailable' as const,
+              message:
+                'Vector retrieval is unavailable: no LanceDB connection and embedding provider are composed in the host path.',
             },
           ],
-          dropped: [],
-          warnings: [],
-          budget: {
-            allocatedTokens: tokens,
-            usedTokens: tokens,
-            remainingTokens: 0,
-          },
-          statistics: {
-            selectedItems: 0,
-            attemptedItems: 1,
-            assembledBlocks: 1,
-            droppedBlocks: 0,
-            loadedFiles: 0,
-            loadedRoots: 0,
-            truncatedBlocks: content.includes('…(truncated)') ? 1 : 0,
-            fallbackBlocks: 0,
-            redactedBlocks: 0,
-            redactionCount: 0,
-            inputCharacters: content.length,
-            outputCharacters: content.length,
-          },
         };
-      },
+      } catch (error) {
+        return emptyHostRetrieval(
+          input.query,
+          `SQLite text retrieval failed; using workspace file map fallback: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      } finally {
+        database.close();
+      }
     },
-  });
+  };
+}
+
+function createHostAssembler(
+  defaultAssembler: RepositoryContextAssemblerPort,
+): RepositoryContextAssemblerPort {
+  return {
+    assemble: async (
+      input: ContextAssemblyInput,
+    ): Promise<ContextAssemblyResult> => {
+      if (input.selection.items.length > 0) {
+        return defaultAssembler.assemble(input);
+      }
+      return assembleFileMapFallback(input);
+    },
+  };
+}
+
+function hasUsableTextIndex(descriptor: RepositoryStateDescriptor): boolean {
+  return descriptor.roots.some(
+    (root: RepositoryRootState) =>
+      root.textIndexRevision &&
+      root.capabilities.some(
+        (capability: RepositoryCapabilityStatus) =>
+          capability.capability === 'textIndex' &&
+          capability.status !== 'unavailable',
+      ),
+  );
+}
+
+function emptyHostRetrieval(
+  query: string,
+  message: string,
+): HybridRetrievalResult {
+  return {
+    schemaVersion: 1 as const,
+    query,
+    status: 'empty' as const,
+    candidates: [],
+    sourceReports: [],
+    warnings: [
+      {
+        code: 'required_source_unavailable' as const,
+        message,
+      },
+    ],
+    truncated: false,
+    statistics: {
+      configuredSources: 0,
+      attemptedSources: 0,
+      successfulSources: 0,
+      failedSources: 0,
+      skippedSources: 0,
+      sourceCandidates: 0,
+      uniqueCandidates: 0,
+      duplicateCandidatesRemoved: 0,
+      returnedCandidates: 0,
+    },
+  };
+}
+
+function assembleFileMapFallback(
+  input: ContextAssemblyInput,
+): ContextAssemblyResult {
+  const paths = input.snapshot.entries
+    .filter(
+      (entry: unknown): entry is WorkspaceFileEntry =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        'kind' in entry &&
+        entry.kind === 'file',
+    )
+    .map((entry: WorkspaceFileEntry) => entry.relativePath)
+    .slice(0, MAX_REPO_MAP_FILES);
+  let content = `Workspace file map (${paths.length} files):\n${paths
+    .map((path: string) => `- ${path}`)
+    .join('\n')}`;
+  if (content.length > MAX_REPO_MAP_CHARS) {
+    content = `${content.slice(0, MAX_REPO_MAP_CHARS)}\n...(truncated)`;
+  }
+  const truncated = content.includes('...(truncated)');
+  const tokens = Math.max(1, Math.ceil(content.length / 4));
+  return {
+    schemaVersion: 1 as const,
+    workspaceSnapshotId: input.snapshot.snapshotId,
+    selectionStatus: input.selection.status,
+    status: 'complete' as const,
+    blocks: [
+      {
+        id: 'host_repo_map',
+        trust: 'untrusted_repository_content' as const,
+        sourceId: 'vscode_host',
+        relativePath: 'repo-map.txt',
+        requestedRepresentation: 'file_outline' as const,
+        representation: 'file_outline' as const,
+        content,
+        lineRanges: [],
+        allocatedTokens: tokens,
+        tokenEstimate: tokens,
+        truncated,
+        omittedCharacters: 0,
+        redactions: [],
+        provenance: {
+          selectionKey: 'host_repo_map',
+          selectionOrder: 0,
+          origins: ['retrieval' as const],
+          priority: 'preferred' as const,
+          score: 1,
+          signals: [],
+          retrievalSourceIds: [],
+        },
+      },
+    ],
+    dropped: [],
+    warnings: [],
+    budget: {
+      allocatedTokens: tokens,
+      usedTokens: tokens,
+      remainingTokens: 0,
+    },
+    statistics: {
+      selectedItems: 0,
+      attemptedItems: 1,
+      assembledBlocks: 1,
+      droppedBlocks: 0,
+      loadedFiles: 0,
+      loadedRoots: 0,
+      truncatedBlocks: truncated ? 1 : 0,
+      fallbackBlocks: 1,
+      redactedBlocks: 0,
+      redactionCount: 0,
+      inputCharacters: content.length,
+      outputCharacters: content.length,
+    },
+  };
 }
 
 async function buildHostWorkspaceSnapshot(
@@ -260,10 +343,14 @@ async function buildHostWorkspaceSnapshot(
   await walk(workspaceRoot);
   files.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 
-  // Pin to the published descriptor id — pipeline and assembly must agree.
+  const snapshotId = HEX_SNAPSHOT_ID.test(descriptor.snapshotId)
+    ? descriptor.snapshotId
+    : createFallbackSnapshotId(descriptor, files);
+
+  // Pin to the published descriptor id when it is a schema-valid artifact id.
   return {
     schemaVersion: 1,
-    snapshotId: descriptor.snapshotId,
+    snapshotId,
     roots: [
       {
         id: 'workspace',
@@ -276,6 +363,7 @@ async function buildHostWorkspaceSnapshot(
       kind: 'file' as const,
       rootId: 'workspace',
       relativePath: f.relativePath,
+      providerPath: join(workspaceRoot, f.relativePath),
       depth: f.depth,
       size: f.size,
     })),
@@ -299,4 +387,16 @@ async function buildHostWorkspaceSnapshot(
     status: truncated ? 'partial' : 'complete',
     generatedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
   };
+}
+
+function createFallbackSnapshotId(
+  descriptor: RepositoryStateDescriptor,
+  files: Array<{ relativePath: string; size: number; depth: number }>,
+): string {
+  const payload = [
+    descriptor.workspaceId,
+    descriptor.snapshotId,
+    ...files.map((file) => `${file.relativePath}:${file.size}:${file.depth}`),
+  ].join('\n');
+  return createHash('sha256').update(payload).digest('hex');
 }

@@ -6,11 +6,17 @@ export {
   InMemoryFileSystemAdapter,
 } from "../internal/shared/filesystem/InMemoryFileSystemAdapter";
 export {
+  NodeFileSystemAdapter,
+} from "../internal/shared/filesystem/NodeFileSystemAdapter";
+export {
   CharacterTokenEstimator,
 } from "../internal/chunking/CharacterTokenEstimator";
 export {
   TextSearchService,
 } from "../internal/text-index/TextSearchService";
+export {
+  SqliteTextIndexFactory,
+} from "../internal/text-index/adapters/sqlite/SqliteTextIndexFactory";
 export {
   VectorSearchService,
 } from "../internal/vector-index/VectorSearchService";
