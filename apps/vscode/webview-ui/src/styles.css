@@ -14,7 +14,7 @@
   --mitii-ok: var(--vscode-testing-iconPassed, #89b86c);
   --mitii-warn: var(--vscode-charts-orange, #d19a66);
   --mitii-radius: 4px;
-  --mitii-space-x: 6px;
+  --mitii-space-x: 0px;
   --mitii-font-ui: var(--vscode-font-family);
   --mitii-font-mono: var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
   color-scheme: light dark;
@@ -63,7 +63,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  padding: 8px var(--mitii-space-x) 6px;
+  padding: 4px 4px 4px 8px;
   border-bottom: 1px solid var(--mitii-border);
   flex-wrap: nowrap;
 }
@@ -151,7 +151,7 @@ button {
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  border-radius: 8px;
+  border-radius: 0;
   padding: 1.5px;
   background: conic-gradient(
     from var(--mitii-spinner-angle, 0deg),
@@ -187,10 +187,10 @@ button {
 .messages {
   flex: 1;
   overflow: auto;
-  padding: 8px var(--mitii-space-x) 6px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
 }
 
 .empty-state {
@@ -215,28 +215,30 @@ button {
 .turn {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
 }
 
 .bubble {
-  border-radius: var(--mitii-radius);
-  padding: 8px 10px;
+  border-radius: 0;
+  padding: 10px 12px;
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .bubble.user {
-  align-self: flex-end;
-  max-width: 96%;
+  align-self: stretch;
+  max-width: 100%;
   background: color-mix(in srgb, var(--mitii-accent) 18%, var(--mitii-panel));
-  border: 1px solid color-mix(in srgb, var(--mitii-accent) 35%, transparent);
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--mitii-accent) 28%, transparent);
 }
 
 .bubble.assistant {
   align-self: stretch;
-  background: var(--mitii-panel);
-  border: 1px solid var(--mitii-border);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--mitii-border);
 }
 
 .bubble.streaming::after {
@@ -257,12 +259,13 @@ button {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--mitii-muted);
+  padding: 8px 12px 0;
 }
 
 .activity {
   border-left: 2px solid color-mix(in srgb, var(--mitii-accent) 55%, transparent);
-  margin: 2px 0 2px 6px;
-  padding: 4px 0 4px 10px;
+  margin: 0;
+  padding: 6px 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -364,11 +367,11 @@ button {
   position: relative;
   z-index: 40;
   border-top: 1px solid var(--mitii-border);
-  padding: 6px var(--mitii-space-x) 8px;
+  padding: 0;
   background: var(--vscode-sideBar-background);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
   overflow: visible;
 }
 
@@ -383,7 +386,7 @@ button {
 .composer-footer {
   display: grid;
   gap: 6px;
-  padding: 7px;
+  padding: 6px 8px 8px;
   border-top: 1px solid color-mix(in srgb, var(--mitii-border) 58%, transparent);
   overflow: visible;
   position: relative;
@@ -615,8 +618,8 @@ button {
 
 .composer-box {
   position: relative;
-  border: 1px solid var(--mitii-border);
-  border-radius: var(--mitii-radius);
+  border: 0;
+  border-radius: 0;
   background: var(--vscode-input-background, var(--mitii-panel));
   box-shadow: none;
   display: flex;
@@ -625,8 +628,8 @@ button {
 }
 
 .composer-box:focus-within {
-  border-color: var(--vscode-focusBorder, var(--mitii-accent));
-  box-shadow: none;
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--vscode-focusBorder, var(--mitii-accent));
 }
 
 .composer-box textarea {
@@ -637,7 +640,7 @@ button {
   border: 0;
   outline: none;
   background: transparent;
-  padding: 12px;
+  padding: 10px 12px;
   line-height: 1.4;
 }
 
@@ -691,9 +694,9 @@ button {
 
 .suggest-pop {
   position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 0px);
   max-height: 160px;
   overflow: auto;
   border-radius: var(--mitii-radius);
@@ -727,9 +730,10 @@ button {
 }
 
 .card {
-  border: 1px solid var(--mitii-border);
-  border-radius: var(--mitii-radius);
-  padding: 10px;
+  border: 0;
+  border-top: 1px solid var(--mitii-border);
+  border-radius: 0;
+  padding: 10px 12px;
   background: var(--mitii-panel);
   display: flex;
   flex-direction: column;
@@ -815,7 +819,7 @@ button {
   position: sticky;
   top: 0;
   z-index: 3;
-  padding: 8px var(--mitii-space-x) 8px;
+  padding: 8px 8px 8px;
   border-bottom: 1px solid var(--mitii-border);
   background: var(--vscode-sideBar-background);
   scrollbar-width: thin;
@@ -845,7 +849,7 @@ button {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 10px var(--mitii-space-x) 14px;
+  padding: 10px 8px 14px;
 }
 
 .settings-panel {
@@ -1221,11 +1225,12 @@ button {
 }
 
 .error-banner {
-  margin: 0 var(--mitii-space-x);
+  margin: 0;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: 0;
   background: color-mix(in srgb, var(--mitii-danger) 16%, transparent);
-  border: 1px solid color-mix(in srgb, var(--mitii-danger) 40%, transparent);
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--mitii-danger) 40%, transparent);
   color: var(--mitii-text);
   font-size: 12px;
   display: flex;
@@ -1364,9 +1369,9 @@ button {
 }
 
 .workspace-banner {
-  margin: 0 var(--mitii-space-x);
+  margin: 0;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: 0;
   font-size: 12px;
   line-height: 1.4;
 }
@@ -1385,7 +1390,7 @@ button {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 10px var(--mitii-space-x) 14px;
+  padding: 10px 8px 14px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1500,11 +1505,12 @@ button {
 }
 
 .plan-panel {
-  margin: 8px var(--mitii-space-x) 0;
-  border: 1px solid var(--mitii-border);
-  border-radius: var(--mitii-radius);
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--mitii-border);
+  border-radius: 0;
   background: var(--mitii-panel);
-  padding: 10px;
+  padding: 10px 12px;
 }
 
 .plan-panel__header {
@@ -1593,10 +1599,10 @@ button {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 12px 14px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0;
 }
 
 .review-panel__header {
@@ -1604,6 +1610,8 @@ button {
   justify-content: space-between;
   gap: 8px;
   align-items: flex-start;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--mitii-border);
 }
 
 .review-panel__title {
@@ -1623,17 +1631,18 @@ button {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
 }
 
 .review-file {
   display: flex;
   gap: 8px;
   align-items: center;
-  padding: 8px;
-  border: 1px solid var(--mitii-border);
-  border-radius: 8px;
-  background: var(--mitii-panel);
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--mitii-border);
+  border-radius: 0;
+  background: transparent;
 }
 
 .review-file__status {
@@ -1650,11 +1659,16 @@ button {
   text-overflow: ellipsis;
 }
 
+.review-panel .panel-empty {
+  padding: 12px;
+}
+
 .review-patch {
   margin: 0;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid var(--mitii-border);
+  padding: 10px 12px;
+  border-radius: 0;
+  border: 0;
+  border-top: 1px solid var(--mitii-border);
   background: var(--mitii-panel);
   overflow: auto;
   max-height: 240px;
@@ -1714,7 +1728,7 @@ button {
 }
 
 .onboarding {
-  margin: 12px var(--mitii-space-x);
+  margin: 0;
   padding: 14px;
   border: 1px solid var(--mitii-border);
   border-radius: 12px;
@@ -1822,7 +1836,9 @@ button {
 }
 
 .context-panel {
-  margin-bottom: 2px;
+  margin: 0;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--mitii-border);
 }
 
 .context-panel--empty {
