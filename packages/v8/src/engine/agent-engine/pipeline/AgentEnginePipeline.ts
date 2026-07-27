@@ -921,10 +921,18 @@ export class AgentEnginePipeline {
     const pinnedState = checkpoint.pinnedState;
     const reasonCodes: AgentReasonCode[] = [...checkpoint.reasonCodes];
     const warnings: string[] = [...checkpoint.warnings];
+    const resumedAtMs = Date.now();
+    const suspensionWaitMs =
+      checkpoint.suspendedAtMs !== undefined
+        ? Math.max(0, resumedAtMs - checkpoint.suspendedAtMs)
+        : 0;
+    const excludedWaitMs =
+      (checkpoint.excludedWaitMs ?? 0) + suspensionWaitMs;
     const budget = new RunBudgetTracker(
       agentRunBudgetSchema.parse(startInput.budget ?? {}),
       checkpoint.startedAtMs,
       checkpoint.usage,
+      excludedWaitMs,
     );
 
     const finish = (
@@ -1329,6 +1337,8 @@ export class AgentEnginePipeline {
         warnings,
         usage: budget.snapshot(),
         startedAtMs,
+        excludedWaitMs: budget.getExcludedWaitMs(),
+        suspendedAtMs: Date.now(),
       });
 
       const rationale = `Approval required for "${loopOutcome.pendingApproval.toolName}".`;

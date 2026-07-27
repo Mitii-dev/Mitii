@@ -35,7 +35,7 @@ export function resolveRoute(params: {
   const interaction = intent.classification.interactionIntent;
   const reasonCodes: DecisionReasonCode[] = [];
 
-  if (requiresClarification(understanding, message)) {
+  if (requiresClarification(understanding, message, mode)) {
     reasonCodes.push("clarification_material");
     return {
       route: "clarify",
@@ -76,20 +76,36 @@ export function resolveRoute(params: {
     };
   }
 
-  if (isDiagnosisIntent(primary) || interaction === "help") {
-    if (isDiagnosisIntent(primary)) {
-      reasonCodes.push("diagnosis_readonly");
-      return {
-        route: "diagnose",
-        runDisposition: "continue",
-        reasonCodes,
-      };
-    }
+  if (isDiagnosisIntent(primary)) {
+    reasonCodes.push("diagnosis_readonly");
+    return {
+      route: "diagnose",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
+  // Mutation must win over question-shaped phrasing ("Can you implement…?").
+  // Previously interactionIntent=question short-circuited to repository_answer
+  // and stripped apply_patch even in agent mode.
+  if (
+    !isExplicitReadOnlyRequest(message) &&
+    (isMutationIntent(primary) ||
+      interaction === "act" ||
+      looksLikeAgentMutationRequest(message))
+  ) {
+    reasonCodes.push("mutation_execute");
+    return {
+      route: "execute",
+      runDisposition: "continue",
+      reasonCodes,
+    };
   }
 
   if (
     primary === "question" ||
     interaction === "question" ||
+    interaction === "help" ||
     (primary === "docs" && !looksLikeDocsMutation(message))
   ) {
     if (needsRepositoryGrounding(taskAnalysis, message)) {
@@ -103,24 +119,6 @@ export function resolveRoute(params: {
     reasonCodes.push("direct_knowledge_answer");
     return {
       route: "direct_answer",
-      runDisposition: "continue",
-      reasonCodes,
-    };
-  }
-
-  if (isMutationIntent(primary) || interaction === "act") {
-    reasonCodes.push("mutation_execute");
-    return {
-      route: "execute",
-      runDisposition: "continue",
-      reasonCodes,
-    };
-  }
-
-  if (isDiagnosisIntent(primary)) {
-    reasonCodes.push("diagnosis_readonly");
-    return {
-      route: "diagnose",
       runDisposition: "continue",
       reasonCodes,
     };
@@ -205,10 +203,21 @@ function needsRepositoryGrounding(
 function requiresClarification(
   understanding: RequestUnderstandingResult,
   message: string,
+  mode: "ask" | "plan" | "agent",
 ): boolean {
   // Resume already amended the user ask with a clarification answer — do not
   // suspend again for the same ambiguity.
   if (hasResolvedClarification(message)) {
+    return false;
+  }
+
+  // Agent mode: clear actionable mutation asks should execute even when
+  // understanding marks soft ambiguity (avoids stalling "implement X" work).
+  if (
+    mode === "agent" &&
+    looksLikeAgentMutationRequest(message) &&
+    !isBareAmbiguousMutationAsk(message)
+  ) {
     return false;
   }
 
@@ -250,6 +259,17 @@ function requiresClarification(
   return false;
 }
 
+/** Pronoun-only / tiny mutation asks that still need a target. */
+function isBareAmbiguousMutationAsk(message: string): boolean {
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (text.length < 48) {
+    return true;
+  }
+  return /^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:fix|update|change|do|implement|handle)\s+(?:it|this|that)\b[.!?]*$/i.test(
+    text,
+  );
+}
+
 function hasResolvedClarification(message: string): boolean {
   return /\nClarification:\s*\S+/i.test(message);
 }
@@ -277,6 +297,58 @@ function isExplicitPlanRequest(message: string): boolean {
 
 function looksLikeDocsMutation(message: string): boolean {
   return /\b(write|add|update|create|draft|document)\b/i.test(message);
+}
+
+/**
+ * Explicit read-only / no-edit constraints — never promote to execute.
+ */
+function isExplicitReadOnlyRequest(message: string): boolean {
+  return (
+    /\b(?:do not|don't|dont|without)\s+(?:edit|change|modify|fix|implement|apply|write|update|remove|refactor|touch)\b/i.test(
+      message,
+    ) ||
+    /\b(?:explain|review|diagnose|analyze|investigate)\s+only\b/i.test(
+      message,
+    ) ||
+    /\bno\s+(?:code|file)\s+changes\b/i.test(message) ||
+    /\bread[- ]only\b/i.test(message) ||
+    /\b(?:do not|don't|dont)\s+implement\b/i.test(message) ||
+    /\bwithout\s+implementing\b/i.test(message)
+  );
+}
+
+/**
+ * Agent-mode safety net when understanding classifies an implementation ask
+ * as a "question" (common with "Can you implement…?").
+ */
+function looksLikeAgentMutationRequest(message: string): boolean {
+  if (isExplicitReadOnlyRequest(message) || isExplicitPlanRequest(message)) {
+    return false;
+  }
+
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (text.length === 0) {
+    return false;
+  }
+
+  // How-to / what-is phrasing expects an answer, not a write grant.
+  if (
+    /^(?:how\s+(?:do|does|did|can|should|would|to)|why\s+|what\s+(?:is|are|does|would)|when\s+|where\s+|which\s+)/i.test(
+      text,
+    ) ||
+    /^(?:can you\s+)?(?:how|why|what|when|where|which)\b/i.test(text) ||
+    /^(?:please\s+)?(?:explain|compare|describe|clarify|tell me|find|list|show|summarize|analyse|analyze)\b/i.test(
+      text,
+    )
+  ) {
+    return false;
+  }
+
+  return (
+    /(?:^|\b)(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|let(?:'s|\s+us)\s+)?(?:implement|build|create|add|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|generate|scaffold|install|upgrade)\b/i.test(
+      text,
+    )
+  );
 }
 
 /**
