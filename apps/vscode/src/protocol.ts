@@ -179,10 +179,15 @@ export interface ClarificationOptionView {
 
 export interface SuspensionPayload {
   runId: string;
-  kind: 'clarification_required' | 'approval_required';
+  kind:
+    | 'clarification_required'
+    | 'approval_required'
+    | 'plan_approval_required';
   rationale?: string;
   clarificationPrompt?: string;
   clarificationOptions?: ClarificationOptionView[];
+  /** Structured plan awaiting approval (plan_approval_required). */
+  plan?: PlanView | null;
   approval?: {
     approvalId: string;
     toolName: string;
@@ -274,6 +279,9 @@ export type WebviewToHostMessage =
       runId: string;
       clarificationAnswer?: string;
       approval?: { approvalId: string; decision: 'approved' | 'denied' };
+      planDecision?: {
+        decision: 'approved' | 'rejected' | 'edited';
+      };
     }
   | { type: 'newChat' }
   | { type: 'openChatThread'; id: string }

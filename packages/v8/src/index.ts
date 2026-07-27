@@ -179,6 +179,23 @@ export type {
   MemoryStorePort,
 } from "./modules/memory";
 
+export { PlanningPipeline } from "./modules/planning";
+export {
+  planningInputSchema,
+  planningResultSchema,
+  planArtifactSchema,
+  PLANNING_SCHEMA_VERSION,
+  formatPlanAsAnswer,
+  serializePlanForPrompt,
+} from "./modules/planning";
+export type {
+  PlanningInput,
+  PlanningResult,
+  PlanArtifact,
+  PlanPhase,
+  PlanStep,
+} from "./modules/planning";
+
 export { AgentEnginePipeline } from "./engine/agent-engine";
 export {
   agentEngineStartInputSchema,

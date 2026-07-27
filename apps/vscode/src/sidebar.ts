@@ -53,6 +53,7 @@ import type {
   WorkspaceNoticeView,
   WorkspaceSnapshotInfo,
 } from './protocol.js';
+import { planViewFromArtifact } from './planView.js';
 import { buildReviewDiff } from './reviewDiff.js';
 import { testProviderConnection } from './testConnection.js';
 import { getWorkspaceTrustSnapshot } from './workspace/trust.js';
@@ -596,6 +597,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       });
       return;
     }
+    if (message.planDecision) {
+      resolve({
+        schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+        runId: message.runId,
+        planDecision: message.planDecision,
+      });
+      return;
+    }
     resolve('stop');
   }
 
@@ -711,6 +720,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
                 this.host.onInlineDiffPending(true);
               }
             }
+            if (
+              suspension.kind === 'plan_approval_required' &&
+              suspension.plan
+            ) {
+              this.post({ type: 'setPlan', plan: suspension.plan });
+            }
             this.lastSuspensionRunId = suspension.runId;
             this.post({ type: 'run.suspended', suspension });
             return new Promise<MitiiResumeInput | 'stop'>((resolve) => {
@@ -729,7 +744,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       );
       const answer = outcome.result.answer ?? '';
       this.lastAssistantText = answer;
-      const plan = this.planFromAnswer(message.mode, answer);
+      const plan =
+        planViewFromArtifact(outcome.result.plan) ??
+        this.planFromAnswer(message.mode, answer);
       this.post({
         type: 'run.result',
         status: outcome.result.status,

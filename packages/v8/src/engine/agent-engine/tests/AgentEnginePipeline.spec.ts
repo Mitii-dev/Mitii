@@ -436,4 +436,155 @@ describe("AgentEnginePipeline (Phase 7)", () => {
       { id: "t1", name: "read_file", arguments: "{\"path\":\"x.ts\"}" },
     ]);
   });
+
+  it("suspends for plan approval when planGate requires it", async () => {
+    const { InMemoryRunCheckpointStore } = await import("../adapters");
+    const { PLANNING_SCHEMA_VERSION } = await import(
+      "../../../modules/planning"
+    );
+
+    const mockPlan = {
+      schemaVersion: PLANNING_SCHEMA_VERSION,
+      objective: "Migrate auth safely",
+      assumptions: ["Existing login remains"],
+      openQuestions: ["Which provider?"],
+      contextReviewed: [],
+      constraints: [],
+      dimensions: {
+        scope: "repository",
+        risk: "high" as const,
+        clarity: "partially_clear",
+        complexity: "very_complex",
+        changeImpact: ["code" as const, "security" as const],
+      },
+      phases: [
+        {
+          id: "phase-1",
+          name: "Discover",
+          purpose: "Find auth seams",
+          steps: [
+            {
+              id: "step-1",
+              intent: "Locate auth flow",
+              targetRefs: ["src/auth"],
+              actionSummary: "Search and read auth module",
+              expectedOutcome: "Targets known",
+              riskLevel: "medium" as const,
+            },
+          ],
+          dependencies: [],
+          successCriteria: ["Targets identified"],
+        },
+      ],
+      risks: [
+        {
+          id: "risk-1",
+          summary: "Session regression",
+          severity: "high" as const,
+        },
+      ],
+      alternatives: [],
+      verification: {
+        checks: ["tests"],
+        manualQa: [],
+        commands: [],
+      },
+      rollback: "Revert auth changes",
+      approvalRequired: true,
+      processHintsApplied: [],
+    };
+
+    let modelCalls = 0;
+    const llm = new ScriptedLlmPort([{ content: "should not run yet" }]);
+    const original = llm.complete.bind(llm);
+    llm.complete = async function* (...args) {
+      modelCalls += 1;
+      yield* original(...args);
+    };
+
+    const checkpointStore = new InMemoryRunCheckpointStore();
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          planningDepth: "visible",
+          planGate: "required_before_execute",
+          repositoryContextRequired: false,
+          toolGrant: createReadOnlyGrant(),
+          reasonCodes: ["mutation_execute", "plan_gate_required"],
+        }),
+        llm,
+        planning: {
+          plan: () => ({
+            schemaVersion: PLANNING_SCHEMA_VERSION,
+            status: "validated",
+            plan: mockPlan,
+            warnings: [],
+            reasonCodes: ["plan_drafted", "plan_validated"],
+            usedTokens: 40,
+            budgetTokens: 1_200,
+            durationMs: 1,
+          }),
+        },
+        checkpointStore,
+      }),
+    );
+
+    const handle = engine.start(
+      baseStartInput({
+        request: {
+          sessionId: "sess_1",
+          mode: "agent",
+          userMessage: "Migrate auth across the repository",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/repo",
+      }),
+    );
+    const result = await handle.result;
+
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("plan_approval_required");
+    expect(result.plan?.objective).toBe("Migrate auth safely");
+    expect(modelCalls).toBe(0);
+    expect(result.reasonCodes).toContain("plan_approval_suspended");
+
+    const resumedLlm = new ScriptedLlmPort([{ content: "Executed after plan." }]);
+    const resumeEngine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          planningDepth: "visible",
+          planGate: "required_before_execute",
+          repositoryContextRequired: false,
+          toolGrant: createReadOnlyGrant(),
+          reasonCodes: ["mutation_execute", "plan_gate_required"],
+        }),
+        llm: resumedLlm,
+        planning: {
+          plan: () => ({
+            schemaVersion: PLANNING_SCHEMA_VERSION,
+            status: "validated",
+            plan: mockPlan,
+            warnings: [],
+            reasonCodes: ["plan_drafted"],
+            usedTokens: 40,
+            budgetTokens: 1_200,
+            durationMs: 1,
+          }),
+        },
+        checkpointStore,
+      }),
+    );
+
+    const resumed = await resumeEngine.resume({
+      schemaVersion: 1,
+      runId: result.runId,
+      planDecision: { decision: "approved" },
+    }).result;
+
+    expect(resumed.status).toBe("completed");
+    expect(resumed.reasonCodes).toContain("plan_approved");
+    expect(resumed.answer).toBe("Executed after plan.");
+  });
 });

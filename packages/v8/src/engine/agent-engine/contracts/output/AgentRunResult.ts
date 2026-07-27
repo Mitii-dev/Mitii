@@ -4,6 +4,7 @@ import {
   executionRouteSchema,
   planningDepthSchema,
 } from "../../../../modules/decision-policy";
+import { planArtifactSchema } from "../../../../modules/planning";
 import { repositoryStateReferenceSchema } from "../../../../modules/repository-state";
 
 import {
@@ -44,6 +45,8 @@ export const agentRunSuspensionSchema = z
     /** Short user-facing question — never the full composed host prompt. */
     clarificationPrompt: z.string().min(1).max(2_000).optional(),
     clarificationOptions: z.array(clarificationOptionSchema).max(8).optional(),
+    /** Structured plan awaiting approval/edit when kind is plan_approval_required. */
+    plan: planArtifactSchema.optional(),
     approval: z
       .object({
         approvalId: z.string().min(1),
@@ -68,6 +71,8 @@ export const agentRunResultSchema = z
     route: executionRouteSchema.optional(),
     planningDepth: planningDepthSchema.optional(),
     answer: z.string().optional(),
+    /** Structured plan when planningDepth produced an artifact. */
+    plan: planArtifactSchema.optional(),
     suspension: agentRunSuspensionSchema.optional(),
     pinnedState: repositoryStateReferenceSchema.optional(),
     reasonCodes: z.array(agentReasonCodeSchema).min(1),

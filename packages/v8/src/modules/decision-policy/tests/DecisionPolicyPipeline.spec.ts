@@ -222,6 +222,8 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.approvalMode).toBe("every_mutation");
     expect(decision.verification.required).toBe(true);
     expect(decision.planningDepth).toBe("visible");
+    expect(decision.planGate).toBe("required_before_execute");
+    expect(decision.reasonCodes).toContain("plan_gate_required");
   });
 
   it("pins repository state reference when provided", () => {

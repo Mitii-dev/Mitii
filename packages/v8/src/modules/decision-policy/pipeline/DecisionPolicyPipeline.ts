@@ -1,5 +1,6 @@
 import {
   buildToolGrant,
+  resolvePlanGate,
   resolvePlanningDepth,
   resolveRoute,
   resolveVerificationRequirement,
@@ -44,6 +45,12 @@ export class DecisionPolicyPipeline {
       understanding,
       message,
     });
+    const planGateResult = resolvePlanGate({
+      mode,
+      route: routeResult.route,
+      planningDepth: depthResult.planningDepth,
+      understanding,
+    });
     const grantResult = buildToolGrant({
       mode,
       route: routeResult.route,
@@ -76,6 +83,7 @@ export class DecisionPolicyPipeline {
     const reasonCodes = uniqueReasonCodes([
       ...routeResult.reasonCodes,
       ...depthResult.reasonCodes,
+      ...planGateResult.reasonCodes,
       ...grantResult.reasonCodes,
       ...verificationResult.reasonCodes,
       ...contextResult.reasonCodes,
@@ -86,6 +94,7 @@ export class DecisionPolicyPipeline {
       schemaVersion: DECISION_POLICY_SCHEMA_VERSION,
       route: routeResult.route,
       planningDepth: depthResult.planningDepth,
+      planGate: planGateResult.planGate,
       runDisposition: routeResult.runDisposition,
       repositoryContextRequired: contextResult.repositoryContextRequired,
       pinnedState: contextResult.pinnedState,
@@ -95,6 +104,7 @@ export class DecisionPolicyPipeline {
       rationale: buildRationale({
         route: routeResult.route,
         planningDepth: depthResult.planningDepth,
+        planGate: planGateResult.planGate,
         mode,
         reasonCodes,
       }),
@@ -209,9 +219,10 @@ function uniqueReasonCodes(
 function buildRationale(params: {
   route: ExecutionDecision["route"];
   planningDepth: ExecutionDecision["planningDepth"];
+  planGate: ExecutionDecision["planGate"];
   mode: DecisionPolicyInput["envelope"]["mode"];
   reasonCodes: readonly DecisionReasonCode[];
 }): string {
-  const { route, planningDepth, mode, reasonCodes } = params;
-  return `mode=${mode}; route=${route}; planningDepth=${planningDepth}; reasons=${reasonCodes.join(",")}`;
+  const { route, planningDepth, planGate, mode, reasonCodes } = params;
+  return `mode=${mode}; route=${route}; planningDepth=${planningDepth}; planGate=${planGate}; reasons=${reasonCodes.join(",")}`;
 }

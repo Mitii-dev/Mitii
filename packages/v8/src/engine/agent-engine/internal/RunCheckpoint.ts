@@ -1,4 +1,5 @@
 import type { ExecutionDecision } from "../../../modules/decision-policy";
+import type { PlanArtifact } from "../../../modules/planning";
 import type { ModelMessage } from "../../../modules/model-gateway";
 import type { RepositoryStateReference } from "../../../modules/repository-state";
 import type { ToolResult } from "../../tool-runtime";
@@ -25,13 +26,18 @@ export interface PendingApprovalState {
 export interface AgentRunCheckpoint {
   runId: string;
   requestId: string;
-  suspensionKind: "approval_required" | "clarification_required";
+  suspensionKind:
+    | "approval_required"
+    | "clarification_required"
+    | "plan_approval_required";
   input: AgentEngineStartInput;
   decision: ExecutionDecision;
   pinnedState?: RepositoryStateReference;
   messages: ModelMessage[];
   toolCacheEntries: Array<[string, ToolResult]>;
   pendingApproval?: PendingApprovalState;
+  /** Structured plan awaiting approval when suspensionKind is plan_approval_required. */
+  plan?: PlanArtifact;
   changedFiles: string[];
   mutationCheckpointIds: string[];
   reasonCodes: AgentReasonCode[];

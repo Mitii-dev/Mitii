@@ -15,6 +15,7 @@ export const AGENT_RUN_STATUSES = [
 export const AGENT_SUSPENSION_KINDS = [
   "clarification_required",
   "approval_required",
+  "plan_approval_required",
 ] as const;
 
 export const AGENT_ACTIVE_STAGES = [
@@ -23,6 +24,7 @@ export const AGENT_ACTIVE_STAGES = [
   "decided",
   "skills_ready",
   "memory_ready",
+  "plan_ready",
   "context_ready",
   "model_running",
   "tool_running",
@@ -35,6 +37,12 @@ export const AGENT_REASON_CODES = [
   "understanding_complete",
   "decision_complete",
   "clarification_suspended",
+  "plan_drafted",
+  "plan_skipped",
+  "plan_approval_suspended",
+  "plan_approved",
+  "plan_rejected",
+  "plan_edited",
   "approval_suspended",
   "approval_denied",
   "approval_granted",
@@ -69,6 +77,7 @@ export const AGENT_REASON_CODES = [
   "resume_complete",
 ] as const;
 
+
 export const AGENT_ERROR_CODES = [
   "invalid_input",
   "misconfigured_ports",
@@ -82,6 +91,7 @@ export const AGENT_EVENT_TYPES = [
   "state_pinned",
   "skills_ready",
   "memory_ready",
+  "plan_ready",
   "context_ready",
   "model_delta",
   "model_turn",

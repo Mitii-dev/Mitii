@@ -84,6 +84,7 @@ export function createDecision(
     schemaVersion: 1,
     route: "direct_answer",
     planningDepth: "none",
+    planGate: "none",
     runDisposition: "continue",
     repositoryContextRequired: false,
     toolGrant: {
@@ -268,6 +269,7 @@ export function createStubDependencies(options: {
   toolResults?: Record<string, Partial<ToolResult>>;
   pinFails?: boolean;
   checkpointStore?: AgentEngineDependencies["checkpointStore"];
+  planning?: AgentEngineDependencies["planning"];
 }): AgentEngineDependencies {
   const decision = options.decision ?? createDecision();
   const understanding = options.understanding ?? createUnderstanding();
@@ -300,6 +302,7 @@ export function createStubDependencies(options: {
     decision: {
       decide: (_input: DecisionPolicyInput) => decision,
     },
+    planning: options.planning,
     prompt: {
       construct: (input: PromptConstructionInput): PromptConstructionResult => ({
         schemaVersion: 1,

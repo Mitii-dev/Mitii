@@ -6,6 +6,7 @@ import {
   modelMessageSchema,
   modelToolDefinitionSchema,
 } from "../../../../modules/model-gateway";
+import { planArtifactSchema } from "../../../../modules/planning";
 import { promptInstructionsSchema } from "../../../../modules/prompt-construction";
 import { projectDescriptorSchema } from "../../../../modules/repository-state";
 
@@ -78,7 +79,7 @@ export const agentEngineStartInputSchema = z
 export type AgentEngineStartInput = z.infer<typeof agentEngineStartInputSchema>;
 
 /**
- * Resume a suspended run after clarification or approval.
+ * Resume a suspended run after clarification, mutation approval, or plan approval.
  * Resume continues from the persisted checkpoint and does not replay
  * completed tool callIds.
  */
@@ -94,13 +95,37 @@ export const agentEngineResumeInputSchema = z
       .strict()
       .optional(),
     clarificationAnswer: z.string().min(1).optional(),
+    planDecision: z
+      .object({
+        decision: z.enum(["approved", "rejected", "edited"]),
+        /** Required when decision is "edited"; optional override when approved. */
+        plan: planArtifactSchema.optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (!value.approval && !value.clarificationAnswer) {
+    const provided = [
+      value.approval,
+      value.clarificationAnswer,
+      value.planDecision,
+    ].filter((item) => item !== undefined);
+    if (provided.length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Resume requires approval or clarificationAnswer.",
+        message:
+          "Resume requires approval, clarificationAnswer, or planDecision.",
+      });
+    }
+    if (
+      value.planDecision?.decision === "edited" &&
+      value.planDecision.plan === undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Edited planDecision requires plan.",
+        path: ["planDecision", "plan"],
       });
     }
   });

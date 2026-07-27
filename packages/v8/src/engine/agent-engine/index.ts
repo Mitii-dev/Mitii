@@ -73,6 +73,7 @@ export type {
   AgentEnginePromptPort,
   AgentEngineSkillsPort,
   AgentEngineMemoryPort,
+  AgentEnginePlanningPort,
   AgentEngineRepositoryStatePort,
   AgentEngineRepositoryContextPort,
   AgentEngineToolRuntimePort,

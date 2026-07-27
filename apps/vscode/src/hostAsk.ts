@@ -19,6 +19,7 @@ import type {
   ContextUsageBreakdown,
   SuspensionPayload,
 } from './protocol.js';
+import { planViewFromArtifact } from './planView.js';
 import { buildReviewDiff } from './reviewDiff.js';
 import {
   formatContextInspection,
@@ -302,6 +303,14 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         title: 'Memory ready',
         detail: `${event.selectedCount} selected`,
       };
+    case 'plan_ready':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: 'Plan ready',
+        detail: `${event.phaseCount} phases · ${event.planningDepth}`,
+      };
     default:
       return undefined;
   }
@@ -331,6 +340,14 @@ export function resultToSuspension(
         toolName: suspension.approval.toolName,
         paths: suspension.approval.paths,
       },
+    };
+  }
+  if (suspension.kind === 'plan_approval_required') {
+    return {
+      runId: result.runId,
+      kind: 'plan_approval_required',
+      rationale: suspension.rationale,
+      plan: planViewFromArtifact(suspension.plan ?? result.plan),
     };
   }
   return undefined;
@@ -393,6 +410,28 @@ async function resolveSuspensionNative(
       approval: {
         approvalId: suspension.approval.approvalId,
         decision: choice.label === 'Approve' ? 'approved' : 'denied',
+      },
+    };
+  }
+
+  if (suspension.kind === 'plan_approval_required') {
+    const choice = await vs.window.showQuickPick(
+      [
+        { label: 'Approve plan', description: 'Continue execution' },
+        { label: 'Reject plan', description: 'Cancel this run' },
+      ],
+      {
+        title: 'Mitii plan approval required',
+        placeHolder: suspension.rationale,
+        ignoreFocusOut: true,
+      },
+    );
+    if (!choice) return 'stop';
+    return {
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: result.runId,
+      planDecision: {
+        decision: choice.label === 'Approve plan' ? 'approved' : 'rejected',
       },
     };
   }

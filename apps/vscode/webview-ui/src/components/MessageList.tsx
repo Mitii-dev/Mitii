@@ -29,8 +29,8 @@ interface MessageListProps {
   onClarifyChange: (value: string) => void;
   onResumeClarify: (runId: string, answer: string) => void;
   onResumeStop: (runId: string) => void;
-  onApprove: (runId: string, approvalId: string) => void;
-  onDeny: (runId: string, approvalId: string) => void;
+  onApprove: (runId: string, approvalId?: string) => void;
+  onDeny: (runId: string, approvalId?: string) => void;
   onShowInlineDiff: (approvalId: string) => void;
   bottomRef: RefObject<HTMLDivElement>;
 }
@@ -106,13 +106,13 @@ export function MessageList({
                   onApprove={() =>
                     onApprove(
                       turn.suspension!.runId,
-                      turn.suspension!.approval!.approvalId,
+                      turn.suspension!.approval?.approvalId,
                     )
                   }
                   onDeny={() =>
                     onDeny(
                       turn.suspension!.runId,
-                      turn.suspension!.approval!.approvalId,
+                      turn.suspension!.approval?.approvalId,
                     )
                   }
                   onShowInlineDiff={onShowInlineDiff}

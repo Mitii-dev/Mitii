@@ -53,6 +53,7 @@ Agent Engine
         â”œâ”€â”€ Decision Policy
         â”œâ”€â”€ Skills
         â”œâ”€â”€ Memory
+        â”œâ”€â”€ Planning
         â”œâ”€â”€ Repository Context â”€â”€ Repository State
         â”œâ”€â”€ Prompt Construction
         â”œâ”€â”€ Model Gateway
@@ -85,7 +86,7 @@ belongs to the tool-runtime engine package path. Business facades remain under
 | `request-understanding` | Envelope â†’ understanding result | Intent evidence, targets, constraints, scope, complexity, risk, clarity, expected outcome, clarification assessment | Final route or authority |
 | `repository-state` | Workspace change/sync request â†’ published state descriptor | Discovery, ignore policy, project catalog, source analysis, indexes, graph, map, readiness, atomic state publication | Prompting or tool execution |
 | `repository-context` | State reference + query + budget â†’ context result | Hybrid retrieval, deduplication, diversity selection, representation choice, safe assembly | Re-indexing or model calls |
-| `decision-policy` | Envelope + understanding + mode + state capability â†’ execution decision | Route, planning depth, context need, tool grant, approval and verification policy | Executing decisions |
+| `decision-policy` | Envelope + understanding + mode + state capability â†’ execution decision | Route, planning depth, plan gate, context need, tool grant, approval and verification policy | Executing decisions |
 | `prompt-construction` | Decision + context + conversation + selected instructions â†’ model request | Total budget allocation, serialization, compaction, provenance, omission report | Retrieval or model invocation |
 | `model-gateway` | Model invocation â†’ model-event stream | Provider selection, capability negotiation, normalized streaming, usage, retry classification | Tool execution or run policy |
 | `tool-runtime` | Authorized tool call â†’ tool result | Tool catalog, schema validation, permissions, path/command/network enforcement, timeout, audit, mutation transaction | Choosing the task route |
@@ -93,6 +94,7 @@ belongs to the tool-runtime engine package path. Business facades remain under
 | `agent-engine` | Start/resume request â†’ run handle | State machine, sequencing, model/tool loop, cancellation, suspension/resume, checkpoints, events, terminal result | Internals owned by other modules |
 | `skills` | Task evidence + budget â†’ selected instructions | Selection, conflicts, provenance, instruction budgeting | General prompt construction |
 | `memory` | Scoped query/commit â†’ memory result | Retrieval, relevance, retention, provenance, privacy | Run orchestration |
+| `planning` | Task evidence + decision depth (+ optional skills/process hints) â†’ `PlanArtifact` | Dimension-driven plan drafting, validation, compaction, serialization | Route authority, tool execution, hard-coded plan types |
 
 Adding a top-level module requires all of:
 

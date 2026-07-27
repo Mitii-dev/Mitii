@@ -9,6 +9,7 @@ export type {
 } from "./buildClarificationPayload";
 export { mapContextToPromptSlice } from "./mapContextToPromptSlice";
 export { mapUnderstandingToSkillEvidence } from "./mapUnderstandingToSkillEvidence";
+export { mapUnderstandingToPlanningEvidence } from "./mapUnderstandingToPlanningEvidence";
 export { mergePromptInstructions } from "./mergePromptInstructions";
 export { filterToolDefinitions } from "./filterToolDefinitions";
 export { serializeToolResultForModel } from "./serializeToolResultForModel";

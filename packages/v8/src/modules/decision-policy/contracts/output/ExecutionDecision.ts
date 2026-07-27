@@ -6,6 +6,7 @@ import {
   DECISION_POLICY_SCHEMA_VERSION,
   DECISION_REASON_CODES,
   EXECUTION_ROUTES,
+  PLAN_GATES,
   PLANNING_DEPTHS,
   RUN_DISPOSITIONS,
   VERIFICATION_EVIDENCE_KINDS,
@@ -14,6 +15,7 @@ import { toolGrantSchema } from "./ToolGrant";
 
 export const executionRouteSchema = z.enum(EXECUTION_ROUTES);
 export const planningDepthSchema = z.enum(PLANNING_DEPTHS);
+export const planGateSchema = z.enum(PLAN_GATES);
 export const runDispositionSchema = z.enum(RUN_DISPOSITIONS);
 export const decisionReasonCodeSchema = z.enum(DECISION_REASON_CODES);
 export const verificationEvidenceKindSchema = z.enum(
@@ -37,6 +39,7 @@ export const executionDecisionSchema = z
     schemaVersion: z.literal(DECISION_POLICY_SCHEMA_VERSION),
     route: executionRouteSchema,
     planningDepth: planningDepthSchema,
+    planGate: planGateSchema,
     runDisposition: runDispositionSchema,
     repositoryContextRequired: z.boolean(),
     pinnedState: repositoryStateReferenceSchema.optional(),
@@ -51,5 +54,6 @@ export const executionDecisionSchema = z
 export type ExecutionDecision = z.infer<typeof executionDecisionSchema>;
 export type ExecutionRoute = z.infer<typeof executionRouteSchema>;
 export type PlanningDepth = z.infer<typeof planningDepthSchema>;
+export type PlanGate = z.infer<typeof planGateSchema>;
 export type RunDisposition = z.infer<typeof runDispositionSchema>;
 export type DecisionReasonCode = z.infer<typeof decisionReasonCodeSchema>;

@@ -94,6 +94,7 @@ export class PromptConstructionPipeline {
       memory: parsed.instructions?.memory ?? [],
       estimator: this.estimator,
       budgetTokens: systemBudget,
+      planText: parsed.planText,
     });
 
     provenance.push({

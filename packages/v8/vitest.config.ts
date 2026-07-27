@@ -14,6 +14,7 @@ export default defineConfig({
       'src/engine/**/*.spec.ts',
       'src/modules/decision-policy/**/*.spec.ts',
       'src/modules/memory/**/*.spec.ts',
+      'src/modules/planning/**/*.spec.ts',
       'src/modules/prompt-construction/**/*.spec.ts',
       'src/modules/skills/**/*.spec.ts',
       'src/modules/verification/**/*.spec.ts',

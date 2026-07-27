@@ -13,6 +13,10 @@ import type {
   MemoryRetrieveResult,
 } from "../../../../modules/memory";
 import type {
+  PlanningInput,
+  PlanningResult,
+} from "../../../../modules/planning";
+import type {
   RepositoryContextPipelineInput,
   RepositoryContextPipelineResult,
 } from "../../../../modules/repository-context";
@@ -76,6 +80,10 @@ export interface AgentEngineMemoryPort {
   retrieve(input: MemoryRetrieveInput): Promise<MemoryRetrieveResult>;
 }
 
+export interface AgentEnginePlanningPort {
+  plan(input: PlanningInput): PlanningResult;
+}
+
 export interface AgentEngineRepositoryStatePort {
   pin(input: PinRepositoryStateInput): Promise<PinRepositoryStateResult>;
   unpin(input: UnpinRepositoryStateInput): Promise<UnpinRepositoryStateResult>;
@@ -107,7 +115,7 @@ export interface AgentEngineVerificationPort {
 /**
  * Dependencies injected by the Application layer / tests.
  * Engine coordinates these public facades; it does not reimplement them.
- * Skills and Memory are optional — omitting either leaves the core loop intact.
+ * Skills, Memory, and Planning are optional — omitting leaves the core loop intact.
  */
 export interface AgentEngineDependencies {
   intake: AgentEngineIntakePort;
@@ -117,6 +125,7 @@ export interface AgentEngineDependencies {
   llm: LlmPort;
   skills?: AgentEngineSkillsPort;
   memory?: AgentEngineMemoryPort;
+  planning?: AgentEnginePlanningPort;
   repositoryState?: AgentEngineRepositoryStatePort;
   repositoryContext?: AgentEngineRepositoryContextPort;
   tools?: AgentEngineToolRuntimePort;

@@ -1,0 +1,111 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  PLANNING_SCHEMA_VERSION,
+  PlanningError,
+  PlanningPipeline,
+  formatPlanAsAnswer,
+  planningInputSchema,
+  serializePlanForPrompt,
+} from "../index";
+
+function baseInput(
+  overrides: Record<string, unknown> = {},
+): Parameters<PlanningPipeline["plan"]>[0] {
+  return planningInputSchema.parse({
+    schemaVersion: PLANNING_SCHEMA_VERSION,
+    query: "Add SSO login without breaking password login",
+    mode: "plan",
+    route: "plan",
+    planningDepth: "visible",
+    evidence: {
+      primaryIntent: "feature",
+      secondaryIntents: [],
+      interactionIntent: "plan",
+      scope: "package",
+      complexity: "complex",
+      risk: "high",
+      clarity: "partially_clear",
+      targets: [{ kind: "folder", value: "src/auth", explicit: true }],
+      constraints: ["Keep password login working"],
+      requestedOutcomes: ["Add SSO login without breaking password login"],
+      recommendsPlanning: true,
+      recommendsVerification: true,
+      changeImpact: ["code", "config", "security"],
+    },
+    processHints: ["auth_identity"],
+    ...overrides,
+  });
+}
+
+describe("PlanningPipeline", () => {
+  const pipeline = new PlanningPipeline();
+
+  it("drafts a generic PlanArtifact from dimensions", () => {
+    const result = pipeline.plan(baseInput());
+    expect(result.status === "validated" || result.status === "compacted").toBe(
+      true,
+    );
+    expect(result.plan).toBeDefined();
+    expect(result.plan!.phases.length).toBeGreaterThanOrEqual(2);
+    expect(result.plan!.dimensions.risk).toBe("high");
+    expect(result.plan!.approvalRequired).toBe(true);
+    expect(result.plan!.processHintsApplied).toContain("auth_identity");
+    expect(result.plan!.openQuestions.some((q) => /provider/i.test(q))).toBe(
+      true,
+    );
+    expect(result.reasonCodes).toContain("plan_drafted");
+    expect(result.reasonCodes).toContain("plan_process_hints_applied");
+  });
+
+  it("returns blocked when planningDepth is none", () => {
+    const result = pipeline.plan(baseInput({ planningDepth: "none" }));
+    expect(result.status).toBe("blocked");
+    expect(result.plan).toBeUndefined();
+    expect(result.reasonCodes).toContain("plan_depth_none");
+  });
+
+  it("accepts skills slot without requiring Skills module", () => {
+    const result = pipeline.plan(
+      baseInput({
+        skills: [
+          {
+            id: "skill_auth",
+            title: "Auth guidance",
+            content: "Prefer configurable OIDC over vendor hardcoding.",
+            priority: 100,
+          },
+        ],
+      }),
+    );
+    expect(result.plan).toBeDefined();
+    expect(result.reasonCodes).toContain("plan_skills_considered");
+  });
+
+  it("serializes plan for prompt and answer", () => {
+    const result = pipeline.plan(baseInput());
+    const text = serializePlanForPrompt(result.plan!);
+    expect(text).toContain('trust="instruction"');
+    expect(text).toContain("Objective:");
+    expect(formatPlanAsAnswer(result.plan!)).toContain("Plan:");
+  });
+
+  it("throws PlanningError on invalid input", () => {
+    expect(() =>
+      pipeline.plan({
+        schemaVersion: 999,
+        query: "x",
+        mode: "plan",
+        route: "plan",
+        planningDepth: "visible",
+        evidence: {
+          primaryIntent: "feature",
+          scope: "package",
+          complexity: "simple",
+          risk: "low",
+          clarity: "clear",
+        },
+      } as never),
+    ).toThrow(PlanningError);
+  });
+});
