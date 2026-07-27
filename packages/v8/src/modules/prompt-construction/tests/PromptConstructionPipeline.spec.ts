@@ -61,8 +61,8 @@ describe("PromptConstructionPipeline", () => {
     const result = new PromptConstructionPipeline().construct(
       createPromptInput({
         capabilities: createCapabilities({
-          contextWindowTokens: 4_096,
-          maximumOutputTokens: 4_096,
+          contextWindowTokens: 32_768,
+          maximumOutputTokens: 8_192,
         }),
       }),
     );

@@ -180,6 +180,7 @@ function clampGrantAgainstInjection(
         ),
         approvalMode: "never",
         networkHosts: [],
+        mutationBudget: undefined,
       };
     }
   }

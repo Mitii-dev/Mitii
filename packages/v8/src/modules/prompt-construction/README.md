@@ -16,6 +16,7 @@ Does not retrieve repository content or invoke models.
 | `promptConstructionInputSchema` / `PromptConstructionInput` | Boundary input |
 | `promptConstructionResultSchema` / `PromptConstructionResult` | Boundary result |
 | `CharacterTokenEstimator` | Default token estimator when Engine does not inject one |
+| `estimateTurnOutputHeadroom` | Soft preflight helper for mutation payload vs max output |
 
 ```ts
 const pipeline = new PromptConstructionPipeline();
@@ -46,6 +47,19 @@ PromptConstructionInput
   → assemble ModelRequest + budget/provenance/omission report
 ```
 
+## Token strategy
+
+- **Output first:** `AllocateBudget` reserves output tokens before filling
+  input sections (`outputReserveRatio`, min 4k, max 16k, capped by provider
+  `maximumOutputTokens`).
+- **Conversation compaction:** Older tool results shrink to
+  `compactedToolResultCharacters`; only the most recent
+  `compactedToolResultKeepRecent` tool messages stay full. Oldest turns drop
+  when still over budget.
+- **Headroom helper:** `estimateTurnOutputHeadroom` compares estimated patch
+  payload characters against ~70% of max output so Agent Engine can recover
+  from truncated multi-file edits.
+
 ## Policy highlights
 
 - Output capacity is reserved before optional sections are filled.
@@ -61,6 +75,7 @@ PromptConstructionInput
 - Tool execution (`tool-runtime`)
 - Skill/memory selection policy (`skills` / `memory`)
 - Agent run loop (`agent-engine`)
+- Mutation batch *authority* (`decision-policy` mutationBudget)
 
 ## Tests
 

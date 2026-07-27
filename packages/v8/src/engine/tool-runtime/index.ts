@@ -18,6 +18,8 @@ export {
   DEFAULT_MAX_SEARCH_MATCHES,
   DEFAULT_ALLOWED_COMMAND_ENV,
   DEFAULT_READONLY_COMMAND_PREFIXES,
+  MAX_APPLY_PATCH_PATCHES,
+  DEFAULT_FALLBACK_MUTATION_BUDGET,
 } from "./defaults";
 
 export {
@@ -30,6 +32,11 @@ export type {
   RollbackMutationInput,
 } from "./pipeline/ToolRuntimePipeline";
 export type { ToolApprovalToken } from "./pipeline/types";
+
+export {
+  validateMutationBatch,
+  MutationBatchValidationError,
+} from "./mutationBatch";
 
 export {
   ToolRegistry,

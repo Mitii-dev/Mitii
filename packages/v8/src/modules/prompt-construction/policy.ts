@@ -7,10 +7,10 @@ export const PROMPT_CONSTRUCTION_THRESHOLDS = {
    * Fraction of the provider context window reserved for model output
    * before any optional input sections are filled.
    */
-  outputReserveRatio: 0.25,
+  outputReserveRatio: 0.3,
 
   /** Absolute floor for output reserve tokens when the window is large enough. */
-  minimumOutputReserveTokens: 2_048,
+  minimumOutputReserveTokens: 4_096,
 
   /** Absolute ceiling for output reserve (still capped by provider max output). */
   maximumOutputReserveTokens: 16_384,
@@ -22,10 +22,22 @@ export const PROMPT_CONSTRUCTION_THRESHOLDS = {
   minimumUserRequestTokens: 64,
 
   /** When compacting conversation, truncate older tool results to this many chars. */
-  compactedToolResultCharacters: 600,
+  compactedToolResultCharacters: 400,
+
+  /**
+   * Keep this many most-recent tool results fully intact when compacting;
+   * older tool messages are truncated to compactedToolResultCharacters.
+   */
+  compactedToolResultKeepRecent: 3,
 
   /** Maximum repository blocks serialized even when budget remains. */
   maximumRepositoryBlocks: 48,
+
+  /**
+   * Soft fraction of maximumOutputTokens used as a headroom hint for
+   * estimated mutation payloads (Agent Engine preflight / recovery).
+   */
+  mutationOutputHeadroomRatio: 0.7,
 } as const;
 
 /**

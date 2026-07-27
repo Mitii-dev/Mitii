@@ -49,6 +49,7 @@ export const AGENT_REASON_CODES = [
   "prompt_constructed",
   "model_completed",
   "output_truncated",
+  "output_truncation_recovered",
   "tools_executed",
   "mutation_applied",
   "mutation_rolled_back",

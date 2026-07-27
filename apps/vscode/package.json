@@ -210,9 +210,9 @@
         },
         "mitii.provider.maximumOutputTokens": {
           "type": "number",
-          "default": 8192,
+          "default": 16384,
           "minimum": 256,
-          "description": "Maximum tokens the model may generate per call. Prevents mid-sentence cutoffs when the default reserve would otherwise be too small."
+          "description": "Maximum tokens the model may generate per call. Higher defaults help multi-file apply_patch batches; still pair with mutation batching for 30+ file tasks."
         },
         "mitii.workspace.rootPathOverride": {
           "type": "string",

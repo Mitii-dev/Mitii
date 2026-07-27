@@ -23,7 +23,7 @@ import { findLocalModelPreset } from './modelPresets.js';
 import { createHostRepositoryContext } from './repositoryContextHost.js';
 
 const DEFAULT_CONTEXT_WINDOW = 32_768;
-const DEFAULT_MAXIMUM_OUTPUT = 8_192;
+const DEFAULT_MAXIMUM_OUTPUT = 16_384;
 
 export class LocalUnderstandingLlmPort implements LlmPort {
   readonly id = 'vscode-local-understanding';

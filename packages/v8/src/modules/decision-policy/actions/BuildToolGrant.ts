@@ -14,6 +14,7 @@ import {
   DEFAULT_READ_ONLY_TOOL_GRANT_LIMITS,
   DEFAULT_TOOL_GRANT_LIMITS,
 } from "../defaults";
+import { resolveMutationBudget } from "./ResolveMutationBudget";
 
 export interface ToolGrantResolution {
   toolGrant: ToolGrant;
@@ -92,6 +93,9 @@ export function buildToolGrant(params: {
   }
   reasonCodes.push("mutation_execute");
 
+  const mutation = resolveMutationBudget({ understanding });
+  reasonCodes.push(...mutation.reasonCodes);
+
   return {
     toolGrant: {
       maximumWorkspaceEffect: "write",
@@ -111,6 +115,7 @@ export function buildToolGrant(params: {
       networkHosts: [],
       approvalMode,
       limits: { ...DEFAULT_TOOL_GRANT_LIMITS },
+      mutationBudget: mutation.mutationBudget,
     },
     reasonCodes,
   };

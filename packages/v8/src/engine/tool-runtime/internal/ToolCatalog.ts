@@ -163,7 +163,7 @@ export const structuredPatchSchema = z
 
 export const applyPatchInputSchema = z
   .object({
-    patches: z.array(structuredPatchSchema).min(1).max(50),
+    patches: z.array(structuredPatchSchema).min(1).max(12),
   })
   .strict();
 

@@ -51,3 +51,7 @@ export type {
 } from "./contracts";
 
 export { CharacterTokenEstimator } from "./CharacterTokenEstimator";
+export {
+  estimateTurnOutputHeadroom,
+} from "./turnOutputHeadroom";
+export type { TurnOutputHeadroom } from "./turnOutputHeadroom";

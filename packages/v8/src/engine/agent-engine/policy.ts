@@ -1,6 +1,18 @@
 import type { ModelToolDefinition } from "../../modules/model-gateway";
 
 /**
+ * Tunable Agent Engine thresholds for token / truncation recovery.
+ */
+export const AGENT_ENGINE_THRESHOLDS = {
+  /** Max automatic recoveries after finishReason=length with incomplete tools. */
+  maxTruncationRecoveries: 3,
+  /** Fallback preferred batch size when grant omits mutationBudget. */
+  defaultPreferredBatchSize: 3,
+  /** Fallback hard patch cap when grant omits mutationBudget. */
+  defaultMaxPatchesPerCall: 8,
+} as const;
+
+/**
  * Routes supported by the single-agent Engine after Phase 8.
  * Phase 9 optionally attaches Skills/Memory before prompt construction.
  */
@@ -110,7 +122,7 @@ export const DEFAULT_MUTATION_TOOL_DEFINITIONS: readonly ModelToolDefinition[] =
     {
       name: "apply_patch",
       description:
-        "Apply structured oldText/newText patches inside a recoverable transaction.",
+        "Apply structured oldText/newText patches inside a recoverable transaction. Batch small: prefer ≤3 files per call (hard max from grant mutationBudget, catalog max 12). Use minimal hunks — never rewrite many whole files in one response; continue across turns for large refactors.",
       inputSchema: {
         type: "object",
         properties: {
@@ -127,6 +139,7 @@ export const DEFAULT_MUTATION_TOOL_DEFINITIONS: readonly ModelToolDefinition[] =
               required: ["path", "oldText", "newText"],
             },
             minItems: 1,
+            maxItems: 12,
           },
         },
         required: ["patches"],

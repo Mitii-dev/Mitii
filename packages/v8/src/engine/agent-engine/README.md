@@ -101,6 +101,14 @@ verified success commits the mutation transaction(s); failure rolls them
 back via `tools.rollbackMutation` and the run finishes `failed`
 (`verification_failed`, `mutation_rolled_back`).
 
+## Token strategy (large multi-file tasks)
+
+- Decision Policy attaches `toolGrant.mutationBudget` on write grants.
+- Engine injects a trusted `mitii.mutation_budget` project rule before prompt construction.
+- `apply_patch` tool description prefers small batches (catalog max 12).
+- When `finishReason === "length"` and tool-call JSON is incomplete, Engine **does not execute** those tools — it appends a smaller-batch recovery user message and continues the loop (`output_truncation_recovered`, capped by `AGENT_ENGINE_THRESHOLDS.maxTruncationRecoveries`).
+- Session budgets default higher (`maxModelCalls` 32) so multi-batch refactors can finish.
+
 ## Policy highlights
 
 - Clarification and approval suspensions are `status: "suspended"` (not failed).

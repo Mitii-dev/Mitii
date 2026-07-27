@@ -257,8 +257,10 @@ export function compactConversation(params: {
   const toolIndices = working
     .map((message, index) => (message.role === "tool" ? index : -1))
     .filter((index) => index >= 0);
-  if (toolIndices.length > 4) {
-    const keepFull = new Set(toolIndices.slice(-4));
+  const keepRecent =
+    PROMPT_CONSTRUCTION_THRESHOLDS.compactedToolResultKeepRecent;
+  if (toolIndices.length > keepRecent) {
+    const keepFull = new Set(toolIndices.slice(-keepRecent));
     working = working.map((message, index) => {
       if (message.role !== "tool" || keepFull.has(index)) {
         return message;

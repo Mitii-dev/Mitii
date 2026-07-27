@@ -28,6 +28,7 @@ export type {
 export {
   toolGrantSchema,
   toolGrantLimitsSchema,
+  mutationBudgetSchema,
   commandRuleSchema,
   workspaceEffectSchema,
   toolEffectSchema,
@@ -36,6 +37,7 @@ export {
 export type {
   ToolGrant,
   ToolGrantLimits,
+  MutationBudget,
   CommandRule,
 } from "./output/ToolGrant";
 

@@ -33,6 +33,8 @@ import {
   amendMessageWithClarification,
   assembleToolCalls,
   buildClarificationPayload,
+  buildMutationBudgetInstruction,
+  buildOutputTruncationRecovery,
   filterToolDefinitions,
   mapContextToPromptSlice,
   mapUnderstandingToSkillEvidence,
@@ -642,8 +644,21 @@ export class AgentEnginePipeline {
         supportsTools: this.deps.llm.capabilities.supportsTools,
       });
 
+      const mutationBudgetRule = buildMutationBudgetInstruction(
+        decision.toolGrant.mutationBudget,
+      );
+      const hostInstructions: PromptInstructions | undefined = mutationBudgetRule
+        ? {
+            ...input.instructions,
+            projectRules: [
+              ...(input.instructions?.projectRules ?? []),
+              mutationBudgetRule,
+            ],
+          }
+        : input.instructions;
+
       const instructions = mergePromptInstructions({
-        host: input.instructions,
+        host: hostInstructions,
         skills: selectedSkills,
         memory: selectedMemory,
       });
@@ -1446,6 +1461,7 @@ export class AgentEnginePipeline {
     } = params;
     const grant = decision.toolGrant;
     let answer = "";
+    let truncationRecoveries = 0;
 
     while (true) {
       if (signal.aborted) {
@@ -1532,9 +1548,41 @@ export class AgentEnginePipeline {
           type: "warning",
           runId,
           message:
-            "Response truncated: output token limit reached. Raise mitii.provider.maximumOutputTokens or context window if answers cut off mid-sentence.",
+            "Response truncated: output token limit reached. Retrying with a smaller mutation batch when tools were incomplete; otherwise raise mitii.provider.maximumOutputTokens.",
           at: this.isoNow(),
         });
+      }
+
+      const recovery = buildOutputTruncationRecovery({
+        finishReason: turn.finishReason,
+        content: turn.content,
+        toolCalls: turn.toolCalls,
+        mutationBudget: grant.mutationBudget,
+        recoveryAttempt: truncationRecoveries,
+      });
+
+      if (recovery?.shouldRecover) {
+        truncationRecoveries += 1;
+        reasonCodes.push("output_truncation_recovered");
+        answer = recovery.assistantContent;
+        messages.push({
+          role: "assistant",
+          content: recovery.assistantContent,
+        });
+        messages.push(recovery.recoveryMessage);
+        this.emit(bus, {
+          type: "warning",
+          runId,
+          message:
+            "Discarded incomplete truncated tool call(s); continuing with a smaller-batch instruction.",
+          at: this.isoNow(),
+        });
+        this.emitStage(bus, runId, "model_running", "completed", [
+          "model_completed",
+          "output_truncated",
+          "output_truncation_recovered",
+        ]);
+        continue;
       }
 
       if (turn.content.length > 0) {

@@ -7,6 +7,12 @@ export type { PlanningDepthResolution } from "./ResolvePlanningDepth";
 export { buildToolGrant } from "./BuildToolGrant";
 export type { ToolGrantResolution } from "./BuildToolGrant";
 
+export { resolveMutationBudget } from "./ResolveMutationBudget";
+export type {
+  MutationBudgetProfile,
+  MutationBudgetResolution,
+} from "./ResolveMutationBudget";
+
 export { resolveVerificationRequirement } from "./ResolveVerificationRequirement";
 export type { VerificationResolution } from "./ResolveVerificationRequirement";
 

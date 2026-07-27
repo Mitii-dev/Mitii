@@ -64,6 +64,7 @@ export {
   decisionPolicyInputSchema,
   executionDecisionSchema,
   toolGrantSchema,
+  mutationBudgetSchema,
 } from "./modules/decision-policy";
 export type {
   DecisionPolicyInput,
@@ -71,6 +72,7 @@ export type {
   ExecutionRoute,
   PlanningDepth,
   ToolGrant,
+  MutationBudget,
 } from "./modules/decision-policy";
 
 export { PromptConstructionPipeline } from "./modules/prompt-construction";

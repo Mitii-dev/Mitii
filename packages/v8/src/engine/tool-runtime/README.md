@@ -15,6 +15,7 @@ through injected ports. Model text cannot increase authority.
 |--------|------|
 | `ToolRuntimePipeline` | Public facade (`execute`, `listCapabilities`, `createBudget`) |
 | `ToolRegistry` / `createBuiltinToolRegistry` | Register tools without editing the pipeline |
+| `validateMutationBatch` | Enforce `grant.mutationBudget` on `apply_patch` |
 | `toolInvocationInputSchema` / `ToolInvocationInput` | Boundary input |
 | `toolResultSchema` / `ToolResult` | Boundary result |
 | Port adapters | `NodeWorkspaceFileSystemAdapter`, `NodeProcessAdapter`, in-memory test doubles |
@@ -77,6 +78,7 @@ Mutation calls are grant-gated (`maximumWorkspaceEffect: "write"`,
 ```text
 execute(apply_patch, …)
   → grant/effect/schema preflight
+  → mutationBudget batch limits (patches / files / payload chars)
   → dirty-overlap check (options.dirtyPaths vs. patch paths)
   → approval preflight (skipped when approvalMode is "never")
       no/mismatched approval → status "rejected", reasonCode "approval_required",
@@ -86,6 +88,18 @@ execute(apply_patch, …)
   → apply patches, capture changedFiles
   → ToolResult.output = { checkpointId, changedFiles }
 ```
+
+### Mutation batch limits
+
+`apply_patch` is capped at the catalog (`max` 12 patches) and further by
+`grant.mutationBudget` (or `DEFAULT_FALLBACK_MUTATION_BUDGET`):
+
+- `maxPatchesPerCall`
+- `maxUniqueFilesPerCall`
+- `maxPatchPayloadCharacters` (sum of oldText + newText)
+
+Oversized batches return `status: "rejected"`, `reasonCode: "limit_exceeded"`.
+This keeps each model turn under provider output-token limits on large tasks.
 
 Callers (Agent Engine) re-submit the same call with
 `options.approval = { approvalId, fingerprint, decision: "approved" }` to
@@ -103,7 +117,7 @@ compute or compare fingerprints without invoking the tool.
 ```text
 ToolInvocationInput
   → parseInvocation
-  → preflightToolCall (budget, registry, grant, args)
+  → preflightToolCall (budget, registry, grant, schema, mutation batch, approval)
   → registered.execute(handler)
   → buildFinishedResult | mapExecutionError
   → ToolResult + audit event
@@ -114,9 +128,9 @@ Pipeline sources:
 | File | Owns |
 |------|------|
 | `pipeline/ToolRuntimePipeline.ts` | Orchestration only |
-| `pipeline/parseInvocation.ts` | Input contract parse |
-| `pipeline/preflightToolCall.ts` | Budget / grant / schema gates |
-| `pipeline/buildToolResult.ts` | Rejected, finished, and error results |
+| `pipeline/helpers/preflightToolCall.ts` | Budget / grant / schema / mutation batch gates |
+| `pipeline/helpers/buildToolResult.ts` | Rejected, finished, and error results |
+| `actions/ValidateMutationBatch.ts` | apply_patch batch size enforcement |
 
 ## Do not put here
 

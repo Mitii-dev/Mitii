@@ -1,6 +1,11 @@
 import { ZodError } from "zod";
 
-import { GrantValidationError, validateToolAgainstGrant } from "../../actions";
+import {
+  GrantValidationError,
+  MutationBatchValidationError,
+  validateMutationBatch,
+  validateToolAgainstGrant,
+} from "../../actions";
 import type { ToolInvocationInput, ToolResult } from "../../contracts";
 import { assertApprovalSatisfied } from "../../internal/mutation/assertApprovalSatisfied";
 import { fingerprintToolCall } from "../../internal/mutation";
@@ -110,6 +115,28 @@ export function preflightToolCall(params: {
           status: "rejected",
           reasonCode: "invalid_arguments",
           warnings: [error.issues.map((issue) => issue.message).join("; ")],
+        }),
+      };
+    }
+    throw error;
+  }
+
+  try {
+    validateMutationBatch({
+      toolName: parsed.toolName,
+      arguments: parsed.arguments,
+      grant: parsed.grant,
+    });
+  } catch (error) {
+    if (error instanceof MutationBatchValidationError) {
+      return {
+        ok: false,
+        result: buildRejectedResult({
+          parsed,
+          clock,
+          status: "rejected",
+          reasonCode: error.reasonCode,
+          warnings: [error.message],
         }),
       };
     }

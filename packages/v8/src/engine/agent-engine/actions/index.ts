@@ -12,3 +12,10 @@ export { mapUnderstandingToSkillEvidence } from "./mapUnderstandingToSkillEviden
 export { mergePromptInstructions } from "./mergePromptInstructions";
 export { filterToolDefinitions } from "./filterToolDefinitions";
 export { serializeToolResultForModel } from "./serializeToolResultForModel";
+export {
+  buildOutputTruncationRecovery,
+  isCompleteToolCall,
+} from "./buildOutputTruncationRecovery";
+export type { TruncationRecoveryPlan } from "./buildOutputTruncationRecovery";
+export { buildMutationBudgetInstruction } from "./buildMutationBudgetInstruction";
+export { estimateMutationPayloadCharacters } from "./estimateMutationPayloadCharacters";

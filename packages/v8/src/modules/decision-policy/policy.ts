@@ -9,6 +9,42 @@ export const DECISION_POLICY_THRESHOLDS = {
   minimumIntentMargin: 0.12,
   /** Estimated file count above which multi-file work gets an internal plan. */
   multiFilePlanThreshold: 2,
+  /**
+   * Estimated files above which execute grants use a tight mutation budget
+   * (smaller apply_patch batches to stay under provider output limits).
+   */
+  largeMutationFileThreshold: 8,
+} as const;
+
+/**
+ * Mutation batch budgets attached to write grants.
+ * Tool Runtime enforces the hard caps; Engine prompts preferredBatchSize.
+ */
+export const MUTATION_BUDGET_PROFILES = {
+  /** Localized single-file / small edits — still capped to protect output tokens. */
+  relaxed: {
+    maxPatchesPerCall: 12,
+    maxUniqueFilesPerCall: 8,
+    maxPatchPayloadCharacters: 40_000,
+    preferredBatchSize: 5,
+    requireBatchedExecution: false,
+  },
+  /** Default agent execute path. */
+  standard: {
+    maxPatchesPerCall: 8,
+    maxUniqueFilesPerCall: 5,
+    maxPatchPayloadCharacters: 24_000,
+    preferredBatchSize: 3,
+    requireBatchedExecution: false,
+  },
+  /** Large / multi-file / high-complexity refactors — force small batches. */
+  tight: {
+    maxPatchesPerCall: 5,
+    maxUniqueFilesPerCall: 3,
+    maxPatchPayloadCharacters: 16_000,
+    preferredBatchSize: 2,
+    requireBatchedExecution: true,
+  },
 } as const;
 
 /**

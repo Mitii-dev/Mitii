@@ -26,6 +26,7 @@ export {
   verificationRequirementSchema,
   toolGrantSchema,
   toolGrantLimitsSchema,
+  mutationBudgetSchema,
   commandRuleSchema,
   DecisionPolicyError,
   decisionPolicyErrorCodeSchema,
@@ -41,6 +42,7 @@ export type {
   VerificationRequirement,
   ToolGrant,
   ToolGrantLimits,
+  MutationBudget,
   CommandRule,
   DecisionPolicyErrorCode,
 } from "./contracts";
