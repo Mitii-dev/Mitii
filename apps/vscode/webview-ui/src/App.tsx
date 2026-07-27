@@ -590,6 +590,7 @@ export function App() {
                   setTurns([]);
                   setPlan(null);
                   setActiveThreadId(undefined);
+                  setTokenUsage(EMPTY_TOKEN_USAGE);
                 }}
               >
                 <IconPlus />

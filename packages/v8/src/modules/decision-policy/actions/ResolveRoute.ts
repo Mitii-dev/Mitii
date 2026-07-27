@@ -35,7 +35,7 @@ export function resolveRoute(params: {
   const interaction = intent.classification.interactionIntent;
   const reasonCodes: DecisionReasonCode[] = [];
 
-  if (requiresClarification(understanding)) {
+  if (requiresClarification(understanding, message)) {
     reasonCodes.push("clarification_material");
     return {
       route: "clarify",
@@ -204,7 +204,14 @@ function needsRepositoryGrounding(
 
 function requiresClarification(
   understanding: RequestUnderstandingResult,
+  message: string,
 ): boolean {
+  // Resume already amended the user ask with a clarification answer — do not
+  // suspend again for the same ambiguity.
+  if (hasResolvedClarification(message)) {
+    return false;
+  }
+
   const { intent, taskAnalysis } = understanding;
 
   if (intent.status === "clarification_required") {
@@ -241,6 +248,10 @@ function requiresClarification(
   }
 
   return false;
+}
+
+function hasResolvedClarification(message: string): boolean {
+  return /\nClarification:\s*\S+/i.test(message);
 }
 
 function hasExplicitRepoTargets(

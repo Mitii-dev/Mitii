@@ -1,4 +1,4 @@
-import type { SuspensionPayload } from '../protocol';
+import type { ClarificationOptionView, SuspensionPayload } from '../protocol';
 
 interface ApprovalCardsProps {
   suspension: SuspensionPayload;
@@ -9,6 +9,29 @@ interface ApprovalCardsProps {
   onApprove: () => void;
   onDeny: () => void;
   onShowInlineDiff: (approvalId: string) => void;
+}
+
+function shortClarifyText(text: string | undefined, max = 480): string | undefined {
+  if (!text) return undefined;
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  if (!cleaned) return undefined;
+  // Host-composed prompts must never render in the card.
+  if (
+    cleaned.includes('<<<MITII_') ||
+    cleaned.startsWith('Workspace file map') ||
+    cleaned.startsWith('Pinned file') ||
+    cleaned.startsWith('Pinned context:')
+  ) {
+    return undefined;
+  }
+  if (cleaned.length > max) return `${cleaned.slice(0, max - 1)}…`;
+  return cleaned;
+}
+
+function optionAnswer(option: ClarificationOptionView): string {
+  return option.description
+    ? `${option.label} — ${option.description}`
+    : option.label;
 }
 
 export function ApprovalCards({
@@ -23,15 +46,18 @@ export function ApprovalCards({
 }: ApprovalCardsProps) {
   const isClarify = suspension.kind === 'clarification_required';
   const approval = suspension.approval;
+  const options = suspension.clarificationOptions ?? [];
+  const prompt =
+    shortClarifyText(suspension.clarificationPrompt) ??
+    (suspension.rationale && !/^mode=/.test(suspension.rationale)
+      ? shortClarifyText(suspension.rationale)
+      : undefined) ??
+    'I need a bit more detail before continuing.';
 
   return (
     <div className="card approval-card">
       <h3>{isClarify ? 'Clarification needed' : 'Approval required'}</h3>
-      <p>
-        {suspension.clarificationPrompt ??
-          suspension.rationale ??
-          'Continue the run.'}
-      </p>
+      <p className="approval-card__prompt">{prompt}</p>
       {!isClarify && approval ? (
         <div className="approval-meta">
           <span className="mono">{approval.toolName}</span>
@@ -42,17 +68,41 @@ export function ApprovalCards({
       ) : null}
       {isClarify ? (
         <>
+          {options.length > 0 ? (
+            <div className="clarify-options" role="group" aria-label="Choices">
+              {options.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className="clarify-option"
+                  onClick={() => onSubmitClarify(optionAnswer(option))}
+                >
+                  <span className="clarify-option__label">{option.label}</span>
+                  {option.description ? (
+                    <span className="clarify-option__desc">
+                      {option.description}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
           <textarea
             rows={3}
             value={clarifyText}
             onChange={(e) => onClarifyChange(e.target.value)}
-            placeholder="Your answer"
+            placeholder={
+              options.length > 0
+                ? 'Or type your own answer…'
+                : 'Your answer'
+            }
           />
           <div className="card-actions">
             <button
               type="button"
               className="btn"
               onClick={() => onSubmitClarify(clarifyText)}
+              disabled={!clarifyText.trim()}
             >
               Submit
             </button>

@@ -29,11 +29,21 @@ export const agentRunUsageSchema = z
 
 export type AgentRunUsage = z.infer<typeof agentRunUsageSchema>;
 
+export const clarificationOptionSchema = z
+  .object({
+    id: z.string().min(1),
+    label: z.string().min(1),
+    description: z.string().min(1).optional(),
+  })
+  .strict();
+
 export const agentRunSuspensionSchema = z
   .object({
     kind: agentSuspensionKindSchema,
     rationale: z.string().min(1),
-    clarificationPrompt: z.string().min(1).optional(),
+    /** Short user-facing question — never the full composed host prompt. */
+    clarificationPrompt: z.string().min(1).max(2_000).optional(),
+    clarificationOptions: z.array(clarificationOptionSchema).max(8).optional(),
     approval: z
       .object({
         approvalId: z.string().min(1),

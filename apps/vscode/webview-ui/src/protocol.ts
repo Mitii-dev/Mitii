@@ -136,11 +136,18 @@ export interface ActivityEventPayload {
   status?: string;
 }
 
+export interface ClarificationOptionView {
+  id: string;
+  label: string;
+  description?: string;
+}
+
 export interface SuspensionPayload {
   runId: string;
   kind: 'clarification_required' | 'approval_required';
   rationale?: string;
   clarificationPrompt?: string;
+  clarificationOptions?: ClarificationOptionView[];
   approval?: {
     approvalId: string;
     toolName: string;

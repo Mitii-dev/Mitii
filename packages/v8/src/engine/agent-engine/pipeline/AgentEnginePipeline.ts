@@ -30,7 +30,9 @@ import type { ToolApprovalToken } from "../../tool-runtime";
 import { VERIFICATION_SCHEMA_VERSION } from "../../../modules/verification";
 
 import {
+  amendMessageWithClarification,
   assembleToolCalls,
+  buildClarificationPayload,
   filterToolDefinitions,
   mapContextToPromptSlice,
   mapUnderstandingToSkillEvidence,
@@ -394,6 +396,10 @@ export class AgentEnginePipeline {
         const rationale =
           decision.rationale ||
           "Material clarification is required before continuing.";
+        const clarification = buildClarificationPayload(
+          understanding,
+          rationale,
+        );
         if (this.deps.checkpointStore) {
           await this.deps.checkpointStore.save({
             runId,
@@ -427,7 +433,11 @@ export class AgentEnginePipeline {
           suspension: {
             kind: "clarification_required",
             rationale,
-            clarificationPrompt: envelope.message,
+            clarificationPrompt: clarification.clarificationPrompt,
+            clarificationOptions:
+              clarification.clarificationOptions.length > 0
+                ? clarification.clarificationOptions
+                : undefined,
           },
           reasonCodes,
         });
@@ -834,8 +844,16 @@ export class AgentEnginePipeline {
         }
         await this.deps.checkpointStore.delete(runId);
         reasonCodes.push("resume_complete");
+        const clarifiedMessage = amendMessageWithClarification(
+          startInput.request.userMessage,
+          input.clarificationAnswer,
+        );
         const amendedInput: AgentEngineStartInput = {
           ...startInput,
+          request: {
+            ...startInput.request,
+            userMessage: clarifiedMessage,
+          },
           conversation: [
             ...startInput.conversation,
             { role: "user", content: input.clarificationAnswer },

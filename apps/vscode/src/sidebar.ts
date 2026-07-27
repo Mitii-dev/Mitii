@@ -132,6 +132,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   private discoveredModels: string[] = [];
   private connectionOk?: boolean;
   private connectionStatus?: string;
+  /** Token usage scoped per chat thread (not global across chats). */
+  private tokenUsageByThread = new Map<string, TokenUsageSnapshot>();
   private tokenUsage: TokenUsageSnapshot = emptyTokenUsage();
   private pendingRunTurns: TokenUsageSnapshot['turns'] = [];
   private runBaseTurns: TokenUsageSnapshot['turns'] = [];
@@ -266,6 +268,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           messages: [],
         });
         await saveHistory(this.host.workspaceState, store);
+        this.setActiveThreadUsage(emptyTokenUsage(resolveContextWindow(this.vs)));
         this.post({
           type: 'history',
           threads: toThreadSummaries(store),
@@ -276,6 +279,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           threadId: this.activeThreadId,
           messages: [],
         });
+        this.post({ type: 'tokenUsage', usage: this.tokenUsage });
         return;
       }
       case 'openChatThread': {
@@ -285,6 +289,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         this.activeThreadId = thread.id;
         store.activeThreadId = thread.id;
         await saveHistory(this.host.workspaceState, store);
+        this.setActiveThreadUsage(
+          this.tokenUsageByThread.get(thread.id) ??
+            emptyTokenUsage(resolveContextWindow(this.vs)),
+        );
         this.post({
           type: 'thread.loaded',
           threadId: thread.id,
@@ -295,26 +303,44 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           threads: toThreadSummaries(store),
           activeThreadId: thread.id,
         });
+        this.post({ type: 'tokenUsage', usage: this.tokenUsage });
         return;
       }
       case 'deleteChatThread': {
         const store = await deleteThread(this.host.workspaceState, message.id);
+        this.tokenUsageByThread.delete(message.id);
         this.activeThreadId = store.activeThreadId;
+        if (this.activeThreadId) {
+          this.setActiveThreadUsage(
+            this.tokenUsageByThread.get(this.activeThreadId) ??
+              emptyTokenUsage(resolveContextWindow(this.vs)),
+          );
+        } else {
+          this.setActiveThreadUsage(
+            emptyTokenUsage(resolveContextWindow(this.vs)),
+          );
+        }
         this.post({
           type: 'history',
           threads: toThreadSummaries(store),
           activeThreadId: store.activeThreadId,
         });
+        this.post({ type: 'tokenUsage', usage: this.tokenUsage });
         return;
       }
       case 'clearChatHistory': {
         await clearHistory(this.host.workspaceState);
         this.activeThreadId = undefined;
+        this.tokenUsageByThread.clear();
+        this.setActiveThreadUsage(
+          emptyTokenUsage(resolveContextWindow(this.vs)),
+        );
         this.post({
           type: 'history',
           threads: [],
           activeThreadId: undefined,
         });
+        this.post({ type: 'tokenUsage', usage: this.tokenUsage });
         return;
       }
       case 'completeOnboarding': {
@@ -828,6 +854,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       turns: [...this.runBaseTurns, ...this.pendingRunTurns].slice(-40),
       live: true,
     };
+    this.persistThreadUsage();
   }
 
   private recordUsage(result: {
@@ -920,6 +947,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       turns: [...baseTurns, ...committedTurns].slice(-40),
       live: false,
     };
+    this.persistThreadUsage();
     return {
       modelCalls: result.usage.modelCalls,
       toolCalls: result.usage.toolCalls,
@@ -1260,16 +1288,40 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     return this.lastIndex;
   }
 
+  private setActiveThreadUsage(usage: TokenUsageSnapshot): void {
+    this.tokenUsage = {
+      ...usage,
+      contextWindow: usage.contextWindow || resolveContextWindow(this.vs),
+      live: false,
+    };
+    this.persistThreadUsage();
+  }
+
+  private persistThreadUsage(): void {
+    if (!this.activeThreadId) return;
+    this.tokenUsageByThread.set(this.activeThreadId, {
+      ...this.tokenUsage,
+      live: false,
+    });
+  }
+
   private async sendBootstrap(): Promise<void> {
     const history = loadHistory(this.host.workspaceState);
     const onboardingCompleted =
       this.vs.workspace
         .getConfiguration('mitii')
         .get<boolean>('onboarding.completed') ?? false;
-    this.tokenUsage = {
-      ...this.tokenUsage,
-      contextWindow: resolveContextWindow(this.vs),
-    };
+    this.activeThreadId = history.activeThreadId;
+    if (this.activeThreadId) {
+      this.setActiveThreadUsage(
+        this.tokenUsageByThread.get(this.activeThreadId) ??
+          emptyTokenUsage(resolveContextWindow(this.vs)),
+      );
+    } else {
+      this.setActiveThreadUsage(
+        emptyTokenUsage(resolveContextWindow(this.vs)),
+      );
+    }
     this.post({
       type: 'bootstrap',
       workspace: this.readWorkspace(),

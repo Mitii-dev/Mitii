@@ -124,6 +124,13 @@ describe("AgentEnginePipeline (Phase 7)", () => {
 
     expect(result.status).toBe("suspended");
     expect(result.suspension?.kind).toBe("clarification_required");
+    expect(result.suspension?.clarificationPrompt).toBeTruthy();
+    expect(result.suspension?.clarificationPrompt).not.toContain(
+      "<<<MITII_",
+    );
+    expect(result.suspension?.clarificationPrompt?.length ?? 0).toBeLessThan(
+      2_000,
+    );
     expect(modelCalls).toBe(0);
     expect(result.reasonCodes).toContain("clarification_suspended");
   });

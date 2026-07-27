@@ -745,6 +745,50 @@ button {
   line-height: 1.4;
 }
 
+.approval-card__prompt {
+  max-height: 6.5em;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.clarify-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.clarify-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--mitii-border);
+  background: var(--mitii-bg, transparent);
+  color: var(--mitii-text);
+  cursor: pointer;
+}
+
+.clarify-option:hover {
+  border-color: color-mix(in srgb, var(--mitii-accent, #3b82f6) 55%, var(--mitii-border));
+  background: var(--mitii-accent-soft);
+}
+
+.clarify-option__label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.clarify-option__desc {
+  font-size: 11px;
+  color: var(--mitii-muted);
+  line-height: 1.35;
+}
+
 .card-actions {
   display: flex;
   flex-wrap: wrap;
@@ -951,6 +995,8 @@ button {
 }
 
 .token-chip__glyph {
+  display: inline-flex;
+  align-items: center;
   color: var(--mitii-accent);
 }
 

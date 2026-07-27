@@ -311,6 +311,7 @@ export function resultToSuspension(
       kind: 'clarification_required',
       rationale: suspension.rationale,
       clarificationPrompt: suspension.clarificationPrompt,
+      clarificationOptions: suspension.clarificationOptions,
     };
   }
   if (suspension.kind === 'approval_required' && suspension.approval) {
@@ -336,12 +337,21 @@ async function resolveSuspensionNative(
   if (!suspension) return 'stop';
 
   if (suspension.kind === 'clarification_required') {
+    const promptText = (
+      suspension.clarificationPrompt ??
+      suspension.rationale ??
+      'Clarification required'
+    ).trim();
+    const safePrompt =
+      promptText.includes('<<<MITII_') || promptText.length > 480
+        ? 'Clarification required — reply with your choice or more detail.'
+        : promptText;
     const answer = await vs.window.showInputBox({
-      prompt:
-        suspension.clarificationPrompt ??
-        suspension.rationale ??
-        'Clarification required',
+      prompt: safePrompt,
       ignoreFocusOut: true,
+      placeHolder: suspension.clarificationOptions?.[0]
+        ? suspension.clarificationOptions.map((o) => o.label).join(' / ')
+        : undefined,
     });
     if (!answer?.trim()) return 'stop';
     return {

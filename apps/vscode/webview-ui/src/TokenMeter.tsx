@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { TokenUsageSnapshot } from './protocol';
+import { IconTokens } from './components/Icons';
 
 interface TokenMeterProps {
   usage: TokenUsageSnapshot;
@@ -26,7 +27,7 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
 
   const tooltip = [
     usage.live ? 'Live · updating each model call' : null,
-    `Session total: ${sessionTotal.toLocaleString()} tokens (input + output)`,
+    `This chat: ${sessionTotal.toLocaleString()} tokens (input + output)`,
     `Input: ${inputTotal.toLocaleString()} · Output: ${outputTotal.toLocaleString()}`,
     usage.contextWindow > 0
       ? `Model window: ${usage.contextWindow.toLocaleString()} tokens`
@@ -64,12 +65,12 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
         type="button"
         className={`token-chip${open ? ' token-chip--active' : ''}${usage.live ? ' token-chip--live' : ''}`}
         title={tooltip}
-        aria-label="Session token usage"
+        aria-label="Chat token usage"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
         <span className="token-chip__glyph" aria-hidden="true">
-          ⌗
+          <IconTokens width={14} height={14} />
         </span>
         <span>{formatCompact(sessionTotal)}</span>
         <span className="token-chip__sep">·</span>
@@ -102,7 +103,7 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
           aria-label="Token usage details"
         >
           <div className="token-popover__header">
-            <span>Session AI Tokens</span>
+            <span>This chat · AI tokens</span>
             <strong>
               {usage.live
                 ? 'Live'
@@ -113,7 +114,7 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
           </div>
           <div className="token-popover__summary">
             <span>
-              {formatCompact(sessionTotal)} lifetime · {usage.modelCalls} calls
+              {formatCompact(sessionTotal)} total · {usage.modelCalls} calls
             </span>
           </div>
           <dl className="token-popover__stats token-popover__stats--primary">
@@ -142,7 +143,7 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
           </div>
           {turns.length === 0 ? (
             <div className="token-popover__summary token-popover__summary--start">
-              <span>No model calls yet this session.</span>
+              <span>No model calls yet in this chat.</span>
             </div>
           ) : (
             <ul className="token-popover__turns">

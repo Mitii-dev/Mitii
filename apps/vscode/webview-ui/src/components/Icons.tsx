@@ -41,6 +41,17 @@ export function IconSettings(props: IconProps) {
   );
 }
 
+/** Token / usage meter glyph (distinct from Settings gear). */
+export function IconTokens(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M3.5 4.5h9v2.5H3.5z" />
+      <path d="M3.5 9h9v2.5H3.5z" />
+      <path d="M5.5 4.5v7.5M10.5 4.5v7.5" />
+    </svg>
+  );
+}
+
 export function IconPlus(props: IconProps) {
   return (
     <svg {...defaults} {...props}>

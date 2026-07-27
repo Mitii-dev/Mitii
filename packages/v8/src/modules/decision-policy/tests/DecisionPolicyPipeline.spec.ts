@@ -141,6 +141,28 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("none");
   });
 
+  it("does not re-clarify after a clarification answer is already present", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message:
+          "Write architecture of this file\n\nClarification: Use README.md in the root",
+        understanding: createUnderstanding({
+          status: "clarification_required",
+          recommendsClarification: true,
+          needsClarification: true,
+          taskAnalysis: {
+            clarity: "unclear",
+            recommendsTaskClarification: true,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).not.toBe("clarify");
+    expect(decision.runDisposition).toBe("continue");
+  });
+
   it("does not broaden ask-mode grants under prompt injection", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({
