@@ -9,8 +9,33 @@ function stamp(): string {
   return new Date().toISOString().replace(/[:.]/g, '-');
 }
 
-function dayStamp(): string {
-  return new Date().toISOString().slice(0, 10);
+function logStamp(date = new Date()): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const year = date.getFullYear();
+  const hour24 = date.getHours();
+  const hour12 = String(hour24 % 12 || 12).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+  const meridiem = hour24 >= 12 ? 'PM' : 'AM';
+  return `${month}-${day}-${year}-${hour12}-${minute}-${meridiem}`;
+}
+
+function safeLogId(id: string): string {
+  return id.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 96) || 'session';
+}
+
+function findExistingLogFile(dir: string, id: string): string | undefined {
+  const suffix = `-${id}.jsonl`;
+  const prefixPattern = /^\d{2}-\d{2}-\d{4}-\d{2}-\d{2}-(?:AM|PM)-/;
+  try {
+    const names = readdirSync(dir)
+      .filter((name) => prefixPattern.test(name) && name.endsWith(suffix))
+      .sort();
+    const existing = names[0];
+    return existing ? join(dir, existing) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function writeLine(file: string, entry: unknown): void {
@@ -106,12 +131,15 @@ export function appendSessionLog(
   if (!workspaceRoot) return undefined;
   const dir = mitiiLogsDir(workspaceRoot);
   mkdirSync(dir, { recursive: true });
-  const sessionId = options.sessionId ?? 'vscode_session';
-  const file = join(dir, `${dayStamp()}-${sessionId}.jsonl`);
+  const sessionId = safeLogId(options.sessionId ?? entry.result.runId ?? 'session');
+  const file =
+    findExistingLogFile(dir, sessionId) ??
+    join(dir, `${logStamp()}-${sessionId}.jsonl`);
 
   writeLine(file, {
     kind: 'run_start',
     at: entry.at,
+    sessionId,
     prompt: entry.prompt,
     mode: entry.mode,
     runId: entry.result.runId,

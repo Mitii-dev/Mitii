@@ -570,6 +570,8 @@ export async function runAskInOutputChannel(options: {
   pinnedPaths?: string[];
   workspaceState?: vscode.Memento;
   workspaceId?: string;
+  /** Stable chat/session id used to group JSONL logs. */
+  sessionId?: string;
   /** Prior chat text for conversation token estimate. */
   conversationText?: string;
   handlers?: HostAskHandlers;
@@ -855,7 +857,7 @@ export async function runAskInOutputChannel(options: {
             mode: options.mode,
             result,
             events,
-          });
+          }, { sessionId: options.sessionId });
           if (logPath) {
             channel.appendLine(`[log] ${logPath}`);
           }
@@ -885,7 +887,7 @@ export async function runAskInOutputChannel(options: {
             mode: options.mode,
             result,
             events,
-          });
+          }, { sessionId: options.sessionId });
           if (logPath) {
             channel.appendLine(`[log] ${logPath}`);
           }

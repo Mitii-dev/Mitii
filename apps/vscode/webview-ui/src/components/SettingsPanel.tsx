@@ -81,6 +81,29 @@ function mergeModelOptions(
   return [...set];
 }
 
+const INDEX_CAPABILITY_LABELS: Record<string, string> = {
+  catalog: 'Catalog',
+  codeIndex: 'Code index',
+  textIndex: 'Text index',
+  vectorIndex: 'Embeddings',
+  graph: 'Graph',
+  map: 'Repo map',
+};
+
+function formatIndexMode(mode: IndexStatusSnapshot['indexMode']): string {
+  if (mode === 'full') return 'Full code/text index';
+  if (mode === 'host_snapshot') return 'Host snapshot fallback';
+  return 'Unknown';
+}
+
+function capabilityDetails(index: IndexStatusSnapshot) {
+  return [...(index.capabilities ?? [])].sort((a, b) => {
+    const left = `${a.rootId ?? ''}:${a.capability}`;
+    const right = `${b.rootId ?? ''}:${b.capability}`;
+    return left.localeCompare(right);
+  });
+}
+
 function SettingsSection({
   title,
   description,
@@ -223,7 +246,58 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   </div>
                   <div className="stat-label">Readiness</div>
                 </div>
+                <div className="stat">
+                  <div className="stat-value" style={{ fontSize: 15 }}>
+                    {index.scanCompleteness ?? '—'}
+                  </div>
+                  <div className="stat-label">Scan</div>
+                </div>
+                <div className="stat">
+                  <div className="stat-value" style={{ fontSize: 15 }}>
+                    {formatIndexMode(index.indexMode)}
+                  </div>
+                  <div className="stat-label">Mode</div>
+                </div>
               </div>
+              {capabilityDetails(index).length > 0 ? (
+                <div
+                  className="index-capability-list"
+                  aria-label="Repository index capability status"
+                >
+                  {capabilityDetails(index).map((capability) => {
+                    const label =
+                      INDEX_CAPABILITY_LABELS[capability.capability] ??
+                      capability.capability;
+                    return (
+                      <div
+                        key={`${capability.rootId ?? 'root'}:${capability.capability}`}
+                        className={`index-capability index-capability--${capability.status}`}
+                        title={[
+                          capability.rootId
+                            ? `Root: ${capability.rootId}`
+                            : undefined,
+                          capability.revision
+                            ? `Revision: ${capability.revision}`
+                            : undefined,
+                          capability.profile
+                            ? `Profile: ${capability.profile}`
+                            : undefined,
+                          capability.reasonCode
+                            ? `Reason: ${capability.reasonCode}`
+                            : undefined,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      >
+                        <span className="index-capability__name">{label}</span>
+                        <span className="index-capability__status">
+                          {capability.status}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
               <p className="field-hint">
                 {index.message ?? 'No index yet'}
                 {index.truncated ? ' · truncated' : ''}

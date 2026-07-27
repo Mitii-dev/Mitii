@@ -23,6 +23,7 @@ import {
   saveMemories,
   toThreadSummaries,
 } from './chatHistory.js';
+import type { StoredThread } from './chatHistory.js';
 import type { InlineDiffManager } from './diff/inlineDiffManager.js';
 import {
   showPatchDiffPreview,
@@ -94,6 +95,87 @@ function emptyTokenUsage(contextWindow = DEFAULT_CONTEXT_WINDOW): TokenUsageSnap
     estimated: true,
     turns: [],
     live: false,
+  };
+}
+
+interface RepositoryCapabilitySnapshot {
+  capability: string;
+  status: string;
+  reasonCode?: string;
+}
+
+interface RepositoryRootSnapshot {
+  rootId: string;
+  projectCatalogRevision: string;
+  codeIndexRevision?: string;
+  textIndexRevision?: string;
+  vectorProfile?: string;
+  vectorIndexRevision?: string;
+  graphRevision?: string;
+  mapRevision?: string;
+  capabilities: RepositoryCapabilitySnapshot[];
+}
+
+interface RepositoryDescriptorSnapshot {
+  workspaceId: string;
+  stateToken: string;
+  readiness: string;
+  scanCompleteness: string;
+  cleanupAllowed: boolean;
+  generatedAt: string;
+  roots: RepositoryRootSnapshot[];
+}
+
+type PersistedIndexState = RepositoryDescriptorSnapshot & {
+  fileCount?: number;
+  truncated?: boolean;
+  indexMode?: IndexStatusSnapshot['indexMode'];
+  reasons?: Array<{ message?: string }>;
+};
+
+function capabilityRevision(
+  root: RepositoryRootSnapshot,
+  capability: string,
+): string | undefined {
+  switch (capability) {
+    case 'codeIndex':
+      return root.codeIndexRevision;
+    case 'textIndex':
+      return root.textIndexRevision;
+    case 'vectorIndex':
+      return root.vectorIndexRevision;
+    case 'graph':
+      return root.graphRevision;
+    case 'map':
+      return root.mapRevision;
+    case 'catalog':
+      return root.projectCatalogRevision;
+    default:
+      return undefined;
+  }
+}
+
+function indexStatusFromDescriptor(
+  descriptor: RepositoryDescriptorSnapshot,
+): Partial<IndexStatusSnapshot> {
+  return {
+    readiness: descriptor.readiness,
+    scanCompleteness: descriptor.scanCompleteness,
+    cleanupAllowed: descriptor.cleanupAllowed,
+    rootCount: descriptor.roots.length,
+    stateTokenPreview: descriptor.stateToken?.slice(0, 16),
+    lastIndexedAt: descriptor.generatedAt,
+    capabilities: descriptor.roots.flatMap((root) =>
+      root.capabilities.map((entry) => ({
+        rootId: root.rootId,
+        capability: entry.capability,
+        status: entry.status,
+        reasonCode: entry.reasonCode,
+        revision: capabilityRevision(root, entry.capability),
+        profile:
+          entry.capability === 'vectorIndex' ? root.vectorProfile : undefined,
+      })),
+    ),
   };
 }
 
@@ -632,6 +714,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   ): Promise<void> {
     const prompt = String(message.prompt ?? '').trim();
     if (!prompt) return;
+    const activeThread = await this.ensureActiveThread(prompt);
     this.runCancel?.dispose();
     this.runCancel = new this.vs.CancellationTokenSource();
     const mode = message.mode === 'review' ? 'ask' : (message.mode ?? 'ask');
@@ -655,10 +738,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     });
     try {
       const client = await this.ensureClient();
-      const history = loadHistory(this.host.workspaceState);
-      const activeThread = history.threads.find(
-        (t) => t.id === (this.activeThreadId ?? history.activeThreadId),
-      );
       const conversationText = (activeThread?.messages ?? [])
         .slice(-20)
         .map((m) => `${m.role}: ${m.text}`)
@@ -678,6 +757,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         pinnedPaths: message.pinnedPaths,
         workspaceState: this.host.workspaceState,
         workspaceId: this.getWorkspaceId(),
+        sessionId: this.activeThreadId,
         conversationText,
         handlers: {
           cancelToken: this.runCancel.token,
@@ -797,6 +877,34 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         this.pendingResume = undefined;
       }
     }
+  }
+
+  private async ensureActiveThread(prompt: string): Promise<StoredThread> {
+    const store = loadHistory(this.host.workspaceState);
+    let thread = this.activeThreadId
+      ? store.threads.find((t) => t.id === this.activeThreadId)
+      : undefined;
+    thread ??= store.activeThreadId
+      ? store.threads.find((t) => t.id === store.activeThreadId)
+      : undefined;
+    if (!thread) {
+      thread = {
+        id: newThreadId(),
+        title: prompt.slice(0, 48) || 'New chat',
+        updatedAt: new Date().toISOString(),
+        messages: [],
+      };
+      store.threads.unshift(thread);
+    }
+    this.activeThreadId = thread.id;
+    store.activeThreadId = thread.id;
+    await saveHistory(this.host.workspaceState, store);
+    this.post({
+      type: 'history',
+      threads: toThreadSummaries(store),
+      activeThreadId: thread.id,
+    });
+    return thread;
   }
 
   private planFromAnswer(
@@ -1224,11 +1332,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         if (this.lastIndex.fileCount === 0) {
           await this.readIndexStatus();
         }
+        const descriptorStatus = indexStatusFromDescriptor(latest);
         this.lastIndex = {
           ...this.lastIndex,
-          readiness: latest.readiness,
-          stateTokenPreview: latest.stateToken?.slice(0, 16),
-          lastIndexedAt: latest.generatedAt,
+          ...descriptorStatus,
           message:
             this.lastIndex.fileCount > 0
               ? `Indexed ${this.lastIndex.fileCount} files`
@@ -1275,15 +1382,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const cached = join(root, '.mitii', 'last-repository-state.json');
     if (existsSync(cached)) {
       try {
-        const raw = JSON.parse(readFileSync(cached, 'utf8')) as {
-          readiness?: string;
-          stateToken?: string;
-          generatedAt?: string;
+        const raw = JSON.parse(readFileSync(cached, 'utf8')) as
+          Partial<PersistedIndexState> & {
           fileCount?: number;
           truncated?: boolean;
           reasons?: Array<{ message?: string }>;
         };
-        const fromReason = raw.reasons
+        const reasons: Array<{ message?: string }> | undefined = raw.reasons;
+        const fromReason = reasons
           ?.map((r) => r.message?.match(/(\d+)\s+files?/i)?.[1])
           .find(Boolean);
         const fileCount =
@@ -1296,12 +1402,17 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           typeof raw.truncated === 'boolean'
             ? raw.truncated
             : this.lastIndex.truncated;
+        const descriptorStatus =
+          typeof raw.workspaceId === 'string' &&
+          typeof raw.stateToken === 'string' &&
+          Array.isArray(raw.roots)
+            ? indexStatusFromDescriptor(raw as RepositoryDescriptorSnapshot)
+            : {};
         this.lastIndex = {
           fileCount,
           truncated,
-          readiness: raw.readiness,
-          stateTokenPreview: raw.stateToken?.slice(0, 16),
-          lastIndexedAt: raw.generatedAt,
+          ...descriptorStatus,
+          indexMode: raw.indexMode ?? this.lastIndex.indexMode,
           message:
             fileCount > 0
               ? `Loaded last published state (${fileCount} files)`
@@ -1316,12 +1427,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       const client = await this.ensureClient();
       const latest = await client.getLatestRepositoryState(this.getWorkspaceId());
       if (latest) {
+        const descriptorStatus = indexStatusFromDescriptor(latest);
         this.lastIndex = {
           fileCount: this.lastIndex.fileCount,
           truncated: this.lastIndex.truncated,
-          readiness: latest.readiness,
-          stateTokenPreview: latest.stateToken?.slice(0, 16),
-          lastIndexedAt: latest.generatedAt,
+          ...descriptorStatus,
+          indexMode: this.lastIndex.indexMode,
           message:
             this.lastIndex.fileCount > 0
               ? `From in-memory repository state (${this.lastIndex.fileCount} files)`
@@ -1348,6 +1459,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const dir = scaffoldMitiiWorkspace(root);
     let fileCount = 0;
     let truncated = false;
+    let indexMode: IndexStatusSnapshot['indexMode'] = 'full';
     let published;
     try {
       const full = await runFullWorkspaceIndex({
@@ -1367,6 +1479,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           error instanceof Error ? error.message : String(error)
         }`,
       );
+      indexMode = 'host_snapshot';
       const snapshot = await buildWorkspaceSnapshot({
         workspaceRoot: root,
         workspaceId: this.getWorkspaceId(),
@@ -1383,17 +1496,18 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
             ...published.descriptor,
             fileCount,
             truncated,
+            indexMode,
           },
           null,
           2,
         )}\n`,
       );
+      const descriptorStatus = indexStatusFromDescriptor(published.descriptor);
       this.lastIndex = {
         fileCount,
         truncated,
-        readiness: published.descriptor.readiness,
-        stateTokenPreview: published.reference.stateToken.slice(0, 16),
-        lastIndexedAt: published.descriptor.generatedAt,
+        ...descriptorStatus,
+        indexMode,
         message: truncated
           ? `Indexed ${fileCount} files (truncated)`
           : `Indexed ${fileCount} files`,

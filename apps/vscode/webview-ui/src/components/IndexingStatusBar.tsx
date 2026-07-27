@@ -10,6 +10,15 @@ interface IndexingStatusBarProps {
 
 type IndexTone = 'idle' | 'indexing' | 'ready' | 'warn';
 
+const CAPABILITY_LABELS: Record<string, string> = {
+  catalog: 'Catalog',
+  codeIndex: 'Code',
+  textIndex: 'Text',
+  vectorIndex: 'Embeddings',
+  graph: 'Graph',
+  map: 'Map',
+};
+
 function resolveIndexTone(index: IndexStatusSnapshot): IndexTone {
   const message = (index.message ?? '').toLowerCase();
   const readiness = (index.readiness ?? '').toLowerCase();
@@ -22,7 +31,7 @@ function resolveIndexTone(index: IndexStatusSnapshot): IndexTone {
     return 'indexing';
   }
   if (index.fileCount <= 0 && !readiness) return 'idle';
-  if (readiness === 'unavailable') return 'warn';
+  if (readiness === 'unavailable' || readiness === 'degraded') return 'warn';
   if (index.fileCount > 0 || readiness) return 'ready';
   return 'idle';
 }
@@ -34,7 +43,7 @@ function shortLabel(tone: IndexTone, index: IndexStatusSnapshot): string {
     case 'ready':
       return 'Indexed';
     case 'warn':
-      return 'Unavailable';
+      return index.readiness === 'degraded' ? 'Degraded' : 'Unavailable';
     default:
       return 'Index';
   }
@@ -46,6 +55,17 @@ function detailTooltip(index: IndexStatusSnapshot): string {
     parts.push(`${index.fileCount.toLocaleString()} files indexed`);
   }
   if (index.readiness) parts.push(`Readiness: ${index.readiness}`);
+  if (index.scanCompleteness) parts.push(`Scan: ${index.scanCompleteness}`);
+  if (index.indexMode) {
+    parts.push(
+      `Mode: ${index.indexMode === 'full' ? 'full code/text' : 'host snapshot'}`,
+    );
+  }
+  for (const capability of index.capabilities ?? []) {
+    const label =
+      CAPABILITY_LABELS[capability.capability] ?? capability.capability;
+    parts.push(`${label}: ${capability.status}`);
+  }
   if (index.truncated) parts.push('Scan truncated');
   if (index.message) parts.push(index.message);
   if (index.lastIndexedAt) {

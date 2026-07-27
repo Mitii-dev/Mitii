@@ -222,6 +222,17 @@ export function App() {
     }
   }, []);
 
+  const markSuspensionResumed = useCallback((runId: string) => {
+    setRunning(true);
+    setTurns((prev) =>
+      prev.map((turn) =>
+        turn.suspension?.runId === runId
+          ? { ...turn, suspension: undefined, streaming: true }
+          : turn,
+      ),
+    );
+  }, []);
+
   useEffect(() => {
     const off = onHostMessage((msg) => {
       switch (msg.type) {
@@ -693,6 +704,7 @@ export function App() {
                   runId,
                   clarificationAnswer: answer,
                 });
+                markSuspensionResumed(runId);
                 setClarifyText('');
               }}
               onResumeStop={(runId) => postToHost({ type: 'resume', runId })}

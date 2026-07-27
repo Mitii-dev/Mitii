@@ -128,6 +128,18 @@ export interface TokenUsageSnapshot {
 export interface IndexStatusSnapshot {
   fileCount: number;
   truncated: boolean;
+  scanCompleteness?: string;
+  cleanupAllowed?: boolean;
+  rootCount?: number;
+  indexMode?: 'full' | 'host_snapshot';
+  capabilities?: Array<{
+    capability: string;
+    status: string;
+    reasonCode?: string;
+    rootId?: string;
+    revision?: string;
+    profile?: string;
+  }>;
   readiness?: string;
   stateTokenPreview?: string;
   lastIndexedAt?: string;

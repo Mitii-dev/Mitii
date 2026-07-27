@@ -1014,6 +1014,62 @@ input:focus-visible {
   color: var(--mitii-muted);
 }
 
+.index-capability-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.index-capability {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--mitii-panel) 84%, transparent);
+}
+
+.index-capability__name,
+.index-capability__status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.index-capability__name {
+  color: var(--mitii-text);
+}
+
+.index-capability__status {
+  flex: 0 0 auto;
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: var(--mitii-muted);
+}
+
+.index-capability--ready .index-capability__status {
+  color: var(--mitii-ok);
+}
+
+.index-capability--degraded .index-capability__status {
+  color: var(--mitii-warn);
+}
+
+.index-capability--unavailable .index-capability__status {
+  color: var(--mitii-danger);
+}
+
+@media (max-width: 360px) {
+  .index-capability-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 .row {
   display: flex;
   gap: 8px;

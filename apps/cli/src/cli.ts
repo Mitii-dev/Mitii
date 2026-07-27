@@ -150,6 +150,98 @@ function readPackageVersion(): string {
   }
 }
 
+type RepositoryCapabilitySummary = Array<{
+  rootId: string;
+  capability: string;
+  status: string;
+  reasonCode?: string;
+  revision?: string;
+  profile?: string;
+}>;
+
+interface RepositoryCapabilitySnapshot {
+  capability: string;
+  status: string;
+  reasonCode?: string;
+}
+
+interface RepositoryRootSnapshot {
+  rootId: string;
+  projectCatalogRevision: string;
+  codeIndexRevision?: string;
+  textIndexRevision?: string;
+  vectorProfile?: string;
+  vectorIndexRevision?: string;
+  graphRevision?: string;
+  mapRevision?: string;
+  capabilities: RepositoryCapabilitySnapshot[];
+}
+
+interface RepositoryDescriptorSnapshot {
+  workspaceId: string;
+  stateToken: string;
+  readiness: string;
+  scanCompleteness: string;
+  cleanupAllowed: boolean;
+  generatedAt: string;
+  roots: RepositoryRootSnapshot[];
+}
+
+function capabilityRevision(
+  root: RepositoryRootSnapshot,
+  capability: string,
+): string | undefined {
+  switch (capability) {
+    case 'codeIndex':
+      return root.codeIndexRevision;
+    case 'textIndex':
+      return root.textIndexRevision;
+    case 'vectorIndex':
+      return root.vectorIndexRevision;
+    case 'graph':
+      return root.graphRevision;
+    case 'map':
+      return root.mapRevision;
+    case 'catalog':
+      return root.projectCatalogRevision;
+    default:
+      return undefined;
+  }
+}
+
+function summarizeRepositoryCapabilities(
+  descriptor: RepositoryDescriptorSnapshot,
+): RepositoryCapabilitySummary {
+  return descriptor.roots.flatMap((root) =>
+    root.capabilities.map((entry) => ({
+      rootId: root.rootId,
+      capability: entry.capability,
+      status: entry.status,
+      reasonCode: entry.reasonCode,
+      revision: capabilityRevision(root, entry.capability),
+      profile: entry.capability === 'vectorIndex' ? root.vectorProfile : undefined,
+    })),
+  );
+}
+
+function writeRepositoryCapabilityLines(
+  io: SessionIo,
+  descriptor: RepositoryDescriptorSnapshot,
+): void {
+  for (const capability of summarizeRepositoryCapabilities(descriptor)) {
+    const suffix = [
+      capability.revision ? `revision=${capability.revision}` : undefined,
+      capability.profile ? `profile=${capability.profile}` : undefined,
+      capability.reasonCode ? `reason=${capability.reasonCode}` : undefined,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    io.writeStdout(
+      `capability root=${capability.rootId} ${capability.capability}=${capability.status}${suffix ? ` ${suffix}` : ''}\n`,
+    );
+  }
+}
+
 function reportOutcome(
   io: SessionIo,
   json: boolean,
@@ -253,6 +345,13 @@ async function runIndex(options: {
           fileCount,
           truncated,
           indexMode,
+          ...(published.status === 'published'
+            ? {
+                capabilitySummary: summarizeRepositoryCapabilities(
+                  published.descriptor,
+                ),
+              }
+            : {}),
           ...(databasePath ? { databasePath } : {}),
         },
         null,
@@ -263,6 +362,7 @@ async function runIndex(options: {
     options.io.writeStdout(
       `indexed workspaceId=${published.reference.workspaceId} stateToken=${published.reference.stateToken.slice(0, 16)}… readiness=${published.descriptor.readiness} files=${fileCount}${truncated ? ' (truncated)' : ''} mode=${indexMode}\n`,
     );
+    writeRepositoryCapabilityLines(options.io, published.descriptor);
     for (const reason of published.descriptor.reasons) {
       options.io.writeStderr(`[mitii] ${reason.code}: ${reason.message}\n`);
     }
@@ -289,7 +389,18 @@ async function runStatus(options: {
     (await client.getLatestRepositoryState(ports.workspaceId)) ??
     loadPersistedRepositoryState(options.cwd);
   if (options.json) {
-    options.io.writeStdout(`${JSON.stringify({ latest }, null, 2)}\n`);
+    options.io.writeStdout(
+      `${JSON.stringify(
+        {
+          latest,
+          ...(latest
+            ? { capabilitySummary: summarizeRepositoryCapabilities(latest) }
+            : {}),
+        },
+        null,
+        2,
+      )}\n`,
+    );
     return latest ? 0 : 1;
   }
   if (!latest) {
@@ -301,6 +412,7 @@ async function runStatus(options: {
   options.io.writeStdout(
     `status workspaceId=${latest.workspaceId} readiness=${latest.readiness} scan=${latest.scanCompleteness} stateToken=${latest.stateToken.slice(0, 16)}…\n`,
   );
+  writeRepositoryCapabilityLines(options.io, latest);
   for (const reason of latest.reasons) {
     options.io.writeStderr(`[mitii] ${reason.code}: ${reason.message}\n`);
   }

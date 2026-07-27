@@ -61,9 +61,16 @@ describe('CLI Phase 15 commands', () => {
         };
         fileCount: number;
         indexMode?: string;
+        capabilitySummary: Array<{ capability: string; status: string }>;
       };
       expect(indexPayload.published.status).toBe('published');
       expect(indexPayload.fileCount).toBeGreaterThan(0);
+      expect(indexPayload.capabilitySummary).toContainEqual(
+        expect.objectContaining({
+          capability: 'textIndex',
+          status: indexPayload.indexMode === 'full' ? 'ready' : 'unavailable',
+        }),
+      );
       const root = indexPayload.published.descriptor?.roots[0];
       if (indexPayload.indexMode === 'full') {
         expect(root?.codeIndexRevision).toBeTruthy();
@@ -99,8 +106,15 @@ describe('CLI Phase 15 commands', () => {
       expect(statusCode).toBe(0);
       const statusPayload = JSON.parse(stdout.join('')) as {
         latest: { readiness: string; workspaceId: string } | null;
+        capabilitySummary?: Array<{ capability: string; status: string }>;
       };
       expect(statusPayload.latest?.readiness).toBeTruthy();
+      expect(statusPayload.capabilitySummary).toContainEqual(
+        expect.objectContaining({
+          capability: 'vectorIndex',
+          status: 'unavailable',
+        }),
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
