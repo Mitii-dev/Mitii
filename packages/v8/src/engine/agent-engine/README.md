@@ -2,21 +2,22 @@
 
 ```text
 Input:  AgentEngineStartInput { request, workspaceRoot?, dirtyPaths?, repositoryState?, budget? }
-        AgentEngineResumeInput { runId, approval? | clarificationAnswer }
+        AgentEngineResumeInput { runId, approval? | clarificationAnswer? | planDecision? }
 Output: AgentRunHandle { runId, events, result, cancel }
 ```
 
 Coordinates public V8 facades through one cancellable run, including
 mutation routes that suspend for approval and resume across process turns.
-Does not implement intent classification, indexing, retrieval, prompting,
-tool enforcement, or verification algorithms.
+Optional Planning produces a generic `PlanArtifact` and may suspend for
+plan approval before execute. Does not implement intent classification,
+indexing, retrieval, prompting, tool enforcement, or verification algorithms.
 
 ## Public API
 
 | Export | Role |
 |--------|------|
 | `AgentEnginePipeline` | Public facade (`start`, `resume`) |
-| `composeReadOnlyAgentEngine` | Wire real Intake/Understand/Decide/Prompt (+ optional State/Context/Tools/Verification/CheckpointStore/Skills/Memory) |
+| `composeReadOnlyAgentEngine` | Wire real Intake/Understand/Decide/Prompt/Planning (+ optional State/Context/Tools/Verification/CheckpointStore/Skills/Memory) |
 | `agentEngineStartInputSchema` / `AgentEngineStartInput` | Boundary input for `start` |
 | `agentEngineResumeInputSchema` / `AgentEngineResumeInput` | Boundary input for `resume` |
 | `agentRunResultSchema` / `AgentRunResult` | Terminal result |

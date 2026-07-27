@@ -696,20 +696,40 @@ export function App() {
                 setClarifyText('');
               }}
               onResumeStop={(runId) => postToHost({ type: 'resume', runId })}
-              onApprove={(runId, approvalId) =>
+              onApprove={(runId, approvalId) => {
+                const turn = turns.find((t) => t.suspension?.runId === runId);
+                if (turn?.suspension?.kind === 'plan_approval_required') {
+                  postToHost({
+                    type: 'resume',
+                    runId,
+                    planDecision: { decision: 'approved' },
+                  });
+                  return;
+                }
+                if (!approvalId) return;
                 postToHost({
                   type: 'resume',
                   runId,
                   approval: { approvalId, decision: 'approved' },
-                })
-              }
-              onDeny={(runId, approvalId) =>
+                });
+              }}
+              onDeny={(runId, approvalId) => {
+                const turn = turns.find((t) => t.suspension?.runId === runId);
+                if (turn?.suspension?.kind === 'plan_approval_required') {
+                  postToHost({
+                    type: 'resume',
+                    runId,
+                    planDecision: { decision: 'rejected' },
+                  });
+                  return;
+                }
+                if (!approvalId) return;
                 postToHost({
                   type: 'resume',
                   runId,
                   approval: { approvalId, decision: 'denied' },
-                })
-              }
+                });
+              }}
               onShowInlineDiff={(approvalId) =>
                 postToHost({ type: 'showInlineDiff', approvalId })
               }

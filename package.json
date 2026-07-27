@@ -1,7 +1,7 @@
 {
   "name": "mitii-ai-agent",
   "description": "Private Mitii monorepo workspace orchestrator. Product packages: @mitii/v8, @mitii/sdk, @mitii/cli, @mitii/vscode.",
-  "version": "2.7.130",
+  "version": "2.7.131",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "author": {

@@ -16,6 +16,12 @@ import type {
   ModelToolCallDelta,
 } from "../../../modules/model-gateway";
 import { MEMORY_SCHEMA_VERSION } from "../../../modules/memory";
+import {
+  PLANNING_SCHEMA_VERSION,
+  formatPlanAsAnswer,
+  serializePlanForPrompt,
+} from "../../../modules/planning";
+import type { PlanArtifact } from "../../../modules/planning";
 import { PROMPT_CONSTRUCTION_SCHEMA_VERSION } from "../../../modules/prompt-construction";
 import type {
   PromptInstructions,
@@ -43,6 +49,7 @@ import {
   buildOutputTruncationRecovery,
   filterToolDefinitions,
   mapContextToPromptSlice,
+  mapUnderstandingToPlanningEvidence,
   mapUnderstandingToSkillEvidence,
   mergePromptInstructions,
   serializeToolResultForModel,
@@ -148,6 +155,7 @@ export class AgentEnginePipeline {
       AgentEngineDependencies,
       | "skills"
       | "memory"
+      | "planning"
       | "repositoryState"
       | "repositoryContext"
       | "tools"
@@ -178,6 +186,7 @@ export class AgentEnginePipeline {
       llm: dependencies.llm,
       skills: dependencies.skills,
       memory: dependencies.memory,
+      planning: dependencies.planning,
       repositoryState: dependencies.repositoryState,
       repositoryContext: dependencies.repositoryContext,
       tools: dependencies.tools,
@@ -271,8 +280,20 @@ export class AgentEnginePipeline {
     bus: EventBus;
     signal: AbortSignal;
     getCancelReason: () => string | undefined;
+    /** Previously approved/edited plan (plan-approval resume). */
+    approvedPlan?: PlanArtifact;
+    /** Skip plan-gate suspension (after user approved/edited the plan). */
+    skipPlanGate?: boolean;
   }): Promise<AgentRunResult> {
-    const { runId, input, bus, signal, getCancelReason } = params;
+    const {
+      runId,
+      input,
+      bus,
+      signal,
+      getCancelReason,
+      approvedPlan,
+      skipPlanGate = false,
+    } = params;
     const startedMs = Date.now();
     const budgetLimits = agentRunBudgetSchema.parse(input.budget ?? {});
     const budget = new RunBudgetTracker(budgetLimits, startedMs);
@@ -282,6 +303,7 @@ export class AgentEnginePipeline {
     let requestId = input.request.requestId ?? runId;
     let route: AgentRunResult["route"];
     let planningDepth: AgentRunResult["planningDepth"];
+    let runPlan: PlanArtifact | undefined;
 
     const finish = (
       partial: Omit<
@@ -307,6 +329,7 @@ export class AgentEnginePipeline {
         route: partial.route ?? route,
         planningDepth: partial.planningDepth ?? planningDepth,
         answer: partial.answer,
+        plan: partial.plan ?? runPlan,
         suspension: partial.suspension,
         pinnedState: partial.pinnedState ?? pinnedState,
         reasonCodes: partial.reasonCodes ?? reasonCodes,
@@ -642,6 +665,118 @@ export class AgentEnginePipeline {
         return cancelledResult();
       }
 
+      // --- Planning (optional) ---
+      let planText: string | undefined;
+      if (approvedPlan) {
+        runPlan = approvedPlan;
+        planText = serializePlanForPrompt(approvedPlan);
+        reasonCodes.push("plan_drafted", "plan_approved");
+      } else if (this.deps.planning && decision.planningDepth !== "none") {
+        this.emitStage(bus, runId, "plan_ready", "started");
+        const contextReviewed = (repositoryContext?.blocks ?? [])
+          .slice(0, 20)
+          .map((block) => ({
+            kind: "file" as const,
+            ref: block.relativePath,
+          }));
+        const planningResult = this.deps.planning.plan({
+          schemaVersion: PLANNING_SCHEMA_VERSION,
+          query: extractPrimaryUserMessage(envelope.message),
+          mode: envelope.mode,
+          route: decision.route,
+          planningDepth: decision.planningDepth,
+          evidence: mapUnderstandingToPlanningEvidence(understanding),
+          skills: selectedSkills?.map((block) => ({
+            id: block.id,
+            title: block.title,
+            content: block.content,
+            priority: block.priority,
+          })),
+          // Reserved: process profiles / skill-derived hints. Empty for now.
+          processHints: [],
+          contextReviewed:
+            contextReviewed.length > 0 ? contextReviewed : undefined,
+        });
+
+        if (planningResult.plan) {
+          runPlan = planningResult.plan;
+          planText = serializePlanForPrompt(planningResult.plan);
+          reasonCodes.push("plan_drafted");
+          this.emit(bus, {
+            type: "plan_ready",
+            runId,
+            planningDepth: decision.planningDepth,
+            phaseCount: planningResult.plan.phases.length,
+            approvalRequired: planningResult.plan.approvalRequired,
+            at: this.isoNow(),
+          });
+          this.emitStage(bus, runId, "plan_ready", "completed", [
+            "plan_drafted",
+          ]);
+
+          if (
+            !skipPlanGate &&
+            decision.planGate === "required_before_execute"
+          ) {
+            reasonCodes.push("plan_approval_suspended");
+            const rationale =
+              "A reviewable plan is required before mutation. Approve, edit, or reject the plan to continue.";
+            if (this.deps.checkpointStore) {
+              await this.deps.checkpointStore.save({
+                runId,
+                requestId,
+                suspensionKind: "plan_approval_required",
+                input,
+                decision,
+                pinnedState,
+                messages: [],
+                toolCacheEntries: [],
+                pendingApproval: undefined,
+                plan: planningResult.plan,
+                changedFiles: [],
+                mutationCheckpointIds: [],
+                reasonCodes,
+                warnings,
+                usage: budget.snapshot(),
+                startedAtMs: startedMs,
+              });
+            }
+            this.emit(bus, {
+              type: "suspended",
+              runId,
+              kind: "plan_approval_required",
+              rationale,
+              at: this.isoNow(),
+            });
+            return finish({
+              status: "suspended",
+              route: decision.route,
+              planningDepth: decision.planningDepth,
+              plan: planningResult.plan,
+              answer: formatPlanAsAnswer(planningResult.plan),
+              suspension: {
+                kind: "plan_approval_required",
+                rationale,
+                plan: planningResult.plan,
+              },
+              reasonCodes,
+            });
+          }
+        } else {
+          reasonCodes.push("plan_skipped");
+          this.emitStage(bus, runId, "plan_ready", "completed", [
+            "plan_skipped",
+          ]);
+        }
+      } else {
+        reasonCodes.push("plan_skipped");
+      }
+
+      if (signal.aborted) {
+        await this.safeUnpin(runId, pinnedState);
+        return cancelledResult();
+      }
+
       // --- Prompt ---
       const tools = filterToolDefinitions({
         grant: decision.toolGrant,
@@ -676,6 +811,7 @@ export class AgentEnginePipeline {
         conversation: input.conversation,
         repositoryContext,
         instructions,
+        planText,
         tools,
         capabilities: this.deps.llm.capabilities,
         model: input.model,
@@ -815,6 +951,7 @@ export class AgentEnginePipeline {
         route: partial.route ?? decision.route,
         planningDepth: partial.planningDepth ?? decision.planningDepth,
         answer: partial.answer,
+        plan: partial.plan ?? checkpoint.plan,
         suspension: partial.suspension,
         pinnedState: partial.pinnedState ?? pinnedState,
         reasonCodes: partial.reasonCodes ?? reasonCodes,
@@ -886,6 +1023,60 @@ export class AgentEnginePipeline {
           bus,
           signal,
           getCancelReason,
+        });
+      }
+
+      if (checkpoint.suspensionKind === "plan_approval_required") {
+        if (!input.planDecision) {
+          throw new AgentEngineError(
+            "invalid_input",
+            "Resuming a plan-approval-required run requires planDecision.",
+          );
+        }
+
+        if (input.planDecision.decision === "rejected") {
+          await this.deps.checkpointStore.delete(runId);
+          await this.safeUnpin(runId, pinnedState);
+          reasonCodes.push("plan_rejected", "resume_complete");
+          return finish({
+            status: "cancelled",
+            plan: checkpoint.plan,
+            answer: checkpoint.plan
+              ? formatPlanAsAnswer(checkpoint.plan)
+              : undefined,
+            reasonCodes,
+            error: {
+              code: "plan_rejected",
+              message: "The proposed plan was rejected.",
+            },
+          });
+        }
+
+        const nextPlan =
+          input.planDecision.plan ??
+          checkpoint.plan;
+        if (!nextPlan) {
+          throw new AgentEngineError(
+            "invalid_input",
+            "Plan approval resume is missing a plan artifact.",
+          );
+        }
+
+        await this.deps.checkpointStore.delete(runId);
+        reasonCodes.push(
+          input.planDecision.decision === "edited"
+            ? "plan_edited"
+            : "plan_approved",
+          "resume_complete",
+        );
+        return this.executeRun({
+          runId,
+          input: startInput,
+          bus,
+          signal,
+          getCancelReason,
+          approvedPlan: nextPlan,
+          skipPlanGate: true,
         });
       }
 

@@ -94,6 +94,11 @@ export const promptConstructionInputSchema = z
     conversation: z.array(modelMessageSchema).default([]),
     repositoryContext: promptRepositoryContextSchema.optional(),
     instructions: promptInstructionsSchema.optional(),
+    /**
+     * Serialized trusted plan block from Planning (already wrapped / instruction-safe).
+     * Optional — omitted when planningDepth is none or planning was skipped.
+     */
+    planText: z.string().min(1).max(20_000).optional(),
     tools: z.array(modelToolDefinitionSchema).optional(),
     capabilities: modelCapabilitiesSchema,
     model: z.string().min(1).optional(),

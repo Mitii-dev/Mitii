@@ -4,6 +4,9 @@ export type { RouteResolution } from "./ResolveRoute";
 export { resolvePlanningDepth } from "./ResolvePlanningDepth";
 export type { PlanningDepthResolution } from "./ResolvePlanningDepth";
 
+export { resolvePlanGate } from "./ResolvePlanGate";
+export type { PlanGateResolution } from "./ResolvePlanGate";
+
 export { buildToolGrant, extractNetworkHosts } from "./BuildToolGrant";
 export type { ToolGrantResolution } from "./BuildToolGrant";
 

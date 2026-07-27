@@ -18,8 +18,11 @@ packages/v8/src/
     ├── repository-state/        RepositoryStatePipeline + WorkspaceIndexingPipeline + language registry
     ├── repository-context/      RepositoryContextPipeline (state ref → retrieval → selection → assembly)
     ├── decision-policy/         DecisionPolicyPipeline (route + grant + verification policy)
+    ├── planning/                PlanningPipeline (generic PlanArtifact)
     ├── prompt-construction/     PromptConstructionPipeline (budgeted ModelRequest)
     ├── model-gateway/           LlmPort + Echo / OpenAI-compatible adapters
+    ├── skills/                  SkillsPipeline (optional instruction selection)
+    ├── memory/                  MemoryPipeline (scoped retrieval/commit)
     └── verification/            VerificationPipeline (evidence-gated completion)
 ```
 
@@ -32,6 +35,7 @@ packages/v8/src/
 | `repository-state` | `RepositoryStatePipeline` | candidate → published `RepositoryStateReference` |
 | `repository-context` | `RepositoryContextPipeline` | `RepositoryStateReference` + query → context result |
 | `decision-policy` | `DecisionPolicyPipeline` | envelope + understanding → `ExecutionDecision` |
+| `planning` | `PlanningPipeline` | evidence + depth → `PlanArtifact` |
 | `prompt-construction` | `PromptConstructionPipeline` | decision + context → `ModelRequest` + budget |
 | `tool-runtime` | `ToolRuntimePipeline` | authorized call → `ToolResult` |
 | `verification` | `VerificationPipeline` | change + state + policy → verification result |

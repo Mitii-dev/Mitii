@@ -76,6 +76,16 @@ export const runEventSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      type: z.literal("plan_ready"),
+      runId: z.string().min(1),
+      planningDepth: z.enum(["none", "internal", "visible"]),
+      phaseCount: z.number().int().nonnegative(),
+      approvalRequired: z.boolean(),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("context_ready"),
       runId: z.string().min(1),
       stateToken: z.string().min(1),

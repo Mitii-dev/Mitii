@@ -45,6 +45,7 @@ export function ApprovalCards({
   onShowInlineDiff,
 }: ApprovalCardsProps) {
   const isClarify = suspension.kind === 'clarification_required';
+  const isPlan = suspension.kind === 'plan_approval_required';
   const approval = suspension.approval;
   const options = suspension.clarificationOptions ?? [];
   const prompt =
@@ -52,18 +53,35 @@ export function ApprovalCards({
     (suspension.rationale && !/^mode=/.test(suspension.rationale)
       ? shortClarifyText(suspension.rationale)
       : undefined) ??
-    'I need a bit more detail before continuing.';
+    (isPlan
+      ? 'Review the plan, then approve to continue or reject to stop.'
+      : 'I need a bit more detail before continuing.');
+
+  const title = isClarify
+    ? 'Clarification needed'
+    : isPlan
+      ? 'Plan approval required'
+      : 'Approval required';
 
   return (
     <div className="card approval-card">
-      <h3>{isClarify ? 'Clarification needed' : 'Approval required'}</h3>
+      <h3>{title}</h3>
       <p className="approval-card__prompt">{prompt}</p>
-      {!isClarify && approval ? (
+      {!isClarify && !isPlan && approval ? (
         <div className="approval-meta">
           <span className="mono">{approval.toolName}</span>
           {approval.paths?.length ? (
             <span className="mono">{approval.paths.join(', ')}</span>
           ) : null}
+        </div>
+      ) : null}
+      {isPlan && suspension.plan ? (
+        <div className="approval-meta">
+          <span>{suspension.plan.title}</span>
+          <span className="mono">
+            {suspension.plan.steps.length} step
+            {suspension.plan.steps.length === 1 ? '' : 's'}
+          </span>
         </div>
       ) : null}
       {isClarify ? (
@@ -114,12 +132,12 @@ export function ApprovalCards({
       ) : (
         <div className="card-actions">
           <button type="button" className="btn" onClick={onApprove}>
-            Approve
+            {isPlan ? 'Approve plan' : 'Approve'}
           </button>
           <button type="button" className="btn ghost" onClick={onDeny}>
-            Deny
+            {isPlan ? 'Reject plan' : 'Deny'}
           </button>
-          {approval?.approvalId ? (
+          {!isPlan && approval?.approvalId ? (
             <button
               type="button"
               className="btn ghost"

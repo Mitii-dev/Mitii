@@ -15,6 +15,7 @@ export function buildSystemInstructions(params: {
   memory: readonly PromptInstructionBlock[];
   estimator: TokenEstimatorPort;
   budgetTokens: number;
+  planText?: string;
 }): {
   content: string;
   usedTokens: number;
@@ -29,7 +30,7 @@ export function buildSystemInstructions(params: {
     tokens: number;
   }>;
 } {
-  const core = buildCoreSystemPrompt(params.decision);
+  const core = buildCoreSystemPrompt(params.decision, params.planText);
   let remaining = Math.max(
     PROMPT_CONSTRUCTION_THRESHOLDS.minimumSystemTokens,
     params.budgetTokens,
@@ -106,9 +107,12 @@ export function buildSystemInstructions(params: {
   };
 }
 
-function buildCoreSystemPrompt(decision: ExecutionDecision): string {
+function buildCoreSystemPrompt(
+  decision: ExecutionDecision,
+  planText?: string,
+): string {
   const toolGuidance = buildToolGuidance(decision);
-  const planGuidance = buildPlanGuidance(decision);
+  const planGuidance = buildPlanGuidance(decision, planText);
 
   return [
     "You are Mitii, a coding agent runtime assistant.",
@@ -118,6 +122,7 @@ function buildCoreSystemPrompt(decision: ExecutionDecision): string {
     "Do not invent write, network, git, or secret capabilities beyond the granted tools.",
     `Execution route: ${decision.route}.`,
     `Planning depth: ${decision.planningDepth}.`,
+    `Plan gate: ${decision.planGate}.`,
     `Run disposition: ${decision.runDisposition}.`,
     planGuidance,
     toolGuidance,
@@ -155,7 +160,13 @@ function buildToolGuidance(decision: ExecutionDecision): string {
   return lines.join("\n");
 }
 
-function buildPlanGuidance(decision: ExecutionDecision): string {
+function buildPlanGuidance(
+  decision: ExecutionDecision,
+  planText?: string,
+): string {
+  if (planText && planText.trim().length > 0) {
+    return planText.trim();
+  }
   if (decision.planningDepth === "visible") {
     return "Provide a concise visible plan before substantive work when helpful.";
   }

@@ -2,6 +2,7 @@ import { DecisionPolicyPipeline } from "../../../modules/decision-policy";
 import type { LlmPort, ModelToolDefinition } from "../../../modules/model-gateway";
 import { MemoryPipeline } from "../../../modules/memory";
 import type { MemoryStorePort } from "../../../modules/memory";
+import { PlanningPipeline } from "../../../modules/planning";
 import { PromptConstructionPipeline } from "../../../modules/prompt-construction";
 import type { RepositoryContextPipeline } from "../../../modules/repository-context";
 import type { RepositoryStatePipeline } from "../../../modules/repository-state";
@@ -38,6 +39,11 @@ export interface ComposeReadOnlyAgentEngineOptions {
   skillsCatalog?: SkillsCatalogPort;
   /** Optional Memory store — omitting leaves the core loop intact. */
   memoryStore?: MemoryStorePort;
+  /**
+   * When true (default), wire the generic Planning facade.
+   * Set false only for tests that intentionally skip structured plans.
+   */
+  enablePlanning?: boolean;
   toolDefinitions?: readonly ModelToolDefinition[];
   intake?: Partial<RequestIntakePipelineDependencies>;
   clock?: AgentEngineClockPort;
@@ -48,11 +54,9 @@ export interface ComposeReadOnlyAgentEngineOptions {
  * Wire real V8 facades into AgentEnginePipeline.
  *
  * Application hosts inject provider LLMs and optional repository/tool/
- * verification/skills/memory pipelines plus a checkpoint store. This helper
- * does not invent a second orchestration layer — it only constructs the
- * public facades Engine already depends on. The name is kept for
- * compatibility; it composes the full Phase 8/9 engine once optional
- * dependencies are supplied.
+ * verification/skills/memory/planning pipelines plus a checkpoint store.
+ * This helper does not invent a second orchestration layer — it only
+ * constructs the public facades Engine already depends on.
  */
 export function composeReadOnlyAgentEngine(
   options: ComposeReadOnlyAgentEngineOptions,
@@ -79,6 +83,8 @@ export function composeReadOnlyAgentEngine(
     memory: options.memoryStore
       ? new MemoryPipeline({ store: options.memoryStore })
       : undefined,
+    planning:
+      options.enablePlanning === false ? undefined : new PlanningPipeline(),
     repositoryState: options.repositoryState,
     repositoryContext: options.repositoryContext,
     tools: options.tools,

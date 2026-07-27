@@ -14,6 +14,12 @@ export const EXECUTION_ROUTES = [
 
 export const PLANNING_DEPTHS = ["none", "internal", "visible"] as const;
 
+/**
+ * Whether execute must pause for plan approval before mutation.
+ * Orthogonal to planningDepth (which controls plan visibility/detail).
+ */
+export const PLAN_GATES = ["none", "required_before_execute"] as const;
+
 export const RUN_DISPOSITIONS = [
   "continue",
   "clarification_required",
@@ -72,6 +78,8 @@ export const DECISION_REASON_CODES = [
   "multi_file_internal_plan",
   "architecture_visible_plan",
   "explicit_plan_request",
+  "plan_gate_none",
+  "plan_gate_required",
   "high_risk_approval",
   "repository_context_required",
   "repository_state_degraded",
