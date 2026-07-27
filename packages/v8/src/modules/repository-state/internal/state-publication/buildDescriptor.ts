@@ -114,6 +114,9 @@ export function deriveReadiness(input: {
 
   for (const root of input.roots) {
     for (const capability of root.capabilities) {
+      const optionalVectorUnavailable =
+        capability.capability === "vectorIndex" &&
+        capability.status === "unavailable";
       if (capability.status === "ready") {
         hasReadyCapability = true;
         allUnavailable = false;
@@ -125,7 +128,7 @@ export function deriveReadiness(input: {
           message: `Capability ${capability.capability} is degraded.`,
           rootId: root.rootId,
         });
-      } else {
+      } else if (!optionalVectorUnavailable) {
         reasons.push({
           code: "capability_unavailable",
           message: `Capability ${capability.capability} is unavailable.`,

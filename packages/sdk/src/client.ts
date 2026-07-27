@@ -169,6 +169,10 @@ export class MitiiClient {
    */
   async publishRepositoryStateFromIndexing(
     input: WorkspaceIndexingPipelineResult,
+    options: {
+      graphRevisionByRoot?: Readonly<Record<string, string>>;
+      mapRevisionByRoot?: Readonly<Record<string, string>>;
+    } = {},
   ): Promise<PublishRepositoryStateResult> {
     if (!this.repositoryState) {
       throw new MitiiSdkError(
@@ -177,7 +181,7 @@ export class MitiiClient {
       );
     }
     try {
-      return await this.repositoryState.publishFromIndexing(input);
+      return await this.repositoryState.publishFromIndexing(input, options);
     } catch (error) {
       throw mapToSdkError(error);
     }

@@ -18,6 +18,18 @@ export {
   SqliteTextIndexFactory,
 } from "../internal/text-index/adapters/sqlite/SqliteTextIndexFactory";
 export {
+  SqliteCodeIndexAdapter,
+} from "../internal/code-index/adapters/sqlite/SqliteCodeIndexAdapter";
+export {
+  createDefaultProjectCatalogBuilder,
+} from "../internal/catalog/DefaultProjectCatalogBuilder";
+export {
+  RepoGraphBuilder,
+} from "../internal/repo-graph/RepoGraphBuilder";
+export {
+  RepoMapBuilder,
+} from "../internal/repo-map/RepoMapBuilder";
+export {
   VectorSearchService,
 } from "../internal/vector-index/VectorSearchService";
 export {

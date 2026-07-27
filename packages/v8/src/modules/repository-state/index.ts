@@ -15,10 +15,14 @@ export {
   NodeFileSystemAdapter,
   CharacterTokenEstimator,
   TextSearchService,
+  SqliteCodeIndexAdapter,
   SqliteTextIndexFactory,
   VectorSearchService,
   EmbeddingVectorValidator,
   WorkspaceIndexingAdapterFactory,
+  createDefaultProjectCatalogBuilder,
+  RepoGraphBuilder,
+  RepoMapBuilder,
 } from "./adapters";
 export type {
   WorkspaceIndexingAdapterComponents,

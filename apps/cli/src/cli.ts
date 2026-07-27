@@ -187,6 +187,33 @@ interface RepositoryDescriptorSnapshot {
   roots: RepositoryRootSnapshot[];
 }
 
+interface IndexingDiagnostics {
+  status: string;
+  cleanupAllowed: boolean;
+  statistics: unknown;
+  warnings: unknown[];
+  rootResults: unknown[];
+  incompleteFiles: Array<{
+    path: string;
+    status: string;
+    analysisStatus?: string;
+    chunkingStatus?: string;
+    codeIndexStatus?: string;
+    textIndexStatus?: string;
+    warnings: unknown[];
+  }>;
+}
+
+interface IndexingFileResultSnapshot {
+  relativePath: string;
+  status: string;
+  analysisStatus?: string;
+  chunkingStatus?: string;
+  codeIndexStatus?: string;
+  textIndexStatus?: string;
+  warnings: unknown[];
+}
+
 function capabilityRevision(
   root: RepositoryRootSnapshot,
   capability: string,
@@ -305,6 +332,7 @@ async function runIndex(options: {
   let truncated = false;
   let indexMode: 'full' | 'host_snapshot' = 'full';
   let databasePath: string | undefined;
+  let indexingDiagnostics: IndexingDiagnostics | undefined;
   let published;
   try {
     const full = await runFullWorkspaceIndex({
@@ -314,7 +342,30 @@ async function runIndex(options: {
     fileCount = full.fileCount;
     truncated = full.truncated;
     databasePath = full.databasePath;
-    published = await client.publishRepositoryStateFromIndexing(full.indexing);
+    const fileResults =
+      full.indexing.fileResults as IndexingFileResultSnapshot[];
+    indexingDiagnostics = {
+      status: full.indexing.status,
+      cleanupAllowed: full.indexing.cleanupAllowed,
+      statistics: full.indexing.statistics,
+      warnings: full.indexing.warnings,
+      rootResults: full.indexing.rootResults,
+      incompleteFiles: fileResults
+        .filter((result) => result.status !== 'complete')
+        .map((result) => ({
+          path: result.relativePath,
+          status: result.status,
+          analysisStatus: result.analysisStatus,
+          chunkingStatus: result.chunkingStatus,
+          codeIndexStatus: result.codeIndexStatus,
+          textIndexStatus: result.textIndexStatus,
+          warnings: result.warnings,
+        })),
+    };
+    published = await client.publishRepositoryStateFromIndexing(full.indexing, {
+      graphRevisionByRoot: full.graphRevisionByRoot,
+      mapRevisionByRoot: full.mapRevisionByRoot,
+    });
   } catch (error) {
     indexMode = 'host_snapshot';
     const errorDetail =
@@ -345,6 +396,7 @@ async function runIndex(options: {
           fileCount,
           truncated,
           indexMode,
+          ...(indexingDiagnostics ? { indexing: indexingDiagnostics } : {}),
           ...(published.status === 'published'
             ? {
                 capabilitySummary: summarizeRepositoryCapabilities(
