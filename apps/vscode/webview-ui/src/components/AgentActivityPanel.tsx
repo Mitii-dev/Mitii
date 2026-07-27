@@ -23,7 +23,12 @@ export function AgentActivityPanel({
   return (
     <div className="activity">
       {onToggle ? (
-        <button type="button" className="activity-toggle" onClick={onToggle}>
+        <button
+          type="button"
+          className="activity-toggle"
+          onClick={onToggle}
+          title={open ? 'Hide activity' : 'Show activity'}
+        >
           {open ? 'Hide activity' : 'Show activity'} · {events.length}
         </button>
       ) : null}

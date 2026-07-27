@@ -128,6 +128,8 @@ export function App() {
     model: '',
     hasApiKey: false,
     availableModels: [],
+    contextWindow: 32768,
+    maximumOutputTokens: 16384,
   });
   const [tokenUsage, setTokenUsage] =
     useState<TokenUsageSnapshot>(EMPTY_TOKEN_USAGE);
@@ -182,7 +184,11 @@ export function App() {
   const applyBootstrap = useCallback((msg: HostToWebviewMessage) => {
     if (msg.type === 'bootstrap' || msg.type === 'settings') {
       setWorkspace(msg.workspace);
-      setProvider(msg.provider);
+      setProvider({
+        ...msg.provider,
+        contextWindow: msg.provider.contextWindow || 32768,
+        maximumOutputTokens: msg.provider.maximumOutputTokens || 16384,
+      });
       setMcp(msg.mcp);
       setMcpRuntimeStatus(msg.mcpRuntimeStatus);
       setUi({
@@ -468,8 +474,14 @@ export function App() {
         type: provider.type,
         baseUrl: provider.baseUrl,
         model: provider.model,
+        contextWindow: provider.contextWindow,
+        maximumOutputTokens: provider.maximumOutputTokens,
       },
     });
+    setTokenUsage((prev) => ({
+      ...prev,
+      contextWindow: provider.contextWindow || prev.contextWindow,
+    }));
   };
 
   const testConnection = () => {
@@ -917,6 +929,12 @@ export function App() {
           checkpoints={checkpoints}
           onRestoreCheckpoint={(id) =>
             postToHost({ type: 'restoreCheckpoint', id })
+          }
+          onDeleteCheckpoint={(id) =>
+            postToHost({ type: 'deleteCheckpoint', id })
+          }
+          onClearCheckpoints={() =>
+            postToHost({ type: 'clearCheckpoints' })
           }
           onToggleContext={(source, enabled) => {
             setUi((prev) => ({

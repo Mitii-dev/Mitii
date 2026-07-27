@@ -24,16 +24,17 @@ export function ContextPanel({
             <button
               type="button"
               aria-label={`Unpin ${p}`}
+              title={`Unpin ${p}`}
               onClick={() => onRemove(p)}
             >
               ×
             </button>
           </span>
         ))}
-        <button type="button" className="btn ghost" onClick={onPick}>
+        <button type="button" className="btn ghost" onClick={onPick} title="Pin files or folders">
           Add
         </button>
-        <button type="button" className="btn ghost" onClick={onClear}>
+        <button type="button" className="btn ghost" onClick={onClear} title="Clear pinned context">
           Clear
         </button>
       </div>

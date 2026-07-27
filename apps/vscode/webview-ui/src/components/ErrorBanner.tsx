@@ -21,6 +21,7 @@ export function ErrorBanner({ error, onDismiss, onSettings }: ErrorBannerProps) 
           className="error-banner__dismiss"
           onClick={onDismiss}
           aria-label="Dismiss error"
+          title="Dismiss error"
         >
           ×
         </button>

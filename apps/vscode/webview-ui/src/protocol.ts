@@ -54,6 +54,10 @@ export interface ProviderSettingsSnapshot {
   hasApiKey: boolean;
   /** Discovered + preset model ids for the dropdown. */
   availableModels: string[];
+  /** Model context window in tokens (prompt budgeting + meter). */
+  contextWindow: number;
+  /** Max tokens the model may generate per call. */
+  maximumOutputTokens: number;
   connectionOk?: boolean;
   connectionStatus?: string;
 }
@@ -259,6 +263,8 @@ export type WebviewToHostMessage =
     }
   | { type: 'refreshReviewDiff' }
   | { type: 'restoreCheckpoint'; id: string }
+  | { type: 'deleteCheckpoint'; id: string }
+  | { type: 'clearCheckpoints' }
   | { type: 'deleteMemory'; id: string }
   | { type: 'clearMemory' }
   | {
@@ -273,7 +279,10 @@ export type WebviewToHostMessage =
   | {
       type: 'settings.set';
       provider?: Partial<
-        Pick<ProviderSettingsSnapshot, 'type' | 'baseUrl' | 'model'>
+        Pick<
+          ProviderSettingsSnapshot,
+          'type' | 'baseUrl' | 'model' | 'contextWindow' | 'maximumOutputTokens'
+        >
       >;
       ui?: Partial<
         Omit<UiSettingsSnapshot, 'contextToggles'> & {

@@ -3,11 +3,15 @@ import type { CheckpointItemView } from '../protocol';
 interface CheckpointPanelProps {
   checkpoints: CheckpointItemView[];
   onRestore: (id: string) => void;
+  onDelete: (id: string) => void;
+  onClear: () => void;
 }
 
 export function CheckpointPanel({
   checkpoints,
   onRestore,
+  onDelete,
+  onClear,
 }: CheckpointPanelProps) {
   if (checkpoints.length === 0) {
     return (
@@ -20,7 +24,17 @@ export function CheckpointPanel({
 
   return (
     <div className="side-panel">
-      <h3 className="panel-title">Checkpoints</h3>
+      <div className="panel-header-row">
+        <h3 className="panel-title">Checkpoints</h3>
+        <button
+          type="button"
+          className="btn ghost"
+          onClick={onClear}
+          title="Delete all checkpoints"
+        >
+          Clear all
+        </button>
+      </div>
       <ul className="checkpoint-list">
         {checkpoints.map((cp) => (
           <li key={cp.id} className="checkpoint-item">
@@ -30,13 +44,25 @@ export function CheckpointPanel({
                 {new Date(cp.createdAt).toLocaleString()}
               </span>
             </div>
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={() => onRestore(cp.id)}
-            >
-              Restore
-            </button>
+            <div className="checkpoint-item__actions">
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => onRestore(cp.id)}
+                title="Restore checkpoint"
+              >
+                Restore
+              </button>
+              <button
+                type="button"
+                className="memory-item__delete"
+                onClick={() => onDelete(cp.id)}
+                aria-label={`Delete checkpoint ${cp.label}`}
+                title="Delete checkpoint"
+              >
+                ×
+              </button>
+            </div>
           </li>
         ))}
       </ul>

@@ -43,7 +43,12 @@ export function HistoryPanel({
         <h2>History</h2>
         <div className="row">
           <span className="mono">{threads.length} conversations</span>
-          <button type="button" className="btn ghost" onClick={onClear}>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={onClear}
+            title="Clear all conversations"
+          >
             Clear all
           </button>
         </div>
@@ -68,6 +73,7 @@ export function HistoryPanel({
               type="button"
               className="history-item__delete"
               aria-label={`Delete ${thread.title}`}
+              title={`Delete ${thread.title}`}
               onClick={() => onDelete(thread.id)}
             >
               ×

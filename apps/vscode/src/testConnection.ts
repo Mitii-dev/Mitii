@@ -100,11 +100,24 @@ export async function testProviderConnection(options: {
   if (!model.trim()) {
     return { ok: false, message: 'Model is required.' };
   }
-  if (!apiKey?.trim() && !isLocalBaseUrl(baseUrl)) {
+  // Local OpenAI-compatible servers (Ollama, LM Studio, etc.) do not need a key.
+  // For remote URLs, still attempt the probe — many gateways accept anonymous
+  // access; a 401/403 response surfaces a clearer "API key required" message.
+  const result = await testOpenAiCompatibleConnection(
+    baseUrl.trim(),
+    model.trim(),
+    apiKey,
+  );
+  if (
+    !result.ok &&
+    !apiKey?.trim() &&
+    !isLocalBaseUrl(baseUrl) &&
+    /401|403|unauthorized|api[_ ]?key|authentication|bearer/i.test(result.message)
+  ) {
     return {
       ok: false,
       message: 'Cloud OpenAI-compatible endpoints require an API key.',
     };
   }
-  return testOpenAiCompatibleConnection(baseUrl.trim(), model.trim(), apiKey);
+  return result;
 }

@@ -415,6 +415,19 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         );
         return;
       }
+      case 'deleteCheckpoint': {
+        const checkpoints = loadCheckpoints(this.host.workspaceState).filter(
+          (c) => c.id !== message.id,
+        );
+        await saveCheckpoints(this.host.workspaceState, checkpoints);
+        this.post({ type: 'setCheckpoints', checkpoints });
+        return;
+      }
+      case 'clearCheckpoints': {
+        await saveCheckpoints(this.host.workspaceState, []);
+        this.post({ type: 'setCheckpoints', checkpoints: [] });
+        return;
+      }
       case 'deleteMemory': {
         const items = loadMemories(this.host.workspaceState).filter(
           (m) => m.id !== message.id,
@@ -984,6 +997,28 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           this.vs.ConfigurationTarget.Workspace,
         );
       }
+      if (message.provider.contextWindow !== undefined) {
+        const window = Math.max(
+          1024,
+          Math.floor(Number(message.provider.contextWindow) || 0),
+        );
+        await cfg.update(
+          'provider.contextWindow',
+          window,
+          this.vs.ConfigurationTarget.Workspace,
+        );
+      }
+      if (message.provider.maximumOutputTokens !== undefined) {
+        const maxOut = Math.max(
+          256,
+          Math.floor(Number(message.provider.maximumOutputTokens) || 0),
+        );
+        await cfg.update(
+          'provider.maximumOutputTokens',
+          maxOut,
+          this.vs.ConfigurationTarget.Workspace,
+        );
+      }
       this.connectionOk = undefined;
       this.connectionStatus = undefined;
       this.invalidateClient();
@@ -1069,12 +1104,22 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         process.env.OPENAI_API_KEY,
     );
     const model = cfg.get<string>('provider.model') ?? 'qwen3-coder:30b';
+    const contextWindow = resolveContextWindow(this.vs);
+    const fromMaxOut = cfg.get<number>('provider.maximumOutputTokens');
+    const maximumOutputTokens =
+      typeof fromMaxOut === 'number' &&
+      Number.isFinite(fromMaxOut) &&
+      fromMaxOut > 0
+        ? Math.floor(fromMaxOut)
+        : Math.min(16_384, Math.max(1, contextWindow - 1));
     return {
       type: cfg.get<string>('provider.type') ?? 'echo',
       baseUrl: cfg.get<string>('provider.baseUrl') ?? 'http://localhost:11434/v1',
       model,
       hasApiKey,
       availableModels: this.buildAvailableModels(model),
+      contextWindow,
+      maximumOutputTokens,
       connectionOk: this.connectionOk,
       connectionStatus: this.connectionStatus,
     };
@@ -1291,7 +1336,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   private setActiveThreadUsage(usage: TokenUsageSnapshot): void {
     this.tokenUsage = {
       ...usage,
-      contextWindow: usage.contextWindow || resolveContextWindow(this.vs),
+      contextWindow: resolveContextWindow(this.vs),
       live: false,
     };
     this.persistThreadUsage();

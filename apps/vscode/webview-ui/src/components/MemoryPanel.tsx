@@ -20,7 +20,7 @@ export function MemoryPanel({ memories, onDelete, onClear }: MemoryPanelProps) {
     <div className="side-panel">
       <div className="panel-header-row">
         <h3 className="panel-title">Memory</h3>
-        <button type="button" className="btn ghost" onClick={onClear}>
+        <button type="button" className="btn ghost" onClick={onClear} title="Clear all memories">
           Clear all
         </button>
       </div>
@@ -34,6 +34,7 @@ export function MemoryPanel({ memories, onDelete, onClear }: MemoryPanelProps) {
                 className="memory-item__delete"
                 onClick={() => onDelete(m.id)}
                 aria-label="Delete memory"
+                title="Delete memory"
               >
                 ×
               </button>
