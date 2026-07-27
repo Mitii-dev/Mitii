@@ -12,9 +12,30 @@ export const applyPatchTool: RegisteredTool = {
     name: "apply_patch",
     effects: ["workspace_write"],
     description:
-      "Apply one or more structured oldText/newText patches inside a recoverable mutation transaction.",
+      "Apply structured oldText/newText patches inside a recoverable transaction. Batch small: prefer ≤3 files per call (hard max from grant mutationBudget, catalog max 12). Use minimal hunks — never rewrite many whole files in one response; continue across turns for large refactors. Create new files with oldText=\"\". Prefer this over inventing separate write/delete tools.",
     inputSchema: applyPatchInputSchema,
     outputSchema: applyPatchOutputSchema,
+    modelInputSchema: {
+      type: "object",
+      properties: {
+        patches: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              path: { type: "string" },
+              oldText: { type: "string" },
+              newText: { type: "string" },
+              expectedHash: { type: "string" },
+            },
+            required: ["path", "oldText", "newText"],
+          },
+          minItems: 1,
+          maxItems: 12,
+        },
+      },
+      required: ["patches"],
+    },
     executeSupported: true,
   }),
   async execute(ctx) {

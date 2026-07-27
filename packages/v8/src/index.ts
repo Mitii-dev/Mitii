@@ -108,6 +108,7 @@ export {
   READ_ONLY_TOOL_IDS,
   NodeWorkspaceFileSystemAdapter,
   NodeProcessAdapter,
+  NodeNetworkAdapter,
   ToolRegistry,
   createBuiltinToolRegistry,
   defineTool,
@@ -122,6 +123,8 @@ export type {
   ToolExecutionContext,
   ToolExecutionResult,
   ToolDefinition,
+  NetworkPort,
+  SearchPort,
 } from "./engine/tool-runtime";
 
 export { VerificationPipeline } from "./modules/verification";

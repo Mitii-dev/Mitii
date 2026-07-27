@@ -152,6 +152,46 @@ export const fetchUrlOutputSchema = z
   })
   .strict();
 
+export const webSearchInputSchema = z
+  .object({
+    query: z.string().min(1).max(500),
+    maxResults: z.number().int().positive().max(10).optional(),
+  })
+  .strict();
+
+export const webSearchOutputSchema = z
+  .object({
+    query: z.string(),
+    results: z.array(
+      z
+        .object({
+          title: z.string(),
+          url: z.string(),
+          snippet: z.string(),
+          publishedAt: z.string().optional(),
+          source: z.string().optional(),
+        })
+        .strict(),
+    ),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const readPackageScriptsInputSchema = z
+  .object({
+    path: z.string().min(1).default("package.json"),
+  })
+  .strict();
+
+export const readPackageScriptsOutputSchema = z
+  .object({
+    path: z.string(),
+    scripts: z.record(z.string()),
+    packageManager: z.string().optional(),
+    truncated: z.boolean(),
+  })
+  .strict();
+
 export const structuredPatchSchema = z
   .object({
     path: z.string().min(1),
@@ -199,6 +239,75 @@ export const runCommandOutputSchema = z
   })
   .strict();
 
+export const globFilesInputSchema = z
+  .object({
+    pattern: z.string().min(1).max(512),
+    path: z.string().min(1).default("."),
+    maxResults: z.number().int().positive().max(500).optional(),
+  })
+  .strict();
+
+export const globFilesOutputSchema = z
+  .object({
+    pattern: z.string(),
+    path: z.string(),
+    matches: z.array(
+      z.object({
+        path: z.string(),
+        kind: z.enum(["file", "directory", "symlink", "other"]),
+      }),
+    ),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const readManyFilesInputSchema = z
+  .object({
+    paths: z.array(z.string().min(1)).min(1).max(20),
+    maxBytesPerFile: z.number().int().positive().max(128_000).optional(),
+  })
+  .strict();
+
+export const readManyFilesOutputSchema = z
+  .object({
+    files: z.array(
+      z
+        .object({
+          path: z.string(),
+          content: z.string().optional(),
+          truncated: z.boolean(),
+          error: z.string().optional(),
+        })
+        .strict(),
+    ),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const fileMetadataInputSchema = z
+  .object({
+    path: z.string().min(1),
+    includeHash: z.boolean().optional(),
+  })
+  .strict();
+
+export const fileMetadataOutputSchema = z
+  .object({
+    path: z.string(),
+    kind: z.enum(["file", "directory", "symlink", "other"]),
+    sizeBytes: z.number().int().nonnegative(),
+    mtimeMs: z.number().optional(),
+    isSymlink: z.boolean(),
+    hash: z
+      .object({
+        algorithm: z.literal("sha256"),
+        hex: z.string(),
+        truncated: z.boolean(),
+      })
+      .optional(),
+  })
+  .strict();
+
 export interface ToolDefinition {
   name: string;
   effects: readonly ToolEffect[];
@@ -209,6 +318,12 @@ export interface ToolDefinition {
   description: string;
   inputSchema: z.ZodTypeAny;
   outputSchema: z.ZodTypeAny;
+  /**
+   * JSON Schema exposed to models. Required for available tools that should
+   * appear in prompts. Kept next to Zod so Agent Engine can generate
+   * ModelToolDefinition from Tool Runtime without a second hand-written catalog.
+   */
+  modelInputSchema?: Readonly<Record<string, unknown>>;
   /** When true, tool is catalogued for negotiation but not implemented. */
   executeSupported: boolean;
 }
@@ -231,5 +346,6 @@ export function defineTool(
     description: def.description,
     inputSchema: def.inputSchema,
     outputSchema: def.outputSchema,
+    modelInputSchema: def.modelInputSchema,
   };
 }

@@ -46,20 +46,22 @@ export const VERIFICATION_EVIDENCE_KINDS = [
   "diff_review",
 ] as const;
 
-/** Tool catalog IDs that Tool Runtime (Phase 4) will enforce. */
+/** Tool catalog IDs Decision Policy may grant (must stay aligned with Tool Runtime). */
 export const READ_ONLY_TOOL_IDS = [
   "list_directory",
   "read_file",
+  "read_many_files",
+  "glob_files",
+  "file_metadata",
   "search_files",
   "read_diagnostics",
   "read_git_status",
   "run_readonly_command",
+  "read_package_scripts",
 ] as const;
 
-export const MUTATION_TOOL_IDS = [
-  "apply_patch",
-  "run_command",
-] as const;
+/** Executable mutation tools only — stubs like run_command stay out of grants. */
+export const MUTATION_TOOL_IDS = ["apply_patch"] as const;
 
 export const DECISION_REASON_CODES = [
   "mode_ask_readonly",

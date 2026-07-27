@@ -142,10 +142,12 @@ function buildToolGuidance(decision: ExecutionDecision): string {
 
   if (
     grant.allowedTools.includes("search_files") ||
-    grant.allowedTools.includes("list_directory")
+    grant.allowedTools.includes("list_directory") ||
+    grant.allowedTools.includes("glob_files")
   ) {
     lines.push(
-      "For discovery, prefer search_files and list_directory before mass read_file calls.",
+      "For discovery, prefer glob_files, search_files, and list_directory before mass read_file calls.",
+      "Use read_many_files for small batches of known paths; use file_metadata before patching when freshness matters.",
       "Keep tool use efficient: stop once you have enough evidence to answer.",
     );
   }

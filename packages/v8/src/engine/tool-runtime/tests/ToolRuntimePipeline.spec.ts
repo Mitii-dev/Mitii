@@ -82,14 +82,14 @@ describe("ToolRuntimePipeline", () => {
     );
   });
 
-  it("lists capabilities including local and unavailable network tools", () => {
+  it("lists capabilities including network tools as available", () => {
     const runtime = createRuntime();
     const caps = runtime.listCapabilities();
     expect(caps.some((c) => c.name === "read_file" && c.status === "available")).toBe(
       true,
     );
     expect(
-      caps.some((c) => c.name === "fetch_url" && c.status === "unavailable"),
+      caps.some((c) => c.name === "fetch_url" && c.status === "available"),
     ).toBe(true);
   });
 

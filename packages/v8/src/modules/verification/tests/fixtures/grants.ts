@@ -1,40 +1,23 @@
 import type { ToolGrant } from "../../../decision-policy";
-import { READ_ONLY_TOOL_IDS } from "../../../../engine/tool-runtime";
+import {
+  DEFAULT_VERIFICATION_COMMAND_PREFIXES,
+  READ_ONLY_TOOL_IDS,
+  buildVerificationGrant,
+} from "../../../decision-policy";
 
 import type { VerificationInput } from "../../contracts";
 
 export function createVerificationGrant(
   overrides: Partial<ToolGrant> = {},
 ): ToolGrant {
-  return {
+  const base = buildVerificationGrant({
     maximumWorkspaceEffect: "read",
     allowedTools: [...READ_ONLY_TOOL_IDS],
     allowedEffects: ["workspace_read", "process_execute"],
     pathScopes: ["."],
     commandRules: [
       {
-        prefixes: [
-          "npm",
-          "pnpm",
-          "yarn",
-          "bun",
-          "pytest",
-          "mypy",
-          "ruff",
-          "go",
-          "cargo",
-          "mvn",
-          "./mvnw",
-          "gradle",
-          "./gradlew",
-          "dotnet",
-          "cmake",
-          "ctest",
-          "make",
-          "bundle",
-          "composer",
-          "swift",
-        ],
+        prefixes: ["git status"],
         allowShellMetacharacters: false,
       },
     ],
@@ -46,6 +29,16 @@ export function createVerificationGrant(
       maxOutputBytes: 256_000,
       maxConcurrentTools: 1,
     },
+  });
+
+  return {
+    ...base,
+    commandRules: [
+      {
+        prefixes: [...DEFAULT_VERIFICATION_COMMAND_PREFIXES],
+        allowShellMetacharacters: false,
+      },
+    ],
     ...overrides,
   };
 }

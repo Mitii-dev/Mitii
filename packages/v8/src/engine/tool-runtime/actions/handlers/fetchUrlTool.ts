@@ -6,28 +6,33 @@ import {
 } from "../../internal/ToolCatalog";
 import { executeFetchUrl } from "../ExecuteFetchUrl";
 
-/**
- * Catalogued for capability negotiation and network-grant enforcement.
- * Not executable in Phase 4 — handler validates grant then rejects.
- */
 export const fetchUrlTool: RegisteredTool = {
   definition: defineTool({
     name: "fetch_url",
     effects: ["network_access"],
     backend: "local",
-    status: "unavailable",
+    status: "available",
     description:
-      "Fetch a URL (catalogued for capability negotiation; not granted in Phase 4).",
+      "Fetch an http(s) URL allowed by grant.networkHosts. Returns status and body (size-capped).",
     inputSchema: fetchUrlInputSchema,
     outputSchema: fetchUrlOutputSchema,
-    executeSupported: false,
+    modelInputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Absolute http(s) URL." },
+      },
+      required: ["url"],
+    },
+    executeSupported: true,
   }),
   async execute(ctx) {
-    await executeFetchUrl({
+    return executeFetchUrl({
       arguments: ctx.arguments,
       grant: ctx.grant,
+      network: ctx.ports.network,
+      timeoutMs: ctx.timeoutMs,
+      maxOutputBytes: ctx.maxOutputBytes,
+      signal: ctx.signal,
     });
-    // executeFetchUrl always throws; satisfy the return type.
-    return { output: undefined, truncated: false, redacted: false };
   },
 };

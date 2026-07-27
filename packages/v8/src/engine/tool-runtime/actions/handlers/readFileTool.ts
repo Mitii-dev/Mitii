@@ -10,9 +10,19 @@ export const readFileTool: RegisteredTool = {
   definition: defineTool({
     name: "read_file",
     effects: ["workspace_read"],
-    description: "Read a workspace file or line range.",
+    description:
+      "Read a workspace file or line range. Use after glob_files/search_files/list_directory narrows candidates; prefer read_many_files for multiple small files.",
     inputSchema: readFileInputSchema,
     outputSchema: readFileOutputSchema,
+    modelInputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        startLine: { type: "integer", minimum: 1 },
+        endLine: { type: "integer", minimum: 1 },
+      },
+      required: ["path"],
+    },
     executeSupported: true,
   }),
   async execute(ctx) {

@@ -10,9 +10,20 @@ export const readGitStatusTool: RegisteredTool = {
   definition: defineTool({
     name: "read_git_status",
     effects: ["workspace_read"],
-    description: "Read Git status and optional diff (read-only).",
+    description: "Read Git status and optional diff summary.",
     inputSchema: readGitStatusInputSchema,
     outputSchema: readGitStatusOutputSchema,
+    modelInputSchema: {
+      type: "object",
+      properties: {
+        includeDiff: { type: "boolean" },
+        paths: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional path filters for status/diff.",
+        },
+      },
+    },
     executeSupported: true,
   }),
   execute(ctx) {

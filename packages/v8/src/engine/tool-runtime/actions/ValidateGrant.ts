@@ -44,6 +44,7 @@ export function validateToolAgainstGrant(params: {
 
   if (
     tool.effects.includes("network_access") &&
+    tool.name !== "web_search" &&
     (!grant.networkHosts || grant.networkHosts.length === 0)
   ) {
     throw new GrantValidationError(

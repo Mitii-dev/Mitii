@@ -4,6 +4,8 @@ export interface WorkspaceStat {
   kind: WorkspaceEntryKind;
   sizeBytes: number;
   isSymlink: boolean;
+  /** Epoch milliseconds when known; adapters may omit for synthetic FS. */
+  mtimeMs?: number;
 }
 
 export interface WorkspaceDirectoryEntry {

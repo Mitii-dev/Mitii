@@ -3,7 +3,10 @@ import type {
   ExecutionDecision,
   ToolGrant,
 } from "../../../modules/decision-policy";
-import { DECISION_POLICY_SCHEMA_VERSION } from "../../../modules/decision-policy";
+import {
+  DECISION_POLICY_SCHEMA_VERSION,
+  buildVerificationGrant,
+} from "../../../modules/decision-policy";
 import type {
   LlmPort,
   ModelEvent,
@@ -18,7 +21,10 @@ import type {
   PromptInstructions,
   PromptRepositoryContext,
 } from "../../../modules/prompt-construction";
-import type { RepositoryStateReference } from "../../../modules/repository-state";
+import type {
+  ProjectDescriptor,
+  RepositoryStateReference,
+} from "../../../modules/repository-state";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
 import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
 import { SKILLS_SCHEMA_VERSION } from "../../../modules/skills";
@@ -1340,14 +1346,16 @@ export class AgentEnginePipeline {
     }
 
     this.emitStage(bus, runId, "verifying", "started");
+    const verificationGrant = buildVerificationGrant(decision.toolGrant);
+    const projects = resolveVerificationProjects(input);
     const verificationResult = await this.deps.verification!.verify({
       schemaVersion: VERIFICATION_SCHEMA_VERSION,
       workspaceRoot: input.workspaceRoot!,
       pinnedState: pinnedState!,
       changedFiles,
-      projects: [],
+      projects,
       verification: decision.verification,
-      grant: decision.toolGrant,
+      grant: verificationGrant,
       changeScope: "localized",
       stateReadiness: input.repositoryState?.readiness ?? "ready",
     });
@@ -2052,6 +2060,41 @@ export class AgentEnginePipeline {
   private isoNow(): string {
     return this.deps.clock.now().toISOString();
   }
+}
+
+/**
+ * Prefer host-supplied projects; otherwise infer a single root project from
+ * changed-file extensions so language discovery can run.
+ */
+function resolveVerificationProjects(
+  input: AgentEngineStartInput,
+): ProjectDescriptor[] {
+  if (input.projects && input.projects.length > 0) {
+    return [...input.projects];
+  }
+  return [
+    {
+      projectId: "workspace-root",
+      rootPath: ".",
+      primaryLanguageId: inferLanguageFromPaths(input.dirtyPaths ?? []),
+      manifestPaths: [],
+    },
+  ];
+}
+
+function inferLanguageFromPaths(paths: readonly string[]): ProjectDescriptor["primaryLanguageId"] {
+  const joined = paths.join(" ").toLowerCase();
+  if (/\.(ts|tsx|js|jsx|mjs|cjs)\b/.test(joined)) return "typescript";
+  if (/\.py\b/.test(joined)) return "python";
+  if (/\.go\b/.test(joined)) return "go";
+  if (/\.rs\b/.test(joined)) return "rust";
+  if (/\.(java|kt)\b/.test(joined)) return "java";
+  if (/\.cs\b/.test(joined)) return "csharp";
+  if (/\.(c|cc|cpp|h|hpp)\b/.test(joined)) return "cpp";
+  if (/\.rb\b/.test(joined)) return "ruby";
+  if (/\.php\b/.test(joined)) return "php";
+  if (/\.swift\b/.test(joined)) return "swift";
+  return "typescript";
 }
 
 export type { AgentRunStatus };

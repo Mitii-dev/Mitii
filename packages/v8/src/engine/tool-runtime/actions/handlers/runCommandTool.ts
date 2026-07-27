@@ -4,35 +4,50 @@ import {
   runCommandInputSchema,
   runCommandOutputSchema,
 } from "../../internal/ToolCatalog";
-import { GrantValidationError } from "../ValidateGrant";
+import { executeRunCommand } from "../ExecuteRunCommand";
 
 /**
- * Catalogued for Decision Policy execute grants. Writing shell commands remain
- * opt-in and separately designed; Phase 8 ships apply_patch first.
+ * Opt-in mutating argv command. Not in default MUTATION_TOOL_IDS —
+ * hosts/tests must grant it explicitly with commandRules prefixes.
  */
 export const runCommandTool: RegisteredTool = {
   definition: defineTool({
     name: "run_command",
     effects: ["process_execute", "workspace_write"],
     backend: "local",
-    status: "unavailable",
+    status: "available",
     description:
-      "Run an authorized mutating command (catalogued; not executable in Phase 8 vertical slice).",
+      "Run an authorized mutating command as argv (no shell). Requires write grant, approval when configured, and matching commandRules prefixes.",
     inputSchema: runCommandInputSchema,
     outputSchema: runCommandOutputSchema,
-    executeSupported: false,
+    modelInputSchema: {
+      type: "object",
+      properties: {
+        argv: {
+          type: "array",
+          items: { type: "string" },
+          minItems: 1,
+        },
+      },
+      required: ["argv"],
+    },
+    executeSupported: true,
   }),
   async execute(ctx) {
-    // Still enforce grant so unauthorized attempts fail closed with effect codes.
-    if (!ctx.grant.allowedTools.includes("run_command")) {
-      throw new GrantValidationError(
-        "tool_not_allowed",
-        'Tool "run_command" is not in grant.allowedTools.',
-      );
-    }
-    throw new GrantValidationError(
-      "tool_unavailable",
-      'Tool "run_command" is catalogued but not executable yet.',
-    );
+    const result = await executeRunCommand({
+      arguments: ctx.arguments,
+      grant: ctx.grant,
+      workspaceRoot: ctx.workspaceRoot,
+      process: ctx.ports.process,
+      timeoutMs: ctx.timeoutMs,
+      maxOutputBytes: ctx.maxOutputBytes,
+      signal: ctx.signal,
+    });
+    return {
+      ...result,
+      argv: Array.isArray((ctx.arguments as { argv?: unknown }).argv)
+        ? (ctx.arguments as { argv: string[] }).argv
+        : undefined,
+    };
   },
 };

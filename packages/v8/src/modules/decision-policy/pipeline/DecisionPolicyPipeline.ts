@@ -48,6 +48,7 @@ export class DecisionPolicyPipeline {
       mode,
       route: routeResult.route,
       understanding,
+      message,
     });
 
     // Injection must never broaden the grant. Clamp write away if injection

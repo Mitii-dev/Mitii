@@ -54,17 +54,36 @@ const registry = createBuiltinToolRegistry().register({
 const runtime = new ToolRuntimePipeline(ports, { registry });
 ```
 
-## Read-only tools (Phase 4)
+## Read-only tools
 
 - `list_directory`
 - `read_file`
+- `read_many_files`
+- `glob_files`
+- `file_metadata`
 - `search_files`
 - `read_diagnostics`
 - `read_git_status`
-- `run_readonly_command` (argv only; no shell)
+- `run_readonly_command` (argv only; no shell; agent grant = git read prefixes)
+- `read_package_scripts`
 
-`fetch_url` is catalogued for capability negotiation and network-grant tests
-but is not executable in this phase.
+## Network tools (grant-gated)
+
+- `fetch_url` — requires `NetworkPort` + non-empty `networkHosts`
+- `fetch_docs` — same policy, HTML-stripped body
+- `web_search` — requires host-injected `SearchPort` (no hardcoded vendor)
+
+## Mutation tools
+
+- `apply_patch` — default write grant
+- `run_command` — opt-in only (explicit grant + commandRules + approval)
+
+Model-facing JSON schemas are generated from registered Tool Runtime
+definitions (`listBuiltinModelToolDefinitions`) so Agent Engine prompts cannot
+drift from Zod execute schemas.
+
+Verification uses a **separate** grant (`buildVerificationGrant`) with
+package-manager prefixes; the model-facing agent grant stays on git reads.
 
 ## Mutation tool (Phase 8)
 

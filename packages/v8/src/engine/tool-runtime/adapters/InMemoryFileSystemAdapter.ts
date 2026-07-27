@@ -50,12 +50,13 @@ export class InMemoryFileSystemAdapter implements WorkspaceFileSystemPort {
         kind: "file",
         sizeBytes: Buffer.byteLength(node.content, "utf8"),
         isSymlink: false,
+        mtimeMs: 0,
       };
     }
     if (node.kind === "directory") {
-      return { kind: "directory", sizeBytes: 0, isSymlink: false };
+      return { kind: "directory", sizeBytes: 0, isSymlink: false, mtimeMs: 0 };
     }
-    return { kind: "symlink", sizeBytes: 0, isSymlink: true };
+    return { kind: "symlink", sizeBytes: 0, isSymlink: true, mtimeMs: 0 };
   }
 
   public async realpath(absolutePath: string): Promise<string> {

@@ -3,6 +3,7 @@ export {
   READ_ONLY_TOOL_IDS,
   NETWORK_TOOL_IDS,
   MUTATION_TOOL_IDS,
+  OPT_IN_MUTATION_TOOL_IDS,
   TOOL_BACKENDS,
   TOOL_RESULT_STATUSES,
   TOOL_REASON_CODES,
@@ -18,6 +19,9 @@ export {
   DEFAULT_MAX_SEARCH_MATCHES,
   DEFAULT_ALLOWED_COMMAND_ENV,
   DEFAULT_READONLY_COMMAND_PREFIXES,
+  DEFAULT_MAX_GLOB_RESULTS,
+  DEFAULT_MAX_READ_MANY_FILES,
+  DEFAULT_MAX_BYTES_PER_FILE_MANY,
   MAX_APPLY_PATCH_PATCHES,
   DEFAULT_FALLBACK_MUTATION_BUDGET,
 } from "./defaults";
@@ -43,6 +47,11 @@ export {
   createBuiltinToolRegistry,
   defineTool,
   BUILTIN_TOOLS,
+  listBuiltinModelToolDefinitions,
+  listBuiltinReadOnlyModelToolDefinitions,
+  listBuiltinMutationModelToolDefinitions,
+  listModelToolDefinitions,
+  toModelToolDefinition,
 } from "./registry";
 export type {
   RegisteredTool,
@@ -50,6 +59,7 @@ export type {
   ToolExecutionResult,
   ToolHandler,
   ToolDefinition,
+  RuntimeModelToolDefinition,
 } from "./registry";
 
 export {
@@ -80,6 +90,8 @@ export type {
   ProcessPort,
   DiagnosticsPort,
   GitPort,
+  NetworkPort,
+  SearchPort,
 } from "./contracts";
 
 export {
@@ -92,5 +104,7 @@ export {
   InMemoryProcessAdapter,
   InMemoryDiagnosticsAdapter,
   InMemoryGitAdapter,
+  NodeNetworkAdapter,
+  InMemoryNetworkAdapter,
 } from "./adapters";
 export type { ProcessHandler } from "./adapters";

@@ -3,21 +3,35 @@
  */
 export const TOOL_RUNTIME_SCHEMA_VERSION = 1 as const;
 
-/** Phase 4 read-only vertical-slice tools. */
+/** Read-only tools Decision Policy may grant. */
 export const READ_ONLY_TOOL_IDS = [
   "list_directory",
   "read_file",
+  "read_many_files",
+  "glob_files",
+  "file_metadata",
   "search_files",
   "read_diagnostics",
   "read_git_status",
   "run_readonly_command",
+  "read_package_scripts",
 ] as const;
 
-/** Catalogued but not granted by Decision Policy in Phase 4. */
-export const NETWORK_TOOL_IDS = ["fetch_url"] as const;
+/** Catalogued network tools — granted only when Decision Policy issues hosts/search. */
+export const NETWORK_TOOL_IDS = [
+  "fetch_url",
+  "fetch_docs",
+  "web_search",
+] as const;
 
-/** Phase 8 mutation tools. `run_command` remains catalogued but unavailable. */
-export const MUTATION_TOOL_IDS = ["apply_patch", "run_command"] as const;
+/**
+ * Mutation tools Decision Policy may grant by default.
+ * `run_command` is executable but opt-in (explicit grant + commandRules).
+ */
+export const MUTATION_TOOL_IDS = ["apply_patch"] as const;
+
+/** Opt-in mutating process tool (not in default MUTATION_TOOL_IDS). */
+export const OPT_IN_MUTATION_TOOL_IDS = ["run_command"] as const;
 
 export const TOOL_BACKENDS = ["local", "host", "mcp"] as const;
 

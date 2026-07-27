@@ -1,6 +1,8 @@
 import type { DiagnosticsPort } from "./DiagnosticsPort";
 import type { GitPort } from "./GitPort";
+import type { NetworkPort } from "./NetworkPort";
 import type { ProcessPort } from "./ProcessPort";
+import type { SearchPort } from "./SearchPort";
 import type { WorkspaceFileSystemPort } from "./WorkspaceFileSystemPort";
 
 export interface ToolRuntimePorts {
@@ -8,6 +10,8 @@ export interface ToolRuntimePorts {
   process: ProcessPort;
   diagnostics?: DiagnosticsPort;
   git?: GitPort;
+  network?: NetworkPort;
+  search?: SearchPort;
 }
 
 export type {
@@ -27,3 +31,14 @@ export type {
   GitStatusResult,
   GitDiffResult,
 } from "./GitPort";
+export type {
+  NetworkPort,
+  NetworkFetchRequest,
+  NetworkFetchResult,
+} from "./NetworkPort";
+export type {
+  SearchPort,
+  WebSearchRequest,
+  WebSearchHit,
+  WebSearchResult,
+} from "./SearchPort";

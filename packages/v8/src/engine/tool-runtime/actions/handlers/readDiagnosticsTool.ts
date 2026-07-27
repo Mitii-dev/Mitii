@@ -13,6 +13,16 @@ export const readDiagnosticsTool: RegisteredTool = {
     description: "Read workspace diagnostics for optional paths.",
     inputSchema: readDiagnosticsInputSchema,
     outputSchema: readDiagnosticsOutputSchema,
+    modelInputSchema: {
+      type: "object",
+      properties: {
+        paths: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional relative paths to filter diagnostics.",
+        },
+      },
+    },
     executeSupported: true,
   }),
   execute(ctx) {

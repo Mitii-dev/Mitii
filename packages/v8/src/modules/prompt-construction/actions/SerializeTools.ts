@@ -32,6 +32,8 @@ export function serializeTools(params: {
   const grantTools = new Set(params.decision.toolGrant.allowedTools);
   const reasonCodes: SerializedTools["reasonCodes"] = [];
   const omissions: SerializedTools["omissions"] = [];
+  const mcpWritable =
+    params.decision.toolGrant.maximumWorkspaceEffect === "write";
 
   if (
     grantTools.size === 0 ||
@@ -72,13 +74,20 @@ export function serializeTools(params: {
     };
   }
 
-  const filtered = (params.tools ?? []).filter((tool) =>
-    grantTools.has(tool.name),
+  // Keep parity with Agent Engine filterToolDefinitions: mcp__* may pass when
+  // write is granted even if not listed in allowedTools.
+  const filtered = (params.tools ?? []).filter(
+    (tool) =>
+      grantTools.has(tool.name) ||
+      (mcpWritable && tool.name.startsWith("mcp__")),
   );
   if ((params.tools?.length ?? 0) > filtered.length) {
     reasonCodes.push("tools_filtered_by_grant");
     for (const tool of params.tools ?? []) {
-      if (!grantTools.has(tool.name)) {
+      if (
+        !grantTools.has(tool.name) &&
+        !(mcpWritable && tool.name.startsWith("mcp__"))
+      ) {
         omissions.push({
           source: tool.name,
           tokens: estimateTool(tool, params.estimator),

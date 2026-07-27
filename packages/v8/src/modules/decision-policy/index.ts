@@ -13,6 +13,13 @@ export {
   DECISION_POLICY_ERROR_CODES,
 } from "./constants";
 
+export {
+  buildVerificationGrant,
+  DEFAULT_VERIFICATION_COMMAND_PREFIXES,
+  DEFAULT_AGENT_READONLY_COMMAND_PREFIXES,
+  extractNetworkHosts,
+} from "./actions";
+
 export { DecisionPolicyPipeline } from "./pipeline/DecisionPolicyPipeline";
 
 export {

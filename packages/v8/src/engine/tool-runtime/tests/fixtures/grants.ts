@@ -11,7 +11,13 @@ export function createReadOnlyGrant(
     pathScopes: ["."],
     commandRules: [
       {
-        prefixes: ["git status", "git diff", "git log"],
+        prefixes: [
+          "git status",
+          "git diff",
+          "git log",
+          "git show",
+          "git blame",
+        ],
         allowShellMetacharacters: false,
       },
     ],

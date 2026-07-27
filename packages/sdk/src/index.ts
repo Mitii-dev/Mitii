@@ -49,6 +49,7 @@ export {
   ToolRuntimePipeline,
   NodeWorkspaceFileSystemAdapter,
   NodeProcessAdapter,
+  NodeNetworkAdapter,
   ToolRegistry,
   createBuiltinToolRegistry,
   defineTool,

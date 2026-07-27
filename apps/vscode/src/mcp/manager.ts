@@ -202,9 +202,12 @@ export class McpManager {
       this.registered.push({
         definition: defineTool({
           name,
-          // MCP side effects are opaque; treat as write-capable so ask/plan
-          // grants (read-only) reject them unless Agent execute is granted.
-          effects: ['workspace_read', 'workspace_write'],
+          // Default to write-capable (opaque MCP). Known read-only servers
+          // stay on workspace_read so ask/plan grants can still reject writes
+          // while execute grants require approval for write-tagged MCP tools.
+          effects: readOnlyMcpServer(serverId)
+            ? (['workspace_read'] as const)
+            : (['workspace_read', 'workspace_write'] as const),
           backend: 'mcp',
           description: `[MCP:${serverName}] ${description}`,
           inputSchema: z.unknown(),
@@ -245,6 +248,15 @@ function resolveArgs(
     return ['-y', '@modelcontextprotocol/server-filesystem', workspaceRoot];
   }
   return server.args;
+}
+
+/** Servers known to be side-effect free (no workspace mutation). */
+function readOnlyMcpServer(serverId: string): boolean {
+  return (
+    serverId === 'sequential-thinking' ||
+    serverId === 'sequential_thinking' ||
+    serverId.includes('thinking')
+  );
 }
 
 /** Shared singleton used by the VS Code host between client recreations. */

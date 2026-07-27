@@ -17,3 +17,5 @@ export { InMemoryProcessAdapter } from "./InMemoryProcessAdapter";
 export type { ProcessHandler } from "./InMemoryProcessAdapter";
 export { InMemoryDiagnosticsAdapter } from "./InMemoryDiagnosticsAdapter";
 export { InMemoryGitAdapter } from "./InMemoryGitAdapter";
+export { NodeNetworkAdapter } from "./NodeNetworkAdapter";
+export { InMemoryNetworkAdapter } from "./InMemoryNetworkAdapter";

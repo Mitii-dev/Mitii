@@ -50,4 +50,11 @@ export type {
   GitPort,
   GitStatusResult,
   GitDiffResult,
+  NetworkPort,
+  NetworkFetchRequest,
+  NetworkFetchResult,
+  SearchPort,
+  WebSearchRequest,
+  WebSearchHit,
+  WebSearchResult,
 } from "./ports/ToolRuntimePorts";

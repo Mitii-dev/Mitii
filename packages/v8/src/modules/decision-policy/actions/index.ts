@@ -4,8 +4,14 @@ export type { RouteResolution } from "./ResolveRoute";
 export { resolvePlanningDepth } from "./ResolvePlanningDepth";
 export type { PlanningDepthResolution } from "./ResolvePlanningDepth";
 
-export { buildToolGrant } from "./BuildToolGrant";
+export { buildToolGrant, extractNetworkHosts } from "./BuildToolGrant";
 export type { ToolGrantResolution } from "./BuildToolGrant";
+
+export {
+  buildVerificationGrant,
+  DEFAULT_VERIFICATION_COMMAND_PREFIXES,
+  DEFAULT_AGENT_READONLY_COMMAND_PREFIXES,
+} from "./BuildVerificationGrant";
 
 export { resolveMutationBudget } from "./ResolveMutationBudget";
 export type {

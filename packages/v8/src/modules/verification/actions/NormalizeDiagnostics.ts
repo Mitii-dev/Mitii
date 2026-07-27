@@ -114,6 +114,48 @@ function fromCompilerText(
     }
   }
 
+  // pytest: path:line: Failure/Error
+  const pytest =
+    /^((?:\/|\w).*?\.py):(\d+):\s*(Failure|Error|FAILED)\b[:\s]*(.*)$/gm;
+  for (const match of text.matchAll(pytest)) {
+    result.push({
+      path: match[1]!.trim(),
+      severity: "error",
+      message: (match[4] || match[3] || "test failure").trim(),
+      startLine: Number(match[2]),
+      source: "pytest",
+      checkId,
+    });
+  }
+
+  // Jest / Vitest FAIL  path > suite
+  const jestFail = /^\s*(?:FAIL|✗|×)\s+(.+\.(?:test|spec)\.[jt]sx?)\b.*$/gm;
+  for (const match of text.matchAll(jestFail)) {
+    result.push({
+      path: match[1]!.trim(),
+      severity: "error",
+      message: "Test suite failed",
+      source: "test-runner",
+      checkId,
+    });
+  }
+
+  // AssertionError / Expected lines without path — attach as synthetic diagnostic
+  if (result.length === 0) {
+    const assertion = text.match(
+      /(?:AssertionError|Expected|Expected:|Received:).{0,200}/,
+    );
+    if (assertion) {
+      result.push({
+        path: "<test>",
+        severity: "error",
+        message: assertion[0]!.trim().slice(0, 500),
+        source: "test-runner",
+        checkId,
+      });
+    }
+  }
+
   return result;
 }
 

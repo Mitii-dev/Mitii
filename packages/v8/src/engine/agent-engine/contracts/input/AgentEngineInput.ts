@@ -7,6 +7,7 @@ import {
   modelToolDefinitionSchema,
 } from "../../../../modules/model-gateway";
 import { promptInstructionsSchema } from "../../../../modules/prompt-construction";
+import { projectDescriptorSchema } from "../../../../modules/repository-state";
 
 import { AGENT_ENGINE_SCHEMA_VERSION } from "../../constants";
 import {
@@ -53,6 +54,11 @@ export const agentEngineStartInputSchema = z
     /** Absolute workspace root required when tools may execute. */
     workspaceRoot: z.string().min(1).optional(),
     repositoryState: repositoryStateCapabilitySummarySchema.optional(),
+    /**
+     * Optional project catalog for Verification language discovery.
+     * When omitted, Engine synthesizes a single root project.
+     */
+    projects: z.array(projectDescriptorSchema).optional(),
     conversation: z.array(modelMessageSchema).default([]),
     instructions: promptInstructionsSchema.optional(),
     /** Optional override; otherwise Engine uses default tool definitions. */

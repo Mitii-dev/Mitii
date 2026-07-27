@@ -4,7 +4,15 @@ export const DEFAULT_MAX_FILE_BYTES = 128_000;
 export const DEFAULT_MAX_LIST_ENTRIES = 200;
 export const DEFAULT_MAX_SEARCH_MATCHES = 50;
 export const DEFAULT_MAX_SEARCH_FILE_BYTES = 512_000;
+export const DEFAULT_MAX_GLOB_RESULTS = 200;
+export const DEFAULT_MAX_READ_MANY_FILES = 20;
+export const DEFAULT_MAX_BYTES_PER_FILE_MANY = 64_000;
+export const DEFAULT_MAX_FILE_METADATA_HASH_BYTES = 128_000;
 export const DEFAULT_AUDIT_PREVIEW_CHARS = 500;
+export const DEFAULT_GLOB_SKIP_DIRECTORY_NAMES = [
+  ".git",
+  "node_modules",
+] as const;
 
 /** Absolute schema ceiling for apply_patch.patches length (catalog hard max). */
 export const MAX_APPLY_PATCH_PATCHES = 12;

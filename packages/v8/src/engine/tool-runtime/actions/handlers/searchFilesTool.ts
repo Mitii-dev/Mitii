@@ -10,9 +10,20 @@ export const searchFilesTool: RegisteredTool = {
   definition: defineTool({
     name: "search_files",
     effects: ["workspace_read"],
-    description: "Search workspace text files for a query string.",
+    description:
+      "Search workspace text (preferred for content discovery). Use this to find symbols, tests, or patterns before read_file.",
     inputSchema: searchFilesInputSchema,
     outputSchema: searchFilesOutputSchema,
+    modelInputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        path: { type: "string" },
+        maxMatches: { type: "integer", minimum: 1, maximum: 200 },
+        caseSensitive: { type: "boolean" },
+      },
+      required: ["query"],
+    },
     executeSupported: true,
   }),
   execute(ctx) {

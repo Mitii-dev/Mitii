@@ -8,6 +8,7 @@ import {
   DEFAULT_TOOL_DEFINITIONS,
   ToolRuntimePipeline,
   NodeProcessAdapter,
+  NodeNetworkAdapter,
   NodeWorkspaceFileSystemAdapter,
   type LlmPort,
   type MitiiClient,
@@ -178,6 +179,7 @@ export async function createVscodeClient(
         {
           fileSystem: new NodeWorkspaceFileSystemAdapter(),
           process: new NodeProcessAdapter(),
+          network: new NodeNetworkAdapter(),
         },
         { registry: mcpManager.createRegistry() },
       )

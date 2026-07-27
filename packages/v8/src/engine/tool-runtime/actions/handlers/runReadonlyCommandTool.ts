@@ -14,6 +14,17 @@ export const runReadonlyCommandTool: RegisteredTool = {
       "Run an explicitly authorized read-only command as argv (no shell).",
     inputSchema: runReadonlyCommandInputSchema,
     outputSchema: runReadonlyCommandOutputSchema,
+    modelInputSchema: {
+      type: "object",
+      properties: {
+        argv: {
+          type: "array",
+          items: { type: "string" },
+          minItems: 1,
+        },
+      },
+      required: ["argv"],
+    },
     executeSupported: true,
   }),
   async execute(ctx) {

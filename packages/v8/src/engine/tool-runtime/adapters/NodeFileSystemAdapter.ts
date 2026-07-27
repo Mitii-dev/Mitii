@@ -14,16 +14,32 @@ export class NodeWorkspaceFileSystemAdapter implements WorkspaceFileSystemPort {
 
   public async lstat(absolutePath: string): Promise<WorkspaceStat> {
     const stats = await fs.lstat(absolutePath);
+    const mtimeMs = stats.mtimeMs;
     if (stats.isSymbolicLink()) {
-      return { kind: "symlink", sizeBytes: stats.size, isSymlink: true };
+      return {
+        kind: "symlink",
+        sizeBytes: stats.size,
+        isSymlink: true,
+        mtimeMs,
+      };
     }
     if (stats.isDirectory()) {
-      return { kind: "directory", sizeBytes: 0, isSymlink: false };
+      return { kind: "directory", sizeBytes: 0, isSymlink: false, mtimeMs };
     }
     if (stats.isFile()) {
-      return { kind: "file", sizeBytes: stats.size, isSymlink: false };
+      return {
+        kind: "file",
+        sizeBytes: stats.size,
+        isSymlink: false,
+        mtimeMs,
+      };
     }
-    return { kind: "other", sizeBytes: stats.size, isSymlink: false };
+    return {
+      kind: "other",
+      sizeBytes: stats.size,
+      isSymlink: false,
+      mtimeMs,
+    };
   }
 
   public async realpath(absolutePath: string): Promise<string> {
