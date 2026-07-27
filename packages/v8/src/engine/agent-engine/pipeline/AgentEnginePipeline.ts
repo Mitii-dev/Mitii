@@ -20,6 +20,7 @@ import type {
 } from "../../../modules/prompt-construction";
 import type { RepositoryStateReference } from "../../../modules/repository-state";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
+import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
 import { SKILLS_SCHEMA_VERSION } from "../../../modules/skills";
 import {
   TOOL_RUNTIME_SCHEMA_VERSION,
@@ -304,12 +305,8 @@ export class AgentEnginePipeline {
           modelCalls: usageSnap.modelCalls,
           toolCalls: usageSnap.toolCalls,
           loopIterations: usageSnap.loopIterations,
-          ...(usageSnap.inputTokens > 0
-            ? { inputTokens: usageSnap.inputTokens }
-            : {}),
-          ...(usageSnap.outputTokens > 0
-            ? { outputTokens: usageSnap.outputTokens }
-            : {}),
+          inputTokens: usageSnap.inputTokens,
+          outputTokens: usageSnap.outputTokens,
         },
         durationMs: Date.now() - startedMs,
         error: partial.error,
@@ -489,7 +486,7 @@ export class AgentEnginePipeline {
         this.emitStage(bus, runId, "context_ready", "started");
         const contextResult = await this.deps.repositoryContext.execute({
           state: pinnedState,
-          query: envelope.message,
+          query: extractPrimaryUserMessage(envelope.message),
           mode: envelope.mode,
           abortSignal: signal,
         });
@@ -514,12 +511,17 @@ export class AgentEnginePipeline {
 
         repositoryContext = mapContextToPromptSlice(contextResult);
         reasonCodes.push("context_retrieved");
+        const contextPaths = contextResult.assembly.blocks
+          .map((block) => block.relativePath)
+          .filter((path): path is string => Boolean(path?.trim()))
+          .slice(0, 12);
         this.emit(bus, {
           type: "context_ready",
           runId,
           stateToken: contextResult.stateToken,
           blockCount: contextResult.assembly.blocks.length,
           status: contextResult.status,
+          ...(contextPaths.length > 0 ? { paths: contextPaths } : {}),
           at: this.isoNow(),
         });
         this.emitStage(bus, runId, "context_ready", "completed", [
@@ -540,7 +542,7 @@ export class AgentEnginePipeline {
         this.emitStage(bus, runId, "skills_ready", "started");
         const skillsResult = await this.deps.skills.select({
           schemaVersion: SKILLS_SCHEMA_VERSION,
-          query: envelope.message,
+          query: extractPrimaryUserMessage(envelope.message),
           mode: envelope.mode,
           route: decision.route,
           evidence: mapUnderstandingToSkillEvidence(understanding),
@@ -585,7 +587,7 @@ export class AgentEnginePipeline {
         this.emitStage(bus, runId, "memory_ready", "started");
         const memoryResult = await this.deps.memory.retrieve({
           schemaVersion: MEMORY_SCHEMA_VERSION,
-          query: envelope.message,
+          query: extractPrimaryUserMessage(envelope.message),
           scope: { kind: "workspace", workspaceId },
           now: this.isoNow(),
         });
@@ -790,12 +792,8 @@ export class AgentEnginePipeline {
           modelCalls: usageSnap.modelCalls,
           toolCalls: usageSnap.toolCalls,
           loopIterations: usageSnap.loopIterations,
-          ...(usageSnap.inputTokens > 0
-            ? { inputTokens: usageSnap.inputTokens }
-            : {}),
-          ...(usageSnap.outputTokens > 0
-            ? { outputTokens: usageSnap.outputTokens }
-            : {}),
+          inputTokens: usageSnap.inputTokens,
+          outputTokens: usageSnap.outputTokens,
         },
         durationMs: Date.now() - checkpoint.startedAtMs,
         error: partial.error,
@@ -1495,13 +1493,42 @@ export class AgentEnginePipeline {
         budget.addUsage(turn.usage);
       }
 
+      const truncated = turn.finishReason === "length";
+      this.emit(bus, {
+        type: "model_turn",
+        runId,
+        turnIndex: Math.max(0, budget.snapshot().modelCalls - 1),
+        inputTokens: turn.usage?.inputTokens,
+        outputTokens: turn.usage?.outputTokens,
+        finishReason: turn.finishReason,
+        truncated: truncated || undefined,
+        at: this.isoNow(),
+      });
+
+      if (truncated) {
+        reasonCodes.push("output_truncated");
+        warnings.push(
+          "Model output stopped early because the output token limit was reached.",
+        );
+        this.emit(bus, {
+          type: "warning",
+          runId,
+          message:
+            "Response truncated: output token limit reached. Raise mitii.provider.maximumOutputTokens or context window if answers cut off mid-sentence.",
+          at: this.isoNow(),
+        });
+      }
+
       if (turn.content.length > 0) {
-        answer = turn.content;
+        answer = truncated
+          ? `${turn.content}\n\n…(output truncated — token limit reached)`
+          : turn.content;
       }
 
       reasonCodes.push("model_completed");
       this.emitStage(bus, runId, "model_running", "completed", [
         "model_completed",
+        ...(truncated ? (["output_truncated"] as const) : []),
       ]);
 
       if (turn.toolCalls.length === 0) {
@@ -1781,6 +1808,7 @@ export class AgentEnginePipeline {
         content: string;
         toolCalls: ModelToolCall[];
         usage?: { inputTokens?: number; outputTokens?: number };
+        finishReason?: string;
       }
     | { kind: "cancelled" }
     | {
@@ -1792,8 +1820,10 @@ export class AgentEnginePipeline {
   > {
     const { llm, request, runId, signal, bus } = params;
     const contentParts: string[] = [];
+    const reasoningParts: string[] = [];
     const toolDeltas: ModelToolCallDelta[] = [];
     let usage: { inputTokens?: number; outputTokens?: number } | undefined;
+    let finishReason: string | undefined;
 
     try {
       for await (const event of llm.complete(request, {
@@ -1809,6 +1839,9 @@ export class AgentEnginePipeline {
           case "content_delta":
             contentParts.push(event.content);
             break;
+          case "reasoning_delta":
+            reasoningParts.push(event.reasoning);
+            break;
           case "tool_call_delta":
             toolDeltas.push(...event.toolCalls);
             break;
@@ -1819,6 +1852,7 @@ export class AgentEnginePipeline {
             };
             break;
           case "completed":
+            finishReason = event.finishReason;
             if (event.usage) {
               usage = {
                 inputTokens: event.usage.inputTokens,
@@ -1831,7 +1865,7 @@ export class AgentEnginePipeline {
           case "failed":
             return {
               kind: "failed",
-              content: contentParts.join(""),
+              content: contentParts.join("") || reasoningParts.join(""),
               errorCode: event.error.code,
               errorMessage: event.error.message,
             };
@@ -1845,7 +1879,7 @@ export class AgentEnginePipeline {
       }
       return {
         kind: "failed",
-        content: contentParts.join(""),
+        content: contentParts.join("") || reasoningParts.join(""),
         errorCode: "provider_failed",
         errorMessage:
           error instanceof Error ? error.message : "Model invocation failed.",
@@ -1856,11 +1890,16 @@ export class AgentEnginePipeline {
       return { kind: "cancelled" };
     }
 
+    // Some reasoning models stream only into reasoning; fall back so the UI
+    // still gets a usable answer.
+    const content = contentParts.join("") || reasoningParts.join("");
+
     return {
       kind: "completed",
-      content: contentParts.join(""),
+      content,
       toolCalls: assembleToolCalls(toolDeltas),
       usage,
+      finishReason,
     };
   }
 

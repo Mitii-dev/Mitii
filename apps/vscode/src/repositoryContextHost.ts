@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { readdir, stat } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import {
@@ -76,7 +75,7 @@ export function createHostRepositoryContext(options: {
         sourceReports: [],
         warnings: [
           {
-            code: 'host_context_no_index',
+            code: 'required_source_unavailable',
             message:
               'Host context uses workspace file map; full hybrid retrieval is not configured.',
           },
@@ -261,15 +260,10 @@ async function buildHostWorkspaceSnapshot(
   await walk(workspaceRoot);
   files.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 
-  const snapshotId = createHash('sha256')
-    .update(descriptor.snapshotId)
-    .update('\n')
-    .update(files.map((f) => f.relativePath).join('\n'))
-    .digest('hex');
-
+  // Pin to the published descriptor id — pipeline and assembly must agree.
   return {
     schemaVersion: 1,
-    snapshotId,
+    snapshotId: descriptor.snapshotId,
     roots: [
       {
         id: 'workspace',

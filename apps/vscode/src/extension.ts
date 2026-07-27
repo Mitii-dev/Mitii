@@ -153,7 +153,15 @@ export function activate(context: ExtensionContext): void {
       mkdirSync(dir, { recursive: true });
       writeFileSync(
         join(dir, 'last-repository-state.json'),
-        `${JSON.stringify(published.descriptor, null, 2)}\n`,
+        `${JSON.stringify(
+          {
+            ...published.descriptor,
+            fileCount: snapshot.fileCount,
+            truncated: snapshot.truncated,
+          },
+          null,
+          2,
+        )}\n`,
       );
       channel.appendLine(
         `[index] readiness=${published.descriptor.readiness} token=${published.reference.stateToken.slice(0, 16)}… files=${snapshot.fileCount}`,
@@ -475,7 +483,11 @@ export function activate(context: ExtensionContext): void {
             '[mitii] provider/mcp settings changed; client will recompose',
           );
         }
-        void sidebar.refreshBootstrap();
+        void (async () => {
+          const status = await sidebar.ensureIndexed();
+          sidebar.post({ type: 'index.status', index: status });
+          await sidebar.refreshBootstrap();
+        })();
       }
     }),
   );
@@ -489,11 +501,19 @@ export function activate(context: ExtensionContext): void {
     },
   });
 
-  void ensureClient().catch((error) => {
-    channel.appendLine(
-      `[mitii] client init deferred: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  });
+  void ensureClient()
+    .then(async () => {
+      if (!workspaceRoot()) return;
+      const status = await sidebar.ensureIndexed();
+      channel.appendLine(
+        `[index] activation ${status.message ?? 'ready'} files=${status.fileCount}`,
+      );
+    })
+    .catch((error) => {
+      channel.appendLine(
+        `[mitii] client/index init deferred: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
@@ -507,6 +527,12 @@ export function activate(context: ExtensionContext): void {
           `[mitii] scaffold failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
+      void sidebar.ensureIndexed().then((status) => {
+        sidebar.post({ type: 'index.status', index: status });
+        channel.appendLine(
+          `[index] workspace-folder change ${status.message ?? 'ready'}`,
+        );
+      });
     }),
   );
 }

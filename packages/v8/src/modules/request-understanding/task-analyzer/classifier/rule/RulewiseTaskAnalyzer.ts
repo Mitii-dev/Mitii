@@ -165,6 +165,7 @@ export class RulewiseTaskAnalyzer {
       primaryTaskIntent,
       targetResult.targets.length,
       scopeResult.scope,
+      targetResult.targets,
     );
 
     const recommendsVerification =
@@ -230,17 +231,33 @@ export class RulewiseTaskAnalyzer {
     primaryTaskIntent: TaskAnalyzerInput["intent"]["classification"]["primaryTaskIntent"],
     targetCount: number,
     scope: TaskScope,
+    targets: ReadonlyArray<{ kind: string }>,
   ): boolean {
-    if (targetCount > 0) {
-      return false;
-    }
-
     if (
       scope === "repository" ||
       scope === "workspace" ||
-      scope === "package"
+      scope === "package" ||
+      scope === "multi_file"
     ) {
       return true;
+    }
+
+    // Scope-level targets still need repository grounding.
+    if (
+      targets.some(
+        (target) =>
+          target.kind === "repository" ||
+          target.kind === "workspace" ||
+          target.kind === "package",
+      )
+    ) {
+      return true;
+    }
+
+    // Concrete file/folder/symbol targets are routed via explicit targets
+    // in Decision Policy; do not double-flag discovery.
+    if (targetCount > 0) {
+      return false;
     }
 
     return this.isIntentIncluded(

@@ -163,6 +163,8 @@ export const OPENAI_COMPATIBLE_DEFAULTS = {
   AUTH_HEADER:
     "authorization" as const,
   CONTEXT_WINDOW_TOKENS:
+    32_768,
+  MAXIMUM_OUTPUT_TOKENS:
     8_192,
 } as const;
 

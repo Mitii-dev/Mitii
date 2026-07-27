@@ -4,6 +4,7 @@ import type { TokenUsageSnapshot } from './protocol';
 
 interface TokenMeterProps {
   usage: TokenUsageSnapshot;
+  placement?: 'above' | 'below';
 }
 
 function formatCompact(n: number): string {
@@ -13,23 +14,28 @@ function formatCompact(n: number): string {
   return n.toLocaleString();
 }
 
-export function TokenMeter({ usage }: TokenMeterProps) {
+export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
   const [open, setOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const inputTotal = usage.inputTokensTotal;
   const outputTotal = usage.outputTokensTotal;
-  const sessionTotal = usage.sessionTotal;
-  const pct =
-    usage.contextWindow > 0
-      ? Math.round((usage.lastPromptTokens / usage.contextWindow) * 100)
-      : 0;
+  const sessionTotal = usage.sessionTotal || inputTotal + outputTotal;
+  const windowLabel =
+    usage.contextWindow > 0 ? formatCompact(usage.contextWindow) : null;
+  const turns = usage.turns ?? [];
 
   const tooltip = [
-    `Session total: ${sessionTotal.toLocaleString()} tokens`,
+    usage.live ? 'Live · updating each model call' : null,
+    `Session total: ${sessionTotal.toLocaleString()} tokens (input + output)`,
     `Input: ${inputTotal.toLocaleString()} · Output: ${outputTotal.toLocaleString()}`,
+    usage.contextWindow > 0
+      ? `Model window: ${usage.contextWindow.toLocaleString()} tokens`
+      : null,
     `Model calls: ${usage.modelCalls} · Tools: ${usage.toolCalls}`,
     `Turns: ${usage.turnCount}`,
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   useEffect(() => {
     if (!open) return;
@@ -50,10 +56,13 @@ export function TokenMeter({ usage }: TokenMeterProps) {
   }, [open]);
 
   return (
-    <div className="token-popover" ref={popoverRef}>
+    <div
+      className={`token-popover token-popover--${placement}`}
+      ref={popoverRef}
+    >
       <button
         type="button"
-        className={`token-chip${open ? ' token-chip--active' : ''}`}
+        className={`token-chip${open ? ' token-chip--active' : ''}${usage.live ? ' token-chip--live' : ''}`}
         title={tooltip}
         aria-label="Session token usage"
         aria-expanded={open}
@@ -64,63 +73,101 @@ export function TokenMeter({ usage }: TokenMeterProps) {
         </span>
         <span>{formatCompact(sessionTotal)}</span>
         <span className="token-chip__sep">·</span>
-        <span className="token-chip__io">
+        <span
+          className="token-chip__io"
+          aria-label={`Input ${inputTotal.toLocaleString()} tokens, output ${outputTotal.toLocaleString()} tokens`}
+        >
           <span aria-hidden="true">↑</span>
           <span>{formatCompact(inputTotal)}</span>
           <span aria-hidden="true">↓</span>
           <span>{formatCompact(outputTotal)}</span>
         </span>
-        <span className="token-chip__sep">·</span>
-        <span>{usage.modelCalls} calls</span>
+        {usage.live ? (
+          <>
+            <span className="token-chip__sep">·</span>
+            <span className="token-chip__live">live</span>
+          </>
+        ) : null}
+        {windowLabel ? (
+          <>
+            <span className="token-chip__sep">·</span>
+            <span>{windowLabel} window</span>
+          </>
+        ) : null}
       </button>
       {open ? (
-        <div className="token-popover__panel" role="dialog" aria-label="Token usage details">
+        <div
+          className="token-popover__panel"
+          role="dialog"
+          aria-label="Token usage details"
+        >
           <div className="token-popover__header">
-            <span>Session tokens</span>
-            <strong>{usage.estimated ? 'Estimated' : 'Provider reported'}</strong>
+            <span>Session AI Tokens</span>
+            <strong>
+              {usage.live
+                ? 'Live'
+                : usage.estimated
+                  ? 'Estimated'
+                  : 'Provider reported'}
+            </strong>
           </div>
-          <dl className="token-popover__stats">
+          <div className="token-popover__summary">
+            <span>
+              {formatCompact(sessionTotal)} lifetime · {usage.modelCalls} calls
+            </span>
+          </div>
+          <dl className="token-popover__stats token-popover__stats--primary">
             <div>
-              <dt>Total</dt>
-              <dd>{sessionTotal.toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt>Input</dt>
+              <dt>Total sent</dt>
               <dd>{inputTotal.toLocaleString()}</dd>
             </div>
             <div>
-              <dt>Output</dt>
+              <dt>Total received</dt>
               <dd>{outputTotal.toLocaleString()}</dd>
             </div>
             <div>
-              <dt>Turn</dt>
+              <dt>This run</dt>
               <dd>{usage.currentTurnTotal.toLocaleString()}</dd>
             </div>
             <div>
-              <dt>Model calls</dt>
-              <dd>{usage.modelCalls.toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt>Tool calls</dt>
-              <dd>{usage.toolCalls.toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt>Loops</dt>
-              <dd>{usage.loopIterations.toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt>Turns</dt>
-              <dd>{usage.turnCount.toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt>Last prompt</dt>
-              <dd>{usage.lastPromptTokens.toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt>Window used</dt>
-              <dd>{pct}%</dd>
+              <dt>Run I/O</dt>
+              <dd>
+                {usage.currentTurnInputTokens.toLocaleString()} /{' '}
+                {usage.currentTurnOutputTokens.toLocaleString()}
+              </dd>
             </div>
           </dl>
+          <div className="token-popover__section-title">
+            <span>Per model call</span>
+          </div>
+          {turns.length === 0 ? (
+            <div className="token-popover__summary token-popover__summary--start">
+              <span>No model calls yet this session.</span>
+            </div>
+          ) : (
+            <ul className="token-popover__turns">
+              {[...turns].reverse().map((turn, index) => (
+                <li
+                  key={`${turn.at}-${turn.turnIndex}-${index}`}
+                  className={
+                    turn.truncated
+                      ? 'token-popover__turn token-popover__turn--truncated'
+                      : 'token-popover__turn'
+                  }
+                >
+                  <span className="token-popover__turn-label">
+                    Call {turn.turnIndex + 1}
+                    {turn.truncated ? ' · truncated' : ''}
+                    {turn.estimated ? ' · est.' : ''}
+                  </span>
+                  <span className="token-popover__turn-io">
+                    <span>↑{turn.inputTokens.toLocaleString()}</span>
+                    <span>↓{turn.outputTokens.toLocaleString()}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       ) : null}
     </div>

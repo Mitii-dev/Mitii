@@ -150,12 +150,9 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
       ...(config.capabilities?.agenticTier
         ? { agenticTier: config.capabilities.agenticTier }
         : {}),
-      ...(config.capabilities?.maximumOutputTokens !== undefined
-        ? {
-            maximumOutputTokens:
-              config.capabilities.maximumOutputTokens,
-          }
-        : {}),
+      maximumOutputTokens:
+        config.capabilities?.maximumOutputTokens ??
+        OPENAI_COMPATIBLE_DEFAULTS.MAXIMUM_OUTPUT_TOKENS,
     });
   }
 
@@ -287,6 +284,11 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
         request.temperature ?? MODEL_GATEWAY_DEFAULTS.TEMPERATURE,
       stream,
     };
+
+    // OpenAI-compatible streaming omits usage unless include_usage is set.
+    if (stream) {
+      body.stream_options = { include_usage: true };
+    }
 
     if (request.maximumOutputTokens !== undefined) {
       body.max_tokens = request.maximumOutputTokens;

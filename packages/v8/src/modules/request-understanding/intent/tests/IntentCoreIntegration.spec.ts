@@ -184,3 +184,49 @@ test(
     );
   },
 );
+
+test(
+  "falls back when LLM returns empty and host context wraps the ask",
+  async () => {
+    class EmptyLlmPort implements LlmPort {
+      public readonly id = "empty-intent-llm";
+      public readonly capabilities = {
+        modelId: "test/empty",
+        contextWindowTokens: 8_192,
+        maximumOutputTokens: 1_000,
+        supportsStreaming: true,
+        supportsTools: false,
+        supportsParallelToolCalls: false,
+        supportsStructuredOutput: true,
+        supportsVision: false,
+        supportsReasoning: false,
+        supportsPromptCaching: false,
+        supportsEmbeddings: false,
+      };
+
+      public async *complete(): AsyncIterable<ModelEvent> {
+        yield { type: "completed", finishReason: "stop" };
+      }
+    }
+
+    const router = new IntentRouter(new EmptyLlmPort());
+    const result = await router.classify({
+      mode: "ask",
+      userMessage: [
+        "<<<MITII_USER_MESSAGE>>>",
+        "explain this project",
+        "",
+        "<<<MITII_HOST_CONTEXT>>>",
+        "Workspace file map (120 files):",
+        "- package.json",
+      ].join("\n"),
+    });
+
+    assert.equal(result.status, "accepted");
+    assert.equal(result.classification.interactionIntent, "question");
+    assert.match(
+      result.classification.reason ?? "",
+      /fallback|empty response|unavailable/i,
+    );
+  },
+);

@@ -31,7 +31,7 @@ import {
 import { runAskInOutputChannel } from './hostAsk.js';
 import { readMcpSettings, writeMcpSettings } from './mcpConfig.js';
 import { scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
-import { LOCAL_MODEL_PRESETS } from './modelPresets.js';
+import { findLocalModelPreset, LOCAL_MODEL_PRESETS } from './modelPresets.js';
 import { searchWorkspacePaths } from './pathSearch.js';
 import type {
   ContextToggles,
@@ -52,9 +52,23 @@ import { testProviderConnection } from './testConnection.js';
 import { getWorkspaceTrustSnapshot } from './workspace/trust.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 
-const DEFAULT_CONTEXT_WINDOW = 8192;
+const DEFAULT_CONTEXT_WINDOW = 32768;
 
-function emptyTokenUsage(): TokenUsageSnapshot {
+function resolveContextWindow(vs: typeof vscode): number {
+  const cfg = vs.workspace.getConfiguration('mitii');
+  const fromSetting = cfg.get<number>('provider.contextWindow');
+  if (
+    typeof fromSetting === 'number' &&
+    Number.isFinite(fromSetting) &&
+    fromSetting > 0
+  ) {
+    return Math.floor(fromSetting);
+  }
+  const model = cfg.get<string>('provider.model') ?? '';
+  return findLocalModelPreset(model)?.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
+}
+
+function emptyTokenUsage(contextWindow = DEFAULT_CONTEXT_WINDOW): TokenUsageSnapshot {
   return {
     sessionTotal: 0,
     inputTokensTotal: 0,
@@ -69,8 +83,10 @@ function emptyTokenUsage(): TokenUsageSnapshot {
     lastPromptTokens: 0,
     lastResponseTokens: 0,
     turnCount: 0,
-    contextWindow: DEFAULT_CONTEXT_WINDOW,
+    contextWindow,
     estimated: true,
+    turns: [],
+    live: false,
   };
 }
 
@@ -112,10 +128,15 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     truncated: false,
     message: 'Not indexed yet',
   };
+  private ensureIndexedPromise?: Promise<IndexStatusSnapshot>;
   private discoveredModels: string[] = [];
   private connectionOk?: boolean;
   private connectionStatus?: string;
   private tokenUsage: TokenUsageSnapshot = emptyTokenUsage();
+  private pendingRunTurns: TokenUsageSnapshot['turns'] = [];
+  private runBaseTurns: TokenUsageSnapshot['turns'] = [];
+  private runBaseInputTokens = 0;
+  private runBaseOutputTokens = 0;
   private hostHelpers?: SidebarHostHelpers;
   private lastAssistantText = '';
   private activeThreadId?: string;
@@ -160,6 +181,22 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     return this.readIndexStatus();
   }
 
+  /**
+   * Rehydrate in-memory repository state after Extension Host / client restart.
+   * Disk cache alone is not enough — publish uses InMemoryRepositoryStateStore.
+   */
+  async ensureIndexed(): Promise<IndexStatusSnapshot> {
+    if (this.ensureIndexedPromise) {
+      return this.ensureIndexedPromise;
+    }
+    this.ensureIndexedPromise = this.ensureIndexedInner();
+    try {
+      return await this.ensureIndexedPromise;
+    } finally {
+      this.ensureIndexedPromise = undefined;
+    }
+  }
+
   postTrustAndNotices(notice: WorkspaceNoticeView): void {
     this.post({ type: 'workspaceNotice', notice });
   }
@@ -199,9 +236,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   private async onMessage(message: WebviewToHostMessage): Promise<void> {
     if (!message || typeof message !== 'object') return;
     switch (message.type) {
-      case 'ready':
+      case 'ready': {
+        // Post a quick bootstrap first, then index so the UI is not blank.
         await this.sendBootstrap();
+        const indexed = await this.ensureIndexed();
+        this.post({ type: 'index.status', index: indexed });
         return;
+      }
       case 'ask':
         await this.handleAsk(message);
         return;
@@ -513,24 +554,20 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     resolve('stop');
   }
 
-  private mcpPromptSummary(): string | undefined {
-    const mcp = readMcpSettings(this.vs, this.effectiveRoot());
-    if (!mcp.enabled || !mcp.servers.length) return undefined;
-    const enabled = mcp.servers.filter((s) => !s.disabled);
-    if (!enabled.length) return undefined;
-    return `Configured MCP servers (runtime tool wiring not yet in SDK — treat as available integrations):\n${enabled
-      .map(
-        (s) =>
-          `- ${s.name} (${s.transport}${s.command ? `: ${s.command}` : s.url ? `: ${s.url}` : ''})`,
-      )
-      .join('\n')}`;
-  }
-
   private mcpRuntimeStatus(): McpRuntimeStatus {
     const mcp = readMcpSettings(this.vs, this.effectiveRoot());
-    if (!mcp.enabled) return 'disabled';
-    if (!mcp.servers.filter((s) => !s.disabled).length) return 'configured';
-    return 'prompt_injected';
+    const cfg = this.vs.workspace.getConfiguration('mitii');
+    const builtins = cfg.get<Record<string, boolean>>('mcp.builtinServers');
+    const hasBuiltins =
+      builtins &&
+      Object.values(builtins).some((enabled) => enabled === true);
+    if (!mcp.enabled && !hasBuiltins) return 'disabled';
+    // Old Thunder preloaded builtins via McpManager; SDK host has no MCP tool
+    // runtime yet — do not inject fake server lists into prompts.
+    if (hasBuiltins || mcp.servers.filter((s) => !s.disabled).length) {
+      return 'unsupported_runtime';
+    }
+    return 'configured';
   }
 
   private async handleAsk(
@@ -551,6 +588,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       }
     }
     this.post({ type: 'run.started', mode: message.mode, prompt });
+    this.pendingRunTurns = [];
+    this.runBaseTurns = [...(this.tokenUsage.turns ?? [])];
+    this.runBaseInputTokens = this.tokenUsage.inputTokensTotal;
+    this.runBaseOutputTokens = this.tokenUsage.outputTokensTotal;
+    this.post({
+      type: 'tokenUsage',
+      usage: { ...this.tokenUsage, live: true },
+    });
     try {
       const client = await this.ensureClient();
       const outcome = await runAskInOutputChannel({
@@ -565,13 +610,16 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         mode: mode === 'plan' || mode === 'agent' ? mode : 'ask',
         depth: message.depth,
         pinnedPaths: message.pinnedPaths,
-        mcpSummary: this.mcpPromptSummary(),
         workspaceState: this.host.workspaceState,
         workspaceId: this.getWorkspaceId(),
         handlers: {
           cancelToken: this.runCancel.token,
-          onEvent: (_event, activity) => {
+          onEvent: (event, activity) => {
             this.post({ type: 'run.event', event: activity });
+            if (event?.type === 'model_turn') {
+              this.recordLiveModelTurn(event);
+              this.post({ type: 'tokenUsage', usage: this.tokenUsage });
+            }
           },
           onDelta: (text) => {
             this.post({ type: 'run.delta', text });
@@ -607,7 +655,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       if (outcome.result.status === 'cancelled') {
         this.post({ type: 'run.cancelled' });
       }
-      const usage = this.recordUsage(outcome.result);
+      const usage = this.recordUsage(outcome.result, prompt);
       const answer = outcome.result.answer ?? '';
       this.lastAssistantText = answer;
       const plan = this.planFromAnswer(message.mode, answer);
@@ -729,6 +777,59 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     await this.sendBootstrap();
   }
 
+  private recordLiveModelTurn(event: {
+    turnIndex: number;
+    at: string;
+    inputTokens?: number;
+    outputTokens?: number;
+    finishReason?: string;
+    truncated?: boolean;
+  }): void {
+    const input = event.inputTokens ?? 0;
+    const output = event.outputTokens ?? 0;
+    const estimated =
+      event.inputTokens === undefined && event.outputTokens === undefined;
+    this.pendingRunTurns = [
+      ...this.pendingRunTurns,
+      {
+        turnIndex: event.turnIndex,
+        at: event.at,
+        inputTokens: input,
+        outputTokens: output,
+        finishReason: event.finishReason,
+        truncated: event.truncated,
+        estimated,
+      },
+    ];
+    const pendingInput = this.pendingRunTurns.reduce(
+      (sum, t) => sum + t.inputTokens,
+      0,
+    );
+    const pendingOutput = this.pendingRunTurns.reduce(
+      (sum, t) => sum + t.outputTokens,
+      0,
+    );
+    const last = this.pendingRunTurns[this.pendingRunTurns.length - 1]!;
+    this.tokenUsage = {
+      ...this.tokenUsage,
+      inputTokensTotal: this.runBaseInputTokens + pendingInput,
+      outputTokensTotal: this.runBaseOutputTokens + pendingOutput,
+      sessionTotal:
+        this.runBaseInputTokens +
+        this.runBaseOutputTokens +
+        pendingInput +
+        pendingOutput,
+      currentTurnTotal: pendingInput + pendingOutput,
+      currentTurnInputTokens: last.inputTokens,
+      currentTurnOutputTokens: last.outputTokens,
+      lastPromptTokens: last.inputTokens,
+      lastResponseTokens: last.outputTokens,
+      contextWindow: resolveContextWindow(this.vs),
+      turns: [...this.runBaseTurns, ...this.pendingRunTurns].slice(-40),
+      live: true,
+    };
+  }
+
   private recordUsage(result: {
     usage: {
       modelCalls: number;
@@ -738,19 +839,70 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       outputTokens?: number;
     };
     durationMs: number;
-  }): RunUsagePayload {
-    const input = result.usage.inputTokens ?? 0;
-    const output = result.usage.outputTokens ?? 0;
+    answer?: string;
+  }, prompt = ''): RunUsagePayload {
+    const pending = this.pendingRunTurns;
+    this.pendingRunTurns = [];
+    const pendingInput = pending.reduce((sum, t) => sum + t.inputTokens, 0);
+    const pendingOutput = pending.reduce((sum, t) => sum + t.outputTokens, 0);
+
+    let input = result.usage.inputTokens;
+    let output = result.usage.outputTokens;
+    const missingProviderTokens =
+      (input === undefined || input === 0) &&
+      (output === undefined || output === 0) &&
+      result.usage.modelCalls > 0;
+    let estimated =
+      input === undefined || output === undefined || missingProviderTokens;
+
+    if (pending.length > 0 && (pendingInput > 0 || pendingOutput > 0)) {
+      input = pendingInput;
+      output = pendingOutput;
+      estimated = pending.some((t) => t.estimated) || estimated;
+    } else {
+      if (input === undefined || (missingProviderTokens && (input ?? 0) === 0)) {
+        input = Math.max(1, Math.ceil(prompt.length / 4));
+      }
+      if (
+        output === undefined ||
+        (missingProviderTokens && (output ?? 0) === 0)
+      ) {
+        output = Math.max(0, Math.ceil((result.answer ?? '').length / 4));
+      }
+    }
+
     const turnTotal = input + output;
+    const preset = findLocalModelPreset(
+      this.vs.workspace.getConfiguration('mitii').get<string>('provider.model') ??
+        '',
+    );
+    const contextWindow =
+      preset?.contextWindow ?? resolveContextWindow(this.vs);
+
+    const committedTurns =
+      pending.length > 0
+        ? pending
+        : [
+            {
+              turnIndex: this.tokenUsage.modelCalls,
+              at: new Date().toISOString(),
+              inputTokens: input,
+              outputTokens: output,
+              estimated,
+            },
+          ];
+
+    // Drop provisional live appends (session turns + pending), then commit once.
+    const baseTurns = this.runBaseTurns;
+    const baseInput = this.runBaseInputTokens;
+    const baseOutput = this.runBaseOutputTokens;
+    this.runBaseTurns = [];
+
     this.tokenUsage = {
       ...this.tokenUsage,
-      inputTokensTotal: this.tokenUsage.inputTokensTotal + input,
-      outputTokensTotal: this.tokenUsage.outputTokensTotal + output,
-      sessionTotal:
-        this.tokenUsage.inputTokensTotal +
-        input +
-        this.tokenUsage.outputTokensTotal +
-        output,
+      inputTokensTotal: baseInput + input,
+      outputTokensTotal: baseOutput + output,
+      sessionTotal: baseInput + baseOutput + input + output,
       currentTurnTotal: turnTotal,
       currentTurnInputTokens: input,
       currentTurnOutputTokens: output,
@@ -762,15 +914,18 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       lastPromptTokens: input,
       lastResponseTokens: output,
       turnCount: this.tokenUsage.turnCount + 1,
-      estimated: result.usage.inputTokens === undefined,
+      contextWindow,
+      estimated,
       durationMs: result.durationMs,
+      turns: [...baseTurns, ...committedTurns].slice(-40),
+      live: false,
     };
     return {
       modelCalls: result.usage.modelCalls,
       toolCalls: result.usage.toolCalls,
       loopIterations: result.usage.loopIterations,
-      inputTokens: result.usage.inputTokens,
-      outputTokens: result.usage.outputTokens,
+      inputTokens: input,
+      outputTokens: output,
       durationMs: result.durationMs,
     };
   }
@@ -927,6 +1082,60 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     };
   }
 
+  private async ensureIndexedInner(): Promise<IndexStatusSnapshot> {
+    const root = this.effectiveRoot();
+    if (!root) {
+      this.lastIndex = {
+        fileCount: 0,
+        truncated: false,
+        message: 'Open a workspace folder to index',
+      };
+      return this.lastIndex;
+    }
+
+    try {
+      const client = await this.ensureClient();
+      const latest = await client.getLatestRepositoryState(this.getWorkspaceId());
+      if (latest) {
+        if (this.lastIndex.fileCount === 0) {
+          await this.readIndexStatus();
+        }
+        this.lastIndex = {
+          ...this.lastIndex,
+          readiness: latest.readiness,
+          stateTokenPreview: latest.stateToken?.slice(0, 16),
+          lastIndexedAt: latest.generatedAt,
+          message:
+            this.lastIndex.fileCount > 0
+              ? `Indexed ${this.lastIndex.fileCount} files`
+              : (this.lastIndex.message ?? 'Repository state ready'),
+        };
+        return this.lastIndex;
+      }
+    } catch (error) {
+      this.channel.appendLine(
+        `[index] latest-state check failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    this.channel.appendLine('[index] first load: publishing host snapshot…');
+    this.post({
+      type: 'index.status',
+      index: {
+        fileCount: 0,
+        truncated: false,
+        message: 'Indexing workspace…',
+      },
+    });
+    const status = await this.publishIndexSnapshot();
+    this.channel.appendLine(
+      `[index] first-load ${status.message ?? 'done'} readiness=${status.readiness ?? 'n/a'}`,
+    );
+    return status;
+  }
+
   private async readIndexStatus(): Promise<IndexStatusSnapshot> {
     const root = this.effectiveRoot();
     if (!root) {
@@ -936,6 +1145,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         message: 'Open a workspace folder to index',
       };
     }
+    if (this.lastIndex.fileCount > 0 && this.lastIndex.readiness) {
+      return this.lastIndex;
+    }
     const cached = join(root, '.mitii', 'last-repository-state.json');
     if (existsSync(cached)) {
       try {
@@ -943,14 +1155,35 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           readiness?: string;
           stateToken?: string;
           generatedAt?: string;
+          fileCount?: number;
+          truncated?: boolean;
+          reasons?: Array<{ message?: string }>;
         };
-        return {
-          ...this.lastIndex,
+        const fromReason = raw.reasons
+          ?.map((r) => r.message?.match(/(\d+)\s+files?/i)?.[1])
+          .find(Boolean);
+        const fileCount =
+          typeof raw.fileCount === 'number'
+            ? raw.fileCount
+            : fromReason
+              ? Number(fromReason)
+              : this.lastIndex.fileCount;
+        const truncated =
+          typeof raw.truncated === 'boolean'
+            ? raw.truncated
+            : this.lastIndex.truncated;
+        this.lastIndex = {
+          fileCount,
+          truncated,
           readiness: raw.readiness,
           stateTokenPreview: raw.stateToken?.slice(0, 16),
           lastIndexedAt: raw.generatedAt,
-          message: this.lastIndex.message ?? 'Loaded last published state',
+          message:
+            fileCount > 0
+              ? `Loaded last published state (${fileCount} files)`
+              : (this.lastIndex.message ?? 'Loaded last published state'),
         };
+        return this.lastIndex;
       } catch {
         // fall through
       }
@@ -959,14 +1192,18 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       const client = await this.ensureClient();
       const latest = await client.getLatestRepositoryState(this.getWorkspaceId());
       if (latest) {
-        return {
+        this.lastIndex = {
           fileCount: this.lastIndex.fileCount,
           truncated: this.lastIndex.truncated,
           readiness: latest.readiness,
           stateTokenPreview: latest.stateToken?.slice(0, 16),
           lastIndexedAt: latest.generatedAt,
-          message: 'From in-memory repository state',
+          message:
+            this.lastIndex.fileCount > 0
+              ? `From in-memory repository state (${this.lastIndex.fileCount} files)`
+              : 'From in-memory repository state',
         };
+        return this.lastIndex;
       }
     } catch {
       // no state yet
@@ -993,7 +1230,15 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     if (published.status === 'published') {
       writeFileSync(
         join(dir, 'last-repository-state.json'),
-        `${JSON.stringify(published.descriptor, null, 2)}\n`,
+        `${JSON.stringify(
+          {
+            ...published.descriptor,
+            fileCount: snapshot.fileCount,
+            truncated: snapshot.truncated,
+          },
+          null,
+          2,
+        )}\n`,
       );
       this.lastIndex = {
         fileCount: snapshot.fileCount,
@@ -1021,6 +1266,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       this.vs.workspace
         .getConfiguration('mitii')
         .get<boolean>('onboarding.completed') ?? false;
+    this.tokenUsage = {
+      ...this.tokenUsage,
+      contextWindow: resolveContextWindow(this.vs),
+    };
     this.post({
       type: 'bootstrap',
       workspace: this.readWorkspace(),

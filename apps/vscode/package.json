@@ -202,6 +202,18 @@
           "default": "qwen3-coder:30b",
           "description": "Model name"
         },
+        "mitii.provider.contextWindow": {
+          "type": "number",
+          "default": 32768,
+          "minimum": 1024,
+          "description": "Model context window in tokens. Used for prompt budgeting, max output reserve, and the token meter. Prefer the real window for your model (or leave unset to use the model preset)."
+        },
+        "mitii.provider.maximumOutputTokens": {
+          "type": "number",
+          "default": 8192,
+          "minimum": 256,
+          "description": "Maximum tokens the model may generate per call. Prevents mid-sentence cutoffs when the default reserve would otherwise be too small."
+        },
         "mitii.workspace.rootPathOverride": {
           "type": "string",
           "default": "",

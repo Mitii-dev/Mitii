@@ -1,5 +1,7 @@
 import type { ActivityEventPayload } from '../protocol';
 
+const ACTIVITY_LIMIT = 10;
+
 interface AgentActivityPanelProps {
   events: ActivityEventPayload[];
   open?: boolean;
@@ -15,6 +17,9 @@ export function AgentActivityPanel({
 }: AgentActivityPanelProps) {
   if (events.length === 0 && !loading) return null;
 
+  const visible = events.slice(-ACTIVITY_LIMIT);
+  const hiddenCount = Math.max(0, events.length - visible.length);
+
   return (
     <div className="activity">
       {onToggle ? (
@@ -22,24 +27,38 @@ export function AgentActivityPanel({
           {open ? 'Hide activity' : 'Show activity'} · {events.length}
         </button>
       ) : null}
-      {open || !onToggle
-        ? events.map((item) => (
-            <div key={item.id} className={`activity-item ${item.kind}`}>
+      {open || !onToggle ? (
+        <ol className="activity-list">
+          {hiddenCount > 0 ? (
+            <li className="activity-item info">
               <span className="activity-dot" />
-              <div>
+              <div className="activity-body">
+                <div className="activity-detail">
+                  +{hiddenCount} earlier step{hiddenCount === 1 ? '' : 's'}
+                </div>
+              </div>
+            </li>
+          ) : null}
+          {visible.map((item) => (
+            <li key={item.id} className={`activity-item ${item.kind}`}>
+              <span className="activity-dot" />
+              <div className="activity-body">
                 <div className="activity-title">{item.title}</div>
                 {item.detail ? (
                   <div className="activity-detail">{item.detail}</div>
                 ) : null}
               </div>
-            </div>
-          ))
-        : null}
-      {loading && events.length === 0 ? (
-        <div className="activity-item info">
-          <span className="activity-dot" />
-          <div className="activity-title">Working…</div>
-        </div>
+            </li>
+          ))}
+          {loading && events.length === 0 ? (
+            <li className="activity-item info">
+              <span className="activity-dot" />
+              <div className="activity-body">
+                <div className="activity-title">Working…</div>
+              </div>
+            </li>
+          ) : null}
+        </ol>
       ) : null}
     </div>
   );

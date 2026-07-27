@@ -19,7 +19,11 @@ import {
 } from '@mitii/v8';
 import type * as vscode from 'vscode';
 
+import { findLocalModelPreset } from './modelPresets.js';
 import { createHostRepositoryContext } from './repositoryContextHost.js';
+
+const DEFAULT_CONTEXT_WINDOW = 32_768;
+const DEFAULT_MAXIMUM_OUTPUT = 8_192;
 
 export class LocalUnderstandingLlmPort implements LlmPort {
   readonly id = 'vscode-local-understanding';
@@ -61,6 +65,35 @@ export interface VscodePortResolution {
   workspaceId: string;
 }
 
+function resolveContextWindow(cfg: vscode.WorkspaceConfiguration, model: string): number {
+  const fromSetting = cfg.get<number>('provider.contextWindow');
+  if (
+    typeof fromSetting === 'number' &&
+    Number.isFinite(fromSetting) &&
+    fromSetting > 0
+  ) {
+    return Math.floor(fromSetting);
+  }
+  return (
+    findLocalModelPreset(model)?.contextWindow ?? DEFAULT_CONTEXT_WINDOW
+  );
+}
+
+function resolveMaximumOutput(
+  cfg: vscode.WorkspaceConfiguration,
+  contextWindowTokens: number,
+): number {
+  const fromSetting = cfg.get<number>('provider.maximumOutputTokens');
+  if (
+    typeof fromSetting === 'number' &&
+    Number.isFinite(fromSetting) &&
+    fromSetting > 0
+  ) {
+    return Math.min(Math.floor(fromSetting), Math.max(1, contextWindowTokens - 1));
+  }
+  return Math.min(DEFAULT_MAXIMUM_OUTPUT, Math.max(1, contextWindowTokens - 1));
+}
+
 /**
  * Compose LLM ports from mitii.* settings + SecretStorage / env.
  * Secrets never come from settings JSON defaults.
@@ -86,16 +119,26 @@ export async function resolveVscodePorts(
     process.env.OPENAI_API_KEY;
 
   if (providerType === 'openai-compatible') {
+    const contextWindowTokens = resolveContextWindow(cfg, model);
+    const maximumOutputTokens = resolveMaximumOutput(cfg, contextWindowTokens);
+    const capabilities = {
+      contextWindowTokens,
+      maximumOutputTokens,
+    };
     const runLlm = new OpenAiCompatibleLlmPort({
       model,
       baseUrl,
       ...(secretKey ? { apiKey: secretKey } : {}),
+      capabilities,
     });
     const understandingLlm = new OpenAiCompatibleLlmPort({
       model,
       baseUrl,
       ...(secretKey ? { apiKey: secretKey } : {}),
-      capabilities: { supportsStructuredOutput: true },
+      capabilities: {
+        ...capabilities,
+        supportsStructuredOutput: true,
+      },
     });
     return {
       understandingLlm,
@@ -138,8 +181,8 @@ export async function createVscodeClient(
       })
     : undefined;
 
-  // MCP: settings are persisted via mcpConfig; enabled servers are injected
-  // into run prompts by the sidebar (SDK has no MCP tool runtime yet).
+  // MCP: settings are persisted via mcpConfig. Builtin preload from the old
+  // Thunder McpManager is not wired into the SDK host yet.
   const client = createMitiiClient({
     understandingLlm: ports.understandingLlm,
     runLlm: ports.runLlm,

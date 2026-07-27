@@ -133,12 +133,24 @@ function buildToolGuidance(decision: ExecutionDecision): string {
   }
 
   const tools = grant.allowedTools.join(", ");
-  return [
+  const lines = [
     `Allowed tools: ${tools}.`,
     `Maximum workspace effect: ${grant.maximumWorkspaceEffect}.`,
     `Approval mode: ${grant.approvalMode}.`,
     "Call only listed tools. Tool schemas define the only valid arguments.",
-  ].join("\n");
+  ];
+
+  if (
+    grant.allowedTools.includes("search_files") ||
+    grant.allowedTools.includes("list_directory")
+  ) {
+    lines.push(
+      "For discovery, prefer search_files and list_directory before mass read_file calls.",
+      "Keep tool use efficient: stop once you have enough evidence to answer.",
+    );
+  }
+
+  return lines.join("\n");
 }
 
 function buildPlanGuidance(decision: ExecutionDecision): string {

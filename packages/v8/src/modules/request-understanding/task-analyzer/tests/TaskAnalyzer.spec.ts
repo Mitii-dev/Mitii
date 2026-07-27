@@ -186,6 +186,22 @@ test("task analyzer recommends repository discovery when refactor lacks explicit
   assert.equal(result.recommendsRepositoryDiscovery, true);
 });
 
+test("task analyzer treats this-project language as repository scope", () => {
+  const analyzer = new TaskAnalyzer();
+  const result = analyzer.analyze(
+    createInput(
+      "Can you do deep analysis on this project and how to run it?",
+      {
+        primaryTaskIntent: "question",
+        interactionIntent: "question",
+      },
+    ),
+  );
+
+  assert.equal(result.scope, "repository");
+  assert.equal(result.recommendsRepositoryDiscovery, true);
+});
+
 test("task analyzer uses referenced artifacts as implicit targets", () => {
   const analyzer = new TaskAnalyzer();
   const result = analyzer.analyze(

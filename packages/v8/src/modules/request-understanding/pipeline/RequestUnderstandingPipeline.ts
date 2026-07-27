@@ -7,6 +7,7 @@ import type {
   RequestUnderstandingPipelineInput,
   RequestUnderstandingResult,
 } from "../contracts";
+import { extractPrimaryUserMessage } from "../intent/extractPrimaryUserMessage";
 import { IntentRouter } from "../intent/IntentRouter";
 import type { IntentRouterDependencies } from "../intent/types";
 import { TaskAnalyzer } from "../task-analyzer/TaskAnalyzer";
@@ -38,14 +39,16 @@ export class RequestUnderstandingPipeline {
     const envelope =
       requestUnderstandingPipelineInputSchema.parse(input);
 
+    const userMessage = extractPrimaryUserMessage(envelope.message);
+
     const intent = await this.intentRouter.classify({
       mode: envelope.mode,
-      userMessage: envelope.message,
+      userMessage,
       referencedArtifacts: envelope.referencedArtifacts,
     });
 
     const taskAnalysis = this.taskAnalyzer.analyze({
-      userMessage: envelope.message,
+      userMessage,
       intent,
       referencedArtifacts: envelope.referencedArtifacts.map((artifact) => ({
         name: artifact.name,

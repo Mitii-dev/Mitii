@@ -7,15 +7,47 @@ export function formatUsageLine(result: AgentRunResult): string {
     `models=${u.modelCalls}`,
     `tools=${u.toolCalls}`,
     `loops=${u.loopIterations}`,
+    `inTokens=${u.inputTokens ?? 0}`,
+    `outTokens=${u.outputTokens ?? 0}`,
+    `durationMs=${result.durationMs}`,
   ];
-  if (typeof u.inputTokens === 'number') {
-    parts.push(`inTokens=${u.inputTokens}`);
-  }
-  if (typeof u.outputTokens === 'number') {
-    parts.push(`outTokens=${u.outputTokens}`);
-  }
-  parts.push(`durationMs=${result.durationMs}`);
   return `[mitii] usage ${parts.join(' ')}`;
+}
+
+/** Human-readable wiring / budget diagnostics from reason codes + status. */
+export function formatRunDiagnostics(result: AgentRunResult): string[] {
+  const lines: string[] = [];
+  const codes = new Set(result.reasonCodes ?? []);
+
+  if (result.status === 'budget_exhausted') {
+    const detail =
+      result.error?.message?.trim() ||
+      'Run stopped because Mitii call/loop budget was exhausted (not a provider quota).';
+    lines.push(`[budget] exhausted: ${detail}`);
+  }
+
+  if (codes.has('context_skipped')) {
+    lines.push(
+      '[context] skipped — route did not retrieve repository context (tools may also be unavailable).',
+    );
+  }
+
+  if (codes.has('direct_knowledge_answer') && (result.usage?.toolCalls ?? 0) === 0) {
+    lines.push(
+      '[tools] none granted — direct_answer route answers from prompt context only.',
+    );
+  }
+
+  if (
+    codes.has('budget_exhausted') ||
+    result.error?.code === 'budget_exhausted'
+  ) {
+    lines.push(
+      '[hint] Prefer search_files/list_directory before many read_file calls, or raise run budget.',
+    );
+  }
+
+  return lines;
 }
 
 /** Summarize context / prompt-related events for inspection UX. */
@@ -23,8 +55,12 @@ export function formatContextInspection(events: RunEvent[]): string[] {
   const lines: string[] = [];
   for (const event of events) {
     if (event.type === 'context_ready') {
+      const paths =
+        'paths' in event && Array.isArray(event.paths) && event.paths.length
+          ? ` paths=${event.paths.slice(0, 8).join(',')}`
+          : '';
       lines.push(
-        `[context] token=${event.stateToken.slice(0, 12)}… blocks=${event.blockCount} status=${event.status}`,
+        `[context] token=${event.stateToken.slice(0, 12)}… blocks=${event.blockCount} status=${event.status}${paths}`,
       );
     } else if (event.type === 'skills_ready') {
       lines.push(

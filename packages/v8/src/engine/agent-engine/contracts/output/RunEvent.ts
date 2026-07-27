@@ -81,6 +81,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       stateToken: z.string().min(1),
       blockCount: z.number().int().nonnegative(),
       status: z.string().min(1),
+      /** Safe path previews for UI — never full file contents. */
+      paths: z.array(z.string().min(1).max(512)).max(12).optional(),
       at: z.string().datetime(),
     })
     .strict(),
@@ -91,6 +93,18 @@ export const runEventSchema = z.discriminatedUnion("type", [
       kind: z.enum(["content", "reasoning", "tool_call"]),
       /** Safe preview only — truncated content fragment. */
       preview: z.string().max(500).optional(),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("model_turn"),
+      runId: z.string().min(1),
+      turnIndex: z.number().int().nonnegative(),
+      inputTokens: z.number().int().nonnegative().optional(),
+      outputTokens: z.number().int().nonnegative().optional(),
+      finishReason: z.string().min(1).optional(),
+      truncated: z.boolean().optional(),
       at: z.string().datetime(),
     })
     .strict(),

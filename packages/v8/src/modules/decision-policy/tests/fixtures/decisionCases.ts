@@ -482,4 +482,51 @@ export const DECISION_EVALUATION_CASES: DecisionCaseFixture[] = [
       maximumWorkspaceEffect: "none",
     },
   },
+  {
+    id: "ask_project_analysis_workspace_grounded",
+    category: "docs",
+    mode: "ask",
+    message:
+      "Can you do deep analysis on this project provide the architecture, test cases and how to run the project",
+    understanding: createUnderstanding({
+      primaryTaskIntent: "question",
+      interactionIntent: "question",
+      taskAnalysis: {
+        scope: "unknown",
+        complexity: "moderate",
+        risk: "low",
+        recommendsRepositoryDiscovery: false,
+        recommendsVerification: false,
+        recommendsPlanning: false,
+      },
+    }),
+    expected: {
+      route: "repository_answer",
+      maximumWorkspaceEffect: "read",
+      planningDepth: "none",
+    },
+  },
+  {
+    id: "ask_find_test_cases_workspace_grounded",
+    category: "docs",
+    mode: "ask",
+    message:
+      "Can you find all the test cases related to desktop and mobile or tab and list them down",
+    understanding: createUnderstanding({
+      primaryTaskIntent: "question",
+      interactionIntent: "question",
+      taskAnalysis: {
+        scope: "unknown",
+        complexity: "simple",
+        risk: "low",
+        recommendsRepositoryDiscovery: false,
+        recommendsVerification: false,
+        recommendsPlanning: false,
+      },
+    }),
+    expected: {
+      route: "repository_answer",
+      maximumWorkspaceEffect: "read",
+    },
+  },
 ];

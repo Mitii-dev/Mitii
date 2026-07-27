@@ -228,4 +228,50 @@ describe("DecisionPolicyPipeline", () => {
     });
     expect(decision.reasonCodes).toContain("repository_state_degraded");
   });
+
+  it("routes ask-mode project questions to repository_answer with read tools", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "ask",
+        message: "Deep analysis of this project and how to run it",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "unknown",
+            recommendsRepositoryDiscovery: false,
+            recommendsVerification: false,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("repository_answer");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
+    expect(decision.toolGrant.allowedTools).toContain("read_file");
+    expect(decision.toolGrant.allowedTools).toContain("search_files");
+    expect(decision.repositoryContextRequired).toBe(true);
+  });
+
+  it("keeps pure knowledge questions on direct_answer without tools", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "ask",
+        message: "What is a binary search?",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "unknown",
+            recommendsRepositoryDiscovery: false,
+            recommendsVerification: false,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("direct_answer");
+    expect(decision.toolGrant.allowedTools).toEqual([]);
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("none");
+  });
 });

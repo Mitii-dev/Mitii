@@ -54,8 +54,8 @@ export function MessageList({
         <div className="empty-state">
           <h2>Ready when you are</h2>
           <p>
-            Choose Ask, Plan, Agent, or Review. Use @ to pin files. Watch
-            thinking, reading, and tools as they happen.
+            Choose Ask, Plan, Agent, or Review from the mode dropdown. Use @ to
+            pin files. Watch activity as the run progresses.
           </p>
         </div>
       </div>

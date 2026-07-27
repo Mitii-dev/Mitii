@@ -153,6 +153,7 @@ export class LlmIntentClassifier {
    */
   private async collectProviderText(request: ModelRequest): Promise<string> {
     let response = "";
+    let reasoning = "";
 
     for await (const rawEvent of this.provider.complete(request)) {
       const event = modelEventSchema.parse(rawEvent);
@@ -168,13 +169,19 @@ export class LlmIntentClassifier {
       if (event.type === "content_delta") {
         response += event.content;
       }
+
+      // Some providers put the JSON payload in reasoning when content is empty.
+      if (event.type === "reasoning_delta") {
+        reasoning += event.reasoning;
+      }
     }
 
-    if (!response.trim()) {
+    const text = response.trim() || reasoning.trim();
+    if (!text) {
       throw new Error("Intent classifier returned an empty response.");
     }
 
-    return response;
+    return text;
   }
 
   /**

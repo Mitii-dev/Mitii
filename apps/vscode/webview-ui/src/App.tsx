@@ -7,15 +7,21 @@ import { HistoryPanel } from './components/HistoryPanel';
 import { IconButton } from './components/IconButton';
 import {
   IconChat,
+  IconCopy,
   IconHistory,
   IconPlus,
+  IconSend,
   IconSettings,
   IconSkills,
+  IconStop,
 } from './components/Icons';
 import { IndexingStatusBar } from './components/IndexingStatusBar';
 import type { ChatTurn } from './components/MessageList';
 import { MessageList } from './components/MessageList';
-import { MODE_HINT, ModeIndicator } from './components/ModeIndicator';
+import {
+  ComposerControls,
+  type ApprovalUiMode,
+} from './components/ComposerControls';
 import { OnboardingPanel } from './components/OnboardingPanel';
 import { PlanPanel } from './components/PlanPanel';
 import { ReviewPanel } from './components/ReviewPanel';
@@ -62,8 +68,10 @@ const EMPTY_TOKEN_USAGE: TokenUsageSnapshot = {
   lastPromptTokens: 0,
   lastResponseTokens: 0,
   turnCount: 0,
-  contextWindow: 8192,
+  contextWindow: 32768,
   estimated: true,
+  turns: [],
+  live: false,
 };
 
 const DEFAULT_CONTEXT_TOGGLES: ContextToggles = {
@@ -521,6 +529,10 @@ export function App() {
     });
   };
 
+  const setApprovalMode = (approvalMode: ApprovalUiMode) => {
+    saveUi({ approvalMode });
+  };
+
   const saveMcp = (next: McpSettings) => {
     setMcp(next);
     postToHost({ type: 'settings.set', mcp: next });
@@ -568,56 +580,58 @@ export function App() {
           <div className="brand-mark">Mitii</div>
           <div className="brand-sub">Enterprise agent</div>
         </div>
-        <nav className="nav-pills" aria-label="Primary">
-          {nav === 'chat' ? (
+        <div className="shell-header__actions">
+          <nav className="nav-pills" aria-label="Primary">
+            {nav === 'chat' ? (
+              <IconButton
+                label="New chat"
+                onClick={() => {
+                  postToHost({ type: 'newChat' });
+                  setTurns([]);
+                  setPlan(null);
+                  setActiveThreadId(undefined);
+                }}
+              >
+                <IconPlus />
+              </IconButton>
+            ) : null}
             <IconButton
-              label="New chat"
-              onClick={() => {
-                postToHost({ type: 'newChat' });
-                setTurns([]);
-                setPlan(null);
-                setActiveThreadId(undefined);
-              }}
+              label="Chat"
+              active={nav === 'chat'}
+              onClick={() => navigate('chat')}
             >
-              <IconPlus />
+              <IconChat />
             </IconButton>
-          ) : null}
-          <IconButton
-            label="Chat"
-            active={nav === 'chat'}
-            onClick={() => navigate('chat')}
-          >
-            <IconChat />
-          </IconButton>
-          <IconButton
-            label="History"
-            active={nav === 'history'}
-            onClick={() => navigate('history')}
-          >
-            <IconHistory />
-          </IconButton>
-          <IconButton
-            label="Settings"
-            active={nav === 'settings'}
-            onClick={() => navigate('settings', settingsTab)}
-          >
-            <IconSettings />
-          </IconButton>
-          {skillManagement ? (
             <IconButton
-              label="Skills"
-              active={nav === 'skills'}
-              onClick={() => navigate('skills')}
+              label="History"
+              active={nav === 'history'}
+              onClick={() => navigate('history')}
             >
-              <IconSkills />
+              <IconHistory />
             </IconButton>
-          ) : null}
-        </nav>
-        <IndexingStatusBar
-          index={index}
-          onRefresh={() => postToHost({ type: 'index.refresh' })}
-          onReindex={() => postToHost({ type: 'index.reindex' })}
-        />
+            <IconButton
+              label="Settings"
+              active={nav === 'settings'}
+              onClick={() => navigate('settings', settingsTab)}
+            >
+              <IconSettings />
+            </IconButton>
+            {skillManagement ? (
+              <IconButton
+                label="Skills"
+                active={nav === 'skills'}
+                onClick={() => navigate('skills')}
+              >
+                <IconSkills />
+              </IconButton>
+            ) : null}
+          </nav>
+          <IndexingStatusBar
+            index={index}
+            onRefresh={() => postToHost({ type: 'index.refresh' })}
+            onReindex={() => postToHost({ type: 'index.reindex' })}
+          />
+        </div>
       </header>
 
       <ErrorBanner
@@ -635,12 +649,21 @@ export function App() {
               onRefresh={() => postToHost({ type: 'refreshReviewDiff' })}
             />
             <div className="composer-dock">
-              <ModeIndicator mode={mode} onChange={setMode} />
-              <div className="mode-hint">{MODE_HINT[mode]}</div>
+              <ComposerControls
+                mode={mode}
+                approvalMode={ui.approvalMode}
+                depth={depth}
+                onModeChange={setMode}
+                onApprovalModeChange={setApprovalMode}
+                onDepthChange={(next) => {
+                  setDepth(next);
+                  saveUi({ depth: next });
+                }}
+              />
             </div>
           </div>
         ) : (
-          <div className="chat-view">
+          <div className={`chat-view${running ? ' chat-view--running' : ''}`}>
             <PlanPanel plan={plan} />
             <MessageList
               turns={turns}
@@ -686,9 +709,6 @@ export function App() {
                 onClear={() => setPinned([])}
                 onPick={() => postToHost({ type: 'pickContextPath' })}
               />
-
-              <ModeIndicator mode={mode} onChange={setMode} />
-              <div className="mode-hint">{MODE_HINT[mode]}</div>
 
               <div className="composer-box">
                 {suggestOpen ? (
@@ -741,89 +761,96 @@ export function App() {
                     }
                   }}
                 />
-                <div className="composer-actions">
-                  <select
-                    className="depth-select"
-                    value={
-                      customModel || !modelOptions.includes(provider.model)
-                        ? '__custom__'
-                        : provider.model
-                    }
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      if (next === '__custom__') {
-                        setCustomModel(true);
-                        return;
-                      }
-                      setCustomModel(false);
-                      saveModel(next);
-                    }}
-                    title="Model"
-                    aria-label="Model"
-                  >
-                    {modelOptions.map((id) => (
-                      <option key={id} value={id}>
-                        {id}
-                      </option>
-                    ))}
-                    <option value="__custom__">Custom…</option>
-                  </select>
-                  {customModel || !modelOptions.includes(provider.model) ? (
-                    <input
-                      className="model-custom-input"
-                      value={provider.model}
-                      placeholder="model id"
-                      onChange={(e) =>
-                        setProvider((p) => ({ ...p, model: e.target.value }))
-                      }
-                      onBlur={() => {
-                        if (provider.model.trim())
-                          saveModel(provider.model.trim());
+                <div className="composer-footer">
+                  <div className="composer-dropdown-row--with-model">
+                    <ComposerControls
+                      mode={mode}
+                      approvalMode={ui.approvalMode}
+                      depth={depth}
+                      onModeChange={setMode}
+                      onApprovalModeChange={setApprovalMode}
+                      onDepthChange={(next) => {
+                        setDepth(next);
+                        saveUi({ depth: next });
                       }}
-                      title="Custom model id"
                     />
-                  ) : null}
-                  <select
-                    className="depth-select"
-                    value={depth}
-                    onChange={(e) => {
-                      const next = e.target.value as AgentUiDepth;
-                      setDepth(next);
-                      saveUi({ depth: next });
-                    }}
-                    title="Depth"
-                  >
-                    <option value="auto">Auto</option>
-                    <option value="quick">Quick</option>
-                    <option value="deep">Deep</option>
-                  </select>
-                  <TokenMeter usage={tokenUsage} />
-                  <button
-                    type="button"
-                    className="btn ghost"
-                    title="Copy last response"
-                    onClick={() => postToHost({ type: 'copyLastResponse' })}
-                  >
-                    Copy
-                  </button>
-                  {running ? (
-                    <button
-                      type="button"
-                      className="btn danger"
-                      onClick={() => postToHost({ type: 'cancel' })}
+                    <select
+                      className="depth-select model-select"
+                      value={
+                        customModel || !modelOptions.includes(provider.model)
+                          ? '__custom__'
+                          : provider.model
+                      }
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        if (next === '__custom__') {
+                          setCustomModel(true);
+                          return;
+                        }
+                        setCustomModel(false);
+                        saveModel(next);
+                      }}
+                      title="Model"
+                      aria-label="Model"
                     >
-                      Stop
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={send}
-                      disabled={!prompt.trim()}
-                    >
-                      Send
-                    </button>
-                  )}
+                      {modelOptions.map((id) => (
+                        <option key={id} value={id}>
+                          {id}
+                        </option>
+                      ))}
+                      <option value="__custom__">Custom…</option>
+                    </select>
+                    {customModel || !modelOptions.includes(provider.model) ? (
+                      <input
+                        className="model-custom-input"
+                        value={provider.model}
+                        placeholder="model id"
+                        onChange={(e) =>
+                          setProvider((p) => ({
+                            ...p,
+                            model: e.target.value,
+                          }))
+                        }
+                        onBlur={() => {
+                          if (provider.model.trim())
+                            saveModel(provider.model.trim());
+                        }}
+                        title="Custom model id"
+                      />
+                    ) : null}
+                  </div>
+                  <div className="composer-utility-row">
+                    <div className="composer-left">
+                      <TokenMeter usage={tokenUsage} placement="above" />
+                    </div>
+                    <div className="composer-actions">
+                      <IconButton
+                        label="Copy last response"
+                        onClick={() =>
+                          postToHost({ type: 'copyLastResponse' })
+                        }
+                      >
+                        <IconCopy />
+                      </IconButton>
+                      {running ? (
+                        <IconButton
+                          label="Stop"
+                          className="icon-btn--danger"
+                          onClick={() => postToHost({ type: 'cancel' })}
+                        >
+                          <IconStop />
+                        </IconButton>
+                      ) : (
+                        <IconButton
+                          label="Send"
+                          onClick={send}
+                          disabled={!prompt.trim()}
+                        >
+                          <IconSend />
+                        </IconButton>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

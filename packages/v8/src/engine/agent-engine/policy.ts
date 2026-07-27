@@ -29,7 +29,8 @@ export const DEFAULT_READ_ONLY_TOOL_DEFINITIONS: readonly ModelToolDefinition[] 
   [
     {
       name: "list_directory",
-      description: "List entries in a workspace directory.",
+      description:
+        "List entries in a workspace directory. Prefer this (or search_files) before opening many files with read_file.",
       inputSchema: {
         type: "object",
         properties: {
@@ -39,7 +40,8 @@ export const DEFAULT_READ_ONLY_TOOL_DEFINITIONS: readonly ModelToolDefinition[] 
     },
     {
       name: "read_file",
-      description: "Read a workspace file or line range.",
+      description:
+        "Read a workspace file or line range. Use after search_files/list_directory narrows candidates; avoid reading large numbers of files one-by-one.",
       inputSchema: {
         type: "object",
         properties: {
@@ -52,7 +54,8 @@ export const DEFAULT_READ_ONLY_TOOL_DEFINITIONS: readonly ModelToolDefinition[] 
     },
     {
       name: "search_files",
-      description: "Search workspace text.",
+      description:
+        "Search workspace text (preferred for discovery). Use this to find symbols, tests, or patterns before read_file.",
       inputSchema: {
         type: "object",
         properties: {

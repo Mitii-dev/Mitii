@@ -35,7 +35,12 @@ export function McpServersEditor({
   return (
     <div className="mcp-servers-editor">
       {runtimeStatus ? (
-        <p className="field-hint">Runtime: {runtimeStatus}</p>
+        <p className="field-hint">
+          Runtime: {runtimeStatus}
+          {runtimeStatus === 'unsupported_runtime'
+            ? ' — MCP tool runtime is not wired in this SDK host yet (old Thunder builtin preload is inactive).'
+            : ''}
+        </p>
       ) : null}
       <label className="toggle">
         <input

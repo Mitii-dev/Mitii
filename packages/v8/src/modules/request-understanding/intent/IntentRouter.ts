@@ -2,8 +2,10 @@ import type {
   LlmPort,
 } from "../../model-gateway";
 import { LlmIntentClassifier, RuleIntentClassifier } from "./classifiers";
+import { extractPrimaryUserMessage } from "./extractPrimaryUserMessage";
 import { ModeIntentPolicy } from "./policy";
 import { SuperIntent } from "./resolution";
+import { INTENT_CONSTANTS } from "./constants";
 import {
   IntentClassificationInput,
   IntentClassifierResult,
@@ -59,15 +61,23 @@ export class IntentRouter {
         }
       : null;
 
-    //2. Attempt LLM classification.
-    const llmClassification = await this.modePolicy.apply(
-      normalizedInput.mode,
-      await this.llmClassifier.classify(normalizedInput),
-    );
-    const llmResult: IntentClassifierResult = {
-      source: "llm",
-      classification: llmClassification,
-    };
+    // 2. Attempt LLM classification (fall back to rule/safe default on failure).
+    let llmResult: IntentClassifierResult;
+    try {
+      const llmClassification = await this.modePolicy.apply(
+        normalizedInput.mode,
+        await this.llmClassifier.classify(normalizedInput),
+      );
+      llmResult = {
+        source: "llm",
+        classification: llmClassification,
+      };
+    } catch (error) {
+      if (ruleResult) {
+        return this.buildFallbackResult(normalizedInput.mode, ruleResult, error);
+      }
+      return this.buildSafeFallbackResult(normalizedInput.mode, error);
+    }
 
     // 3. Resolve final classification using SuperIntent.
     const superIntent = new SuperIntent();
@@ -85,8 +95,94 @@ export class IntentRouter {
   ): Required<IntentClassificationInput> {
     return {
       mode: input.mode,
-      userMessage: input.userMessage.trim(),
+      userMessage: extractPrimaryUserMessage(input.userMessage),
       referencedArtifacts: input.referencedArtifacts ?? [],
+    };
+  }
+
+  private buildFallbackResult(
+    mode: IntentClassificationInput["mode"],
+    ruleResult: IntentClassifierResult,
+    error: unknown,
+  ): SuperIntentResult {
+    const classification = this.modePolicy.apply(mode, ruleResult.classification);
+    const detail =
+      error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160);
+    return {
+      status: "accepted",
+      classification: {
+        ...classification,
+        reason: `${classification.reason ?? "Rule classification."} LLM unavailable; using rule fallback (${detail}).`,
+      },
+      scores: [
+        {
+          intent: classification.primaryTaskIntent,
+          score: classification.confidence,
+          ruleScore: classification.confidence,
+          llmScore: 0,
+        },
+      ],
+      confidenceMargin: classification.confidence,
+      recommendsClarification: false,
+      diagnostics: {
+        ruleSource: ruleResult.source,
+        ...(ruleResult.matchedRule
+          ? { matchedRule: ruleResult.matchedRule }
+          : {}),
+        rulePrimaryIntent: ruleResult.classification.primaryTaskIntent,
+        llmPrimaryIntent: classification.primaryTaskIntent,
+        ruleInteractionIntent: ruleResult.classification.interactionIntent,
+        llmInteractionIntent: classification.interactionIntent,
+        taskAgreement: false,
+        interactionAgreement: true,
+        interactionConflict: false,
+        agreementBonusApplied: 0,
+        disagreementPenaltyApplied: 0,
+        minimumConfidence: INTENT_CONSTANTS.SCORE_DEFAULT_OPTIONS.minimumConfidence,
+        minimumMargin: INTENT_CONSTANTS.SCORE_DEFAULT_OPTIONS.minimumMargin,
+      },
+    };
+  }
+
+  private buildSafeFallbackResult(
+    mode: IntentClassificationInput["mode"],
+    error: unknown,
+  ): SuperIntentResult {
+    const detail =
+      error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160);
+    const classification = this.modePolicy.apply(mode, {
+      interactionIntent: "question",
+      primaryTaskIntent: "question",
+      secondaryTaskIntents: [],
+      confidence: 0.45,
+      alternatives: [],
+      needsClarification: false,
+      reason: `LLM intent classifier failed; using safe question fallback (${detail}).`,
+    });
+    return {
+      status: "accepted",
+      classification,
+      scores: [
+        {
+          intent: classification.primaryTaskIntent,
+          score: classification.confidence,
+          ruleScore: 0,
+          llmScore: 0,
+        },
+      ],
+      confidenceMargin: classification.confidence,
+      recommendsClarification: false,
+      diagnostics: {
+        llmPrimaryIntent: classification.primaryTaskIntent,
+        llmInteractionIntent: classification.interactionIntent,
+        taskAgreement: false,
+        interactionAgreement: true,
+        interactionConflict: false,
+        agreementBonusApplied: 0,
+        disagreementPenaltyApplied: 0,
+        minimumConfidence: INTENT_CONSTANTS.SCORE_DEFAULT_OPTIONS.minimumConfidence,
+        minimumMargin: INTENT_CONSTANTS.SCORE_DEFAULT_OPTIONS.minimumMargin,
+      },
     };
   }
 }

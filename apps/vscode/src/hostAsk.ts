@@ -17,6 +17,7 @@ import { buildReviewDiff } from './reviewDiff.js';
 import {
   formatContextInspection,
   formatDiffReview,
+  formatRunDiagnostics,
   formatUsageLine,
 } from './runReport.js';
 import { appendSessionLog } from './sessionLog.js';
@@ -25,7 +26,17 @@ import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 export function formatRunEventLine(event: RunEvent): string | undefined {
   switch (event.type) {
     case 'model_delta':
+      // Stream content only; reasoning is summarized in the activity panel.
+      if (event.kind !== 'content') return undefined;
       return event.preview;
+    case 'model_turn': {
+      const inTok = event.inputTokens ?? 0;
+      const outTok = event.outputTokens ?? 0;
+      const trunc = event.truncated ? ' truncated' : '';
+      return `[tokens] turn=${event.turnIndex} ↑${inTok} ↓${outTok}${trunc}${
+        event.finishReason ? ` finish=${event.finishReason}` : ''
+      }`;
+    }
     case 'tool_started':
       return `[tool] ${event.toolName}…`;
     case 'tool_completed':
@@ -34,33 +45,105 @@ export function formatRunEventLine(event: RunEvent): string | undefined {
       return `[suspended:${event.kind}] ${event.rationale}`;
     case 'warning':
       return `[warn] ${event.message}`;
-    case 'terminal':
-      return `[terminal] ${event.status}`;
-    case 'context_ready':
-      return `[context] blocks=${event.blockCount} status=${event.status}`;
+    case 'terminal': {
+      const err = event.result.error?.message?.trim();
+      return err
+        ? `[terminal] ${event.status}: ${err.slice(0, 240)}`
+        : `[terminal] ${event.status}`;
+    }
+    case 'context_ready': {
+      const paths =
+        'paths' in event && Array.isArray(event.paths) && event.paths.length
+          ? ` paths=${event.paths.slice(0, 6).join(',')}`
+          : '';
+      return `[context] blocks=${event.blockCount} status=${event.status}${paths}`;
+    }
     case 'decision_made':
       return `[decision] ${event.route}`;
     case 'skills_ready':
       return `[skills] selected=${event.selectedCount} omitted=${event.omittedCount} status=${event.status}`;
     case 'memory_ready':
       return `[memory] selected=${event.selectedCount} omitted=${event.omittedCount} status=${event.status}`;
+    case 'stage_started':
+      return `[stage] ${event.stage}…`;
+    case 'stage_completed':
+      return `[stage] ${event.stage} done`;
     default:
       return undefined;
   }
 }
 
+function eventAtMs(event: RunEvent): number {
+  if ('at' in event && typeof event.at === 'string') {
+    const parsed = Date.parse(event.at);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return Date.now();
+}
+
+function formatClock(ms: number): string {
+  return new Date(ms).toISOString().slice(11, 23);
+}
+
 let activitySeq = 0;
+
+const STAGE_LABELS: Record<string, string> = {
+  received: 'Received request',
+  understood: 'Understood intent',
+  decided: 'Chose route',
+  context_ready: 'Gathering context',
+  skills_ready: 'Loading skills',
+  memory_ready: 'Loading memory',
+  model_running: 'Running model',
+  tool_running: 'Running tools',
+  answering: 'Answering',
+  planning: 'Planning',
+  acting: 'Acting',
+};
+
+function terminalTitle(status: string): string {
+  switch (status) {
+    case 'completed':
+      return 'Done';
+    case 'failed':
+      return 'Failed';
+    case 'cancelled':
+      return 'Cancelled';
+    case 'suspended':
+      return 'Paused';
+    case 'budget_exhausted':
+      return 'Budget exhausted';
+    default:
+      return 'Finished';
+  }
+}
+
+function terminalDetail(event: Extract<RunEvent, { type: 'terminal' }>): string | undefined {
+  if (event.status === 'budget_exhausted') {
+    const msg =
+      event.result.error?.message?.trim() ||
+      'Mitii run budget exhausted (tool/model/loop limits), not a provider quota.';
+    return msg.slice(0, 240);
+  }
+  const err = event.result.error?.message?.trim();
+  if (err) return err.slice(0, 240);
+  const codes = event.result.reasonCodes ?? [];
+  if (codes.includes('context_skipped')) {
+    return 'Repository context was skipped for this route.';
+  }
+  return undefined;
+}
 
 export function runEventToActivity(event: RunEvent): ActivityEventPayload | undefined {
   const id = `evt_${++activitySeq}`;
-  const at = Date.now();
+  const at = eventAtMs(event);
   switch (event.type) {
     case 'stage_started':
       return {
         id,
         at,
         kind: 'info',
-        title: `Starting ${event.stage}`,
+        title: STAGE_LABELS[event.stage] ?? event.stage,
         status: 'running',
       };
     case 'stage_completed':
@@ -68,7 +151,7 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         id,
         at,
         kind: 'info',
-        title: `Finished ${event.stage}`,
+        title: STAGE_LABELS[event.stage] ?? event.stage,
         status: 'done',
       };
     case 'state_pinned':
@@ -76,7 +159,7 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         id,
         at,
         kind: 'context',
-        title: 'Pinned repository state',
+        title: 'Repository state pinned',
         detail: event.state.stateToken.slice(0, 16),
       };
     case 'model_delta':
@@ -105,6 +188,22 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         title: 'Writing',
         detail: event.preview,
       };
+    case 'model_turn': {
+      const inTok = event.inputTokens ?? 0;
+      const outTok = event.outputTokens ?? 0;
+      return {
+        id,
+        at,
+        kind: event.truncated ? 'warning' : 'info',
+        title: event.truncated
+          ? `Tokens · turn ${event.turnIndex + 1} truncated`
+          : `Tokens · turn ${event.turnIndex + 1}`,
+        detail: `↑${inTok.toLocaleString()} sent · ↓${outTok.toLocaleString()} received${
+          event.finishReason ? ` · ${event.finishReason}` : ''
+        }`,
+        status: event.truncated ? 'failed' : 'done',
+      };
+    }
     case 'tool_started':
       return {
         id,
@@ -121,15 +220,32 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         title: event.toolName,
         status: event.status,
       };
-    case 'context_ready':
+    case 'context_ready': {
+      const rawPaths =
+        'paths' in event && Array.isArray(event.paths) ? event.paths : [];
+      const paths = rawPaths.filter(
+        (path: unknown): path is string =>
+          typeof path === 'string' && path.trim().length > 0,
+      );
+      const pathPreview = paths.slice(0, 6).join(', ');
+      const more =
+        paths.length > 6 ? ` · +${paths.length - 6} more` : '';
       return {
         id,
         at,
         kind: 'context',
-        title: 'Reading repository context',
-        detail: `${event.blockCount} blocks · ${event.status}`,
+        title:
+          paths.length === 1
+            ? `Read @${paths[0]}`
+            : paths.length > 1
+              ? `Read ${paths.length} files`
+              : 'Read repository context',
+        detail: pathPreview
+          ? `${pathPreview}${more}`
+          : `${event.blockCount} block(s) · ${event.status}`,
         status: event.status,
       };
+    }
     case 'decision_made':
       return {
         id,
@@ -159,8 +275,8 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         id,
         at,
         kind: 'terminal',
-        title: 'Complete',
-        detail: event.status,
+        title: terminalTitle(event.status),
+        detail: terminalDetail(event),
         status: event.status,
       };
     case 'skills_ready':
@@ -271,7 +387,10 @@ export interface HostAskOutcome {
 }
 
 export interface HostAskHandlers {
-  onEvent?: (event: RunEvent, activity: ActivityEventPayload) => void;
+  onEvent?: (
+    event: RunEvent | undefined,
+    activity: ActivityEventPayload,
+  ) => void;
   onDelta?: (text: string) => void;
   onSuspended?: (
     result: AgentRunResult,
@@ -288,7 +407,6 @@ export interface ContextToggleFlags {
   repoMap?: boolean;
   gitDiff?: boolean;
   memory?: boolean;
-  mcpSummary?: string;
 }
 
 function composePrompt(options: {
@@ -301,38 +419,43 @@ function composePrompt(options: {
   repoMapBlock?: string;
   gitDiffBlock?: string;
   memoryBlock?: string;
-  mcpSummary?: string;
 }): string {
-  const parts: string[] = [];
+  /** Keep in sync with v8 extractPrimaryUserMessage markers. */
+  const USER_MARKER = '<<<MITII_USER_MESSAGE>>>';
+  const HOST_MARKER = '<<<MITII_HOST_CONTEXT>>>';
+
+  // Priority: pinned context first, then supplementary host evidence.
+  const hostParts: string[] = [];
   if (options.depth && options.depth !== 'auto') {
-    parts.push(`[depth:${options.depth}]`);
-  }
-  if (options.mcpSummary) {
-    parts.push(options.mcpSummary);
-  }
-  if (options.memoryBlock) {
-    parts.push(options.memoryBlock);
-  }
-  if (options.repoMapBlock) {
-    parts.push(options.repoMapBlock);
-  }
-  if (options.gitDiffBlock) {
-    parts.push(options.gitDiffBlock);
-  }
-  if (options.editorBlock) {
-    parts.push(options.editorBlock);
-  }
-  if (options.diagnosticsBlock) {
-    parts.push(options.diagnosticsBlock);
+    hostParts.push(`[depth:${options.depth}]`);
   }
   if (options.pinnedContents) {
-    parts.push(options.pinnedContents);
+    hostParts.push(options.pinnedContents);
   } else if (options.pinnedPaths?.length) {
-    parts.push(
+    hostParts.push(
       `Pinned context:\n${options.pinnedPaths.map((p) => `- @${p}`).join('\n')}`,
     );
   }
-  parts.push(options.prompt);
+  if (options.memoryBlock) {
+    hostParts.push(options.memoryBlock);
+  }
+  if (options.editorBlock) {
+    hostParts.push(options.editorBlock);
+  }
+  if (options.diagnosticsBlock) {
+    hostParts.push(options.diagnosticsBlock);
+  }
+  if (options.gitDiffBlock) {
+    hostParts.push(options.gitDiffBlock);
+  }
+  if (options.repoMapBlock) {
+    hostParts.push(options.repoMapBlock);
+  }
+
+  const parts = [`${USER_MARKER}\n${options.prompt}`];
+  if (hostParts.length) {
+    parts.push(`${HOST_MARKER}\n${hostParts.join('\n\n')}`);
+  }
   return parts.join('\n\n');
 }
 
@@ -384,7 +507,6 @@ export async function runAskInOutputChannel(options: {
   mode?: 'ask' | 'plan' | 'agent';
   depth?: string;
   pinnedPaths?: string[];
-  mcpSummary?: string;
   workspaceState?: vscode.Memento;
   workspaceId?: string;
   handlers?: HostAskHandlers;
@@ -399,23 +521,31 @@ export async function runAskInOutputChannel(options: {
   const diagnosticsBlock = toggles.diagnostics
     ? formatDiagnosticsPromptBlock(vs, workspaceRoot)
     : '';
+  // Explicit user pins only — do not auto-promote the active editor into pinned.
   const pinnedPaths = [...(options.pinnedPaths ?? [])];
-  if (editor?.activeRelPath && !pinnedPaths.includes(editor.activeRelPath)) {
-    pinnedPaths.unshift(editor.activeRelPath);
-  }
+  const hasPinnedContext = pinnedPaths.length > 0;
 
   let repoMapBlock: string | undefined;
-  if (toggles.repoMap && workspaceRoot) {
+  // Pinned files take priority. Only attach a workspace outline when there are
+  // no pins, or when the user explicitly asked for deep context.
+  const includeRepoMap =
+    toggles.repoMap &&
+    workspaceRoot &&
+    (!hasPinnedContext || options.depth === 'deep');
+  if (includeRepoMap) {
     try {
+      const maxFiles = hasPinnedContext ? 80 : 400;
       const snap = await buildWorkspaceSnapshot({
         workspaceRoot,
         workspaceId: options.workspaceId ?? 'vscode_workspace',
-        maxFiles: 400,
+        maxFiles,
       });
-      const listed = snap.relativePaths.slice(0, 400);
+      const listed = snap.relativePaths.slice(0, maxFiles);
       repoMapBlock = `Workspace file map (${snap.fileCount} files${
         snap.truncated ? ', truncated' : ''
-      }):\n${listed.map((p) => `- ${p}`).join('\n')}`;
+      }${hasPinnedContext ? '; supplementary — pinned files take priority' : ''}):\n${listed
+        .map((p) => `- ${p}`)
+        .join('\n')}`;
     } catch (error) {
       channel.appendLine(
         `[context] repo map failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -470,25 +600,56 @@ export async function runAskInOutputChannel(options: {
     repoMapBlock,
     gitDiffBlock,
     memoryBlock,
-    mcpSummary: options.mcpSummary,
   });
   channel.show(true);
   channel.appendLine(`> ${options.prompt}`);
+
+  const emitHostNote = (line: string, title: string, detail?: string) => {
+    channel.appendLine(line);
+    handlers?.onEvent?.(undefined, {
+      id: `evt_${++activitySeq}`,
+      at: Date.now(),
+      kind: 'context',
+      title,
+      detail,
+    });
+  };
+
   if (editor?.activeRelPath) {
-    channel.appendLine(`[context] activeEditor=@${editor.activeRelPath}`);
+    emitHostNote(
+      `[context] activeEditor=@${editor.activeRelPath}`,
+      'Attached active editor',
+      `@${editor.activeRelPath}`,
+    );
   }
   if (diagnosticsBlock) {
-    channel.appendLine('[context] diagnostics attached');
+    emitHostNote(
+      '[context] diagnostics attached',
+      'Attached diagnostics',
+      'workspace problems',
+    );
   }
   if (repoMapBlock) {
-    channel.appendLine('[context] repo map attached');
+    const fileCountMatch = /Workspace file map \((\d+) files/.exec(repoMapBlock);
+    const fileCount = fileCountMatch?.[1];
+    emitHostNote(
+      '[context] repo map attached',
+      'Attached workspace map',
+      fileCount ? `${fileCount} file paths` : 'file path list',
+    );
   }
   if (gitDiffBlock) {
-    channel.appendLine('[context] git diff attached');
+    emitHostNote(
+      '[context] git diff attached',
+      'Attached git status',
+      'changed files + diff summary',
+    );
   }
   if (pinnedContents) {
-    channel.appendLine(
+    emitHostNote(
       `[context] pinned file contents (${pinnedPaths.length})`,
+      pinnedPaths.length === 1 ? 'Read pinned file' : 'Read pinned files',
+      pinnedPaths.map((p) => `@${p}`).join(', '),
     );
   }
 
@@ -545,10 +706,11 @@ export async function runAskInOutputChannel(options: {
           }
           const line = formatRunEventLine(event);
           if (line) {
+            const stamp = formatClock(eventAtMs(event));
             if (event.type === 'model_delta') {
               channel.append(line);
             } else {
-              channel.appendLine(line);
+              channel.appendLine(`[${stamp}] ${line}`);
             }
           }
         }
@@ -558,13 +720,48 @@ export async function runAskInOutputChannel(options: {
           for (const line of formatContextInspection(events)) {
             channel.appendLine(line);
           }
+          for (const line of formatRunDiagnostics(result)) {
+            channel.appendLine(line);
+          }
           for (const line of formatDiffReview(result)) {
             channel.appendLine(line);
           }
-          channel.appendLine(formatUsageLine(result));
-          channel.appendLine(
-            `[mitii] status=${result.status} route=${result.route ?? 'n/a'}`,
-          );
+          const usageLine = formatUsageLine(result);
+          const statusLine = `[mitii] status=${result.status} route=${result.route ?? 'n/a'}`;
+          channel.appendLine(usageLine);
+          channel.appendLine(statusLine);
+          handlers?.onEvent?.(undefined, {
+            id: `evt_${++activitySeq}`,
+            at: Date.now(),
+            kind: 'info',
+            title: 'Run summary',
+            detail: `${usageLine.replace('[mitii] ', '')} · ${statusLine.replace('[mitii] ', '')}`,
+            status: result.status,
+          });
+          for (const line of formatRunDiagnostics(result)) {
+            handlers?.onEvent?.(undefined, {
+              id: `evt_${++activitySeq}`,
+              at: Date.now(),
+              kind: result.status === 'budget_exhausted' ? 'warning' : 'info',
+              title:
+                result.status === 'budget_exhausted'
+                  ? 'Budget exhausted'
+                  : 'Run diagnostic',
+              detail: line.replace(/^\[[^\]]+\]\s*/, '').slice(0, 400),
+              status:
+                result.status === 'budget_exhausted' ? 'failed' : result.status,
+            });
+          }
+          if (result.error?.message && result.status !== 'budget_exhausted') {
+            handlers?.onEvent?.(undefined, {
+              id: `evt_${++activitySeq}`,
+              at: Date.now(),
+              kind: 'warning',
+              title: 'Error',
+              detail: result.error.message.slice(0, 400),
+              status: 'failed',
+            });
+          }
           const logPath = appendSessionLog(workspaceRoot, {
             kind: 'run',
             at: new Date().toISOString(),

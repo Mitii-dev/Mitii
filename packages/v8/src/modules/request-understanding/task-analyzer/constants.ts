@@ -163,7 +163,7 @@ const WORKSPACE_SCOPE_PATTERN =
   /\b(?:entire|whole|all)\s+(?:monorepo|workspace)|\b(?:monorepo-wide|workspace-wide|all packages|every package|across packages|cross-package|multiple packages|all projects|cross-project)\b/i;
 
 const REPOSITORY_SCOPE_PATTERN =
-  /\b(?:entire|whole|full|all)\s+(?:repository|repo|project|application|app|codebase)|\b(?:repository-wide|repo-wide|project-wide|application-wide|app-wide|codebase-wide|across the repository|throughout the project)\b/i;
+  /\b(?:entire|whole|full|all)\s+(?:repository|repo|project|application|app|codebase)|\b(?:this|the|current)\s+(?:repository|repo|project|application|app|codebase|workspace)|\b(?:repository-wide|repo-wide|project-wide|application-wide|app-wide|codebase-wide|across the (?:repository|repo|codebase|project)|throughout the project|in this (?:repo|repository|project|codebase|workspace)|of (?:this|the) (?:repo|repository|project|codebase))\b/i;
 
 const PACKAGE_SCOPE_PATTERN =
   /\b(?:entire|whole|full|all)\s+(?:package|module|library|service)|\b(?:package-wide|module-wide|library-wide|service-wide|within this package|across this module)\b/i;

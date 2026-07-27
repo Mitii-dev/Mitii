@@ -58,6 +58,16 @@ export interface ProviderSettingsSnapshot {
   connectionStatus?: string;
 }
 
+export interface TokenUsageTurn {
+  turnIndex: number;
+  at: string;
+  inputTokens: number;
+  outputTokens: number;
+  finishReason?: string;
+  truncated?: boolean;
+  estimated?: boolean;
+}
+
 export interface TokenUsageSnapshot {
   sessionTotal: number;
   inputTokensTotal: number;
@@ -75,6 +85,9 @@ export interface TokenUsageSnapshot {
   contextWindow: number;
   estimated: boolean;
   durationMs?: number;
+  /** Per model-call I/O within the session (live during a run). */
+  turns: TokenUsageTurn[];
+  live?: boolean;
 }
 
 export interface IndexStatusSnapshot {

@@ -7,13 +7,13 @@ export const PROMPT_CONSTRUCTION_THRESHOLDS = {
    * Fraction of the provider context window reserved for model output
    * before any optional input sections are filled.
    */
-  outputReserveRatio: 0.15,
+  outputReserveRatio: 0.25,
 
   /** Absolute floor for output reserve tokens when the window is large enough. */
-  minimumOutputReserveTokens: 256,
+  minimumOutputReserveTokens: 2_048,
 
   /** Absolute ceiling for output reserve (still capped by provider max output). */
-  maximumOutputReserveTokens: 8_192,
+  maximumOutputReserveTokens: 16_384,
 
   /** Soft minimum tokens retained for the required system safety preamble. */
   minimumSystemTokens: 200,

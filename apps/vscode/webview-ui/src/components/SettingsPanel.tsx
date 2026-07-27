@@ -326,7 +326,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
             >
               <option value="safe">Safe</option>
               <option value="guided">Guided</option>
-              <option value="autonomous">Autonomous</option>
+              <option value="builder">Builder</option>
+              <option value="pilot">Pilot</option>
             </select>
           </div>
           <label className="toggle">

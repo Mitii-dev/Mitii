@@ -49,6 +49,7 @@ export function resolveRoute(params: {
     return resolveAskRoute({
       primary,
       taskAnalysis,
+      message,
       reasonCodes,
     });
   }
@@ -91,10 +92,7 @@ export function resolveRoute(params: {
     interaction === "question" ||
     (primary === "docs" && !looksLikeDocsMutation(message))
   ) {
-    if (
-      taskAnalysis.recommendsRepositoryDiscovery ||
-      hasExplicitRepoTargets(taskAnalysis)
-    ) {
+    if (needsRepositoryGrounding(taskAnalysis, message)) {
       reasonCodes.push("repository_grounded_answer");
       return {
         route: "repository_answer",
@@ -128,7 +126,7 @@ export function resolveRoute(params: {
     };
   }
 
-  if (taskAnalysis.recommendsRepositoryDiscovery) {
+  if (needsRepositoryGrounding(taskAnalysis, message)) {
     reasonCodes.push("repository_grounded_answer");
     return {
       route: "repository_answer",
@@ -148,9 +146,10 @@ export function resolveRoute(params: {
 function resolveAskRoute(params: {
   primary: string;
   taskAnalysis: RequestUnderstandingResult["taskAnalysis"];
+  message: string;
   reasonCodes: DecisionReasonCode[];
 }): RouteResolution {
-  const { primary, taskAnalysis, reasonCodes } = params;
+  const { primary, taskAnalysis, message, reasonCodes } = params;
 
   if (isDiagnosisIntent(primary)) {
     reasonCodes.push("diagnosis_readonly");
@@ -162,8 +161,7 @@ function resolveAskRoute(params: {
   }
 
   if (
-    taskAnalysis.recommendsRepositoryDiscovery ||
-    hasExplicitRepoTargets(taskAnalysis) ||
+    needsRepositoryGrounding(taskAnalysis, message) ||
     primary === "docs" ||
     isMutationIntent(primary)
   ) {
@@ -181,6 +179,27 @@ function resolveAskRoute(params: {
     runDisposition: "continue",
     reasonCodes,
   };
+}
+
+function needsRepositoryGrounding(
+  taskAnalysis: RequestUnderstandingResult["taskAnalysis"],
+  message: string,
+): boolean {
+  if (taskAnalysis.recommendsRepositoryDiscovery) {
+    return true;
+  }
+  if (hasExplicitRepoTargets(taskAnalysis)) {
+    return true;
+  }
+  if (
+    taskAnalysis.scope === "repository" ||
+    taskAnalysis.scope === "workspace" ||
+    taskAnalysis.scope === "package" ||
+    taskAnalysis.scope === "multi_file"
+  ) {
+    return true;
+  }
+  return looksLikeWorkspaceGroundedRequest(message);
 }
 
 function requiresClarification(
@@ -233,7 +252,9 @@ function hasExplicitRepoTargets(
       (target.kind === "file" ||
         target.kind === "folder" ||
         target.kind === "symbol" ||
-        target.kind === "package"),
+        target.kind === "package" ||
+        target.kind === "repository" ||
+        target.kind === "workspace"),
   );
 }
 
@@ -245,4 +266,49 @@ function isExplicitPlanRequest(message: string): boolean {
 
 function looksLikeDocsMutation(message: string): boolean {
   return /\b(write|add|update|create|draft|document)\b/i.test(message);
+}
+
+/**
+ * Ask/agent questions about the open workspace that understanding may still
+ * classify as generic "question" with unknown scope.
+ */
+function looksLikeWorkspaceGroundedRequest(message: string): boolean {
+  const text = message.trim();
+  if (text.length === 0) {
+    return false;
+  }
+
+  if (
+    /\b(?:this|the|current)\s+(?:project|repo|repository|codebase|workspace|code)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    /\b(?:in|across|throughout|within|of|on)\s+(?:this|the|current)\s+(?:project|repo|repository|codebase|workspace)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    /\b(?:test cases?|specs?|page objects?|how to run|architecture|redundant code|working tree|file map|source files?)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    /\b(?:list|find|count|locate|search|read|open|show|inspect|analyze|analyse)\b[\s\S]{0,60}\b(?:files?|tests?|specs?|directories|folders?|modules?|packages?)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+
+  return false;
 }
