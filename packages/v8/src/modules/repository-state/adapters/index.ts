@@ -17,3 +17,10 @@ export {
 export {
   EmbeddingVectorValidator,
 } from "../internal/embedding/EmbeddingVectorValidator";
+export {
+  WorkspaceIndexingAdapterFactory,
+} from "./WorkspaceIndexingAdapterFactory";
+export type {
+  WorkspaceIndexingAdapterComponents,
+  WorkspaceIndexingAdapterFactoryOptions,
+} from "./WorkspaceIndexingAdapterFactory";

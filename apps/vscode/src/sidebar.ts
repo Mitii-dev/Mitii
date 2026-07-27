@@ -36,6 +36,7 @@ import {
   writeMcpSettings,
 } from './mcpConfig.js';
 import { scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
+import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { findLocalModelPreset, LOCAL_MODEL_PRESETS } from './modelPresets.js';
 import { searchWorkspacePaths } from './pathSearch.js';
 import type {
@@ -1327,39 +1328,63 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       };
     }
     const client = await this.ensureClient();
-    const snapshot = await buildWorkspaceSnapshot({
-      workspaceRoot: root,
-      workspaceId: this.getWorkspaceId(),
-    });
-    const published = await client.publishRepositoryState(snapshot.candidate);
     const dir = scaffoldMitiiWorkspace(root);
+    let fileCount = 0;
+    let truncated = false;
+    let published;
+    try {
+      const full = await runFullWorkspaceIndex({
+        mitiiDir: dir,
+        workspaceRoot: root,
+        workspaceId: this.getWorkspaceId(),
+      });
+      fileCount = full.fileCount;
+      truncated = full.truncated;
+      published = await client.publishRepositoryStateFromIndexing(full.indexing);
+      this.channel.appendLine(
+        `[index] full code/text index stored at ${full.databasePath}`,
+      );
+    } catch (error) {
+      this.channel.appendLine(
+        `[index] full index unavailable; falling back to host snapshot: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      const snapshot = await buildWorkspaceSnapshot({
+        workspaceRoot: root,
+        workspaceId: this.getWorkspaceId(),
+      });
+      fileCount = snapshot.fileCount;
+      truncated = snapshot.truncated;
+      published = await client.publishRepositoryState(snapshot.candidate);
+    }
     if (published.status === 'published') {
       writeFileSync(
         join(dir, 'last-repository-state.json'),
         `${JSON.stringify(
           {
             ...published.descriptor,
-            fileCount: snapshot.fileCount,
-            truncated: snapshot.truncated,
+            fileCount,
+            truncated,
           },
           null,
           2,
         )}\n`,
       );
       this.lastIndex = {
-        fileCount: snapshot.fileCount,
-        truncated: snapshot.truncated,
+        fileCount,
+        truncated,
         readiness: published.descriptor.readiness,
         stateTokenPreview: published.reference.stateToken.slice(0, 16),
         lastIndexedAt: published.descriptor.generatedAt,
-        message: snapshot.truncated
-          ? `Indexed ${snapshot.fileCount} files (truncated)`
-          : `Indexed ${snapshot.fileCount} files`,
+        message: truncated
+          ? `Indexed ${fileCount} files (truncated)`
+          : `Indexed ${fileCount} files`,
       };
     } else {
       this.lastIndex = {
-        fileCount: snapshot.fileCount,
-        truncated: snapshot.truncated,
+        fileCount,
+        truncated,
         message: 'Index publish failed',
       };
     }

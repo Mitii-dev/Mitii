@@ -63,6 +63,7 @@ export type {
   PublishRepositoryStateInput,
   PublishRepositoryStateResult,
   RepositoryStateDescriptor,
+  WorkspaceIndexingPipelineResult,
   SkillDescriptor,
   SkillsCatalogPort,
   ModelCapabilities,

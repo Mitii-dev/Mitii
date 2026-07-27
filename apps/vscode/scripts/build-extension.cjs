@@ -1,6 +1,7 @@
 const { build } = require('esbuild');
 const { spawnSync } = require('node:child_process');
 const { createRequire } = require('node:module');
+const { builtinModules } = require('node:module');
 const { mkdirSync, existsSync } = require('node:fs');
 const { dirname, join } = require('node:path');
 
@@ -8,6 +9,11 @@ const root = join(__dirname, '..');
 const outfile = join(root, 'dist/extension.js');
 const webviewDir = join(root, 'webview-ui');
 const requireFromApp = createRequire(join(root, 'package.json'));
+const builtins = new Set([
+  ...builtinModules,
+  ...builtinModules.map((name) => `node:${name}`),
+]);
+const externals = new Set(['vscode', 'better-sqlite3', 'typescript']);
 
 function buildWebview() {
   const viteBin = join(webviewDir, 'node_modules', 'vite', 'bin', 'vite.js');
@@ -44,13 +50,13 @@ build({
   format: 'cjs',
   target: 'node20',
   sourcemap: true,
-  external: ['vscode'],
+  external: ['vscode', 'better-sqlite3', 'typescript'],
   plugins: [
     {
       name: 'workspace-node-resolve',
       setup(buildApi) {
         buildApi.onResolve({ filter: /^[^./]/ }, (args) => {
-          if (args.path === 'vscode' || args.path.startsWith('node:')) {
+          if (builtins.has(args.path) || externals.has(args.path)) {
             return { path: args.path, external: true };
           }
           try {

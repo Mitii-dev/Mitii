@@ -27,6 +27,7 @@ export {
   WorkspaceIndexingPipeline,
   RepositoryStatePipeline,
   InMemoryRepositoryStateStore,
+  WorkspaceIndexingAdapterFactory,
 } from "./modules/repository-state";
 export {
   LANGUAGE_IDS,
@@ -46,6 +47,10 @@ export type {
   RepositoryStateDescriptor,
   PublishRepositoryStateInput,
   PublishRepositoryStateResult,
+  WorkspaceIndexingAdapterComponents,
+  WorkspaceIndexingAdapterFactoryOptions,
+  WorkspaceIndexingPipelineInput,
+  WorkspaceIndexingPipelineResult,
 } from "./modules/repository-state";
 
 export { RepositoryContextPipeline } from "./modules/repository-context";

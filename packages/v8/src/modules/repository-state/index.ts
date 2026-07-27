@@ -1,4 +1,8 @@
 export { WorkspaceIndexingPipeline } from "./pipeline/ws-indexing-pipeline/WorkspaceIndexingPipeline";
+export type {
+  WorkspaceIndexingPipelineInput,
+  WorkspaceIndexingPipelineResult,
+} from "./pipeline/ws-indexing-pipeline/types";
 export { RepositoryStatePipeline } from "./pipeline/RepositoryStatePipeline";
 export type {
   RepositoryStatePipelineClock,
@@ -12,6 +16,11 @@ export {
   TextSearchService,
   VectorSearchService,
   EmbeddingVectorValidator,
+  WorkspaceIndexingAdapterFactory,
+} from "./adapters";
+export type {
+  WorkspaceIndexingAdapterComponents,
+  WorkspaceIndexingAdapterFactoryOptions,
 } from "./adapters";
 
 export {

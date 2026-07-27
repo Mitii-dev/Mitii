@@ -95,8 +95,6 @@ export async function buildWorkspaceSnapshot(
       {
         rootId: 'workspace',
         projectCatalogRevision: `catalog_${rev}`,
-        codeIndexRevision: `code_${rev}`,
-        textIndexRevision: `text_${rev}`,
         capabilities: [
           {
             capability: 'catalog',
@@ -110,6 +108,11 @@ export async function buildWorkspaceSnapshot(
           },
           {
             capability: 'textIndex',
+            status: 'unavailable',
+            reasonCode: 'capability_unavailable',
+          },
+          {
+            capability: 'vectorIndex',
             status: 'unavailable',
             reasonCode: 'capability_unavailable',
           },

@@ -26,12 +26,13 @@
   },
   "dependencies": {
     "@mitii/sdk": "workspace:*",
-    "@mitii/v8": "workspace:*"
+    "@mitii/v8": "workspace:*",
+    "better-sqlite3": "^12.11.1"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
+    "esbuild": "^0.25.0",
     "typescript": "^5.5.2",
-    "vitest": "^3.2.7",
-    "esbuild": "^0.25.0"
+    "vitest": "^3.2.7"
   }
 }

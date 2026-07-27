@@ -19,12 +19,16 @@ export class SqliteTextIndexMigration {
       TextIndexSqliteDatabasePort,
   ): Promise<TextIndexMigrationResult> {
     try {
-      database.transaction(() => {
+      const transaction = database.transaction(() => {
         database.exec(
           TEXT_INDEX_SQL
             .CREATE_SCHEMA,
         );
-      });
+      }) as unknown;
+
+      if (typeof transaction === "function") {
+        transaction();
+      }
 
       return {
         schemaVersion:
@@ -44,4 +48,3 @@ export class SqliteTextIndexMigration {
     }
   }
 }
-

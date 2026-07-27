@@ -314,7 +314,10 @@
               "description": "Installed MCP servers (empty until added from the store)",
               "items": {
                 "type": "object",
-                "required": ["name", "transport"],
+                "required": [
+                  "name",
+                  "transport"
+                ],
                 "properties": {
                   "id": {
                     "type": "string",
@@ -325,7 +328,11 @@
                   },
                   "transport": {
                     "type": "string",
-                    "enum": ["stdio", "sse", "streamable-http"],
+                    "enum": [
+                      "stdio",
+                      "sse",
+                      "streamable-http"
+                    ],
                     "default": "stdio"
                   },
                   "command": {
@@ -374,7 +381,8 @@
   },
   "dependencies": {
     "@mitii/sdk": "workspace:*",
-    "@mitii/v8": "workspace:*"
+    "@mitii/v8": "workspace:*",
+    "better-sqlite3": "^12.11.1"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

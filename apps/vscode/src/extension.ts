@@ -21,6 +21,7 @@ import {
   writeSessionExport,
 } from './sessionLog.js';
 import { MitiiSidebarProvider } from './sidebar.js';
+import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import {
   getWorkspaceTrustSnapshot,
@@ -143,45 +144,69 @@ export function activate(context: ExtensionContext): void {
       return status;
     }
     const c = await ensureClient();
-    const snapshot = await buildWorkspaceSnapshot({
-      workspaceRoot: root,
-      workspaceId,
-    });
-    const published = await c.publishRepositoryState(snapshot.candidate);
+    const dir = join(root, '.mitii');
+    mkdirSync(dir, { recursive: true });
+    let fileCount = 0;
+    let truncated = false;
+    let published;
+    try {
+      const full = await runFullWorkspaceIndex({
+        mitiiDir: dir,
+        workspaceRoot: root,
+        workspaceId,
+      });
+      fileCount = full.fileCount;
+      truncated = full.truncated;
+      published = await c.publishRepositoryStateFromIndexing(full.indexing);
+      channel.appendLine(
+        `[index] full code/text index stored at ${full.databasePath}`,
+      );
+    } catch (error) {
+      channel.appendLine(
+        `[index] full index unavailable; falling back to host snapshot: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      const snapshot = await buildWorkspaceSnapshot({
+        workspaceRoot: root,
+        workspaceId,
+      });
+      fileCount = snapshot.fileCount;
+      truncated = snapshot.truncated;
+      published = await c.publishRepositoryState(snapshot.candidate);
+    }
     if (published.status === 'published') {
-      const dir = join(root, '.mitii');
-      mkdirSync(dir, { recursive: true });
       writeFileSync(
         join(dir, 'last-repository-state.json'),
         `${JSON.stringify(
           {
             ...published.descriptor,
-            fileCount: snapshot.fileCount,
-            truncated: snapshot.truncated,
+            fileCount,
+            truncated,
           },
           null,
           2,
         )}\n`,
       );
       channel.appendLine(
-        `[index] readiness=${published.descriptor.readiness} token=${published.reference.stateToken.slice(0, 16)}… files=${snapshot.fileCount}`,
+        `[index] readiness=${published.descriptor.readiness} token=${published.reference.stateToken.slice(0, 16)}… files=${fileCount}`,
       );
       void vscode.window.showInformationMessage(
         `Mitii indexed (${published.descriptor.readiness}).`,
       );
       return {
-        fileCount: snapshot.fileCount,
-        truncated: snapshot.truncated,
+        fileCount,
+        truncated,
         readiness: published.descriptor.readiness,
         stateTokenPreview: published.reference.stateToken.slice(0, 16),
         lastIndexedAt: published.descriptor.generatedAt,
-        message: `Indexed ${snapshot.fileCount} files`,
+        message: `Indexed ${fileCount} files`,
       };
     }
     void vscode.window.showErrorMessage('Mitii index failed.');
     return {
-      fileCount: snapshot.fileCount,
-      truncated: snapshot.truncated,
+      fileCount,
+      truncated,
       message: 'Index publish failed',
     };
   };

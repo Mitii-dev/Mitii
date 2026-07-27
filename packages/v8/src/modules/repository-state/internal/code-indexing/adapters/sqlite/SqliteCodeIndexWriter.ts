@@ -147,7 +147,7 @@ export class SqliteCodeIndexWriter
           context,
         );
 
-      return this.database.transaction(
+      const transaction = this.database.transaction(
         () => {
           throwIfCodeIndexWriteAborted(
             context.abortSignal,
@@ -211,7 +211,11 @@ export class SqliteCodeIndexWriter
             },
           };
         },
-      );
+      ) as unknown;
+
+      return typeof transaction === "function"
+        ? transaction() as CodeIndexWriteResult
+        : transaction as CodeIndexWriteResult;
     } catch (error) {
       throw this.normalizeError(
         error,
@@ -242,7 +246,7 @@ export class SqliteCodeIndexWriter
     );
 
     try {
-      return this.database.transaction(
+      const transaction = this.database.transaction(
         () => {
           const result = this.database
             .prepare(
@@ -298,7 +302,11 @@ export class SqliteCodeIndexWriter
               this.emptyCounts(),
           };
         },
-      );
+      ) as unknown;
+
+      return typeof transaction === "function"
+        ? transaction() as CodeIndexWriteResult
+        : transaction as CodeIndexWriteResult;
     } catch (error) {
       throw this.normalizeError(
         error,
@@ -329,7 +337,7 @@ export class SqliteCodeIndexWriter
     );
 
     try {
-      return this.database.transaction(
+      const transaction = this.database.transaction(
         () => {
           const result = this.database
             .prepare(
@@ -369,7 +377,11 @@ export class SqliteCodeIndexWriter
               this.emptyCounts(),
           };
         },
-      );
+      ) as unknown;
+
+      return typeof transaction === "function"
+        ? transaction() as CodeIndexWriteResult
+        : transaction as CodeIndexWriteResult;
     } catch (error) {
       throw this.normalizeError(
         error,
@@ -392,7 +404,7 @@ export class SqliteCodeIndexWriter
     );
 
     try {
-      return this.database.transaction(
+      const transaction = this.database.transaction(
         () => {
           const retained = new Set(
             input.retainedRelativePaths,
@@ -461,7 +473,11 @@ export class SqliteCodeIndexWriter
             revision,
           };
         },
-      );
+      ) as unknown;
+
+      return typeof transaction === "function"
+        ? transaction() as CodeIndexRemoveMissingResult
+        : transaction as CodeIndexRemoveMissingResult;
     } catch (error) {
       throw this.normalizeError(
         error,

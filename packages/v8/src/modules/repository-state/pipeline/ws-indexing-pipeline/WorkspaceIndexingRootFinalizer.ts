@@ -97,6 +97,9 @@ export class WorkspaceIndexingRootFinalizer {
       0;
     let textIndexRemovedChunks =
       0;
+    let cleanupTextRevision:
+      number |
+      undefined;
     let codeIndexRevision:
       number |
       undefined;
@@ -210,6 +213,10 @@ export class WorkspaceIndexingRootFinalizer {
           textCleanup
             .value
             .removedChunks;
+        cleanupTextRevision =
+          textCleanup
+            .value
+            .revision;
       } else {
         warnings.push(
           this.warning(
@@ -267,11 +274,45 @@ export class WorkspaceIndexingRootFinalizer {
       undefined;
     let latestTextRevision:
       number |
-      undefined;
+      undefined =
+      cleanupTextRevision;
     let embeddedChunks =
       0;
     let vectorsDeleted =
       0;
+
+    if (
+      !input.request
+        .synchronizeEmbeddings &&
+      this.dependencies
+        .textIndex
+        .getRevision
+    ) {
+      try {
+        latestTextRevision =
+          await this.dependencies
+            .textIndex
+            .getRevision(
+              input.request
+                .workspace,
+              rootId,
+              this.context(
+                input,
+              ),
+            );
+      } catch (
+        error
+      ) {
+        warnings.push(
+          this.warning(
+            rootId,
+            "cleanup",
+            "cleanup_failed",
+            error,
+          ),
+        );
+      }
+    }
 
     if (
       input.request

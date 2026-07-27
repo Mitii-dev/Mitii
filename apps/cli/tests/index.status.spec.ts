@@ -48,11 +48,48 @@ describe('CLI Phase 15 commands', () => {
       );
       expect(indexCode).toBe(0);
       const indexPayload = JSON.parse(stdout.join('')) as {
-        published: { status: string; descriptor?: { readiness: string } };
+        published: {
+          status: string;
+          descriptor?: {
+            readiness: string;
+            roots: Array<{
+              codeIndexRevision?: string;
+              textIndexRevision?: string;
+              capabilities: Array<{ capability: string; status: string }>;
+            }>;
+          };
+        };
         fileCount: number;
+        indexMode?: string;
       };
       expect(indexPayload.published.status).toBe('published');
       expect(indexPayload.fileCount).toBeGreaterThan(0);
+      const root = indexPayload.published.descriptor?.roots[0];
+      if (indexPayload.indexMode === 'full') {
+        expect(root?.codeIndexRevision).toBeTruthy();
+        expect(root?.textIndexRevision).toBeTruthy();
+        expect(root?.capabilities).toContainEqual(
+          expect.objectContaining({
+            capability: 'codeIndex',
+            status: 'ready',
+          }),
+        );
+        expect(root?.capabilities).toContainEqual(
+          expect.objectContaining({
+            capability: 'textIndex',
+            status: 'ready',
+          }),
+        );
+      } else {
+        expect(root?.codeIndexRevision).toBeUndefined();
+        expect(root?.textIndexRevision).toBeUndefined();
+      }
+      expect(root?.capabilities).toContainEqual(
+        expect.objectContaining({
+          capability: 'vectorIndex',
+          status: 'unavailable',
+        }),
+      );
 
       stdout.length = 0;
       const statusCode = await main(

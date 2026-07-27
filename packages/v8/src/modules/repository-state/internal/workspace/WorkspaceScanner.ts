@@ -1,14 +1,16 @@
 import {
   BOUNDED_WALKER_CONSTANTS,
   BoundedWalker,
+} from "../shared/bounded-walker";
+import {
   PathNormalizer,
-} from "../shared";
+} from "../shared/path-normalizer";
 
 import type {
   BoundedWalkEntry,
   BoundedWalkInput,
   BoundedWalkResult,
-} from "../shared";
+} from "../shared/bounded-walker";
 
 import { workspaceSnapshotSchema } from "./schema";
 import { WorkspaceIgnorePolicy, WorkspaceSnapshotIdBuilder } from "./utils";

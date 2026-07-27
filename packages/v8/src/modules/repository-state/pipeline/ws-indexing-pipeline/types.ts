@@ -237,6 +237,12 @@ export interface WorkspaceIndexingTextIndexMaintenancePort {
     input: TextIndexRemoveMissingInput,
     context?: TextIndexWriteContext,
   ): Promise<TextIndexRemoveMissingResult>;
+
+  getRevision?(
+    workspace: string,
+    rootId: string,
+    context?: TextIndexWriteContext,
+  ): Promise<number>;
 }
 
 export interface WorkspaceIndexingEmbeddingSynchronizerPort {

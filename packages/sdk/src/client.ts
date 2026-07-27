@@ -17,6 +17,7 @@ import type {
   SkillsCatalogPort,
   ToolRuntimePipeline,
   VerificationPipeline,
+  WorkspaceIndexingPipelineResult,
 } from '@mitii/v8';
 
 import {
@@ -158,6 +159,25 @@ export class MitiiClient {
     }
     try {
       return await this.repositoryState.publish(input);
+    } catch (error) {
+      throw mapToSdkError(error);
+    }
+  }
+
+  /**
+   * Publish a descriptor derived from a completed WorkspaceIndexingPipeline run.
+   */
+  async publishRepositoryStateFromIndexing(
+    input: WorkspaceIndexingPipelineResult,
+  ): Promise<PublishRepositoryStateResult> {
+    if (!this.repositoryState) {
+      throw new MitiiSdkError(
+        'unsupported',
+        'publishRepositoryStateFromIndexing requires a repositoryState pipeline on the client.',
+      );
+    }
+    try {
+      return await this.repositoryState.publishFromIndexing(input);
     } catch (error) {
       throw mapToSdkError(error);
     }

@@ -23,7 +23,7 @@ export class SqliteCodeIndexMigration {
       string[] = [];
 
     try {
-      database.transaction(() => {
+      const transaction = database.transaction(() => {
         database.exec(
           CODE_INDEXING_MIGRATION_SQL
             .CREATE_BASE_SCHEMA,
@@ -64,7 +64,11 @@ export class SqliteCodeIndexMigration {
             .REFERENCE_COLUMN_ALTERS,
           addedColumns,
         );
-      });
+      }) as unknown;
+
+      if (typeof transaction === "function") {
+        transaction();
+      }
 
       return {
         schemaVersion:

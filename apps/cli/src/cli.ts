@@ -18,6 +18,7 @@ import {
   type SessionIo,
 } from './session.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
+import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import {
   loadPersistedRepositoryState,
   persistLatestRepositoryState,
@@ -208,21 +209,59 @@ async function runIndex(options: {
     cwd: options.cwd,
     forceEcho: options.forceEcho,
   });
-  const snapshot = await buildWorkspaceSnapshot({
-    workspaceRoot: options.cwd,
-    workspaceId: ports.workspaceId,
-  });
-  const published = await client.publishRepositoryState(snapshot.candidate);
+  let fileCount = 0;
+  let truncated = false;
+  let indexMode: 'full' | 'host_snapshot' = 'full';
+  let databasePath: string | undefined;
+  let published;
+  try {
+    const full = await runFullWorkspaceIndex({
+      cwd: options.cwd,
+      workspaceId: ports.workspaceId,
+    });
+    fileCount = full.fileCount;
+    truncated = full.truncated;
+    databasePath = full.databasePath;
+    published = await client.publishRepositoryStateFromIndexing(full.indexing);
+  } catch (error) {
+    indexMode = 'host_snapshot';
+    const errorDetail =
+      process.env.MITII_DEBUG_INDEX === '1' && error instanceof Error
+        ? (error.stack ?? error.message)
+        : error instanceof Error
+          ? error.message
+          : String(error);
+    options.io.writeStderr(
+      `[mitii] full index unavailable; falling back to host snapshot: ${errorDetail}\n`,
+    );
+    const snapshot = await buildWorkspaceSnapshot({
+      workspaceRoot: options.cwd,
+      workspaceId: ports.workspaceId,
+    });
+    fileCount = snapshot.fileCount;
+    truncated = snapshot.truncated;
+    published = await client.publishRepositoryState(snapshot.candidate);
+  }
   if (published.status === 'published') {
     persistLatestRepositoryState(options.cwd, published.descriptor);
   }
   if (options.json) {
     options.io.writeStdout(
-      `${JSON.stringify({ published, fileCount: snapshot.fileCount, truncated: snapshot.truncated }, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          published,
+          fileCount,
+          truncated,
+          indexMode,
+          ...(databasePath ? { databasePath } : {}),
+        },
+        null,
+        2,
+      )}\n`,
     );
   } else if (published.status === 'published') {
     options.io.writeStdout(
-      `indexed workspaceId=${published.reference.workspaceId} stateToken=${published.reference.stateToken.slice(0, 16)}… readiness=${published.descriptor.readiness} files=${snapshot.fileCount}${snapshot.truncated ? ' (truncated)' : ''}\n`,
+      `indexed workspaceId=${published.reference.workspaceId} stateToken=${published.reference.stateToken.slice(0, 16)}… readiness=${published.descriptor.readiness} files=${fileCount}${truncated ? ' (truncated)' : ''} mode=${indexMode}\n`,
     );
     for (const reason of published.descriptor.reasons) {
       options.io.writeStderr(`[mitii] ${reason.code}: ${reason.message}\n`);

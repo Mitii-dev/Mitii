@@ -119,7 +119,7 @@ export class SqliteTextIndexWriter
       );
 
     try {
-      return this.database
+      const transaction = this.database
         .transaction(() => {
           throwIfTextIndexAborted(
             context.abortSignal,
@@ -220,7 +220,11 @@ export class SqliteTextIndexWriter
             chunksRemoved:
               previousChunks.length,
           });
-        });
+        }) as unknown;
+
+      return typeof transaction === "function"
+        ? transaction() as TextIndexWriteResult
+        : transaction as TextIndexWriteResult;
     } catch (error) {
       throw this.normalizeError(
         error,
@@ -312,7 +316,7 @@ export class SqliteTextIndexWriter
     );
 
     try {
-      return this.database
+      const transaction = this.database
         .transaction(() => {
           const chunks =
             this.getDocumentChunkIds(
@@ -381,7 +385,11 @@ export class SqliteTextIndexWriter
             chunksRemoved:
               chunks.length,
           });
-        });
+        }) as unknown;
+
+      return typeof transaction === "function"
+        ? transaction() as TextIndexWriteResult
+        : transaction as TextIndexWriteResult;
     } catch (error) {
       throw this.normalizeError(
         error,
@@ -413,7 +421,7 @@ export class SqliteTextIndexWriter
       );
 
     try {
-      return this.database
+      const transaction = this.database
         .transaction(() => {
           const rows =
             this.database
@@ -514,7 +522,11 @@ export class SqliteTextIndexWriter
               chunks.length,
             revision,
           };
-        });
+        }) as unknown;
+
+      return typeof transaction === "function"
+        ? transaction() as TextIndexRemoveMissingResult
+        : transaction as TextIndexRemoveMissingResult;
     } catch (error) {
       throw this.normalizeError(
         error,

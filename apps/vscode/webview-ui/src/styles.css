@@ -7,7 +7,13 @@
   );
   --mitii-surface: var(--vscode-sideBar-background);
   --mitii-panel: var(--vscode-editor-background);
+  --mitii-panel-raised: color-mix(
+    in srgb,
+    var(--vscode-editor-background) 96%,
+    var(--vscode-foreground) 4%
+  );
   --mitii-border: var(--vscode-panel-border, var(--vscode-widget-border, #3c3c3c));
+  --mitii-border-soft: color-mix(in srgb, var(--mitii-border) 72%, transparent);
   --mitii-text: var(--vscode-foreground);
   --mitii-muted: var(--vscode-descriptionForeground, color-mix(in srgb, var(--vscode-foreground) 65%, transparent));
   --mitii-danger: var(--vscode-errorForeground, #e06c75);
@@ -28,14 +34,16 @@ html,
 body,
 #root {
   height: 100%;
+  width: 100%;
   margin: 0;
+  padding: 0;
 }
 
 body {
   font-family: var(--mitii-font-ui);
   font-size: 13px;
   color: var(--mitii-text);
-  background: var(--vscode-sideBar-background);
+  background: var(--mitii-surface);
   overflow: hidden;
 }
 
@@ -51,11 +59,22 @@ button {
   cursor: pointer;
 }
 
+button:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+input:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, var(--mitii-accent));
+  outline-offset: 1px;
+}
+
 .app {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  background: var(--mitii-surface);
 }
 
 .shell-header {
@@ -63,9 +82,12 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  padding: 4px 4px 4px 8px;
-  border-bottom: 1px solid var(--mitii-border);
+  min-height: 40px;
+  padding: 5px 6px 5px 10px;
+  border-bottom: 1px solid var(--mitii-border-soft);
+  background: color-mix(in srgb, var(--mitii-surface) 88%, var(--mitii-panel));
   flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .shell-header__actions {
@@ -84,9 +106,9 @@ button {
 }
 
 .brand-mark {
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
   line-height: 1.2;
   color: var(--mitii-text);
 }
@@ -96,6 +118,9 @@ button {
   color: var(--mitii-muted);
   text-transform: none;
   letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .nav-pills {
@@ -143,6 +168,8 @@ button {
 
 .chat-view {
   position: relative;
+  overflow: hidden;
+  background: var(--mitii-panel);
 }
 
 .chat-view--running::before {
@@ -187,22 +214,24 @@ button {
 .messages {
   flex: 1;
   overflow: auto;
-  padding: 0;
+  padding: 0 0 8px;
   display: flex;
   flex-direction: column;
   gap: 0;
+  scrollbar-width: thin;
+  background: var(--mitii-panel);
 }
 
 .empty-state {
   margin: auto;
   text-align: center;
-  max-width: 240px;
-  padding: 24px 8px 40px;
+  max-width: 280px;
+  padding: 28px 16px 44px;
 }
 
 .empty-state h2 {
-  font-weight: 600;
-  font-size: 15px;
+  font-weight: 700;
+  font-size: 16px;
   margin: 0 0 8px;
 }
 
@@ -216,12 +245,13 @@ button {
   display: flex;
   flex-direction: column;
   gap: 0;
+  border-bottom: 1px solid var(--mitii-border-soft);
 }
 
 .bubble {
   border-radius: 0;
-  padding: 10px 12px;
-  line-height: 1.45;
+  padding: 8px 12px 12px;
+  line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -229,16 +259,14 @@ button {
 .bubble.user {
   align-self: stretch;
   max-width: 100%;
-  background: color-mix(in srgb, var(--mitii-accent) 18%, var(--mitii-panel));
-  border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--mitii-accent) 28%, transparent);
+  background: color-mix(in srgb, var(--mitii-accent) 8%, var(--mitii-panel));
+  border-left: 2px solid color-mix(in srgb, var(--mitii-accent) 80%, transparent);
 }
 
 .bubble.assistant {
   align-self: stretch;
-  background: transparent;
+  background: var(--mitii-panel);
   border: 0;
-  border-bottom: 1px solid var(--mitii-border);
 }
 
 .bubble.streaming::after {
@@ -256,19 +284,23 @@ button {
   gap: 8px;
   align-items: center;
   font-size: 10px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   text-transform: uppercase;
   color: var(--mitii-muted);
-  padding: 8px 12px 0;
+  padding: 10px 12px 0;
+  font-weight: 700;
 }
 
 .activity {
-  border-left: 2px solid color-mix(in srgb, var(--mitii-accent) 55%, transparent);
-  margin: 0;
-  padding: 6px 12px;
+  border: 1px solid var(--mitii-border-soft);
+  border-left: 2px solid color-mix(in srgb, var(--mitii-accent) 70%, transparent);
+  border-radius: 6px;
+  margin: 8px 12px 2px;
+  padding: 7px 9px;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  background: color-mix(in srgb, var(--mitii-surface) 62%, transparent);
 }
 
 .activity-list {
@@ -346,13 +378,17 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 6px;
-  border-radius: var(--mitii-radius);
-  background: var(--vscode-badge-background, var(--mitii-accent-soft));
+  max-width: 100%;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--mitii-accent) 11%, var(--mitii-panel));
   color: var(--vscode-badge-foreground, var(--mitii-text));
-  border: 1px solid var(--mitii-border);
+  border: 1px solid color-mix(in srgb, var(--mitii-accent) 34%, var(--mitii-border));
   font-family: var(--mitii-font-mono);
   font-size: 11px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pin-chip button {
@@ -366,13 +402,14 @@ button {
 .composer-dock {
   position: relative;
   z-index: 40;
-  border-top: 1px solid var(--mitii-border);
+  border-top: 1px solid var(--mitii-border-soft);
   padding: 0;
-  background: var(--vscode-sideBar-background);
+  background: var(--mitii-surface);
   display: flex;
   flex-direction: column;
   gap: 0;
   overflow: visible;
+  flex-shrink: 0;
 }
 
 .mode-switch {
@@ -386,11 +423,12 @@ button {
 .composer-footer {
   display: grid;
   gap: 6px;
-  padding: 6px 8px 8px;
-  border-top: 1px solid color-mix(in srgb, var(--mitii-border) 58%, transparent);
+  padding: 7px 8px 8px;
+  border-top: 1px solid var(--mitii-border-soft);
   overflow: visible;
   position: relative;
   z-index: 2;
+  background: color-mix(in srgb, var(--mitii-surface) 84%, var(--mitii-panel));
 }
 
 .composer-dropdown-row {
@@ -456,17 +494,17 @@ button {
   justify-content: space-between;
   gap: 4px;
   width: 100%;
-  height: 26px;
+  height: 28px;
   min-width: 0;
   padding: 0 18px 0 6px;
   border: 1px solid
-    color-mix(in srgb, var(--composer-control-color) 58%, var(--mitii-border));
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--mitii-bg, var(--vscode-sideBar-background)) 20%, transparent);
+    color-mix(in srgb, var(--composer-control-color) 36%, var(--mitii-border));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 72%, transparent);
   color: var(--mitii-text);
   font: inherit;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   position: relative;
 }
@@ -477,8 +515,8 @@ button {
   outline: none;
   background: color-mix(
     in srgb,
-    var(--composer-control-color) 12%,
-    var(--vscode-sideBar-background)
+    var(--composer-control-color) 10%,
+    var(--mitii-panel-raised)
   );
   box-shadow: inset 0 0 0 1px
     color-mix(in srgb, var(--composer-control-color) 35%, transparent);
@@ -553,16 +591,16 @@ button {
 
 .composer-dropdown__menu {
   position: absolute;
-  bottom: calc(100% + 7px);
+  bottom: calc(100% + 6px);
   left: 0;
   z-index: 50;
   display: grid;
   gap: 2px;
   width: max(220px, 100%);
   max-width: min(280px, calc(100vw - 24px));
-  padding: 5px;
-  border: 1px solid var(--mitii-border);
-  border-radius: 7px;
+  padding: 4px;
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 6px;
   background: var(--vscode-quickInput-background, var(--mitii-panel));
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.38);
 }
@@ -579,10 +617,10 @@ button {
   gap: 6px;
   align-items: start;
   width: 100%;
-  min-height: 34px;
+  min-height: 36px;
   padding: 6px 7px;
   border: 0;
-  border-radius: 5px;
+  border-radius: 4px;
   background: transparent;
   color: var(--mitii-text);
   text-align: left;
@@ -634,14 +672,19 @@ button {
 
 .composer-box textarea {
   width: 100%;
-  min-height: 72px;
+  min-height: 76px;
   max-height: 180px;
   resize: vertical;
   border: 0;
   outline: none;
   background: transparent;
-  padding: 10px 12px;
-  line-height: 1.4;
+  padding: 11px 12px;
+  line-height: 1.45;
+  color: var(--vscode-input-foreground, var(--mitii-text));
+}
+
+.composer-box textarea::placeholder {
+  color: color-mix(in srgb, var(--mitii-muted) 82%, transparent);
 }
 
 .composer-actions {
@@ -654,21 +697,23 @@ button {
 }
 
 .depth-select {
-  border: 1px solid var(--mitii-border);
-  background: transparent;
-  border-radius: 6px;
-  padding: 4px 6px;
+  min-height: 28px;
+  border: 1px solid var(--mitii-border-soft);
+  background: color-mix(in srgb, var(--mitii-panel-raised) 72%, transparent);
+  border-radius: 5px;
+  padding: 4px 7px;
   font-size: 11px;
   color: var(--mitii-muted);
 }
 
 .btn {
   border: 0;
-  border-radius: var(--mitii-radius);
-  padding: 6px 10px;
+  border-radius: 5px;
+  padding: 5px 9px;
   background: var(--vscode-button-background, var(--mitii-accent));
   color: var(--vscode-button-foreground, #fff);
-  font-weight: 500;
+  font-weight: 700;
+  line-height: 1.3;
 }
 
 .btn:hover {
@@ -682,9 +727,9 @@ button {
 }
 
 .btn.ghost {
-  background: transparent;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 60%, transparent);
   color: var(--mitii-text);
-  border: 1px solid var(--mitii-border);
+  border: 1px solid var(--mitii-border-soft);
 }
 
 .btn.danger {
@@ -696,14 +741,14 @@ button {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(100% + 0px);
+  bottom: 100%;
   max-height: 160px;
   overflow: auto;
-  border-radius: var(--mitii-radius);
-  border: 1px solid var(--mitii-border);
+  border-radius: 0;
+  border: 1px solid var(--mitii-border-soft);
   background: var(--vscode-editorSuggestWidget-background, var(--mitii-panel));
-  box-shadow: none;
-  z-index: 5;
+  box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.24);
+  z-index: 55;
 }
 
 .suggest-item {
@@ -726,7 +771,7 @@ button {
   color: var(--mitii-muted);
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
 }
 
 .card {
@@ -875,7 +920,7 @@ button {
   margin: 0;
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
 }
 
 .settings-section__desc {
@@ -921,7 +966,7 @@ button {
 
 .field label {
   font-size: 11px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   text-transform: uppercase;
   color: var(--mitii-muted);
 }
@@ -964,7 +1009,7 @@ button {
 .stat-label {
   margin-top: 4px;
   font-size: 10px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0;
   text-transform: uppercase;
   color: var(--mitii-muted);
 }
@@ -1145,7 +1190,7 @@ button {
 .token-chip__live {
   color: var(--mitii-accent);
   text-transform: lowercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
 }
 
 .token-chip__glyph {
@@ -1379,10 +1424,12 @@ button {
   border-bottom: 1px solid color-mix(in srgb, var(--mitii-danger) 40%, transparent);
   color: var(--mitii-text);
   font-size: 12px;
+  line-height: 1.4;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .error-banner__text {
@@ -1406,22 +1453,33 @@ button {
 }
 
 .icon-btn {
-  border: 0;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--mitii-muted);
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: 5px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
+  flex: 0 0 auto;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .icon-btn:hover,
 .icon-btn--active {
   color: var(--mitii-text);
-  background: var(--mitii-accent-soft);
+  border-color: color-mix(in srgb, var(--mitii-accent) 34%, transparent);
+  background: color-mix(in srgb, var(--mitii-accent) 10%, transparent);
+}
+
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .icon-btn--danger {
@@ -1441,12 +1499,13 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  max-width: 120px;
+  max-width: 124px;
   margin-left: 0;
-  padding: 2px 6px 2px 4px;
-  border-radius: 999px;
-  border: 1px solid var(--mitii-border);
-  background: color-mix(in srgb, var(--mitii-panel) 70%, transparent);
+  min-height: 24px;
+  padding: 2px 7px 2px 5px;
+  border-radius: 5px;
+  border: 1px solid var(--mitii-border-soft);
+  background: color-mix(in srgb, var(--mitii-panel-raised) 72%, transparent);
 }
 
 .indexing-chip__dot {
@@ -1496,7 +1555,7 @@ button {
   color: var(--mitii-muted);
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   text-transform: uppercase;
   padding: 0;
   overflow: hidden;
@@ -1520,23 +1579,28 @@ button {
   border-radius: 0;
   font-size: 12px;
   line-height: 1.4;
+  border-left: 0;
+  border-right: 0;
+  flex-shrink: 0;
 }
 
 .workspace-banner--warn {
   background: color-mix(in srgb, var(--vscode-charts-orange, #d19a66) 16%, transparent);
-  border: 1px solid color-mix(in srgb, var(--vscode-charts-orange, #d19a66) 40%, transparent);
+  border-top: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-charts-orange, #d19a66) 40%, transparent);
 }
 
 .workspace-banner--info {
   background: color-mix(in srgb, var(--vscode-charts-blue, #5b9bd5) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--vscode-charts-blue, #5b9bd5) 30%, transparent);
+  border-top: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-charts-blue, #5b9bd5) 30%, transparent);
 }
 
 .panel-view {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 10px 8px 14px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1551,8 +1615,8 @@ button {
 
 .panel-header-row h2 {
   margin: 0;
-  font-size: 18px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .panel-title {
@@ -1571,7 +1635,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-top: 1px solid var(--mitii-border);
+  border-top: 1px solid var(--mitii-border-soft);
   padding-top: 12px;
 }
 
@@ -1580,6 +1644,7 @@ button {
   flex-direction: column;
   gap: 8px;
   line-height: 1.45;
+  color: var(--mitii-text);
 }
 
 .markdown-message p {
@@ -1591,6 +1656,7 @@ button {
 .markdown-message h4 {
   margin: 4px 0 0;
   font-size: 13px;
+  font-weight: 700;
 }
 
 .markdown-message ul,
@@ -1602,7 +1668,7 @@ button {
 .markdown-message blockquote {
   margin: 0;
   padding-left: 10px;
-  border-left: 2px solid var(--mitii-accent);
+  border-left: 2px solid color-mix(in srgb, var(--mitii-accent) 70%, transparent);
   color: var(--mitii-muted);
 }
 
@@ -1611,15 +1677,16 @@ button {
   font-size: 11px;
   padding: 1px 4px;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--mitii-accent) 12%, transparent);
+  background: color-mix(in srgb, var(--mitii-accent) 10%, var(--mitii-panel));
+  border: 1px solid color-mix(in srgb, var(--mitii-accent) 16%, transparent);
 }
 
 .md-code-block {
   position: relative;
   margin: 0;
   padding: 22px 10px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--mitii-border);
+  border-radius: 6px;
+  border: 1px solid var(--mitii-border-soft);
   background: color-mix(in srgb, var(--vscode-editor-background) 90%, #000);
   overflow: auto;
   font-family: var(--mitii-font-mono);
@@ -1634,7 +1701,7 @@ button {
   font-size: 10px;
   color: var(--mitii-muted);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
 }
 
 .md-pending {
@@ -1653,10 +1720,11 @@ button {
 .plan-panel {
   margin: 0;
   border: 0;
-  border-bottom: 1px solid var(--mitii-border);
+  border-bottom: 1px solid var(--mitii-border-soft);
   border-radius: 0;
-  background: var(--mitii-panel);
+  background: color-mix(in srgb, var(--mitii-surface) 72%, var(--mitii-panel));
   padding: 10px 12px;
+  flex-shrink: 0;
 }
 
 .plan-panel__header {
@@ -1738,7 +1806,7 @@ button {
   color: var(--mitii-muted);
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
 }
 
 .review-panel {
@@ -1749,6 +1817,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 0;
+  background: var(--mitii-panel);
 }
 
 .review-panel__header {
@@ -1757,12 +1826,14 @@ button {
   gap: 8px;
   align-items: flex-start;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--mitii-border);
+  border-bottom: 1px solid var(--mitii-border-soft);
+  background: color-mix(in srgb, var(--mitii-surface) 72%, var(--mitii-panel));
 }
 
 .review-panel__title {
   margin: 0;
-  font-size: 15px;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .review-panel__subtitle {
@@ -1786,7 +1857,7 @@ button {
   align-items: center;
   padding: 8px 12px;
   border: 0;
-  border-bottom: 1px solid var(--mitii-border);
+  border-bottom: 1px solid var(--mitii-border-soft);
   border-radius: 0;
   background: transparent;
 }
@@ -1794,7 +1865,7 @@ button {
 .review-file__status {
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   color: var(--mitii-muted);
 }
 
@@ -1814,7 +1885,7 @@ button {
   padding: 10px 12px;
   border-radius: 0;
   border: 0;
-  border-top: 1px solid var(--mitii-border);
+  border-top: 1px solid var(--mitii-border-soft);
   background: var(--mitii-panel);
   overflow: auto;
   max-height: 240px;
@@ -1828,16 +1899,17 @@ button {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .history-item {
   display: flex;
   gap: 4px;
   align-items: stretch;
-  border: 1px solid var(--mitii-border);
-  border-radius: 8px;
-  background: var(--mitii-panel);
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 74%, transparent);
+  overflow: hidden;
 }
 
 .history-item--active {
@@ -1853,6 +1925,10 @@ button {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.history-item__open:hover {
+  background: color-mix(in srgb, var(--mitii-accent) 8%, transparent);
 }
 
 .history-item__title {
@@ -1874,11 +1950,11 @@ button {
 }
 
 .onboarding {
-  margin: 0;
+  margin: 10px;
   padding: 14px;
-  border: 1px solid var(--mitii-border);
-  border-radius: 12px;
-  background: var(--mitii-panel);
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 82%, transparent);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1892,8 +1968,8 @@ button {
 
 .onboarding__title {
   margin: 0;
-  font-size: 20px;
-  font-weight: 500;
+  font-size: 18px;
+  font-weight: 700;
 }
 
 .onboarding__subtitle {
@@ -1926,10 +2002,10 @@ button {
 .memory-item,
 .checkpoint-item,
 .skill-item {
-  border: 1px solid var(--mitii-border);
-  border-radius: 8px;
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 6px;
   padding: 8px 10px;
-  background: color-mix(in srgb, var(--mitii-panel) 80%, transparent);
+  background: color-mix(in srgb, var(--mitii-panel-raised) 76%, transparent);
 }
 
 .memory-item__meta,
@@ -1983,8 +2059,9 @@ button {
 
 .context-panel {
   margin: 0;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--mitii-border);
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--mitii-border-soft);
+  background: color-mix(in srgb, var(--mitii-surface) 82%, var(--mitii-panel));
 }
 
 .context-panel--empty {
@@ -2001,7 +2078,7 @@ button {
 .skill-badge {
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   color: var(--mitii-muted);
 }
 
@@ -2010,10 +2087,10 @@ button {
 }
 
 .skill-management input {
-  border: 1px solid var(--mitii-border);
+  border: 1px solid var(--mitii-border-soft);
   background: var(--vscode-input-background, var(--mitii-panel));
   color: var(--vscode-input-foreground, var(--mitii-text));
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 8px 10px;
 }
 
@@ -2029,8 +2106,7 @@ button {
 
 .markdown-message th,
 .markdown-message td {
-  border: 1px solid var(--mitii-border);
+  border: 1px solid var(--mitii-border-soft);
   padding: 4px 6px;
   text-align: left;
 }
-
