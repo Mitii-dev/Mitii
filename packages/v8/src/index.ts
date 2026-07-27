@@ -29,7 +29,11 @@ export {
   InMemoryRepositoryStateStore,
   WorkspaceIndexingAdapterFactory,
   NodeFileSystemAdapter,
+  SqliteCodeIndexAdapter,
   SqliteTextIndexFactory,
+  createDefaultProjectCatalogBuilder,
+  RepoGraphBuilder,
+  RepoMapBuilder,
 } from "./modules/repository-state";
 export {
   LANGUAGE_IDS,
@@ -39,6 +43,8 @@ export {
   repositoryStateReferenceSchema,
   repositoryStateDescriptorSchema,
   publishRepositoryStateInputSchema,
+  repoGraphSchema,
+  repoMapSchema,
   REPOSITORY_STATE_SCHEMA_VERSION,
 } from "./modules/repository-state";
 export type {
@@ -55,7 +61,10 @@ export type {
   WorkspaceIndexingAdapterFactoryOptions,
   WorkspaceIndexingPipelineInput,
   WorkspaceIndexingPipelineResult,
+  WorkspaceSnapshot,
   WorkspaceFileEntry,
+  RepoGraph,
+  RepoMap,
 } from "./modules/repository-state";
 
 export { RepositoryContextPipeline } from "./modules/repository-context";

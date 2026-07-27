@@ -157,9 +157,12 @@ export function activate(context: ExtensionContext): void {
       });
       fileCount = full.fileCount;
       truncated = full.truncated;
-      published = await c.publishRepositoryStateFromIndexing(full.indexing);
+      published = await c.publishRepositoryStateFromIndexing(full.indexing, {
+        graphRevisionByRoot: full.graphRevisionByRoot,
+        mapRevisionByRoot: full.mapRevisionByRoot,
+      });
       channel.appendLine(
-        `[index] full code/text index stored at ${full.databasePath}`,
+        `[index] full code/text/graph/map index stored at ${full.databasePath}`,
       );
     } catch (error) {
       channel.appendLine(
@@ -183,6 +186,7 @@ export function activate(context: ExtensionContext): void {
             ...published.descriptor,
             fileCount,
             truncated,
+            indexMode: 'full',
           },
           null,
           2,

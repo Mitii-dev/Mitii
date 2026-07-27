@@ -103,7 +103,7 @@ function resolveScanCompleteness(
     return "truncated";
   }
 
-  if (indexing.cleanupAllowed && indexing.status === "complete") {
+  if (indexing.cleanupAllowed) {
     return "complete";
   }
 

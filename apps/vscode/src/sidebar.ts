@@ -1469,9 +1469,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       });
       fileCount = full.fileCount;
       truncated = full.truncated;
-      published = await client.publishRepositoryStateFromIndexing(full.indexing);
+      published = await client.publishRepositoryStateFromIndexing(full.indexing, {
+        graphRevisionByRoot: full.graphRevisionByRoot,
+        mapRevisionByRoot: full.mapRevisionByRoot,
+      });
       this.channel.appendLine(
-        `[index] full code/text index stored at ${full.databasePath}`,
+        `[index] full code/text/graph/map index stored at ${full.databasePath}`,
       );
     } catch (error) {
       this.channel.appendLine(

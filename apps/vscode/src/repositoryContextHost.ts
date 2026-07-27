@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import Database from 'better-sqlite3';
@@ -10,6 +10,10 @@ import {
   NodeFileSystemAdapter,
   RepositoryContextPipeline,
   SqliteTextIndexFactory,
+  repoGraphSchema,
+  repoMapSchema,
+  type RepoGraph,
+  type RepoMap,
   type RepositoryStateDescriptor,
   type RepositoryStatePipeline,
   type RepositoryStateReference,
@@ -89,9 +93,17 @@ export function createHostRepositoryContext(options: {
           descriptor,
         );
         resolvedDescriptors.set(descriptor.snapshotId, descriptor);
+        const repositoryIntelligence = loadRepositoryIntelligence(
+          workspaceRoot,
+          descriptor,
+        );
         return {
           status: 'resolved',
-          artifacts: { descriptor, snapshot },
+          artifacts: {
+            descriptor,
+            snapshot,
+            ...repositoryIntelligence,
+          },
         };
       },
     },
@@ -102,6 +114,45 @@ export function createHostRepositoryContext(options: {
     selector,
     assembler: createHostAssembler(defaultAssembler),
   });
+}
+
+function loadRepositoryIntelligence(
+  workspaceRoot: string,
+  descriptor: RepositoryStateDescriptor,
+): {
+  repoGraph?: RepoGraph;
+  repoMap?: RepoMap;
+} {
+  const root = descriptor.roots.find(
+    (candidate: RepositoryRootState) =>
+      candidate.graphRevision || candidate.mapRevision,
+  );
+  if (!root) return {};
+  const artifactRoot = safeArtifactName(root.rootId);
+  const graphPath = join(workspaceRoot, '.mitii', `repository-graph-${artifactRoot}.json`);
+  const mapPath = join(workspaceRoot, '.mitii', `repository-map-${artifactRoot}.json`);
+  const repoGraph = root.graphRevision ? readJsonArtifact(graphPath, repoGraphSchema) : undefined;
+  const repoMap = root.mapRevision ? readJsonArtifact(mapPath, repoMapSchema) : undefined;
+  return {
+    ...(repoGraph ? { repoGraph } : {}),
+    ...(repoMap ? { repoMap } : {}),
+  };
+}
+
+function readJsonArtifact<T>(
+  path: string,
+  schema: { parse(input: unknown): T },
+): T | undefined {
+  if (!existsSync(path)) return undefined;
+  try {
+    return schema.parse(JSON.parse(readFileSync(path, 'utf8')));
+  } catch {
+    return undefined;
+  }
+}
+
+function safeArtifactName(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_.-]+/g, '_');
 }
 
 function createHostRetriever(options: {
