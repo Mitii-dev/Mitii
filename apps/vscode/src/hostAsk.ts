@@ -12,7 +12,13 @@ import type * as vscode from 'vscode';
 import { loadMemories } from './chatHistory.js';
 import { formatDiagnosticsPromptBlock } from './context/diagnosticsContext.js';
 import { captureEditorContext } from './context/editorContext.js';
-import type { ActivityEventPayload, SuspensionPayload } from './protocol.js';
+import { buildContextUsageBreakdown } from './contextUsage.js';
+import { getSharedMcpManager } from './mcp/manager.js';
+import type {
+  ActivityEventPayload,
+  ContextUsageBreakdown,
+  SuspensionPayload,
+} from './protocol.js';
 import { buildReviewDiff } from './reviewDiff.js';
 import {
   formatContextInspection,
@@ -22,6 +28,7 @@ import {
 } from './runReport.js';
 import { appendSessionLog } from './sessionLog.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
+import { findLocalModelPreset } from './modelPresets.js';
 
 export function formatRunEventLine(event: RunEvent): string | undefined {
   switch (event.type) {
@@ -350,7 +357,9 @@ async function resolveSuspensionNative(
       prompt: safePrompt,
       ignoreFocusOut: true,
       placeHolder: suspension.clarificationOptions?.[0]
-        ? suspension.clarificationOptions.map((o) => o.label).join(' / ')
+        ? suspension.clarificationOptions
+            .map((o: { label: string }) => o.label)
+            .join(' / ')
         : undefined,
     });
     if (!answer?.trim()) return 'stop';
@@ -394,6 +403,8 @@ async function resolveSuspensionNative(
 export interface HostAskOutcome {
   result: AgentRunResult;
   events: RunEvent[];
+  /** Estimated context fill for the composed host prompt. */
+  contextBreakdown?: ContextUsageBreakdown;
 }
 
 export interface HostAskHandlers {
@@ -402,6 +413,7 @@ export interface HostAskHandlers {
     activity: ActivityEventPayload,
   ) => void;
   onDelta?: (text: string) => void;
+  onContextBreakdown?: (breakdown: ContextUsageBreakdown) => void;
   onSuspended?: (
     result: AgentRunResult,
     suspension: SuspensionPayload,
@@ -519,6 +531,8 @@ export async function runAskInOutputChannel(options: {
   pinnedPaths?: string[];
   workspaceState?: vscode.Memento;
   workspaceId?: string;
+  /** Prior chat text for conversation token estimate. */
+  conversationText?: string;
   handlers?: HostAskHandlers;
 }): Promise<HostAskOutcome> {
   const { vs, client, workspaceRoot, channel, handlers } = options;
@@ -611,6 +625,29 @@ export async function runAskInOutputChannel(options: {
     gitDiffBlock,
     memoryBlock,
   });
+
+  const cfg = vs.workspace.getConfiguration('mitii');
+  const model = cfg.get<string>('provider.model') ?? '';
+  const contextWindow =
+    cfg.get<number>('provider.contextWindow') ||
+    findLocalModelPreset(model)?.contextWindow ||
+    32_768;
+  const mcpCatalogTokens = getSharedMcpManager().snapshot().toolsCatalogTokens;
+  const contextBreakdown = buildContextUsageBreakdown({
+    prompt: options.prompt,
+    conversationText: options.conversationText,
+    pinnedContents: pinnedContents || undefined,
+    memoryBlock,
+    editorBlock: editor?.promptBlock,
+    diagnosticsBlock: diagnosticsBlock || undefined,
+    gitDiffBlock,
+    repoMapBlock,
+    mcpToolsCatalogTokens: mcpCatalogTokens,
+    depthHint: options.depth,
+    contextWindow,
+  });
+  handlers?.onContextBreakdown?.(contextBreakdown);
+
   channel.show(true);
   channel.appendLine(`> ${options.prompt}`);
 
@@ -783,7 +820,7 @@ export async function runAskInOutputChannel(options: {
           if (logPath) {
             channel.appendLine(`[log] ${logPath}`);
           }
-          return { result, events };
+          return { result, events, contextBreakdown };
         }
 
         channel.appendLine('');
@@ -813,7 +850,7 @@ export async function runAskInOutputChannel(options: {
           if (logPath) {
             channel.appendLine(`[log] ${logPath}`);
           }
-          return { result, events };
+          return { result, events, contextBreakdown };
         }
         channel.appendLine('[mitii] resuming…');
         run = client.resume(resume);

@@ -18,10 +18,15 @@ export type McpTransport = 'stdio' | 'sse' | 'streamable-http';
 export type McpRuntimeStatus =
   | 'disabled'
   | 'configured'
+  | 'ready'
+  | 'partial'
+  | 'error'
   | 'prompt_injected'
   | 'unsupported_runtime';
 
 export interface McpServerConfig {
+  /** Stable id (builtins: filesystem, sequential-thinking, memory, puppeteer). */
+  id?: string;
   name: string;
   transport: McpTransport;
   command?: string;
@@ -30,12 +35,36 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   url?: string;
   headers?: Record<string, string>;
+  /** Prefers `enabled`; `disabled` kept for backwards compatibility. */
+  enabled?: boolean;
   disabled?: boolean;
+  /** True for Mitii-shipped preload servers. */
+  builtin?: boolean;
 }
 
 export interface McpSettings {
   enabled: boolean;
   servers: McpServerConfig[];
+}
+
+/** Per-source estimated tokens for the last composed prompt / context window. */
+export interface ContextUsageSlice {
+  id: string;
+  label: string;
+  tokens: number;
+  /** Whether this source contributed to the last run. */
+  active: boolean;
+}
+
+export interface ContextUsageBreakdown {
+  /** Estimated tokens by source (chars/4). */
+  slices: ContextUsageSlice[];
+  totalTokens: number;
+  contextWindow: number;
+  /** Share of window used by the last prompt composition (0–1). */
+  fillRatio: number;
+  estimated: boolean;
+  updatedAt?: string;
 }
 
 export interface ContextToggles {
@@ -92,6 +121,8 @@ export interface TokenUsageSnapshot {
   /** Per model-call I/O within the session (live during a run). */
   turns: TokenUsageTurn[];
   live?: boolean;
+  /** Last prompt context breakdown (Conversation, MCP, Prompt, Repomap, …). */
+  contextBreakdown?: ContextUsageBreakdown;
 }
 
 export interface IndexStatusSnapshot {
@@ -313,6 +344,8 @@ export type HostToWebviewMessage =
       index: IndexStatusSnapshot;
       mcp: McpSettings;
       mcpRuntimeStatus: McpRuntimeStatus;
+      /** Built-in MCP catalog available to install (not auto-installed). */
+      mcpStore: McpServerConfig[];
       ui: UiSettingsSnapshot;
       tokenUsage: TokenUsageSnapshot;
       notice: WorkspaceNoticeView;
@@ -330,6 +363,7 @@ export type HostToWebviewMessage =
       workspace: WorkspaceSnapshotInfo;
       mcp: McpSettings;
       mcpRuntimeStatus: McpRuntimeStatus;
+      mcpStore: McpServerConfig[];
       tokenUsage: TokenUsageSnapshot;
       notice: WorkspaceNoticeView;
     }

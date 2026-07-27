@@ -46,6 +46,13 @@ export {
   agentEngineResumeInputSchema,
   agentRunResultSchema,
   runEventSchema,
+  ToolRuntimePipeline,
+  NodeWorkspaceFileSystemAdapter,
+  NodeProcessAdapter,
+  ToolRegistry,
+  createBuiltinToolRegistry,
+  defineTool,
+  DEFAULT_TOOL_DEFINITIONS,
 } from '@mitii/v8';
 export type {
   LlmPort,
@@ -57,4 +64,10 @@ export type {
   RepositoryStateDescriptor,
   SkillDescriptor,
   SkillsCatalogPort,
+  ModelCapabilities,
+  ModelEvent,
+  ModelRequest,
+  ModelToolDefinition,
+  RegisteredTool,
+  ToolDefinition,
 } from '@mitii/v8';

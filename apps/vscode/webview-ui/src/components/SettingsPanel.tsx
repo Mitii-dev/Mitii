@@ -6,6 +6,7 @@ import type {
   ContextToggles,
   IndexStatusSnapshot,
   McpRuntimeStatus,
+  McpServerConfig,
   McpSettings,
   MemoryItemView,
   ProviderSettingsSnapshot,
@@ -42,6 +43,7 @@ interface SettingsPanelProps {
   ui: UiSettingsSnapshot;
   onSaveUi: (patch: Partial<UiSettingsSnapshot>) => void;
   mcp: McpSettings;
+  mcpStore: McpServerConfig[];
   mcpRuntimeStatus: McpRuntimeStatus;
   onMcpChange: (next: McpSettings) => void;
   onSaveMcp: (next: McpSettings) => void;
@@ -126,6 +128,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     ui,
     onSaveUi,
     mcp,
+    mcpStore,
     mcpRuntimeStatus,
     onMcpChange,
     onSaveMcp,
@@ -506,10 +509,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
           <div className="settings-panel">
             <SettingsSection
               title="MCP servers"
-              description="Optional Model Context Protocol integrations."
+              description="Optional store. Off by default — install what you need, delete anytime."
             >
               <McpServersEditor
                 mcp={mcp}
+                storeCatalog={mcpStore}
                 runtimeStatus={mcpRuntimeStatus}
                 onChange={onMcpChange}
                 onSave={onSaveMcp}

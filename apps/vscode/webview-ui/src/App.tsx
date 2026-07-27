@@ -38,6 +38,7 @@ import type {
   HostToWebviewMessage,
   IndexStatusSnapshot,
   McpRuntimeStatus,
+  McpServerConfig,
   McpSettings,
   MemoryItemView,
   PathSuggestion,
@@ -143,6 +144,7 @@ export function App() {
     truncated: false,
   });
   const [mcp, setMcp] = useState<McpSettings>({ enabled: false, servers: [] });
+  const [mcpStore, setMcpStore] = useState<McpServerConfig[]>([]);
   const [mcpRuntimeStatus, setMcpRuntimeStatus] =
     useState<McpRuntimeStatus>('disabled');
   const [ui, setUi] = useState<UiSettingsSnapshot>(DEFAULT_UI);
@@ -190,6 +192,7 @@ export function App() {
         maximumOutputTokens: msg.provider.maximumOutputTokens || 16384,
       });
       setMcp(msg.mcp);
+      setMcpStore(msg.mcpStore ?? []);
       setMcpRuntimeStatus(msg.mcpRuntimeStatus);
       setUi({
         ...DEFAULT_UI,
@@ -917,6 +920,7 @@ export function App() {
           ui={ui}
           onSaveUi={saveUi}
           mcp={mcp}
+          mcpStore={mcpStore}
           mcpRuntimeStatus={mcpRuntimeStatus}
           onMcpChange={setMcp}
           onSaveMcp={saveMcp}

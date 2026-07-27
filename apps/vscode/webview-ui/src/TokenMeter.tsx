@@ -15,6 +15,10 @@ function formatCompact(n: number): string {
   return n.toLocaleString();
 }
 
+function formatPct(ratio: number): string {
+  return `${Math.round(ratio * 1000) / 10}%`;
+}
+
 export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
   const [open, setOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -24,6 +28,11 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
   const windowLabel =
     usage.contextWindow > 0 ? formatCompact(usage.contextWindow) : null;
   const turns = usage.turns ?? [];
+  const breakdown = usage.contextBreakdown;
+  const activeSlices = (breakdown?.slices ?? []).filter(
+    (s) => s.active && s.tokens > 0,
+  );
+  const fillRatio = breakdown?.fillRatio ?? 0;
 
   const tooltip = [
     usage.live ? 'Live · updating each model call' : null,
@@ -31,6 +40,9 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
     `Input: ${inputTotal.toLocaleString()} · Output: ${outputTotal.toLocaleString()}`,
     usage.contextWindow > 0
       ? `Model window: ${usage.contextWindow.toLocaleString()} tokens`
+      : null,
+    breakdown
+      ? `Context fill: ${formatCompact(breakdown.totalTokens)} / ${formatCompact(breakdown.contextWindow)} (${formatPct(fillRatio)})`
       : null,
     `Model calls: ${usage.modelCalls} · Tools: ${usage.toolCalls}`,
     `Turns: ${usage.turnCount}`,
@@ -92,13 +104,17 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
         {windowLabel ? (
           <>
             <span className="token-chip__sep">·</span>
-            <span>{windowLabel} window</span>
+            <span>
+              {breakdown
+                ? `${formatPct(fillRatio)} of ${windowLabel}`
+                : `${windowLabel} window`}
+            </span>
           </>
         ) : null}
       </button>
       {open ? (
         <div
-          className="token-popover__panel"
+          className="token-popover__panel token-popover__panel--wide"
           role="dialog"
           aria-label="Token usage details"
         >
@@ -138,6 +154,74 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
               </dd>
             </div>
           </dl>
+
+          {breakdown ? (
+            <>
+              <div className="token-popover__section-title">
+                <span>Context window</span>
+                <span className="token-popover__section-meta">
+                  {formatCompact(breakdown.totalTokens)} /{' '}
+                  {formatCompact(breakdown.contextWindow)} ·{' '}
+                  {formatPct(fillRatio)}
+                  {breakdown.estimated ? ' · est.' : ''}
+                </span>
+              </div>
+              <div
+                className="token-fill"
+                role="meter"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(fillRatio * 100)}
+                aria-label="Context window fill"
+              >
+                <div
+                  className="token-fill__bar"
+                  style={{ width: `${Math.min(100, fillRatio * 100)}%` }}
+                />
+              </div>
+              <ul className="token-context-slices">
+                {(breakdown.slices ?? []).map((slice) => {
+                  const share =
+                    breakdown.contextWindow > 0
+                      ? slice.tokens / breakdown.contextWindow
+                      : 0;
+                  return (
+                    <li
+                      key={slice.id}
+                      className={
+                        slice.active && slice.tokens > 0
+                          ? 'token-context-slice'
+                          : 'token-context-slice token-context-slice--idle'
+                      }
+                    >
+                      <div className="token-context-slice__label">
+                        <span>{slice.label}</span>
+                        <span>
+                          {slice.tokens > 0
+                            ? `${formatCompact(slice.tokens)} · ${formatPct(share)}`
+                            : '—'}
+                        </span>
+                      </div>
+                      <div className="token-context-slice__track">
+                        <div
+                          className="token-context-slice__bar"
+                          style={{
+                            width: `${Math.min(100, share * 100)}%`,
+                          }}
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              {activeSlices.length === 0 ? (
+                <div className="token-popover__summary token-popover__summary--start">
+                  <span>No context slices attached yet.</span>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+
           <div className="token-popover__section-title">
             <span>Per model call</span>
           </div>

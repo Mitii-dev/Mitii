@@ -29,7 +29,12 @@ import {
   showWriteDiffPreview,
 } from './diff/diffPreview.js';
 import { runAskInOutputChannel } from './hostAsk.js';
-import { readMcpSettings, writeMcpSettings } from './mcpConfig.js';
+import { getSharedMcpManager } from './mcp/manager.js';
+import {
+  readMcpSettings,
+  readMcpStoreCatalog,
+  writeMcpSettings,
+} from './mcpConfig.js';
 import { scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
 import { findLocalModelPreset, LOCAL_MODEL_PRESETS } from './modelPresets.js';
 import { searchWorkspacePaths } from './pathSearch.js';
@@ -595,17 +600,20 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
 
   private mcpRuntimeStatus(): McpRuntimeStatus {
     const mcp = readMcpSettings(this.vs, this.effectiveRoot());
-    const cfg = this.vs.workspace.getConfiguration('mitii');
-    const builtins = cfg.get<Record<string, boolean>>('mcp.builtinServers');
-    const hasBuiltins =
-      builtins &&
-      Object.values(builtins).some((enabled) => enabled === true);
-    if (!mcp.enabled && !hasBuiltins) return 'disabled';
-    // Old Thunder preloaded builtins via McpManager; SDK host has no MCP tool
-    // runtime yet — do not inject fake server lists into prompts.
-    if (hasBuiltins || mcp.servers.filter((s) => !s.disabled).length) {
-      return 'unsupported_runtime';
-    }
+    if (!mcp.enabled) return 'disabled';
+    const active = mcp.servers.filter((s) =>
+      typeof s.enabled === 'boolean' ? s.enabled : !s.disabled,
+    );
+    if (active.length === 0) return 'configured';
+
+    const snapshot = getSharedMcpManager().snapshot();
+    if (!snapshot.enabled) return 'disabled';
+    const ready = snapshot.servers.filter((s) => s.status === 'ready').length;
+    const errored = snapshot.servers.filter((s) => s.status === 'error').length;
+    if (ready > 0 && errored === 0) return 'ready';
+    if (ready > 0 && errored > 0) return 'partial';
+    if (errored > 0) return 'error';
+    if (snapshot.toolDefinitions.length > 0) return 'ready';
     return 'configured';
   }
 
@@ -637,6 +645,15 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     });
     try {
       const client = await this.ensureClient();
+      const history = loadHistory(this.host.workspaceState);
+      const activeThread = history.threads.find(
+        (t) => t.id === (this.activeThreadId ?? history.activeThreadId),
+      );
+      const conversationText = (activeThread?.messages ?? [])
+        .slice(-20)
+        .map((m) => `${m.role}: ${m.text}`)
+        .join('\n');
+
       const outcome = await runAskInOutputChannel({
         vs: this.vs,
         client,
@@ -651,8 +668,18 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         pinnedPaths: message.pinnedPaths,
         workspaceState: this.host.workspaceState,
         workspaceId: this.getWorkspaceId(),
+        conversationText,
         handlers: {
           cancelToken: this.runCancel.token,
+          onContextBreakdown: (breakdown) => {
+            this.tokenUsage = {
+              ...this.tokenUsage,
+              contextBreakdown: breakdown,
+              contextWindow: breakdown.contextWindow,
+              live: true,
+            };
+            this.post({ type: 'tokenUsage', usage: this.tokenUsage });
+          },
           onEvent: (event, activity) => {
             this.post({ type: 'run.event', event: activity });
             if (event?.type === 'model_turn') {
@@ -694,7 +721,11 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       if (outcome.result.status === 'cancelled') {
         this.post({ type: 'run.cancelled' });
       }
-      const usage = this.recordUsage(outcome.result, prompt);
+      const usage = this.recordUsage(
+        outcome.result,
+        prompt,
+        outcome.contextBreakdown,
+      );
       const answer = outcome.result.answer ?? '';
       this.lastAssistantText = answer;
       const plan = this.planFromAnswer(message.mode, answer);
@@ -880,7 +911,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     };
     durationMs: number;
     answer?: string;
-  }, prompt = ''): RunUsagePayload {
+  }, prompt = '', contextBreakdown?: import('./protocol.js').ContextUsageBreakdown): RunUsagePayload {
     const pending = this.pendingRunTurns;
     this.pendingRunTurns = [];
     const pendingInput = pending.reduce((sum, t) => sum + t.inputTokens, 0);
@@ -959,6 +990,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       durationMs: result.durationMs,
       turns: [...baseTurns, ...committedTurns].slice(-40),
       live: false,
+      contextBreakdown:
+        contextBreakdown ?? this.tokenUsage.contextBreakdown,
     };
     this.persistThreadUsage();
     return {
@@ -1374,6 +1407,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       index: await this.readIndexStatus(),
       mcp: readMcpSettings(this.vs, this.effectiveRoot()),
       mcpRuntimeStatus: this.mcpRuntimeStatus(),
+      mcpStore: readMcpStoreCatalog(this.effectiveRoot()),
       ui: this.readUi(),
       tokenUsage: this.tokenUsage,
       notice: getWorkspaceTrustSnapshot(this.vs),

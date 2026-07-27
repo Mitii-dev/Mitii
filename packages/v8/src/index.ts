@@ -91,6 +91,7 @@ export type {
   ModelRequest,
   ModelCapabilities,
   ModelEvent,
+  ModelToolDefinition,
 } from "./modules/model-gateway";
 export {
   ModelCapabilityResolver,
@@ -107,12 +108,20 @@ export {
   READ_ONLY_TOOL_IDS,
   NodeWorkspaceFileSystemAdapter,
   NodeProcessAdapter,
+  ToolRegistry,
+  createBuiltinToolRegistry,
+  defineTool,
+  BUILTIN_TOOLS,
 } from "./engine/tool-runtime";
 export type {
   ToolInvocationInput,
   ToolResult,
   ToolRuntimePorts,
   ToolCapabilityDescriptor,
+  RegisteredTool,
+  ToolExecutionContext,
+  ToolExecutionResult,
+  ToolDefinition,
 } from "./engine/tool-runtime";
 
 export { VerificationPipeline } from "./modules/verification";
@@ -173,6 +182,7 @@ export {
   composeReadOnlyAgentEngine,
   InMemoryRunCheckpointStore,
   AgentEngineError,
+  DEFAULT_TOOL_DEFINITIONS,
 } from "./engine/agent-engine";
 export type {
   AgentEngineStartInput,

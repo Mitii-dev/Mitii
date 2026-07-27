@@ -302,7 +302,65 @@
             "enabled": false,
             "servers": []
           },
-          "description": "MCP enable flag and server list (also mirrored to .mitii/mcp.json)"
+          "description": "MCP store install list (mirrored to .mitii/mcp.json). Off by default; add servers from the Settings store or as custom stdio/SSE entries. Deleting removes them from the install list.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Master switch for all installed MCP servers"
+            },
+            "servers": {
+              "type": "array",
+              "description": "Installed MCP servers (empty until added from the store)",
+              "items": {
+                "type": "object",
+                "required": ["name", "transport"],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Stable server id (builtins: filesystem, sequential-thinking, memory, puppeteer)"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "transport": {
+                    "type": "string",
+                    "enum": ["stdio", "sse", "streamable-http"],
+                    "default": "stdio"
+                  },
+                  "command": {
+                    "type": "string"
+                  },
+                  "args": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "cwd": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Per-server on/off within the install list"
+                  },
+                  "disabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Legacy inverse of enabled"
+                  },
+                  "builtin": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }

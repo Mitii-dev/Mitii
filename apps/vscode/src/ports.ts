@@ -5,20 +5,21 @@ import {
   createMitiiClient,
   InMemoryRepositoryStateStore,
   RepositoryStatePipeline,
-  type LlmPort,
-  type MitiiClient,
-  type SkillsCatalogPort,
-} from '@mitii/sdk';
-import {
+  DEFAULT_TOOL_DEFINITIONS,
+  ToolRuntimePipeline,
   NodeProcessAdapter,
   NodeWorkspaceFileSystemAdapter,
-  ToolRuntimePipeline,
+  type LlmPort,
+  type MitiiClient,
   type ModelCapabilities,
   type ModelEvent,
   type ModelRequest,
-} from '@mitii/v8';
+  type SkillsCatalogPort,
+} from '@mitii/sdk';
 import type * as vscode from 'vscode';
 
+import { getSharedMcpManager } from './mcp/manager.js';
+import { readMcpSettings } from './mcpConfig.js';
 import { findLocalModelPreset } from './modelPresets.js';
 import { createHostRepositoryContext } from './repositoryContextHost.js';
 
@@ -124,6 +125,7 @@ export async function resolveVscodePorts(
     const capabilities = {
       contextWindowTokens,
       maximumOutputTokens,
+      supportsTools: true,
     };
     const runLlm = new OpenAiCompatibleLlmPort({
       model,
@@ -167,11 +169,18 @@ export async function createVscodeClient(
     store: new InMemoryRepositoryStateStore(),
   });
 
+  const mcp = readMcpSettings(vs, workspaceRoot);
+  const mcpManager = getSharedMcpManager();
+  const mcpSnapshot = await mcpManager.sync(mcp, workspaceRoot);
+
   const tools = workspaceRoot
-    ? new ToolRuntimePipeline({
-        fileSystem: new NodeWorkspaceFileSystemAdapter(),
-        process: new NodeProcessAdapter(),
-      })
+    ? new ToolRuntimePipeline(
+        {
+          fileSystem: new NodeWorkspaceFileSystemAdapter(),
+          process: new NodeProcessAdapter(),
+        },
+        { registry: mcpManager.createRegistry() },
+      )
     : undefined;
 
   const repositoryContext = workspaceRoot
@@ -181,8 +190,11 @@ export async function createVscodeClient(
       })
     : undefined;
 
-  // MCP: settings are persisted via mcpConfig. Builtin preload from the old
-  // Thunder McpManager is not wired into the SDK host yet.
+  const toolDefinitions = [
+    ...DEFAULT_TOOL_DEFINITIONS,
+    ...mcpSnapshot.toolDefinitions,
+  ];
+
   const client = createMitiiClient({
     understandingLlm: ports.understandingLlm,
     runLlm: ports.runLlm,
@@ -193,6 +205,7 @@ export async function createVscodeClient(
     repositoryState,
     repositoryContext,
     tools,
+    toolDefinitions,
     enableInMemoryCheckpoints: true,
     skillsCatalog: options.skillsCatalog ?? createDefaultSkillsCatalog(),
   });

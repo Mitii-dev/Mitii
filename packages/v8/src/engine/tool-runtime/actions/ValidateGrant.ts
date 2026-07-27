@@ -13,13 +13,20 @@ export class GrantValidationError extends Error {
   }
 }
 
+/** Host-registered MCP tools use this stable name prefix (see Agent Engine filter). */
+const MCP_TOOL_NAME_PREFIX = "mcp__";
+
 export function validateToolAgainstGrant(params: {
   tool: ToolDefinition;
   grant: ToolGrant;
 }): void {
   const { tool, grant } = params;
 
-  if (!grant.allowedTools.includes(tool.name)) {
+  const mcpAllowed =
+    tool.name.startsWith(MCP_TOOL_NAME_PREFIX) &&
+    grant.allowedTools.length > 0 &&
+    grant.maximumWorkspaceEffect === "write";
+  if (!grant.allowedTools.includes(tool.name) && !mcpAllowed) {
     throw new GrantValidationError(
       "tool_not_allowed",
       `Tool "${tool.name}" is not in the grant allowedTools list.`,

@@ -19,7 +19,8 @@ const SUBDIRS = [
 ] as const;
 
 const MCP_TEMPLATE = {
-  mcpServers: {},
+  enabled: false,
+  servers: [],
 } as const;
 
 const README = `# Mitii workspace (.mitii)
@@ -35,7 +36,7 @@ Local runtime data for this workspace. Safe to gitignore.
 | \`rules/\` | Project methodology rules |
 | \`diff-preview/\` | Temporary diff preview files |
 | \`audit/\` | Audit pack exports |
-| \`mcp.json\` | Workspace MCP server config |
+| \`mcp.json\` | MCP install list (off by default; add from Settings store) |
 | \`last-repository-state.json\` | Last published index descriptor |
 | \`MITTII.local.md\` | Optional personal instructions (see \`.example\`) |
 `;
