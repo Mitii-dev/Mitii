@@ -323,6 +323,9 @@ export function App() {
           );
           break;
         }
+        case 'run.resumed':
+          markSuspensionResumed(msg.runId);
+          break;
         case 'run.result': {
           setRunning(false);
           const id = activeAssistantId.current;
@@ -604,7 +607,7 @@ export function App() {
       <header className="shell-header">
         <div className="brand">
           <div className="brand-mark">Mitii</div>
-          <div className="brand-sub">Enterprise agent</div>
+          <div className="brand-sub">Enterprise workspace agent</div>
         </div>
         <div className="shell-header__actions">
           <nav className="nav-pills" aria-label="Primary">
@@ -716,6 +719,7 @@ export function App() {
                     runId,
                     planDecision: { decision: 'approved' },
                   });
+                  markSuspensionResumed(runId);
                   return;
                 }
                 if (!approvalId) return;
@@ -724,6 +728,7 @@ export function App() {
                   runId,
                   approval: { approvalId, decision: 'approved' },
                 });
+                markSuspensionResumed(runId);
               }}
               onDeny={(runId, approvalId) => {
                 const turn = turns.find((t) => t.suspension?.runId === runId);
@@ -733,6 +738,7 @@ export function App() {
                     runId,
                     planDecision: { decision: 'rejected' },
                   });
+                  markSuspensionResumed(runId);
                   return;
                 }
                 if (!approvalId) return;
@@ -741,6 +747,7 @@ export function App() {
                   runId,
                   approval: { approvalId, decision: 'denied' },
                 });
+                markSuspensionResumed(runId);
               }}
               onShowInlineDiff={(approvalId) =>
                 postToHost({ type: 'showInlineDiff', approvalId })

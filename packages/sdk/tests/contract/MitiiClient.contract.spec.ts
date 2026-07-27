@@ -64,6 +64,13 @@ describe('MitiiClient contract (Phase 12)', () => {
 
     expect(mitiiStartInputSchema.safeParse({ prompt: '' }).success).toBe(false);
     expect(mitiiStartInputSchema.safeParse({ prompt: 'ok' }).success).toBe(true);
+    expect(
+      mitiiStartInputSchema.safeParse({
+        prompt: 'ok',
+        approvalMode: 'never',
+        planApproval: 'never',
+      }).success,
+    ).toBe(true);
   });
 
   it('rejects resume without approval or clarificationAnswer', () => {

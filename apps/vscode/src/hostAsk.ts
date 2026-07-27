@@ -556,6 +556,23 @@ function readPinnedFileContents(
   return `Pinned file contents:\n\n${blocks.join('\n\n')}`;
 }
 
+function resolveApprovalPolicy(preset: string | undefined): {
+  approvalMode: 'never' | 'when_required' | 'every_mutation';
+  planApproval: 'policy' | 'never';
+} {
+  switch (preset) {
+    case 'safe':
+      return { approvalMode: 'every_mutation', planApproval: 'policy' };
+    case 'builder':
+      return { approvalMode: 'never', planApproval: 'policy' };
+    case 'pilot':
+      return { approvalMode: 'never', planApproval: 'never' };
+    case 'guided':
+    default:
+      return { approvalMode: 'when_required', planApproval: 'policy' };
+  }
+}
+
 /**
  * Run an ask through the SDK with OutputChannel streaming + optional UI hooks.
  */
@@ -668,6 +685,9 @@ export async function runAskInOutputChannel(options: {
   });
 
   const cfg = vs.workspace.getConfiguration('mitii');
+  const approvalPolicy = resolveApprovalPolicy(
+    cfg.get<string>('safety.approvalMode') ?? 'guided',
+  );
   const model = cfg.get<string>('provider.model') ?? '';
   const contextWindow =
     cfg.get<number>('provider.contextWindow') ||
@@ -771,6 +791,8 @@ export async function runAskInOutputChannel(options: {
       prompt,
       mode: options.mode ?? 'ask',
       workspaceRoot,
+      approvalMode: approvalPolicy.approvalMode,
+      planApproval: approvalPolicy.planApproval,
     });
     const events: RunEvent[] = [];
 

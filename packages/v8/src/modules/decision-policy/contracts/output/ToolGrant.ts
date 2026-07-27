@@ -9,6 +9,7 @@ import {
 export const workspaceEffectSchema = z.enum(WORKSPACE_EFFECTS);
 export const toolEffectSchema = z.enum(TOOL_EFFECTS);
 export const approvalModeSchema = z.enum(APPROVAL_MODES);
+export type ApprovalMode = z.infer<typeof approvalModeSchema>;
 
 export const commandRuleSchema = z
   .object({

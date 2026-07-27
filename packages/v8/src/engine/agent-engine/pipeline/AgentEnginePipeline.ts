@@ -401,6 +401,8 @@ export class AgentEnginePipeline {
         envelope: envelope as DecisionPolicyInput["envelope"],
         understanding,
         repositoryState: input.repositoryState,
+        approvalMode: input.approvalMode,
+        planApproval: input.planApproval,
       });
       route = decision.route;
       planningDepth = decision.planningDepth;

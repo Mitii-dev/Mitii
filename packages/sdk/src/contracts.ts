@@ -20,6 +20,12 @@ import type {
  * Host-facing start input. Mapped onto V8 AgentEngineStartInput.
  * Secrets must never appear here.
  */
+const mitiiApprovalModeSchema = z.enum([
+  'never',
+  'when_required',
+  'every_mutation',
+]);
+
 export const mitiiStartInputSchema = z
   .object({
     prompt: z.string().min(1),
@@ -39,6 +45,8 @@ export const mitiiStartInputSchema = z
     model: z.string().min(1).optional(),
     temperature: z.number().min(0).max(2).optional(),
     stream: z.boolean().optional(),
+    approvalMode: mitiiApprovalModeSchema.optional(),
+    planApproval: z.enum(['policy', 'never']).optional(),
     dirtyPaths: z.array(z.string().min(1)).optional(),
   })
   .strict();
@@ -87,6 +95,8 @@ export function toAgentEngineStartInput(
     model: parsed.model,
     temperature: parsed.temperature,
     stream: parsed.stream,
+    approvalMode: parsed.approvalMode,
+    planApproval: parsed.planApproval,
     dirtyPaths: parsed.dirtyPaths,
   });
 }

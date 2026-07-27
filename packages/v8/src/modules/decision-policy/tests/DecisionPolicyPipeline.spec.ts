@@ -226,6 +226,30 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.reasonCodes).toContain("plan_gate_required");
   });
 
+  it("honors host approval and plan approval overrides", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "Migrate production auth across the repository",
+        approvalMode: "never",
+        planApproval: "never",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "migrate",
+          taskAnalysis: {
+            scope: "repository",
+            complexity: "very_complex",
+            risk: "critical",
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.toolGrant.approvalMode).toBe("never");
+    expect(decision.planGate).toBe("none");
+    expect(decision.reasonCodes).toContain("plan_gate_none");
+  });
+
   it("pins repository state reference when provided", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({

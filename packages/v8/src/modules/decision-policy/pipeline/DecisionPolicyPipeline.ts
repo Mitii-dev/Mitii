@@ -45,17 +45,22 @@ export class DecisionPolicyPipeline {
       understanding,
       message,
     });
-    const planGateResult = resolvePlanGate({
+    const resolvedPlanGateResult = resolvePlanGate({
       mode,
       route: routeResult.route,
       planningDepth: depthResult.planningDepth,
       understanding,
     });
+    const planGateResult =
+      parsed.planApproval === "never"
+        ? { planGate: "none" as const, reasonCodes: ["plan_gate_none" as const] }
+        : resolvedPlanGateResult;
     const grantResult = buildToolGrant({
       mode,
       route: routeResult.route,
       understanding,
       message,
+      approvalMode: parsed.approvalMode,
     });
 
     // Injection must never broaden the grant. Clamp write away if injection

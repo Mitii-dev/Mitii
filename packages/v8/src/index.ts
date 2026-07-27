@@ -97,9 +97,11 @@ export {
   decisionPolicyInputSchema,
   executionDecisionSchema,
   toolGrantSchema,
+  approvalModeSchema,
   mutationBudgetSchema,
 } from "./modules/decision-policy";
 export type {
+  ApprovalMode,
   DecisionPolicyInput,
   ExecutionDecision,
   ExecutionRoute,

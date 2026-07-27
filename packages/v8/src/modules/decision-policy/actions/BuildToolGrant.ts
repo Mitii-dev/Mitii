@@ -5,6 +5,7 @@ import {
   READ_ONLY_TOOL_IDS,
 } from "../constants";
 import type {
+  ApprovalMode,
   DecisionReasonCode,
   ExecutionRoute,
   ToolGrant,
@@ -28,6 +29,7 @@ export function buildToolGrant(params: {
   understanding: RequestUnderstandingResult;
   /** Optional raw user message for URL host extraction. */
   message?: string;
+  approvalMode?: ApprovalMode;
 }): ToolGrantResolution {
   const { mode, route, understanding } = params;
   const reasonCodes: DecisionReasonCode[] = [];
@@ -102,10 +104,11 @@ export function buildToolGrant(params: {
 
   // execute in agent mode
   const risk = understanding.taskAnalysis.risk;
-  const approvalMode =
+  const defaultApprovalMode =
     risk === "high" || risk === "critical" ? "every_mutation" : "when_required";
+  const approvalMode = params.approvalMode ?? defaultApprovalMode;
 
-  if (approvalMode === "every_mutation") {
+  if (defaultApprovalMode === "every_mutation") {
     reasonCodes.push("high_risk_approval");
   }
   reasonCodes.push("mutation_execute");

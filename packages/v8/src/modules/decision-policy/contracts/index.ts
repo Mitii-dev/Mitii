@@ -37,6 +37,7 @@ export {
   approvalModeSchema,
 } from "./output/ToolGrant";
 export type {
+  ApprovalMode,
   ToolGrant,
   ToolGrantLimits,
   MutationBudget,

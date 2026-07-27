@@ -1,7 +1,10 @@
 import { z } from "zod";
 
 import { createUserRequestInputSchema } from "../../../../modules/request-intake";
-import { repositoryStateCapabilitySummarySchema } from "../../../../modules/decision-policy";
+import {
+  APPROVAL_MODES,
+  repositoryStateCapabilitySummarySchema,
+} from "../../../../modules/decision-policy";
 import {
   modelMessageSchema,
   modelToolDefinitionSchema,
@@ -17,6 +20,8 @@ import {
   DEFAULT_MAX_TOOL_CALLS,
   DEFAULT_MAX_WALL_TIME_MS,
 } from "../../defaults";
+
+const agentApprovalModeSchema = z.enum(APPROVAL_MODES);
 
 export const agentRunBudgetSchema = z
   .object({
@@ -68,6 +73,8 @@ export const agentEngineStartInputSchema = z
     model: z.string().min(1).optional(),
     temperature: z.number().min(0).max(2).optional(),
     stream: z.boolean().optional(),
+    approvalMode: agentApprovalModeSchema.optional(),
+    planApproval: z.enum(["policy", "never"]).optional(),
     /**
      * Workspace-relative paths dirty before the run (user edits).
      * Used for dirty-overlap rejection on mutation tools.

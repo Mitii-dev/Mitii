@@ -127,13 +127,16 @@ export function createInput(
   fixture: Pick<
     DecisionCaseFixture,
     "mode" | "message" | "understanding" | "repositoryState"
-  >,
+  > &
+    Partial<Pick<DecisionPolicyInput, "approvalMode" | "planApproval">>,
 ): DecisionPolicyInput {
   return {
     schemaVersion: 1,
     envelope: createEnvelope(fixture.mode, fixture.message),
     understanding: fixture.understanding,
     repositoryState: fixture.repositoryState,
+    approvalMode: fixture.approvalMode,
+    planApproval: fixture.planApproval,
   };
 }
 

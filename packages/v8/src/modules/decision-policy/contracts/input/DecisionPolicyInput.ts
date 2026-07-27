@@ -8,6 +8,7 @@ import {
 } from "../../../repository-state";
 
 import { DECISION_POLICY_SCHEMA_VERSION } from "../../constants";
+import { approvalModeSchema } from "../output/ToolGrant";
 
 export const repositoryStateCapabilitySummarySchema = z
   .object({
@@ -26,6 +27,8 @@ export const decisionPolicyInputSchema = z
     envelope: userRequestEnvelopeSchema,
     understanding: requestUnderstandingResultSchema,
     repositoryState: repositoryStateCapabilitySummarySchema.optional(),
+    approvalMode: approvalModeSchema.optional(),
+    planApproval: z.enum(["policy", "never"]).optional(),
   })
   .strict();
 

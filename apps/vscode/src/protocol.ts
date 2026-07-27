@@ -400,6 +400,7 @@ export type HostToWebviewMessage =
   | { type: 'run.event'; event: ActivityEventPayload }
   | { type: 'run.delta'; text: string }
   | { type: 'run.suspended'; suspension: SuspensionPayload }
+  | { type: 'run.resumed'; runId: string }
   | {
       type: 'run.result';
       status: string;

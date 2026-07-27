@@ -259,11 +259,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   ): void {
     this.host.onInlineDiffPending(false);
     if (!this.pendingResume || !this.lastSuspensionRunId) return;
+    const runId = this.lastSuspensionRunId;
     const { resolve } = this.pendingResume;
     this.pendingResume = undefined;
+    this.lastSuspensionRunId = undefined;
+    this.post({ type: 'run.resumed', runId });
     resolve({
       schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
-      runId: this.lastSuspensionRunId,
+      runId,
       approval: { approvalId, decision },
     });
   }
@@ -662,6 +665,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const { resolve } = this.pendingResume;
     this.pendingResume = undefined;
     if (message.clarificationAnswer?.trim()) {
+      this.post({ type: 'run.resumed', runId: message.runId });
+      this.lastSuspensionRunId = undefined;
       resolve({
         schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
         runId: message.runId,
@@ -672,6 +677,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     if (message.approval) {
       this.host.inlineDiff.setPending(undefined);
       this.host.onInlineDiffPending(false);
+      this.post({ type: 'run.resumed', runId: message.runId });
+      this.lastSuspensionRunId = undefined;
       resolve({
         schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
         runId: message.runId,
@@ -680,6 +687,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
     if (message.planDecision) {
+      this.post({ type: 'run.resumed', runId: message.runId });
+      this.lastSuspensionRunId = undefined;
       resolve({
         schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
         runId: message.runId,

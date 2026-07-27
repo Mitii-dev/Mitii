@@ -20,9 +20,12 @@
   --mitii-ok: var(--vscode-testing-iconPassed, #89b86c);
   --mitii-warn: var(--vscode-charts-orange, #d19a66);
   --mitii-radius: 4px;
+  --mitii-radius-lg: 8px;
   --mitii-space-x: 0px;
   --mitii-font-ui: var(--vscode-font-family);
   --mitii-font-mono: var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
+  --mitii-shadow-soft: 0 10px 30px color-mix(in srgb, #000 18%, transparent);
+  --mitii-shadow-tight: 0 2px 10px color-mix(in srgb, #000 14%, transparent);
   color-scheme: light dark;
 }
 
@@ -74,7 +77,12 @@ input:focus-visible {
   min-height: 0;
   width: 100%;
   overflow: hidden;
-  background: var(--mitii-surface);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--mitii-surface) 94%, var(--mitii-accent) 6%),
+      var(--mitii-surface) 220px
+    );
 }
 
 .shell-header {
@@ -82,10 +90,16 @@ input:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  min-height: 40px;
-  padding: 5px 6px 5px 10px;
+  min-height: 48px;
+  padding: 7px 8px 7px 12px;
   border-bottom: 1px solid var(--mitii-border-soft);
-  background: color-mix(in srgb, var(--mitii-surface) 88%, var(--mitii-panel));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--mitii-surface) 86%, var(--mitii-panel) 14%),
+      color-mix(in srgb, var(--mitii-surface) 94%, var(--mitii-panel) 6%)
+    );
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset;
   flex-wrap: nowrap;
   flex-shrink: 0;
 }
@@ -103,10 +117,24 @@ input:focus-visible {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  padding-left: 10px;
+  position: relative;
+}
+
+.brand::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mitii-accent) 80%, var(--mitii-ok) 20%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--mitii-accent) 20%, transparent);
 }
 
 .brand-mark {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 0;
   line-height: 1.2;
@@ -115,7 +143,7 @@ input:focus-visible {
 
 .brand-sub {
   font-size: 11px;
-  color: var(--mitii-muted);
+  color: color-mix(in srgb, var(--mitii-muted) 86%, var(--mitii-accent) 14%);
   text-transform: none;
   letter-spacing: 0;
   white-space: nowrap;
@@ -126,24 +154,24 @@ input:focus-visible {
 .nav-pills {
   display: flex;
   gap: 2px;
-  padding: 0;
-  border-radius: var(--mitii-radius);
-  background: transparent;
-  border: 0;
+  padding: 2px;
+  border-radius: var(--mitii-radius-lg);
+  background: color-mix(in srgb, var(--mitii-panel) 72%, transparent);
+  border: 1px solid var(--mitii-border-soft);
 }
 
 .nav-pill {
   border: 0;
   background: transparent;
   color: var(--mitii-muted);
-  padding: 4px 8px;
-  border-radius: var(--mitii-radius);
+  padding: 5px 8px;
+  border-radius: 6px;
 }
 
 .nav-pill.active {
   background: var(--vscode-list-activeSelectionBackground, var(--mitii-accent-soft));
   color: var(--vscode-list-activeSelectionForeground, var(--mitii-text));
-  box-shadow: none;
+  box-shadow: var(--mitii-shadow-tight);
 }
 
 .nav-pill:hover {
@@ -169,7 +197,12 @@ input:focus-visible {
 .chat-view {
   position: relative;
   overflow: hidden;
-  background: var(--mitii-panel);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--mitii-panel) 98%, var(--mitii-accent) 2%),
+      var(--mitii-panel) 180px
+    );
 }
 
 .chat-view--running::before {
@@ -214,12 +247,12 @@ input:focus-visible {
 .messages {
   flex: 1;
   overflow: auto;
-  padding: 0 0 8px;
+  padding: 8px 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 8px;
   scrollbar-width: thin;
-  background: var(--mitii-panel);
+  background: transparent;
 }
 
 .empty-state {
@@ -245,12 +278,16 @@ input:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 0;
-  border-bottom: 1px solid var(--mitii-border-soft);
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: var(--mitii-radius-lg);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--mitii-panel) 92%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset;
 }
 
 .bubble {
   border-radius: 0;
-  padding: 8px 12px 12px;
+  padding: 9px 12px 12px;
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
@@ -259,13 +296,18 @@ input:focus-visible {
 .bubble.user {
   align-self: stretch;
   max-width: 100%;
-  background: color-mix(in srgb, var(--mitii-accent) 8%, var(--mitii-panel));
-  border-left: 2px solid color-mix(in srgb, var(--mitii-accent) 80%, transparent);
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--mitii-accent) 12%, var(--mitii-panel)),
+      color-mix(in srgb, var(--mitii-accent) 5%, var(--mitii-panel))
+    );
+  border-left: 2px solid color-mix(in srgb, var(--mitii-accent) 82%, transparent);
 }
 
 .bubble.assistant {
   align-self: stretch;
-  background: var(--mitii-panel);
+  background: color-mix(in srgb, var(--mitii-panel) 96%, var(--mitii-surface) 4%);
   border: 0;
 }
 
@@ -287,20 +329,20 @@ input:focus-visible {
   letter-spacing: 0;
   text-transform: uppercase;
   color: var(--mitii-muted);
-  padding: 10px 12px 0;
+  padding: 10px 12px 1px;
   font-weight: 700;
 }
 
 .activity {
-  border: 1px solid var(--mitii-border-soft);
-  border-left: 2px solid color-mix(in srgb, var(--mitii-accent) 70%, transparent);
-  border-radius: 6px;
-  margin: 8px 12px 2px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border-soft) 78%, var(--mitii-accent) 22%);
+  border-left: 2px solid color-mix(in srgb, var(--mitii-accent) 72%, transparent);
+  border-radius: var(--mitii-radius-lg);
+  margin: 8px 12px 4px;
   padding: 7px 9px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background: color-mix(in srgb, var(--mitii-surface) 62%, transparent);
+  background: color-mix(in srgb, var(--mitii-surface) 74%, var(--mitii-panel) 26%);
 }
 
 .activity-list {
@@ -403,8 +445,13 @@ input:focus-visible {
   position: relative;
   z-index: 40;
   border-top: 1px solid var(--mitii-border-soft);
-  padding: 0;
-  background: var(--mitii-surface);
+  padding: 8px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--mitii-surface) 82%, transparent),
+      var(--mitii-surface)
+    );
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -423,12 +470,12 @@ input:focus-visible {
 .composer-footer {
   display: grid;
   gap: 6px;
-  padding: 7px 8px 8px;
+  padding: 8px 0 0;
   border-top: 1px solid var(--mitii-border-soft);
   overflow: visible;
   position: relative;
   z-index: 2;
-  background: color-mix(in srgb, var(--mitii-surface) 84%, var(--mitii-panel));
+  background: transparent;
 }
 
 .composer-dropdown-row {
@@ -494,13 +541,18 @@ input:focus-visible {
   justify-content: space-between;
   gap: 4px;
   width: 100%;
-  height: 28px;
+  height: 30px;
   min-width: 0;
   padding: 0 18px 0 6px;
   border: 1px solid
     color-mix(in srgb, var(--composer-control-color) 36%, var(--mitii-border));
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--mitii-panel-raised) 72%, transparent);
+  border-radius: 6px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--mitii-panel-raised) 88%, transparent),
+      color-mix(in srgb, var(--mitii-panel-raised) 68%, transparent)
+    );
   color: var(--mitii-text);
   font: inherit;
   font-size: 10px;
@@ -600,9 +652,9 @@ input:focus-visible {
   max-width: min(280px, calc(100vw - 24px));
   padding: 4px;
   border: 1px solid var(--mitii-border-soft);
-  border-radius: 6px;
+  border-radius: var(--mitii-radius-lg);
   background: var(--vscode-quickInput-background, var(--mitii-panel));
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.38);
+  box-shadow: var(--mitii-shadow-soft);
 }
 
 .composer-dropdown--approval .composer-dropdown__menu,
@@ -656,18 +708,22 @@ input:focus-visible {
 
 .composer-box {
   position: relative;
-  border: 0;
-  border-radius: 0;
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: var(--mitii-radius-lg);
   background: var(--vscode-input-background, var(--mitii-panel));
-  box-shadow: none;
+  box-shadow:
+    var(--mitii-shadow-tight),
+    0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset;
   display: flex;
   flex-direction: column;
   overflow: visible;
 }
 
 .composer-box:focus-within {
-  border-color: transparent;
-  box-shadow: inset 0 0 0 1px var(--vscode-focusBorder, var(--mitii-accent));
+  border-color: color-mix(in srgb, var(--mitii-accent) 62%, var(--mitii-border));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--mitii-accent) 24%, transparent),
+    var(--mitii-shadow-tight);
 }
 
 .composer-box textarea {
@@ -707,10 +763,15 @@ input:focus-visible {
 }
 
 .btn {
-  border: 0;
-  border-radius: 5px;
-  padding: 5px 9px;
-  background: var(--vscode-button-background, var(--mitii-accent));
+  border: 1px solid color-mix(in srgb, var(--vscode-button-background, var(--mitii-accent)) 70%, transparent);
+  border-radius: 6px;
+  padding: 6px 10px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--vscode-button-background, var(--mitii-accent)) 92%, #fff 8%),
+      var(--vscode-button-background, var(--mitii-accent))
+    );
   color: var(--vscode-button-foreground, #fff);
   font-weight: 700;
   line-height: 1.3;
@@ -727,7 +788,12 @@ input:focus-visible {
 }
 
 .btn.ghost {
-  background: color-mix(in srgb, var(--mitii-panel-raised) 60%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--mitii-panel-raised) 82%, transparent),
+      color-mix(in srgb, var(--mitii-panel-raised) 58%, transparent)
+    );
   color: var(--mitii-text);
   border: 1px solid var(--mitii-border-soft);
 }
@@ -775,14 +841,20 @@ input:focus-visible {
 }
 
 .card {
-  border: 0;
-  border-top: 1px solid var(--mitii-border);
-  border-radius: 0;
-  padding: 10px 12px;
-  background: var(--mitii-panel);
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 76%, var(--mitii-accent) 24%);
+  border-radius: var(--mitii-radius-lg);
+  margin: 8px 12px 12px;
+  padding: 12px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--mitii-panel) 94%, var(--mitii-accent) 6%),
+      var(--mitii-panel)
+    );
   display: flex;
   flex-direction: column;
   gap: 8px;
+  box-shadow: var(--mitii-shadow-tight);
 }
 
 .card h3 {
