@@ -322,4 +322,100 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.allowedTools).toEqual([]);
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("none");
   });
+
+  it("routes agent 'Can you implement…?' to execute with write tools", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message:
+          "Can you implement multi emulator testing in the tab\nI should be able to configure and pass parallel test cases to run parallely\nPlease implement a system so that I can parallely execute test cases\n\nClarification: Use the existing tablet tab and WDIO config",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "repository",
+            complexity: "complex",
+            risk: "medium",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(decision.toolGrant.allowedTools).toContain("apply_patch");
+    expect(decision.reasonCodes).toContain("mutation_execute");
+  });
+
+  it("still routes agent how-to implement questions to repository_answer", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "How do I implement multi emulator parallel testing?",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "repository",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("repository_answer");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
+    expect(decision.toolGrant.allowedTools).not.toContain("apply_patch");
+  });
+
+  it("routes agent mutation intents to execute even when interaction is question", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "Can you add parallel emulator support to the tablet runner?",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "feature",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "multi_file",
+            complexity: "moderate",
+            risk: "medium",
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(decision.toolGrant.allowedTools).toContain("apply_patch");
+  });
+
+  it("does not clarify clear agent implement asks even when understanding is soft-ambiguous", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message:
+          "Can you implement multi emulator testing in the tab so I can configure and run parallel test cases",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          status: "clarification_required",
+          recommendsClarification: true,
+          needsClarification: true,
+          taskAnalysis: {
+            clarity: "unclear",
+            recommendsTaskClarification: true,
+            scope: "repository",
+            complexity: "complex",
+            risk: "medium",
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.runDisposition).toBe("continue");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+  });
 });

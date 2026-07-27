@@ -306,4 +306,74 @@ describe("AgentEnginePipeline mutation approvals (Phase 8)", () => {
     const rolledBack = await fs.readFile(`${WORKSPACE}/src/a.ts`);
     expect(rolledBack.content).toBe("const x = 1;\n");
   });
+
+  it("does not count approval wait time against wall_time budget", async () => {
+    const { fs, realTools } = createWorkspace();
+    const tools = wrapTools(realTools);
+    const checkpointStore = new InMemoryRunCheckpointStore();
+
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        toolGrant: createWriteGrant(),
+      }),
+      llm: new ScriptedLlmPort(
+        [
+          {
+            toolCalls: [
+              {
+                id: "call_patch",
+                name: "apply_patch",
+                arguments: JSON.stringify(APPLY_PATCH_ARGS),
+              },
+            ],
+          },
+          { content: "Patched after a long approval wait." },
+        ],
+        createCapabilities({ supportsTools: true }),
+      ),
+      checkpointStore,
+    });
+    deps.tools = tools;
+    const engine = new AgentEnginePipeline(deps);
+
+    const started = await engine.start(
+      baseStartInput({
+        budget: {
+          maxModelCalls: 8,
+          maxToolCalls: 16,
+          maxLoopIterations: 16,
+          // Short active budget — would fail if approval wait counted.
+          maxWallTimeMs: 1_500,
+        },
+      }),
+    ).result;
+    expect(started.status).toBe("suspended");
+    expect(started.suspension?.kind).toBe("approval_required");
+
+    const checkpoint = await checkpointStore.load(started.runId);
+    expect(checkpoint).toBeTruthy();
+    const now = Date.now();
+    // Simulate ~10s user wait after only ~200ms of active work.
+    await checkpointStore.save({
+      ...checkpoint!,
+      startedAtMs: now - 10_000,
+      suspendedAtMs: now - 9_800,
+      excludedWaitMs: 0,
+    });
+
+    const approvalId = started.suspension?.approval?.approvalId;
+    const resumed = await engine.resume({
+      schemaVersion: 1,
+      runId: started.runId,
+      approval: { approvalId: approvalId!, decision: "approved" },
+    }).result;
+
+    expect(resumed.status).toBe("completed");
+    expect(resumed.answer).toContain("Patched");
+    expect(resumed.reasonCodes).not.toContain("budget_exhausted");
+
+    const patched = await fs.readFile(`${WORKSPACE}/src/a.ts`);
+    expect(patched.content).toBe("const x = 2;\n");
+  });
 });

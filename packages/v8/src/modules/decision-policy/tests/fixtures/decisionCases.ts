@@ -532,4 +532,25 @@ export const DECISION_EVALUATION_CASES: DecisionCaseFixture[] = [
       maximumWorkspaceEffect: "read",
     },
   },
+  {
+    id: "agent_polite_implement_misclassified_as_question",
+    category: "feature",
+    mode: "agent",
+    message:
+      "Can you implement multi emulator testing so I can run parallel test cases\n\nClarification: Use the tablet tab",
+    understanding: createUnderstanding({
+      primaryTaskIntent: "question",
+      interactionIntent: "question",
+      taskAnalysis: {
+        scope: "repository",
+        complexity: "complex",
+        risk: "medium",
+        recommendsRepositoryDiscovery: true,
+      },
+    }),
+    expected: {
+      route: "execute",
+      maximumWorkspaceEffect: "write",
+    },
+  },
 ];

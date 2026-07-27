@@ -7,6 +7,8 @@ export class RunBudgetTracker {
   private inputTokens = 0;
   private outputTokens = 0;
   private readonly startedMs: number;
+  /** Wall-clock time spent waiting on user (approval/clarification) — not billed. */
+  private excludedWaitMs: number;
 
   constructor(
     private readonly limits: AgentRunBudget,
@@ -18,8 +20,10 @@ export class RunBudgetTracker {
       inputTokens?: number;
       outputTokens?: number;
     },
+    excludedWaitMs: number = 0,
   ) {
     this.startedMs = startedMs;
+    this.excludedWaitMs = Math.max(0, excludedWaitMs);
     this.modelCalls = initialUsage?.modelCalls ?? 0;
     this.toolCalls = initialUsage?.toolCalls ?? 0;
     this.loopIterations = initialUsage?.loopIterations ?? 0;
@@ -51,6 +55,29 @@ export class RunBudgetTracker {
     }
   }
 
+  /**
+   * Credit time spent suspended waiting for the user so approval latency
+   * cannot exhaust wall_time before the agent finishes writing.
+   */
+  public addExcludedWaitMs(waitMs: number): void {
+    if (waitMs > 0) {
+      this.excludedWaitMs += waitMs;
+    }
+  }
+
+  public getExcludedWaitMs(): number {
+    return this.excludedWaitMs;
+  }
+
+  public getStartedMs(): number {
+    return this.startedMs;
+  }
+
+  /** Active (non-suspended) elapsed wall time. */
+  public activeElapsedMs(nowMs: number = Date.now()): number {
+    return Math.max(0, nowMs - this.startedMs - this.excludedWaitMs);
+  }
+
   public isExhausted():
     | false
     | "model_calls"
@@ -66,7 +93,7 @@ export class RunBudgetTracker {
     if (this.loopIterations >= this.limits.maxLoopIterations) {
       return "loop_iterations";
     }
-    if (Date.now() - this.startedMs >= this.limits.maxWallTimeMs) {
+    if (this.activeElapsedMs() >= this.limits.maxWallTimeMs) {
       return "wall_time";
     }
     return false;

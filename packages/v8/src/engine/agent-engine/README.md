@@ -117,6 +117,8 @@ back via `tools.rollbackMutation` and the run finishes `failed`
   lifecycle and unpin only on terminal paths.
 - Model/tool loops honor budgets and abort signals deterministically;
   budget usage is restored from the checkpoint on resume.
+  Wall-time budget measures **active** run time only — time spent
+  suspended waiting for user approval is excluded.
 - Tool calls use Decision Policy grants; model text cannot broaden authority.
 - Completed tool `callId`s are idempotent within a run (and across resume);
   a call awaiting approval is deliberately left uncached so resume executes

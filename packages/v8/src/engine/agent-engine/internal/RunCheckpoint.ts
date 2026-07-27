@@ -44,6 +44,13 @@ export interface AgentRunCheckpoint {
   warnings: string[];
   usage: AgentRunUsage;
   startedAtMs: number;
+  /**
+   * Accumulated user-wait time already excluded from wall_time budget
+   * (prior approval suspensions in this run).
+   */
+  excludedWaitMs?: number;
+  /** Wall clock when this suspension began; resume credits the delta. */
+  suspendedAtMs?: number;
 }
 
 export interface AgentEngineRunCheckpointStorePort {
