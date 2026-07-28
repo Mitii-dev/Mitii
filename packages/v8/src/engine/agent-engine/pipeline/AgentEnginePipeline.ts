@@ -22,10 +22,14 @@ import {
   serializePlanForPrompt,
 } from "../../../modules/planning";
 import type { PlanArtifact } from "../../../modules/planning";
-import { PROMPT_CONSTRUCTION_SCHEMA_VERSION } from "../../../modules/prompt-construction";
+import {
+  CharacterTokenEstimator,
+  PROMPT_CONSTRUCTION_SCHEMA_VERSION,
+} from "../../../modules/prompt-construction";
 import type {
   PromptInstructions,
   PromptRepositoryContext,
+  TokenEstimatorPort,
 } from "../../../modules/prompt-construction";
 import type {
   ProjectDescriptor,
@@ -47,6 +51,7 @@ import {
   buildClarificationPayload,
   buildMutationBudgetInstruction,
   buildOutputTruncationRecovery,
+  compactModelLoopMessages,
   filterToolDefinitions,
   mapContextToPromptSlice,
   mapUnderstandingToPlanningEvidence,
@@ -200,6 +205,9 @@ export class AgentEnginePipeline {
       },
     };
   }
+
+  private readonly tokenEstimator: TokenEstimatorPort =
+    new CharacterTokenEstimator();
 
   public start(input: AgentEngineStartInput): AgentRunHandle {
     let parsed: AgentEngineStartInput;
@@ -1691,6 +1699,7 @@ export class AgentEnginePipeline {
     const grant = decision.toolGrant;
     let answer = "";
     let truncationRecoveries = 0;
+    let emittedLoopCompactionWarning = false;
 
     while (true) {
       if (signal.aborted) {
@@ -1717,6 +1726,31 @@ export class AgentEnginePipeline {
       budget.recordLoopIteration();
       budget.recordModelCall();
       this.emitStage(bus, runId, "model_running", "started");
+
+      const loopInputBudgetTokens = this.calculateLoopInputBudgetTokens(
+        params.request,
+      );
+      const compaction = compactModelLoopMessages({
+        messages,
+        estimator: this.tokenEstimator,
+        budgetTokens: loopInputBudgetTokens,
+      });
+      if (compaction.compacted) {
+        messages.splice(0, messages.length, ...compaction.messages);
+        if (!emittedLoopCompactionWarning) {
+          emittedLoopCompactionWarning = true;
+          warnings.push(
+            "Compacted previous tool call history to keep follow-up model calls within the context budget.",
+          );
+          this.emit(bus, {
+            type: "warning",
+            runId,
+            message:
+              "Compacted previous tool call history before the next model call.",
+            at: this.isoNow(),
+          });
+        }
+      }
 
       const turnRequest: ModelRequest = {
         ...params.request,
@@ -2089,6 +2123,22 @@ export class AgentEnginePipeline {
         content: serializeToolResultForModel(result),
       },
     };
+  }
+
+  private calculateLoopInputBudgetTokens(request: ModelRequest): number {
+    const outputReserve =
+      request.maximumOutputTokens ??
+      this.deps.llm.capabilities.maximumOutputTokens;
+    const toolDefinitionTokens =
+      request.tools && request.tools.length > 0
+        ? this.tokenEstimator.estimate(JSON.stringify(request.tools))
+        : 0;
+    const rawBudget =
+      this.deps.llm.capabilities.contextWindowTokens -
+      Math.max(0, outputReserve) -
+      toolDefinitionTokens;
+
+    return Math.max(512, Math.floor(rawBudget * 0.94));
   }
 
   private async consumeModelTurn(params: {

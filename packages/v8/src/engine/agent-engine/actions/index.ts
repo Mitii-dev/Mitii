@@ -20,3 +20,9 @@ export {
 export type { TruncationRecoveryPlan } from "./buildOutputTruncationRecovery";
 export { buildMutationBudgetInstruction } from "./buildMutationBudgetInstruction";
 export { estimateMutationPayloadCharacters } from "./estimateMutationPayloadCharacters";
+export {
+  compactModelLoopMessages,
+  estimateModelMessageTokens,
+  estimateModelMessagesTokens,
+} from "./compactModelLoopMessages";
+export type { ModelLoopCompactionResult } from "./compactModelLoopMessages";

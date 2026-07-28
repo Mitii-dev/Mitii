@@ -194,6 +194,80 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.reasonCodes).toContain("tools_executed");
   });
 
+  it("compacts completed tool call history before later model calls", async () => {
+    const captured: ModelRequest[] = [];
+    const hugeArguments = JSON.stringify({
+      path: "src/large.ts",
+      oldText: "a".repeat(12_000),
+      newText: "b".repeat(12_000),
+    });
+    const llm = new ScriptedLlmPort(
+      [
+        {
+          toolCalls: [
+            { id: "call_1", name: "read_file", arguments: hugeArguments },
+          ],
+        },
+        {
+          toolCalls: [
+            { id: "call_2", name: "read_file", arguments: hugeArguments },
+          ],
+        },
+        { content: "done" },
+      ],
+      createCapabilities({
+        contextWindowTokens: 4_096,
+        maximumOutputTokens: 512,
+        supportsTools: true,
+      }),
+    );
+    const original = llm.complete.bind(llm);
+    llm.complete = async function* (request, context) {
+      captured.push(request);
+      yield* original(request, context);
+    };
+
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "repository_answer",
+          repositoryContextRequired: true,
+          pinnedState: { workspaceId: "ws_1", stateToken: "tok_1" },
+          toolGrant: createReadOnlyGrant({ allowedTools: ["read_file"] }),
+        }),
+        llm,
+      }),
+    );
+
+    const result = await engine.start(
+      baseStartInput({
+        workspaceRoot: "/repo",
+        repositoryState: {
+          reference: { workspaceId: "ws_1", stateToken: "tok_1" },
+          readiness: "ready",
+        },
+        request: {
+          sessionId: "sess_1",
+          mode: "ask",
+          userMessage: "Read the large file twice",
+          workspace: { workspaceId: "ws_1" },
+        },
+      }),
+    ).result;
+
+    const secondRequestText = JSON.stringify(captured[1]?.messages ?? []);
+
+    expect(result.status).toBe("completed");
+    expect(captured).toHaveLength(3);
+    expect(secondRequestText).not.toContain("a".repeat(1_000));
+    expect(secondRequestText).toContain(
+      "previous_completed_tool_call_arguments_omitted",
+    );
+    expect(result.warnings).toContain(
+      "Compacted previous tool call history to keep follow-up model calls within the context budget.",
+    );
+  });
+
   it("runs diagnose read-only without mutation", async () => {
     const engine = new AgentEnginePipeline(
       createStubDependencies({
