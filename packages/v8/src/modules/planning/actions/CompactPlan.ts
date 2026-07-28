@@ -140,7 +140,8 @@ export function serializePlanForPrompt(plan: PlanArtifact): string {
     '<approved_plan trust="instruction">',
     serializePlanText(plan),
     "</approved_plan>",
-    "Follow this plan. Do not expand scope unless the user revises it.",
+    "Execution contract: follow the approved plan phase by phase. Start with the first unfinished step, complete each step before moving on, and do not expand scope unless the user revises the plan.",
+    "When reporting progress, reference the current plan step and verification from this plan.",
   ].join("\n");
 }
 

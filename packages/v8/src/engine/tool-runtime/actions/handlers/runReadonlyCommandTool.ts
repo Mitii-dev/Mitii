@@ -11,7 +11,7 @@ export const runReadonlyCommandTool: RegisteredTool = {
     name: "run_readonly_command",
     effects: ["process_execute", "workspace_read"],
     description:
-      "Run an explicitly authorized read-only command as argv (no shell).",
+      "Run an authorized read-only command as argv (no shell). Grant prefixes typically include package managers (npm/pnpm/yarn/bun), common toolchains (pytest, cargo, go, …), and git read commands. Prefer package-manager scripts (e.g. pnpm run build) to reproduce build/typecheck/lint/test failures before editing.",
     inputSchema: runReadonlyCommandInputSchema,
     outputSchema: runReadonlyCommandOutputSchema,
     modelInputSchema: {

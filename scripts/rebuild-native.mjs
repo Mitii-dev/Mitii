@@ -2,7 +2,7 @@
 /**
  * Rebuild native modules for VS Code / Cursor Electron.
  * A normal install compiles for Node.js; the extension host uses Electron's ABI.
- * Rebuilds better-sqlite3 for the Extension Host Electron ABI from @mitii/v8.
+ * Rebuilds better-sqlite3 for the Extension Host Electron ABI.
  *
  * Override: MITII_ELECTRON_VERSION=42.2.0 pnpm run rebuild:native
  * Override editor: MITII_EDITOR=cursor pnpm run rebuild:native
@@ -14,7 +14,6 @@ import { fileURLToPath } from 'url';
 
 const MODULES = ['better-sqlite3'];
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const v8PackageRoot = resolve(repoRoot, 'packages/v8');
 
 function readElectronFromPlist(plistPath) {
   if (!existsSync(plistPath)) return null;
@@ -69,11 +68,12 @@ function main() {
     [
       'exec',
       'electron-rebuild',
+      '--build-from-source',
       '-f',
       '-v',
       electronVersion,
       '-m',
-      v8PackageRoot,
+      repoRoot,
       '-w',
       ...MODULES,
     ],

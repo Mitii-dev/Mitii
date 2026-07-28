@@ -339,6 +339,7 @@ export function resultToSuspension(
         approvalId: suspension.approval.approvalId,
         toolName: suspension.approval.toolName,
         paths: suspension.approval.paths,
+        proposedText: suspension.approval.proposedText,
       },
     };
   }
@@ -348,6 +349,7 @@ export function resultToSuspension(
       kind: 'plan_approval_required',
       rationale: suspension.rationale,
       plan: planViewFromArtifact(suspension.plan ?? result.plan),
+      planText: result.answer,
     };
   }
   return undefined;

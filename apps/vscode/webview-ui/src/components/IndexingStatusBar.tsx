@@ -22,6 +22,20 @@ const CAPABILITY_LABELS: Record<string, string> = {
 function resolveIndexTone(index: IndexStatusSnapshot): IndexTone {
   const message = (index.message ?? '').toLowerCase();
   const readiness = (index.readiness ?? '').toLowerCase();
+  const capabilities = index.capabilities ?? [];
+  const requiredCapabilities = capabilities.filter((capability) =>
+    ['catalog', 'codeIndex', 'textIndex', 'graph', 'map'].includes(
+      capability.capability,
+    ),
+  );
+  const missingRequired = requiredCapabilities.some(
+    (capability) => capability.status !== 'ready',
+  );
+  const missingVector = capabilities.some(
+    (capability) =>
+      capability.capability === 'vectorIndex' &&
+      capability.status !== 'ready',
+  );
   if (
     message.includes('indexing') ||
     message.includes('scanning') ||
@@ -31,7 +45,14 @@ function resolveIndexTone(index: IndexStatusSnapshot): IndexTone {
     return 'indexing';
   }
   if (index.fileCount <= 0 && !readiness) return 'idle';
-  if (readiness === 'unavailable' || readiness === 'degraded') return 'warn';
+  const coreReady =
+    requiredCapabilities.length > 0 &&
+    requiredCapabilities.every((capability) => capability.status === 'ready');
+  if (missingRequired || readiness === 'unavailable' || readiness === 'degraded') {
+    return 'warn';
+  }
+  if (missingVector && readiness !== 'ready') return 'warn';
+  if (coreReady) return 'ready';
   if (index.fileCount > 0 || readiness) return 'ready';
   return 'idle';
 }
@@ -43,7 +64,16 @@ function shortLabel(tone: IndexTone, index: IndexStatusSnapshot): string {
     case 'ready':
       return 'Indexed';
     case 'warn':
-      return index.readiness === 'degraded' ? 'Degraded' : 'Unavailable';
+      return index.capabilities?.some(
+        (capability) =>
+          ['codeIndex', 'textIndex', 'graph', 'map'].includes(
+            capability.capability,
+          ) && capability.status !== 'ready',
+      )
+        ? 'Index Issue'
+        : index.readiness === 'degraded'
+          ? 'Degraded'
+          : 'Unavailable';
     default:
       return 'Index';
   }

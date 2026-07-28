@@ -90,6 +90,20 @@ const INDEX_CAPABILITY_LABELS: Record<string, string> = {
   map: 'Repo map',
 };
 
+function displayCapabilityStatus(capability: {
+  capability: string;
+  status: string;
+  reasonCode?: string;
+}): { className: string; label: string } {
+  if (
+    capability.capability === 'vectorIndex' &&
+    capability.status === 'unavailable'
+  ) {
+    return { className: 'optional', label: 'not configured' };
+  }
+  return { className: capability.status, label: capability.status };
+}
+
 function formatIndexMode(mode: IndexStatusSnapshot['indexMode']): string {
   if (mode === 'full') return 'Full code/text index';
   if (mode === 'host_snapshot') return 'Host snapshot fallback';
@@ -268,10 +282,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     const label =
                       INDEX_CAPABILITY_LABELS[capability.capability] ??
                       capability.capability;
+                    const displayStatus = displayCapabilityStatus(capability);
                     return (
                       <div
                         key={`${capability.rootId ?? 'root'}:${capability.capability}`}
-                        className={`index-capability index-capability--${capability.status}`}
+                        className={`index-capability index-capability--${displayStatus.className}`}
                         title={[
                           capability.rootId
                             ? `Root: ${capability.rootId}`
@@ -291,7 +306,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                       >
                         <span className="index-capability__name">{label}</span>
                         <span className="index-capability__status">
-                          {capability.status}
+                          {displayStatus.label}
                         </span>
                       </div>
                     );

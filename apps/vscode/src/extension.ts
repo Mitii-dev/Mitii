@@ -148,6 +148,8 @@ export function activate(context: ExtensionContext): void {
     mkdirSync(dir, { recursive: true });
     let fileCount = 0;
     let truncated = false;
+    let indexMode: IndexStatusSnapshot['indexMode'] = 'full';
+    let fallbackReason: string | undefined;
     let published;
     try {
       const full = await runFullWorkspaceIndex({
@@ -165,10 +167,10 @@ export function activate(context: ExtensionContext): void {
         `[index] full code/text/graph/map index stored at ${full.databasePath}`,
       );
     } catch (error) {
+      indexMode = 'host_snapshot';
+      fallbackReason = error instanceof Error ? error.message : String(error);
       channel.appendLine(
-        `[index] full index unavailable; falling back to host snapshot: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[index] full index unavailable; falling back to host snapshot: ${fallbackReason}`,
       );
       const snapshot = await buildWorkspaceSnapshot({
         workspaceRoot: root,
@@ -186,7 +188,7 @@ export function activate(context: ExtensionContext): void {
             ...published.descriptor,
             fileCount,
             truncated,
-            indexMode: 'full',
+            indexMode,
           },
           null,
           2,
@@ -204,7 +206,13 @@ export function activate(context: ExtensionContext): void {
         readiness: published.descriptor.readiness,
         stateTokenPreview: published.reference.stateToken.slice(0, 16),
         lastIndexedAt: published.descriptor.generatedAt,
-        message: `Indexed ${fileCount} files`,
+        indexMode,
+        message:
+          indexMode === 'host_snapshot'
+            ? `Indexed ${fileCount} files (host snapshot fallback: ${fallbackReason ?? 'full index unavailable'})`
+            : truncated
+              ? `Indexed ${fileCount} files (truncated)`
+              : `Indexed ${fileCount} files`,
       };
     }
     void vscode.window.showErrorMessage('Mitii index failed.');

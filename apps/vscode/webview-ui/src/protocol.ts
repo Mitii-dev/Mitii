@@ -200,6 +200,8 @@ export interface SuspensionPayload {
   clarificationOptions?: ClarificationOptionView[];
   /** Structured plan awaiting approval (plan_approval_required). */
   plan?: PlanView | null;
+  /** Plain-text plan/answer shown while a plan approval is suspended. */
+  planText?: string;
   approval?: {
     approvalId: string;
     toolName: string;

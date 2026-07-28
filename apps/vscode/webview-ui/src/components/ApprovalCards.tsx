@@ -34,6 +34,42 @@ function optionAnswer(option: ClarificationOptionView): string {
     : option.label;
 }
 
+function extractField(text: string | undefined, label: string): string | undefined {
+  if (!text) return undefined;
+  const match = text.match(new RegExp(`^${label}:\\s*(.+)$`, 'im'));
+  return match?.[1]?.trim();
+}
+
+function extractListSection(
+  text: string | undefined,
+  heading: string,
+  maxItems = 8,
+): string[] {
+  if (!text) return [];
+  const lines = text.split('\n');
+  const start = lines.findIndex((line) =>
+    new RegExp(`^${heading}:\\s*$`, 'i').test(line.trim()),
+  );
+  if (start < 0) return [];
+  const items: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (/^[A-Z][\w\s]+:\s*/.test(trimmed)) break;
+    const item = trimmed.match(/^(?:[-*]|\d+(?:\.\d+)*\.)\s+(.+)$/)?.[1];
+    if (item) items.push(item.trim());
+    if (items.length >= maxItems) break;
+  }
+  return items;
+}
+
+function compactText(text: string | undefined, max = 900): string | undefined {
+  if (!text) return undefined;
+  const cleaned = text.trim();
+  if (!cleaned) return undefined;
+  return cleaned.length > max ? `${cleaned.slice(0, max - 1)}…` : cleaned;
+}
+
 export function ApprovalCards({
   suspension,
   clarifyText,
@@ -48,6 +84,12 @@ export function ApprovalCards({
   const isPlan = suspension.kind === 'plan_approval_required';
   const approval = suspension.approval;
   const options = suspension.clarificationOptions ?? [];
+  const planText = suspension.planText;
+  const objective = extractField(planText, 'Objective');
+  const scope = extractField(planText, 'Scope');
+  const verification = extractField(planText, 'Verification');
+  const riskItems = extractListSection(planText, 'Risks', 3);
+  const fallbackPlanSteps = extractListSection(planText, 'Plan', 8);
   const prompt =
     shortClarifyText(suspension.clarificationPrompt) ??
     (suspension.rationale && !/^mode=/.test(suspension.rationale)
@@ -83,6 +125,64 @@ export function ApprovalCards({
             {suspension.plan.steps.length === 1 ? '' : 's'}
           </span>
         </div>
+      ) : null}
+      {isPlan ? (
+        <div className="approval-plan">
+          {objective || scope || verification ? (
+            <div className="approval-plan__facts">
+              {objective ? (
+                <div>
+                  <span>Objective</span>
+                  <strong>{objective}</strong>
+                </div>
+              ) : null}
+              {scope ? (
+                <div>
+                  <span>Scope</span>
+                  <strong>{scope}</strong>
+                </div>
+              ) : null}
+              {verification ? (
+                <div>
+                  <span>Verify</span>
+                  <strong>{verification}</strong>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {suspension.plan?.steps.length ? (
+            <ol className="approval-plan__steps">
+              {suspension.plan.steps.map((step, index) => (
+                <li key={step.id}>
+                  <span>{index + 1}</span>
+                  <p>{step.title}</p>
+                </li>
+              ))}
+            </ol>
+          ) : fallbackPlanSteps.length ? (
+            <ol className="approval-plan__steps">
+              {fallbackPlanSteps.map((step, index) => (
+                <li key={`${index}:${step}`}>
+                  <span>{index + 1}</span>
+                  <p>{step}</p>
+                </li>
+              ))}
+            </ol>
+          ) : planText ? (
+            <pre className="approval-plan__raw">{compactText(planText)}</pre>
+          ) : null}
+          {riskItems.length ? (
+            <div className="approval-plan__risks">
+              <span>Risks</span>
+              {riskItems.join(' · ')}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {!isClarify && !isPlan && approval?.proposedText ? (
+        <pre className="approval-plan__raw approval-plan__raw--diff">
+          {compactText(approval.proposedText, 1200)}
+        </pre>
       ) : null}
       {isClarify ? (
         <>

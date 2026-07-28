@@ -5,7 +5,10 @@ import type {
   AgentUiMode,
   SuspensionPayload,
 } from '../protocol';
-import { AgentActivityPanel } from './AgentActivityPanel';
+import {
+  AgentActivityPanel,
+  AgentThinkingPanel,
+} from './AgentActivityPanel';
 import { ApprovalCards } from './ApprovalCards';
 import { MarkdownMessage } from './MarkdownMessage';
 
@@ -32,8 +35,17 @@ interface MessageListProps {
   onApprove: (runId: string, approvalId?: string) => void;
   onDeny: (runId: string, approvalId?: string) => void;
   onShowInlineDiff: (approvalId: string) => void;
+  containerRef: RefObject<HTMLDivElement>;
+  onScroll: () => void;
   bottomRef: RefObject<HTMLDivElement>;
 }
+
+const MODE_LABELS: Record<AgentUiMode, string> = {
+  ask: 'Ask mode',
+  plan: 'Plan mode',
+  agent: 'Agent mode',
+  review: 'Review mode',
+};
 
 export function MessageList({
   turns,
@@ -46,11 +58,13 @@ export function MessageList({
   onApprove,
   onDeny,
   onShowInlineDiff,
+  containerRef,
+  onScroll,
   bottomRef,
 }: MessageListProps) {
   if (turns.length === 0) {
     return (
-      <div className="messages">
+      <div className="messages" ref={containerRef} onScroll={onScroll}>
         <div className="empty-state">
           <h2>Ready when you are</h2>
           <p>Workspace context is ready. Start with the outcome you want.</p>
@@ -60,14 +74,22 @@ export function MessageList({
   }
 
   return (
-    <div className="messages" role="log" aria-live="polite">
+    <div
+      className="messages"
+      ref={containerRef}
+      onScroll={onScroll}
+      role="log"
+      aria-live="polite"
+    >
       {turns.map((turn) => (
-        <div key={turn.id} className="turn">
+        <div key={turn.id} className={`turn turn--${turn.role}`}>
           {turn.role === 'user' ? (
             <>
               <div className="meta-row">
-                <span>You</span>
-                {turn.mode ? <span>{turn.mode}</span> : null}
+                <span>Request</span>
+                {turn.mode ? (
+                  <span className="meta-pill">{MODE_LABELS[turn.mode]}</span>
+                ) : null}
               </div>
               <div className="bubble user">{turn.text}</div>
             </>
@@ -75,14 +97,15 @@ export function MessageList({
             <>
               <div className="meta-row">
                 <span>Mitii</span>
-                {turn.status ? <span>{turn.status}</span> : null}
-                {turn.route ? <span>{turn.route}</span> : null}
+                {turn.status ? (
+                  <span className="meta-pill">{turn.status}</span>
+                ) : null}
+                {turn.route ? <span className="meta-pill">{turn.route}</span> : null}
               </div>
               <AgentActivityPanel
                 events={turn.activity}
                 open={activityOpen}
                 onToggle={onToggleActivity}
-                loading={Boolean(turn.streaming)}
               />
               {turn.text || turn.streaming ? (
                 <div
@@ -94,6 +117,10 @@ export function MessageList({
                   />
                 </div>
               ) : null}
+              <AgentThinkingPanel
+                events={turn.activity}
+                loading={Boolean(turn.streaming)}
+              />
               {turn.suspension ? (
                 <ApprovalCards
                   suspension={turn.suspension}

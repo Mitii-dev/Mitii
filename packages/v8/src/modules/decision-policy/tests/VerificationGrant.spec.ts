@@ -9,7 +9,7 @@ import {
 import { createInput, createUnderstanding } from "./fixtures/decisionCases";
 
 describe("verification grant + network authority", () => {
-  it("keeps agent grants on git prefixes while verification grant widens toolchains", () => {
+  it("grants safe argv-only toolchain commands for agent diagnosis and verification", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({
         mode: "agent",
@@ -30,7 +30,12 @@ describe("verification grant + network authority", () => {
     expect(agentPrefixes).toEqual([
       ...DEFAULT_AGENT_READONLY_COMMAND_PREFIXES,
     ]);
-    expect(agentPrefixes).not.toContain("npm");
+    expect(agentPrefixes).toEqual([
+      ...DEFAULT_VERIFICATION_COMMAND_PREFIXES,
+    ]);
+    expect(agentPrefixes).toContain("npm");
+    expect(agentPrefixes).toContain("pnpm");
+    expect(agentPrefixes).toContain("git status");
 
     const verification = buildVerificationGrant(decision.toolGrant);
     expect(verification.commandRules?.[0]?.prefixes).toEqual([

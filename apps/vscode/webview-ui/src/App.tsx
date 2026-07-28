@@ -92,6 +92,39 @@ const DEFAULT_UI: UiSettingsSnapshot = {
   approvalMode: 'guided',
 };
 
+function shouldReplaceActivity(
+  existing: { kind: string; title: string; status?: string },
+  incoming: { kind: string; title: string; status?: string },
+): boolean {
+  if (existing.kind !== incoming.kind || existing.title !== incoming.title) {
+    return false;
+  }
+  return Boolean(existing.status || incoming.status);
+}
+
+function mergeActivityEvent(
+  events: ChatTurn['activity'],
+  incoming: ChatTurn['activity'][number],
+): ChatTurn['activity'] {
+  let replacementIndex = -1;
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    if (shouldReplaceActivity(events[i]!, incoming)) {
+      replacementIndex = i;
+      break;
+    }
+  }
+  if (replacementIndex >= 0) {
+    const next = [...events];
+    next[replacementIndex] = {
+      ...next[replacementIndex],
+      ...incoming,
+      detail: incoming.detail ?? next[replacementIndex]?.detail,
+    };
+    return next;
+  }
+  return [...events, incoming];
+}
+
 function uid(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -166,7 +199,9 @@ export function App() {
 
   const searchReq = useRef(0);
   const lastSearchId = useRef('');
+  const messagesRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
   const activeAssistantId = useRef<string | null>(null);
 
   const navigate = useCallback(
@@ -246,6 +281,8 @@ export function App() {
         case 'run.started': {
           setRunning(true);
           setError(null);
+          setPlan(null);
+          stickToBottomRef.current = true;
           const userId = uid('user');
           const asstId = uid('asst');
           activeAssistantId.current = asstId;
@@ -295,8 +332,10 @@ export function App() {
               if (msg.event.kind === 'delta') {
                 return t;
               }
-              nextActivity.push(msg.event);
-              return { ...t, activity: nextActivity.slice(-40) };
+              return {
+                ...t,
+                activity: mergeActivityEvent(nextActivity, msg.event).slice(-60),
+              };
             }),
           );
           break;
@@ -312,6 +351,7 @@ export function App() {
           break;
         }
         case 'run.suspended': {
+          setRunning(false);
           const id = activeAssistantId.current;
           if (!id) break;
           setTurns((prev) =>
@@ -352,10 +392,12 @@ export function App() {
         }
         case 'run.cancelled':
           setRunning(false);
+          setPlan(null);
           break;
         case 'error':
           setError(msg.message);
           setRunning(false);
+          setPlan(null);
           break;
         case 'paths.results':
           if (msg.requestId === lastSearchId.current) {
@@ -385,6 +427,7 @@ export function App() {
           break;
         case 'thread.loaded':
           setActiveThreadId(msg.threadId);
+          stickToBottomRef.current = true;
           setTurns(
             msg.messages.map((m) => ({
               id: m.id,
@@ -446,12 +489,29 @@ export function App() {
   }, [applyBootstrap, ui.reasoningPreviewMaxChars, ui.showReasoning]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    window.requestAnimationFrame(() => {
+      if (!stickToBottomRef.current) return;
+      const target = messagesRef.current;
+      if (!target) return;
+      target.scrollTo({
+        top: target.scrollHeight,
+        behavior: running ? 'auto' : 'smooth',
+      });
+    });
   }, [turns, running]);
+
+  const onMessagesScroll = useCallback(() => {
+    const target = messagesRef.current;
+    if (!target) return;
+    const distanceFromBottom =
+      target.scrollHeight - target.scrollTop - target.clientHeight;
+    stickToBottomRef.current = distanceFromBottom < 72;
+  }, []);
 
   const send = useCallback(() => {
     const text = prompt.trim();
     if (!text || running) return;
+    stickToBottomRef.current = true;
     postToHost({
       type: 'ask',
       prompt: text,
@@ -752,6 +812,8 @@ export function App() {
               onShowInlineDiff={(approvalId) =>
                 postToHost({ type: 'showInlineDiff', approvalId })
               }
+              containerRef={messagesRef}
+              onScroll={onMessagesScroll}
               bottomRef={bottomRef}
             />
 

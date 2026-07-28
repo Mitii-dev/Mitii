@@ -5,9 +5,9 @@ import {
 import { READ_ONLY_TOOL_IDS } from "../constants";
 
 /**
- * Package-manager / toolchain prefixes Verification may run via
- * `run_readonly_command`. Intentionally broader than the model-facing agent
- * grant (which stays on git read prefixes).
+ * Shared argv-only toolchain prefixes for diagnosis and verification.
+ * Tool Runtime still forbids shell metacharacters and requires exact prefix
+ * matches — this is process authority, not a free shell.
  */
 export const DEFAULT_VERIFICATION_COMMAND_PREFIXES = [
   "npm",
@@ -37,19 +37,22 @@ export const DEFAULT_VERIFICATION_COMMAND_PREFIXES = [
   "git blame",
 ] as const;
 
-/** Git read prefixes exposed to the model via agent grants. */
+/**
+ * Read-only argv prefixes exposed to the model via agent grants.
+ *
+ * Coding agents must be able to reproduce build / typecheck / lint / test
+ * failures (and inspect git) before deciding what to edit. Keep this aligned
+ * with DEFAULT_VERIFICATION_COMMAND_PREFIXES unless Verification needs a
+ * strictly wider set.
+ */
 export const DEFAULT_AGENT_READONLY_COMMAND_PREFIXES = [
-  "git status",
-  "git diff",
-  "git log",
-  "git show",
-  "git blame",
+  ...DEFAULT_VERIFICATION_COMMAND_PREFIXES,
 ] as const;
 
 /**
  * Build a ToolGrant for Verification only.
- * Reuses pathScopes/tools from the agent grant but replaces commandRules with
- * verification prefixes so the model cannot gain npm/cargo authority.
+ * Reuses pathScopes/tools from the agent grant and applies verification
+ * command prefixes (read-only process execution, never mutation tools).
  */
 export function buildVerificationGrant(base: ToolGrant): ToolGrant {
   const allowedTools = base.allowedTools.filter((tool) =>

@@ -32,6 +32,11 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
   const activeSlices = (breakdown?.slices ?? []).filter(
     (s) => s.active && s.tokens > 0,
   );
+  const contextSlices = [...(breakdown?.slices ?? [])].sort((a, b) => {
+    if (b.tokens !== a.tokens) return b.tokens - a.tokens;
+    if (a.active !== b.active) return a.active ? -1 : 1;
+    return a.label.localeCompare(b.label);
+  });
   const fillRatio = breakdown?.fillRatio ?? 0;
 
   const tooltip = [
@@ -180,7 +185,7 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
                 />
               </div>
               <ul className="token-context-slices">
-                {(breakdown.slices ?? []).map((slice) => {
+                {contextSlices.map((slice) => {
                   const share =
                     breakdown.contextWindow > 0
                       ? slice.tokens / breakdown.contextWindow

@@ -66,23 +66,28 @@ export function validateReadonlyCommand(params: {
 
   let matched: CommandRule | undefined;
   let matchedPrefix: string | undefined;
+  const allowedPrefixes: string[] = [];
   for (const rule of rules) {
     for (const prefix of rule.prefixes) {
-      if (argvMatchesPrefix(argv, prefix)) {
+      allowedPrefixes.push(prefix);
+      if (!matched && argvMatchesPrefix(argv, prefix)) {
         matched = rule;
         matchedPrefix = prefix;
-        break;
       }
-    }
-    if (matched) {
-      break;
     }
   }
 
   if (!matched || !matchedPrefix) {
+    const preview = allowedPrefixes.slice(0, 24).join(", ");
+    const more =
+      allowedPrefixes.length > 24
+        ? ` (+${allowedPrefixes.length - 24} more)`
+        : "";
     throw new CommandPolicyError(
       "command_not_allowed",
-      `Command is not covered by granted prefixes: ${argv.join(" ")}`,
+      `Command is not covered by granted prefixes: ${argv.join(" ")}. ` +
+        `Allowed prefixes: ${preview || "(none)"}${more}. ` +
+        "Use an argv-only command starting with an allowed prefix (no shell).",
     );
   }
 

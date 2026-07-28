@@ -146,6 +146,8 @@ describe("Tool Runtime grant and security enforcement", () => {
     });
     expect(result.status).toBe("rejected");
     expect(result.reasonCode).toBe("command_not_allowed");
+    expect(result.warnings.join(" ")).toContain("Allowed prefixes:");
+    expect(result.warnings.join(" ")).toContain("git status");
   });
 
   it("runs authorized readonly argv commands without a shell", async () => {

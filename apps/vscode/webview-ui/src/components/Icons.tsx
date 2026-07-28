@@ -60,6 +60,17 @@ export function IconPlus(props: IconProps) {
   );
 }
 
+export function IconTrash(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M3.5 4.5h9" />
+      <path d="M6.5 4.5v-1h3v1" />
+      <path d="M5 6.5v6a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-6" />
+      <path d="M7 7.5v4M9 7.5v4" />
+    </svg>
+  );
+}
+
 export function IconSkills(props: IconProps) {
   return (
     <svg {...defaults} {...props}>

@@ -1,3 +1,6 @@
+import { IconButton } from './IconButton';
+import { IconPlus, IconTrash } from './Icons';
+
 interface ContextPanelProps {
   paths: string[];
   onRemove: (path: string) => void;
@@ -31,12 +34,12 @@ export function ContextPanel({
             </button>
           </span>
         ))}
-        <button type="button" className="btn ghost" onClick={onPick} title="Pin files or folders">
-          Add
-        </button>
-        <button type="button" className="btn ghost" onClick={onClear} title="Clear pinned context">
-          Clear
-        </button>
+        <IconButton label="Pin files or folders" variant="ghost" onClick={onPick}>
+          <IconPlus />
+        </IconButton>
+        <IconButton label="Clear pinned context" variant="ghost" onClick={onClear}>
+          <IconTrash />
+        </IconButton>
       </div>
     </section>
   );

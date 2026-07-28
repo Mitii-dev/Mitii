@@ -64,7 +64,7 @@ const runtime = new ToolRuntimePipeline(ports, { registry });
 - `search_files`
 - `read_diagnostics`
 - `read_git_status`
-- `run_readonly_command` (argv only; no shell; agent grant = git read prefixes)
+- `run_readonly_command` (argv only; no shell; agent grant = toolchain + git read prefixes)
 - `read_package_scripts`
 
 ## Network tools (grant-gated)
@@ -82,8 +82,9 @@ Model-facing JSON schemas are generated from registered Tool Runtime
 definitions (`listBuiltinModelToolDefinitions`) so Agent Engine prompts cannot
 drift from Zod execute schemas.
 
-Verification uses a **separate** grant (`buildVerificationGrant`) with
-package-manager prefixes; the model-facing agent grant stays on git reads.
+Verification uses a **separate** grant (`buildVerificationGrant`) that keeps
+read-only tools/effects while reusing the same toolchain command prefixes
+the agent grant uses for diagnosis.
 
 ## Mutation tool (Phase 8)
 

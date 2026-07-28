@@ -190,6 +190,24 @@ function defaultContextToggles(): ContextToggles {
   };
 }
 
+function needsFullIndexRefresh(index: IndexStatusSnapshot): boolean {
+  if (index.indexMode === 'host_snapshot') return true;
+  const capabilities = index.capabilities ?? [];
+  if (capabilities.length === 0) return false;
+  const core = new Set(['codeIndex', 'textIndex', 'graph', 'map']);
+  for (const capability of core) {
+    if (
+      !capabilities.some(
+        (entry) =>
+          entry.capability === capability && entry.status === 'ready',
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export interface SidebarHostOptions {
   extensionMode: vscode.ExtensionMode;
   workspaceState: vscode.Memento;
@@ -612,6 +630,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         this.post({ type: 'index.status', index: await this.readIndexStatus() });
         return;
       case 'index.reindex': {
+        this.post({
+          type: 'index.status',
+          index: {
+            ...this.lastIndex,
+            message: 'Indexing workspace…',
+            readiness: 'indexing',
+          },
+        });
         const index = await this.onIndexWorkspace();
         this.lastIndex = index;
         this.post({ type: 'index.status', index });
@@ -834,8 +860,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       const answer = outcome.result.answer ?? '';
       this.lastAssistantText = answer;
       const plan =
-        planViewFromArtifact(outcome.result.plan) ??
-        this.planFromAnswer(message.mode, answer);
+        message.mode === 'plan'
+          ? planViewFromArtifact(outcome.result.plan) ??
+            this.planFromAnswer(message.mode, answer)
+          : null;
       this.post({
         type: 'run.result',
         status: outcome.result.status,
@@ -845,7 +873,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         usage,
         plan,
       });
-      if (plan) this.post({ type: 'setPlan', plan });
       this.post({ type: 'tokenUsage', usage: this.tokenUsage });
       const store = await appendTurn(this.host.workspaceState, {
         threadId: this.activeThreadId,
@@ -1350,6 +1377,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
               ? `Indexed ${this.lastIndex.fileCount} files`
               : (this.lastIndex.message ?? 'Repository state ready'),
         };
+        if (needsFullIndexRefresh(this.lastIndex)) {
+          this.channel.appendLine(
+            '[index] cached state is missing full code/text/graph/map index; republishing full index…',
+          );
+          return await this.publishIndexSnapshot();
+        }
         return this.lastIndex;
       }
     } catch (error) {
@@ -1469,6 +1502,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     let fileCount = 0;
     let truncated = false;
     let indexMode: IndexStatusSnapshot['indexMode'] = 'full';
+    let fallbackReason: string | undefined;
     let published;
     try {
       const full = await runFullWorkspaceIndex({
@@ -1486,10 +1520,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         `[index] full code/text/graph/map index stored at ${full.databasePath}`,
       );
     } catch (error) {
+      fallbackReason = error instanceof Error ? error.message : String(error);
       this.channel.appendLine(
-        `[index] full index unavailable; falling back to host snapshot: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[index] full index unavailable; falling back to host snapshot: ${fallbackReason}`,
       );
       indexMode = 'host_snapshot';
       const snapshot = await buildWorkspaceSnapshot({
@@ -1520,9 +1553,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         truncated,
         ...descriptorStatus,
         indexMode,
-        message: truncated
-          ? `Indexed ${fileCount} files (truncated)`
-          : `Indexed ${fileCount} files`,
+        message:
+          indexMode === 'host_snapshot'
+            ? `Indexed ${fileCount} files (host snapshot fallback: ${fallbackReason ?? 'full index unavailable'})`
+            : truncated
+              ? `Indexed ${fileCount} files (truncated)`
+              : `Indexed ${fileCount} files`,
       };
     } else {
       this.lastIndex = {
