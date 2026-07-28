@@ -14,16 +14,21 @@ export function openSqliteDatabase(
   filename: string,
   options: SqliteOptions = {},
 ): SqliteDatabase {
+  const nativeBinding = resolveNativeSqliteBinding();
   return new Database(filename, {
     ...options,
-    nativeBinding: resolveNativeSqliteBinding(),
+    ...(nativeBinding ? { nativeBinding } : {}),
   });
 }
 
-export function resolveNativeSqliteBinding(): string {
+export function resolveNativeSqliteBinding(): string | undefined {
   const override = process.env.MITII_SQLITE_NATIVE_BINDING;
   if (override && existsSync(override)) {
     return override;
+  }
+
+  if (!process.versions.electron) {
+    return undefined;
   }
 
   const candidates = [

@@ -62,6 +62,7 @@ const stagedReleaseFiles = [
 ];
 
 try {
+  run('pnpm', ['run', 'rebuild:native'], { cwd: repoRoot });
   run('pnpm', ['run', 'build:prod']);
   run('pnpm', ['run', 'audit:package']);
 
