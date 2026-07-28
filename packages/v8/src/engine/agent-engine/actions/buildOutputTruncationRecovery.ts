@@ -6,6 +6,8 @@ import { AGENT_ENGINE_THRESHOLDS } from "../policy";
 export interface TruncationRecoveryPlan {
   /** Whether the Engine should discard tool calls and continue with a nudge. */
   shouldRecover: boolean;
+  /** Recovery shape so Agent Engine can preserve/append partial final text. */
+  recoveryKind: "tool_call" | "text_continuation";
   /** Incomplete / unparseable tool calls that must not be executed. */
   incompleteToolCalls: ModelToolCall[];
   /** Assistant message content to keep (no broken toolCalls). */
@@ -40,14 +42,32 @@ export function buildOutputTruncationRecovery(params: {
     (call) => !isCompleteToolCall(call),
   );
 
-  // Only recover when truncated mid-tool-call (broken JSON / empty args).
-  // Complete tool calls after a length stop are still executable.
-  const shouldRecover = incompleteToolCalls.length > 0;
-
-  if (!shouldRecover) {
-    // Truncated final text answer, or truncated after complete tools —
-    // let the normal loop path handle them.
+  if (incompleteToolCalls.length === 0 && params.toolCalls.length > 0) {
+    // Complete tool calls after a length stop are still executable.
     return null;
+  }
+
+  if (incompleteToolCalls.length === 0) {
+    const text = params.content.trim();
+    if (text.length === 0) {
+      return null;
+    }
+
+    return {
+      shouldRecover: true,
+      recoveryKind: "text_continuation",
+      incompleteToolCalls: [],
+      assistantContent: params.content,
+      recoveryMessage: {
+        role: "user",
+        content: [
+          "Your previous answer was truncated because the output token limit was reached.",
+          "Continue exactly where it stopped.",
+          "Do not restart from the beginning or repeat completed sections.",
+          "Keep the continuation concise and finish the answer.",
+        ].join("\n"),
+      },
+    };
   }
 
   const preferred =
@@ -70,6 +90,7 @@ export function buildOutputTruncationRecovery(params: {
 
   return {
     shouldRecover: true,
+    recoveryKind: "tool_call",
     incompleteToolCalls: [...incompleteToolCalls],
     assistantContent:
       params.content.trim().length > 0

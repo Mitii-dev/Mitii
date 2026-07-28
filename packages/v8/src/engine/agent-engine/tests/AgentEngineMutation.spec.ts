@@ -300,8 +300,79 @@ describe("AgentEnginePipeline mutation approvals (Phase 8)", () => {
 
     expect(resumed.status).toBe("failed");
     expect(resumed.error?.code).toBe("verification_failed");
+    expect(resumed.answer).toContain("required verification failed");
+    expect(resumed.answer).toContain("rolled back");
+    expect(resumed.answer).not.toContain("Updated src/a.ts");
     expect(resumed.reasonCodes).toContain("mutation_rolled_back");
     expect(resumed.reasonCodes).toContain("verification_failed");
+    expect(resumed.reasonCodes).not.toContain("answer_produced");
+
+    const rolledBack = await fs.readFile(`${WORKSPACE}/src/a.ts`);
+    expect(rolledBack.content).toBe("const x = 1;\n");
+  });
+
+  it("reports verification unavailability instead of the stale model answer", async () => {
+    const { fs, realTools } = createWorkspace();
+    const tools = wrapTools(realTools);
+    const checkpointStore = new InMemoryRunCheckpointStore();
+    const pinnedState = { workspaceId: "ws_1", stateToken: "tok_1" };
+
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        toolGrant: createWriteGrant(),
+        pinnedState,
+        verification: {
+          required: true,
+          minimumEvidence: [],
+          allowUnavailable: false,
+        },
+      }),
+      llm: new ScriptedLlmPort(
+        [
+          {
+            toolCalls: [
+              {
+                id: "call_patch",
+                name: "apply_patch",
+                arguments: JSON.stringify(APPLY_PATCH_ARGS),
+              },
+            ],
+          },
+          { content: "Updated src/a.ts to set x = 2." },
+        ],
+        createCapabilities({ supportsTools: true }),
+      ),
+      checkpointStore,
+    });
+    deps.tools = tools;
+    deps.verification = undefined;
+    const engine = new AgentEnginePipeline(deps);
+
+    const started = await engine.start(
+      baseStartInput({
+        repositoryState: { reference: pinnedState, readiness: "ready" },
+      }),
+    ).result;
+    expect(started.status).toBe("suspended");
+
+    const approvalId = started.suspension?.approval?.approvalId;
+    const resumed = await engine.resume({
+      schemaVersion: 1,
+      runId: started.runId,
+      approval: { approvalId: approvalId!, decision: "approved" },
+    }).result;
+
+    expect(resumed.status).toBe("failed");
+    expect(resumed.error?.message).toContain(
+      "Verification is required but unavailable",
+    );
+    expect(resumed.answer).toContain("Verification is required but unavailable");
+    expect(resumed.answer).toContain("rolled back");
+    expect(resumed.answer).not.toContain("Updated src/a.ts");
+    expect(resumed.reasonCodes).toContain("mutation_rolled_back");
+    expect(resumed.reasonCodes).toContain("verification_failed");
+    expect(resumed.reasonCodes).not.toContain("answer_produced");
 
     const rolledBack = await fs.readFile(`${WORKSPACE}/src/a.ts`);
     expect(rolledBack.content).toBe("const x = 1;\n");

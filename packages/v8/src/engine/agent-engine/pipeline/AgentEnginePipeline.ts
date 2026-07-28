@@ -628,6 +628,14 @@ export class AgentEnginePipeline {
           selectedCount: skillsResult.instructions.length,
           omittedCount: skillsResult.omissions.length,
           status: skillsResult.status,
+          selected: skillsResult.instructions
+            .map((block) => block.id)
+            .filter((id) => id.trim().length > 0)
+            .slice(0, 20),
+          omitted: skillsResult.omissions
+            .map((omission) => omission.skillId)
+            .filter((id) => id.trim().length > 0)
+            .slice(0, 20),
           at: this.isoNow(),
         });
         this.emitStage(bus, runId, "skills_ready", "completed", [
@@ -1429,8 +1437,6 @@ export class AgentEnginePipeline {
     }
 
     // loopOutcome.kind === "completed"
-    reasonCodes.push("answer_produced");
-
     const verificationOutcome = await this.runVerificationGate({
       runId,
       bus,
@@ -1448,11 +1454,17 @@ export class AgentEnginePipeline {
     if (verificationOutcome.kind === "failed") {
       return finish({
         status: "failed",
-        answer: loopOutcome.answer,
+        answer: this.formatVerificationFailureAnswer({
+          error: verificationOutcome.error,
+          changedFiles: loopOutcome.changedFiles,
+          rolledBack: loopOutcome.mutationCheckpointIds.length > 0,
+        }),
         reasonCodes,
         error: verificationOutcome.error,
       });
     }
+
+    reasonCodes.push("answer_produced");
 
     return finish({
       status: "completed",
@@ -1663,6 +1675,21 @@ export class AgentEnginePipeline {
     }
   }
 
+  private formatVerificationFailureAnswer(params: {
+    error: { code: string; message: string };
+    changedFiles: readonly string[];
+    rolledBack: boolean;
+  }): string {
+    const changed =
+      params.changedFiles.length > 0
+        ? ` Changed files: ${params.changedFiles.join(", ")}.`
+        : "";
+    const rollback = params.rolledBack
+      ? " Any applied workspace changes were rolled back."
+      : "";
+    return `I could not complete the change because required verification failed: ${params.error.message}.${rollback}${changed}`;
+  }
+
   private async runModelToolLoop(params: {
     runId: string;
     request: ModelRequest;
@@ -1699,6 +1726,7 @@ export class AgentEnginePipeline {
     const grant = decision.toolGrant;
     let answer = "";
     let truncationRecoveries = 0;
+    let pendingTextContinuation = "";
     let emittedLoopCompactionWarning = false;
 
     while (true) {
@@ -1827,7 +1855,15 @@ export class AgentEnginePipeline {
       if (recovery?.shouldRecover) {
         truncationRecoveries += 1;
         reasonCodes.push("output_truncation_recovered");
-        answer = recovery.assistantContent;
+        if (recovery.recoveryKind === "text_continuation") {
+          pendingTextContinuation = appendTextContinuation(
+            pendingTextContinuation,
+            recovery.assistantContent,
+          );
+          answer = pendingTextContinuation;
+        } else {
+          answer = recovery.assistantContent;
+        }
         messages.push({
           role: "assistant",
           content: recovery.assistantContent,
@@ -1837,7 +1873,9 @@ export class AgentEnginePipeline {
           type: "warning",
           runId,
           message:
-            "Discarded incomplete truncated tool call(s); continuing with a smaller-batch instruction.",
+            recovery.recoveryKind === "text_continuation"
+              ? "Continuing truncated final answer after output token limit."
+              : "Discarded incomplete truncated tool call(s); continuing with a smaller-batch instruction.",
           at: this.isoNow(),
         });
         this.emitStage(bus, runId, "model_running", "completed", [
@@ -1849,9 +1887,17 @@ export class AgentEnginePipeline {
       }
 
       if (turn.content.length > 0) {
-        answer = truncated
+        const turnAnswer = truncated
           ? `${turn.content}\n\n…(output truncated — token limit reached)`
           : turn.content;
+        if (pendingTextContinuation.length > 0) {
+          answer = appendTextContinuation(pendingTextContinuation, turnAnswer);
+          if (!truncated) {
+            pendingTextContinuation = "";
+          }
+        } else {
+          answer = turnAnswer;
+        }
       }
 
       reasonCodes.push("model_completed");
@@ -1998,11 +2044,24 @@ export class AgentEnginePipeline {
       approvalToken,
     } = params;
 
+    let argumentsValue: unknown = {};
+    try {
+      argumentsValue =
+        toolCall.arguments.trim().length === 0
+          ? {}
+          : JSON.parse(toolCall.arguments);
+    } catch {
+      warnings.push(`Invalid JSON arguments for tool ${toolCall.name}.`);
+      argumentsValue = { _raw: toolCall.arguments };
+    }
+    const summary = this.summarizeToolCall(toolCall.name, argumentsValue);
+
     this.emit(bus, {
       type: "tool_started",
       runId,
       callId: toolCall.id,
       toolName: toolCall.name,
+      ...(summary ? { summary } : {}),
       at: this.isoNow(),
     });
 
@@ -2014,6 +2073,7 @@ export class AgentEnginePipeline {
         callId: toolCall.id,
         toolName: toolCall.name,
         status: cached.status,
+        ...(summary ? { summary } : {}),
         at: this.isoNow(),
       });
       return {
@@ -2027,17 +2087,6 @@ export class AgentEnginePipeline {
     }
 
     budget.recordToolCall();
-
-    let argumentsValue: unknown = {};
-    try {
-      argumentsValue =
-        toolCall.arguments.trim().length === 0
-          ? {}
-          : JSON.parse(toolCall.arguments);
-    } catch {
-      warnings.push(`Invalid JSON arguments for tool ${toolCall.name}.`);
-      argumentsValue = { _raw: toolCall.arguments };
-    }
 
     const result = await this.deps.tools!.execute(
       {
@@ -2067,6 +2116,7 @@ export class AgentEnginePipeline {
         callId: toolCall.id,
         toolName: toolCall.name,
         status: result.status,
+        ...(summary ? { summary } : {}),
         at: this.isoNow(),
       });
       // Do not cache: resume must re-execute this call once approved.
@@ -2112,6 +2162,7 @@ export class AgentEnginePipeline {
       callId: toolCall.id,
       toolName: toolCall.name,
       status: result.status,
+      ...(summary ? { summary } : {}),
       at: this.isoNow(),
     });
 
@@ -2123,6 +2174,154 @@ export class AgentEnginePipeline {
         content: serializeToolResultForModel(result),
       },
     };
+  }
+
+  private summarizeToolCall(toolName: string, argumentsValue: unknown): string | undefined {
+    const args = this.asRecord(argumentsValue);
+    if (!args) return undefined;
+
+    const path = this.safeText(args.path);
+    const paths = this.safeStringArray(args.paths);
+    const query = this.safeText(args.query);
+    const pattern = this.safeText(args.pattern);
+    const url = this.safeUrl(args.url);
+    const argv = this.safeStringArray(args.argv);
+    const patches = Array.isArray(args.patches) ? args.patches : undefined;
+
+    switch (toolName) {
+      case "list_directory":
+        return `path=${path ?? "."}`;
+      case "read_file": {
+        const lineRange = this.formatLineRange(args.startLine, args.endLine);
+        return [path ? `path=${path}` : undefined, lineRange]
+          .filter(Boolean)
+          .join(" ");
+      }
+      case "read_many_files":
+        return this.formatPathList("paths", paths);
+      case "search_files":
+        return [
+          query ? `query="${query}"` : undefined,
+          path ? `path=${path}` : undefined,
+          typeof args.maxMatches === "number" ? `maxMatches=${args.maxMatches}` : undefined,
+          typeof args.caseSensitive === "boolean"
+            ? `caseSensitive=${args.caseSensitive}`
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join(" ");
+      case "glob_files":
+        return [
+          pattern ? `pattern=${pattern}` : undefined,
+          path ? `path=${path}` : undefined,
+          typeof args.maxResults === "number" ? `maxResults=${args.maxResults}` : undefined,
+        ]
+          .filter(Boolean)
+          .join(" ");
+      case "file_metadata":
+      case "read_package_scripts":
+        return [
+          path ? `path=${path}` : undefined,
+          typeof args.includeHash === "boolean"
+            ? `includeHash=${args.includeHash}`
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join(" ");
+      case "read_diagnostics":
+      case "read_git_status":
+        return [
+          paths ? this.formatPathList("paths", paths) : "paths=all",
+          typeof args.includeDiff === "boolean"
+            ? `includeDiff=${args.includeDiff}`
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join(" ");
+      case "apply_patch": {
+        const patchPaths = patches
+          ?.map((patch) => this.safeText(this.asRecord(patch)?.path))
+          .filter((value): value is string => Boolean(value));
+        return [
+          `patches=${patches?.length ?? 0}`,
+          patchPaths?.length ? this.formatPathList("paths", patchPaths) : undefined,
+        ]
+          .filter(Boolean)
+          .join(" ");
+      }
+      case "run_command":
+      case "run_readonly_command":
+        return argv ? `argv=${this.formatArgv(argv)}` : undefined;
+      case "fetch_url":
+      case "fetch_docs":
+        return url ? `url=${url}` : undefined;
+      case "web_search":
+        return query ? `query="${query}"` : undefined;
+      default: {
+        const keys = Object.keys(args)
+          .filter((key) => !key.startsWith("_"))
+          .slice(0, 8);
+        return keys.length > 0 ? `args=${keys.join(",")}` : undefined;
+      }
+    }
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  }
+
+  private safeText(value: unknown, maxLength = 160): string | undefined {
+    if (typeof value !== "string") return undefined;
+    const normalized = value.replace(/\s+/g, " ").trim();
+    if (!normalized) return undefined;
+    return normalized.length > maxLength
+      ? `${normalized.slice(0, Math.max(0, maxLength - 1))}…`
+      : normalized;
+  }
+
+  private safeStringArray(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const items = value
+      .map((item) => this.safeText(item))
+      .filter((item): item is string => Boolean(item));
+    return items.length > 0 ? items : undefined;
+  }
+
+  private safeUrl(value: unknown): string | undefined {
+    const raw = this.safeText(value, 240);
+    if (!raw) return undefined;
+    try {
+      const url = new URL(raw);
+      url.search = "";
+      url.hash = "";
+      return this.safeText(url.toString(), 240);
+    } catch {
+      return raw.split("?")[0]?.split("#")[0];
+    }
+  }
+
+  private formatLineRange(startLine: unknown, endLine: unknown): string | undefined {
+    const start = typeof startLine === "number" ? startLine : undefined;
+    const end = typeof endLine === "number" ? endLine : undefined;
+    if (start && end) return `lines=${start}-${end}`;
+    if (start) return `fromLine=${start}`;
+    if (end) return `toLine=${end}`;
+    return undefined;
+  }
+
+  private formatPathList(label: string, paths: readonly string[] | undefined): string {
+    if (!paths || paths.length === 0) return `${label}=none`;
+    const preview = paths.slice(0, 5).join(",");
+    const more = paths.length > 5 ? `,+${paths.length - 5}` : "";
+    return `${label}=${preview}${more}`;
+  }
+
+  private formatArgv(argv: readonly string[]): string {
+    const preview = argv.slice(0, 8).join(" ");
+    const more = argv.length > 8 ? ` …+${argv.length - 8}` : "";
+    return `"${this.safeText(preview, 220) ?? ""}${more}"`;
   }
 
   private calculateLoopInputBudgetTokens(request: ModelRequest): number {
@@ -2366,6 +2565,14 @@ function inferLanguageFromPaths(paths: readonly string[]): ProjectDescriptor["pr
   if (/\.php\b/.test(joined)) return "php";
   if (/\.swift\b/.test(joined)) return "swift";
   return "typescript";
+}
+
+function appendTextContinuation(prefix: string, continuation: string): string {
+  const first = prefix.trimEnd();
+  const second = continuation.trimStart();
+  if (!first) return continuation;
+  if (!second) return first;
+  return `${first}\n${second}`;
 }
 
 export type { AgentRunStatus };

@@ -89,14 +89,17 @@ describe("buildOutputTruncationRecovery", () => {
     expect(plan).toBeNull();
   });
 
-  it("does not recover truncated text-only answers", () => {
+  it("recovers truncated text-only answers with a continuation nudge", () => {
     const plan = buildOutputTruncationRecovery({
       finishReason: "length",
       content: "Here is a long answer that got cut off mid-sent",
       toolCalls: [],
       recoveryAttempt: 0,
     });
-    expect(plan).toBeNull();
+    expect(plan).not.toBeNull();
+    expect(plan!.recoveryKind).toBe("text_continuation");
+    expect(plan!.assistantContent).toContain("cut off mid-sent");
+    expect(plan!.recoveryMessage.content).toContain("Continue exactly");
   });
 });
 

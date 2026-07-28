@@ -47,6 +47,7 @@ import type {
   McpRuntimeStatus,
   PlanView,
   ProviderSettingsSnapshot,
+  RunBudgetSettingsSnapshot,
   RunUsagePayload,
   TokenUsageSnapshot,
   UiSettingsSnapshot,
@@ -66,6 +67,55 @@ import { getWorkspaceTrustSnapshot } from './workspace/trust.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 
 const DEFAULT_CONTEXT_WINDOW = 32768;
+const DEFAULT_RUN_BUDGET: RunBudgetSettingsSnapshot = {
+  unlimited: false,
+  maxModelCalls: 64,
+  maxToolCalls: 128,
+  maxLoopIterations: 96,
+  maxWallTimeMinutes: 30,
+};
+
+function readRunBudgetSettings(vs: typeof vscode): RunBudgetSettingsSnapshot {
+  const cfg = vs.workspace.getConfiguration('mitii');
+  const readPositive = (
+    key: string,
+    fallback: number,
+    minimum: number,
+  ): number => {
+    const value = cfg.get<number>(key);
+    if (
+      typeof value === 'number' &&
+      Number.isFinite(value) &&
+      value >= minimum
+    ) {
+      return Math.floor(value);
+    }
+    return fallback;
+  };
+  return {
+    unlimited: cfg.get<boolean>('runBudget.unlimited') ?? false,
+    maxModelCalls: readPositive(
+      'runBudget.maxModelCalls',
+      DEFAULT_RUN_BUDGET.maxModelCalls,
+      1,
+    ),
+    maxToolCalls: readPositive(
+      'runBudget.maxToolCalls',
+      DEFAULT_RUN_BUDGET.maxToolCalls,
+      1,
+    ),
+    maxLoopIterations: readPositive(
+      'runBudget.maxLoopIterations',
+      DEFAULT_RUN_BUDGET.maxLoopIterations,
+      1,
+    ),
+    maxWallTimeMinutes: readPositive(
+      'runBudget.maxWallTimeMinutes',
+      DEFAULT_RUN_BUDGET.maxWallTimeMinutes,
+      1,
+    ),
+  };
+}
 
 function resolveContextWindow(vs: typeof vscode): number {
   const cfg = vs.workspace.getConfiguration('mitii');
@@ -1310,6 +1360,40 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           this.vs.ConfigurationTarget.Global,
         );
       }
+      if (message.ui.runBudget) {
+        if (message.ui.runBudget.unlimited !== undefined) {
+          await cfg.update(
+            'runBudget.unlimited',
+            message.ui.runBudget.unlimited,
+            this.vs.ConfigurationTarget.Workspace,
+          );
+        }
+        const writeBudgetNumber = async (
+          key: Exclude<keyof RunBudgetSettingsSnapshot, 'unlimited'>,
+          setting: string,
+          minimum: number,
+        ) => {
+          const value = message.ui?.runBudget?.[key];
+          if (value === undefined) return;
+          await cfg.update(
+            setting,
+            Math.max(minimum, Math.floor(Number(value) || 0)),
+            this.vs.ConfigurationTarget.Workspace,
+          );
+        };
+        await writeBudgetNumber('maxModelCalls', 'runBudget.maxModelCalls', 1);
+        await writeBudgetNumber('maxToolCalls', 'runBudget.maxToolCalls', 1);
+        await writeBudgetNumber(
+          'maxLoopIterations',
+          'runBudget.maxLoopIterations',
+          1,
+        );
+        await writeBudgetNumber(
+          'maxWallTimeMinutes',
+          'runBudget.maxWallTimeMinutes',
+          1,
+        );
+      }
       if (message.ui.contextToggles) {
         for (const [key, value] of Object.entries(message.ui.contextToggles)) {
           if (value === undefined) continue;
@@ -1404,6 +1488,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       depth: (cfg.get<string>('ui.depth') as UiSettingsSnapshot['depth']) ?? 'auto',
       contextToggles: toggles,
       approvalMode: cfg.get<string>('safety.approvalMode') ?? 'guided',
+      runBudget: readRunBudgetSettings(this.vs),
     };
   }
 

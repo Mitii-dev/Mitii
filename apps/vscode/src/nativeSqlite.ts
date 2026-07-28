@@ -26,12 +26,17 @@ export function resolveNativeSqliteBinding(): string {
     return override;
   }
 
-  const bundled = join(__dirname, 'native', NATIVE_BINDING_FILE);
-  if (existsSync(bundled)) {
+  const candidates = [
+    join(__dirname, 'native', NATIVE_BINDING_FILE),
+    join(__dirname, '..', 'dist', 'native', NATIVE_BINDING_FILE),
+    join(__dirname, '..', 'native', NATIVE_BINDING_FILE),
+  ];
+  const bundled = candidates.find((candidate) => existsSync(candidate));
+  if (bundled) {
     return bundled;
   }
 
   throw new Error(
-    `Mitii SQLite native binding is missing at ${bundled}. Run the VS Code package build so ${NATIVE_BINDING_FILE} is staged into dist/native.`,
+    `Mitii SQLite native binding is missing. Checked: ${candidates.join(', ')}. Run the VS Code package build so ${NATIVE_BINDING_FILE} is staged into dist/native.`,
   );
 }

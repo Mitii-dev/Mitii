@@ -61,6 +61,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       selectedCount: z.number().int().nonnegative(),
       omittedCount: z.number().int().nonnegative(),
       status: z.string().min(1),
+      selected: z.array(z.string().min(1).max(160)).max(20).optional(),
+      omitted: z.array(z.string().min(1).max(160)).max(20).optional(),
       at: z.string().datetime(),
     })
     .strict(),
@@ -124,6 +126,7 @@ export const runEventSchema = z.discriminatedUnion("type", [
       runId: z.string().min(1),
       callId: z.string().min(1),
       toolName: z.string().min(1),
+      summary: z.string().min(1).max(500).optional(),
       at: z.string().datetime(),
     })
     .strict(),
@@ -134,6 +137,7 @@ export const runEventSchema = z.discriminatedUnion("type", [
       callId: z.string().min(1),
       toolName: z.string().min(1),
       status: z.string().min(1),
+      summary: z.string().min(1).max(500).optional(),
       at: z.string().datetime(),
     })
     .strict(),

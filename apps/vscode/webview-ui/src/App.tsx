@@ -48,6 +48,7 @@ import type {
   SettingsTab,
   SkillCatalogItem,
   TokenUsageSnapshot,
+  UiSettingsPatch,
   UiNav,
   UiSettingsSnapshot,
   WorkspaceNoticeView,
@@ -84,12 +85,21 @@ const DEFAULT_CONTEXT_TOGGLES: ContextToggles = {
   memory: true,
 };
 
+const DEFAULT_RUN_BUDGET = {
+  unlimited: false,
+  maxModelCalls: 64,
+  maxToolCalls: 128,
+  maxLoopIterations: 96,
+  maxWallTimeMinutes: 30,
+};
+
 const DEFAULT_UI: UiSettingsSnapshot = {
   showReasoning: true,
   reasoningPreviewMaxChars: 8000,
   depth: 'auto',
   contextToggles: DEFAULT_CONTEXT_TOGGLES,
   approvalMode: 'guided',
+  runBudget: DEFAULT_RUN_BUDGET,
 };
 
 function shouldReplaceActivity(
@@ -235,6 +245,10 @@ export function App() {
         contextToggles: {
           ...DEFAULT_CONTEXT_TOGGLES,
           ...msg.ui.contextToggles,
+        },
+        runBudget: {
+          ...DEFAULT_RUN_BUDGET,
+          ...msg.ui.runBudget,
         },
       });
       setDepth(msg.ui.depth);
@@ -601,13 +615,16 @@ export function App() {
     });
   };
 
-  const saveUi = (patch: Partial<UiSettingsSnapshot>) => {
+  const saveUi = (patch: UiSettingsPatch) => {
     const next = {
       ...ui,
       ...patch,
       contextToggles: patch.contextToggles
         ? { ...ui.contextToggles, ...patch.contextToggles }
         : ui.contextToggles,
+      runBudget: patch.runBudget
+        ? { ...ui.runBudget, ...patch.runBudget }
+        : ui.runBudget,
     };
     setUi(next);
     if (patch.depth) setDepth(patch.depth);

@@ -158,7 +158,23 @@ export interface UiSettingsSnapshot {
   depth: AgentUiDepth;
   contextToggles: ContextToggles;
   approvalMode: string;
+  runBudget: RunBudgetSettingsSnapshot;
 }
+
+export interface RunBudgetSettingsSnapshot {
+  unlimited: boolean;
+  maxModelCalls: number;
+  maxToolCalls: number;
+  maxLoopIterations: number;
+  maxWallTimeMinutes: number;
+}
+
+export type UiSettingsPatch = Partial<
+  Omit<UiSettingsSnapshot, 'contextToggles' | 'runBudget'> & {
+    contextToggles?: Partial<ContextToggles>;
+    runBudget?: Partial<RunBudgetSettingsSnapshot>;
+  }
+>;
 
 export interface PathSuggestion {
   path: string;
@@ -337,11 +353,7 @@ export type WebviewToHostMessage =
           'type' | 'baseUrl' | 'model' | 'contextWindow' | 'maximumOutputTokens'
         >
       >;
-      ui?: Partial<
-        Omit<UiSettingsSnapshot, 'contextToggles'> & {
-          contextToggles?: Partial<ContextToggles>;
-        }
-      >;
+      ui?: UiSettingsPatch;
       workspaceRootOverride?: string | null;
       mcp?: McpSettings;
       approvalMode?: string;

@@ -11,6 +11,7 @@ import type {
   MemoryItemView,
   ProviderSettingsSnapshot,
   SettingsTab,
+  UiSettingsPatch,
   UiSettingsSnapshot,
   WorkspaceSnapshotInfo,
 } from '../protocol';
@@ -41,7 +42,7 @@ interface SettingsPanelProps {
   onCustomModelChange: (value: boolean) => void;
   modelOptions: string[];
   ui: UiSettingsSnapshot;
-  onSaveUi: (patch: Partial<UiSettingsSnapshot>) => void;
+  onSaveUi: (patch: UiSettingsPatch) => void;
   mcp: McpSettings;
   mcpStore: McpServerConfig[];
   mcpRuntimeStatus: McpRuntimeStatus;
@@ -565,6 +566,93 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     })
                   }
                 />
+              </div>
+            </SettingsSection>
+            <SettingsSection
+              title="Run budget"
+              description="Caps for a single Mitii turn before it stops."
+            >
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={ui.runBudget.unlimited}
+                  onChange={(e) =>
+                    onSaveUi({
+                      runBudget: { unlimited: e.target.checked },
+                    })
+                  }
+                />
+                Unlimited run budget
+              </label>
+              <div className="settings-field-grid">
+                <div className="field">
+                  <label htmlFor="maxModelCalls">Model calls</label>
+                  <input
+                    id="maxModelCalls"
+                    type="number"
+                    min={1}
+                    disabled={ui.runBudget.unlimited}
+                    value={ui.runBudget.maxModelCalls}
+                    onChange={(e) =>
+                      onSaveUi({
+                        runBudget: {
+                          maxModelCalls: Number(e.target.value) || 64,
+                        },
+                      })
+                    }
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="maxToolCalls">Tool calls</label>
+                  <input
+                    id="maxToolCalls"
+                    type="number"
+                    min={1}
+                    disabled={ui.runBudget.unlimited}
+                    value={ui.runBudget.maxToolCalls}
+                    onChange={(e) =>
+                      onSaveUi({
+                        runBudget: {
+                          maxToolCalls: Number(e.target.value) || 128,
+                        },
+                      })
+                    }
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="maxLoopIterations">Loop iterations</label>
+                  <input
+                    id="maxLoopIterations"
+                    type="number"
+                    min={1}
+                    disabled={ui.runBudget.unlimited}
+                    value={ui.runBudget.maxLoopIterations}
+                    onChange={(e) =>
+                      onSaveUi({
+                        runBudget: {
+                          maxLoopIterations: Number(e.target.value) || 96,
+                        },
+                      })
+                    }
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="maxWallTimeMinutes">Wall time (min)</label>
+                  <input
+                    id="maxWallTimeMinutes"
+                    type="number"
+                    min={1}
+                    disabled={ui.runBudget.unlimited}
+                    value={ui.runBudget.maxWallTimeMinutes}
+                    onChange={(e) =>
+                      onSaveUi({
+                        runBudget: {
+                          maxWallTimeMinutes: Number(e.target.value) || 30,
+                        },
+                      })
+                    }
+                  />
+                </div>
               </div>
             </SettingsSection>
           </div>

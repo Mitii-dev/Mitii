@@ -140,7 +140,11 @@ describe("AgentEngine Skills/Memory wiring (Phase 9)", () => {
     expect(
       promptInput.instructions?.memory?.map((block: { id: string }) => block.id),
     ).toEqual(["m-pnpm"]);
-    expect(events.some((event) => event.type === "skills_ready")).toBe(true);
+    const skillsReady = events.find(
+      (event): event is { type: "skills_ready"; selected?: string[] } =>
+        event.type === "skills_ready",
+    );
+    expect(skillsReady?.selected).toEqual(["bugfix-localize"]);
     expect(events.some((event) => event.type === "memory_ready")).toBe(true);
   });
 

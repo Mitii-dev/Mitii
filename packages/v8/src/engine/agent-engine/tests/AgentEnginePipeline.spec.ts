@@ -81,6 +81,28 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     );
   });
 
+  it("continues truncated text-only answers instead of accepting a partial final answer", async () => {
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({ route: "direct_answer" }),
+        llm: new ScriptedLlmPort(
+          [
+            { content: "First half of the answer", finishReason: "length" },
+            { content: "second half." },
+          ],
+          createCapabilities({ supportsTools: false }),
+        ),
+      }),
+    );
+
+    const result = await engine.start(baseStartInput()).result;
+
+    expect(result.status).toBe("completed");
+    expect(result.answer).toBe("First half of the answer\nsecond half.");
+    expect(result.answer).not.toContain("output truncated");
+    expect(result.reasonCodes).toContain("output_truncation_recovered");
+  });
+
   it("suspends on clarification without calling the model", async () => {
     let modelCalls = 0;
     const llm = new ScriptedLlmPort([{ content: "should not run" }]);
@@ -185,13 +207,24 @@ describe("AgentEnginePipeline (Phase 7)", () => {
       }),
     );
 
-    const result = await handle.result;
+    const [result, events] = await Promise.all([
+      handle.result,
+      collectEvents(handle.events),
+    ]);
     expect(result.status).toBe("completed");
     expect(result.answer).toContain("login");
     expect(result.usage.toolCalls).toBe(1);
     expect(result.usage.modelCalls).toBe(2);
     expect(result.reasonCodes).toContain("context_retrieved");
     expect(result.reasonCodes).toContain("tools_executed");
+    const toolStarted = events.find(
+      (event): event is { type: "tool_started"; summary?: string } =>
+        (event as { type?: string }).type === "tool_started",
+    );
+    expect(toolStarted?.summary).toBe("path=src/auth.ts");
+    for (const event of events) {
+      expect(() => runEventSchema.parse(event)).not.toThrow();
+    }
   });
 
   it("compacts completed tool call history before later model calls", async () => {

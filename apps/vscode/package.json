@@ -325,6 +325,35 @@
           "default": "guided",
           "description": "Approval autonomy: safe (ask for approval), guided (approve for me), pilot (full access). Legacy builder maps to guided."
         },
+        "mitii.runBudget.unlimited": {
+          "type": "boolean",
+          "default": false,
+          "description": "Disable practical per-run model/tool/loop/wall-time caps for long-running local work. Provider quotas and machine limits still apply."
+        },
+        "mitii.runBudget.maxModelCalls": {
+          "type": "number",
+          "default": 64,
+          "minimum": 1,
+          "description": "Maximum model calls allowed in one Mitii run before it stops with budget_exhausted."
+        },
+        "mitii.runBudget.maxToolCalls": {
+          "type": "number",
+          "default": 128,
+          "minimum": 1,
+          "description": "Maximum tool calls allowed in one Mitii run before it stops with budget_exhausted."
+        },
+        "mitii.runBudget.maxLoopIterations": {
+          "type": "number",
+          "default": 96,
+          "minimum": 1,
+          "description": "Maximum model/tool loop iterations allowed in one Mitii run before it stops with budget_exhausted."
+        },
+        "mitii.runBudget.maxWallTimeMinutes": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "description": "Maximum active wall-clock minutes allowed in one Mitii run. Time waiting for user approval is excluded by the engine."
+        },
         "mitii.onboarding.completed": {
           "type": "boolean",
           "default": false,

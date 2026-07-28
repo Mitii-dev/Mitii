@@ -177,6 +177,7 @@ export class ScriptedLlmPort implements LlmPort {
     private readonly turns: Array<{
       content?: string;
       toolCalls?: ModelToolCall[];
+      finishReason?: string;
       fail?: { code: string; message: string };
       cancel?: boolean;
     }>,
@@ -253,7 +254,7 @@ export class ScriptedLlmPort implements LlmPort {
       return;
     }
 
-    yield { type: "completed", finishReason: "stop" };
+    yield { type: "completed", finishReason: script.finishReason ?? "stop" };
   }
 }
 

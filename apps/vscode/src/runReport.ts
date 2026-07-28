@@ -63,8 +63,16 @@ export function formatContextInspection(events: RunEvent[]): string[] {
         `[context] token=${event.stateToken.slice(0, 12)}… blocks=${event.blockCount} status=${event.status}${paths}`,
       );
     } else if (event.type === 'skills_ready') {
+      const selected =
+        'selected' in event && Array.isArray(event.selected) && event.selected.length
+          ? ` ids=${event.selected.slice(0, 8).join(',')}`
+          : '';
+      const omitted =
+        'omitted' in event && Array.isArray(event.omitted) && event.omitted.length
+          ? ` omittedIds=${event.omitted.slice(0, 8).join(',')}`
+          : '';
       lines.push(
-        `[skills] selected=${event.selectedCount} omitted=${event.omittedCount} status=${event.status}`,
+        `[skills] selected=${event.selectedCount}${selected} omitted=${event.omittedCount}${omitted} status=${event.status}`,
       );
     } else if (event.type === 'memory_ready') {
       lines.push(

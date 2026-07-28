@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   AGENT_ENGINE_SCHEMA_VERSION,
+  type AgentRunBudget,
   type AgentRunResult,
   type MitiiClient,
   type MitiiConversationMessage,
@@ -16,6 +17,8 @@ import { formatDiagnosticsPromptBlock } from './context/diagnosticsContext.js';
 import { captureEditorContext } from './context/editorContext.js';
 import { buildContextUsageBreakdown } from './contextUsage.js';
 import { getSharedMcpManager } from './mcp/manager.js';
+import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
+import { scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
 import type {
   ActivityEventPayload,
   ContextUsageBreakdown,
@@ -48,9 +51,9 @@ export function formatRunEventLine(event: RunEvent): string | undefined {
       }`;
     }
     case 'tool_started':
-      return `[tool] ${event.toolName}…`;
+      return `[tool] ${event.toolName}${event.summary ? ` ${event.summary}` : ''}…`;
     case 'tool_completed':
-      return `[tool] ${event.toolName} → ${event.status}`;
+      return `[tool] ${event.toolName}${event.summary ? ` ${event.summary}` : ''} → ${event.status}`;
     case 'suspended':
       return `[suspended:${event.kind}] ${event.rationale}`;
     case 'warning':
@@ -71,7 +74,7 @@ export function formatRunEventLine(event: RunEvent): string | undefined {
     case 'decision_made':
       return `[decision] ${event.route}`;
     case 'skills_ready':
-      return `[skills] selected=${event.selectedCount} omitted=${event.omittedCount} status=${event.status}`;
+      return `[skills] selected=${event.selectedCount}${formatEventList(' ids', event.selected)} omitted=${event.omittedCount}${formatEventList(' ids', event.omitted)} status=${event.status}`;
     case 'memory_ready':
       return `[memory] selected=${event.selectedCount} omitted=${event.omittedCount} status=${event.status}`;
     case 'stage_started':
@@ -81,6 +84,13 @@ export function formatRunEventLine(event: RunEvent): string | undefined {
     default:
       return undefined;
   }
+}
+
+function formatEventList(label: string, values: readonly string[] | undefined): string {
+  if (!values?.length) return '';
+  const preview = values.slice(0, 6).join(',');
+  const more = values.length > 6 ? `,+${values.length - 6}` : '';
+  return `${label}=${preview}${more}`;
 }
 
 function eventAtMs(event: RunEvent): number {
@@ -220,6 +230,7 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         at,
         kind: 'tool',
         title: `Running ${event.toolName}`,
+        detail: event.summary,
         status: 'running',
       };
     case 'tool_completed':
@@ -228,6 +239,7 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         at,
         kind: 'tool',
         title: event.toolName,
+        detail: event.summary,
         status: event.status,
       };
     case 'context_ready': {
@@ -295,7 +307,11 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         at,
         kind: 'info',
         title: 'Skills ready',
-        detail: `${event.selectedCount} selected`,
+        detail: event.selected?.length
+          ? `${event.selected.slice(0, 6).join(', ')}${
+              event.selected.length > 6 ? ` · +${event.selected.length - 6} more` : ''
+            }`
+          : `${event.selectedCount} selected`,
       };
     case 'memory_ready':
       return {
@@ -577,6 +593,32 @@ function resolveApprovalPolicy(preset: string | undefined): {
   }
 }
 
+function resolveRunBudget(vs: typeof vscode): AgentRunBudget {
+  const cfg = vs.workspace.getConfiguration('mitii');
+  if (cfg.get<boolean>('runBudget.unlimited') ?? false) {
+    return {
+      maxModelCalls: 1_000_000,
+      maxToolCalls: 1_000_000,
+      maxLoopIterations: 1_000_000,
+      maxWallTimeMs: 365 * 24 * 60 * 60 * 1000,
+    };
+  }
+  const readPositive = (key: string, fallback: number): number => {
+    const value = cfg.get<number>(key);
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      return Math.floor(value);
+    }
+    return fallback;
+  };
+  return {
+    maxModelCalls: readPositive('runBudget.maxModelCalls', 64),
+    maxToolCalls: readPositive('runBudget.maxToolCalls', 128),
+    maxLoopIterations: readPositive('runBudget.maxLoopIterations', 96),
+    maxWallTimeMs:
+      readPositive('runBudget.maxWallTimeMinutes', 30) * 60 * 1000,
+  };
+}
+
 /**
  * Run an ask through the SDK with OutputChannel streaming + optional UI hooks.
  */
@@ -776,14 +818,34 @@ export async function runAskInOutputChannel(options: {
         options.workspaceId ?? 'vscode_workspace',
       );
       if (!latest) {
-        const snap = await buildWorkspaceSnapshot({
-          workspaceRoot,
-          workspaceId: options.workspaceId ?? 'vscode_workspace',
-        });
-        await client.publishRepositoryState(snap.candidate);
-        channel.appendLine(
-          `[index] auto-published host snapshot (${snap.fileCount} files)`,
-        );
+        const workspaceId = options.workspaceId ?? 'vscode_workspace';
+        try {
+          const full = await runFullWorkspaceIndex({
+            mitiiDir: scaffoldMitiiWorkspace(workspaceRoot),
+            workspaceRoot,
+            workspaceId,
+          });
+          await client.publishRepositoryStateFromIndexing(full.indexing, {
+            graphRevisionByRoot: full.graphRevisionByRoot,
+            mapRevisionByRoot: full.mapRevisionByRoot,
+          });
+          channel.appendLine(
+            `[index] auto-published full index (${full.fileCount} files)`,
+          );
+        } catch (fullIndexError) {
+          const snap = await buildWorkspaceSnapshot({
+            workspaceRoot,
+            workspaceId,
+          });
+          await client.publishRepositoryState(snap.candidate);
+          channel.appendLine(
+            `[index] auto-published host snapshot (${snap.fileCount} files; full index unavailable: ${
+              fullIndexError instanceof Error
+                ? fullIndexError.message
+                : String(fullIndexError)
+            })`,
+          );
+        }
       }
     } catch (error) {
       channel.appendLine(
@@ -801,6 +863,7 @@ export async function runAskInOutputChannel(options: {
       workspaceRoot,
       approvalMode: approvalPolicy.approvalMode,
       planApproval: approvalPolicy.planApproval,
+      budget: resolveRunBudget(vs),
       ...(options.conversation && options.conversation.length > 0
         ? { conversation: options.conversation }
         : {}),

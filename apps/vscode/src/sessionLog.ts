@@ -66,9 +66,14 @@ function compactEvent(event: RunEvent): Record<string, unknown> {
         preview: event.preview,
       };
     case 'tool_started':
-      return { ...base, toolName: event.toolName };
+      return { ...base, toolName: event.toolName, summary: event.summary };
     case 'tool_completed':
-      return { ...base, toolName: event.toolName, status: event.status };
+      return {
+        ...base,
+        toolName: event.toolName,
+        summary: event.summary,
+        status: event.status,
+      };
     case 'context_ready':
       return {
         ...base,
@@ -82,6 +87,8 @@ function compactEvent(event: RunEvent): Record<string, unknown> {
         ...base,
         selectedCount: event.selectedCount,
         omittedCount: event.omittedCount,
+        selected: 'selected' in event ? event.selected : undefined,
+        omitted: 'omitted' in event ? event.omitted : undefined,
         status: event.status,
       };
     case 'suspended':
