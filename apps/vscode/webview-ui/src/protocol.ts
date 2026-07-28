@@ -267,6 +267,30 @@ export interface ReviewDiffView {
   patchPreview?: string;
 }
 
+/** Per-file stats for an agent run's mutations. */
+export interface FileChangeEntryView {
+  path: string;
+  additions: number;
+  deletions: number;
+  status: 'A' | 'M' | 'D' | '?';
+  /** Truncated unified-diff style preview. */
+  patchPreview?: string;
+  /** True when the path was already dirty before the run started. */
+  wasPreDirty?: boolean;
+}
+
+/** Summary of files this agent run changed. */
+export interface RunFileChangesView {
+  runId: string;
+  files: FileChangeEntryView[];
+  totalAdditions: number;
+  totalDeletions: number;
+  /** Count of pre-existing dirty files left untouched. */
+  leftUntouchedPreDirty?: number;
+}
+
+export type ContextPinSource = 'auto' | 'user';
+
 export interface MemoryItemView {
   id: string;
   text: string;
@@ -367,7 +391,11 @@ export type WebviewToHostMessage =
   | { type: 'index.refresh' }
   | { type: 'index.reindex' }
   | { type: 'paths.search'; query: string; requestId: string }
-  | { type: 'openFolder' };
+  | { type: 'openFolder' }
+  | { type: 'openFile'; path: string; line?: number; column?: number }
+  | { type: 'undoFileChanges'; runId: string }
+  | { type: 'reviewFileChange'; runId: string; path: string }
+  | { type: 'dismissFileChanges'; runId: string };
 
 /** Host → webview */
 export type HostToWebviewMessage =
@@ -429,7 +457,11 @@ export type HostToWebviewMessage =
   | { type: 'paths.results'; requestId: string; suggestions: PathSuggestion[] }
   | { type: 'openSettings'; tab?: SettingsTab }
   | { type: 'setTab'; tab: UiNav }
-  | { type: 'editorPin'; path: string }
+  | { type: 'editorPin'; path: string; source?: ContextPinSource }
+  | { type: 'editorUnpin'; path: string }
+  | { type: 'syncAutoPins'; paths: string[] }
+  | { type: 'run.fileChanges'; changes: RunFileChangesView }
+  | { type: 'fileChanges.undone'; runId: string; restored: string[] }
   | { type: 'workspaceNotice'; notice: WorkspaceNoticeView }
   | { type: 'history'; threads: ChatThreadSummary[]; activeThreadId?: string }
   | {

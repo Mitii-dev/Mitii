@@ -1,34 +1,73 @@
+import type { CSSProperties } from 'react';
+
+import type { ContextPinSource } from '../protocol';
 import { IconButton } from './IconButton';
 import { IconPlus, IconTrash } from './Icons';
 
+export interface ContextPin {
+  path: string;
+  source: ContextPinSource;
+}
+
 interface ContextPanelProps {
-  paths: string[];
+  pins: ContextPin[];
+  modeColor?: string;
   onRemove: (path: string) => void;
   onClear: () => void;
   onPick: () => void;
+  onKeep?: (path: string) => void;
 }
 
 export function ContextPanel({
-  paths,
+  pins,
+  modeColor,
   onRemove,
   onClear,
   onPick,
+  onKeep,
 }: ContextPanelProps) {
-  if (paths.length === 0) {
+  if (pins.length === 0) {
     return null;
   }
 
   return (
-    <section className="context-panel" aria-label="Pinned context">
+    <section
+      className="context-panel"
+      aria-label="Pinned context"
+      style={
+        modeColor
+          ? ({ '--pin-mode-color': modeColor } as CSSProperties)
+          : undefined
+      }
+    >
       <div className="pins">
-        {paths.map((p) => (
-          <span key={p} className="pin-chip">
-            @{p}
+        {pins.map((pin) => (
+          <span
+            key={pin.path}
+            className={`pin-chip${pin.source === 'auto' ? ' pin-chip--auto' : ''}`}
+            title={
+              pin.source === 'auto'
+                ? 'Auto from open editor — closes with the tab'
+                : 'Pinned context'
+            }
+          >
             <button
               type="button"
-              aria-label={`Unpin ${p}`}
-              title={`Unpin ${p}`}
-              onClick={() => onRemove(p)}
+              className="pin-chip__path"
+              onClick={() => onKeep?.(pin.path)}
+              title={
+                pin.source === 'auto'
+                  ? 'Keep this file in context'
+                  : pin.path
+              }
+            >
+              @{pin.path}
+            </button>
+            <button
+              type="button"
+              aria-label={`Unpin ${pin.path}`}
+              title={`Unpin ${pin.path}`}
+              onClick={() => onRemove(pin.path)}
             >
               ×
             </button>

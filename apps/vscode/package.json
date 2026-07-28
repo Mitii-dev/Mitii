@@ -215,7 +215,7 @@
         "mitii.debug": {
           "type": "boolean",
           "default": false,
-          "description": "Enable debug logging and show stack traces in UI"
+          "description": "Enable debug logging in the Mitii Output channel (auto-shows the channel; includes stack traces on failures)"
         },
         "mitii.provider.type": {
           "type": "string",

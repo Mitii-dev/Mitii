@@ -37,6 +37,26 @@ export function activate(context: ExtensionContext): void {
   const channel = vscode.window.createOutputChannel('Mitii');
   context.subscriptions.push(channel);
 
+  const debugEnabled = (): boolean =>
+    vscode.workspace.getConfiguration('mitii').get<boolean>('debug') === true;
+
+  const debugLog = (line: string): void => {
+    if (debugEnabled()) channel.appendLine(line);
+  };
+
+  const extensionVersion =
+    (context.extension?.packageJSON as { version?: string } | undefined)
+      ?.version ?? 'unknown';
+  channel.appendLine(
+    `[mitii] activate v${extensionVersion} · ${new Date().toISOString()}`,
+  );
+  channel.appendLine(
+    `[mitii] extensionMode=${context.extensionMode} · debug=${debugEnabled()}`,
+  );
+  if (debugEnabled() || context.extensionMode === vscode.ExtensionMode.Development) {
+    channel.show(true);
+  }
+
   let client: MitiiClient | undefined;
   let workspaceId = 'vscode_workspace';
   let lastSessionExportPath: string | undefined;
@@ -45,15 +65,26 @@ export function activate(context: ExtensionContext): void {
     vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
   const rootAtActivate = workspaceRoot();
+  channel.appendLine(
+    `[mitii] workspaceRoot=${rootAtActivate ?? '(none)'}`,
+  );
   if (rootAtActivate) {
     try {
       const dir = scaffoldMitiiWorkspace(rootAtActivate);
       channel.appendLine(`[mitii] workspace data: ${dir}`);
     } catch (error) {
-      channel.appendLine(
-        `[mitii] scaffold failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      const detail =
+        error instanceof Error
+          ? debugEnabled() && error.stack
+            ? error.stack
+            : error.message
+          : String(error);
+      channel.appendLine(`[mitii] scaffold failed: ${detail}`);
     }
+  } else {
+    channel.appendLine(
+      '[mitii] no folder open — indexing and agent runs need a workspace',
+    );
   }
 
   const invalidateClient = (): void => {
@@ -493,16 +524,59 @@ export function activate(context: ExtensionContext): void {
     }),
     vscode.window.onDidChangeActiveTextEditor(() => {
       const root = workspaceRoot();
-      const snap = captureEditorContext(vscode, root);
+      const snap = captureEditorContext(vscode, root, {
+        includeOpenTabs: true,
+      });
       if (snap.activeRelPath) {
-        sidebar.post({ type: 'editorPin', path: snap.activeRelPath });
+        sidebar.post({
+          type: 'editorPin',
+          path: snap.activeRelPath,
+          source: 'auto',
+        });
       }
+      sidebar.post({
+        type: 'syncAutoPins',
+        paths: snap.openTabRelPaths.length
+          ? snap.openTabRelPaths
+          : snap.activeRelPath
+            ? [snap.activeRelPath]
+            : [],
+      });
       sidebar.postTrustAndNotices(getWorkspaceTrustSnapshot(vscode));
+    }),
+    vscode.workspace.onDidCloseTextDocument((doc) => {
+      if (doc.uri.scheme !== 'file') return;
+      const root = workspaceRoot();
+      const snap = captureEditorContext(vscode, root, {
+        includeOpenTabs: true,
+      });
+      // Prefer full sync so soft pins match still-open tabs.
+      sidebar.post({
+        type: 'syncAutoPins',
+        paths: snap.openTabRelPaths,
+      });
+      debugLog(`[mitii] document closed → syncAutoPins (${snap.openTabRelPaths.length})`);
+    }),
+    vscode.window.onDidChangeVisibleTextEditors(() => {
+      const root = workspaceRoot();
+      const snap = captureEditorContext(vscode, root, {
+        includeOpenTabs: true,
+      });
+      sidebar.post({
+        type: 'syncAutoPins',
+        paths: snap.openTabRelPaths,
+      });
     }),
     onWorkspaceTrustChanged(vscode, (snap) => {
       sidebar.postTrustAndNotices(snap);
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('mitii.debug')) {
+        channel.appendLine(
+          `[mitii] debug logging ${debugEnabled() ? 'enabled' : 'disabled'}`,
+        );
+        if (debugEnabled()) channel.show(true);
+      }
       if (
         event.affectsConfiguration('mitii.provider') ||
         event.affectsConfiguration('mitii.workspace') ||
@@ -540,6 +614,7 @@ export function activate(context: ExtensionContext): void {
 
   void ensureClient()
     .then(async () => {
+      channel.appendLine('[mitii] client composed OK');
       if (!workspaceRoot()) return;
       const status = await sidebar.ensureIndexed();
       channel.appendLine(
@@ -547,9 +622,14 @@ export function activate(context: ExtensionContext): void {
       );
     })
     .catch((error) => {
-      channel.appendLine(
-        `[mitii] client/index init deferred: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      const detail =
+        error instanceof Error
+          ? debugEnabled() && error.stack
+            ? error.stack
+            : error.message
+          : String(error);
+      channel.appendLine(`[mitii] client/index init deferred: ${detail}`);
+      if (debugEnabled()) channel.show(true);
     });
 
   context.subscriptions.push(
@@ -558,10 +638,14 @@ export function activate(context: ExtensionContext): void {
       invalidateClient();
       if (!root) return;
       try {
-        channel.appendLine(`[mitii] workspace data: ${scaffoldMitiiWorkspace(root)}`);
+        channel.appendLine(
+          `[mitii] workspace data: ${scaffoldMitiiWorkspace(root)}`,
+        );
       } catch (error) {
         channel.appendLine(
-          `[mitii] scaffold failed: ${error instanceof Error ? error.message : String(error)}`,
+          `[mitii] scaffold failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
         );
       }
       void sidebar.ensureIndexed().then((status) => {
@@ -572,6 +656,8 @@ export function activate(context: ExtensionContext): void {
       });
     }),
   );
+
+  channel.appendLine('[mitii] activation complete');
 }
 
 export function deactivate(): void {

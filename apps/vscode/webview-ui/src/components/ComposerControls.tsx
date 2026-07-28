@@ -7,6 +7,7 @@ import {
 } from 'react';
 
 import type { AgentUiDepth, AgentUiMode } from '../protocol';
+import { MODE_COLORS } from '../modeColors';
 import {
   normalizeApproval,
   type ApprovalUiMode,
@@ -27,6 +28,7 @@ import {
 
 export type { ApprovalUiMode };
 export { normalizeApproval };
+export { MODE_COLORS };
 
 type ComposerSelectId = 'mode' | 'approval' | 'depth';
 
@@ -45,28 +47,28 @@ const MODES: ComposerOption<AgentUiMode>[] = [
     id: 'ask',
     label: 'Ask',
     description: 'Explore and answer — read-only',
-    color: '#22c55e',
+    color: MODE_COLORS.ask,
     icon: <IconAsk />,
   },
   {
     id: 'plan',
     label: 'Plan',
     description: 'Analyze and propose a structured plan',
-    color: '#f59e0b',
+    color: MODE_COLORS.plan,
     icon: <IconPlan />,
   },
   {
     id: 'agent',
     label: 'Agent',
     description: 'Implement with controlled execution',
-    color: '#ef4444',
+    color: MODE_COLORS.agent,
     icon: <IconAgent />,
   },
   {
     id: 'review',
     label: 'Review',
     description: 'Inspect diffs and report findings',
-    color: '#38bdf8',
+    color: MODE_COLORS.review,
     icon: <IconReview />,
   },
 ];

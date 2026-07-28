@@ -702,7 +702,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
         {tab === 'debug' ? (
           <div className="settings-panel">
-            <SettingsSection title="Runtime diagnostics">
+            <SettingsSection
+              title="Runtime diagnostics"
+              description="Use View → Output → Mitii for activation and run logs. Enable mitii.debug for verbose stacks."
+            >
               <div className="stat">
                 <div className="stat-label">Provider connection</div>
                 <div className="mono" style={{ marginTop: 8 }}>
@@ -726,9 +729,20 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   {index.stateTokenPreview ?? '—'}
                 </div>
               </div>
+              <div className="stat">
+                <div className="stat-label">Index mode</div>
+                <div className="mono" style={{ marginTop: 8 }}>
+                  {formatIndexMode(index.indexMode)} · files={index.fileCount}
+                </div>
+              </div>
               <p className="field-hint">
                 Preset helper:{' '}
                 {getProviderPreset(provider.type)?.label ?? provider.type}
+              </p>
+              <p className="field-hint">
+                Startup logs appear in the Mitii Output channel on activate.
+                Toggle <span className="mono">mitii.debug</span> in VS Code
+                settings to auto-show the channel and print stack traces.
               </p>
             </SettingsSection>
           </div>

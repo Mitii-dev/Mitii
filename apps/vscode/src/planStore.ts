@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
 import type { PlanArtifact } from '@mitii/sdk';
 import { serializePlanText } from '@mitii/v8';
 
@@ -22,6 +23,8 @@ export interface SavePlanOptions {
   threadId?: string;
   /** Injected clock for tests. */
   now?: Date;
+  /** Injected id for tests. */
+  id?: string;
 }
 
 export interface SavePlanResult {
@@ -34,15 +37,17 @@ export interface SavePlanResult {
 
 /**
  * Build a filesystem-safe plan basename:
- * `YYYYMMDD-HHMMSS-<slug>.json`
+ * `MM-DD-YYYY-HH-MM-<id>-<slug>`
  */
 export function buildPlanFileBaseName(options: {
   plan: PlanArtifact;
   now?: Date;
+  id?: string;
 }): string {
   const stamp = formatTimestamp(options.now ?? new Date());
+  const id = options.id ?? randomBytes(3).toString('hex');
   const slug = slugifyObjective(options.plan.objective);
-  return `${stamp}-${slug}`;
+  return `${stamp}-${id}-${slug}`;
 }
 
 /**
@@ -59,7 +64,11 @@ export function savePlanToWorkspace(options: SavePlanOptions): SavePlanResult {
   const plansDir = mitiiPlansDir(root);
   mkdirSync(plansDir, { recursive: true });
 
-  const baseName = buildPlanFileBaseName({ plan: options.plan, now });
+  const baseName = buildPlanFileBaseName({
+    plan: options.plan,
+    now,
+    id: options.id,
+  });
   const jsonName = `${baseName}.json`;
   const mdName = `${baseName}.md`;
   const absolutePath = join(plansDir, jsonName);
@@ -100,16 +109,19 @@ export function savePlanToWorkspace(options: SavePlanOptions): SavePlanResult {
   };
 }
 
-function formatTimestamp(date: Date): string {
+/** Local wall-clock stamp: `MM-DD-YYYY-HH-MM`. */
+export function formatTimestamp(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return [
-    date.getUTCFullYear(),
-    pad(date.getUTCMonth() + 1),
-    pad(date.getUTCDate()),
+    pad(date.getMonth() + 1),
     '-',
-    pad(date.getUTCHours()),
-    pad(date.getUTCMinutes()),
-    pad(date.getUTCSeconds()),
+    pad(date.getDate()),
+    '-',
+    date.getFullYear(),
+    '-',
+    pad(date.getHours()),
+    '-',
+    pad(date.getMinutes()),
   ].join('');
 }
 

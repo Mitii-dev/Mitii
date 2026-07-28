@@ -29,6 +29,15 @@ import {
   showPatchDiffPreview,
   showWriteDiffPreview,
 } from './diff/diffPreview.js';
+import {
+  buildRunFileChangesView,
+  createFileChangeRunSnapshot,
+  listDirtyGitPaths,
+  noteMutatedPaths,
+  noteMutatedPathsFromEvent,
+  undoRunFileChanges,
+  type FileChangeRunSnapshot,
+} from './fileChanges.js';
 import { runAskInOutputChannel } from './hostAsk.js';
 import { getSharedMcpManager } from './mcp/manager.js';
 import {
@@ -305,6 +314,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   private lastAssistantText = '';
   private activeThreadId?: string;
   private lastSuspensionRunId?: string;
+  /** Per-run file mutation snapshots for undo / diff preview. */
+  private fileChangeSnapshots = new Map<string, FileChangeRunSnapshot>();
+  private activeFileChangeSnapshot?: FileChangeRunSnapshot;
 
   constructor(
     private readonly vs: typeof vscode,
@@ -642,7 +654,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           if (root && rel.startsWith(root)) {
             rel = rel.slice(root.length).replace(/^[\\/]/, '');
           }
-          this.post({ type: 'editorPin', path: rel.replace(/\\/g, '/') });
+          this.post({ type: 'editorPin', path: rel.replace(/\\/g, '/'), source: 'user' });
         }
         return;
       }
@@ -713,9 +725,128 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       case 'openFolder':
         await this.vs.commands.executeCommand('vscode.openFolder');
         return;
+      case 'openFile': {
+        await this.openWorkspaceFile(
+          message.path,
+          message.line,
+          message.column,
+        );
+        return;
+      }
+      case 'undoFileChanges': {
+        await this.handleUndoFileChanges(message.runId);
+        return;
+      }
+      case 'reviewFileChange': {
+        await this.handleReviewFileChange(message.runId, message.path);
+        return;
+      }
+      case 'dismissFileChanges': {
+        this.fileChangeSnapshots.delete(message.runId);
+        return;
+      }
       default:
         return;
     }
+  }
+
+  private async openWorkspaceFile(
+    relPath: string,
+    line?: number,
+    column?: number,
+  ): Promise<void> {
+    const root = this.effectiveRoot();
+    if (!root) {
+      this.post({ type: 'error', message: 'No workspace folder open.' });
+      return;
+    }
+    const normalized = relPath.replace(/\\/g, '/').replace(/^\.\//, '');
+    const abs = join(root, normalized);
+    if (!existsSync(abs)) {
+      this.post({
+        type: 'error',
+        message: `File not found: ${normalized}`,
+      });
+      return;
+    }
+    const uri = this.vs.Uri.file(abs);
+    const doc = await this.vs.workspace.openTextDocument(uri);
+    const editor = await this.vs.window.showTextDocument(doc, {
+      preview: true,
+    });
+    if (line && line > 0) {
+      const pos = new this.vs.Position(
+        Math.max(0, line - 1),
+        Math.max(0, (column ?? 1) - 1),
+      );
+      editor.selection = new this.vs.Selection(pos, pos);
+      editor.revealRange(
+        new this.vs.Range(pos, pos),
+        this.vs.TextEditorRevealType.InCenter,
+      );
+    }
+  }
+
+  private async handleUndoFileChanges(runId: string): Promise<void> {
+    const root = this.effectiveRoot();
+    const snapshot = this.fileChangeSnapshots.get(runId);
+    if (!root || !snapshot) {
+      this.post({
+        type: 'error',
+        message: 'Nothing to undo for this run.',
+      });
+      return;
+    }
+    const result = undoRunFileChanges({ workspaceRoot: root, snapshot });
+    this.channel.appendLine(
+      `[file-changes] undo run=${runId} restored=${result.restored.length} failed=${result.failed.length}`,
+    );
+    this.post({
+      type: 'fileChanges.undone',
+      runId,
+      restored: result.restored,
+    });
+    if (result.failed.length) {
+      this.post({
+        type: 'error',
+        message: `Undo partially failed: ${result.failed
+          .map((f) => f.path)
+          .join(', ')}`,
+      });
+    } else {
+      void this.vs.window.showInformationMessage(
+        `Mitii: Restored ${result.restored.length} file${
+          result.restored.length === 1 ? '' : 's'
+        }.`,
+      );
+    }
+  }
+
+  private async handleReviewFileChange(
+    runId: string,
+    path: string,
+  ): Promise<void> {
+    const root = this.effectiveRoot();
+    const snapshot = this.fileChangeSnapshots.get(runId);
+    if (!root || !snapshot) return;
+    const normalized = path.replace(/\\/g, '/');
+    const before = snapshot.beforeContents.has(normalized)
+      ? (snapshot.beforeContents.get(normalized) ?? null)
+      : null;
+    const abs = join(root, normalized);
+    let after = '';
+    try {
+      after = existsSync(abs) ? readFileSync(abs, 'utf8') : '';
+    } catch {
+      after = '';
+    }
+    await showPatchDiffPreview(
+      this.vs,
+      root,
+      normalized,
+      before ?? '',
+      after,
+    );
   }
 
   private async showInlineDiffForApproval(approvalId: string): Promise<void> {
@@ -826,6 +957,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       type: 'tokenUsage',
       usage: { ...this.tokenUsage, live: true },
     });
+
+    const workspaceRootForChanges = this.effectiveRoot();
+    const preDirty = workspaceRootForChanges
+      ? await listDirtyGitPaths(workspaceRootForChanges)
+      : [];
+    this.activeFileChangeSnapshot = createFileChangeRunSnapshot(preDirty);
+
     try {
       const client = await this.ensureClient();
       const conversation = buildConversationCarry({
@@ -876,6 +1014,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           },
           onEvent: (event, activity) => {
             this.post({ type: 'run.event', event: activity });
+            const changeRoot = this.effectiveRoot();
+            if (changeRoot && this.activeFileChangeSnapshot && event) {
+              noteMutatedPathsFromEvent(
+                this.activeFileChangeSnapshot,
+                changeRoot,
+                event,
+              );
+            }
             if (event?.type === 'model_turn') {
               this.recordLiveModelTurn(event);
               this.post({ type: 'tokenUsage', usage: this.tokenUsage });
@@ -885,6 +1031,20 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
             this.post({ type: 'run.delta', text });
           },
           onSuspended: async (_result, suspension) => {
+            if (
+              suspension.kind === 'approval_required' &&
+              suspension.approval?.paths?.length &&
+              this.activeFileChangeSnapshot
+            ) {
+              const changeRoot = this.effectiveRoot();
+              if (changeRoot) {
+                noteMutatedPaths(
+                  this.activeFileChangeSnapshot,
+                  changeRoot,
+                  suspension.approval.paths,
+                );
+              }
+            }
             if (
               suspension.kind === 'approval_required' &&
               suspension.approval?.paths?.[0]
@@ -961,6 +1121,29 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         usage,
         plan,
       });
+
+      const changeRoot = this.effectiveRoot();
+      if (
+        changeRoot &&
+        this.activeFileChangeSnapshot &&
+        outcome.result.status === 'completed'
+      ) {
+        const runId = outcome.result.runId;
+        this.fileChangeSnapshots.set(runId, this.activeFileChangeSnapshot);
+        const changes = buildRunFileChangesView({
+          runId,
+          workspaceRoot: changeRoot,
+          snapshot: this.activeFileChangeSnapshot,
+        });
+        if (changes) {
+          this.post({ type: 'run.fileChanges', changes });
+          this.channel.appendLine(
+            `[file-changes] run=${runId} files=${changes.files.length} +${changes.totalAdditions} -${changes.totalDeletions}`,
+          );
+        }
+      }
+      this.activeFileChangeSnapshot = undefined;
+
       this.post({ type: 'tokenUsage', usage: this.tokenUsage });
       const usedPlanHandoff = Boolean(approvedPlan);
       if (resultPlan) {
@@ -1026,6 +1209,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         error: text,
       });
     } finally {
+      this.activeFileChangeSnapshot = undefined;
       this.runCancel?.dispose();
       this.runCancel = undefined;
       if (this.pendingResume) {

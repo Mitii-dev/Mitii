@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import { onHostMessage, postToHost } from './bridge';
-import { ContextPanel } from './components/ContextPanel';
+import { ContextPanel, type ContextPin } from './components/ContextPanel';
 import { ErrorBanner } from './components/ErrorBanner';
+import {
+  FileChangesBar,
+  FileChangesCard,
+} from './components/FileChangesCard';
 import { HistoryPanel } from './components/HistoryPanel';
 import { IconButton } from './components/IconButton';
 import {
@@ -45,6 +49,7 @@ import type {
   PlanView,
   ProviderSettingsSnapshot,
   ReviewDiffView,
+  RunFileChangesView,
   SettingsTab,
   SkillCatalogItem,
   TokenUsageSnapshot,
@@ -54,6 +59,7 @@ import type {
   WorkspaceNoticeView,
   WorkspaceSnapshotInfo,
 } from './protocol';
+import { modeColor } from './modeColors';
 import { TokenMeter } from './TokenMeter';
 
 const EMPTY_TOKEN_USAGE: TokenUsageSnapshot = {
@@ -157,7 +163,11 @@ export function App() {
   const [mode, setMode] = useState<AgentUiMode>('ask');
   const [depth, setDepth] = useState<AgentUiDepth>('auto');
   const [prompt, setPrompt] = useState('');
-  const [pinned, setPinned] = useState<string[]>([]);
+  const [pinned, setPinned] = useState<ContextPin[]>([]);
+  const [fileChanges, setFileChanges] = useState<RunFileChangesView | null>(
+    null,
+  );
+  const [fileChangesBarExpanded, setFileChangesBarExpanded] = useState(false);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -296,6 +306,8 @@ export function App() {
           setRunning(true);
           setError(null);
           setPlan(null);
+          setFileChanges(null);
+          setFileChangesBarExpanded(false);
           stickToBottomRef.current = true;
           const userId = uid('user');
           const asstId = uid('asst');
@@ -428,10 +440,68 @@ export function App() {
           setNav(msg.tab);
           break;
         case 'editorPin':
+          setPinned((prev) => {
+            const source = msg.source ?? 'auto';
+            const existing = prev.find((p) => p.path === msg.path);
+            if (existing) {
+              // Promote auto → user when explicitly pinned again as user.
+              if (source === 'user' && existing.source === 'auto') {
+                return prev.map((p) =>
+                  p.path === msg.path ? { ...p, source: 'user' } : p,
+                );
+              }
+              return prev;
+            }
+            return [...prev, { path: msg.path, source }];
+          });
+          break;
+        case 'editorUnpin':
           setPinned((prev) =>
-            prev.includes(msg.path) ? prev : [...prev, msg.path],
+            prev.filter(
+              (p) => !(p.path === msg.path && p.source === 'auto'),
+            ),
           );
           break;
+        case 'syncAutoPins': {
+          const open = new Set(msg.paths);
+          setPinned((prev) => {
+            const kept = prev.filter(
+              (p) => p.source === 'user' || open.has(p.path),
+            );
+            const known = new Set(kept.map((p) => p.path));
+            const additions = msg.paths
+              .filter((path) => !known.has(path))
+              .map((path) => ({ path, source: 'auto' as const }));
+            return [...kept, ...additions];
+          });
+          break;
+        }
+        case 'run.fileChanges': {
+          setFileChanges(msg.changes);
+          setFileChangesBarExpanded(false);
+          const id = activeAssistantId.current;
+          if (id) {
+            setTurns((prev) =>
+              prev.map((t) =>
+                t.id === id ? { ...t, fileChanges: msg.changes } : t,
+              ),
+            );
+          }
+          break;
+        }
+        case 'fileChanges.undone': {
+          setFileChanges((prev) =>
+            prev?.runId === msg.runId ? null : prev,
+          );
+          setTurns((prev) =>
+            prev.map((t) =>
+              t.fileChanges?.runId === msg.runId
+                ? { ...t, fileChanges: undefined }
+                : t,
+            ),
+          );
+          break;
+        }
         case 'workspaceNotice':
           setNotice(msg.notice);
           break;
@@ -531,7 +601,7 @@ export function App() {
       prompt: text,
       mode,
       depth,
-      pinnedPaths: pinned,
+      pinnedPaths: pinned.map((p) => p.path),
     });
     setPrompt('');
     setSuggestOpen(false);
@@ -554,9 +624,60 @@ export function App() {
   const insertMention = (path: string) => {
     const replaced = prompt.replace(/@([\w./_-]*)$/, `@${path} `);
     setPrompt(replaced);
-    setPinned((prev) => (prev.includes(path) ? prev : [...prev, path]));
+    setPinned((prev) => {
+      const existing = prev.find((p) => p.path === path);
+      if (existing) {
+        return existing.source === 'user'
+          ? prev
+          : prev.map((p) =>
+              p.path === path ? { ...p, source: 'user' } : p,
+            );
+      }
+      return [...prev, { path, source: 'user' }];
+    });
     setSuggestOpen(false);
   };
+
+  const openFile = useCallback(
+    (path: string, line?: number, column?: number) => {
+      postToHost({ type: 'openFile', path, line, column });
+    },
+    [],
+  );
+
+  const undoFileChanges = useCallback((runId: string) => {
+    postToHost({ type: 'undoFileChanges', runId });
+  }, []);
+
+  const reviewFileChange = useCallback((runId: string, path: string) => {
+    postToHost({ type: 'reviewFileChange', runId, path });
+  }, []);
+
+  const reviewAllFileChanges = useCallback((changes: RunFileChangesView) => {
+    setMode('review');
+    postToHost({ type: 'refreshReviewDiff' });
+    for (const file of changes.files.slice(0, 1)) {
+      postToHost({
+        type: 'reviewFileChange',
+        runId: changes.runId,
+        path: file.path,
+      });
+    }
+  }, []);
+
+  const dismissFileChanges = useCallback((runId: string) => {
+    postToHost({ type: 'dismissFileChanges', runId });
+    setFileChanges((prev) => (prev?.runId === runId ? null : prev));
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.fileChanges?.runId === runId
+          ? { ...t, fileChanges: undefined }
+          : t,
+      ),
+    );
+  }, []);
+
+  const currentModeColor = modeColor(mode);
 
   const saveProvider = () => {
     postToHost({
@@ -771,6 +892,31 @@ export function App() {
           </div>
         ) : (
           <div className={`chat-view${running ? ' chat-view--running' : ''}`}>
+            {fileChanges ? (
+              <FileChangesBar
+                changes={fileChanges}
+                onExpand={() => setFileChangesBarExpanded(true)}
+                onUndo={() => undoFileChanges(fileChanges.runId)}
+                onReviewAll={() => reviewAllFileChanges(fileChanges)}
+              />
+            ) : null}
+            {fileChangesBarExpanded && fileChanges ? (
+              <div className="file-changes-bar-panel">
+                <FileChangesCard
+                  changes={fileChanges}
+                  onOpenFile={(path) => openFile(path)}
+                  onReviewFile={(path) =>
+                    reviewFileChange(fileChanges.runId, path)
+                  }
+                  onUndo={() => undoFileChanges(fileChanges.runId)}
+                  onReviewAll={() => reviewAllFileChanges(fileChanges)}
+                  onDismiss={() => {
+                    setFileChangesBarExpanded(false);
+                    dismissFileChanges(fileChanges.runId);
+                  }}
+                />
+              </div>
+            ) : null}
             <PlanPanel plan={plan} />
             <MessageList
               turns={turns}
@@ -829,6 +975,11 @@ export function App() {
               onShowInlineDiff={(approvalId) =>
                 postToHost({ type: 'showInlineDiff', approvalId })
               }
+              onOpenFile={openFile}
+              onUndoFileChanges={undoFileChanges}
+              onReviewFileChange={reviewFileChange}
+              onReviewAllFileChanges={reviewAllFileChanges}
+              onDismissFileChanges={dismissFileChanges}
               containerRef={messagesRef}
               onScroll={onMessagesScroll}
               bottomRef={bottomRef}
@@ -836,12 +987,20 @@ export function App() {
 
             <div className="composer-dock">
               <ContextPanel
-                paths={pinned}
+                pins={pinned}
+                modeColor={currentModeColor}
                 onRemove={(path) =>
-                  setPinned((prev) => prev.filter((x) => x !== path))
+                  setPinned((prev) => prev.filter((x) => x.path !== path))
                 }
                 onClear={() => setPinned([])}
                 onPick={() => postToHost({ type: 'pickContextPath' })}
+                onKeep={(path) =>
+                  setPinned((prev) =>
+                    prev.map((p) =>
+                      p.path === path ? { ...p, source: 'user' } : p,
+                    ),
+                  )
+                }
               />
 
               <div className="composer-box">
@@ -977,6 +1136,12 @@ export function App() {
                       ) : (
                         <IconButton
                           label="Send"
+                          className="icon-btn--mode"
+                          style={
+                            {
+                              '--composer-control-color': currentModeColor,
+                            } as CSSProperties
+                          }
                           onClick={send}
                           disabled={!prompt.trim()}
                         >

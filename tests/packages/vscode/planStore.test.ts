@@ -6,6 +6,7 @@ import { PLANNING_SCHEMA_VERSION } from '@mitii/sdk';
 
 import {
   buildPlanFileBaseName,
+  formatTimestamp,
   savePlanToWorkspace,
 } from '../../../apps/vscode/src/planStore.ts';
 
@@ -60,19 +61,25 @@ describe('planStore', () => {
     }
   });
 
-  it('builds a timestamped slug basename', () => {
-    const now = new Date('2026-07-27T19:49:05.000Z');
+  it('builds MM-DD-YYYY-HH-MM-id-slug basename', () => {
+    const now = new Date(2026, 6, 27, 19, 49, 5);
     const base = buildPlanFileBaseName({
       plan: samplePlan('Wire Conversation Carry!!'),
       now,
+      id: 'a1b2c3',
     });
-    expect(base).toBe('20260727-194905-wire-conversation-carry');
+    expect(base).toBe(
+      `${formatTimestamp(now)}-a1b2c3-wire-conversation-carry`,
+    );
+    expect(base).toMatch(
+      /^\d{2}-\d{2}-\d{4}-\d{2}-\d{2}-[a-f0-9]+-wire-conversation-carry$/,
+    );
   });
 
   it('saves JSON + markdown under .mitii/plans', () => {
     const root = mkdtempSync(join(tmpdir(), 'mitii-plan-store-'));
     dirs.push(root);
-    const now = new Date('2026-07-27T19:49:05Z');
+    const now = new Date(2026, 6, 27, 19, 49, 5);
 
     const saved = savePlanToWorkspace({
       workspaceRoot: root,
@@ -80,11 +87,11 @@ describe('planStore', () => {
       source: 'plan_mode',
       threadId: 'thread_1',
       now,
+      id: 'dead01',
     });
 
-    expect(saved.relativePath).toBe(
-      join('.mitii', 'plans', '20260727-194905-ship-plan-persistence.json'),
-    );
+    const expectedName = `${formatTimestamp(now)}-dead01-ship-plan-persistence.json`;
+    expect(saved.relativePath).toBe(join('.mitii', 'plans', expectedName));
     const json = JSON.parse(readFileSync(saved.absolutePath, 'utf8')) as {
       schemaVersion: number;
       source: string;

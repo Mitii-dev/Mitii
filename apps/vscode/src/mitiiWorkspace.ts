@@ -31,7 +31,7 @@ Local runtime data for this workspace. Safe to gitignore.
 |------|---------|
 | \`logs/\` | Session JSONL logs |
 | \`checkpoints/\` | Saved run checkpoints |
-| \`plans/\` | Timestamped plan artifacts (\`YYYYMMDD-HHMMSS-slug.json\`) |
+| \`plans/\` | Timestamped plan artifacts (\`MM-DD-YYYY-HH-MM-id-slug.json\`) |
 | \`skills/\` | Workspace skill playbooks |
 | \`rules/\` | Project methodology rules |
 | \`diff-preview/\` | Temporary diff preview files |

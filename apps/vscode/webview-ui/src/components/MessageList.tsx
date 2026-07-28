@@ -3,6 +3,7 @@ import type { RefObject } from 'react';
 import type {
   ActivityEventPayload,
   AgentUiMode,
+  RunFileChangesView,
   SuspensionPayload,
 } from '../protocol';
 import {
@@ -10,6 +11,7 @@ import {
   AgentThinkingPanel,
 } from './AgentActivityPanel';
 import { ApprovalCards } from './ApprovalCards';
+import { FileChangesCard } from './FileChangesCard';
 import { MarkdownMessage } from './MarkdownMessage';
 
 export interface ChatTurn {
@@ -22,6 +24,7 @@ export interface ChatTurn {
   status?: string;
   route?: string | null;
   suspension?: SuspensionPayload;
+  fileChanges?: RunFileChangesView;
 }
 
 interface MessageListProps {
@@ -35,6 +38,11 @@ interface MessageListProps {
   onApprove: (runId: string, approvalId?: string) => void;
   onDeny: (runId: string, approvalId?: string) => void;
   onShowInlineDiff: (approvalId: string) => void;
+  onOpenFile: (path: string, line?: number, column?: number) => void;
+  onUndoFileChanges: (runId: string) => void;
+  onReviewFileChange: (runId: string, path: string) => void;
+  onReviewAllFileChanges: (changes: RunFileChangesView) => void;
+  onDismissFileChanges: (runId: string) => void;
   containerRef: RefObject<HTMLDivElement>;
   onScroll: () => void;
   bottomRef: RefObject<HTMLDivElement>;
@@ -58,6 +66,11 @@ export function MessageList({
   onApprove,
   onDeny,
   onShowInlineDiff,
+  onOpenFile,
+  onUndoFileChanges,
+  onReviewFileChange,
+  onReviewAllFileChanges,
+  onDismissFileChanges,
   containerRef,
   onScroll,
   bottomRef,
@@ -114,8 +127,25 @@ export function MessageList({
                   <MarkdownMessage
                     content={turn.text || (turn.streaming ? '' : '')}
                     streaming={turn.streaming}
+                    onOpenFile={onOpenFile}
                   />
                 </div>
+              ) : null}
+              {turn.fileChanges ? (
+                <FileChangesCard
+                  changes={turn.fileChanges}
+                  onOpenFile={(path) => onOpenFile(path)}
+                  onReviewFile={(path) =>
+                    onReviewFileChange(turn.fileChanges!.runId, path)
+                  }
+                  onUndo={() => onUndoFileChanges(turn.fileChanges!.runId)}
+                  onReviewAll={() =>
+                    onReviewAllFileChanges(turn.fileChanges!)
+                  }
+                  onDismiss={() =>
+                    onDismissFileChanges(turn.fileChanges!.runId)
+                  }
+                />
               ) : null}
               <AgentThinkingPanel
                 events={turn.activity}
