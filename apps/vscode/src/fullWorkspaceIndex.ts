@@ -1,7 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import Database from 'better-sqlite3';
 import {
   NodeFileSystemAdapter,
   RepoGraphBuilder,
@@ -14,6 +13,7 @@ import {
   type WorkspaceSnapshot,
   type WorkspaceIndexingPipelineResult,
 } from '@mitii/v8';
+import { openSqliteDatabase, type NativeSqliteDatabase } from './nativeSqlite.js';
 
 const INDEX_DB_FILE = 'repository-index.sqlite';
 const DEFAULT_MAXIMUM_FILES = 2_000;
@@ -38,7 +38,7 @@ export async function runFullWorkspaceIndex(options: {
   mkdirSync(options.mitiiDir, { recursive: true });
 
   const databasePath = join(options.mitiiDir, INDEX_DB_FILE);
-  const database = new Database(databasePath);
+  const database = openSqliteDatabase(databasePath);
   try {
     database.pragma('journal_mode = WAL');
     database.pragma('foreign_keys = ON');
@@ -87,7 +87,7 @@ export async function runFullWorkspaceIndex(options: {
 }
 
 async function buildGraphMapArtifacts(options: {
-  database: Database.Database;
+  database: NativeSqliteDatabase;
   dir: string;
   workspaceId: string;
   snapshot: WorkspaceSnapshot;

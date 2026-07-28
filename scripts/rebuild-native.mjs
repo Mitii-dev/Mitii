@@ -4,7 +4,7 @@
  * A normal install compiles for Node.js; the extension host uses Electron's ABI.
  * Rebuilds better-sqlite3 for the Extension Host Electron ABI.
  *
- * Override: MITII_ELECTRON_VERSION=42.2.0 pnpm run rebuild:native
+ * Override: MITII_ELECTRON_VERSION=42.6.0 pnpm run rebuild:native
  * Override editor: MITII_EDITOR=cursor pnpm run rebuild:native
  */
 import { execSync, spawnSync } from 'child_process';
@@ -55,8 +55,8 @@ function detectElectronVersion() {
   }
 
   // VS Code 1.124+ / Electron 42 (NODE_MODULE_VERSION 146)
-  console.warn('Could not detect editor — falling back to Electron 42.2.0');
-  return '42.2.0';
+  console.warn('Could not detect editor — falling back to Electron 42.6.0');
+  return '42.6.0';
 }
 
 function main() {
@@ -82,7 +82,7 @@ function main() {
 
   if (result.status !== 0) {
     console.error('\nRebuild failed. Try:');
-    console.error('  MITII_ELECTRON_VERSION=42.2.0 pnpm run rebuild:native   # VS Code 1.124+');
+    console.error('  MITII_ELECTRON_VERSION=42.6.0 pnpm run rebuild:native   # VS Code 1.124+');
     console.error('  MITII_ELECTRON_VERSION=39.8.1 pnpm run rebuild:native   # Cursor');
     process.exit(result.status ?? 1);
   }

@@ -1,10 +1,10 @@
-# @mitii/vscode
+# mitii-agent
 
 VS Code extension package. Owns `contributes`, `activationEvents`, and `engines.vscode`.
 
 ```bash
-pnpm --filter @mitii/vscode build
-pnpm --filter @mitii/vscode package
+pnpm --filter ./apps/vscode build
+pnpm --filter ./apps/vscode package
 ```
 
 ## Host surface

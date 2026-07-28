@@ -7,22 +7,57 @@ on:
 
 jobs:
   package:
-    runs-on: ubuntu-latest
+    name: package (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
     permissions:
-      contents: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: darwin-arm64
+          - os: macos-13
+            target: darwin-x64
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: windows-latest
+            target: win32-x64
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run compile
+      - run: pnpm run typecheck
+      - run: pnpm test
+      - run: pnpm run rebuild:native
+        env:
+          MITII_ELECTRON_VERSION: 42.6.0
       - run: pnpm run package
+        env:
+          MITII_VSCODE_TARGET: ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vscode-vsix-${{ matrix.target }}
+          path: dist-vsix/*.vsix
+
+  release:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-vsix
+          merge-multiple: true
       - name: Generate release notes
-        run: node dist/cli.js changelog > release-notes.md
+        run: cp CHANGELOG.md release-notes.md
       - uses: softprops/action-gh-release@v2
         with:
           body_path: release-notes.md
-          files: '*.vsix'
+          files: 'dist-vsix/*.vsix'

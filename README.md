@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.7.117" src="https://img.shields.io/badge/version-2.7.117-111111">
+  <img alt="Version 2.7.138" src="https://img.shields.io/badge/version-2.7.138-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
 
@@ -183,7 +183,7 @@ See [docs/REPO_LAYOUT.md](docs/REPO_LAYOUT.md). Canonical architecture: [package
 pnpm run build              # build vscode + cli via workspace packages
 pnpm run lint               # typecheck @mitii/v8 + @mitii/sdk
 pnpm test                   # architecture + selected V8 Vitest suites
-pnpm run package            # build the VSIX (@mitii/vscode)
+pnpm run package            # build the target-specific VSIX (apps/vscode)
 pnpm run package:preflight  # release checks, tests, and package
 ```
 

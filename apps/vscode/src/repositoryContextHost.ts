@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { join, relative } from 'node:path';
-import Database from 'better-sqlite3';
 import {
   ContextAssemblyFactory,
   ContextSelector,
@@ -28,6 +27,7 @@ import {
   type RepositoryRootState,
   type WorkspaceFileEntry,
 } from '@mitii/v8';
+import { openSqliteDatabase } from './nativeSqlite.js';
 
 const SKIP_DIR_NAMES = new Set([
   '.git',
@@ -179,7 +179,7 @@ function createHostRetriever(options: {
         );
       }
 
-      const database = new Database(options.textIndexDatabasePath, {
+      const database = openSqliteDatabase(options.textIndexDatabasePath, {
         readonly: true,
         fileMustExist: true,
       });

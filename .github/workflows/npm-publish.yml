@@ -25,7 +25,7 @@ jobs:
       - run: pnpm --filter @mitii/v8 build
       - run: pnpm --filter @mitii/sdk build
       - run: pnpm --filter @mitii/cli build
-      - run: pnpm --filter @mitii/vscode build
+      - run: pnpm --filter ./apps/vscode build
       - run: pnpm run check:architecture
       - run: npm publish --workspace packages/sdk --access public
         env:

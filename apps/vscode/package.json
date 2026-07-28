@@ -1,12 +1,26 @@
 {
-  "name": "@mitii/vscode",
+  "name": "mitii-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
   "version": "2.7.118",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
-  "private": true,
   "icon": "media/mitii-short-logo.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Mitii-dev/Mitii.git",
+    "directory": "apps/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/Mitii-dev/Mitii/issues"
+  },
+  "homepage": "https://mitii.dev",
+  "galleryBanner": {
+    "color": "#111111",
+    "theme": "dark"
+  },
+  "pricing": "Free",
+  "qna": false,
   "categories": [
     "Machine Learning",
     "Other"
@@ -23,7 +37,24 @@
     "typescript"
   ],
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.124.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Mitii can open its UI in Restricted Mode, but repository indexing, agent execution, shell tools, and file mutations require a trusted workspace.",
+      "restrictedConfigurations": [
+        "mitii.workspace.rootPathOverride",
+        "mitii.mcp"
+      ]
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Mitii requires a file-system workspace for repository indexing, SQLite-backed code/text indexes, audit artifacts, and controlled file mutations."
+    }
   },
   "activationEvents": [
     "onView:mitii.sidebar",
@@ -45,9 +76,12 @@
   "main": "./dist/extension.js",
   "files": [
     "dist/extension.js",
+    "dist/native/better_sqlite3.node",
     "dist/webview/**/*",
     "media/**/*",
     "README.md",
+    "CHANGELOG.md",
+    "LICENSE.txt",
     "package.json"
   ],
   "contributes": {
@@ -374,10 +408,13 @@
   },
   "scripts": {
     "build": "node scripts/build-extension.cjs",
+    "build:prod": "node scripts/build-extension.cjs --production",
     "build:webview": "pnpm --filter @mitii/vscode-webview build",
+    "audit:package": "node scripts/audit-package.cjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:webview": "pnpm --filter @mitii/vscode-webview typecheck",
-    "package": "pnpm run build && pnpm exec vsce package --no-dependencies"
+    "package": "node scripts/package-extension.cjs",
+    "package:raw": "pnpm exec vsce package --no-dependencies"
   },
   "dependencies": {
     "@mitii/sdk": "workspace:*",
@@ -385,6 +422,7 @@
     "better-sqlite3": "^12.11.1"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^20.14.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.9.2",
