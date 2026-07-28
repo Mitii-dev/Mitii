@@ -152,39 +152,41 @@ export function IconReview(props: IconProps) {
   );
 }
 
-export function IconSafe(props: IconProps) {
+export function IconAskApproval(props: IconProps) {
   return (
     <svg {...defaults} {...props}>
-      <path d="M8 2.5 12.5 4.5v3.2c0 3-1.9 5.3-4.5 6.3-2.6-1-4.5-3.3-4.5-6.3V4.5L8 2.5z" />
+      <path d="M5.2 7.8V5.4a1 1 0 0 1 2 0v2" />
+      <path d="M7.2 7.6V4.6a1 1 0 0 1 2 0v3" />
+      <path d="M9.2 7.5V5.2a1 1 0 0 1 2 0v3.4" />
+      <path d="M5.2 7.8c-1 .4-1.7 1.3-1.7 2.4 0 1.6 1.5 2.8 3.5 2.8h2.6c1.6 0 2.9-1.1 2.9-2.6V8.6" />
     </svg>
   );
 }
 
-export function IconGuided(props: IconProps) {
+export function IconApproveForMe(props: IconProps) {
   return (
     <svg {...defaults} {...props}>
-      <path d="M5 12.5V7.5a3 3 0 0 1 6 0v5" />
-      <path d="M3.5 12.5h9" />
-      <path d="M8 3.5v1.5" />
+      <circle cx="8" cy="8" r="5.5" />
+      <circle cx="8" cy="6.2" r="1.6" />
+      <path d="M4.8 12c.7-1.5 1.9-2.2 3.2-2.2s2.5.7 3.2 2.2" />
     </svg>
   );
 }
 
-export function IconBuilder(props: IconProps) {
+export function IconFullAccess(props: IconProps) {
   return (
     <svg {...defaults} {...props}>
-      <path d="M3.5 12.5h9" />
-      <path d="M5 12.5V8.5l3-3 3 3v4" />
-      <path d="M7 12.5v-2h2v2" />
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M8 4.8v4.2" />
+      <path d="M8 11.3h.01" />
     </svg>
   );
 }
 
-export function IconPilot(props: IconProps) {
+export function IconCheck(props: IconProps) {
   return (
     <svg {...defaults} {...props}>
-      <path d="M8 2.5 13 13.5H3L8 2.5z" />
-      <path d="M8 6.5v3.5" />
+      <path d="M3.5 8.2 6.5 11l6-6.5" />
     </svg>
   );
 }

@@ -10,6 +10,8 @@ import {
   mitiiResumeInputSchema,
   mitiiStartInputSchema,
   runEventSchema,
+  toAgentEngineStartInput,
+  PLANNING_SCHEMA_VERSION,
 } from '@mitii/sdk';
 
 class UnderstandingLlmPort implements LlmPort {
@@ -71,6 +73,85 @@ describe('MitiiClient contract (Phase 12)', () => {
         planApproval: 'never',
       }).success,
     ).toBe(true);
+    expect(
+      mitiiStartInputSchema.safeParse({
+        prompt: 'continue',
+        conversation: [
+          { role: 'user', content: 'prior' },
+          { role: 'assistant', content: 'reply' },
+        ],
+      }).success,
+    ).toBe(true);
+    expect(
+      mitiiStartInputSchema.safeParse({
+        prompt: 'continue',
+        conversation: [{ role: 'system', content: 'nope' }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('maps conversation and approvedPlan onto engine start input', () => {
+    const plan = {
+      schemaVersion: PLANNING_SCHEMA_VERSION,
+      objective: 'Handoff plan',
+      assumptions: [],
+      openQuestions: [],
+      contextReviewed: [],
+      constraints: [],
+      dimensions: {
+        scope: 'module',
+        risk: 'low' as const,
+        clarity: 'clear',
+        complexity: 'simple',
+        changeImpact: ['code' as const],
+      },
+      phases: [
+        {
+          id: 'p1',
+          name: 'One',
+          purpose: 'Do it',
+          steps: [
+            {
+              id: 's1',
+              intent: 'Implement',
+              targetRefs: [],
+              actionSummary: 'Write code',
+              expectedOutcome: 'Done',
+              riskLevel: 'low' as const,
+            },
+          ],
+          dependencies: [],
+          successCriteria: [],
+        },
+      ],
+      risks: [],
+      alternatives: [],
+      verification: { checks: [], manualQa: [], commands: [] },
+      approvalRequired: false,
+      processHintsApplied: [],
+    };
+
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'Execute it',
+        mode: 'agent',
+        conversation: [
+          { role: 'user', content: 'Plan auth' },
+          { role: 'assistant', content: 'Phases…' },
+        ],
+        approvedPlan: plan,
+      },
+      { mode: 'ask', sessionId: 'sess_test' },
+    );
+
+    expect(engineInput.conversation).toHaveLength(2);
+    expect(engineInput.conversation[0]).toEqual({
+      role: 'user',
+      content: 'Plan auth',
+    });
+    expect(engineInput.approvedPlan?.objective).toBe('Handoff plan');
+    expect(engineInput.request.userMessage).toBe('Execute it');
+    expect(engineInput.request.mode).toBe('agent');
   });
 
   it('rejects resume without approval or clarificationAnswer', () => {

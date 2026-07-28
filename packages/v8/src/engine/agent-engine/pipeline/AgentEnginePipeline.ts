@@ -216,8 +216,18 @@ export class AgentEnginePipeline {
     }
 
     const runId = this.deps.idGenerator.next("run");
+    const carriedPlan = parsed.approvedPlan;
     return this.createRunHandle(runId, (bus, signal, getCancelReason) =>
-      this.executeRun({ runId, input: parsed, bus, signal, getCancelReason }),
+      this.executeRun({
+        runId,
+        input: parsed,
+        bus,
+        signal,
+        getCancelReason,
+        approvedPlan: carriedPlan,
+        skipPlanGate: Boolean(carriedPlan),
+        planSource: carriedPlan ? "host_carry" : undefined,
+      }),
     );
   }
 
@@ -280,10 +290,12 @@ export class AgentEnginePipeline {
     bus: EventBus;
     signal: AbortSignal;
     getCancelReason: () => string | undefined;
-    /** Previously approved/edited plan (plan-approval resume). */
+    /** Previously approved/edited plan (plan-approval resume or host carry). */
     approvedPlan?: PlanArtifact;
     /** Skip plan-gate suspension (after user approved/edited the plan). */
     skipPlanGate?: boolean;
+    /** How an approved plan entered this run (affects reason codes). */
+    planSource?: "host_carry" | "resume_approval";
   }): Promise<AgentRunResult> {
     const {
       runId,
@@ -293,6 +305,7 @@ export class AgentEnginePipeline {
       getCancelReason,
       approvedPlan,
       skipPlanGate = false,
+      planSource,
     } = params;
     const startedMs = Date.now();
     const budgetLimits = agentRunBudgetSchema.parse(input.budget ?? {});
@@ -672,7 +685,11 @@ export class AgentEnginePipeline {
       if (approvedPlan) {
         runPlan = approvedPlan;
         planText = serializePlanForPrompt(approvedPlan);
-        reasonCodes.push("plan_drafted", "plan_approved");
+        if (planSource === "host_carry") {
+          reasonCodes.push("plan_drafted", "plan_carried");
+        } else {
+          reasonCodes.push("plan_drafted", "plan_approved");
+        }
       } else if (this.deps.planning && decision.planningDepth !== "none") {
         this.emitStage(bus, runId, "plan_ready", "started");
         const contextReviewed = (repositoryContext?.blocks ?? [])
@@ -1087,6 +1104,7 @@ export class AgentEnginePipeline {
           getCancelReason,
           approvedPlan: nextPlan,
           skipPlanGate: true,
+          planSource: "resume_approval",
         });
       }
 

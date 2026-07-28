@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
 import type * as vscode from 'vscode';
+import type { PlanArtifact } from '@mitii/sdk';
 
 import type { ChatMessageView, ChatThreadSummary } from './protocol.js';
+import { parsePendingPlan } from './conversationCarry.js';
 
 const HISTORY_KEY = 'mitii.chatHistory.v1';
 const MEMORY_KEY = 'mitii.memories.v1';
@@ -12,6 +14,11 @@ export interface StoredThread {
   title: string;
   updatedAt: string;
   messages: ChatMessageView[];
+  /**
+   * Structured plan from the latest plan-mode turn, awaiting agent handoff.
+   * Cleared after a successful agent run that consumed it, or when replaced.
+   */
+  pendingPlan?: PlanArtifact;
 }
 
 interface HistoryStore {
@@ -23,12 +30,24 @@ function emptyHistory(): HistoryStore {
   return { threads: [], activeThreadId: undefined };
 }
 
-export function loadHistory(
-  state: vscode.Memento,
-): HistoryStore {
+function normalizeThread(raw: StoredThread): StoredThread {
+  const pendingPlan = parsePendingPlan(raw.pendingPlan);
+  return {
+    id: raw.id,
+    title: raw.title,
+    updatedAt: raw.updatedAt,
+    messages: Array.isArray(raw.messages) ? raw.messages : [],
+    ...(pendingPlan ? { pendingPlan } : {}),
+  };
+}
+
+export function loadHistory(state: vscode.Memento): HistoryStore {
   const raw = state.get<HistoryStore>(HISTORY_KEY);
   if (!raw || !Array.isArray(raw.threads)) return emptyHistory();
-  return raw;
+  return {
+    threads: raw.threads.map((thread) => normalizeThread(thread)),
+    activeThreadId: raw.activeThreadId,
+  };
 }
 
 export async function saveHistory(
@@ -64,6 +83,10 @@ export async function appendTurn(
     userText: string;
     assistantText: string;
     mode?: ChatMessageView['mode'];
+    /** When set, replaces the thread pending plan (plan-mode completion). */
+    pendingPlan?: PlanArtifact | null;
+    /** Drop pending plan after a successful agent handoff. */
+    clearPendingPlan?: boolean;
   },
 ): Promise<HistoryStore> {
   const store = loadHistory(state);
@@ -95,6 +118,17 @@ export async function appendTurn(
   if (!thread.title || thread.title === 'New chat') {
     thread.title = options.userText.slice(0, 48) || 'New chat';
   }
+
+  if (options.clearPendingPlan) {
+    delete thread.pendingPlan;
+  } else if (options.pendingPlan !== undefined) {
+    if (options.pendingPlan === null) {
+      delete thread.pendingPlan;
+    } else {
+      thread.pendingPlan = options.pendingPlan;
+    }
+  }
+
   store.activeThreadId = thread.id;
   await saveHistory(state, store);
   return store;

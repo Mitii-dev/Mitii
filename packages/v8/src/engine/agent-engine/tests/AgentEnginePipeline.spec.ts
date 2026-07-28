@@ -8,6 +8,7 @@ import {
   runEventSchema,
 } from "..";
 import { assembleToolCalls } from "../actions";
+import type { ModelRequest } from "../../../../modules/model-gateway";
 import {
   createDecision,
   createReadOnlyGrant,
@@ -586,5 +587,156 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(resumed.status).toBe("completed");
     expect(resumed.reasonCodes).toContain("plan_approved");
     expect(resumed.answer).toBe("Executed after plan.");
+  });
+
+  it("carries host conversation into the model request", async () => {
+    const captured: ModelRequest[] = [];
+    const llm = new ScriptedLlmPort(
+      [{ content: "Follow-up answer." }],
+      createCapabilities({ supportsTools: false }),
+    );
+    const original = llm.complete.bind(llm);
+    llm.complete = async function* (request: ModelRequest) {
+      captured.push(request);
+      yield* original(request);
+    };
+
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({ route: "direct_answer" }),
+        llm,
+      }),
+    );
+
+    const handle = engine.start(
+      baseStartInput({
+        conversation: [
+          { role: "user", content: "Earlier: what is the stack?" },
+          { role: "assistant", content: "TypeScript monorepo." },
+        ],
+        request: {
+          sessionId: "sess_1",
+          mode: "ask",
+          userMessage: "Summarize that answer.",
+          workspace: { workspaceId: "ws_1" },
+        },
+      }),
+    );
+    const result = await handle.result;
+
+    expect(result.status).toBe("completed");
+    expect(captured).toHaveLength(1);
+    const contents = captured[0]!.messages.map((m) => m.content).join("\n");
+    expect(contents).toContain("Earlier: what is the stack?");
+    expect(contents).toContain("TypeScript monorepo.");
+    expect(contents).toContain("Summarize that answer.");
+  });
+
+  it("applies host-carried approvedPlan without plan-gate suspension", async () => {
+    let planningCalls = 0;
+    const llm = new ScriptedLlmPort(
+      [{ content: "Executing carried plan." }],
+      createCapabilities({ supportsTools: false }),
+    );
+    const { PLANNING_SCHEMA_VERSION } = await import(
+      "../../../modules/planning"
+    );
+    const carriedPlan = {
+      schemaVersion: PLANNING_SCHEMA_VERSION,
+      objective: "Ship conversation carry",
+      assumptions: [],
+      openQuestions: [],
+      contextReviewed: [],
+      constraints: [],
+      dimensions: {
+        scope: "module",
+        risk: "medium" as const,
+        clarity: "clear",
+        complexity: "moderate",
+        changeImpact: ["code" as const],
+      },
+      phases: [
+        {
+          id: "phase-1",
+          name: "Wire",
+          purpose: "Connect host to engine",
+          steps: [
+            {
+              id: "step-1",
+              intent: "Pass conversation + plan",
+              targetRefs: ["apps/vscode"],
+              actionSummary: "Map thread history and pending plan into start",
+              expectedOutcome: "Carry works",
+              riskLevel: "low" as const,
+            },
+          ],
+          dependencies: [],
+          successCriteria: ["Tests pass"],
+        },
+      ],
+      risks: [],
+      alternatives: [],
+      verification: { checks: ["unit"], manualQa: [], commands: [] },
+      approvalRequired: true,
+      processHintsApplied: [],
+    };
+
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          planningDepth: "visible",
+          planGate: "required_before_execute",
+          repositoryContextRequired: false,
+          toolGrant: createReadOnlyGrant(),
+          reasonCodes: ["mutation_execute", "plan_gate_required"],
+        }),
+        llm,
+        planning: {
+          plan: () => {
+            planningCalls += 1;
+            return {
+              schemaVersion: PLANNING_SCHEMA_VERSION,
+              status: "validated",
+              plan: carriedPlan,
+              warnings: [],
+              reasonCodes: ["plan_drafted"],
+              usedTokens: 10,
+              budgetTokens: 1_200,
+              durationMs: 1,
+            };
+          },
+        },
+      }),
+    );
+
+    const captured: ModelRequest[] = [];
+    const original = llm.complete.bind(llm);
+    llm.complete = async function* (request: ModelRequest) {
+      captured.push(request);
+      yield* original(request);
+    };
+
+    const result = await engine.start(
+      baseStartInput({
+        approvedPlan: carriedPlan,
+        request: {
+          sessionId: "sess_1",
+          mode: "agent",
+          userMessage: "Execute the plan",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/repo",
+      }),
+    ).result;
+
+    expect(result.status).toBe("completed");
+    expect(result.reasonCodes).toContain("plan_carried");
+    expect(result.reasonCodes).not.toContain("plan_approval_suspended");
+    expect(planningCalls).toBe(0);
+    expect(result.plan?.objective).toBe("Ship conversation carry");
+    const system = captured[0]?.messages.find((m) => m.role === "system");
+    expect(system?.content).toContain("<approved_plan");
+    expect(system?.content).toContain("Ship conversation carry");
   });
 });

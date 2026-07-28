@@ -11,7 +11,7 @@ const MITII_DIR = '.mitii';
 const SUBDIRS = [
   'logs',
   'checkpoints',
-  'tasks',
+  'plans',
   'skills',
   'rules',
   'diff-preview',
@@ -31,7 +31,7 @@ Local runtime data for this workspace. Safe to gitignore.
 |------|---------|
 | \`logs/\` | Session JSONL logs |
 | \`checkpoints/\` | Saved run checkpoints |
-| \`tasks/\` | Saved plans |
+| \`plans/\` | Timestamped plan artifacts (\`YYYYMMDD-HHMMSS-slug.json\`) |
 | \`skills/\` | Workspace skill playbooks |
 | \`rules/\` | Project methodology rules |
 | \`diff-preview/\` | Temporary diff preview files |
@@ -66,6 +66,10 @@ export function mitiiLogsDir(workspaceRoot: string): string {
 
 export function mitiiAuditDir(workspaceRoot: string): string {
   return join(mitiiDir(workspaceRoot), 'audit');
+}
+
+export function mitiiPlansDir(workspaceRoot: string): string {
+  return join(mitiiDir(workspaceRoot), 'plans');
 }
 
 /**

@@ -4,7 +4,9 @@ import {
   AGENT_ENGINE_SCHEMA_VERSION,
   type AgentRunResult,
   type MitiiClient,
+  type MitiiConversationMessage,
   type MitiiResumeInput,
+  type PlanArtifact,
   type RunEvent,
 } from '@mitii/sdk';
 import type * as vscode from 'vscode';
@@ -593,6 +595,10 @@ export async function runAskInOutputChannel(options: {
   sessionId?: string;
   /** Prior chat text for conversation token estimate. */
   conversationText?: string;
+  /** Prior user/assistant turns carried into the engine. */
+  conversation?: MitiiConversationMessage[];
+  /** Structured plan handoff for agent execution. */
+  approvedPlan?: PlanArtifact;
   handlers?: HostAskHandlers;
 }): Promise<HostAskOutcome> {
   const { vs, client, workspaceRoot, channel, handlers } = options;
@@ -795,6 +801,10 @@ export async function runAskInOutputChannel(options: {
       workspaceRoot,
       approvalMode: approvalPolicy.approvalMode,
       planApproval: approvalPolicy.planApproval,
+      ...(options.conversation && options.conversation.length > 0
+        ? { conversation: options.conversation }
+        : {}),
+      ...(options.approvedPlan ? { approvedPlan: options.approvedPlan } : {}),
     });
     const events: RunEvent[] = [];
 

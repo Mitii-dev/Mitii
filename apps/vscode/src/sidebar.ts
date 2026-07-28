@@ -55,6 +55,11 @@ import type {
   WorkspaceSnapshotInfo,
 } from './protocol.js';
 import { planViewFromArtifact } from './planView.js';
+import {
+  buildConversationCarry,
+  resolvePlanHandoff,
+} from './conversationCarry.js';
+import { savePlanToWorkspace } from './planStore.js';
 import { buildReviewDiff } from './reviewDiff.js';
 import { testProviderConnection } from './testConnection.js';
 import { getWorkspaceTrustSnapshot } from './workspace/trust.js';
@@ -773,10 +778,22 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     });
     try {
       const client = await this.ensureClient();
-      const conversationText = (activeThread?.messages ?? [])
-        .slice(-20)
-        .map((m) => `${m.role}: ${m.text}`)
+      const conversation = buildConversationCarry({
+        messages: (activeThread?.messages ?? []).map((m) => ({
+          role: m.role,
+          text: m.text,
+        })),
+        currentPrompt: prompt,
+      });
+      const conversationText = conversation
+        .map((m) => `${m.role}: ${m.content}`)
         .join('\n');
+      const engineMode =
+        mode === 'plan' || mode === 'agent' ? mode : 'ask';
+      const approvedPlan = resolvePlanHandoff({
+        mode: engineMode,
+        pendingPlan: activeThread?.pendingPlan,
+      });
 
       const outcome = await runAskInOutputChannel({
         vs: this.vs,
@@ -787,13 +804,15 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
             : prompt,
         workspaceRoot: this.effectiveRoot(),
         channel: this.channel,
-        mode: mode === 'plan' || mode === 'agent' ? mode : 'ask',
+        mode: engineMode,
         depth: message.depth,
         pinnedPaths: message.pinnedPaths,
         workspaceState: this.host.workspaceState,
         workspaceId: this.getWorkspaceId(),
         sessionId: this.activeThreadId,
         conversationText,
+        conversation,
+        approvedPlan,
         handlers: {
           cancelToken: this.runCancel.token,
           onContextBreakdown: (breakdown) => {
@@ -840,6 +859,22 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
               suspension.plan
             ) {
               this.post({ type: 'setPlan', plan: suspension.plan });
+              const root = this.effectiveRoot();
+              if (root) {
+                try {
+                  const saved = savePlanToWorkspace({
+                    workspaceRoot: root,
+                    plan: suspension.plan,
+                    source: 'plan_approval',
+                    threadId: this.activeThreadId,
+                  });
+                  this.channel.appendLine(`[plan] saved ${saved.relativePath}`);
+                } catch (error) {
+                  this.channel.appendLine(
+                    `[plan] save failed: ${error instanceof Error ? error.message : String(error)}`,
+                  );
+                }
+              }
             }
             this.lastSuspensionRunId = suspension.runId;
             this.post({ type: 'run.suspended', suspension });
@@ -859,11 +894,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       );
       const answer = outcome.result.answer ?? '';
       this.lastAssistantText = answer;
+      const resultPlan = outcome.result.plan;
       const plan =
         message.mode === 'plan'
-          ? planViewFromArtifact(outcome.result.plan) ??
+          ? planViewFromArtifact(resultPlan) ??
             this.planFromAnswer(message.mode, answer)
-          : null;
+          : approvedPlan
+            ? planViewFromArtifact(approvedPlan)
+            : null;
       this.post({
         type: 'run.result',
         status: outcome.result.status,
@@ -874,11 +912,43 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         plan,
       });
       this.post({ type: 'tokenUsage', usage: this.tokenUsage });
+      const usedPlanHandoff = Boolean(approvedPlan);
+      if (resultPlan) {
+        const root = this.effectiveRoot();
+        if (root) {
+          try {
+            const saved = savePlanToWorkspace({
+              workspaceRoot: root,
+              plan: resultPlan,
+              source:
+                message.mode === 'plan'
+                  ? 'plan_mode'
+                  : approvedPlan
+                    ? 'plan_approval'
+                    : 'agent',
+              threadId: this.activeThreadId,
+            });
+            this.channel.appendLine(
+              `[plan] saved ${saved.relativePath}`,
+            );
+          } catch (error) {
+            this.channel.appendLine(
+              `[plan] save failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+      }
       const store = await appendTurn(this.host.workspaceState, {
         threadId: this.activeThreadId,
         userText: prompt,
         assistantText: answer,
         mode: message.mode,
+        ...(message.mode === 'plan' && resultPlan
+          ? { pendingPlan: resultPlan }
+          : {}),
+        ...(usedPlanHandoff && outcome.result.status === 'completed'
+          ? { clearPendingPlan: true }
+          : {}),
       });
       this.activeThreadId = store.activeThreadId;
       this.post({

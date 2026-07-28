@@ -533,13 +533,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 <label htmlFor="approval">Approval mode</label>
                 <select
                   id="approval"
-                  value={ui.approvalMode}
+                  value={
+                    ui.approvalMode === 'builder' ? 'guided' : ui.approvalMode
+                  }
                   onChange={(e) => onSaveUi({ approvalMode: e.target.value })}
                 >
-                  <option value="safe">Safe</option>
-                  <option value="guided">Guided</option>
-                  <option value="builder">Builder</option>
-                  <option value="pilot">Pilot</option>
+                  <option value="safe">Ask for approval</option>
+                  <option value="guided">Approve for me</option>
+                  <option value="pilot">Full access</option>
                 </select>
               </div>
               <label className="toggle">

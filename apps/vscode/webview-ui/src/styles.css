@@ -828,9 +828,14 @@ input:focus-visible {
   }
 }
 
+.composer-dropdown--approval .composer-dropdown__menu {
+  width: max(300px, 100%);
+  max-width: min(360px, calc(100vw - 24px));
+}
+
 .composer-dropdown__option {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: 18px minmax(0, 1fr) 16px;
   gap: 7px;
   align-items: start;
   width: 100%;
@@ -857,6 +862,37 @@ input:focus-visible {
     var(--composer-option-color, var(--mitii-accent)) 22%,
     transparent
   );
+}
+
+.composer-dropdown__option--warning,
+.composer-dropdown__option--warning .composer-dropdown__option-text span,
+.composer-dropdown__option--warning .composer-dropdown__option-text small,
+.composer-dropdown__option--warning .composer-dropdown__option-icon,
+.composer-dropdown__option--warning .composer-dropdown__option-check {
+  color: #e8b84a;
+}
+
+.composer-dropdown__option--warning .composer-dropdown__option-text small {
+  color: color-mix(in srgb, #e8b84a 78%, var(--mitii-muted));
+}
+
+.composer-dropdown__button--warning {
+  color: #e8b84a;
+}
+
+.composer-dropdown__option-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  color: var(--composer-option-color, var(--mitii-accent));
+}
+
+.composer-dropdown__option-check svg {
+  width: 12px;
+  height: 12px;
 }
 
 .composer-dropdown__option-text {

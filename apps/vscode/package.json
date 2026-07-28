@@ -289,7 +289,7 @@
             "pilot"
           ],
           "default": "guided",
-          "description": "Default approval autonomy preset for the chat UI"
+          "description": "Approval autonomy: safe (ask for approval), guided (approve for me), pilot (full access). Legacy builder maps to guided."
         },
         "mitii.onboarding.completed": {
           "type": "boolean",

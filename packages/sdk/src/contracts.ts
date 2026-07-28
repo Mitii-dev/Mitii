@@ -6,6 +6,7 @@ import {
   agentModeSchema,
   agentRunBudgetSchema,
   createUserRequestInputSchema,
+  planArtifactSchema,
   repositoryStateReferenceSchema,
 } from '@mitii/v8';
 import type {
@@ -13,6 +14,7 @@ import type {
   AgentEngineStartInput,
   AgentMode,
   AgentRunBudget,
+  PlanArtifact,
   RepositoryStateReference,
 } from '@mitii/v8';
 
@@ -25,6 +27,21 @@ const mitiiApprovalModeSchema = z.enum([
   'when_required',
   'every_mutation',
 ]);
+
+/**
+ * Prior chat turns the host wants carried into the model.
+ * Host-facing roles only — system/tool history is owned by the engine loop.
+ */
+export const mitiiConversationMessageSchema = z
+  .object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string().min(1),
+  })
+  .strict();
+
+export type MitiiConversationMessage = z.infer<
+  typeof mitiiConversationMessageSchema
+>;
 
 export const mitiiStartInputSchema = z
   .object({
@@ -41,6 +58,16 @@ export const mitiiStartInputSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Prior user/assistant turns for multi-turn continuity.
+     * Engine compactConversation applies token budgets.
+     */
+    conversation: z.array(mitiiConversationMessageSchema).max(200).optional(),
+    /**
+     * Structured plan from a prior plan-mode turn (plan→agent handoff).
+     * Injected as an approved plan; skips the in-run plan gate.
+     */
+    approvedPlan: planArtifactSchema.optional(),
     budget: agentRunBudgetSchema.optional(),
     model: z.string().min(1).optional(),
     temperature: z.number().min(0).max(2).optional(),
@@ -57,6 +84,7 @@ export const mitiiResumeInputSchema = agentEngineResumeInputSchema;
 export type MitiiResumeInput = AgentEngineResumeInput;
 
 export type { AgentMode, AgentRunBudget, RepositoryStateReference };
+export type { PlanArtifact };
 
 export interface MitiiStartDefaults {
   mode: AgentMode;
@@ -91,6 +119,11 @@ export function toAgentEngineStartInput(
           readiness: parsed.repositoryState.readiness ?? 'ready',
         }
       : undefined,
+    conversation: parsed.conversation?.map((message) => ({
+      role: message.role,
+      content: message.content,
+    })),
+    approvedPlan: parsed.approvedPlan,
     budget: parsed.budget,
     model: parsed.model,
     temperature: parsed.temperature,

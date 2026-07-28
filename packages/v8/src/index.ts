@@ -217,6 +217,7 @@ export {
   PLANNING_SCHEMA_VERSION,
   formatPlanAsAnswer,
   serializePlanForPrompt,
+  serializePlanText,
 } from "./modules/planning";
 export type {
   PlanningInput,

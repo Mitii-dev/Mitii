@@ -67,6 +67,12 @@ export const agentEngineStartInputSchema = z
     projects: z.array(projectDescriptorSchema).optional(),
     conversation: z.array(modelMessageSchema).default([]),
     instructions: promptInstructionsSchema.optional(),
+    /**
+     * Host-carried plan from a prior plan-mode (or equivalent) turn.
+     * When set, Engine treats it as already approved: injects it into the
+     * system prompt and skips the plan-approval gate for this start.
+     */
+    approvedPlan: planArtifactSchema.optional(),
     /** Optional override; otherwise Engine uses default tool definitions. */
     tools: z.array(modelToolDefinitionSchema).optional(),
     budget: agentRunBudgetSchema.optional(),

@@ -7,12 +7,14 @@ export type { AgentRunResult, RunEvent } from './run';
 export {
   mitiiStartInputSchema,
   mitiiResumeInputSchema,
+  mitiiConversationMessageSchema,
   toAgentEngineStartInput,
 } from './contracts';
 export type {
   MitiiStartInput,
   MitiiResumeInput,
   MitiiStartDefaults,
+  MitiiConversationMessage,
   AgentMode,
   AgentRunBudget,
   RepositoryStateReference,

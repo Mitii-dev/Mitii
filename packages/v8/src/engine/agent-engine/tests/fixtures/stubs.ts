@@ -304,55 +304,68 @@ export function createStubDependencies(options: {
     },
     planning: options.planning,
     prompt: {
-      construct: (input: PromptConstructionInput): PromptConstructionResult => ({
-        schemaVersion: 1,
-        status: "complete",
-        request: {
-          messages: [
-            { role: "system", content: "system" },
-            { role: "user", content: input.userMessage },
-          ],
-          model: input.model ?? "test",
-          tools: input.tools,
-          maximumOutputTokens: 1024,
-        },
-        budget: {
-          contextWindowTokens: 32_768,
-          outputReservedTokens: 1024,
-          inputBudgetTokens: 30_000,
-          sections: [
-            {
-              section: "system",
-              allocatedTokens: 500,
-              usedTokens: 10,
-              omittedTokens: 0,
-              truncatedTokens: 0,
-            },
-            {
-              section: "output_reserve",
-              allocatedTokens: 1024,
-              usedTokens: 0,
-              omittedTokens: 0,
-              truncatedTokens: 0,
-            },
-          ],
-          totalUsedTokens: 20,
-          totalOmittedTokens: 0,
-          totalTruncatedTokens: 0,
-          withinLimits: true,
-        },
-        provenance: [
-          {
-            blockId: "system:core",
-            section: "system",
-            source: "decision",
-            trust: "trusted_instruction",
+      construct: (input: PromptConstructionInput): PromptConstructionResult => {
+        const systemContent = input.planText?.trim()
+          ? `system\n${input.planText.trim()}`
+          : "system";
+        const prior = (input.conversation ?? []).filter(
+          (message) =>
+            message.role === "user" || message.role === "assistant",
+        );
+        return {
+          schemaVersion: 1,
+          status: "complete",
+          request: {
+            messages: [
+              { role: "system", content: systemContent },
+              ...prior.map((message) => ({
+                role: message.role,
+                content: message.content,
+              })),
+              { role: "user", content: input.userMessage },
+            ],
+            model: input.model ?? "test",
+            tools: input.tools,
+            maximumOutputTokens: 1024,
           },
-        ],
-        omissions: [],
-        warnings: [],
-        reasonCodes: ["output_reserved_first"],
-      }),
+          budget: {
+            contextWindowTokens: 32_768,
+            outputReservedTokens: 1024,
+            inputBudgetTokens: 30_000,
+            sections: [
+              {
+                section: "system",
+                allocatedTokens: 500,
+                usedTokens: 10,
+                omittedTokens: 0,
+                truncatedTokens: 0,
+              },
+              {
+                section: "output_reserve",
+                allocatedTokens: 1024,
+                usedTokens: 0,
+                omittedTokens: 0,
+                truncatedTokens: 0,
+              },
+            ],
+            totalUsedTokens: 20,
+            totalOmittedTokens: 0,
+            totalTruncatedTokens: 0,
+            withinLimits: true,
+          },
+          provenance: [
+            {
+              blockId: "system:core",
+              section: "system",
+              source: "decision",
+              trust: "trusted_instruction",
+            },
+          ],
+          omissions: [],
+          warnings: [],
+          reasonCodes: ["output_reserved_first"],
+        };
+      },
     },
     llm,
     repositoryState: {

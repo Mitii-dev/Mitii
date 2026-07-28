@@ -8,20 +8,25 @@ import {
 
 import type { AgentUiDepth, AgentUiMode } from '../protocol';
 import {
+  normalizeApproval,
+  type ApprovalUiMode,
+} from '../approvalPresets';
+import {
   IconAgent,
   IconAsk,
-  IconBuilder,
+  IconAskApproval,
+  IconApproveForMe,
+  IconCheck,
   IconDepthAuto,
   IconDepthDeep,
   IconDepthQuick,
-  IconGuided,
-  IconPilot,
+  IconFullAccess,
   IconPlan,
   IconReview,
-  IconSafe,
 } from './Icons';
 
-export type ApprovalUiMode = 'safe' | 'guided' | 'builder' | 'pilot';
+export type { ApprovalUiMode };
+export { normalizeApproval };
 
 type ComposerSelectId = 'mode' | 'approval' | 'depth';
 
@@ -31,6 +36,8 @@ interface ComposerOption<T extends string> {
   description: string;
   color: string;
   icon: ReactNode;
+  /** Emphasize as a high-privilege / warning choice. */
+  warning?: boolean;
 }
 
 const MODES: ComposerOption<AgentUiMode>[] = [
@@ -67,31 +74,25 @@ const MODES: ComposerOption<AgentUiMode>[] = [
 const APPROVAL_OPTIONS: ComposerOption<ApprovalUiMode>[] = [
   {
     id: 'safe',
-    label: 'Safe',
-    description: 'Pause before edits and commands',
-    color: '#ef4444',
-    icon: <IconSafe />,
+    label: 'Ask for approval',
+    description: 'Always ask before edits, commands, and network use',
+    color: 'var(--mitii-text)',
+    icon: <IconAskApproval />,
   },
   {
     id: 'guided',
-    label: 'Guided',
-    description: 'Pause before file edits',
-    color: '#f59e0b',
-    icon: <IconGuided />,
-  },
-  {
-    id: 'builder',
-    label: 'Builder',
-    description: 'Pause before shell commands',
-    color: '#fb923c',
-    icon: <IconBuilder />,
+    label: 'Approve for me',
+    description: 'Only ask for actions detected as potentially unsafe',
+    color: 'var(--mitii-text)',
+    icon: <IconApproveForMe />,
   },
   {
     id: 'pilot',
-    label: 'Pilot',
-    description: 'Auto-approve allowed operations',
-    color: '#22c55e',
-    icon: <IconPilot />,
+    label: 'Full access',
+    description: 'Unrestricted access to tools, network, and workspace files',
+    color: '#e8b84a',
+    icon: <IconFullAccess />,
+    warning: true,
   },
 ];
 
@@ -134,18 +135,6 @@ interface ComposerControlsProps {
   onApprovalModeChange: (mode: ApprovalUiMode) => void;
   onDepthChange: (depth: AgentUiDepth) => void;
   includeReview?: boolean;
-}
-
-function normalizeApproval(value: string): ApprovalUiMode {
-  if (
-    value === 'safe' ||
-    value === 'guided' ||
-    value === 'builder' ||
-    value === 'pilot'
-  ) {
-    return value;
-  }
-  return 'guided';
 }
 
 export function ComposerControls({
@@ -214,7 +203,7 @@ export function ComposerControls({
       >
         <button
           type="button"
-          className="composer-dropdown__button"
+          className={`composer-dropdown__button${selected.warning ? ' composer-dropdown__button--warning' : ''}`}
           aria-haspopup="listbox"
           aria-expanded={isOpen}
           aria-label={label}
@@ -241,7 +230,13 @@ export function ComposerControls({
                 <button
                   key={option.id}
                   type="button"
-                  className={`composer-dropdown__option${selectedOption ? ' composer-dropdown__option--selected' : ''}`}
+                  className={[
+                    'composer-dropdown__option',
+                    selectedOption ? 'composer-dropdown__option--selected' : '',
+                    option.warning ? 'composer-dropdown__option--warning' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
                   style={
                     {
                       '--composer-option-color': option.color,
@@ -262,6 +257,13 @@ export function ComposerControls({
                     <span>{option.label}</span>
                     <small>{option.description}</small>
                   </span>
+                  {selectedOption ? (
+                    <span className="composer-dropdown__option-check" aria-hidden>
+                      <IconCheck />
+                    </span>
+                  ) : (
+                    <span className="composer-dropdown__option-check" aria-hidden />
+                  )}
                 </button>
               );
             })}
