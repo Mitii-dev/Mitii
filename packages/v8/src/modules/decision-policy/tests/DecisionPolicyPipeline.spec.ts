@@ -345,6 +345,9 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.route).toBe("execute");
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
     expect(decision.toolGrant.allowedTools).toContain("apply_patch");
+    expect(decision.toolGrant.allowedTools).toContain("delete_file");
+    expect(decision.toolGrant.allowedTools).toContain("delete_directory");
+    expect(decision.toolGrant.allowedTools).toContain("move_file");
     expect(decision.reasonCodes).toContain("mutation_execute");
   });
 
@@ -367,6 +370,7 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.route).toBe("repository_answer");
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
     expect(decision.toolGrant.allowedTools).not.toContain("apply_patch");
+    expect(decision.toolGrant.allowedTools).not.toContain("delete_file");
   });
 
   it("routes agent mutation intents to execute even when interaction is question", () => {
@@ -389,6 +393,7 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.route).toBe("execute");
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
     expect(decision.toolGrant.allowedTools).toContain("apply_patch");
+    expect(decision.toolGrant.allowedTools).toContain("move_file");
   });
 
   it("does not clarify clear agent implement asks even when understanding is soft-ambiguous", () => {

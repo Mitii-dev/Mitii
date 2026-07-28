@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import * as path from "node:path";
 
 import type { WorkspaceFileSystemPort } from "../../contracts";
 import { normalizeRelativePath } from "../PathContainment";
@@ -50,6 +51,11 @@ export async function createFileCopyCheckpoint(params: {
       normalized,
     );
     try {
+      const stat = await params.fileSystem.lstat(absolute);
+      if (stat.kind === "directory") {
+        files.push({ relativePath: normalized, kind: "directory" });
+        continue;
+      }
       const read = await params.fileSystem.readFile(absolute);
       files.push({
         relativePath: normalized,
@@ -81,10 +87,19 @@ export async function restoreFileCopyCheckpoint(params: {
     );
     if (snapshot.kind === "missing") {
       try {
-        await fileSystem.unlink(absolute);
+        const stat = await fileSystem.lstat(absolute);
+        if (stat.kind === "directory") {
+          await requireRmdir(fileSystem)(absolute, { recursive: true });
+        } else {
+          await fileSystem.unlink(absolute);
+        }
       } catch {
         // Already absent — fine.
       }
+      continue;
+    }
+    if (snapshot.kind === "directory") {
+      await fileSystem.mkdirp(absolute);
       continue;
     }
     await fileSystem.writeFile(absolute, snapshot.content);
@@ -93,4 +108,93 @@ export async function restoreFileCopyCheckpoint(params: {
 
 export function hashContent(content: string): string {
   return createHash("sha256").update(content, "utf8").digest("hex");
+}
+
+/** Collect repository-relative file paths under a directory (non-symlink). */
+export async function listRelativeFilesUnder(params: {
+  fileSystem: WorkspaceFileSystemPort;
+  workspaceRoot: string;
+  relativeDirectory: string;
+}): Promise<string[]> {
+  const { fileSystem, workspaceRoot } = params;
+  const absoluteRoot = fileSystem.resolve(
+    workspaceRoot,
+    normalizeRelativePath(params.relativeDirectory),
+  );
+  const results: string[] = [];
+
+  const walk = async (absoluteDir: string): Promise<void> => {
+    let entries;
+    try {
+      entries = await fileSystem.listDirectory(absoluteDir);
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const absoluteChild = fileSystem.resolve(absoluteDir, entry.name);
+      if (entry.kind === "symlink") {
+        continue;
+      }
+      if (entry.kind === "directory") {
+        await walk(absoluteChild);
+        continue;
+      }
+      if (entry.kind !== "file") {
+        continue;
+      }
+      results.push(
+        normalizeRelativePath(path.relative(workspaceRoot, absoluteChild)),
+      );
+    }
+  };
+
+  await walk(absoluteRoot);
+  return results;
+}
+
+export function mapMovedRelativePath(
+  sourceRoot: string,
+  destinationRoot: string,
+  sourceFile: string,
+): string {
+  const normalizedSourceRoot = normalizeRelativePath(sourceRoot);
+  const normalizedDestinationRoot = normalizeRelativePath(destinationRoot);
+  const normalizedSourceFile = normalizeRelativePath(sourceFile);
+  if (normalizedSourceFile === normalizedSourceRoot) {
+    return normalizedDestinationRoot;
+  }
+  const prefix = `${normalizedSourceRoot}/`;
+  if (!normalizedSourceFile.startsWith(prefix)) {
+    throw new MutationError(
+      "execution_failed",
+      `Path "${normalizedSourceFile}" is not under "${normalizedSourceRoot}".`,
+    );
+  }
+  return normalizeRelativePath(
+    `${normalizedDestinationRoot}/${normalizedSourceFile.slice(prefix.length)}`,
+  );
+}
+
+export function requireRename(
+  fileSystem: WorkspaceFileSystemPort,
+): NonNullable<WorkspaceFileSystemPort["rename"]> {
+  if (!fileSystem.rename) {
+    throw new MutationError(
+      "execution_failed",
+      "Filesystem adapter does not support rename.",
+    );
+  }
+  return fileSystem.rename.bind(fileSystem);
+}
+
+export function requireRmdir(
+  fileSystem: WorkspaceFileSystemPort,
+): NonNullable<WorkspaceFileSystemPort["rmdir"]> {
+  if (!fileSystem.rmdir) {
+    throw new MutationError(
+      "execution_failed",
+      "Filesystem adapter does not support rmdir.",
+    );
+  }
+  return fileSystem.rmdir.bind(fileSystem);
 }

@@ -148,6 +148,9 @@ describe("model tool definition single source", () => {
     expect(all).toContain("read_many_files");
     expect(all).toContain("file_metadata");
     expect(all).toContain("apply_patch");
+    expect(all).toContain("delete_file");
+    expect(all).toContain("delete_directory");
+    expect(all).toContain("move_file");
     expect(all).toContain("fetch_url");
     expect(all).toContain("web_search");
     expect(all).toContain("run_command");
@@ -155,9 +158,14 @@ describe("model tool definition single source", () => {
     const readOnly = listBuiltinReadOnlyModelToolDefinitions().map((t) => t.name);
     expect(readOnly).toContain("glob_files");
     expect(readOnly).not.toContain("apply_patch");
+    expect(readOnly).not.toContain("delete_file");
+    expect(readOnly).not.toContain("move_file");
 
     const mutation = listBuiltinMutationModelToolDefinitions().map((t) => t.name);
     expect(mutation).toContain("apply_patch");
+    expect(mutation).toContain("delete_file");
+    expect(mutation).toContain("delete_directory");
+    expect(mutation).toContain("move_file");
     expect(mutation).toContain("run_command");
 
     const diagnostics = listBuiltinModelToolDefinitions().find(

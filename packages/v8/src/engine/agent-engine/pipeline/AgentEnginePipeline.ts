@@ -2133,19 +2133,19 @@ export class AgentEnginePipeline {
 
     toolCache.set(toolCall.id, result);
 
-    if (result.status === "succeeded" && toolCall.name === "apply_patch") {
+    if (result.status === "succeeded") {
       const output = result.output as
         | { checkpointId?: string; changedFiles?: string[] }
         | undefined;
       if (output?.checkpointId) {
         mutationCheckpointIds.push(output.checkpointId);
-      }
-      for (const changed of output?.changedFiles ?? []) {
-        if (!changedFiles.includes(changed)) {
-          changedFiles.push(changed);
+        for (const changed of output.changedFiles ?? []) {
+          if (!changedFiles.includes(changed)) {
+            changedFiles.push(changed);
+          }
         }
+        reasonCodes.push("mutation_applied");
       }
-      reasonCodes.push("mutation_applied");
     }
 
     if (result.status === "failed" || result.status === "rejected") {
@@ -2245,6 +2245,26 @@ export class AgentEnginePipeline {
         return [
           `patches=${patches?.length ?? 0}`,
           patchPaths?.length ? this.formatPathList("paths", patchPaths) : undefined,
+        ]
+          .filter(Boolean)
+          .join(" ");
+      }
+      case "delete_file":
+      case "delete_directory":
+        return [
+          path ? `path=${path}` : undefined,
+          typeof args.recursive === "boolean"
+            ? `recursive=${args.recursive}`
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join(" ");
+      case "move_file": {
+        const from = this.safeText(args.from);
+        const to = this.safeText(args.to);
+        return [
+          from ? `from=${from}` : undefined,
+          to ? `to=${to}` : undefined,
         ]
           .filter(Boolean)
           .join(" ");

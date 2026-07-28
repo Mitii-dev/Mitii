@@ -285,6 +285,95 @@ export class InMemoryFileSystemAdapter implements WorkspaceFileSystemPort {
       current = next;
     }
   }
+
+  public async rmdir(
+    absolutePath: string,
+    options?: { recursive?: boolean },
+  ): Promise<void> {
+    const absolute = path.resolve(absolutePath);
+    const relative = path.relative(this.workspaceRoot, absolute);
+    if (relative.startsWith("..") || path.isAbsolute(relative) || relative === "") {
+      if (relative === "") {
+        throw new Error(`EPERM: cannot remove workspace root`);
+      }
+      return;
+    }
+    const parts = relative.split(path.sep).filter(Boolean);
+    let parent: InMemoryDirectoryNode = this.root;
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      const next = parent.children[parts[i]!];
+      if (!next || next.kind !== "directory") {
+        return;
+      }
+      parent = next;
+    }
+    const name = parts[parts.length - 1]!;
+    const target = parent.children[name];
+    if (!target) {
+      return;
+    }
+    if (target.kind !== "directory") {
+      throw new Error(`ENOTDIR: ${absolutePath}`);
+    }
+    if (!options?.recursive && Object.keys(target.children).length > 0) {
+      throw new Error(`ENOTEMPTY: ${absolutePath}`);
+    }
+    delete parent.children[name];
+  }
+
+  public async rename(
+    fromAbsolutePath: string,
+    toAbsolutePath: string,
+  ): Promise<void> {
+    const fromAbsolute = path.resolve(fromAbsolutePath);
+    const toAbsolute = path.resolve(toAbsolutePath);
+    const fromRelative = path.relative(this.workspaceRoot, fromAbsolute);
+    const toRelative = path.relative(this.workspaceRoot, toAbsolute);
+    if (
+      fromRelative.startsWith("..") ||
+      path.isAbsolute(fromRelative) ||
+      fromRelative === "" ||
+      toRelative.startsWith("..") ||
+      path.isAbsolute(toRelative) ||
+      toRelative === ""
+    ) {
+      throw new Error(`EPERM: rename outside workspace`);
+    }
+
+    const fromParts = fromRelative.split(path.sep).filter(Boolean);
+    let fromParent: InMemoryDirectoryNode = this.root;
+    for (let i = 0; i < fromParts.length - 1; i += 1) {
+      const next = fromParent.children[fromParts[i]!];
+      if (!next || next.kind !== "directory") {
+        throw new Error(`ENOENT: ${fromAbsolutePath}`);
+      }
+      fromParent = next;
+    }
+    const fromName = fromParts[fromParts.length - 1]!;
+    const node = fromParent.children[fromName];
+    if (!node) {
+      throw new Error(`ENOENT: ${fromAbsolutePath}`);
+    }
+
+    const existing = this.lookup(toAbsolute, { followSymlinks: false });
+    if (existing) {
+      throw new Error(`EEXIST: ${toAbsolutePath}`);
+    }
+
+    await this.mkdirp(path.dirname(toAbsolute));
+    const toParts = toRelative.split(path.sep).filter(Boolean);
+    let toParent: InMemoryDirectoryNode = this.root;
+    for (let i = 0; i < toParts.length - 1; i += 1) {
+      const next = toParent.children[toParts[i]!];
+      if (!next || next.kind !== "directory") {
+        throw new Error(`ENOENT: ${toAbsolutePath}`);
+      }
+      toParent = next;
+    }
+    const toName = toParts[toParts.length - 1]!;
+    delete fromParent.children[fromName];
+    toParent.children[toName] = node;
+  }
 }
 
 export function directory(

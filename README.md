@@ -180,7 +180,8 @@ See [docs/REPO_LAYOUT.md](docs/REPO_LAYOUT.md). Canonical architecture: [package
 ## Development
 
 ```bash
-pnpm run build              # build vscode + cli via workspace packages
+pnpm run build:all          # build all packages + Electron SQLite for F5 / indexes
+pnpm run build              # packages only (v8 + sdk + cli + vscode)
 pnpm run lint               # typecheck @mitii/v8 + @mitii/sdk
 pnpm test                   # architecture + selected V8 Vitest suites
 pnpm run package            # build the target-specific VSIX (apps/vscode)
@@ -190,8 +191,9 @@ pnpm run package:preflight  # release checks, tests, and package
 Native modules target different runtimes:
 
 ```bash
-pnpm run rebuild:native     # VS Code/Electron
+pnpm run rebuild:native     # VS Code/Electron (+ stage dist/native)
 pnpm run rebuild:node       # local Node.js tests
+pnpm run rebuild:all        # Node then Electron (ends F5-ready)
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for coding conventions and pull request guidance.

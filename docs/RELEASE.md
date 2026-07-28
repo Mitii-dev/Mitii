@@ -32,6 +32,7 @@ Root helpers (thin orchestrator):
 
 ```bash
 pnpm run build               # v8 + sdk + cli + vscode
+pnpm run build:all           # build + Electron native SQLite staged for F5
 pnpm run build:vscode        # → @mitii/vscode build
 pnpm run build:cli           # → @mitii/cli build
 pnpm run package             # → @mitii/vscode package

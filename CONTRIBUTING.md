@@ -37,9 +37,10 @@ Optional but useful for full feature coverage:
 git clone https://github.com/Mitii-dev/Mitii.git
 cd Mitii
 pnpm install
-pnpm run rebuild:native   # required for better-sqlite3 in VS Code
-pnpm run build
+pnpm run build:all   # packages + Electron better-sqlite3 staged into apps/vscode/dist/native
 ```
+
+Or: `pnpm run setup` / `pnpm run setup:cursor` (install + Node rebuild + compile + Electron rebuild).
 
 Git hooks are installed automatically via `pnpm install` -> `prepare` -> `scripts/install-git-hooks.mjs`. The pre-commit hook stages version bumps from `scripts/bump-version.mjs`.
 
@@ -127,10 +128,13 @@ Install locally: **Extensions → ... → Install from VSIX**.
 
 | Scenario | Command |
 |----------|---------|
+| Full F5-ready build | `pnpm run build:all` |
 | F5 / VS Code extension host | `pnpm run rebuild:native` |
 | Cursor extension host | `MITII_EDITOR=cursor pnpm run rebuild:native` |
 | Local vitest | `pnpm run rebuild:node` |
-| Both | `pnpm run rebuild:all` |
+| Both (Node then Electron; ends F5-ready) | `pnpm run rebuild:all` |
+
+`rebuild:native` also stages `better_sqlite3.node` into `apps/vscode/dist/native`. Without that Electron ABI binding, code/text indexes fail in the Extension Host.
 
 If SQLite throws on startup, this is almost always the fix.
 

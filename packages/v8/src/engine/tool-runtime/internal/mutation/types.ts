@@ -12,7 +12,8 @@ export class MutationError extends Error {
 
 export type CheckpointFileSnapshot =
   | { relativePath: string; kind: "existing"; content: string }
-  | { relativePath: string; kind: "missing" };
+  | { relativePath: string; kind: "missing" }
+  | { relativePath: string; kind: "directory" };
 
 export interface MutationCheckpoint {
   checkpointId: string;

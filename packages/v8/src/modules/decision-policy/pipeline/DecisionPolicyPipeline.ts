@@ -184,7 +184,12 @@ function clampGrantAgainstInjection(
         ...grant,
         maximumWorkspaceEffect: "read",
         allowedTools: grant.allowedTools.filter(
-          (tool) => tool !== "apply_patch" && tool !== "run_command",
+          (tool) =>
+            tool !== "apply_patch" &&
+            tool !== "delete_file" &&
+            tool !== "delete_directory" &&
+            tool !== "move_file" &&
+            tool !== "run_command",
         ),
         allowedEffects: grant.allowedEffects.filter(
           (effect) =>

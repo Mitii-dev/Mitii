@@ -4,11 +4,14 @@ import { listModelToolDefinitions } from "../../internal/modelToolDefinitions";
 import type { RuntimeModelToolDefinition } from "../../internal/modelToolDefinitions";
 
 import { applyPatchTool } from "./applyPatchTool";
+import { deleteDirectoryTool } from "./deleteDirectoryTool";
+import { deleteFileTool } from "./deleteFileTool";
 import { fetchDocsTool } from "./fetchDocsTool";
 import { fetchUrlTool } from "./fetchUrlTool";
 import { fileMetadataTool } from "./fileMetadataTool";
 import { globFilesTool } from "./globFilesTool";
 import { listDirectoryTool } from "./listDirectoryTool";
+import { moveFileTool } from "./moveFileTool";
 import { readDiagnosticsTool } from "./readDiagnosticsTool";
 import { readFileTool } from "./readFileTool";
 import { readGitStatusTool } from "./readGitStatusTool";
@@ -38,6 +41,9 @@ export const BUILTIN_TOOLS: readonly RegisteredTool[] = [
   runReadonlyCommandTool,
   readPackageScriptsTool,
   applyPatchTool,
+  deleteFileTool,
+  deleteDirectoryTool,
+  moveFileTool,
   runCommandTool,
   fetchUrlTool,
   fetchDocsTool,
@@ -59,6 +65,9 @@ export function listBuiltinReadOnlyModelToolDefinitions(): RuntimeModelToolDefin
   }).filter(
     (tool) =>
       tool.name !== "apply_patch" &&
+      tool.name !== "delete_file" &&
+      tool.name !== "delete_directory" &&
+      tool.name !== "move_file" &&
       tool.name !== "run_command",
   );
 }
@@ -81,6 +90,9 @@ export {
   runReadonlyCommandTool,
   readPackageScriptsTool,
   applyPatchTool,
+  deleteFileTool,
+  deleteDirectoryTool,
+  moveFileTool,
   runCommandTool,
   fetchUrlTool,
   fetchDocsTool,

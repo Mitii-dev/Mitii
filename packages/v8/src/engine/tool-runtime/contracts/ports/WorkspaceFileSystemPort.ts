@@ -43,4 +43,14 @@ export interface WorkspaceFileSystemPort {
   unlink(absolutePath: string): Promise<void>;
   /** Ensure a directory exists (including parents). */
   mkdirp(absolutePath: string): Promise<void>;
+  /**
+   * Remove a directory. When `recursive` is true, delete contents first.
+   * Missing paths are a no-op when `recursive` is true.
+   */
+  rmdir?(
+    absolutePath: string,
+    options?: { recursive?: boolean },
+  ): Promise<void>;
+  /** Rename/move a path. Fails if the destination already exists. */
+  rename?(fromAbsolutePath: string, toAbsolutePath: string): Promise<void>;
 }

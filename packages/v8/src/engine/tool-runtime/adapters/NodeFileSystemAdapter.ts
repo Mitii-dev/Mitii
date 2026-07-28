@@ -158,4 +158,33 @@ export class NodeWorkspaceFileSystemAdapter implements WorkspaceFileSystemPort {
   public async mkdirp(absolutePath: string): Promise<void> {
     await fs.mkdir(absolutePath, { recursive: true });
   }
+
+  public async rmdir(
+    absolutePath: string,
+    options?: { recursive?: boolean },
+  ): Promise<void> {
+    try {
+      if (options?.recursive) {
+        await fs.rm(absolutePath, { recursive: true, force: true });
+        return;
+      }
+      await fs.rmdir(absolutePath);
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? (error as { code?: string }).code
+          : undefined;
+      if (code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+
+  public async rename(
+    fromAbsolutePath: string,
+    toAbsolutePath: string,
+  ): Promise<void> {
+    await fs.mkdir(path.dirname(toAbsolutePath), { recursive: true });
+    await fs.rename(fromAbsolutePath, toAbsolutePath);
+  }
 }

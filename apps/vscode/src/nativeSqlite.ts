@@ -42,6 +42,6 @@ export function resolveNativeSqliteBinding(): string | undefined {
   }
 
   throw new Error(
-    `Mitii SQLite native binding is missing. Checked: ${candidates.join(', ')}. Run the VS Code package build so ${NATIVE_BINDING_FILE} is staged into dist/native.`,
+    `Mitii SQLite native binding is missing. Checked: ${candidates.join(', ')}. Run \`pnpm run build:all\` (or \`pnpm run rebuild:native\`) so ${NATIVE_BINDING_FILE} is staged into dist/native for the Electron extension host.`,
   );
 }

@@ -223,6 +223,52 @@ export const applyPatchOutputSchema = z
   })
   .strict();
 
+export const deleteFileInputSchema = z
+  .object({
+    path: z.string().min(1),
+  })
+  .strict();
+
+export const deleteFileOutputSchema = z
+  .object({
+    checkpointId: z.string().min(1),
+    changedFiles: z.array(z.string().min(1)),
+    path: z.string().min(1),
+  })
+  .strict();
+
+export const deleteDirectoryInputSchema = z
+  .object({
+    path: z.string().min(1),
+    recursive: z.boolean().optional(),
+  })
+  .strict();
+
+export const deleteDirectoryOutputSchema = z
+  .object({
+    checkpointId: z.string().min(1),
+    changedFiles: z.array(z.string().min(1)),
+    path: z.string().min(1),
+    recursive: z.boolean(),
+  })
+  .strict();
+
+export const moveFileInputSchema = z
+  .object({
+    from: z.string().min(1),
+    to: z.string().min(1),
+  })
+  .strict();
+
+export const moveFileOutputSchema = z
+  .object({
+    checkpointId: z.string().min(1),
+    changedFiles: z.array(z.string().min(1)),
+    from: z.string().min(1),
+    to: z.string().min(1),
+  })
+  .strict();
+
 export const runCommandInputSchema = z
   .object({
     argv: z.array(z.string().min(1)).min(1),

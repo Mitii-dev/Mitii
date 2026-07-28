@@ -170,7 +170,7 @@ export function preflightToolCall(params: {
                   approvalRequired: true,
                   fingerprint,
                   toolName: parsed.toolName,
-                  paths: extractPatchPaths(parsed.arguments),
+                  paths: extractMutationPaths(parsed.toolName, parsed.arguments),
                 }
               : undefined,
         }),
@@ -188,16 +188,38 @@ export function preflightToolCall(params: {
   return { ok: true, registered, maxOutputBytes };
 }
 
-function extractPatchPaths(argumentsValue: unknown): string[] {
-  if (
-    !argumentsValue ||
-    typeof argumentsValue !== "object" ||
-    !("patches" in argumentsValue) ||
-    !Array.isArray((argumentsValue as { patches: unknown }).patches)
-  ) {
+function extractMutationPaths(
+  toolName: string,
+  argumentsValue: unknown,
+): string[] {
+  if (!argumentsValue || typeof argumentsValue !== "object") {
     return [];
   }
-  return (argumentsValue as { patches: Array<{ path?: unknown }> }).patches
-    .map((patch) => (typeof patch.path === "string" ? patch.path : undefined))
-    .filter((path): path is string => typeof path === "string");
+  const args = argumentsValue as Record<string, unknown>;
+
+  if (toolName === "apply_patch") {
+    if (!("patches" in args) || !Array.isArray(args.patches)) {
+      return [];
+    }
+    return (args.patches as Array<{ path?: unknown }>)
+      .map((patch) => (typeof patch.path === "string" ? patch.path : undefined))
+      .filter((path): path is string => typeof path === "string");
+  }
+
+  if (toolName === "delete_file" || toolName === "delete_directory") {
+    return typeof args.path === "string" ? [args.path] : [];
+  }
+
+  if (toolName === "move_file") {
+    const paths: string[] = [];
+    if (typeof args.from === "string") {
+      paths.push(args.from);
+    }
+    if (typeof args.to === "string") {
+      paths.push(args.to);
+    }
+    return paths;
+  }
+
+  return [];
 }

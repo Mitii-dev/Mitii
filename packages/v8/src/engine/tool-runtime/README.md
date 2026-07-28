@@ -76,6 +76,9 @@ const runtime = new ToolRuntimePipeline(ports, { registry });
 ## Mutation tools
 
 - `apply_patch` — default write grant
+- `delete_file` — default write grant
+- `delete_directory` — default write grant
+- `move_file` — default write grant
 - `run_command` — opt-in only (explicit grant + commandRules + approval)
 
 Model-facing JSON schemas are generated from registered Tool Runtime
@@ -90,23 +93,25 @@ the agent grant uses for diagnosis.
 
 - `apply_patch` — applies structured `oldText`/`newText` patches inside a
   recoverable transaction.
+- `delete_file` / `delete_directory` / `move_file` — filesystem mutations
+  inside the same recoverable checkpoint model.
 
 Mutation calls are grant-gated (`maximumWorkspaceEffect: "write"`,
 `workspace_write` effect) and additionally approval-gated when the grant's
 `approvalMode` is `"when_required"`:
 
 ```text
-execute(apply_patch, …)
+execute(apply_patch|delete_file|delete_directory|move_file, …)
   → grant/effect/schema preflight
-  → mutationBudget batch limits (patches / files / payload chars)
-  → dirty-overlap check (options.dirtyPaths vs. patch paths)
+  → mutationBudget batch limits (apply_patch only)
+  → dirty-overlap check
   → approval preflight (skipped when approvalMode is "never")
       no/mismatched approval → status "rejected", reasonCode "approval_required",
         output.fingerprint = fingerprintToolCall(toolName, arguments)
       matching approval     → proceed
   → begin MutationTransactionRegistry checkpoint
-  → apply patches, capture changedFiles
-  → ToolResult.output = { checkpointId, changedFiles }
+  → apply mutation, capture changedFiles
+  → ToolResult.output = { checkpointId, changedFiles, … }
 ```
 
 ### Mutation batch limits

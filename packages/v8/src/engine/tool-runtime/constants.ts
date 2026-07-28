@@ -28,7 +28,12 @@ export const NETWORK_TOOL_IDS = [
  * Mutation tools Decision Policy may grant by default.
  * `run_command` is executable but opt-in (explicit grant + commandRules).
  */
-export const MUTATION_TOOL_IDS = ["apply_patch"] as const;
+export const MUTATION_TOOL_IDS = [
+  "apply_patch",
+  "delete_file",
+  "delete_directory",
+  "move_file",
+] as const;
 
 /** Opt-in mutating process tool (not in default MUTATION_TOOL_IDS). */
 export const OPT_IN_MUTATION_TOOL_IDS = ["run_command"] as const;

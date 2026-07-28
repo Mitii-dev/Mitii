@@ -67,7 +67,12 @@ export const READ_ONLY_TOOL_IDS = [
 ] as const;
 
 /** Executable mutation tools only — stubs like run_command stay out of grants. */
-export const MUTATION_TOOL_IDS = ["apply_patch"] as const;
+export const MUTATION_TOOL_IDS = [
+  "apply_patch",
+  "delete_file",
+  "delete_directory",
+  "move_file",
+] as const;
 
 export const DECISION_REASON_CODES = [
   "mode_ask_readonly",

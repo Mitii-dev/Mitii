@@ -2,11 +2,13 @@
 /**
  * Rebuild native modules for VS Code / Cursor Electron.
  * A normal install compiles for Node.js; the extension host uses Electron's ABI.
- * Rebuilds better-sqlite3 for the Extension Host Electron ABI.
+ * Rebuilds better-sqlite3 for the Extension Host Electron ABI, then stages the
+ * binding into apps/vscode/dist/native for F5 / code+text indexes.
  *
  * Override: MITII_ELECTRON_VERSION=42.6.0 pnpm run rebuild:native
  * Override editor: MITII_EDITOR=cursor pnpm run rebuild:native
  */
+import { createRequire } from 'module';
 import { execSync, spawnSync } from 'child_process';
 import { existsSync } from 'fs';
 import { dirname, resolve } from 'path';
@@ -14,6 +16,8 @@ import { fileURLToPath } from 'url';
 
 const MODULES = ['better-sqlite3'];
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const require = createRequire(import.meta.url);
+const { stageNativeSqliteBinding } = require('./stage-native-sqlite.cjs');
 
 function readElectronFromPlist(plistPath) {
   if (!existsSync(plistPath)) return null;
@@ -24,6 +28,34 @@ function readElectronFromPlist(plistPath) {
   } catch {
     return null;
   }
+}
+
+function inferPreferredEditor() {
+  const explicit = (
+    process.env.MITII_EDITOR ??
+    process.env.THUNDER_EDITOR ??
+    ''
+  ).toLowerCase();
+  if (explicit === 'cursor' || explicit === 'vscode') {
+    return explicit;
+  }
+
+  // Prefer the editor that is actually hosting this process (F5 / agent terminals).
+  const cursorHints = [
+    process.env.CURSOR_AGENT,
+    process.env.CURSOR_EXTENSION_HOST_ROLE,
+    process.env.CURSOR_WORKSPACE_LABEL,
+    process.env.VSCODE_CODE_CACHE_PATH,
+    process.env.VSCODE_IPC_HOOK,
+  ]
+    .filter(Boolean)
+    .join('\n')
+    .toLowerCase();
+  if (cursorHints.includes('cursor')) {
+    return 'cursor';
+  }
+
+  return 'vscode';
 }
 
 function detectElectronVersion() {
@@ -42,7 +74,7 @@ function detectElectronVersion() {
     },
   };
 
-  const preferred = (process.env.MITII_EDITOR ?? process.env.THUNDER_EDITOR ?? 'vscode').toLowerCase();
+  const preferred = inferPreferredEditor();
   const order =
     preferred === 'cursor' ? ['cursor', 'vscode'] : ['vscode', 'cursor'];
 
@@ -83,8 +115,20 @@ function main() {
   if (result.status !== 0) {
     console.error('\nRebuild failed. Try:');
     console.error('  MITII_ELECTRON_VERSION=42.6.0 pnpm run rebuild:native   # VS Code 1.124+');
-    console.error('  MITII_ELECTRON_VERSION=39.8.1 pnpm run rebuild:native   # Cursor');
+    console.error('  MITII_EDITOR=cursor pnpm run rebuild:native             # Cursor (auto-detects Electron)');
+    console.error('  MITII_ELECTRON_VERSION=40.10.3 pnpm run rebuild:native  # Cursor Electron pin');
     process.exit(result.status ?? 1);
+  }
+
+  try {
+    stageNativeSqliteBinding({ createDist: true });
+  } catch (error) {
+    console.error(
+      `\nNative rebuild succeeded but staging failed: ${
+        error instanceof Error ? error.message : error
+      }`,
+    );
+    process.exit(1);
   }
 
   console.log('\nNative rebuild complete. Reload the Extension Development Host (F5).');
