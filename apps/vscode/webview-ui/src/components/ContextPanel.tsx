@@ -26,13 +26,9 @@ export function ContextPanel({
   onPick,
   onKeep,
 }: ContextPanelProps) {
-  if (pins.length === 0) {
-    return null;
-  }
-
   return (
     <section
-      className="context-panel"
+      className={`context-panel${pins.length === 0 ? ' context-panel--empty' : ''}`}
       aria-label="Pinned context"
       style={
         modeColor
@@ -40,45 +36,61 @@ export function ContextPanel({
           : undefined
       }
     >
+      <div className="context-panel__label">
+        <span>Context</span>
+        {pins.length > 0 ? (
+          <span>{pins.length} pinned</span>
+        ) : (
+          <span>No files pinned</span>
+        )}
+      </div>
       <div className="pins">
-        {pins.map((pin) => (
-          <span
-            key={pin.path}
-            className={`pin-chip${pin.source === 'auto' ? ' pin-chip--auto' : ''}`}
-            title={
-              pin.source === 'auto'
-                ? 'Auto from open editor — closes with the tab'
-                : 'Pinned context'
-            }
-          >
-            <button
-              type="button"
-              className="pin-chip__path"
-              onClick={() => onKeep?.(pin.path)}
+        {pins.length > 0 ? (
+          pins.map((pin) => (
+            <span
+              key={pin.path}
+              className={`pin-chip${pin.source === 'auto' ? ' pin-chip--auto' : ''}`}
               title={
                 pin.source === 'auto'
-                  ? 'Keep this file in context'
+                  ? 'Auto from open editor - closes with the tab'
                   : pin.path
               }
             >
-              @{pin.path}
-            </button>
-            <button
-              type="button"
-              aria-label={`Unpin ${pin.path}`}
-              title={`Unpin ${pin.path}`}
-              onClick={() => onRemove(pin.path)}
-            >
-              ×
-            </button>
+              <button
+                type="button"
+                className="pin-chip__path"
+                onClick={() => onKeep?.(pin.path)}
+                title={
+                  pin.source === 'auto'
+                    ? 'Keep this file in context'
+                    : pin.path
+                }
+              >
+                @{pin.path}
+              </button>
+              <button
+                type="button"
+                aria-label={`Unpin ${pin.path}`}
+                title={`Unpin ${pin.path}`}
+                onClick={() => onRemove(pin.path)}
+              >
+                ×
+              </button>
+            </span>
+          ))
+        ) : (
+          <span className="context-empty-text">
+            Type @ to search files, or pin files here.
           </span>
-        ))}
+        )}
         <IconButton label="Pin files or folders" variant="ghost" onClick={onPick}>
           <IconPlus />
         </IconButton>
-        <IconButton label="Clear pinned context" variant="ghost" onClick={onClear}>
-          <IconTrash />
-        </IconButton>
+        {pins.length > 0 ? (
+          <IconButton label="Clear pinned context" variant="ghost" onClick={onClear}>
+            <IconTrash />
+          </IconButton>
+        ) : null}
       </div>
     </section>
   );

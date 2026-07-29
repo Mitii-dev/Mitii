@@ -1,11 +1,8 @@
 import type { IndexStatusSnapshot } from '../protocol';
-import { IconButton } from './IconButton';
-import { IconIndex } from './Icons';
-
 interface IndexingStatusBarProps {
   index: IndexStatusSnapshot;
   onRefresh: () => void;
-  onReindex: () => void;
+  onOpenSettings: () => void;
 }
 
 type IndexTone = 'idle' | 'indexing' | 'ready' | 'warn';
@@ -107,30 +104,26 @@ function detailTooltip(index: IndexStatusSnapshot): string {
 export function IndexingStatusBar({
   index,
   onRefresh,
-  onReindex,
+  onOpenSettings,
 }: IndexingStatusBarProps) {
   const tone = resolveIndexTone(index);
   const label = shortLabel(tone, index);
   const tooltip = detailTooltip(index);
+  const symbol = tone === 'ready' ? '✓' : '!';
 
   return (
-    <div
+    <button
+      type="button"
       className={`indexing-chip indexing-chip--${tone}`}
-      title={tooltip}
+      onClick={onOpenSettings}
+      onDoubleClick={onRefresh}
+      title={`${tooltip} - click to open index settings`}
+      aria-label={`${label}. ${tooltip}. Open index settings.`}
     >
-      <span className="indexing-chip__dot" aria-hidden="true" />
-      <IconButton label="Refresh index status" variant="ghost" onClick={onRefresh}>
-        <IconIndex width={14} height={14} />
-      </IconButton>
-      <button
-        type="button"
-        className="indexing-chip__label"
-        onClick={onReindex}
-        title={`${tooltip} — click to reindex`}
-        aria-label={`${label}. ${tooltip}. Click to reindex.`}
-      >
-        {label}
-      </button>
-    </div>
+      <span className="indexing-chip__symbol" aria-hidden="true">
+        {symbol}
+      </span>
+      <span className="indexing-chip__label">{label}</span>
+    </button>
   );
 }

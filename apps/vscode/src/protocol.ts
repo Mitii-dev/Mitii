@@ -415,6 +415,7 @@ export type HostToWebviewMessage =
       flags: { skillManagement: boolean };
       history: ChatThreadSummary[];
       activeThreadId?: string;
+      activeThreadMessages?: ChatMessageView[];
       memories: MemoryItemView[];
       checkpoints: CheckpointItemView[];
     }

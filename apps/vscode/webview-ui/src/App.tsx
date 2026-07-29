@@ -233,7 +233,6 @@ export function App() {
         nav: next,
         settingsTab: nextSettingsTab,
       });
-      postToHost({ type: 'setTab', tab: next });
     },
     [],
   );
@@ -275,6 +274,17 @@ export function App() {
         setSkillManagement(msg.flags.skillManagement);
         setHistory(msg.history);
         setActiveThreadId(msg.activeThreadId);
+        if (!activeAssistantId.current) {
+          setTurns(
+            (msg.activeThreadMessages ?? []).map((m) => ({
+              id: m.id,
+              role: m.role,
+              text: m.text,
+              mode: m.mode,
+              activity: [],
+            })),
+          );
+        }
         setMemories(msg.memories);
         setCheckpoints(msg.checkpoints);
       }
@@ -407,9 +417,11 @@ export function App() {
                 route: msg.route,
                 text: msg.answer?.trim()
                   ? msg.answer
-                  : msg.error
-                    ? `Error: ${msg.error}`
-                    : t.text || `(${msg.status})`,
+                  : t.text.trim()
+                    ? t.text
+                    : msg.error
+                      ? `Error: ${msg.error}`
+                      : `(${msg.status})`,
                 suspension: undefined,
               };
             }),
@@ -857,7 +869,7 @@ export function App() {
           <IndexingStatusBar
             index={index}
             onRefresh={() => postToHost({ type: 'index.refresh' })}
-            onReindex={() => postToHost({ type: 'index.reindex' })}
+            onOpenSettings={() => navigate('settings', 'workspace')}
           />
         </div>
       </header>

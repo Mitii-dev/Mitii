@@ -50,6 +50,55 @@ export function formatRunDiagnostics(result: AgentRunResult): string[] {
   return lines;
 }
 
+export function formatVisibleFailureDetails(options: {
+  result: AgentRunResult;
+  events: RunEvent[];
+  sessionLogPath?: string;
+}): string {
+  const { result, events, sessionLogPath } = options;
+  if (
+    result.status !== 'failed' &&
+    result.status !== 'budget_exhausted' &&
+    result.status !== 'cancelled'
+  ) {
+    return '';
+  }
+
+  const verification = [...events]
+    .reverse()
+    .find((event) => event.type === 'verification_completed');
+  const lines: string[] = [];
+
+  if (result.error?.message) {
+    lines.push(`Reason: ${result.error.message}`);
+  }
+  if (result.reasonCodes?.length) {
+    lines.push(`Reason codes: ${result.reasonCodes.join(', ')}`);
+  }
+  if (verification?.type === 'verification_completed') {
+    lines.push(
+      `Verification: ${verification.status} (${verification.reasonCodes.join(', ')})`,
+    );
+    for (const check of verification.checks.slice(0, 6)) {
+      lines.push(`- ${check.kind}/${check.outcome}: ${check.summary}`);
+    }
+    for (const diagnostic of verification.diagnostics.slice(0, 6)) {
+      const line = diagnostic.startLine ? `:${diagnostic.startLine}` : '';
+      lines.push(
+        `- ${diagnostic.path}${line} ${diagnostic.severity}: ${diagnostic.message}`,
+      );
+    }
+    for (const warning of verification.warnings.slice(0, 3)) {
+      lines.push(`- warning: ${warning}`);
+    }
+  }
+  if (sessionLogPath) {
+    lines.push(`Session log: ${sessionLogPath}`);
+  }
+
+  return lines.length ? `\n\n**Failure Details**\n${lines.join('\n')}` : '';
+}
+
 /** Summarize context / prompt-related events for inspection UX. */
 export function formatContextInspection(events: RunEvent[]): string[] {
   const lines: string[] = [];

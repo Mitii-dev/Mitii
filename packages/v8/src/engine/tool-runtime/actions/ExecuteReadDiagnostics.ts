@@ -2,7 +2,10 @@ import type { ToolGrant } from "../../../modules/decision-policy";
 
 import type { DiagnosticsPort, WorkspaceFileSystemPort } from "../contracts";
 import { ToolRuntimeError } from "../contracts";
-import { resolveContainedPath } from "../internal/PathContainment";
+import {
+  PathContainmentError,
+  resolveContainedPath,
+} from "../internal/PathContainment";
 import {
   readDiagnosticsInputSchema,
   readDiagnosticsOutputSchema,
@@ -27,19 +30,31 @@ export async function executeReadDiagnostics(params: {
 
   if (input.paths) {
     for (const requested of input.paths) {
-      const contained = await resolveContainedPath({
-        fileSystem: params.fileSystem,
-        workspaceRoot: params.workspaceRoot,
-        requestedPath: requested,
-        pathScopes: params.grant.pathScopes,
-      });
-      scopedPaths.push(contained.relativePath);
+      try {
+        const contained = await resolveContainedPath({
+          fileSystem: params.fileSystem,
+          workspaceRoot: params.workspaceRoot,
+          requestedPath: requested,
+          pathScopes: params.grant.pathScopes,
+        });
+        scopedPaths.push(contained.relativePath);
+      } catch (error) {
+        if (error instanceof PathContainmentError) {
+          continue;
+        }
+        throw error;
+      }
     }
+  }
+
+  if (input.paths && scopedPaths.length === 0) {
+    const output = readDiagnosticsOutputSchema.parse({ diagnostics: [] });
+    return { output, truncated: false, redacted: false };
   }
 
   const diagnostics = await params.diagnostics.readDiagnostics({
     workspaceRoot: params.workspaceRoot,
-    paths: scopedPaths.length > 0 ? scopedPaths : undefined,
+    paths: input.paths ? scopedPaths : undefined,
   });
 
   const filtered = diagnostics.filter((item) => {

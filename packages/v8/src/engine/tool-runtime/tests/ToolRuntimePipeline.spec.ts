@@ -172,6 +172,19 @@ describe("ToolRuntimePipeline", () => {
     });
     expect(diags.status).toBe("succeeded");
 
+    const missingPathDiags = await runtime.execute({
+      schemaVersion: 1,
+      callId: "d2",
+      toolName: "read_diagnostics",
+      arguments: { paths: ["src/deleted.ts"] },
+      grant,
+      workspaceRoot: WORKSPACE,
+    });
+    expect(missingPathDiags.status).toBe("succeeded");
+    expect(
+      (missingPathDiags.output as { diagnostics: unknown[] }).diagnostics,
+    ).toEqual([]);
+
     const git = await runtime.execute({
       schemaVersion: 1,
       callId: "g1",

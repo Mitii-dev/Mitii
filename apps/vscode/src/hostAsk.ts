@@ -29,6 +29,7 @@ import { buildReviewDiff } from './reviewDiff.js';
 import {
   formatContextInspection,
   formatDiffReview,
+  formatVisibleFailureDetails,
   formatRunDiagnostics,
   formatUsageLine,
 } from './runReport.js';
@@ -464,6 +465,8 @@ export interface HostAskOutcome {
   events: RunEvent[];
   /** Estimated context fill for the composed host prompt. */
   contextBreakdown?: ContextUsageBreakdown;
+  /** Append-only JSONL log containing compact run + verification events. */
+  sessionLogPath?: string;
 }
 
 export interface HostAskHandlers {
@@ -958,7 +961,19 @@ export async function runAskInOutputChannel(options: {
           if (logPath) {
             channel.appendLine(`[log] ${logPath}`);
           }
-          return { result, events, contextBreakdown };
+          return {
+            result: {
+              ...result,
+              answer: `${result.answer ?? ''}${formatVisibleFailureDetails({
+                result,
+                events,
+                sessionLogPath: logPath,
+              })}`,
+            },
+            events,
+            contextBreakdown,
+            sessionLogPath: logPath,
+          };
         }
 
         channel.appendLine('');
@@ -988,7 +1003,12 @@ export async function runAskInOutputChannel(options: {
           if (logPath) {
             channel.appendLine(`[log] ${logPath}`);
           }
-          return { result, events, contextBreakdown };
+          return {
+            result,
+            events,
+            contextBreakdown,
+            sessionLogPath: logPath,
+          };
         }
         channel.appendLine('[mitii] resuming…');
         run = client.resume(resume);

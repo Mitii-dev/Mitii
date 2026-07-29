@@ -188,22 +188,59 @@ export function SettingsPanel(props: SettingsPanelProps) {
     [modelOptions, provider.model],
   );
 
+  const saveCurrentTab = () => {
+    if (tab === 'workspace') {
+      onSaveOverride();
+      return;
+    }
+    if (tab === 'model') {
+      onSaveProvider();
+      return;
+    }
+    if (tab === 'modes') {
+      onSaveUi({
+        depth: ui.depth,
+        approvalMode: ui.approvalMode,
+        showReasoning: ui.showReasoning,
+        reasoningPreviewMaxChars: ui.reasoningPreviewMaxChars,
+        runBudget: ui.runBudget,
+      });
+      return;
+    }
+    if (tab === 'context') {
+      onSaveUi({ contextToggles: ui.contextToggles });
+      return;
+    }
+    if (tab === 'integrations') {
+      onSaveMcp(mcp);
+    }
+  };
+
   return (
     <div className="settings-view">
-      <div className="settings-tabs" role="tablist" aria-label="Settings">
-        {TABS.map(({ id, label }) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={tab === id}
-            className={`settings-tab ${tab === id ? 'active' : ''}`}
-            onClick={() => onTabChange(id)}
-            title={label}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="settings-toolbar">
+        <div className="settings-tabs" role="tablist" aria-label="Settings">
+          {TABS.map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={tab === id}
+              className={`settings-tab ${tab === id ? 'active' : ''}`}
+              onClick={() => onTabChange(id)}
+              title={label}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="btn settings-save-btn"
+          onClick={saveCurrentTab}
+        >
+          Save
+        </button>
       </div>
 
       <div className="settings-body">

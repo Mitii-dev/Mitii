@@ -35,8 +35,6 @@ function getThinkingTail(events: ActivityEventPayload[]): string {
 
 export function AgentActivityPanel({
   events,
-  open = true,
-  onToggle,
 }: AgentActivityPanelProps) {
   const activityEvents = events.filter((item) => item.kind !== 'thinking');
   const visible = activityEvents.slice(-ACTIVITY_LIMIT);
@@ -45,49 +43,28 @@ export function AgentActivityPanel({
   if (visible.length === 0) return null;
 
   return (
-    <section className="activity" aria-label="Activity">
-      <div className="activity-header">
-        <span>Activity</span>
-        {onToggle ? (
-          <button
-            type="button"
-            className="activity-toggle"
-            onClick={onToggle}
-            title={open ? 'Hide activity' : 'Show activity'}
-          >
-            {open ? 'Hide' : 'Show'} · {activityEvents.length}
-          </button>
-        ) : null}
-      </div>
-      {open || !onToggle ? (
-        <ol className="activity-list">
-          {hiddenCount > 0 ? (
-            <li className="activity-item info">
-              <span className="activity-dot" />
-              <div className="activity-body">
-                <div className="activity-detail">
-                  +{hiddenCount} earlier step{hiddenCount === 1 ? '' : 's'}
-                </div>
-              </div>
-            </li>
-          ) : null}
-          {visible.map((item) => (
-            <li
-              key={item.id}
-              className={`activity-item activity-item--${item.kind} ${item.kind}`}
-            >
-              <span className="activity-dot" />
-              <div className="activity-body">
-                <div className="activity-title">{item.title}</div>
-                {item.detail ? (
-                  <div className="activity-detail">{item.detail}</div>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ol>
+    <ul className="activity-list" aria-label="Activity">
+      {hiddenCount > 0 ? (
+        <li className="activity-item info">
+          <span className="activity-dot" />
+          <span className="activity-text">
+            +{hiddenCount} earlier step{hiddenCount === 1 ? '' : 's'}
+          </span>
+        </li>
       ) : null}
-    </section>
+      {visible.map((item) => (
+        <li
+          key={item.id}
+          className={`activity-item activity-item--${item.kind} ${item.kind}`}
+        >
+          <span className="activity-dot" />
+          <span className="activity-text">
+            <span>{item.title}</span>
+            {item.detail ? <small>{item.detail}</small> : null}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

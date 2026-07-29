@@ -1103,7 +1103,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         outcome.contextBreakdown,
       );
       const answer = outcome.result.answer ?? '';
-      this.lastAssistantText = answer;
+      const assistantText = answer.trim()
+        ? answer
+        : outcome.result.error?.message
+          ? `Error: ${outcome.result.error.message}`
+          : `(${outcome.result.status})`;
+      this.lastAssistantText = assistantText;
       const resultPlan = outcome.result.plan;
       const plan =
         message.mode === 'plan'
@@ -1115,7 +1120,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       this.post({
         type: 'run.result',
         status: outcome.result.status,
-        answer,
+        answer: assistantText,
         route: outcome.result.route ?? null,
         error: outcome.result.error?.message,
         usage,
@@ -1174,7 +1179,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       const store = await appendTurn(this.host.workspaceState, {
         threadId: this.activeThreadId,
         userText: prompt,
-        assistantText: answer,
+        assistantText,
         mode: message.mode,
         ...(message.mode === 'plan' && resultPlan
           ? { pendingPlan: resultPlan }
@@ -1202,11 +1207,26 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       }
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
+      const assistantText = `Error: ${text}`;
+      this.lastAssistantText = assistantText;
       this.post({ type: 'error', message: text });
       this.post({
         type: 'run.result',
         status: 'failed',
+        answer: assistantText,
         error: text,
+      });
+      const store = await appendTurn(this.host.workspaceState, {
+        threadId: this.activeThreadId,
+        userText: prompt,
+        assistantText,
+        mode: message.mode,
+      });
+      this.activeThreadId = store.activeThreadId;
+      this.post({
+        type: 'history',
+        threads: toThreadSummaries(store),
+        activeThreadId: store.activeThreadId,
       });
     } finally {
       this.activeFileChangeSnapshot = undefined;
@@ -1928,6 +1948,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
 
   private async sendBootstrap(): Promise<void> {
     const history = loadHistory(this.host.workspaceState);
+    const activeThread = history.activeThreadId
+      ? history.threads.find((thread) => thread.id === history.activeThreadId)
+      : undefined;
     const onboardingCompleted =
       this.vs.workspace
         .getConfiguration('mitii')
@@ -1961,6 +1984,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       },
       history: toThreadSummaries(history),
       activeThreadId: history.activeThreadId,
+      activeThreadMessages: activeThread?.messages ?? [],
       memories: loadMemories(this.host.workspaceState),
       checkpoints: loadCheckpoints(this.host.workspaceState),
     });

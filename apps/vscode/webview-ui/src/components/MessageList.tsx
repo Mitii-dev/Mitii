@@ -147,10 +147,9 @@ export function MessageList({
                   }
                 />
               ) : null}
-              <AgentThinkingPanel
-                events={turn.activity}
-                loading={Boolean(turn.streaming)}
-              />
+              {turn.streaming ? (
+                <AgentThinkingPanel events={turn.activity} loading={true} />
+              ) : null}
               {turn.suspension ? (
                 <ApprovalCards
                   suspension={turn.suspension}
