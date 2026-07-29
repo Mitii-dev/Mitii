@@ -74,6 +74,24 @@ export async function discoverNodeChecks(params: {
     });
   }
 
+  if (!candidates.some((candidate) => candidate.kind === "typecheck")) {
+    const buildScript = scripts.build;
+    if (buildScript && /\btsc\b/.test(buildScript)) {
+      const argv = packageManagerArgv(pm, "build", params.project.rootPath);
+      candidates.push({
+        checkId: `${params.project.projectId}:typecheck:build`,
+        kind: "typecheck",
+        projectId: params.project.projectId,
+        label: `${pm} build (${params.project.projectId})`,
+        evidenceSource: `manifest:${pkgPath}#scripts.build`,
+        languageId: params.project.primaryLanguageId,
+        toolName: "run_readonly_command",
+        toolArguments: { argv },
+        argv,
+      });
+    }
+  }
+
   if (candidates.length === 0) {
     warnings.push(
       `package.json at "${pkgPath}" has no discoverable typecheck/lint/test/build scripts.`,

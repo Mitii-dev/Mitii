@@ -170,6 +170,83 @@ describe("VerificationPipeline", () => {
     expect(tools.execute).toHaveBeenCalled();
   });
 
+  it("infers nested package checks and treats tsc build scripts as typecheck evidence", async () => {
+    const manifests = new InMemoryManifestReader({
+      "ai-service/package.json": JSON.stringify({
+        scripts: {
+          build: "pnpm exec tsc",
+        },
+        packageManager: "pnpm@10.13.1",
+      }),
+    });
+
+    const tools = createTools((input) => {
+      if (input.toolName === "run_readonly_command") {
+        return toolResult({
+          callId: input.callId,
+          toolName: input.toolName,
+          status: "succeeded",
+          output: {
+            argv: (input.arguments as { argv: string[] }).argv,
+            exitCode: 0,
+            stdout: "ok",
+            stderr: "",
+            truncated: false,
+          },
+        });
+      }
+      return toolResult({
+        callId: input.callId,
+        toolName: input.toolName,
+        status: "succeeded",
+        output:
+          input.toolName === "read_diagnostics"
+            ? { diagnostics: [] }
+            : {
+                staged: [],
+                unstaged: ["ai-service/src/app.ts"],
+                untracked: [],
+                diff: "diff --git a/ai-service/src/app.ts",
+                truncated: false,
+              },
+      });
+    });
+
+    const result = await new VerificationPipeline({
+      tools,
+      manifests,
+    }).verify(
+      baseVerificationInput({
+        changedFiles: ["ai-service/src/app.ts"],
+        projects: [
+          {
+            projectId: "workspace-root",
+            rootPath: ".",
+            primaryLanguageId: "typescript",
+            manifestPaths: [],
+          },
+        ],
+        verification: {
+          required: true,
+          minimumEvidence: ["diagnostics", "typecheck", "diff_review"],
+          allowUnavailable: false,
+        },
+      }),
+    );
+
+    expect(result.status).toBe("verified_success");
+    expect(result.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "typecheck",
+          argv: ["pnpm", "--dir", "ai-service", "run", "build"],
+          outcome: "passed",
+        }),
+      ]),
+    );
+    expect(result.reasonCodes).toContain("checks_passed");
+  });
+
   it("never treats failed checks as verified_success", async () => {
     const manifests = new InMemoryManifestReader({
       "package.json": JSON.stringify({

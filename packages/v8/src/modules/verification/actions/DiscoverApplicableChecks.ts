@@ -34,8 +34,13 @@ export async function discoverApplicableChecks(params: {
   const candidates: DiscoveredCheckCandidate[] = [];
   const warnings: string[] = [];
   const seen = new Set<string>();
+  const discoveryProjects = await expandWithNearbyManifestProjects({
+    projects: params.projects,
+    changedFiles: params.changedFiles,
+    manifests: params.manifests,
+  });
 
-  for (const project of params.projects) {
+  for (const project of discoveryProjects) {
     const discovered = await discoverCandidatesForProject({
       project,
       changedFiles: params.changedFiles,
@@ -92,4 +97,65 @@ export async function discoverApplicableChecks(params: {
   });
 
   return { candidates, warnings };
+}
+
+async function expandWithNearbyManifestProjects(params: {
+  projects: readonly ProjectDescriptor[];
+  changedFiles: readonly string[];
+  manifests: VerificationManifestReaderPort;
+}): Promise<ProjectDescriptor[]> {
+  const projects = [...params.projects];
+  const knownRoots = new Set(
+    projects.map((project) => normalizePath(project.rootPath)),
+  );
+
+  for (const file of params.changedFiles) {
+    for (const rootPath of candidatePackageRoots(file)) {
+      if (knownRoots.has(rootPath)) {
+        continue;
+      }
+      const manifestPath =
+        rootPath === "." ? "package.json" : `${rootPath}/package.json`;
+      if (!(await params.manifests.exists(manifestPath))) {
+        continue;
+      }
+      knownRoots.add(rootPath);
+      projects.push({
+        projectId: `inferred:${rootPath}`,
+        rootPath,
+        primaryLanguageId: inferLanguageFromPath(file),
+        ecosystemId: "node",
+        manifestPaths: [manifestPath],
+      });
+    }
+  }
+
+  return projects;
+}
+
+function candidatePackageRoots(filePath: string): string[] {
+  const normalized = normalizePath(filePath);
+  const parts = normalized.split("/").filter(Boolean);
+  parts.pop();
+
+  const roots: string[] = [];
+  while (parts.length > 0) {
+    roots.push(parts.join("/"));
+    parts.pop();
+  }
+  roots.push(".");
+  return roots;
+}
+
+function inferLanguageFromPath(filePath: string): LanguageId {
+  const normalized = filePath.toLowerCase();
+  if (/\.(ts|tsx)\b/.test(normalized)) return "typescript";
+  if (/\.(js|jsx|mjs|cjs)\b/.test(normalized)) return "javascript";
+  return "unknown" as LanguageId;
+}
+
+function normalizePath(path: string): string {
+  return (
+    path.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/$/, "") || "."
+  );
 }
