@@ -27,6 +27,13 @@ export type BuildPublishCandidateFromIndexingResult =
 
 export interface PublishCandidateFromIndexingOptions {
   /**
+   * Optional per-root durable catalog revisions. Catalog stays degraded unless
+   * supplied, because a snapshot-derived revision is not a persisted catalog
+   * artifact that retrieval can independently load.
+   */
+  catalogRevisionByRoot?: Readonly<Record<string, string>>;
+
+  /**
    * Optional per-root graph revisions produced by RepoGraph builders.
    * When supplied, graph capability becomes ready for that root.
    */
@@ -149,14 +156,21 @@ function mapRoot(
   options: PublishCandidateFromIndexingOptions,
 ): RepositoryRootState {
   const textRevision = pickTextRevision(root);
+  const catalogRevision = options.catalogRevisionByRoot?.[root.rootId];
   const graphRevision = options.graphRevisionByRoot?.[root.rootId];
   const mapRevision = options.mapRevisionByRoot?.[root.rootId];
 
   const capabilities: RepositoryCapabilityStatus[] = [
-    {
-      capability: "catalog",
-      status: "ready",
-    },
+    catalogRevision
+      ? {
+          capability: "catalog",
+          status: "ready",
+        }
+      : {
+          capability: "catalog",
+          status: "degraded",
+          reasonCode: "capability_degraded",
+        },
     mapIndexCapability("codeIndex", root, root.codeIndexRevision !== undefined),
     mapIndexCapability("textIndex", root, textRevision !== undefined),
     mapVectorCapability(root),
@@ -184,7 +198,7 @@ function mapRoot(
 
   return {
     rootId: root.rootId,
-    projectCatalogRevision: snapshotId,
+    projectCatalogRevision: catalogRevision ?? snapshotId,
     ...(root.codeIndexRevision !== undefined
       ? { codeIndexRevision: String(root.codeIndexRevision) }
       : {}),

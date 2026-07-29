@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 
 import type { TokenUsageSnapshot } from './protocol';
 import { IconTokens } from './components/Icons';
@@ -6,6 +6,23 @@ import { IconTokens } from './components/Icons';
 interface TokenMeterProps {
   usage: TokenUsageSnapshot;
   placement?: 'above' | 'below';
+}
+
+const CONTEXT_SLICE_COLORS: Record<string, string> = {
+  prompt: '#4f8cff',
+  conversation: '#19a974',
+  pinned: '#f2a93b',
+  memory: '#d46bff',
+  editor: '#ff6b8a',
+  diagnostics: '#ff5f57',
+  gitDiff: '#2fb7c9',
+  repoMap: '#7cc36a',
+  mcp: '#b48cff',
+  depth: '#9aa6b2',
+};
+
+function contextSliceColor(id: string): string {
+  return CONTEXT_SLICE_COLORS[id] ?? '#8da2fb';
 }
 
 function formatCompact(n: number): string {
@@ -197,6 +214,11 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
                         slice.active && slice.tokens > 0
                           ? 'token-context-slice'
                           : 'token-context-slice token-context-slice--idle'
+                      }
+                      style={
+                        {
+                          '--token-slice-color': contextSliceColor(slice.id),
+                        } as CSSProperties
                       }
                     >
                       <div className="token-context-slice__label">

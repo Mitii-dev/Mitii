@@ -18,6 +18,7 @@ export default defineConfig({
       'src/modules/prompt-construction/**/*.spec.ts',
       'src/modules/skills/**/*.spec.ts',
       'src/modules/verification/**/*.spec.ts',
+      'src/modules/repository-state/adapters/**/*.spec.ts',
     ],
   },
 });

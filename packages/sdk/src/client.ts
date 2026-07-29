@@ -170,6 +170,7 @@ export class MitiiClient {
   async publishRepositoryStateFromIndexing(
     input: WorkspaceIndexingPipelineResult,
     options: {
+      catalogRevisionByRoot?: Readonly<Record<string, string>>;
       graphRevisionByRoot?: Readonly<Record<string, string>>;
       mapRevisionByRoot?: Readonly<Record<string, string>>;
     } = {},

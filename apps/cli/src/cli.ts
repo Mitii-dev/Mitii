@@ -19,6 +19,8 @@ import {
 } from './session.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
+import { loadMitiiHostConfig } from './config.js';
+import { resolveCliSemanticIndexSettings } from './semanticIndex.js';
 import {
   loadPersistedRepositoryState,
   persistLatestRepositoryState,
@@ -332,16 +334,25 @@ async function runIndex(options: {
   let truncated = false;
   let indexMode: 'full' | 'host_snapshot' = 'full';
   let databasePath: string | undefined;
+  let vectorIndex: Awaited<
+    ReturnType<typeof runFullWorkspaceIndex>
+  >['vectorIndex'] | undefined;
   let indexingDiagnostics: IndexingDiagnostics | undefined;
   let published;
   try {
+    const config = loadMitiiHostConfig(options.cwd);
     const full = await runFullWorkspaceIndex({
       cwd: options.cwd,
       workspaceId: ports.workspaceId,
+      semanticIndex: resolveCliSemanticIndexSettings({
+        env: process.env,
+        config,
+      }),
     });
     fileCount = full.fileCount;
     truncated = full.truncated;
     databasePath = full.databasePath;
+    vectorIndex = full.vectorIndex;
     const fileResults =
       full.indexing.fileResults as IndexingFileResultSnapshot[];
     indexingDiagnostics = {
@@ -363,6 +374,7 @@ async function runIndex(options: {
         })),
     };
     published = await client.publishRepositoryStateFromIndexing(full.indexing, {
+      catalogRevisionByRoot: full.catalogRevisionByRoot,
       graphRevisionByRoot: full.graphRevisionByRoot,
       mapRevisionByRoot: full.mapRevisionByRoot,
     });
@@ -405,6 +417,7 @@ async function runIndex(options: {
               }
             : {}),
           ...(databasePath ? { databasePath } : {}),
+          ...(vectorIndex ? { vectorIndex } : {}),
         },
         null,
         2,
@@ -414,6 +427,11 @@ async function runIndex(options: {
     options.io.writeStdout(
       `indexed workspaceId=${published.reference.workspaceId} stateToken=${published.reference.stateToken.slice(0, 16)}… readiness=${published.descriptor.readiness} files=${fileCount}${truncated ? ' (truncated)' : ''} mode=${indexMode}\n`,
     );
+    if (vectorIndex) {
+      options.io.writeStdout(
+        `vectorIndex=${vectorIndex.status}${vectorIndex.profileId ? ` profile=${vectorIndex.profileId}` : ''}${vectorIndex.reason ? ` reason=${vectorIndex.reason}` : ''}\n`,
+      );
+    }
     writeRepositoryCapabilityLines(options.io, published.descriptor);
     for (const reason of published.descriptor.reasons) {
       options.io.writeStderr(`[mitii] ${reason.code}: ${reason.message}\n`);

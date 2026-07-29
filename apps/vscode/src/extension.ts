@@ -22,6 +22,7 @@ import {
 } from './sessionLog.js';
 import { MitiiSidebarProvider } from './sidebar.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
+import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import {
   getWorkspaceTrustSnapshot,
@@ -97,6 +98,7 @@ export function activate(context: ExtensionContext): void {
       vscode,
       context.secrets,
       workspaceRoot(),
+      { workspaceState: context.workspaceState },
     );
     client = composed.client;
     workspaceId = composed.ports.workspaceId;
@@ -187,15 +189,20 @@ export function activate(context: ExtensionContext): void {
         mitiiDir: dir,
         workspaceRoot: root,
         workspaceId,
+        semanticIndex: await resolveVsCodeSemanticIndexSettings(
+          vscode,
+          context.secrets,
+        ),
       });
       fileCount = full.fileCount;
       truncated = full.truncated;
       published = await c.publishRepositoryStateFromIndexing(full.indexing, {
+        catalogRevisionByRoot: full.catalogRevisionByRoot,
         graphRevisionByRoot: full.graphRevisionByRoot,
         mapRevisionByRoot: full.mapRevisionByRoot,
       });
       channel.appendLine(
-        `[index] full code/text/graph/map index stored at ${full.databasePath}`,
+        `[index] full code/text/graph/map index stored at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
       );
     } catch (error) {
       indexMode = 'host_snapshot';
@@ -298,6 +305,9 @@ export function activate(context: ExtensionContext): void {
             workspaceRoot: root,
             channel,
             mode: 'ask',
+            workspaceId,
+            workspaceState: context.workspaceState,
+            secrets: context.secrets,
           });
           return (
             outcome.result.answer?.trim() || 'chore: update workspace'
@@ -324,6 +334,9 @@ export function activate(context: ExtensionContext): void {
       prompt: prompt.trim(),
       workspaceRoot: root,
       channel,
+      workspaceId,
+      workspaceState: context.workspaceState,
+      secrets: context.secrets,
     });
     const payload = buildSessionExport({
       result: outcome.result,
@@ -354,6 +367,9 @@ export function activate(context: ExtensionContext): void {
       prompt: prompt.trim(),
       workspaceRoot: root,
       channel,
+      workspaceId,
+      workspaceState: context.workspaceState,
+      secrets: context.secrets,
     });
     const cfg = vscode.workspace.getConfiguration('mitii');
     const settingsRedacted = {
@@ -435,6 +451,9 @@ export function activate(context: ExtensionContext): void {
       workspaceRoot: root,
       channel,
       mode: 'ask',
+      workspaceId,
+      workspaceState: context.workspaceState,
+      secrets: context.secrets,
     });
     const body =
       outcome.result.answer?.trim() ||
@@ -587,11 +606,12 @@ export function activate(context: ExtensionContext): void {
       ) {
         if (
           event.affectsConfiguration('mitii.provider') ||
-          event.affectsConfiguration('mitii.mcp')
+          event.affectsConfiguration('mitii.mcp') ||
+          event.affectsConfiguration('mitii.ui.contextToggles.memory')
         ) {
           invalidateClient();
           channel.appendLine(
-            '[mitii] provider/mcp settings changed; client will recompose',
+            '[mitii] provider/mcp/memory settings changed; client will recompose',
           );
         }
         void (async () => {

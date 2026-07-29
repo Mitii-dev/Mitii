@@ -84,6 +84,12 @@ test("maps a complete indexing result into a publishable candidate", () => {
   assert.equal(built.candidate.roots[0]?.vectorIndexRevision, "3");
   assert.equal(
     built.candidate.roots[0]?.capabilities.find(
+      (entry) => entry.capability === "catalog",
+    )?.status,
+    "degraded",
+  );
+  assert.equal(
+    built.candidate.roots[0]?.capabilities.find(
       (entry) => entry.capability === "graph",
     )?.status,
     "unavailable",
@@ -129,6 +135,7 @@ test("filtered and truncated indexing runs map to non-complete scan completeness
 
 test("graph and map revision overlays mark those capabilities ready", () => {
   const built = buildPublishCandidateFromIndexing(createIndexingResult(), {
+    catalogRevisionByRoot: { "root-a": "catalog-1" },
     graphRevisionByRoot: { "root-a": "graph-9" },
     mapRevisionByRoot: { "root-a": "map-4" },
   });
@@ -139,8 +146,13 @@ test("graph and map revision overlays mark those capabilities ready", () => {
   }
 
   const root = built.candidate.roots[0];
+  assert.equal(root?.projectCatalogRevision, "catalog-1");
   assert.equal(root?.graphRevision, "graph-9");
   assert.equal(root?.mapRevision, "map-4");
+  assert.equal(
+    root?.capabilities.find((entry) => entry.capability === "catalog")?.status,
+    "ready",
+  );
   assert.equal(
     root?.capabilities.find((entry) => entry.capability === "graph")?.status,
     "ready",

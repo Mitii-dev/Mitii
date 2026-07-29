@@ -20,6 +20,8 @@ export {
   VectorSearchService,
   EmbeddingVectorValidator,
   WorkspaceIndexingAdapterFactory,
+  createWorkspaceIndexRuntime,
+  createWorkspaceRetrievalRuntime,
   createDefaultProjectCatalogBuilder,
   RepoGraphBuilder,
   RepoMapBuilder,
@@ -27,6 +29,12 @@ export {
 export type {
   WorkspaceIndexingAdapterComponents,
   WorkspaceIndexingAdapterFactoryOptions,
+  CreateWorkspaceIndexRuntimeOptions,
+  WorkspaceIndexRuntime,
+  WorkspaceIndexRuntimeVectorOptions,
+  CreateWorkspaceRetrievalRuntimeOptions,
+  WorkspaceRetrievalRuntime,
+  WorkspaceRetrievalRuntimeVectorOptions,
 } from "./adapters";
 
 export {
@@ -102,10 +110,21 @@ export type {
   TextIndexReadPort,
   VectorSearchMatch,
   VectorIndexReadPort,
+  LanceDbConnectionPort,
+  LanceDbCreateTableOptions,
+  LanceDbMergeInsertPort,
+  LanceDbMergeInsertResult,
+  LanceDbQueryPort,
+  LanceDbRow,
+  LanceDbTablePort,
+  LanceDbVectorQueryPort,
   EmbeddingProfile,
   EmbeddingProvider,
   FileSystemReadPort,
   FileSystemPort,
+  SqliteCodeIndexDatabasePort,
+  SqliteTextIndexModule,
+  TextIndexSqliteDatabasePort,
 } from "./contracts";
 
 export {

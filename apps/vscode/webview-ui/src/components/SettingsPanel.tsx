@@ -52,6 +52,7 @@ interface SettingsPanelProps {
   onReindex: () => void;
   onRefreshIndex: () => void;
   memories: MemoryItemView[];
+  onAddMemory: (text: string) => void;
   onDeleteMemory: (id: string) => void;
   onClearMemory: () => void;
   checkpoints: CheckpointItemView[];
@@ -174,6 +175,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     onReindex,
     onRefreshIndex,
     memories,
+    onAddMemory,
     onDeleteMemory,
     onClearMemory,
     checkpoints,
@@ -708,6 +710,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             </SettingsSection>
             <MemoryPanel
               memories={memories}
+              onAdd={onAddMemory}
               onDelete={onDeleteMemory}
               onClear={onClearMemory}
             />

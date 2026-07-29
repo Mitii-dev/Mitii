@@ -6,6 +6,8 @@ export interface MitiiHostConfig {
   provider?: 'echo' | 'openai-compatible';
   model?: string;
   baseUrl?: string;
+  embeddingModel?: string;
+  embeddingDimensions?: number;
   /** Never read API keys from config files — env / SecretStorage only. */
   workspaceId?: string;
   defaultMode?: 'ask' | 'plan' | 'agent';
@@ -42,6 +44,16 @@ export function loadMitiiHostConfig(cwd: string = process.cwd()): MitiiHostConfi
             : undefined,
         model: typeof safe.model === 'string' ? safe.model : undefined,
         baseUrl: typeof safe.baseUrl === 'string' ? safe.baseUrl : undefined,
+        embeddingModel:
+          typeof safe.embeddingModel === 'string'
+            ? safe.embeddingModel
+            : undefined,
+        embeddingDimensions:
+          typeof safe.embeddingDimensions === 'number' &&
+          Number.isFinite(safe.embeddingDimensions) &&
+          safe.embeddingDimensions > 0
+            ? Math.floor(safe.embeddingDimensions)
+            : undefined,
         workspaceId:
           typeof safe.workspaceId === 'string' ? safe.workspaceId : undefined,
         defaultMode:

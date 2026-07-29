@@ -11,7 +11,12 @@ const builtins = new Set([
   ...builtinModules,
   ...builtinModules.map((name) => `node:${name}`),
 ]);
-const externals = new Set(['better-sqlite3', 'typescript', 'vscode']);
+const externals = new Set([
+  '@lancedb/lancedb',
+  'better-sqlite3',
+  'typescript',
+  'vscode',
+]);
 
 mkdirSync(dirname(outfile), { recursive: true });
 
@@ -24,7 +29,7 @@ build({
   format: 'esm',
   target: 'node20',
   sourcemap: true,
-  external: ['better-sqlite3', 'typescript', 'vscode'],
+  external: ['@lancedb/lancedb', 'better-sqlite3', 'typescript', 'vscode'],
   banner: {
     js: "import { createRequire as __mitiiCreateRequire } from 'node:module'; const require = __mitiiCreateRequire(import.meta.url);",
   },

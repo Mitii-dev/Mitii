@@ -94,6 +94,8 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(index).toContain('createUserRequestInputSchema');
     expect(index).toContain('RequestUnderstandingPipeline');
     expect(index).toContain('WorkspaceIndexingPipeline');
+    expect(index).toContain('createWorkspaceIndexRuntime');
+    expect(index).toContain('createWorkspaceRetrievalRuntime');
     expect(index).toContain('RepositoryStatePipeline');
     expect(index).toContain('repositoryStateReferenceSchema');
     expect(index).toContain('RepositoryContextPipeline');
@@ -124,6 +126,7 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(index).toContain('skillsSelectInputSchema');
     expect(index).toContain('MemoryPipeline');
     expect(index).toContain('memoryRetrieveInputSchema');
+    expect(index).toContain('memoryFactSchema');
     expect(index).not.toContain('IntentRouter');
     expect(index).not.toContain('TaskAnalyzer');
     expect(index).not.toContain('resolveRoute');

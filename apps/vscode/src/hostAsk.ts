@@ -12,13 +12,14 @@ import {
 } from '@mitii/sdk';
 import type * as vscode from 'vscode';
 
-import { loadMemories } from './chatHistory.js';
 import { formatDiagnosticsPromptBlock } from './context/diagnosticsContext.js';
 import { captureEditorContext } from './context/editorContext.js';
 import { buildContextUsageBreakdown } from './contextUsage.js';
 import { getSharedMcpManager } from './mcp/manager.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
+import { estimateMemoryPromptBlock } from './memoryStore.js';
 import { scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
+import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
 import type {
   ActivityEventPayload,
   ContextUsageBreakdown,
@@ -502,7 +503,6 @@ function composePrompt(options: {
   diagnosticsBlock?: string;
   repoMapBlock?: string;
   gitDiffBlock?: string;
-  memoryBlock?: string;
 }): string {
   /** Keep in sync with v8 extractPrimaryUserMessage markers. */
   const USER_MARKER = '<<<MITII_USER_MESSAGE>>>';
@@ -519,9 +519,6 @@ function composePrompt(options: {
     hostParts.push(
       `Pinned context:\n${options.pinnedPaths.map((p) => `- @${p}`).join('\n')}`,
     );
-  }
-  if (options.memoryBlock) {
-    hostParts.push(options.memoryBlock);
   }
   if (options.editorBlock) {
     hostParts.push(options.editorBlock);
@@ -634,8 +631,11 @@ export async function runAskInOutputChannel(options: {
   mode?: 'ask' | 'plan' | 'agent';
   depth?: string;
   pinnedPaths?: string[];
-  workspaceState?: vscode.Memento;
   workspaceId?: string;
+  /** Used to estimate memory tokens in the context meter (not prompt-stuffed). */
+  workspaceState?: vscode.Memento;
+  /** Secret storage for embedding provider API keys during auto-index. */
+  secrets?: vscode.SecretStorage;
   /** Stable chat/session id used to group JSONL logs. */
   sessionId?: string;
   /** Prior chat text for conversation token estimate. */
@@ -710,16 +710,6 @@ export async function runAskInOutputChannel(options: {
     }
   }
 
-  let memoryBlock: string | undefined;
-  if (toggles.memory && options.workspaceState) {
-    const memories = loadMemories(options.workspaceState).slice(0, 20);
-    if (memories.length) {
-      memoryBlock = `Workspace memories:\n${memories
-        .map((m) => `- ${m.text}`)
-        .join('\n')}`;
-    }
-  }
-
   const pinnedContents =
     workspaceRoot && pinnedPaths.length
       ? readPinnedFileContents(workspaceRoot, pinnedPaths)
@@ -734,7 +724,6 @@ export async function runAskInOutputChannel(options: {
     diagnosticsBlock: diagnosticsBlock || undefined,
     repoMapBlock,
     gitDiffBlock,
-    memoryBlock,
   });
 
   const cfg = vs.workspace.getConfiguration('mitii');
@@ -747,6 +736,13 @@ export async function runAskInOutputChannel(options: {
     findLocalModelPreset(model)?.contextWindow ||
     32_768;
   const mcpCatalogTokens = getSharedMcpManager().snapshot().toolsCatalogTokens;
+  const memoryBlock =
+    toggles.memory && options.workspaceState && options.workspaceId
+      ? await estimateMemoryPromptBlock(
+          options.workspaceState,
+          options.workspaceId,
+        )
+      : undefined;
   const contextBreakdown = buildContextUsageBreakdown({
     prompt: options.prompt,
     conversationText: options.conversationText,
@@ -827,13 +823,22 @@ export async function runAskInOutputChannel(options: {
             mitiiDir: scaffoldMitiiWorkspace(workspaceRoot),
             workspaceRoot,
             workspaceId,
+            ...(options.secrets
+              ? {
+                  semanticIndex: await resolveVsCodeSemanticIndexSettings(
+                    vs,
+                    options.secrets,
+                  ),
+                }
+              : {}),
           });
           await client.publishRepositoryStateFromIndexing(full.indexing, {
+            catalogRevisionByRoot: full.catalogRevisionByRoot,
             graphRevisionByRoot: full.graphRevisionByRoot,
             mapRevisionByRoot: full.mapRevisionByRoot,
           });
           channel.appendLine(
-            `[index] auto-published full index (${full.fileCount} files)`,
+            `[index] auto-published full index (${full.fileCount} files); vector=${full.vectorIndex.status}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
           );
         } catch (fullIndexError) {
           const snap = await buildWorkspaceSnapshot({

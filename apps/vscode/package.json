@@ -248,6 +248,27 @@
           "minimum": 256,
           "description": "Maximum tokens the model may generate per call. Higher defaults help multi-file apply_patch batches; still pair with mutation batching for 30+ file tasks."
         },
+        "mitii.semanticIndex.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable semantic workspace indexing when the provider is openai-compatible. If embeddings or LanceDB are unavailable, Mitii keeps vector search unavailable and continues with lexical indexing."
+        },
+        "mitii.semanticIndex.model": {
+          "type": "string",
+          "default": "text-embedding-3-small",
+          "description": "Embedding model used for the semantic workspace index."
+        },
+        "mitii.semanticIndex.dimensions": {
+          "type": "number",
+          "default": 1536,
+          "minimum": 1,
+          "description": "Embedding vector dimensions for the semantic workspace index. Changing this creates a distinct vector profile."
+        },
+        "mitii.semanticIndex.normalized": {
+          "type": "boolean",
+          "default": true,
+          "description": "Normalize embedding vectors before storing and querying the semantic workspace index. Changing this creates a distinct vector profile."
+        },
         "mitii.workspace.rootPathOverride": {
           "type": "string",
           "default": "",
@@ -457,5 +478,8 @@
     "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.25.0",
     "typescript": "^5.5.2"
+  },
+  "optionalDependencies": {
+    "@lancedb/lancedb": "0.33.0"
   }
 }

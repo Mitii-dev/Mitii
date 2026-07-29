@@ -80,6 +80,13 @@ export interface WorkspaceIndexingAdapterFactoryOptions {
   codeIndexDatabase: SqliteCodeIndexDatabasePort;
   textIndexDatabase: TextIndexSqliteDatabasePort;
   embedding?: WorkspaceIndexingEmbeddingSynchronizerPort;
+  /**
+   * Build the embedding synchronizer after the shared text-index module exists
+   * so sync reads the same SQLite module the pipeline writes.
+   */
+  createEmbedding?: (
+    textIndex: SqliteTextIndexModule,
+  ) => WorkspaceIndexingEmbeddingSynchronizerPort;
 }
 
 export interface WorkspaceIndexingAdapterComponents {
@@ -137,6 +144,12 @@ export class WorkspaceIndexingAdapterFactory {
         ),
       );
 
+    const embedding =
+      options.embedding ??
+      options.createEmbedding?.(
+        textIndex,
+      );
+
     return {
       scanner:
         new WorkspaceScanner(
@@ -179,7 +192,7 @@ export class WorkspaceIndexingAdapterFactory {
                     ),
             },
           embedding:
-            options.embedding ??
+            embedding ??
             new DisabledEmbeddingSynchronizer(),
           ...(options.filePolicy
             ? {
@@ -190,8 +203,7 @@ export class WorkspaceIndexingAdapterFactory {
         }),
       textIndex,
       synchronizeEmbeddings:
-        options.embedding !==
-        undefined,
+        embedding !== undefined,
     };
   }
 }

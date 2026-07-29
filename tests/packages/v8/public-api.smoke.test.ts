@@ -7,6 +7,8 @@ import {
   AGENT_ENGINE_SCHEMA_VERSION,
   composeReadOnlyAgentEngine,
   EchoLlmPort,
+  createWorkspaceIndexRuntime,
+  createWorkspaceRetrievalRuntime,
 } from '@mitii/v8';
 
 describe('tests/packages/v8 — public @mitii/v8 consumer smoke', () => {
@@ -44,5 +46,10 @@ describe('tests/packages/v8 — public @mitii/v8 consumer smoke', () => {
       },
     });
     expect(start.success).toBe(true);
+  });
+
+  it('exports the workspace index runtime facade', () => {
+    expect(typeof createWorkspaceIndexRuntime).toBe('function');
+    expect(typeof createWorkspaceRetrievalRuntime).toBe('function');
   });
 });

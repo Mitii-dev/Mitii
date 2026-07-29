@@ -136,11 +136,13 @@ export class RepositoryStatePipeline {
     indexing: WorkspaceIndexingPipelineResult,
     options: {
       abortSignal?: AbortSignal;
+      catalogRevisionByRoot?: Readonly<Record<string, string>>;
       graphRevisionByRoot?: Readonly<Record<string, string>>;
       mapRevisionByRoot?: Readonly<Record<string, string>>;
     } = {},
   ): Promise<PublishRepositoryStateResult> {
     const built = buildPublishCandidateFromIndexing(indexing, {
+      catalogRevisionByRoot: options.catalogRevisionByRoot,
       graphRevisionByRoot: options.graphRevisionByRoot,
       mapRevisionByRoot: options.mapRevisionByRoot,
     });

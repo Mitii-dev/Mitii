@@ -16,11 +16,9 @@ import {
   deleteThread,
   loadCheckpoints,
   loadHistory,
-  loadMemories,
   newThreadId,
   saveCheckpoints,
   saveHistory,
-  saveMemories,
   toThreadSummaries,
 } from './chatHistory.js';
 import type { StoredThread } from './chatHistory.js';
@@ -39,6 +37,7 @@ import {
   type FileChangeRunSnapshot,
 } from './fileChanges.js';
 import { runAskInOutputChannel } from './hostAsk.js';
+import { buildContextUsageBreakdown } from './contextUsage.js';
 import { getSharedMcpManager } from './mcp/manager.js';
 import {
   readMcpSettings,
@@ -47,6 +46,7 @@ import {
 } from './mcpConfig.js';
 import { scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
+import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
 import { findLocalModelPreset, LOCAL_MODEL_PRESETS } from './modelPresets.js';
 import { searchWorkspacePaths } from './pathSearch.js';
 import type {
@@ -74,6 +74,12 @@ import { buildReviewDiff } from './reviewDiff.js';
 import { testProviderConnection } from './testConnection.js';
 import { getWorkspaceTrustSnapshot } from './workspace/trust.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
+import {
+  clearMemoriesForWorkspace,
+  commitMemoryForWorkspace,
+  deleteMemoryForWorkspace,
+  loadMemoriesForView,
+} from './memoryStore.js';
 
 const DEFAULT_CONTEXT_WINDOW = 32768;
 const DEFAULT_RUN_BUDGET: RunBudgetSettingsSnapshot = {
@@ -568,6 +574,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
             message.enabled,
             this.vs.ConfigurationTarget.Workspace,
           );
+        if (message.source === 'memory') {
+          this.invalidateClient();
+        }
         await this.sendBootstrap();
         return;
       }
@@ -605,16 +614,39 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         this.post({ type: 'setCheckpoints', checkpoints: [] });
         return;
       }
+      case 'addMemory': {
+        try {
+          const items = await commitMemoryForWorkspace(
+            this.host.workspaceState,
+            this.getWorkspaceId(),
+            message.text,
+          );
+          this.post({ type: 'setMemories', memories: items });
+        } catch (error) {
+          this.post({
+            type: 'error',
+            message:
+              error instanceof Error
+                ? error.message
+                : 'Failed to save memory.',
+          });
+        }
+        return;
+      }
       case 'deleteMemory': {
-        const items = loadMemories(this.host.workspaceState).filter(
-          (m) => m.id !== message.id,
+        const items = await deleteMemoryForWorkspace(
+          this.host.workspaceState,
+          this.getWorkspaceId(),
+          message.id,
         );
-        await saveMemories(this.host.workspaceState, items);
         this.post({ type: 'setMemories', memories: items });
         return;
       }
       case 'clearMemory': {
-        await saveMemories(this.host.workspaceState, []);
+        await clearMemoriesForWorkspace(
+          this.host.workspaceState,
+          this.getWorkspaceId(),
+        );
         this.post({ type: 'setMemories', memories: [] });
         return;
       }
@@ -936,9 +968,23 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const prompt = String(message.prompt ?? '').trim();
     if (!prompt) return;
     const activeThread = await this.ensureActiveThread(prompt);
+    const conversation = buildConversationCarry({
+      messages: (activeThread?.messages ?? []).map((m) => ({
+        role: m.role,
+        text: m.text,
+      })),
+      currentPrompt: prompt,
+    });
+    const conversationText = conversation
+      .map((m) => `${m.role}: ${m.content}`)
+      .join('\n');
     this.runCancel?.dispose();
     this.runCancel = new this.vs.CancellationTokenSource();
     const mode = message.mode === 'review' ? 'ask' : (message.mode ?? 'ask');
+    const llmPrompt =
+      message.mode === 'review'
+        ? `Review the current git changes and suggest improvements / risks.\n\n${prompt}`
+        : prompt;
     if (message.mode === 'review') {
       const root = this.effectiveRoot();
       if (root) {
@@ -953,9 +999,27 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     this.runBaseTurns = [...(this.tokenUsage.turns ?? [])];
     this.runBaseInputTokens = this.tokenUsage.inputTokensTotal;
     this.runBaseOutputTokens = this.tokenUsage.outputTokensTotal;
+    const contextWindow = resolveContextWindow(this.vs);
+    const provisionalContextBreakdown = buildContextUsageBreakdown({
+      prompt: llmPrompt,
+      conversationText,
+      depthHint: message.depth,
+      contextWindow,
+    });
     this.post({
       type: 'tokenUsage',
-      usage: { ...this.tokenUsage, live: true },
+      usage: {
+        ...this.tokenUsage,
+        currentTurnTotal: provisionalContextBreakdown.totalTokens,
+        currentTurnInputTokens: provisionalContextBreakdown.totalTokens,
+        currentTurnOutputTokens: 0,
+        lastPromptTokens: provisionalContextBreakdown.totalTokens,
+        lastResponseTokens: 0,
+        contextWindow,
+        contextBreakdown: provisionalContextBreakdown,
+        estimated: true,
+        live: true,
+      },
     });
 
     const workspaceRootForChanges = this.effectiveRoot();
@@ -966,16 +1030,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
 
     try {
       const client = await this.ensureClient();
-      const conversation = buildConversationCarry({
-        messages: (activeThread?.messages ?? []).map((m) => ({
-          role: m.role,
-          text: m.text,
-        })),
-        currentPrompt: prompt,
-      });
-      const conversationText = conversation
-        .map((m) => `${m.role}: ${m.content}`)
-        .join('\n');
       const engineMode =
         mode === 'plan' || mode === 'agent' ? mode : 'ask';
       const approvedPlan = resolvePlanHandoff({
@@ -986,17 +1040,15 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       const outcome = await runAskInOutputChannel({
         vs: this.vs,
         client,
-        prompt:
-          message.mode === 'review'
-            ? `Review the current git changes and suggest improvements / risks.\n\n${prompt}`
-            : prompt,
+        prompt: llmPrompt,
         workspaceRoot: this.effectiveRoot(),
         channel: this.channel,
         mode: engineMode,
         depth: message.depth,
         pinnedPaths: message.pinnedPaths,
-        workspaceState: this.host.workspaceState,
         workspaceId: this.getWorkspaceId(),
+        workspaceState: this.host.workspaceState,
+        secrets: this.secrets,
         sessionId: this.activeThreadId,
         conversationText,
         conversation,
@@ -1099,7 +1151,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       }
       const usage = this.recordUsage(
         outcome.result,
-        prompt,
+        llmPrompt,
         outcome.contextBreakdown,
       );
       const answer = outcome.result.answer ?? '';
@@ -1607,6 +1659,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
             this.vs.ConfigurationTarget.Workspace,
           );
         }
+        if (message.ui.contextToggles.memory !== undefined) {
+          this.invalidateClient();
+        }
       }
     }
     if (message.approvalMode !== undefined) {
@@ -1868,15 +1923,20 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         mitiiDir: dir,
         workspaceRoot: root,
         workspaceId: this.getWorkspaceId(),
+        semanticIndex: await resolveVsCodeSemanticIndexSettings(
+          this.vs,
+          this.secrets,
+        ),
       });
       fileCount = full.fileCount;
       truncated = full.truncated;
       published = await client.publishRepositoryStateFromIndexing(full.indexing, {
+        catalogRevisionByRoot: full.catalogRevisionByRoot,
         graphRevisionByRoot: full.graphRevisionByRoot,
         mapRevisionByRoot: full.mapRevisionByRoot,
       });
       this.channel.appendLine(
-        `[index] full code/text/graph/map index stored at ${full.databasePath}`,
+        `[index] full code/text/graph/map index stored at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
       );
     } catch (error) {
       fallbackReason = error instanceof Error ? error.message : String(error);
@@ -1985,7 +2045,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       history: toThreadSummaries(history),
       activeThreadId: history.activeThreadId,
       activeThreadMessages: activeThread?.messages ?? [],
-      memories: loadMemories(this.host.workspaceState),
+      memories: await loadMemoriesForView(
+        this.host.workspaceState,
+        this.getWorkspaceId(),
+      ),
       checkpoints: loadCheckpoints(this.host.workspaceState),
     });
   }

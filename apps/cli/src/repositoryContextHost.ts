@@ -27,7 +27,7 @@ import {
   type RepositoryRootState,
   type WorkspaceFileEntry,
 } from '@mitii/v8';
-import { openSqliteDatabase } from './nativeSqlite.js';
+import Database from 'better-sqlite3';
 import {
   OpenAiCompatibleEmbeddingProvider,
   createLanceDbConnection,
@@ -50,9 +50,7 @@ const INDEX_DB_FILE = 'repository-index.sqlite';
 const HEX_SNAPSHOT_ID = /^[a-f0-9]{64}$/;
 
 /**
- * Host-side Repository Context that does not need vector/code indexes.
- * Resolves published state + injects a file-tree block so repository routes
- * can proceed and the model can see the workspace layout.
+ * CLI host-side Repository Context (lexical + optional vector retrieval).
  */
 export function createHostRepositoryContext(options: {
   repositoryState: RepositoryStatePipeline;
@@ -195,7 +193,7 @@ function createHostRetriever(options: {
         descriptor,
         semanticIndex: options.semanticIndex,
       });
-      const database = openSqliteDatabase(options.textIndexDatabasePath, {
+      const database = new Database(options.textIndexDatabasePath, {
         readonly: true,
         fileMustExist: true,
       });

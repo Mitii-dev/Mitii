@@ -1,9 +1,11 @@
 import {
   EchoLlmPort,
+  InMemoryRepositoryStateStore,
   NodeNetworkAdapter,
   NodeProcessAdapter,
   NodeWorkspaceFileSystemAdapter,
   OpenAiCompatibleLlmPort,
+  RepositoryStatePipeline,
   ToolRuntimePipeline,
   VerificationPipeline,
   WorkspaceFileSystemManifestReader,
@@ -15,6 +17,8 @@ import {
 import type { LlmPort, ModelCapabilities, ModelEvent, ModelRequest } from '@mitii/v8';
 
 import { loadMitiiHostConfig, type MitiiHostConfig } from './config.js';
+import { createHostRepositoryContext } from './repositoryContextHost.js';
+import { resolveCliSemanticIndexSettings } from './semanticIndex.js';
 
 /**
  * Deterministic understanding port for local smoke when no provider key is set.
@@ -146,6 +150,16 @@ export function createCliClient(options: {
       workspaceRoot: options.cwd,
     }),
   });
+  const repositoryState = new RepositoryStatePipeline({
+    store: new InMemoryRepositoryStateStore(),
+  });
+  const env = options.env ?? process.env;
+  const config = loadMitiiHostConfig(options.cwd);
+  const repositoryContext = createHostRepositoryContext({
+    repositoryState,
+    workspaceRoot: options.cwd,
+    semanticIndex: resolveCliSemanticIndexSettings({ env, config }),
+  });
   const client = createMitiiClient({
     understandingLlm: ports.understandingLlm,
     runLlm: ports.runLlm,
@@ -153,7 +167,8 @@ export function createCliClient(options: {
     defaultMode: ports.defaultMode === 'agent' ? 'agent' : ports.defaultMode,
     defaultSessionId: 'cli_session',
     workspaceId: ports.workspaceId,
-    enableInMemoryRepositoryState: true,
+    repositoryState,
+    repositoryContext,
     enableInMemoryCheckpoints: true,
     tools,
     verification,

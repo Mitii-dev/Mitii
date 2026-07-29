@@ -38,6 +38,14 @@ export type {
 export type {
   VectorSearchMatch,
   VectorIndexReadPort,
+  LanceDbConnectionPort,
+  LanceDbCreateTableOptions,
+  LanceDbMergeInsertPort,
+  LanceDbMergeInsertResult,
+  LanceDbQueryPort,
+  LanceDbRow,
+  LanceDbTablePort,
+  LanceDbVectorQueryPort,
 } from "../../internal/vector-index/types";
 
 export type {
@@ -49,3 +57,12 @@ export type {
   FileSystemReadPort,
   FileSystemPort,
 } from "../../internal/shared/filesystem/types";
+
+export type {
+  SqliteCodeIndexDatabasePort,
+} from "../../internal/code-indexing/types";
+
+export type {
+  SqliteTextIndexModule,
+  TextIndexSqliteDatabasePort,
+} from "../../internal/text-index/types";

@@ -6,7 +6,6 @@ import type { ChatMessageView, ChatThreadSummary } from './protocol.js';
 import { parsePendingPlan } from './conversationCarry.js';
 
 const HISTORY_KEY = 'mitii.chatHistory.v1';
-const MEMORY_KEY = 'mitii.memories.v1';
 const CHECKPOINT_KEY = 'mitii.checkpoints.v1';
 
 export interface StoredThread {
@@ -151,23 +150,6 @@ export async function clearHistory(state: vscode.Memento): Promise<HistoryStore>
   const store = emptyHistory();
   await saveHistory(state, store);
   return store;
-}
-
-export interface MemoryItem {
-  id: string;
-  text: string;
-  createdAt: string;
-}
-
-export function loadMemories(state: vscode.Memento): MemoryItem[] {
-  return state.get<MemoryItem[]>(MEMORY_KEY) ?? [];
-}
-
-export async function saveMemories(
-  state: vscode.Memento,
-  items: MemoryItem[],
-): Promise<void> {
-  await state.update(MEMORY_KEY, items);
 }
 
 export interface CheckpointItem {

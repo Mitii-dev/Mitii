@@ -389,13 +389,21 @@ export class WorkspaceIndexingRootFinalizer {
       !input.request
         .synchronizeEmbeddings;
 
+    // Embedding failures must not degrade code/text readiness. Only non-embedding
+    // warnings (e.g. cleanup) or a partial embedding sync mark the root partial.
+    const hasStructuralWarning =
+      warnings.some(
+        (warning) =>
+          warning.stage !==
+          "embedding",
+      );
+
     return {
       rootId,
       status:
         cancelled
           ? "cancelled"
-          : warnings
-                .length > 0 ||
+          : hasStructuralWarning ||
               embeddingStatus ===
                 "partial"
             ? "partial"

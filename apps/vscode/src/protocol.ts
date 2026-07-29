@@ -358,6 +358,7 @@ export type WebviewToHostMessage =
   | { type: 'restoreCheckpoint'; id: string }
   | { type: 'deleteCheckpoint'; id: string }
   | { type: 'clearCheckpoints' }
+  | { type: 'addMemory'; text: string }
   | { type: 'deleteMemory'; id: string }
   | { type: 'clearMemory' }
   | {

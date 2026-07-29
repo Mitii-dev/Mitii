@@ -18,7 +18,7 @@ const builtins = new Set([
   ...builtinModules,
   ...builtinModules.map((name) => `node:${name}`),
 ]);
-const externals = new Set(['vscode']);
+const externals = new Set(['vscode', '@lancedb/lancedb']);
 
 function buildWebview() {
   const viteBin = join(webviewDir, 'node_modules', 'vite', 'bin', 'vite.js');
@@ -60,7 +60,7 @@ build({
   sourcesContent: false,
   legalComments: 'none',
   metafile: true,
-  external: ['vscode'],
+  external: ['vscode', '@lancedb/lancedb'],
   plugins: [
     {
       name: 'workspace-node-resolve',

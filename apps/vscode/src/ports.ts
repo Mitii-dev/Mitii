@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   EchoLlmPort,
   OpenAiCompatibleLlmPort,
@@ -27,6 +28,8 @@ import { getSharedMcpManager } from './mcp/manager.js';
 import { readMcpSettings } from './mcpConfig.js';
 import { findLocalModelPreset } from './modelPresets.js';
 import { createHostRepositoryContext } from './repositoryContextHost.js';
+import { createVsCodeMemoryStore } from './memoryStore.js';
+import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
 
 const DEFAULT_CONTEXT_WINDOW = 32_768;
 const DEFAULT_MAXIMUM_OUTPUT = 16_384;
@@ -110,6 +113,7 @@ function resolveMaximumOutput(
 export async function resolveVscodePorts(
   vs: typeof vscode,
   secrets: vscode.SecretStorage,
+  workspaceRoot?: string,
 ): Promise<VscodePortResolution> {
   const cfg = vs.workspace.getConfiguration('mitii');
   const providerType = cfg.get<string>('provider.type') ?? 'echo';
@@ -117,7 +121,7 @@ export async function resolveVscodePorts(
   const baseUrl =
     cfg.get<string>('provider.baseUrl')?.trim() ||
     'http://localhost:11434/v1';
-  const workspaceId = 'vscode_workspace';
+  const workspaceId = resolveWorkspaceId(workspaceRoot);
 
   const secretKey =
     (await secrets.get('mitii.provider.apiKey')) ??
@@ -167,9 +171,12 @@ export async function createVscodeClient(
   vs: typeof vscode,
   secrets: vscode.SecretStorage,
   workspaceRoot: string | undefined,
-  options: { skillsCatalog?: SkillsCatalogPort } = {},
+  options: {
+    skillsCatalog?: SkillsCatalogPort;
+    workspaceState?: vscode.Memento;
+  } = {},
 ): Promise<{ client: MitiiClient; ports: VscodePortResolution }> {
-  const ports = await resolveVscodePorts(vs, secrets);
+  const ports = await resolveVscodePorts(vs, secrets, workspaceRoot);
   const repositoryState = new RepositoryStatePipeline({
     store: new InMemoryRepositoryStateStore(),
   });
@@ -209,6 +216,7 @@ export async function createVscodeClient(
     ? createHostRepositoryContext({
         repositoryState,
         workspaceRoot,
+        semanticIndex: await resolveVsCodeSemanticIndexSettings(vs, secrets),
       })
     : undefined;
 
@@ -216,6 +224,10 @@ export async function createVscodeClient(
     ...DEFAULT_TOOL_DEFINITIONS,
     ...mcpSnapshot.toolDefinitions,
   ];
+  const memoryEnabled =
+    vs.workspace
+      .getConfiguration('mitii.ui.contextToggles')
+      .get<boolean>('memory') ?? true;
 
   const client = createMitiiClient({
     understandingLlm: ports.understandingLlm,
@@ -231,6 +243,17 @@ export async function createVscodeClient(
     toolDefinitions,
     enableInMemoryCheckpoints: true,
     skillsCatalog: options.skillsCatalog ?? createDefaultSkillsCatalog(),
+    memoryStore:
+      memoryEnabled && options.workspaceState
+        ? createVsCodeMemoryStore(options.workspaceState, ports.workspaceId)
+        : undefined,
   });
   return { client, ports };
+}
+
+function resolveWorkspaceId(workspaceRoot: string | undefined): string {
+  if (!workspaceRoot) return 'vscode_workspace';
+  const normalized = workspaceRoot.replace(/\\/g, '/');
+  const hash = createHash('sha1').update(normalized).digest('hex').slice(0, 12);
+  return `vscode_workspace_${hash}`;
 }

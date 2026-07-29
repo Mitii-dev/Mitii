@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 
 import { onHostMessage, postToHost } from './bridge';
 import { ContextPanel, type ContextPin } from './components/ContextPanel';
@@ -222,7 +230,43 @@ export function App() {
   const messagesRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
+  const forceScrollToBottomRef = useRef(false);
+  const lastTurnCountRef = useRef(0);
   const activeAssistantId = useRef<string | null>(null);
+
+  const applyTokenUsage = useCallback(
+    (usage: TokenUsageSnapshot) => {
+      setTokenUsage((prev) => {
+        const shouldKeepLiveBreakdown =
+          usage.contextBreakdown === undefined && usage.live && prev.live;
+        return {
+          ...usage,
+          contextWindow:
+            usage.contextWindow ||
+            provider.contextWindow ||
+            prev.contextWindow ||
+            32768,
+          contextBreakdown:
+            usage.contextBreakdown ??
+            (shouldKeepLiveBreakdown ? prev.contextBreakdown : undefined),
+        };
+      });
+    },
+    [provider.contextWindow],
+  );
+
+  const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior) => {
+    const scroll = () => {
+      const target = messagesRef.current;
+      if (!target) return;
+      bottomRef.current?.scrollIntoView({ block: 'end', behavior });
+      target.scrollTop = target.scrollHeight;
+    };
+    window.requestAnimationFrame(() => {
+      scroll();
+      window.requestAnimationFrame(scroll);
+    });
+  }, []);
 
   const navigate = useCallback(
     (next: UiNav, nextSettingsTab?: SettingsTab) => {
@@ -262,7 +306,7 @@ export function App() {
       });
       setDepth(msg.ui.depth);
       setOverrideDraft(msg.workspace.rootOverride ?? '');
-      setTokenUsage(msg.tokenUsage);
+      applyTokenUsage(msg.tokenUsage);
       setNotice(msg.notice);
       setCustomModel(false);
       if (msg.provider.connectionStatus) {
@@ -289,7 +333,7 @@ export function App() {
         setCheckpoints(msg.checkpoints);
       }
     }
-  }, []);
+  }, [applyTokenUsage]);
 
   const markSuspensionResumed = useCallback((runId: string) => {
     setRunning(true);
@@ -319,6 +363,7 @@ export function App() {
           setFileChanges(null);
           setFileChangesBarExpanded(false);
           stickToBottomRef.current = true;
+          forceScrollToBottomRef.current = true;
           const userId = uid('user');
           const asstId = uid('asst');
           activeAssistantId.current = asstId;
@@ -524,6 +569,11 @@ export function App() {
         case 'thread.loaded':
           setActiveThreadId(msg.threadId);
           stickToBottomRef.current = true;
+          forceScrollToBottomRef.current = true;
+          setTokenUsage({
+            ...EMPTY_TOKEN_USAGE,
+            contextWindow: provider.contextWindow || 32768,
+          });
           setTurns(
             msg.messages.map((m) => ({
               id: m.id,
@@ -574,7 +624,7 @@ export function App() {
           }
           break;
         case 'tokenUsage':
-          setTokenUsage(msg.usage);
+          applyTokenUsage(msg.usage);
           break;
         default:
           break;
@@ -582,19 +632,26 @@ export function App() {
     });
     postToHost({ type: 'ready' });
     return off;
-  }, [applyBootstrap, ui.reasoningPreviewMaxChars, ui.showReasoning]);
+  }, [
+    applyBootstrap,
+    applyTokenUsage,
+    markSuspensionResumed,
+    provider.contextWindow,
+    ui.reasoningPreviewMaxChars,
+    ui.showReasoning,
+  ]);
 
-  useEffect(() => {
-    window.requestAnimationFrame(() => {
-      if (!stickToBottomRef.current) return;
-      const target = messagesRef.current;
-      if (!target) return;
-      target.scrollTo({
-        top: target.scrollHeight,
-        behavior: running ? 'auto' : 'smooth',
-      });
-    });
-  }, [turns, running]);
+  useLayoutEffect(() => {
+    const turnCountChanged = turns.length !== lastTurnCountRef.current;
+    lastTurnCountRef.current = turns.length;
+    const shouldScroll =
+      forceScrollToBottomRef.current ||
+      stickToBottomRef.current ||
+      (running && turnCountChanged);
+    if (!shouldScroll) return;
+    forceScrollToBottomRef.current = false;
+    scrollMessagesToBottom(running ? 'auto' : 'smooth');
+  }, [running, scrollMessagesToBottom, turns]);
 
   const onMessagesScroll = useCallback(() => {
     const target = messagesRef.current;
@@ -608,6 +665,7 @@ export function App() {
     const text = prompt.trim();
     if (!text || running) return;
     stickToBottomRef.current = true;
+    forceScrollToBottomRef.current = true;
     postToHost({
       type: 'ask',
       prompt: text,
@@ -1223,6 +1281,7 @@ export function App() {
           onReindex={() => postToHost({ type: 'index.reindex' })}
           onRefreshIndex={() => postToHost({ type: 'index.refresh' })}
           memories={memories}
+          onAddMemory={(text) => postToHost({ type: 'addMemory', text })}
           onDeleteMemory={(id) => postToHost({ type: 'deleteMemory', id })}
           onClearMemory={() => postToHost({ type: 'clearMemory' })}
           checkpoints={checkpoints}

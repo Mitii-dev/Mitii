@@ -38,7 +38,23 @@ export {
 export {
   WorkspaceIndexingAdapterFactory,
 } from "./WorkspaceIndexingAdapterFactory";
+export {
+  createWorkspaceIndexRuntime,
+} from "./createWorkspaceIndexRuntime";
+export {
+  createWorkspaceRetrievalRuntime,
+} from "./createWorkspaceRetrievalRuntime";
 export type {
   WorkspaceIndexingAdapterComponents,
   WorkspaceIndexingAdapterFactoryOptions,
 } from "./WorkspaceIndexingAdapterFactory";
+export type {
+  CreateWorkspaceIndexRuntimeOptions,
+  WorkspaceIndexRuntime,
+  WorkspaceIndexRuntimeVectorOptions,
+} from "./createWorkspaceIndexRuntime";
+export type {
+  CreateWorkspaceRetrievalRuntimeOptions,
+  WorkspaceRetrievalRuntime,
+  WorkspaceRetrievalRuntimeVectorOptions,
+} from "./createWorkspaceRetrievalRuntime";

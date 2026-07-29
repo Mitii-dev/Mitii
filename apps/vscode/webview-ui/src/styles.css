@@ -1813,7 +1813,15 @@ select.depth-select {
 .token-fill__bar {
   height: 100%;
   border-radius: inherit;
-  background: var(--mitii-accent);
+  background: linear-gradient(
+    90deg,
+    #4f8cff 0%,
+    #19a974 24%,
+    #f2a93b 48%,
+    #d46bff 72%,
+    #ff6b8a 100%
+  );
+  box-shadow: 0 0 10px color-mix(in srgb, var(--mitii-accent) 26%, transparent);
 }
 
 .token-context-slices {
@@ -1843,14 +1851,32 @@ select.depth-select {
   margin-top: 3px;
   height: 4px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--mitii-text) 8%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--token-slice-color, var(--mitii-text)) 15%,
+    transparent
+  );
   overflow: hidden;
 }
 
 .token-context-slice__bar {
   height: 100%;
   border-radius: inherit;
-  background: color-mix(in srgb, var(--mitii-accent) 80%, var(--mitii-text));
+  background: linear-gradient(
+    90deg,
+    var(--token-slice-color, var(--mitii-accent)),
+    color-mix(
+      in srgb,
+      var(--token-slice-color, var(--mitii-accent)) 72%,
+      white 28%
+    )
+  );
+  box-shadow: 0 0 8px
+    color-mix(
+      in srgb,
+      var(--token-slice-color, var(--mitii-accent)) 30%,
+      transparent
+    );
 }
 
 .token-context-slice--idle {
@@ -2595,6 +2621,35 @@ select.depth-select {
   margin: 0 0 10px;
   color: var(--mitii-muted);
   line-height: 1.4;
+}
+
+.memory-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.memory-compose__input {
+  width: 100%;
+  resize: vertical;
+  min-height: 64px;
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 76%, transparent);
+  color: var(--mitii-fg);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.memory-compose__input:focus {
+  outline: 1px solid var(--mitii-accent, var(--mitii-border));
+}
+
+.memory-compose .btn {
+  align-self: flex-end;
 }
 
 .memory-list,
