@@ -1,2 +1,2 @@
 export { InMemoryManifestReader } from "./InMemoryManifestReader";
-export { NodeManifestReader } from "./NodeManifestReader";
+export { WorkspaceFileSystemManifestReader } from "./WorkspaceFileSystemManifestReader";

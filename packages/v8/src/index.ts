@@ -144,6 +144,9 @@ export {
   NodeWorkspaceFileSystemAdapter,
   NodeProcessAdapter,
   NodeNetworkAdapter,
+  NodeGitAdapter,
+  InMemoryDiagnosticsAdapter,
+  InMemoryGitAdapter,
   ToolRegistry,
   createBuiltinToolRegistry,
   defineTool,
@@ -157,6 +160,9 @@ export type {
   RegisteredTool,
   ToolExecutionContext,
   ToolExecutionResult,
+  DiagnosticsPort,
+  DiagnosticItem,
+  GitPort,
   ToolDefinition,
   NetworkPort,
   SearchPort,
@@ -167,7 +173,7 @@ export {
   verificationInputSchema,
   verificationResultSchema,
   InMemoryManifestReader,
-  NodeManifestReader,
+  WorkspaceFileSystemManifestReader,
 } from "./modules/verification";
 export type {
   VerificationInput,

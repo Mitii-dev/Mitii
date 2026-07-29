@@ -1,12 +1,12 @@
 import {
   EchoLlmPort,
-  NodeManifestReader,
   NodeNetworkAdapter,
   NodeProcessAdapter,
   NodeWorkspaceFileSystemAdapter,
   OpenAiCompatibleLlmPort,
   ToolRuntimePipeline,
   VerificationPipeline,
+  WorkspaceFileSystemManifestReader,
   createDefaultSkillsCatalog,
   createMitiiClient,
   type CreateMitiiClientOptions,
@@ -133,14 +133,18 @@ export function createCliClient(options: {
     env: options.env,
     cwd: options.cwd,
   });
+  const fileSystem = new NodeWorkspaceFileSystemAdapter();
   const tools = new ToolRuntimePipeline({
-    fileSystem: new NodeWorkspaceFileSystemAdapter(),
+    fileSystem,
     process: new NodeProcessAdapter(),
     network: new NodeNetworkAdapter(),
   });
   const verification = new VerificationPipeline({
     tools,
-    manifests: new NodeManifestReader(options.cwd),
+    manifests: new WorkspaceFileSystemManifestReader({
+      fileSystem,
+      workspaceRoot: options.cwd,
+    }),
   });
   const client = createMitiiClient({
     understandingLlm: ports.understandingLlm,

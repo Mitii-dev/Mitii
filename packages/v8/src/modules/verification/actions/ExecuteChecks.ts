@@ -10,6 +10,9 @@ import type {
 import { MISSING_TOOL_PATTERNS } from "../policy";
 import type { DiscoveredCheckCandidate } from "../internal/discovery";
 
+const MISCONFIGURED_PORT_PATTERNS =
+  /\b(misconfigured_ports|DiagnosticsPort is required|GitPort is required)\b/i;
+
 export interface ExecuteChecksResult {
   checks: VerificationCheckResult[];
   toolOutputs: Map<string, unknown>;
@@ -94,12 +97,16 @@ export async function executeChecks(params: {
     if (result.output !== undefined) {
       toolOutputs.set(callId, result.output);
     }
-    const outcome = mapToolResultToOutcome(result.status, result.output);
+    let outcome = mapToolResultToOutcome(result.status, result.output);
     const summary = summarizeToolResult(candidate, result.status, result.output);
+    const outputText = extractOutputText(result.output);
+    const warningText = (result.warnings ?? []).join("\n");
+    const evidenceText = `${outputText}\n${warningText}`;
 
     if (
       outcome === "failed" &&
-      MISSING_TOOL_PATTERNS.test(extractOutputText(result.output))
+      (MISSING_TOOL_PATTERNS.test(evidenceText) ||
+        MISCONFIGURED_PORT_PATTERNS.test(evidenceText))
     ) {
       checks.push({
         checkId: candidate.checkId,
