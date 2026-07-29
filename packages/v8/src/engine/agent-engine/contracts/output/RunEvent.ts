@@ -2,6 +2,13 @@ import { z } from "zod";
 
 import { executionRouteSchema } from "../../../../modules/decision-policy";
 import { repositoryStateReferenceSchema } from "../../../../modules/repository-state";
+import {
+  verificationCheckKindSchema,
+  verificationCheckOutcomeSchema,
+  verificationDiagnosticSeveritySchema,
+  verificationReasonCodeSchema,
+  verificationStatusSchema,
+} from "../../../../modules/verification";
 
 import {
   AGENT_ACTIVE_STAGES,
@@ -155,6 +162,42 @@ export const runEventSchema = z.discriminatedUnion("type", [
       type: z.literal("warning"),
       runId: z.string().min(1),
       message: z.string().min(1),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("verification_completed"),
+      runId: z.string().min(1),
+      status: verificationStatusSchema,
+      reasonCodes: z.array(verificationReasonCodeSchema),
+      checks: z
+        .array(
+          z
+            .object({
+              checkId: z.string().min(1),
+              kind: verificationCheckKindSchema,
+              outcome: verificationCheckOutcomeSchema,
+              summary: z.string().min(1).max(500),
+            })
+            .strict(),
+        )
+        .max(20),
+      diagnostics: z
+        .array(
+          z
+            .object({
+              path: z.string().min(1).max(512),
+              severity: verificationDiagnosticSeveritySchema,
+              message: z.string().min(1).max(500),
+              startLine: z.number().int().positive().optional(),
+              source: z.string().min(1).max(120).optional(),
+              code: z.string().min(1).max(120).optional(),
+            })
+            .strict(),
+        )
+        .max(20),
+      warnings: z.array(z.string().min(1).max(500)).max(20),
       at: z.string().datetime(),
     })
     .strict(),

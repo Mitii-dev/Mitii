@@ -378,6 +378,142 @@ describe("AgentEnginePipeline mutation approvals (Phase 8)", () => {
     expect(rolledBack.content).toBe("const x = 1;\n");
   });
 
+  it("feeds verification failure evidence back to the model once and commits after repair", async () => {
+    const { fs, realTools } = createWorkspace();
+    const tools = wrapTools(realTools);
+    const pinnedState = { workspaceId: "ws_1", stateToken: "tok_1" };
+    let verificationCalls = 0;
+
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        toolGrant: createWriteGrant({ approvalMode: "never" }),
+        pinnedState,
+        verification: {
+          required: true,
+          minimumEvidence: [],
+          allowUnavailable: false,
+        },
+      }),
+      llm: new ScriptedLlmPort(
+        [
+          {
+            toolCalls: [
+              {
+                id: "call_patch_initial",
+                name: "apply_patch",
+                arguments: JSON.stringify(APPLY_PATCH_ARGS),
+              },
+            ],
+          },
+          { content: "Updated src/a.ts to set x = 2." },
+          {
+            toolCalls: [
+              {
+                id: "call_patch_repair",
+                name: "apply_patch",
+                arguments: JSON.stringify({
+                  patches: [
+                    {
+                      path: "src/a.ts",
+                      oldText: "const x = 2;\n",
+                      newText: "const x = 3;\n",
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+          { content: "Repaired src/a.ts after verification failure." },
+        ],
+        createCapabilities({ supportsTools: true }),
+      ),
+    });
+    deps.tools = tools;
+    deps.verification = {
+      verify: async (): Promise<VerificationResult> => {
+        verificationCalls += 1;
+        return {
+          schemaVersion: VERIFICATION_SCHEMA_VERSION,
+          status:
+            verificationCalls === 1
+              ? "verification_failed"
+              : "verified_success",
+          stateToken: pinnedState.stateToken,
+          affectedProjectIds: [],
+          checks: [
+            {
+              checkId: "root:typecheck",
+              kind: "typecheck",
+              label: "typecheck",
+              evidenceSource: "test",
+              outcome: verificationCalls === 1 ? "failed" : "passed",
+              summary:
+                verificationCalls === 1
+                  ? "Typecheck failed: expected x to be 3."
+                  : "Typecheck passed.",
+            },
+          ],
+          diagnostics:
+            verificationCalls === 1
+              ? [
+                  {
+                    path: "src/a.ts",
+                    severity: "error",
+                    message: "Expected x to be 3.",
+                    startLine: 1,
+                  },
+                ]
+              : [],
+          diff: {
+            reviewed: true,
+            staleStateRisk: false,
+            summary: "reviewed",
+            changedPaths: ["src/a.ts"],
+          },
+          warnings: [],
+          reasonCodes:
+            verificationCalls === 1 ? ["checks_failed"] : ["checks_passed"],
+          durationMs: 5,
+        };
+      },
+    };
+    const engine = new AgentEnginePipeline(deps);
+
+    const events: unknown[] = [];
+    const handle = engine.start(
+      baseStartInput({
+        repositoryState: { reference: pinnedState, readiness: "ready" },
+      }),
+    );
+    for await (const event of handle.events) {
+      events.push(event);
+    }
+    const result = await handle.result;
+
+    expect(result.status).toBe("completed");
+    expect(result.reasonCodes).toContain("verification_repair_attempted");
+    expect(result.reasonCodes).toContain("verification_repair_succeeded");
+    expect(result.reasonCodes).toContain("verification_passed");
+    expect(result.reasonCodes).not.toContain("mutation_rolled_back");
+    expect(verificationCalls).toBe(2);
+    const repaired = await fs.readFile(`${WORKSPACE}/src/a.ts`);
+    expect(repaired.content).toBe("const x = 3;\n");
+    const verificationEvents = events.filter(
+      (event) =>
+        typeof event === "object" &&
+        event !== null &&
+        "type" in event &&
+        event.type === "verification_completed",
+    );
+    expect(verificationEvents).toHaveLength(2);
+    expect(verificationEvents[0]).toMatchObject({
+      status: "verification_failed",
+      checks: [{ kind: "typecheck", outcome: "failed" }],
+      diagnostics: [{ path: "src/a.ts", severity: "error" }],
+    });
+  });
+
   it("does not count approval wait time against wall_time budget", async () => {
     const { fs, realTools } = createWorkspace();
     const tools = wrapTools(realTools);

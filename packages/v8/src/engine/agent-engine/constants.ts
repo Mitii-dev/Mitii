@@ -65,6 +65,8 @@ export const AGENT_REASON_CODES = [
   "mutation_rolled_back",
   "verification_passed",
   "verification_failed",
+  "verification_repair_attempted",
+  "verification_repair_succeeded",
   "verification_skipped",
   "answer_produced",
   "cancelled",
@@ -101,5 +103,6 @@ export const AGENT_EVENT_TYPES = [
   "tool_completed",
   "suspended",
   "warning",
+  "verification_completed",
   "terminal",
 ] as const;

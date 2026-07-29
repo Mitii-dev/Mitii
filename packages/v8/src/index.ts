@@ -167,6 +167,7 @@ export {
   verificationInputSchema,
   verificationResultSchema,
   InMemoryManifestReader,
+  NodeManifestReader,
 } from "./modules/verification";
 export type {
   VerificationInput,

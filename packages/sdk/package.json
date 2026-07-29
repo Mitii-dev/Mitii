@@ -24,7 +24,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json; node -e \"require('node:fs').accessSync('dist/index.js')\"",
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').accessSync('dist/index.js')\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },

@@ -53,6 +53,8 @@ export {
   planningResultSchema,
   runEventSchema,
   ToolRuntimePipeline,
+  VerificationPipeline,
+  NodeManifestReader,
   NodeWorkspaceFileSystemAdapter,
   NodeProcessAdapter,
   NodeNetworkAdapter,
@@ -81,4 +83,5 @@ export type {
   ModelToolDefinition,
   RegisteredTool,
   ToolDefinition,
+  VerificationResult,
 } from '@mitii/v8';

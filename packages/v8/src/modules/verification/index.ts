@@ -53,4 +53,4 @@ export type {
   VerificationManifestReaderPort,
 } from "./contracts";
 
-export { InMemoryManifestReader } from "./adapters";
+export { InMemoryManifestReader, NodeManifestReader } from "./adapters";

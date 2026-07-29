@@ -6,10 +6,12 @@ import {
   InMemoryRepositoryStateStore,
   RepositoryStatePipeline,
   DEFAULT_TOOL_DEFINITIONS,
+  NodeManifestReader,
   ToolRuntimePipeline,
   NodeProcessAdapter,
   NodeNetworkAdapter,
   NodeWorkspaceFileSystemAdapter,
+  VerificationPipeline,
   type LlmPort,
   type MitiiClient,
   type ModelCapabilities,
@@ -185,6 +187,14 @@ export async function createVscodeClient(
       )
     : undefined;
 
+  const verification =
+    workspaceRoot && tools
+      ? new VerificationPipeline({
+          tools,
+          manifests: new NodeManifestReader(workspaceRoot),
+        })
+      : undefined;
+
   const repositoryContext = workspaceRoot
     ? createHostRepositoryContext({
         repositoryState,
@@ -207,6 +217,7 @@ export async function createVscodeClient(
     repositoryState,
     repositoryContext,
     tools,
+    verification,
     toolDefinitions,
     enableInMemoryCheckpoints: true,
     skillsCatalog: options.skillsCatalog ?? createDefaultSkillsCatalog(),

@@ -99,6 +99,15 @@ function compactEvent(event: RunEvent): Record<string, unknown> {
       };
     case 'warning':
       return { ...base, message: event.message };
+    case 'verification_completed':
+      return {
+        ...base,
+        status: event.status,
+        reasonCodes: event.reasonCodes,
+        checks: event.checks,
+        diagnostics: event.diagnostics,
+        warnings: event.warnings,
+      };
     case 'terminal':
       return {
         ...base,

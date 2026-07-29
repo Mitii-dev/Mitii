@@ -44,6 +44,7 @@ import {
 } from "../../tool-runtime";
 import type { ToolApprovalToken } from "../../tool-runtime";
 import { VERIFICATION_SCHEMA_VERSION } from "../../../modules/verification";
+import type { VerificationResult } from "../../../modules/verification";
 
 import {
   amendMessageWithClarification,
@@ -126,7 +127,11 @@ type ToolLoopOutcome =
 
 type VerificationGateOutcome =
   | { kind: "ok" }
-  | { kind: "failed"; error: { code: string; message: string } };
+  | {
+      kind: "failed";
+      error: { code: string; message: string };
+      verification?: VerificationResult;
+    };
 
 /**
  * Agent Engine facade (Phase 8 mutation + Phase 9 optional Skills/Memory).
@@ -898,9 +903,12 @@ export class AgentEnginePipeline {
         runId,
         requestId,
         input,
+        request: promptResult.request,
         decision,
         bus,
+        signal,
         pinnedState,
+        dirtyPaths: input.dirtyPaths,
         loopOutcome,
         reasonCodes,
         warnings,
@@ -1266,9 +1274,18 @@ export class AgentEnginePipeline {
         runId,
         requestId,
         input: startInput,
+        request: {
+          messages: [...messages],
+          model: startInput.model,
+          temperature: startInput.temperature,
+          stream: startInput.stream,
+          tools: toolDefinitions,
+        },
         decision,
         bus,
+        signal,
         pinnedState,
+        dirtyPaths: startInput.dirtyPaths,
         loopOutcome,
         reasonCodes,
         warnings,
@@ -1305,9 +1322,12 @@ export class AgentEnginePipeline {
     runId: string;
     requestId: string;
     input: AgentEngineStartInput;
+    request: ModelRequest;
     decision: ExecutionDecision;
     bus: EventBus;
+    signal: AbortSignal;
     pinnedState: RepositoryStateReference | undefined;
+    dirtyPaths: readonly string[] | undefined;
     loopOutcome: ToolLoopOutcome;
     reasonCodes: AgentReasonCode[];
     warnings: string[];
@@ -1330,9 +1350,12 @@ export class AgentEnginePipeline {
       runId,
       requestId,
       input,
+      request,
       decision,
       bus,
+      signal,
       pinnedState,
+      dirtyPaths,
       loopOutcome,
       reasonCodes,
       warnings,
@@ -1342,135 +1365,187 @@ export class AgentEnginePipeline {
       cancelledResult,
     } = params;
 
-    if (loopOutcome.kind === "approval_required") {
-      if (!this.deps.checkpointStore) {
-        await this.safeUnpin(runId, pinnedState);
-        reasonCodes.push("misconfigured");
+    let currentOutcome = loopOutcome;
+    let repairAttempts = 0;
+    const maxRepairAttempts = 1;
+
+    while (true) {
+      if (currentOutcome.kind === "approval_required") {
+        if (!this.deps.checkpointStore) {
+          await this.safeUnpin(runId, pinnedState);
+          reasonCodes.push("misconfigured");
+          return finish({
+            status: "failed",
+            reasonCodes,
+            error: {
+              code: "misconfigured",
+              message: "Approval suspend requires a checkpoint store.",
+            },
+          });
+        }
+
+        reasonCodes.push("approval_suspended");
+        await this.deps.checkpointStore.save({
+          runId,
+          requestId,
+          suspensionKind: "approval_required",
+          input,
+          decision,
+          pinnedState,
+          messages: currentOutcome.messages,
+          toolCacheEntries: currentOutcome.toolCache.entries(),
+          pendingApproval: currentOutcome.pendingApproval,
+          changedFiles: currentOutcome.changedFiles,
+          mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
+          reasonCodes,
+          warnings,
+          usage: budget.snapshot(),
+          startedAtMs,
+          excludedWaitMs: budget.getExcludedWaitMs(),
+          suspendedAtMs: Date.now(),
+        });
+
+        const rationale = `Approval required for "${currentOutcome.pendingApproval.toolName}".`;
+        this.emit(bus, {
+          type: "suspended",
+          runId,
+          kind: "approval_required",
+          rationale,
+          at: this.isoNow(),
+        });
+
+        // Keep the repository state pinned across suspension so resume can
+        // continue against the same pinned snapshot.
         return finish({
-          status: "failed",
+          status: "suspended",
+          route: decision.route,
+          planningDepth: decision.planningDepth,
+          suspension: {
+            kind: "approval_required",
+            rationale,
+            approval: {
+              approvalId: currentOutcome.pendingApproval.approvalId,
+              fingerprint: currentOutcome.pendingApproval.fingerprint,
+              toolName: currentOutcome.pendingApproval.toolName,
+              callId: currentOutcome.pendingApproval.callId,
+              paths: currentOutcome.pendingApproval.paths,
+            },
+          },
+          reasonCodes,
+        });
+      }
+
+      if (currentOutcome.kind === "cancelled") {
+        await this.safeUnpin(runId, pinnedState);
+        return cancelledResult();
+      }
+
+      if (currentOutcome.kind === "budget_exhausted") {
+        await this.safeUnpin(runId, pinnedState);
+        reasonCodes.push("budget_exhausted");
+        return finish({
+          status: "budget_exhausted",
+          answer: currentOutcome.answer,
           reasonCodes,
           error: {
-            code: "misconfigured",
-            message: "Approval suspend requires a checkpoint store.",
+            code: "budget_exhausted",
+            message: currentOutcome.message,
           },
         });
       }
 
-      reasonCodes.push("approval_suspended");
-      await this.deps.checkpointStore.save({
+      if (currentOutcome.kind === "failed") {
+        await this.safeUnpin(runId, pinnedState);
+        return finish({
+          status: "failed",
+          answer: currentOutcome.answer,
+          reasonCodes: [...reasonCodes, ...currentOutcome.extraReasons],
+          error: currentOutcome.error,
+        });
+      }
+
+      const verificationOutcome = await this.runVerificationGate({
         runId,
-        requestId,
-        suspensionKind: "approval_required",
-        input,
+        bus,
         decision,
+        input,
         pinnedState,
-        messages: loopOutcome.messages,
-        toolCacheEntries: loopOutcome.toolCache.entries(),
-        pendingApproval: loopOutcome.pendingApproval,
-        changedFiles: loopOutcome.changedFiles,
-        mutationCheckpointIds: loopOutcome.mutationCheckpointIds,
+        changedFiles: currentOutcome.changedFiles,
+        mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
         reasonCodes,
         warnings,
-        usage: budget.snapshot(),
-        startedAtMs,
-        excludedWaitMs: budget.getExcludedWaitMs(),
-        suspendedAtMs: Date.now(),
       });
 
-      const rationale = `Approval required for "${loopOutcome.pendingApproval.toolName}".`;
-      this.emit(bus, {
-        type: "suspended",
-        runId,
-        kind: "approval_required",
-        rationale,
-        at: this.isoNow(),
-      });
+      if (verificationOutcome.kind === "ok") {
+        await this.safeUnpin(runId, pinnedState);
+        reasonCodes.push(
+          repairAttempts > 0 ? "verification_repair_succeeded" : "answer_produced",
+        );
+        if (repairAttempts > 0) {
+          reasonCodes.push("answer_produced");
+        }
+        return finish({
+          status: "completed",
+          answer: currentOutcome.answer,
+          reasonCodes,
+        });
+      }
 
-      // Keep the repository state pinned across suspension so resume can
-      // continue against the same pinned snapshot.
-      return finish({
-        status: "suspended",
-        route: decision.route,
-        planningDepth: decision.planningDepth,
-        suspension: {
-          kind: "approval_required",
-          rationale,
-          approval: {
-            approvalId: loopOutcome.pendingApproval.approvalId,
-            fingerprint: loopOutcome.pendingApproval.fingerprint,
-            toolName: loopOutcome.pendingApproval.toolName,
-            callId: loopOutcome.pendingApproval.callId,
-            paths: loopOutcome.pendingApproval.paths,
-          },
-        },
-        reasonCodes,
-      });
-    }
+      if (
+        repairAttempts < maxRepairAttempts &&
+        this.canAttemptVerificationRepair(verificationOutcome)
+      ) {
+        repairAttempts += 1;
+        reasonCodes.push("verification_repair_attempted");
+        warnings.push(
+          "Verification failed; attempting one repair pass before rollback.",
+        );
+        currentOutcome.messages.push({
+          role: "user",
+          content: this.formatVerificationRepairPrompt({
+            verification: verificationOutcome.verification,
+            error: verificationOutcome.error,
+            changedFiles: currentOutcome.changedFiles,
+          }),
+        });
+        currentOutcome = await this.runModelToolLoop({
+          runId,
+          request,
+          decision,
+          dirtyPaths,
+          pinnedState,
+          workspaceRoot: input.workspaceRoot,
+          bus,
+          signal,
+          budget,
+          reasonCodes,
+          warnings,
+          messages: currentOutcome.messages,
+          toolCache: currentOutcome.toolCache,
+          changedFiles: currentOutcome.changedFiles,
+          mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
+        });
+        continue;
+      }
 
-    if (loopOutcome.kind === "cancelled") {
+      await this.rollbackMutations(
+        currentOutcome.mutationCheckpointIds,
+        warnings,
+      );
       await this.safeUnpin(runId, pinnedState);
-      return cancelledResult();
-    }
-
-    if (loopOutcome.kind === "budget_exhausted") {
-      await this.safeUnpin(runId, pinnedState);
-      reasonCodes.push("budget_exhausted");
-      return finish({
-        status: "budget_exhausted",
-        answer: loopOutcome.answer,
-        reasonCodes,
-        error: {
-          code: "budget_exhausted",
-          message: loopOutcome.message,
-        },
-      });
-    }
-
-    if (loopOutcome.kind === "failed") {
-      await this.safeUnpin(runId, pinnedState);
-      return finish({
-        status: "failed",
-        answer: loopOutcome.answer,
-        reasonCodes: [...reasonCodes, ...loopOutcome.extraReasons],
-        error: loopOutcome.error,
-      });
-    }
-
-    // loopOutcome.kind === "completed"
-    const verificationOutcome = await this.runVerificationGate({
-      runId,
-      bus,
-      decision,
-      input,
-      pinnedState,
-      changedFiles: loopOutcome.changedFiles,
-      mutationCheckpointIds: loopOutcome.mutationCheckpointIds,
-      reasonCodes,
-      warnings,
-    });
-
-    await this.safeUnpin(runId, pinnedState);
-
-    if (verificationOutcome.kind === "failed") {
+      reasonCodes.push("mutation_rolled_back", "verification_failed");
       return finish({
         status: "failed",
         answer: this.formatVerificationFailureAnswer({
           error: verificationOutcome.error,
-          changedFiles: loopOutcome.changedFiles,
-          rolledBack: loopOutcome.mutationCheckpointIds.length > 0,
+          verification: verificationOutcome.verification,
+          changedFiles: currentOutcome.changedFiles,
+          rolledBack: currentOutcome.mutationCheckpointIds.length > 0,
         }),
         reasonCodes,
         error: verificationOutcome.error,
       });
     }
-
-    reasonCodes.push("answer_produced");
-
-    return finish({
-      status: "completed",
-      answer: loopOutcome.answer,
-      reasonCodes,
-    });
   }
 
   private async resolveAndPinState(params: {
@@ -1574,8 +1649,9 @@ export class AgentEnginePipeline {
         this.commitMutations(mutationCheckpointIds);
         return { kind: "ok" };
       }
-      await this.rollbackMutations(mutationCheckpointIds, warnings);
-      reasonCodes.push("mutation_rolled_back", "verification_failed");
+      this.emitStage(bus, runId, "verifying", "completed", [
+        "verification_failed",
+      ]);
       return {
         kind: "failed",
         error: {
@@ -1600,6 +1676,7 @@ export class AgentEnginePipeline {
       changeScope: "localized",
       stateReadiness: input.repositoryState?.readiness ?? "ready",
     });
+    this.emitVerificationCompleted(bus, runId, verificationResult);
 
     if (verificationResult.status === "verified_success") {
       this.emitStage(bus, runId, "verifying", "completed", [
@@ -1625,10 +1702,9 @@ export class AgentEnginePipeline {
     this.emitStage(bus, runId, "verifying", "completed", [
       "verification_failed",
     ]);
-    await this.rollbackMutations(mutationCheckpointIds, warnings);
-    reasonCodes.push("mutation_rolled_back", "verification_failed");
     return {
       kind: "failed",
+      verification: verificationResult,
       error: {
         code: "verification_failed",
         message: `Verification did not succeed (status: ${verificationResult.status}).`,
@@ -1675,8 +1751,75 @@ export class AgentEnginePipeline {
     }
   }
 
+  private canAttemptVerificationRepair(outcome: VerificationGateOutcome): boolean {
+    if (outcome.kind !== "failed" || !outcome.verification) {
+      return false;
+    }
+    return (
+      outcome.verification.status === "verification_failed" ||
+      outcome.verification.status === "blocked" ||
+      outcome.verification.status === "implemented_unverified"
+    );
+  }
+
+  private emitVerificationCompleted(
+    bus: EventBus,
+    runId: string,
+    verification: VerificationResult,
+  ): void {
+    this.emit(bus, {
+      type: "verification_completed",
+      runId,
+      status: verification.status,
+      reasonCodes: verification.reasonCodes,
+      checks: verification.checks.slice(0, 20).map((check) => ({
+        checkId: check.checkId,
+        kind: check.kind,
+        outcome: check.outcome,
+        summary: this.truncateForEvent(check.summary, 500),
+      })),
+      diagnostics: verification.diagnostics.slice(0, 20).map((diag) => ({
+        path: this.truncateForEvent(diag.path, 512),
+        severity: diag.severity,
+        message: this.truncateForEvent(diag.message, 500),
+        startLine: diag.startLine,
+        source: diag.source
+          ? this.truncateForEvent(diag.source, 120)
+          : undefined,
+        code: diag.code ? this.truncateForEvent(diag.code, 120) : undefined,
+      })),
+      warnings: verification.warnings
+        .slice(0, 20)
+        .map((warning) => this.truncateForEvent(warning, 500)),
+      at: this.isoNow(),
+    });
+  }
+
+  private formatVerificationRepairPrompt(params: {
+    verification: VerificationResult | undefined;
+    error: { code: string; message: string };
+    changedFiles: readonly string[];
+  }): string {
+    const evidence = params.verification
+      ? this.formatVerificationEvidence(params.verification)
+      : params.error.message;
+    const changed =
+      params.changedFiles.length > 0
+        ? `\nChanged files so far: ${params.changedFiles.join(", ")}`
+        : "";
+    return [
+      "Required verification did not pass. Use the evidence below to repair the implementation, then stop after making the smallest necessary change.",
+      changed,
+      "",
+      evidence,
+    ]
+      .filter((part) => part.length > 0)
+      .join("\n");
+  }
+
   private formatVerificationFailureAnswer(params: {
     error: { code: string; message: string };
+    verification?: VerificationResult;
     changedFiles: readonly string[];
     rolledBack: boolean;
   }): string {
@@ -1687,7 +1830,45 @@ export class AgentEnginePipeline {
     const rollback = params.rolledBack
       ? " Any applied workspace changes were rolled back."
       : "";
-    return `I could not complete the change because required verification failed: ${params.error.message}.${rollback}${changed}`;
+    const evidence = params.verification
+      ? ` Evidence: ${this.formatVerificationEvidence(params.verification)}`
+      : "";
+    return `I could not complete the change because required verification failed: ${params.error.message}.${rollback}${changed}${evidence}`;
+  }
+
+  private formatVerificationEvidence(verification: VerificationResult): string {
+    const checks = verification.checks
+      .slice(0, 6)
+      .map(
+        (check) =>
+          `${check.kind}/${check.outcome}: ${this.truncateForEvent(
+            check.summary,
+            180,
+          )}`,
+      );
+    const diagnostics = verification.diagnostics
+      .slice(0, 5)
+      .map((diag) => {
+        const line = diag.startLine ? `:${diag.startLine}` : "";
+        return `${diag.path}${line} ${diag.severity}: ${this.truncateForEvent(
+          diag.message,
+          220,
+        )}`;
+      });
+    const warnings = verification.warnings
+      .slice(0, 3)
+      .map((warning) => `warning: ${this.truncateForEvent(warning, 180)}`);
+    const parts = [
+      `status=${verification.status}; reasons=${verification.reasonCodes.join(",")}`,
+      ...checks,
+      ...diagnostics,
+      ...warnings,
+    ];
+    return parts.join("\n");
+  }
+
+  private truncateForEvent(value: string, max: number): string {
+    return value.length <= max ? value : `${value.slice(0, Math.max(0, max - 1))}…`;
   }
 
   private async runModelToolLoop(params: {
