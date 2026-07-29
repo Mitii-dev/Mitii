@@ -7,9 +7,12 @@ import {
   RepositoryStatePipeline,
   DEFAULT_TOOL_DEFINITIONS,
   ToolRuntimePipeline,
+  VerificationPipeline,
+  WorkspaceFileSystemManifestReader,
   NodeProcessAdapter,
   NodeNetworkAdapter,
   NodeWorkspaceFileSystemAdapter,
+  NodeGitAdapter,
   type LlmPort,
   type MitiiClient,
   type ModelCapabilities,
@@ -19,6 +22,7 @@ import {
 } from '@mitii/sdk';
 import type * as vscode from 'vscode';
 
+import { VscodeDiagnosticsPort } from './diagnosticsPort.js';
 import { getSharedMcpManager } from './mcp/manager.js';
 import { readMcpSettings } from './mcpConfig.js';
 import { findLocalModelPreset } from './modelPresets.js';
@@ -174,16 +178,32 @@ export async function createVscodeClient(
   const mcpManager = getSharedMcpManager();
   const mcpSnapshot = await mcpManager.sync(mcp, workspaceRoot);
 
-  const tools = workspaceRoot
+  const fileSystem = workspaceRoot
+    ? new NodeWorkspaceFileSystemAdapter()
+    : undefined;
+  const tools = workspaceRoot && fileSystem
     ? new ToolRuntimePipeline(
         {
-          fileSystem: new NodeWorkspaceFileSystemAdapter(),
+          fileSystem,
           process: new NodeProcessAdapter(),
           network: new NodeNetworkAdapter(),
+          git: new NodeGitAdapter(),
+          diagnostics: new VscodeDiagnosticsPort(vs, workspaceRoot),
         },
         { registry: mcpManager.createRegistry() },
       )
     : undefined;
+
+  const verification =
+    workspaceRoot && tools && fileSystem
+      ? new VerificationPipeline({
+          tools,
+          manifests: new WorkspaceFileSystemManifestReader({
+            fileSystem,
+            workspaceRoot,
+          }),
+        })
+      : undefined;
 
   const repositoryContext = workspaceRoot
     ? createHostRepositoryContext({
@@ -207,6 +227,7 @@ export async function createVscodeClient(
     repositoryState,
     repositoryContext,
     tools,
+    verification,
     toolDefinitions,
     enableInMemoryCheckpoints: true,
     skillsCatalog: options.skillsCatalog ?? createDefaultSkillsCatalog(),

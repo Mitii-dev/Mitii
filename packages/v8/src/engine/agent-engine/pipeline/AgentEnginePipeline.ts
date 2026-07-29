@@ -1576,12 +1576,15 @@ export class AgentEnginePipeline {
       }
       await this.rollbackMutations(mutationCheckpointIds, warnings);
       reasonCodes.push("mutation_rolled_back", "verification_failed");
+      const missing: string[] = [];
+      if (this.deps.verification === undefined) missing.push("verification port");
+      if (pinnedState === undefined) missing.push("pinned state");
+      if (input.workspaceRoot === undefined) missing.push("workspace root");
       return {
         kind: "failed",
         error: {
           code: "verification_failed",
-          message:
-            "Verification is required but unavailable (missing verification port or pinned state).",
+          message: `Verification is required but unavailable (missing ${missing.join(", ") || "verification port or pinned state"}).`,
         },
       };
     }

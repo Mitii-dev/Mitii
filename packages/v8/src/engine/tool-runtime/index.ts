@@ -89,6 +89,7 @@ export type {
   WorkspaceFileSystemPort,
   ProcessPort,
   DiagnosticsPort,
+  DiagnosticItem,
   GitPort,
   NetworkPort,
   SearchPort,
@@ -104,6 +105,7 @@ export {
   InMemoryProcessAdapter,
   InMemoryDiagnosticsAdapter,
   InMemoryGitAdapter,
+  NodeGitAdapter,
   NodeNetworkAdapter,
   InMemoryNetworkAdapter,
 } from "./adapters";

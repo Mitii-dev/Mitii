@@ -18,12 +18,16 @@ Does not spawn shells or touch the filesystem directly.
 | `VerificationPipeline` | Public facade (`verify`) |
 | `verificationInputSchema` / `VerificationInput` | Boundary input |
 | `verificationResultSchema` / `VerificationResult` | Boundary result |
-| `InMemoryManifestReader` | Test/host helper for trusted manifest reads |
+| `InMemoryManifestReader` | Test helper for trusted manifest reads |
+| `WorkspaceFileSystemManifestReader` | Host helper over Tool Runtime FS |
 
 ```ts
 const pipeline = new VerificationPipeline({
   tools: { execute: (input, options) => toolRuntime.execute(input, options) },
-  manifests: new InMemoryManifestReader({ "package.json": "..." }),
+  manifests: new WorkspaceFileSystemManifestReader({
+    fileSystem,
+    workspaceRoot: "/repo",
+  }),
 });
 
 const result = await pipeline.verify({
