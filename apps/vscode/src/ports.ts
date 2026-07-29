@@ -28,6 +28,7 @@ import { getSharedMcpManager } from './mcp/manager.js';
 import { readMcpSettings } from './mcpConfig.js';
 import { findLocalModelPreset } from './modelPresets.js';
 import { createHostRepositoryContext } from './repositoryContextHost.js';
+import { readContextToggles } from './contextToggles.js';
 import { createVsCodeMemoryStore } from './memoryStore.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
 
@@ -224,10 +225,7 @@ export async function createVscodeClient(
     ...DEFAULT_TOOL_DEFINITIONS,
     ...mcpSnapshot.toolDefinitions,
   ];
-  const memoryEnabled =
-    vs.workspace
-      .getConfiguration('mitii.ui.contextToggles')
-      .get<boolean>('memory') ?? true;
+  const memoryEnabled = readContextToggles(vs).memory;
 
   const client = createMitiiClient({
     understandingLlm: ports.understandingLlm,

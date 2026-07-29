@@ -15,7 +15,7 @@ const EVIDENCE_TO_CHECK: Record<string, VerificationCheckKind[]> = {
   diagnostics: ["diagnostics", "syntax"],
   typecheck: ["typecheck"],
   lint: ["lint", "format"],
-  tests: ["test"],
+  tests: ["test", "build", "typecheck"],
   build: ["build"],
   diff_review: ["diff_review"],
 };

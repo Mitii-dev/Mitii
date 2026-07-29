@@ -172,11 +172,13 @@ describe("VerificationPipeline", () => {
 
   it("infers nested package checks and treats tsc build scripts as typecheck evidence", async () => {
     const manifests = new InMemoryManifestReader({
+      "package.json": JSON.stringify({
+        packageManager: "pnpm@10.13.1",
+      }),
       "ai-service/package.json": JSON.stringify({
         scripts: {
           build: "pnpm exec tsc",
         },
-        packageManager: "pnpm@10.13.1",
       }),
     });
 
@@ -228,7 +230,7 @@ describe("VerificationPipeline", () => {
         ],
         verification: {
           required: true,
-          minimumEvidence: ["diagnostics", "typecheck", "diff_review"],
+          minimumEvidence: ["diagnostics", "tests", "typecheck", "diff_review"],
           allowUnavailable: false,
         },
       }),

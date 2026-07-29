@@ -40,7 +40,13 @@ export async function discoverNodeChecks(params: {
   }
 
   const scripts = pkg.scripts ?? {};
-  const pm = detectPackageManager(pkg.packageManager);
+  const pm = detectPackageManager(
+    pkg.packageManager ??
+      (await readInheritedPackageManager({
+        projectRoot: params.project.rootPath,
+        manifests: params.manifests,
+      })),
+  );
   const candidates: DiscoveredCheckCandidate[] = [];
   const warnings: string[] = [];
 
@@ -108,4 +114,41 @@ function detectPackageManager(
   if (field?.startsWith("yarn@")) return "yarn";
   if (field?.startsWith("bun@")) return "bun";
   return "npm";
+}
+
+async function readInheritedPackageManager(params: {
+  projectRoot: string;
+  manifests: VerificationManifestReaderPort;
+}): Promise<string | undefined> {
+  for (const rootPath of ancestorRoots(params.projectRoot)) {
+    const pkgPath = joinRoot(rootPath, "package.json");
+    const raw = await params.manifests.readText(pkgPath);
+    if (!raw) {
+      continue;
+    }
+    try {
+      const pkg = JSON.parse(raw) as PackageJson;
+      if (pkg.packageManager) {
+        return pkg.packageManager;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
+}
+
+function ancestorRoots(rootPath: string): string[] {
+  const parts = rootPath
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/\/$/, "")
+    .split("/")
+    .filter(Boolean);
+  const roots: string[] = [];
+  while (parts.length > 0) {
+    parts.pop();
+    roots.push(parts.length > 0 ? parts.join("/") : ".");
+  }
+  return roots;
 }

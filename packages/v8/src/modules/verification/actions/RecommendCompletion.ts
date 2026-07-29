@@ -17,7 +17,7 @@ const EVIDENCE_TO_CHECK: Record<string, VerificationCheckKind[]> = {
   diagnostics: ["diagnostics", "syntax"],
   typecheck: ["typecheck"],
   lint: ["lint", "format"],
-  tests: ["test"],
+  tests: ["test", "build", "typecheck"],
   build: ["build"],
   diff_review: ["diff_review"],
 };
@@ -104,7 +104,9 @@ export function recommendCompletion(params: {
   if (unavailable.length > 0 || !requiredCovered) {
     const reasonCodes: VerificationReasonCode[] = requiredCovered
       ? ["checks_unavailable", "missing_tool_degraded"]
-      : ["no_applicable_checks", "checks_unavailable"];
+      : passed.length > 0
+        ? ["checks_unavailable"]
+        : ["no_applicable_checks", "checks_unavailable"];
     if (unavailable.length > 0) {
       reasonCodes.push("missing_tool_degraded");
     }

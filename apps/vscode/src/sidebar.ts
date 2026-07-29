@@ -50,7 +50,6 @@ import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
 import { findLocalModelPreset, LOCAL_MODEL_PRESETS } from './modelPresets.js';
 import { searchWorkspacePaths } from './pathSearch.js';
 import type {
-  ContextToggles,
   HostToWebviewMessage,
   IndexStatusSnapshot,
   McpRuntimeStatus,
@@ -69,6 +68,10 @@ import {
   buildConversationCarry,
   resolvePlanHandoff,
 } from './conversationCarry.js';
+import {
+  resolveContextToggles,
+  readContextToggles,
+} from './contextToggles.js';
 import { savePlanToWorkspace } from './planStore.js';
 import { buildReviewDiff } from './reviewDiff.js';
 import { testProviderConnection } from './testConnection.js';
@@ -78,6 +81,7 @@ import {
   clearMemoriesForWorkspace,
   commitMemoryForWorkspace,
   deleteMemoryForWorkspace,
+  estimateMemoryPromptBlock,
   loadMemoriesForView,
 } from './memoryStore.js';
 
@@ -246,17 +250,6 @@ function indexStatusFromDescriptor(
           entry.capability === 'vectorIndex' ? root.vectorProfile : undefined,
       })),
     ),
-  };
-}
-
-function defaultContextToggles(): ContextToggles {
-  return {
-    repoMap: true,
-    diagnostics: true,
-    gitDiff: true,
-    editor: true,
-    openTabs: false,
-    memory: true,
   };
 }
 
@@ -1000,9 +993,17 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     this.runBaseInputTokens = this.tokenUsage.inputTokensTotal;
     this.runBaseOutputTokens = this.tokenUsage.outputTokensTotal;
     const contextWindow = resolveContextWindow(this.vs);
+    const toggles = readContextToggles(this.vs);
+    const memoryBlock = toggles.memory
+      ? await estimateMemoryPromptBlock(
+          this.host.workspaceState,
+          this.getWorkspaceId(),
+        )
+      : undefined;
     const provisionalContextBreakdown = buildContextUsageBreakdown({
       prompt: llmPrompt,
       conversationText,
+      memoryBlock,
       depthHint: message.depth,
       contextWindow,
     });
@@ -1735,17 +1736,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
 
   private readUi(): UiSettingsSnapshot {
     const cfg = this.vs.workspace.getConfiguration('mitii');
-    const toggles = defaultContextToggles();
-    for (const key of Object.keys(toggles) as (keyof ContextToggles)[]) {
-      toggles[key] =
-        cfg.get<boolean>(`ui.contextToggles.${key}`) ?? toggles[key];
-    }
     return {
       showReasoning: cfg.get<boolean>('ui.showReasoning') ?? true,
       reasoningPreviewMaxChars:
         cfg.get<number>('ui.reasoningPreviewMaxChars') ?? 8000,
       depth: (cfg.get<string>('ui.depth') as UiSettingsSnapshot['depth']) ?? 'auto',
-      contextToggles: toggles,
+      contextToggles: resolveContextToggles(cfg),
       approvalMode: cfg.get<string>('safety.approvalMode') ?? 'guided',
       runBudget: readRunBudgetSettings(this.vs),
     };

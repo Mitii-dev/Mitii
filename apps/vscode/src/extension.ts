@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import type { MitiiClient } from '@mitii/sdk';
 
 import { captureEditorContext } from './context/editorContext.js';
+import { resolveContextToggles } from './contextToggles.js';
 import { InlineDiffManager } from './diff/inlineDiffManager.js';
 import { showWriteDiffPreview } from './diff/diffPreview.js';
 import { runAskInOutputChannel } from './hostAsk.js';
@@ -382,14 +383,7 @@ export function activate(context: ExtensionContext): void {
       ui: {
         showReasoning: cfg.get('ui.showReasoning'),
         depth: cfg.get('ui.depth'),
-        contextToggles: {
-          editor: cfg.get('ui.contextToggles.editor'),
-          diagnostics: cfg.get('ui.contextToggles.diagnostics'),
-          openTabs: cfg.get('ui.contextToggles.openTabs'),
-          gitDiff: cfg.get('ui.contextToggles.gitDiff'),
-          memory: cfg.get('ui.contextToggles.memory'),
-          repoMap: cfg.get('ui.contextToggles.repoMap'),
-        },
+        contextToggles: resolveContextToggles(cfg),
       },
       safety: { approvalMode: cfg.get('safety.approvalMode') },
       mcpEnabled: Boolean(

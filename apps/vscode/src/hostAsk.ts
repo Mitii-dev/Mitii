@@ -15,6 +15,7 @@ import type * as vscode from 'vscode';
 import { formatDiagnosticsPromptBlock } from './context/diagnosticsContext.js';
 import { captureEditorContext } from './context/editorContext.js';
 import { buildContextUsageBreakdown } from './contextUsage.js';
+import { readContextToggles } from './contextToggles.js';
 import { getSharedMcpManager } from './mcp/manager.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { estimateMemoryPromptBlock } from './memoryStore.js';
@@ -485,15 +486,6 @@ export interface HostAskHandlers {
   cancelToken?: vscode.CancellationToken;
 }
 
-export interface ContextToggleFlags {
-  editor?: boolean;
-  openTabs?: boolean;
-  diagnostics?: boolean;
-  repoMap?: boolean;
-  gitDiff?: boolean;
-  memory?: boolean;
-}
-
 function composePrompt(options: {
   prompt: string;
   depth?: string;
@@ -538,18 +530,6 @@ function composePrompt(options: {
     parts.push(`${HOST_MARKER}\n${hostParts.join('\n\n')}`);
   }
   return parts.join('\n\n');
-}
-
-function readContextToggles(vs: typeof vscode): ContextToggleFlags {
-  const cfg = vs.workspace.getConfiguration('mitii.ui.contextToggles');
-  return {
-    editor: cfg.get<boolean>('editor') ?? true,
-    openTabs: cfg.get<boolean>('openTabs') ?? false,
-    diagnostics: cfg.get<boolean>('diagnostics') ?? true,
-    repoMap: cfg.get<boolean>('repoMap') ?? true,
-    gitDiff: cfg.get<boolean>('gitDiff') ?? true,
-    memory: cfg.get<boolean>('memory') ?? true,
-  };
 }
 
 function readPinnedFileContents(
