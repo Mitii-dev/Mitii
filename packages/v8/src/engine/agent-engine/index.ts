@@ -31,8 +31,15 @@ export type { AgentEnginePipelineDependencies } from "./pipeline/AgentEnginePipe
 export {
   composeReadOnlyAgentEngine,
   InMemoryRunCheckpointStore,
+  FileRunCheckpointStore,
 } from "./adapters";
 export type { ComposeReadOnlyAgentEngineOptions } from "./adapters";
+
+export type {
+  AgentRunCheckpoint,
+  AgentEngineRunCheckpointStorePort,
+  PendingApprovalState,
+} from "./internal/RunCheckpoint";
 
 export {
   agentEngineStartInputSchema,

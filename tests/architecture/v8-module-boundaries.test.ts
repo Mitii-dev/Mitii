@@ -460,6 +460,7 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(cliPkg.name).toBe('@mitii/cli');
     expect(cliPkg.bin?.mitii).toBeTruthy();
     expect(cliPkg.dependencies?.['@mitii/sdk']).toBeTruthy();
+    expect(cliPkg.dependencies?.['@mitii/host']).toBeTruthy();
 
     const vscodePkg = JSON.parse(
       readFileSync(join(vscodeRoot, 'package.json'), 'utf8'),
@@ -478,6 +479,7 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(vscodePkg.engines?.vscode).toBeTruthy();
     expect(vscodePkg.main).toContain('extension.js');
     expect(vscodePkg.dependencies?.['@mitii/sdk']).toBeTruthy();
+    expect(vscodePkg.dependencies?.['@mitii/host']).toBeTruthy();
 
     const forbiddenHostPatterns = [
       /from ['"].*(?:kernel|HeadlessAgentHost|ThunderController)(?:\/|['"])/,

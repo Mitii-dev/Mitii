@@ -1,0 +1,41 @@
+{
+  "name": "@mitii/host",
+  "version": "2.7.118",
+  "description": "Shared host kit for Mitii VS Code and CLI (indexing, embeddings, context, checkpoints, provider presets).",
+  "license": "AGPL-3.0-or-later",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').accessSync('dist/index.js')\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mitii/sdk": "workspace:*",
+    "@mitii/v8": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.2",
+    "vitest": "^3.2.7"
+  },
+  "optionalDependencies": {
+    "@lancedb/lancedb": "0.33.0"
+  }
+}

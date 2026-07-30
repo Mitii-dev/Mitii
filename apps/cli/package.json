@@ -25,6 +25,7 @@
     "mitii": "node bin/mitii.js"
   },
   "dependencies": {
+    "@mitii/host": "workspace:*",
     "@mitii/sdk": "workspace:*",
     "@mitii/v8": "workspace:*",
     "better-sqlite3": "^12.11.1"

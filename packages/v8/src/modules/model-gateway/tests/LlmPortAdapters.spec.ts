@@ -203,12 +203,22 @@ test("openai compatible request bodies validate against modelRequestSchema", () 
   );
 });
 
-test("provider support matrix marks Anthropic and Gemini unsupported", () => {
+test("provider support matrix lists only shipped adapters", () => {
   assert.equal(MODEL_PROVIDER_SUPPORT.openai.status, "supported");
   assert.equal(MODEL_PROVIDER_SUPPORT.ollama.status, "supported");
   assert.equal(MODEL_PROVIDER_SUPPORT["openai-compatible"].status, "supported");
-  assert.equal(MODEL_PROVIDER_SUPPORT.anthropic.status, "unsupported");
-  assert.equal(MODEL_PROVIDER_SUPPORT.gemini.status, "unsupported");
+  assert.equal(MODEL_PROVIDER_SUPPORT.openrouter.status, "supported");
+  assert.equal(MODEL_PROVIDER_SUPPORT.deepseek.status, "supported");
+  assert.equal(MODEL_PROVIDER_SUPPORT["lm-studio"].status, "supported");
+  assert.equal(MODEL_PROVIDER_SUPPORT["azure-openai"].status, "supported");
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(MODEL_PROVIDER_SUPPORT, "anthropic"),
+    false,
+  );
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(MODEL_PROVIDER_SUPPORT, "gemini"),
+    false,
+  );
   assert.equal(modelEventSchema.safeParse({ type: "content_delta" }).success, false);
   assert.equal(
     modelEventSchema.safeParse({

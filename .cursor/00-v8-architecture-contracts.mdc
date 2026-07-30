@@ -1,0 +1,588 @@
+---
+
+description: Mandatory V8 and SDK architecture, contract, folder structure, genericness, dependency, testing, and completion requirements
+globs: []
+alwaysApply: true
+-----------------
+
+# V8 Architecture and Contract Rules
+
+## Purpose
+
+Apply these requirements to every implementation, feature, bug fix, refactor, migration, and test involving:
+
+* `packages/v8`
+* `packages/sdk`
+* `apps`
+* V8 consumers, fixtures, and tests
+
+The active architecture is V8.
+
+Legacy implementations are reference material only. They are not production dependencies and are not automatically considered correct.
+
+---
+
+# 1. Authoritative Dependency Direction
+
+The required dependency direction is:
+
+```text
+Applications and Tests
+        ↓
+    @mitii/sdk
+        ↓
+     @mitii/v8
+```
+
+The following rules are mandatory:
+
+* Applications SHOULD use `@mitii/sdk`.
+* Tests acting as product consumers SHOULD use `@mitii/sdk`.
+* `@mitii/sdk` MAY import public exports from `@mitii/v8`.
+* `@mitii/v8` MUST NOT import `@mitii/sdk`.
+* `@mitii/v8` MUST NOT import host applications.
+* `@mitii/sdk` MUST NOT import host applications.
+* Production V8 code MUST NOT import legacy implementations.
+* Cross-module imports MUST use the owning module's public entry point.
+* No code outside a module may import its `actions/`, `internal/`, private adapters, or tests.
+
+Never fix a dependency violation by creating a barrel export that exposes private code.
+
+---
+
+# 2. SDK Boundary
+
+`@mitii/sdk` is the host-neutral programmatic API over the V8 Agent Engine.
+
+The SDK owns:
+
+* Public client composition
+* SDK-facing option validation
+* Host-neutral run handles
+* Public convenience factories
+* Mapping stable V8 results to the supported SDK surface
+* Injection of provider ports and environmental dependencies
+* SDK compatibility tests
+
+The SDK may expose capabilities such as:
+
+* `createMitiiClient(options)`
+* `client.start(input)`
+* `run.events`
+* `run.result`
+* `run.cancel()`
+* `client.resume(input)`
+* `client.publishRepositoryState(input)`
+
+The SDK MUST NOT:
+
+* Import V8 `actions/`
+* Import V8 `internal/`
+* Import private V8 adapters
+* Import `vscode`
+* Import webview protocols
+* Own intent classification
+* Own repository retrieval
+* Own prompt construction
+* Own tool execution algorithms
+* Own verification algorithms
+* Reintroduce legacy controllers or hosts
+* Reimplement V8 business pipelines
+* Store provider secrets in V8 contracts
+* Expose unstable internal implementation classes
+
+The SDK composes and delegates. It does not duplicate V8 algorithms.
+
+Provider secrets remain with host-injected ports.
+
+---
+
+# 3. Contract-First Architecture
+
+Every public operation MUST follow:
+
+```text
+Validated Input
+    ↓
+Input Contract
+    ↓
+Cohesive Module or Engine Pipeline
+    ↓
+Validated Output Contract
+```
+
+Before implementing behavior, identify:
+
+1. Semantic owner
+2. Public input
+3. Public output
+4. Stable errors or reason codes
+5. Required dependencies
+6. Environmental ports
+7. Internal actions
+8. Explicit non-responsibilities
+
+Do not implement a public feature before deciding which module owns its contract.
+
+---
+
+# 4. Schema Ownership
+
+For public boundary data in TypeScript:
+
+* Zod schemas MUST be the runtime source of truth.
+* Compatible TypeScript types SHOULD be inferred from the schema.
+* Input MUST be validated at the public entry boundary.
+* Output MUST be validated before crossing the public boundary.
+* Public results SHOULD use discriminated unions.
+* Public errors SHOULD use stable reason codes.
+* Breaking public changes require an explicit schema version and migration decision.
+
+Preferred:
+
+```ts
+export const StartRunInputSchema = z.object({
+  schemaVersion: z.literal(1),
+  prompt: z.string().min(1),
+  mode: InteractionModeSchema,
+});
+
+export type StartRunInput = z.infer<typeof StartRunInputSchema>;
+```
+
+Avoid duplicating the same structure:
+
+```ts
+interface StartRunInput {
+  prompt: string;
+}
+
+const StartRunInputSchema = z.object({
+  prompt: z.string(),
+});
+```
+
+Hand-written types MAY be used for:
+
+* Internal functions
+* Opaque handles
+* Branded values
+* Port behavior
+* Types without a meaningful runtime representation
+
+The semantic owner defines the contract.
+
+Other modules import the contract from the owner's public entry point.
+
+Do not create a root `shared` contract merely to avoid choosing ownership.
+
+---
+
+# 5. Module Responsibility
+
+A public V8 module represents a recognizable business outcome.
+
+A module MUST:
+
+* Own one coherent result
+* Have explicit input and output contracts
+* Hide its internal sequence from callers
+* Own its invariants and failure behavior
+* Expose one intentional public facade
+* Be independently testable at the contract boundary
+
+A module normally contains approximately 3–10 meaningful stages or actions.
+
+This is a diagnostic range, not a quota.
+
+Do not:
+
+* Create artificial actions to reach a number
+* Create one module per class
+* Create one module per helper
+* Create one folder per small function
+* Create wrapper-only modules
+* Create 50 submodules that export one meaningful operation
+* Put unrelated behavior into one large `core` module
+
+Keep code together when it:
+
+* Produces the same business result
+* Changes for the same domain reason
+* Shares invariants
+* Shares lifecycle
+* Should remain hidden behind one facade
+
+Split code when:
+
+* The outcomes are independently useful
+* Permissions or failure boundaries differ
+* Lifecycles differ
+* Dependencies differ materially
+* The existing facade exposes unrelated operations
+* Independent testing has clear value
+
+Adding a new top-level V8 module requires:
+
+1. A distinct business outcome
+2. An independently useful lifecycle
+3. At least two real consumers or a firm roadmap requirement
+4. Evidence that it does not belong in an existing module
+5. An architecture or migration decision
+
+---
+
+# 6. Required Folder Structure
+
+Use the smallest useful subset of:
+
+```text
+packages/v8/src/modules/<module-name>/
+├── contracts/
+│   ├── input/
+│   ├── output/
+│   ├── errors/
+│   └── ports/
+├── pipeline/
+├── actions/
+├── internal/
+├── adapters/
+├── tests/
+│   ├── contract/
+│   ├── unit/
+│   └── integration/
+├── constants.ts
+├── defaults.ts
+├── policy.ts
+├── patterns.ts
+├── README.md
+└── index.ts
+```
+
+Do not create empty directories.
+
+Small modules may use:
+
+```text
+<module-name>/
+├── contracts.ts
+├── <module-name>.ts
+├── <module-name>.test.ts
+├── README.md
+└── index.ts
+```
+
+Folder responsibilities:
+
+### `contracts/`
+
+Public schemas, inferred types, stable errors, reason codes, and required environmental ports.
+
+### `pipeline/`
+
+Public orchestration when separating orchestration improves readability.
+
+### `actions/`
+
+Meaningful stages owned by the module.
+
+Actions are internal unless deliberately exposed as part of the public facade.
+
+### `internal/`
+
+Private algorithms, helpers, indexes, selectors, parsers, and implementation data structures.
+
+### `adapters/`
+
+Concrete implementations of ports owned by the module.
+
+### `tests/`
+
+Contract, unit, and integration tests.
+
+### `index.ts`
+
+Explicit supported public exports only.
+
+It MUST NOT export:
+
+* `actions/`
+* `internal/`
+* Tests
+* Fixtures
+* Private adapters
+* Temporary migration implementations
+
+---
+
+# 7. Engine Ownership
+
+Runtime orchestration belongs to:
+
+```text
+packages/v8/src/engine/agent-engine/
+```
+
+The Agent Engine owns:
+
+* Run state
+* Sequencing
+* Model/tool loop coordination
+* Cancellation
+* Suspension and resume
+* Checkpoints
+* Events
+* Terminal result production
+
+The Agent Engine MUST NOT reimplement behavior owned by public modules.
+
+Modules MUST NOT import the Agent Engine.
+
+The engine may call public module facades.
+
+---
+
+# 8. Genericness and No Hard-Coding
+
+Implementations MUST remain host-neutral, language-neutral, provider-neutral, and repository-aware unless the owning adapter is intentionally specific.
+
+Do not hard-code:
+
+* One model provider
+* One IDE
+* One operating system
+* One workspace root
+* One programming language
+* One package manager
+* One build command
+* One test command
+* One lint command
+* One repository layout
+* One framework
+* One file extension list inside unrelated core logic
+* One caller's expected behavior
+* One benchmark prompt
+* One test case result
+* Absolute local paths
+* Environment-specific secrets
+* Provider-specific error messages in public contracts
+
+Use:
+
+* Ports
+* Registries
+* Capability declarations
+* Repository-discovered project metadata
+* Configurable defaults
+* Named policies
+* Stable identifiers
+* Dependency injection
+* Adapter-owned provider logic
+* Explicit fallback behavior
+
+A provider-specific condition belongs in that provider's adapter.
+
+A language-specific condition belongs in a language profile, detector, parser adapter, project detector, or capability registration.
+
+A host-specific condition belongs in the host application or SDK composition boundary.
+
+Do not solve one failing test with a special-case condition tied to the test input.
+
+---
+
+# 9. Defaults, Policies, and Constants
+
+Use:
+
+* `constants.ts` for stable identifiers
+* `defaults.ts` for configurable defaults
+* `policy.ts` for thresholds, weights, and decision behavior
+* `patterns.ts` for substantial catalogs or patterns
+
+Do not scatter unexplained numbers, strings, thresholds, or regular expressions throughout actions.
+
+A value that may differ by environment, provider, repository, language, or host MUST be configurable or discoverable.
+
+---
+
+# 10. Public API Rules
+
+`packages/v8/src/index.ts` and each module `index.ts` MUST use explicit named exports.
+
+Public exports are limited to:
+
+* Primary business facades
+* Public schemas
+* Public inferred types
+* Required public ports
+* Stable public errors and reason codes
+* Intentionally supported factories
+
+Do not use wildcard exports that can silently expand the API.
+
+Do not expose an implementation because a test needs access to it.
+
+Test internal behavior through the public contract or place the test within the owning module.
+
+---
+
+# 11. Test Requirements
+
+Every changed public behavior MUST have appropriate tests.
+
+Use the smallest relevant set:
+
+### Contract tests
+
+Test:
+
+* Valid input
+* Invalid input
+* Valid output
+* Schema version
+* Stable status variants
+* Stable error or reason codes
+* Public export behavior
+
+### Unit tests
+
+Test:
+
+* Meaningful actions
+* Algorithms
+* Boundary conditions
+* Failure handling
+* Configurable policy behavior
+
+### Integration tests
+
+Test:
+
+* Module facade orchestration
+* Port interaction
+* SDK-to-V8 delegation
+* Engine-to-module integration
+* Cancellation and resume where relevant
+* External adapter behavior using controlled test doubles
+
+### Architecture tests
+
+Enforce:
+
+* No legacy production imports
+* No cross-module deep imports
+* No public exports from `internal/` or `actions/`
+* No module cycles
+* No host APIs inside V8
+* No SDK imports inside V8
+* No duplicate public contracts
+* No unregistered language conditions in core code
+
+Tests MUST verify observable behavior.
+
+Do not weaken assertions solely to make a change pass.
+
+Do not use arbitrary sleeps when deterministic synchronization is possible.
+
+---
+
+# 12. Validation Order
+
+After implementation, run the minimum useful checks in this order:
+
+1. Changed-file syntax or type diagnostics
+2. Focused unit tests
+3. Contract tests
+4. Affected module integration tests
+5. Architecture tests
+6. Package build
+7. Broader affected tests
+8. Full suite only when justified
+
+For SDK changes, normally include:
+
+```bash
+pnpm --filter @mitii/sdk build
+pnpm --filter @mitii/sdk test
+```
+
+For V8 changes, discover and use the repository-declared V8 commands.
+
+Do not assume a command without checking repository configuration.
+
+Never claim that a test, build, type-check, lint, or command passed unless it was actually executed successfully.
+
+Only verification evidence may support a verified-success claim.
+
+---
+
+# 13. Legacy Code
+
+Legacy code is reference material only.
+
+Production V8 and SDK code MUST NOT import legacy paths.
+
+Legacy code may be inspected for:
+
+* Existing capabilities
+* Edge cases
+* Algorithms
+* Previous tests
+* User-visible behavior
+* Known failures
+* Performance lessons
+* Generic patterns
+
+Preserve useful behavior, not old architecture.
+
+Do not:
+
+* Copy an entire legacy directory
+* Preserve legacy ownership without evaluation
+* Restore legacy controllers
+* Add permanent compatibility wrappers without justification
+* Combine conflicting historical designs
+* Treat old code as automatically correct
+
+---
+
+# 14. Required Module Documentation
+
+Each significant public module README SHOULD state:
+
+* Responsibility
+* Input
+* Output
+* Pipeline stages
+* Dependencies and ports
+* Public exports
+* Failure modes
+* Genericness strategy
+* Explicit non-responsibilities
+
+Documentation must describe the contract and ownership, not repeat filenames.
+
+---
+
+# 15. Completion Standard
+
+A task is not complete merely because code was written.
+
+Before declaring completion, confirm:
+
+* The semantic owner is correct.
+* Input and output contracts are explicit.
+* Boundary validation exists.
+* Public types have one source of truth.
+* Folder placement follows ownership.
+* No legacy dependency was introduced.
+* No cross-module internal import was introduced.
+* No host-specific dependency entered V8 or SDK.
+* No unjustified hard-coded behavior was introduced.
+* Tests cover changed behavior.
+* Architecture tests remain valid.
+* Focused verification was executed.
+* Public exports remain intentional.
+* The final diff contains no unrelated changes.
+
+Report incomplete checks honestly.

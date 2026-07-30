@@ -754,6 +754,7 @@ export function App() {
       type: 'settings.set',
       provider: {
         type: provider.type,
+        preset: provider.preset,
         baseUrl: provider.baseUrl,
         model: provider.model,
         contextWindow: provider.contextWindow,
@@ -779,11 +780,13 @@ export function App() {
     });
   };
 
-  const onProviderTypeChange = (type: string) => {
-    const preset = getProviderPreset(type);
+  const onProviderTypeChange = (presetId: string) => {
+    const preset = getProviderPreset(presetId);
+    const type = preset?.type ?? presetId;
     setProvider((p) => ({
       ...p,
       type,
+      preset: preset?.preset ?? presetId,
       baseUrl: preset?.baseUrl ?? p.baseUrl,
       model: preset?.model ?? p.model,
       connectionOk: undefined,

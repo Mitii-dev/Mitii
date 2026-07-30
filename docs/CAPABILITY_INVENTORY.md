@@ -30,8 +30,8 @@ V8 rows (section A) live under `packages/v8/src/` (`@mitii/v8`) after Phase 11; 
 | `pnpm run typecheck` | 2 | **failed** — 54 `error TS*` | Pre-existing V8/test typing drift (prompt-construction fixtures, skills budgetTokens, unused imports, etc.). Not fixed in Phase 10 |
 | `pnpm run test:v8` | 1 | **failed** — 19 files / 103 tests passed; 23 files failed | Failures are mostly `No test suite found` on nested `*.spec.ts` (collection/include mismatch). Do not treat as Phase 10 regression |
 | `pnpm exec vitest run test/architecture/` | 0 | **passed** — 2 files / 25 tests | Includes `v8-module-boundaries` + `target-boundaries`. Root script `check:architecture` only runs the latter |
-| `pnpm run compile:extension` | 0 | **passed** — `dist/extension.js` ~1.4mb | esbuild |
-| `pnpm run compile:cli` | 0 | **passed** — `dist/cli.js` ~1.4mb | skills copy + esbuild |
+| `pnpm run build:vscode` | 0 | **passed** — `dist/extension.js` ~1.4mb | esbuild |
+| `pnpm run build:cli` | 0 | **passed** — `dist/cli.js` ~1.4mb | skills copy + esbuild |
 | `pnpm run sdk:build` | 0 | **passed** — `@mitii/sdk` dist | Phase 10: bundled legacy `HeadlessAgentHost`. **Phase 12 (2026-07-26):** rewritten over `@mitii/v8`; `build`/`typecheck`/`test` (5) pass; daemon deferred |
 
 Dirty worktree at inventory start: untracked `.cursor/`, `packages/v8/ARCHITECTURE.md`, `packages/v8/src/ROADMAP.md`; modified eval manifests under `tools/benchmark/tasks/eval/`. Phase 10 adds `docs/REPO_LAYOUT.md` and this file.

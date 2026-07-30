@@ -1,0 +1,406 @@
+---
+
+description: Use when diagnosing and fixing a concrete defect, regression, failing test, incorrect output, build failure, runtime failure, or broken V8 or SDK behavior
+globs: []
+alwaysApply: false
+------------------
+
+# V8 Bug-Fix Workflow
+
+Apply this rule when the task involves:
+
+* A failing test
+* A build failure
+* A runtime exception
+* Incorrect output
+* A regression
+* Broken cancellation or resume
+* Invalid event ordering
+* Contract validation failure
+* Incorrect repository behavior
+* SDK-to-V8 delegation failure
+* Architecture rule violation
+* Provider, tool, adapter, or verification failure
+
+The mandatory V8 architecture and contract rule remains authoritative.
+
+---
+
+# 1. Establish the Failure
+
+Before changing code, establish:
+
+1. Expected behavior
+2. Actual behavior
+3. Reproduction path
+4. Owning module
+5. Failing public contract
+6. Earliest stage where behavior becomes incorrect
+7. Available evidence
+8. Required verification
+
+Evidence may include:
+
+* Failing test
+* Build output
+* Stack trace
+* Structured run events
+* Diagnostics
+* Diff
+* Logs
+* Invalid schema result
+* Incorrect terminal status
+* Reproduction script
+
+Do not begin with broad refactoring.
+
+Do not assume the file named in the error owns the root cause.
+
+---
+
+# 2. Reproduce Narrowly
+
+Use the smallest reliable reproduction.
+
+Preferred order:
+
+1. Existing focused failing test
+2. Existing package command with a test filter
+3. Minimal public API reproduction
+4. Controlled integration test
+5. Build or type-check reproduction
+6. Broader suite only when necessary
+
+For SDK issues, reproduce through the supported SDK public API whenever possible.
+
+Do not reproduce an SDK issue by importing V8 private actions.
+
+Capture:
+
+```text
+Command:
+Expected:
+Actual:
+Failure stage:
+Relevant evidence:
+```
+
+If reproduction is unavailable, identify why and proceed using the strongest available evidence.
+
+---
+
+# 3. Locate the Contract Violation
+
+Trace the failure through:
+
+```text
+Public Input
+    ↓
+Input Validation
+    ↓
+Owning Module or Engine
+    ↓
+Internal Action
+    ↓
+Dependency or Adapter
+    ↓
+Output Validation
+    ↓
+Public Result
+```
+
+Determine whether the defect is in:
+
+* Input normalization
+* Schema ownership
+* Public contract
+* Decision policy
+* Internal action
+* Port implementation
+* Adapter translation
+* Provider handling
+* Repository state consistency
+* Tool authorization
+* Cancellation
+* Retry behavior
+* Event ordering
+* Verification selection
+* SDK mapping
+* Host composition
+* Test expectation
+* Architecture enforcement
+
+Fix the defect at the semantic owner.
+
+Do not patch a downstream symptom when the upstream contract is wrong.
+
+---
+
+# 4. Inspect Existing and Legacy Behavior
+
+Inspect:
+
+1. Current V8 implementation
+2. Related tests
+3. Public callers
+4. Contract schemas
+5. Relevant adapters
+6. Recent related changes when available
+7. Legacy behavior only when it may explain expected behavior or an edge case
+
+Legacy code is evidence, not authority.
+
+Do not restore a legacy controller or dependency to fix a V8 defect.
+
+Do not copy an old implementation without checking whether it caused the architecture problem being repaired.
+
+---
+
+# 5. External Research for Bugs
+
+Research current external implementations when the defect may depend on:
+
+* A third-party package
+* Provider API behavior
+* Protocol semantics
+* Streaming behavior
+* Cancellation behavior
+* Runtime or language version
+* Build tool behavior
+* Operating-system behavior
+* Security requirements
+* Recently changed package behavior
+* An undocumented or disputed edge case
+
+Use this order:
+
+1. Official documentation
+2. Official specification
+3. Official changelog or migration guide
+4. Maintainer repository
+5. Maintainer issues and discussions
+6. Mature implementation examples
+
+Confirm the installed version before applying current documentation.
+
+Do not assume the latest documentation matches the repository's installed dependency.
+
+Do not browse for an obvious local typo or deterministic repository-only defect.
+
+Record the relevant external behavior briefly in the fix decision or test.
+
+---
+
+# 6. Root-Cause Statement
+
+Before applying a non-trivial fix, establish:
+
+```text
+Failure:
+Expected contract:
+Actual violation:
+Root cause:
+Owning module:
+Why the failure appeared elsewhere:
+Smallest complete fix:
+Regression test:
+```
+
+A root cause must explain why the failure occurred.
+
+“Test failed” is not a root cause.
+
+“Undefined value” is not sufficient unless the explanation identifies why the contract allowed or produced it.
+
+---
+
+# 7. Fix Rules
+
+The fix MUST:
+
+* Repair the semantic owner
+* Preserve valid existing behavior
+* Follow the current V8 contract architecture
+* Avoid legacy dependencies
+* Avoid cross-module deep imports
+* Avoid unrelated refactoring
+* Avoid one-input special cases
+* Avoid fake success behavior
+* Preserve original error cause when useful
+* Update all affected callers
+* Update schema versions when truly breaking
+* Add a regression test when practical
+
+Prefer the smallest complete fix, not the smallest textual patch.
+
+A complete fix may require:
+
+* Contract correction
+* Action correction
+* Adapter translation
+* Caller update
+* Regression test
+* Architecture test
+* Documentation update
+
+Do not catch an error merely to hide it.
+
+Do not return `undefined`, an empty object, or `completed` when the operation failed.
+
+Do not loosen validation solely to accept incorrect data.
+
+Do not weaken a test solely to make the implementation pass.
+
+---
+
+# 8. No Hard-Coded Bug Patches
+
+A bug fix MUST NOT depend on:
+
+* The exact failing prompt
+* The exact test filename
+* A fixture-specific ID
+* A developer's absolute path
+* One provider name inside generic core logic
+* One language condition inside unrelated code
+* One expected command
+* One workspace layout
+* One event count unless the contract requires it
+* One timing delay
+* Arbitrary retry or timeout increases
+* String matching when a structured error or reason code exists
+
+When a condition is legitimate:
+
+* Place provider behavior in the provider adapter.
+* Place language behavior in the language capability.
+* Place repository behavior in Repository State or Repository Context.
+* Place policy thresholds in `policy.ts`.
+* Place configurable values in `defaults.ts`.
+* Place stable identifiers in `constants.ts`.
+* Place host behavior in the application or SDK composition layer.
+
+---
+
+# 9. Regression Test Requirements
+
+The regression test SHOULD fail before the fix and pass after it.
+
+Test the observable contract.
+
+Include:
+
+* Reproduction input
+* Expected result
+* Relevant failure status or reason code
+* Evidence that the original failure cannot recur through the same path
+
+Add tests at the correct levels:
+
+### Unit test
+
+Use when one action or algorithm is incorrect.
+
+### Contract test
+
+Use when validation, status, error codes, schema versions, or public result shape is incorrect.
+
+### Integration test
+
+Use when orchestration, port interaction, cancellation, resume, streaming, repository state, tool execution, or SDK delegation is incorrect.
+
+### Architecture test
+
+Use when the bug was possible because of:
+
+* A deep import
+* A legacy dependency
+* A host dependency
+* A leaked internal export
+* A module cycle
+* Duplicate contract ownership
+* Unregistered language logic
+
+A regression test must not assert private implementation details unless the behavior is itself an internal invariant tested within the owning module.
+
+---
+
+# 10. Bug-Fix Verification
+
+Run:
+
+1. New regression test
+2. Existing focused tests for the owner
+3. Contract tests
+4. Affected integration tests
+5. Type-check or build
+6. Architecture tests when boundaries changed
+7. SDK build and tests when SDK behavior changed
+8. Broader affected suite when the defect could be cross-cutting
+
+For SDK changes:
+
+```bash
+pnpm --filter @mitii/sdk build
+pnpm --filter @mitii/sdk test
+```
+
+Inspect the final diff for:
+
+* Unrelated modifications
+* Validation weakening
+* New hard-coded cases
+* Legacy imports
+* Deep imports
+* Accidental API expansion
+* Missing caller updates
+* Swallowed failures
+* Fake success paths
+* Tests that no longer verify the original contract
+
+Never claim the defect is fixed without relevant executed verification.
+
+When verification cannot run, report:
+
+```text
+Implementation completed; verification unavailable.
+Reason:
+Checks not executed:
+Remaining risk:
+```
+
+---
+
+# 11. Bug-Fix Completion Report
+
+Report:
+
+## Root Cause
+
+* Contract or invariant violated
+* Semantic owner
+* Why the visible failure occurred
+
+## Fix
+
+* Files and behavior changed
+* Why the fix is generic
+* Why no hard-coded special case was introduced
+
+## Regression Protection
+
+* Test added or updated
+* Failure reproduced
+* Behavior now asserted
+
+## Verification
+
+* Commands executed
+* Results
+* Any unavailable checks
+
+## Remaining Risk
+
+* Only genuine unresolved risks
+
+Do not repeat the debugging process unless it helps explain the root cause.

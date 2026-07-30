@@ -40,7 +40,7 @@ pnpm install
 pnpm run build:all   # packages + Electron better-sqlite3 staged into apps/vscode/dist/native
 ```
 
-Or: `pnpm run setup` / `pnpm run setup:cursor` (install + Node rebuild + compile + Electron rebuild).
+Or: `pnpm run setup` / `pnpm run setup:cursor` (install + Node rebuild + build + Electron rebuild).
 
 Git hooks are installed automatically via `pnpm install` -> `prepare` -> `scripts/install-git-hooks.mjs`. The pre-commit hook stages version bumps from `scripts/bump-version.mjs`.
 
@@ -51,7 +51,7 @@ Git hooks are installed automatically via `pnpm install` -> `prepare` -> `script
 3. In the Extension Development Host, open a project folder
 4. Click the Mitii icon in the activity bar
 
-Automated F5 gate (no Extension Host): `pnpm run phase17:verify` — see [docs/INITIAL_LAUNCH.md](docs/INITIAL_LAUNCH.md).
+Automated F5 gate (no Extension Host): `pnpm run f5:verify` — see [docs/INITIAL_LAUNCH.md](docs/INITIAL_LAUNCH.md).
 
 ### Watch mode (day-to-day dev)
 
@@ -112,7 +112,7 @@ pnpm run test:watch     # watch mode
 ### Typecheck
 
 ```bash
-pnpm run lint           # typecheck @mitii/v8 + @mitii/sdk
+pnpm run typecheck      # typecheck v8 + sdk + cli + vscode
 ```
 
 ### Build a VSIX
@@ -171,7 +171,7 @@ The pre-commit hook may stage a version bump in `package.json`. Include that in 
 
 ### Code style
 
-- TypeScript strict mode - `pnpm run lint` must pass
+- TypeScript strict mode - `pnpm run typecheck` must pass
 - Match surrounding patterns: no drive-by refactors in unrelated files
 - Prefer structured logging in V8/SDK; do not log secrets
 - New VS Code settings go in `apps/vscode/package.json` contributes (`mitii.*` only)
@@ -197,7 +197,7 @@ The pre-commit hook may stage a version bump in `package.json`. Include that in 
 
 1. Fork and branch from `main`
 2. Make your change; keep the diff focused
-3. Run `pnpm run lint` and `pnpm test`
+3. Run `pnpm run typecheck` and `pnpm test`
 4. Manually smoke-test in the Extension Development Host if you touched agent behavior or UI
 5. Open a PR against `main` with:
    - What changed and why (2–4 sentences is fine)

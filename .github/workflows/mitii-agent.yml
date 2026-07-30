@@ -1,4 +1,6 @@
-name: mitii agent
+# GitHub issue /mitii runner is deferred until a real host command exists.
+# Current CLI supports: ask, session, index, status, export-session (no `agent`).
+name: mitii agent (deferred)
 
 on:
   issue_comment:
@@ -6,23 +8,7 @@ on:
 
 jobs:
   mitii:
-    if: contains(github.event.comment.body, '/mitii')
+    if: false
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run compile:cli
-      - run: node dist/cli.js agent "${{ github.event.comment.body }}" --provider echo --approval auto --json > mitii-events.jsonl
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mitii-audit
-          path: mitii-events.jsonl
+      - run: echo "Deferred — CLI has no GitHub issue agent command yet."

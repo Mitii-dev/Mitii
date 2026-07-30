@@ -11,8 +11,8 @@ pnpm install
 echo "Rebuilding native modules for local Node tests..."
 pnpm run rebuild:node
 
-echo "Compiling packages, extension, and webview..."
-pnpm run compile
+echo "Building packages, extension, and webview..."
+pnpm run build
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
   echo "Rebuilding + staging native modules for ${editor} (Electron)..."

@@ -39,6 +39,7 @@ export {
   OpenAiCompatibleLlmPort,
   InMemoryRepositoryStateStore,
   InMemoryRunCheckpointStore,
+  FileRunCheckpointStore,
   InMemorySkillsCatalog,
   RepositoryStatePipeline,
   publishRepositoryStateInputSchema,
@@ -90,4 +91,9 @@ export type {
   DiagnosticsPort,
   DiagnosticItem,
   GitPort,
+  AgentRunCheckpoint,
+  AgentEngineRunCheckpointStorePort,
+  PendingApprovalState,
+  OpenAiCompatibleLlmPortConfig,
+  OpenAiCompatibleAuthHeader,
 } from '@mitii/v8';
