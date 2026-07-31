@@ -446,4 +446,31 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.runDisposition).toBe("continue");
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
   });
+
+  it("never grants web_search unless hostCapabilities.webSearch is true", () => {
+    const withoutPort = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "ask",
+        message: "Please search the documentation for null checks",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "docs",
+          interactionIntent: "question",
+        }),
+      }),
+    );
+    expect(withoutPort.toolGrant.allowedTools).not.toContain("web_search");
+
+    const withPort = new DecisionPolicyPipeline().decide({
+      ...createInput({
+        mode: "ask",
+        message: "Please search the documentation for null checks",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "docs",
+          interactionIntent: "question",
+        }),
+      }),
+      hostCapabilities: { webSearch: true },
+    });
+    expect(withPort.toolGrant.allowedTools).toContain("web_search");
+  });
 });

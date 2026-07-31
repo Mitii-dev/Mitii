@@ -21,6 +21,15 @@ export type RepositoryStateCapabilitySummary = z.infer<
   typeof repositoryStateCapabilitySummarySchema
 >;
 
+/** Host-reported optional tool backends (honest grant gating). */
+export const hostCapabilityFlagsSchema = z
+  .object({
+    webSearch: z.boolean().optional(),
+  })
+  .strict();
+
+export type HostCapabilityFlags = z.infer<typeof hostCapabilityFlagsSchema>;
+
 export const decisionPolicyInputSchema = z
   .object({
     schemaVersion: z.literal(DECISION_POLICY_SCHEMA_VERSION),
@@ -29,6 +38,7 @@ export const decisionPolicyInputSchema = z
     repositoryState: repositoryStateCapabilitySummarySchema.optional(),
     approvalMode: approvalModeSchema.optional(),
     planApproval: z.enum(["policy", "never"]).optional(),
+    hostCapabilities: hostCapabilityFlagsSchema.optional(),
   })
   .strict();
 

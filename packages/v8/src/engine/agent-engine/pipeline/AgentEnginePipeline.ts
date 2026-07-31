@@ -432,6 +432,9 @@ export class AgentEnginePipeline {
         repositoryState: input.repositoryState,
         approvalMode: input.approvalMode,
         planApproval: input.planApproval,
+        hostCapabilities: {
+          webSearch: this.deps.tools?.hasSearchPort?.() === true,
+        },
       });
       route = decision.route;
       planningDepth = decision.planningDepth;
@@ -900,6 +903,10 @@ export class AgentEnginePipeline {
         toolCache,
         changedFiles,
         mutationCheckpointIds,
+        memoryFacts: selectedMemory?.map((block) => ({
+          id: block.id,
+          content: block.content,
+        })),
       });
 
       return await this.finishAfterLoop({
@@ -1908,6 +1915,7 @@ export class AgentEnginePipeline {
     toolCache: ToolCallCache;
     changedFiles: string[];
     mutationCheckpointIds: string[];
+    memoryFacts?: readonly { id: string; content: string }[];
   }): Promise<ToolLoopOutcome> {
     const {
       runId,
@@ -1965,6 +1973,7 @@ export class AgentEnginePipeline {
         messages,
         estimator: this.tokenEstimator,
         budgetTokens: loopInputBudgetTokens,
+        memoryFacts: params.memoryFacts,
       });
       if (
         compaction.pressure === "warn" &&
@@ -1984,13 +1993,19 @@ export class AgentEnginePipeline {
         messages.splice(0, messages.length, ...compaction.messages);
         if (!emittedLoopCompactionWarning) {
           emittedLoopCompactionWarning = true;
+          const extras = [
+            compaction.summarizedDroppedTurns ? "summarized-dropped-turns" : null,
+            compaction.reinjectedMemory ? "memory-reinjected" : null,
+          ].filter(Boolean);
           warnings.push(
             "Compacted previous tool call history to keep follow-up model calls within the context budget.",
           );
           this.emit(bus, {
             type: "warning",
             runId,
-            message: `Compacted previous tool call history before the next model call (pressure=${compaction.pressure}).`,
+            message: `Compacted previous tool call history before the next model call (pressure=${compaction.pressure}${
+              extras.length > 0 ? `; ${extras.join(", ")}` : ""
+            }).`,
             at: this.isoNow(),
           });
         }

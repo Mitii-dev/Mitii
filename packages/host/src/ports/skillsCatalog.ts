@@ -1,5 +1,7 @@
+import { createRequire } from 'node:module';
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { basename, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import {
   DEFAULT_HOST_SKILLS,
@@ -73,10 +75,7 @@ export function createFileSystemSkillsCatalog(
   return {
     async list(): Promise<readonly SkillDescriptor[]> {
       const diskSkills = await loadDiskSkills(options);
-      if (
-        options.includeDefaults === false ||
-        options.includeBundled === false
-      ) {
+      if (options.includeDefaults === false) {
         return diskSkills;
       }
       return new InMemorySkillsCatalog([
@@ -157,14 +156,59 @@ async function loadSkillFile(
 }
 
 function resolveSkillRoots(options: LoadDiskSkillsOptions): string[] {
+  const bundled =
+    options.includeBundled === false
+      ? []
+      : [
+          ...(resolveDefaultBundledSkillsRoot()
+            ? [resolveDefaultBundledSkillsRoot()!]
+            : []),
+          ...(options.bundledRoots ?? []),
+        ];
   const roots = [
-    ...(options.bundledRoots ?? []),
+    ...bundled,
     ...(options.workspaceRoot
       ? [join(options.workspaceRoot, DEFAULT_WORKSPACE_SKILLS_DIR)]
       : []),
     ...(options.roots ?? []),
   ];
   return [...new Set(roots.map((root) => resolve(root)))];
+}
+
+/**
+ * Curated pack lives at `packages/sdk/skills/` (shipped beside `@mitii/sdk`).
+ * Missing directory is fine — hosts may paste skills later.
+ *
+ * Must not call `createRequire(import.meta.url)` at module load: the VS Code
+ * extension is esbuild-bundled as CJS where `import.meta.url` is undefined.
+ */
+function resolveDefaultBundledSkillsRoot(): string | undefined {
+  try {
+    const req = createRequire(resolveRequireFilename());
+    const sdkEntry = req.resolve('@mitii/sdk');
+    return join(dirname(sdkEntry), '..', 'skills');
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveRequireFilename(): string {
+  const metaUrl =
+    typeof import.meta !== 'undefined' &&
+    typeof import.meta.url === 'string' &&
+    import.meta.url.length > 0
+      ? import.meta.url
+      : undefined;
+  if (metaUrl) {
+    return metaUrl;
+  }
+  // CJS host (bundled VS Code extension): esbuild leaves import.meta.url
+  // undefined; use the bundle __filename when present.
+  const cjsFilename = (globalThis as { __filename?: unknown }).__filename;
+  if (typeof cjsFilename === 'string' && cjsFilename.length > 0) {
+    return cjsFilename;
+  }
+  return pathToFileURL(join(process.cwd(), 'package.json')).href;
 }
 
 async function findSkillFiles(roots: readonly string[]): Promise<string[]> {

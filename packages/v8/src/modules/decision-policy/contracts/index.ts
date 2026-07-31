@@ -1,10 +1,12 @@
 export {
   decisionPolicyInputSchema,
   repositoryStateCapabilitySummarySchema,
+  hostCapabilityFlagsSchema,
 } from "./input/DecisionPolicyInput";
 export type {
   DecisionPolicyInput,
   RepositoryStateCapabilitySummary,
+  HostCapabilityFlags,
 } from "./input/DecisionPolicyInput";
 
 export {

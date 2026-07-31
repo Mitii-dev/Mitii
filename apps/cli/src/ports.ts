@@ -15,7 +15,9 @@ import {
 } from '@mitii/sdk';
 import {
   createFileSystemSkillsCatalog,
+  createOptionalSearchPort,
   createWorkspaceCheckpointStore,
+  createWorkspaceMemoryStore,
   getProviderPreset,
 } from '@mitii/host';
 import type { LlmPort, ModelCapabilities, ModelEvent, ModelRequest } from '@mitii/v8';
@@ -148,11 +150,14 @@ export function createCliClient(options: {
     env: options.env,
     cwd: options.cwd,
   });
+  const env = options.env ?? process.env;
   const fileSystem = new NodeWorkspaceFileSystemAdapter();
+  const search = createOptionalSearchPort(env);
   const tools = new ToolRuntimePipeline({
     fileSystem,
     process: new NodeProcessAdapter(),
     network: new NodeNetworkAdapter(),
+    ...(search ? { search } : {}),
   });
   const verification = new VerificationPipeline({
     tools,
@@ -164,9 +169,9 @@ export function createCliClient(options: {
   const repositoryState = new RepositoryStatePipeline({
     store: new InMemoryRepositoryStateStore(),
   });
-  const env = options.env ?? process.env;
   const config = loadMitiiHostConfig(options.cwd);
   const workspaceSkillsEnabled = env.MITII_DISABLE_WORKSPACE_SKILLS !== '1';
+  const memoryDisabled = env.MITII_DISABLE_MEMORY === '1';
   const repositoryContext = createHostRepositoryContext({
     repositoryState,
     workspaceRoot: options.cwd,
@@ -189,6 +194,9 @@ export function createCliClient(options: {
       workspaceRoot: workspaceSkillsEnabled ? options.cwd : undefined,
       contentMode: 'metadata',
     }),
+    memoryStore: memoryDisabled
+      ? undefined
+      : createWorkspaceMemoryStore(options.cwd, ports.workspaceId),
     ...options.clientOverrides,
   });
   return { client, ports };

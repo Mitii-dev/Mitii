@@ -72,6 +72,16 @@ export class ToolRuntimePipeline {
     return this.registry.listCapabilities();
   }
 
+  /** True when a host SearchPort is injected (required for web_search). */
+  public hasSearchPort(): boolean {
+    return this.ports.search !== undefined;
+  }
+
+  /** True when a host DiagnosticsPort is injected. */
+  public hasDiagnosticsPort(): boolean {
+    return this.ports.diagnostics !== undefined;
+  }
+
   public async execute(
     input: ToolInvocationInput,
     options: ToolExecuteOptions = {},

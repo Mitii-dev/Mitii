@@ -22,7 +22,7 @@ import {
 import type {
   HostSqliteDatabase,
   OpenHostSqliteDatabase,
-} from './sqlite.js';
+} from '../sqlite/types.js';
 
 const INDEX_DB_FILE = 'repository-index.sqlite';
 const LANCEDB_DIR = 'lancedb';

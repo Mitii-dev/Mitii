@@ -1,7 +1,7 @@
 {
   "name": "@mitii/host",
   "version": "2.7.118",
-  "description": "Shared host kit for Mitii VS Code and CLI (indexing, embeddings, context, checkpoints, provider presets).",
+  "description": "Shared host kit for Mitii apps: SQLite injection, workspace indexing, repository context, durable ports (checkpoints/memory/skills/search), project rules, provider presets.",
   "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",
@@ -22,7 +22,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').accessSync('dist/index.js')\"",
+    "build": "rm -rf dist && tsc -p tsconfig.json && node -e \"require('node:fs').accessSync('dist/index.js')\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },

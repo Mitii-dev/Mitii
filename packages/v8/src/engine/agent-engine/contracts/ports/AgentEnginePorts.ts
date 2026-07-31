@@ -106,6 +106,9 @@ export interface AgentEngineToolRuntimePort {
     checkpointId: string;
   }): Promise<ToolResult>;
   commitMutation?(checkpointId: string): void;
+  /** Honest grant gating — omit / false when SearchPort is not injected. */
+  hasSearchPort?(): boolean;
+  hasDiagnosticsPort?(): boolean;
 }
 
 export interface AgentEngineVerificationPort {

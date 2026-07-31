@@ -27,6 +27,7 @@ export { DecisionPolicyPipeline } from "./pipeline/DecisionPolicyPipeline";
 export {
   decisionPolicyInputSchema,
   repositoryStateCapabilitySummarySchema,
+  hostCapabilityFlagsSchema,
   executionDecisionSchema,
   executionRouteSchema,
   planningDepthSchema,
@@ -45,6 +46,7 @@ export {
 export type {
   DecisionPolicyInput,
   RepositoryStateCapabilitySummary,
+  HostCapabilityFlags,
   ExecutionDecision,
   ExecutionRoute,
   PlanningDepth,

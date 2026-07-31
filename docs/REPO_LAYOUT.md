@@ -42,7 +42,7 @@ mitii/
 ├── packages/
 │   ├── v8/                      # @mitii/v8
 │   ├── sdk/                     # @mitii/sdk
-│   └── host/                    # @mitii/host (shared indexing / presets / checkpoints)
+│   └── host/                    # @mitii/host (shared host kit: indexing / ports / presets)
 ├── apps/
 │   ├── vscode/
 │   └── cli/
@@ -66,7 +66,7 @@ After Phase 16 + human purge the active root must not keep a second `src/` kerne
 |---|---|---|
 | V8 runtime | `@mitii/v8` | `packages/v8` |
 | SDK | `@mitii/sdk` | hosts/tests use this |
-| Host kit | `@mitii/host` | shared indexing, embeddings, presets, checkpoints |
+| Host kit | `@mitii/host` | shared indexing, ports adapters, presets, checkpoints, project rules |
 | CLI | `@mitii/cli` | solid benchmark agent target |
 | VS Code extension | `@mitii/vscode` | VSIX; F5 development path |
 | Solid benchmark | `@mitii/solid-benchmark` | `tests/benchmark` |

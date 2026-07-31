@@ -26,6 +26,8 @@ export interface ModelLoopCompactionResult {
   compacted: boolean;
   pressure: ModelLoopCompactionPressure;
   thresholds: ModelLoopCompactionThresholds;
+  summarizedDroppedTurns: boolean;
+  reinjectedMemory: boolean;
 }
 
 export function compactModelLoopMessages(params: {
@@ -39,6 +41,9 @@ export function compactModelLoopMessages(params: {
   warnRatio?: number;
   autoRatio?: number;
   hardRatio?: number;
+  /** Budgeted memory facts to reinject after hard compaction. */
+  memoryFacts?: readonly { id: string; content: string }[];
+  maxMemoryReinjectChars?: number;
 }): ModelLoopCompactionResult {
   const recentToolMessagesToKeepFull =
     params.recentToolMessagesToKeepFull ??
@@ -59,6 +64,9 @@ export function compactModelLoopMessages(params: {
   let working = params.messages.map(cloneMessage);
   let compacted = false;
   let truncatedTokens = 0;
+  let summarizedDroppedTurns = false;
+  let reinjectedMemory = false;
+  const droppedForSummary: ModelMessage[] = [];
 
   const estimateAll = (messages: readonly ModelMessage[]): number =>
     estimateModelMessagesTokens(messages, params.estimator);
@@ -77,6 +85,8 @@ export function compactModelLoopMessages(params: {
       compacted: false,
       pressure: initialPressure,
       thresholds,
+      summarizedDroppedTurns: false,
+      reinjectedMemory: false,
     };
   }
 
@@ -153,13 +163,26 @@ export function compactModelLoopMessages(params: {
     usedTokens > thresholds.autoTokens &&
     countNonSystemMessages(working) > minMessagesToKeep
   ) {
-    const next = dropOldestNonSystemTurn(working);
-    if (next.length === working.length) {
+    const dropResult = dropOldestNonSystemTurnWithRemoved(working);
+    if (dropResult.messages.length === working.length) {
       break;
     }
-    working = next;
+    droppedForSummary.push(...dropResult.removed);
+    working = dropResult.messages;
     compacted = true;
     usedTokens = estimateAll(working);
+  }
+
+  if (droppedForSummary.length > 0) {
+    const summary = buildDroppedTurnsSummary(droppedForSummary);
+    if (summary) {
+      working = insertAfterSystemMessages(working, {
+        role: "user",
+        content: summary,
+      });
+      summarizedDroppedTurns = true;
+      usedTokens = estimateAll(working);
+    }
   }
 
   if (usedTokens > thresholds.hardTokens) {
@@ -174,6 +197,23 @@ export function compactModelLoopMessages(params: {
     usedTokens = estimateAll(working);
   }
 
+  if (
+    initialPressure === "hard" &&
+    params.memoryFacts &&
+    params.memoryFacts.length > 0
+  ) {
+    const reinjected = reinjectMemoryFacts({
+      messages: working,
+      memoryFacts: params.memoryFacts,
+      maxChars: params.maxMemoryReinjectChars ?? 800,
+      estimator: params.estimator,
+      budgetTokens: params.budgetTokens,
+    });
+    working = reinjected.messages;
+    reinjectedMemory = reinjected.reinjected;
+    usedTokens = estimateAll(working);
+  }
+
   return {
     messages: working,
     usedTokens,
@@ -182,6 +222,8 @@ export function compactModelLoopMessages(params: {
     compacted,
     pressure: initialPressure,
     thresholds,
+    summarizedDroppedTurns,
+    reinjectedMemory,
   };
 }
 
@@ -289,17 +331,19 @@ function takeLastIndices(indices: readonly number[], count: number): number[] {
   return indices.slice(-count);
 }
 
-function dropOldestNonSystemTurn(
+function dropOldestNonSystemTurnWithRemoved(
   messages: readonly ModelMessage[],
-): ModelMessage[] {
+): { messages: ModelMessage[]; removed: ModelMessage[] } {
   const index = messages.findIndex((message) => message.role !== "system");
   if (index < 0) {
-    return [...messages];
+    return { messages: [...messages], removed: [] };
   }
 
-  const removed = messages[index]!;
+  const removed: ModelMessage[] = [];
+  const head = messages[index]!;
+  removed.push(head);
   const removedToolCallIds = new Set(
-    (removed.toolCalls ?? []).map((toolCall) => toolCall.id),
+    (head.toolCalls ?? []).map((toolCall) => toolCall.id),
   );
 
   const next = [...messages.slice(0, index), ...messages.slice(index + 1)];
@@ -309,6 +353,7 @@ function dropOldestNonSystemTurn(
     next[index]?.toolCallId &&
     removedToolCallIds.has(next[index]!.toolCallId)
   ) {
+    removed.push(next[index]!);
     next.splice(index, 1);
   }
 
@@ -319,10 +364,93 @@ function dropOldestNonSystemTurn(
     if (firstNonSystem < 0 || next[firstNonSystem]?.role !== "tool") {
       break;
     }
+    removed.push(next[firstNonSystem]!);
     next.splice(firstNonSystem, 1);
   }
 
-  return next;
+  return { messages: next, removed };
+}
+
+function buildDroppedTurnsSummary(
+  dropped: readonly ModelMessage[],
+): string | undefined {
+  if (dropped.length === 0) {
+    return undefined;
+  }
+  const lines: string[] = [
+    "[compacted prior context — older turns summarized locally]",
+  ];
+  let chars = lines[0]!.length;
+  const maxChars = 1_200;
+  for (const message of dropped) {
+    if (message.role === "tool") {
+      continue;
+    }
+    const preview = message.content.replace(/\s+/g, " ").trim().slice(0, 220);
+    if (!preview) {
+      continue;
+    }
+    const line = `- ${message.role}: ${preview}`;
+    if (chars + line.length + 1 > maxChars) {
+      lines.push("- …");
+      break;
+    }
+    lines.push(line);
+    chars += line.length + 1;
+  }
+  return lines.length > 1 ? lines.join("\n") : undefined;
+}
+
+function insertAfterSystemMessages(
+  messages: readonly ModelMessage[],
+  insert: ModelMessage,
+): ModelMessage[] {
+  let insertAt = 0;
+  while (insertAt < messages.length && messages[insertAt]?.role === "system") {
+    insertAt += 1;
+  }
+  return [
+    ...messages.slice(0, insertAt),
+    insert,
+    ...messages.slice(insertAt),
+  ];
+}
+
+function reinjectMemoryFacts(params: {
+  messages: ModelMessage[];
+  memoryFacts: readonly { id: string; content: string }[];
+  maxChars: number;
+  estimator: TokenEstimatorPort;
+  budgetTokens: number;
+}): { messages: ModelMessage[]; reinjected: boolean } {
+  const marker = "[memory reinjected after hard compaction]";
+  if (params.messages.some((message) => message.content.includes(marker))) {
+    return { messages: params.messages, reinjected: false };
+  }
+
+  const lines: string[] = [marker];
+  let chars = marker.length;
+  for (const fact of params.memoryFacts) {
+    const line = `- (${fact.id}) ${fact.content.replace(/\s+/g, " ").trim()}`;
+    if (chars + line.length + 1 > params.maxChars) {
+      break;
+    }
+    lines.push(line);
+    chars += line.length + 1;
+  }
+  if (lines.length <= 1) {
+    return { messages: params.messages, reinjected: false };
+  }
+
+  const next = insertAfterSystemMessages(params.messages, {
+    role: "user",
+    content: lines.join("\n"),
+  });
+  const used = estimateModelMessagesTokens(next, params.estimator);
+  if (used > params.budgetTokens) {
+    return { messages: params.messages, reinjected: false };
+  }
+  return { messages: next, reinjected: true };
 }
 
 function compactAllToolPayloads(params: {

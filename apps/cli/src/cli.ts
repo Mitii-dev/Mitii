@@ -25,6 +25,7 @@ import {
   loadPersistedRepositoryState,
   persistLatestRepositoryState,
 } from './stateCache.js';
+import { loadProjectRules } from '@mitii/host';
 
 export interface ParsedCliArgs {
   command:
@@ -304,12 +305,16 @@ async function runAsk(options: {
     io.writeStderr(`[mitii] provider=${ports.providerLabel}\n`);
   }
 
+  const projectRules = await loadProjectRules({
+    workspaceRoot: options.cwd,
+  });
   const outcome = await driveRun({
     client,
     start: {
       prompt: options.prompt,
       mode: ports.defaultMode,
       workspaceRoot: options.cwd,
+      ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
     },
     json: options.json,
     autoClarify: options.autoClarify,

@@ -72,6 +72,39 @@ describe("compactModelLoopMessages", () => {
     );
   });
 
+  it("summarizes dropped turns and reinjects memory on hard pressure", () => {
+    const messages: ModelMessage[] = [
+      { role: "system", content: "system" },
+      { role: "user", content: "old context ".repeat(200) },
+      { role: "assistant", content: "old answer ".repeat(200) },
+      { role: "user", content: "recent ask" },
+      { role: "assistant", content: "recent answer" },
+    ];
+
+    const result = compactModelLoopMessages({
+      messages,
+      estimator,
+      budgetTokens: 400,
+      minMessagesToKeep: 2,
+      memoryFacts: [{ id: "m1", content: "Prefer pnpm." }],
+    });
+
+    expect(result.pressure).toBe("hard");
+    expect(result.compacted).toBe(true);
+    expect(result.summarizedDroppedTurns).toBe(true);
+    expect(
+      result.messages.some((message) =>
+        message.content.includes("compacted prior context"),
+      ),
+    ).toBe(true);
+    expect(result.reinjectedMemory).toBe(true);
+    expect(
+      result.messages.some((message) =>
+        message.content.includes("memory reinjected after hard compaction"),
+      ),
+    ).toBe(true);
+  });
+
   it("resolves sorted compaction thresholds and pressure", () => {
     const thresholds = resolveCompactionThresholds({
       budgetTokens: 10_000,

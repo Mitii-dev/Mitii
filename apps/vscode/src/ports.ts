@@ -22,6 +22,7 @@ import {
 } from '@mitii/sdk';
 import {
   createFileSystemSkillsCatalog,
+  createOptionalSearchPort,
   createWorkspaceCheckpointStore,
   getProviderPreset,
 } from '@mitii/host';
@@ -201,6 +202,7 @@ export async function createVscodeClient(
   const fileSystem = workspaceRoot
     ? new NodeWorkspaceFileSystemAdapter()
     : undefined;
+  const search = createOptionalSearchPort(process.env);
   const tools = workspaceRoot && fileSystem
     ? new ToolRuntimePipeline(
         {
@@ -209,6 +211,7 @@ export async function createVscodeClient(
           network: new NodeNetworkAdapter(),
           git: new NodeGitAdapter(),
           diagnostics: new VscodeDiagnosticsPort(vs, workspaceRoot),
+          ...(search ? { search } : {}),
         },
         { registry: mcpManager.createRegistry() },
       )

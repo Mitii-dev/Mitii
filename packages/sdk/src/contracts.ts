@@ -75,6 +75,23 @@ export const mitiiStartInputSchema = z
     approvalMode: mitiiApprovalModeSchema.optional(),
     planApproval: z.enum(['policy', 'never']).optional(),
     dirtyPaths: z.array(z.string().min(1)).optional(),
+    /**
+     * Host-loaded project rules (AGENTS.md, .mitii/rules, MITTII.local.md).
+     * Mapped to Agent Engine Prompt Construction `instructions.projectRules`.
+     */
+    projectRules: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            title: z.string().min(1).optional(),
+            content: z.string().min(1),
+            priority: z.number().int().nonnegative().optional(),
+          })
+          .strict(),
+      )
+      .max(32)
+      .optional(),
   })
   .strict();
 
@@ -131,5 +148,16 @@ export function toAgentEngineStartInput(
     approvalMode: parsed.approvalMode,
     planApproval: parsed.planApproval,
     dirtyPaths: parsed.dirtyPaths,
+    instructions:
+      parsed.projectRules && parsed.projectRules.length > 0
+        ? {
+            projectRules: parsed.projectRules.map((rule) => ({
+              id: rule.id,
+              content: rule.content,
+              ...(rule.title ? { title: rule.title } : {}),
+              priority: rule.priority ?? 100,
+            })),
+          }
+        : undefined,
   });
 }

@@ -6,6 +6,7 @@ import {
 } from "../../internal/ToolCatalog";
 import { MutationError } from "../../internal/mutation";
 import { executeApplyPatch } from "../ExecuteApplyPatch";
+import { filterNewDiagnostics } from "../filterNewDiagnostics";
 
 export const applyPatchTool: RegisteredTool = {
   definition: defineTool({
@@ -45,6 +46,20 @@ export const applyPatchTool: RegisteredTool = {
         "Mutation transaction registry is not configured.",
       );
     }
+
+    const parsed = applyPatchInputSchema.parse(ctx.arguments);
+    const changedPaths = [
+      ...new Set(parsed.patches.map((patch) => patch.path)),
+    ];
+    const diagnosticsPort = ctx.ports.diagnostics;
+    const baseline =
+      diagnosticsPort !== undefined
+        ? await diagnosticsPort.readDiagnostics({
+            workspaceRoot: ctx.workspaceRoot,
+            paths: changedPaths,
+          })
+        : [];
+
     const result = await executeApplyPatch({
       arguments: ctx.arguments,
       grant: ctx.grant,
@@ -54,6 +69,26 @@ export const applyPatchTool: RegisteredTool = {
       dirtyPaths: ctx.dirtyPaths,
       alreadyMutatedPaths: ctx.alreadyMutatedPaths,
     });
-    return result;
+
+    if (!diagnosticsPort) {
+      return result;
+    }
+
+    const after = await diagnosticsPort.readDiagnostics({
+      workspaceRoot: ctx.workspaceRoot,
+      paths: result.output.changedFiles,
+    });
+    const newDiagnostics = filterNewDiagnostics({ after, baseline });
+    if (newDiagnostics.length === 0) {
+      return result;
+    }
+
+    return {
+      ...result,
+      output: {
+        ...result.output,
+        newDiagnostics,
+      },
+    };
   },
 };

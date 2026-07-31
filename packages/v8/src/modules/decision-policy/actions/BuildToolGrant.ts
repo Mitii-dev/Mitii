@@ -35,6 +35,8 @@ export function buildToolGrant(params: {
   /** Optional raw user message for URL host extraction. */
   message?: string;
   approvalMode?: ApprovalMode;
+  /** When false/undefined, never grant web_search (honest hide until SearchPort). */
+  allowWebSearch?: boolean;
 }): ToolGrantResolution {
   const { mode, route, understanding } = params;
   const reasonCodes: DecisionReasonCode[] = [];
@@ -81,6 +83,7 @@ export function buildToolGrant(params: {
       understanding,
       message: params.message,
       allowNetwork: true,
+      allowWebSearch: params.allowWebSearch === true,
     });
 
     return {
@@ -131,6 +134,7 @@ export function buildToolGrant(params: {
     understanding,
     message: params.message,
     allowNetwork: true,
+    allowWebSearch: params.allowWebSearch === true,
   });
 
   return {
@@ -225,6 +229,7 @@ function resolveNetworkAuthority(params: {
   understanding: RequestUnderstandingResult;
   message?: string;
   allowNetwork: boolean;
+  allowWebSearch: boolean;
 }): {
   allowedTools: string[];
   allowedEffects: Array<"network_access">;
@@ -262,8 +267,17 @@ function resolveNetworkAuthority(params: {
   if (hosts.length > 0) {
     allowedTools.push("fetch_url", "fetch_docs");
   }
-  if (wantsSearch || hosts.length > 0) {
+  if (params.allowWebSearch && (wantsSearch || hosts.length > 0)) {
     allowedTools.push("web_search");
+  }
+
+  if (allowedTools.length === 0) {
+    return {
+      allowedTools: [],
+      allowedEffects: [],
+      networkHosts: [],
+      reasonCodes: [],
+    };
   }
 
   return {

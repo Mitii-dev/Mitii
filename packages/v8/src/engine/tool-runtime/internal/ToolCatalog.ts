@@ -220,6 +220,24 @@ export const applyPatchOutputSchema = z
         })
         .strict(),
     ),
+    /** Diagnostics newly introduced after the patch (host DiagnosticsPort). */
+    newDiagnostics: z
+      .array(
+        z
+          .object({
+            path: z.string().min(1),
+            severity: z.enum(["error", "warning", "info", "hint"]),
+            message: z.string().min(1),
+            startLine: z.number().int().positive().optional(),
+            startColumn: z.number().int().positive().optional(),
+            endLine: z.number().int().positive().optional(),
+            endColumn: z.number().int().positive().optional(),
+            source: z.string().min(1).optional(),
+            code: z.string().min(1).optional(),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict();
 

@@ -61,6 +61,7 @@ export class DecisionPolicyPipeline {
       understanding,
       message,
       approvalMode: parsed.approvalMode,
+      allowWebSearch: parsed.hostCapabilities?.webSearch === true,
     });
 
     // Injection must never broaden the grant. Clamp write away if injection

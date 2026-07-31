@@ -33,17 +33,9 @@ import {
   createLanceDbConnection,
   readIndexRuntimeMetadata,
   type SemanticIndexSettings,
-} from './semanticIndex.js';
-import type { OpenHostSqliteDatabase } from './sqlite.js';
-
-const SKIP_DIR_NAMES = new Set([
-  '.git',
-  'node_modules',
-  'dist',
-  'coverage',
-  '.mitii',
-  '.cursor',
-]);
+} from '../indexing/semanticIndex.js';
+import { WORKSPACE_WALK_SKIP_DIR_NAMES } from '../internal/workspaceWalk.js';
+import type { OpenHostSqliteDatabase } from '../sqlite/types.js';
 
 const MAX_REPO_MAP_FILES = 400;
 const MAX_REPO_MAP_CHARS = 24_000;
@@ -491,7 +483,7 @@ async function buildHostWorkspaceSnapshot(
     }
     for (const name of names) {
       if (truncated) return;
-      if (SKIP_DIR_NAMES.has(name)) continue;
+      if (WORKSPACE_WALK_SKIP_DIR_NAMES.has(name)) continue;
       const full = join(dir, name);
       let info;
       try {

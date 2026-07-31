@@ -38,6 +38,7 @@ import {
 import { appendSessionLog } from './sessionLog.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import { findLocalModelPreset } from './modelPresets.js';
+import { loadProjectRules } from '@mitii/host';
 
 export function formatRunEventLine(event: RunEvent): string | undefined {
   switch (event.type) {
@@ -845,6 +846,9 @@ export async function runAskInOutputChannel(options: {
   const execute = async (
     token: vscode.CancellationToken,
   ): Promise<HostAskOutcome> => {
+    const projectRules = workspaceRoot
+      ? await loadProjectRules({ workspaceRoot })
+      : [];
     let run = client.start({
       prompt,
       mode: options.mode ?? 'ask',
@@ -852,6 +856,7 @@ export async function runAskInOutputChannel(options: {
       approvalMode: approvalPolicy.approvalMode,
       planApproval: approvalPolicy.planApproval,
       budget: resolveRunBudget(vs),
+      ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
       ...(options.conversation && options.conversation.length > 0
         ? { conversation: options.conversation }
         : {}),

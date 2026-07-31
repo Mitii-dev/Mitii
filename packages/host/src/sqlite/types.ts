@@ -1,6 +1,9 @@
 /**
- * Host-injected SQLite opener. VS Code supplies Electron-native bindings;
- * CLI supplies better-sqlite3 directly.
+ * Host-injected SQLite opener.
+ *
+ * VS Code supplies Electron-native bindings; CLI supplies better-sqlite3.
+ * Indexing and repository-context factories require this injection so native
+ * bindings never leak into `@mitii/v8` / `@mitii/sdk`.
  */
 export interface HostSqliteOpenOptions {
   readonly?: boolean;

@@ -137,11 +137,15 @@ export { PromptConstructionPipeline } from "./modules/prompt-construction";
 export {
   promptConstructionInputSchema,
   promptConstructionResultSchema,
+  promptInstructionBlockSchema,
+  promptInstructionsSchema,
 } from "./modules/prompt-construction";
 export type {
   PromptConstructionInput,
   PromptConstructionResult,
   PromptBudgetReport,
+  PromptInstructionBlock,
+  PromptInstructions,
 } from "./modules/prompt-construction";
 
 export type {
