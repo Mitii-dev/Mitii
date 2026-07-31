@@ -1,4 +1,16 @@
 #!/bin/sh
 set -e
 
-node scripts/bump-version.mjs --stage
+# Bump root version, sync README badge + all product package.json versions, then stage.
+node scripts/bump-version.mjs
+node scripts/sync-readme-version.mjs
+node scripts/sync-versions.mjs
+
+git add \
+  package.json \
+  README.md \
+  packages/v8/package.json \
+  packages/sdk/package.json \
+  packages/host/package.json \
+  apps/cli/package.json \
+  apps/vscode/package.json

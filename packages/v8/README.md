@@ -1,29 +1,59 @@
-# V8 Pipeline Library
+# `@mitii/v8`
 
-V8 is the headless capability plane for the Engine runtime. Phase 0 consolidated
-business facades under `modules/`. Phases 1–7 completed public contracts through
-the single-agent read-only Agent Engine. Phase 8 adds mutation, approval, and
-checkpoints. Engine orchestration now lives under `engine/`.
+Host-neutral Mitii agent runtime: intake → understanding → decision policy → repository context → prompt construction → model/tool loop → verification.
+
+The model is never the permission authority. Decision Policy owns routes, grants, approval mode, and verification requirements. Hosts inject ports (filesystem, SQLite, LLM, search, skills, memory).
+
+## Install
+
+```bash
+npm install @mitii/v8
+```
+
+Requires **Node.js 20+**. License: **AGPL-3.0-or-later**.
+
+Most apps should use [`@mitii/sdk`](https://www.npmjs.com/package/@mitii/sdk) (`createMitiiClient`) instead of wiring pipelines by hand. Use this package when you need the V8 modules/ports directly.
+
+## Quick start
+
+```ts
+import {
+  AgentEnginePipeline,
+  EchoLlmPort,
+  RequestIntakePipeline,
+  RequestUnderstandingPipeline,
+  DecisionPolicyPipeline,
+  PromptConstructionPipeline,
+  ToolRuntimePipeline,
+  VerificationPipeline,
+  composeReadOnlyAgentEngine,
+} from '@mitii/v8';
+
+// Prefer @mitii/sdk for a full client. Direct composition example:
+const understandingLlm = new EchoLlmPort();
+const runLlm = new EchoLlmPort();
+// …inject host ports, then compose AgentEnginePipeline / composeReadOnlyAgentEngine
+```
 
 ## Module layout
 
 ```text
-packages/v8/src/
+src/
 ├── engine/
 │   ├── agent-engine/        AgentEnginePipeline (run orchestration)
 │   └── tool-runtime/        ToolRuntimePipeline (granted tool execution)
 └── modules/
-    ├── request-intake/          RequestIntakePipeline (mode + envelope)
-    ├── request-understanding/   RequestUnderstandingPipeline (intent + task analysis)
-    ├── repository-state/        RepositoryStatePipeline + WorkspaceIndexingPipeline + language registry
-    ├── repository-context/      RepositoryContextPipeline (state ref → retrieval → selection → assembly)
-    ├── decision-policy/         DecisionPolicyPipeline (route + grant + verification policy)
-    ├── planning/                PlanningPipeline (generic PlanArtifact)
-    ├── prompt-construction/     PromptConstructionPipeline (budgeted ModelRequest)
-    ├── model-gateway/           LlmPort + Echo / OpenAI-compatible adapters
-    ├── skills/                  SkillsPipeline (optional instruction selection)
-    ├── memory/                  MemoryPipeline (scoped retrieval/commit)
-    └── verification/            VerificationPipeline (evidence-gated completion)
+    ├── request-intake/
+    ├── request-understanding/
+    ├── repository-state/
+    ├── repository-context/
+    ├── decision-policy/
+    ├── planning/
+    ├── prompt-construction/
+    ├── model-gateway/         Echo + OpenAI-compatible LlmPort
+    ├── skills/
+    ├── memory/
+    └── verification/
 ```
 
 ## Public pipelines
@@ -31,51 +61,47 @@ packages/v8/src/
 | Module | Pipeline | Input → Output |
 |--------|----------|----------------|
 | `request-intake` | `RequestIntakePipeline` | `CreateUserRequestInput` → `UserRequestEnvelope` |
-| `request-understanding` | `RequestUnderstandingPipeline` | `UserRequestEnvelope` → `RequestUnderstandingResult` |
+| `request-understanding` | `RequestUnderstandingPipeline` | envelope → understanding result |
 | `repository-state` | `RepositoryStatePipeline` | candidate → published `RepositoryStateReference` |
-| `repository-context` | `RepositoryContextPipeline` | `RepositoryStateReference` + query → context result |
+| `repository-context` | `RepositoryContextPipeline` | state ref + query → context |
 | `decision-policy` | `DecisionPolicyPipeline` | envelope + understanding → `ExecutionDecision` |
 | `planning` | `PlanningPipeline` | evidence + depth → `PlanArtifact` |
-| `prompt-construction` | `PromptConstructionPipeline` | decision + context → `ModelRequest` + budget |
+| `prompt-construction` | `PromptConstructionPipeline` | decision + context → budgeted `ModelRequest` |
 | `tool-runtime` | `ToolRuntimePipeline` | authorized call → `ToolResult` |
 | `verification` | `VerificationPipeline` | change + state + policy → verification result |
 | `agent-engine` | `AgentEnginePipeline` | start request → `AgentRunHandle` |
 
 ## Import policy
 
-Applications import only from `packages/v8/src/index.ts`, an engine public `index.ts`, or
-a module's public `index.ts`:
+Import only from the package root (`@mitii/v8`). Never import another module's `internal/` or `actions/` paths.
 
 ```ts
 import {
   RequestIntakePipeline,
-  RequestUnderstandingPipeline,
-  RepositoryStatePipeline,
-  RepositoryContextPipeline,
   DecisionPolicyPipeline,
-  PromptConstructionPipeline,
-  ToolRuntimePipeline,
-  VerificationPipeline,
   AgentEnginePipeline,
-  composeReadOnlyAgentEngine,
   EchoLlmPort,
   OpenAiCompatibleLlmPort,
   MODEL_PROVIDER_SUPPORT,
-  defaultLanguageProfileRegistry,
-} from "./v8";
+} from '@mitii/v8';
 ```
 
-Never import another module's `internal/` or `actions/` paths from outside that module.
+## Architecture
 
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for component boundaries, request flows, storage, security, and an end-to-end example.
 
-## Tests
-
-Contract and integration specs live under `packages/v8/src/**/tests/` and
-`*.spec.ts` files. Run them with:
+## Development (monorepo)
 
 ```bash
-pnpm --filter /v8 test
+pnpm --filter @mitii/v8 typecheck
+pnpm --filter @mitii/v8 test
+pnpm --filter @mitii/v8 build
 ```
 
-Native modules (`better-sqlite3`, `@lancedb/lancedb`) require `pnpm run rebuild:node`
-when switching Node versions.
+Native modules used by hosts/tests (`better-sqlite3`, optional LanceDB) may need `pnpm run rebuild:node` when switching Node versions.
+
+## Links
+
+- Repo: [Mitii-dev/Mitii](https://github.com/Mitii-dev/Mitii)
+- Docs: [docs.mitii.dev](https://docs.mitii.dev)
+- Related: `@mitii/sdk`, `@mitii/host`, `@mitii/cli`
