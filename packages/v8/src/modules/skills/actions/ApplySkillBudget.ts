@@ -22,9 +22,10 @@ export function applySkillBudget(params: {
   let usedTokens = 0;
   let budgetOmitted = false;
   let remaining = params.budgetTokens;
+  let selectedMatchSkills = 0;
 
   for (const entry of params.scored) {
-    if (instructions.length >= params.maxSkills) {
+    if (!entry.skill.alwaysApply && selectedMatchSkills >= params.maxSkills) {
       omissions.push({
         skillId: entry.skill.id,
         reason: "budget",
@@ -65,6 +66,9 @@ export function applySkillBudget(params: {
     });
     usedTokens += tokens;
     remaining -= tokens;
+    if (!entry.skill.alwaysApply) {
+      selectedMatchSkills += 1;
+    }
   }
 
   return { instructions, omissions, usedTokens, budgetOmitted };

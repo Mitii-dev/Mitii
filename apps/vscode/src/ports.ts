@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   EchoLlmPort,
   OpenAiCompatibleLlmPort,
-  createDefaultSkillsCatalog,
+  createFileSystemSkillsCatalog,
   createMitiiClient,
   InMemoryRepositoryStateStore,
   RepositoryStatePipeline,
@@ -235,6 +235,10 @@ export async function createVscodeClient(
     ...mcpSnapshot.toolDefinitions,
   ];
   const memoryEnabled = readContextToggles(vs).memory;
+  const workspaceSkillsEnabled =
+    vs.workspace
+      .getConfiguration('mitii')
+      .get<boolean>('skills.workspace.enabled') ?? true;
 
   const client = createMitiiClient({
     understandingLlm: ports.understandingLlm,
@@ -252,7 +256,12 @@ export async function createVscodeClient(
     ...(workspaceRoot
       ? { checkpointStore: createWorkspaceCheckpointStore(workspaceRoot) }
       : {}),
-    skillsCatalog: options.skillsCatalog ?? createDefaultSkillsCatalog(),
+    skillsCatalog:
+      options.skillsCatalog ??
+      createFileSystemSkillsCatalog({
+        workspaceRoot: workspaceSkillsEnabled ? workspaceRoot : undefined,
+        contentMode: 'metadata',
+      }),
     memoryStore:
       memoryEnabled && options.workspaceState
         ? createVsCodeMemoryStore(options.workspaceState, ports.workspaceId)

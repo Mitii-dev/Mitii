@@ -289,6 +289,11 @@
           "default": "",
           "description": "Optional workspace root override used for indexing and agent runs"
         },
+        "mitii.skills.workspace.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Load workspace-uploaded skills from .mitii/skills. Disable to run with only bundled/default skills."
+        },
         "mitii.ui.showReasoning": {
           "type": "boolean",
           "default": true,
