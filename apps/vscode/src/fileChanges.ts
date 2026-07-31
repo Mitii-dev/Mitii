@@ -1,7 +1,9 @@
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -14,7 +16,13 @@ import type { RunEvent } from '@mitii/sdk';
 import type { FileChangeEntryView, RunFileChangesView } from './protocol.js';
 
 const execFileAsync = promisify(execFile);
-const WRITE_TOOLS = new Set(['apply_patch']);
+/** Tools that mutate workspace files and should participate in chat Undo. */
+const WRITE_TOOLS = new Set([
+  'apply_patch',
+  'delete_file',
+  'delete_directory',
+  'move_file',
+]);
 
 /** Snapshot taken at the start of a mutating run. */
 export interface FileChangeRunSnapshot {
@@ -56,16 +64,49 @@ export async function listDirtyGitPaths(
 }
 
 /**
- * Parse `paths=a,b,+N` fragments from tool summaries.
+ * Parse mutation paths from tool event summaries.
+ *
+ * Supports:
+ * - `paths=a.ts,b.ts,+N` (apply_patch)
+ * - `path=a.ts` (delete_file / delete_directory)
+ * - `from=a.ts to=b.ts` (move_file)
  */
 export function parsePathsFromToolSummary(summary: string | undefined): string[] {
   if (!summary) return [];
-  const match = /\bpaths=([^\s]+)/i.exec(summary);
-  if (!match?.[1] || match[1] === 'none') return [];
-  return match[1]
-    .split(',')
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0 && !part.startsWith('+'));
+  const found: string[] = [];
+
+  const pathsMatch = /\bpaths=([^\s]+)/i.exec(summary);
+  if (pathsMatch?.[1] && pathsMatch[1] !== 'none') {
+    for (const part of pathsMatch[1].split(',')) {
+      const trimmed = part.trim();
+      if (trimmed.length > 0 && !trimmed.startsWith('+')) {
+        found.push(trimmed);
+      }
+    }
+  }
+
+  const singlePath = /\bpath=([^\s]+)/i.exec(summary);
+  if (singlePath?.[1]) {
+    found.push(singlePath[1]);
+  }
+
+  const fromPath = /\bfrom=([^\s]+)/i.exec(summary);
+  if (fromPath?.[1]) {
+    found.push(fromPath[1]);
+  }
+
+  const toPath = /\bto=([^\s]+)/i.exec(summary);
+  if (toPath?.[1]) {
+    found.push(toPath[1]);
+  }
+
+  return [
+    ...new Set(
+      found
+        .map((path) => path.replace(/\\/g, '/').trim())
+        .filter((path) => path.length > 0),
+    ),
+  ];
 }
 
 /**
@@ -80,6 +121,10 @@ export function collectMutatedPathsFromEvent(event: RunEvent): string[] {
     return parsePathsFromToolSummary(event.summary);
   }
   return [];
+}
+
+export function isWriteToolName(toolName: string): boolean {
+  return WRITE_TOOLS.has(toolName);
 }
 
 /** Count line-level additions / deletions between two text blobs. */
@@ -205,6 +250,25 @@ export function snapshotPathBeforeMutation(
       snapshot.beforeContents.set(normalized, null);
       return;
     }
+    const stat = statSync(abs);
+    if (stat.isDirectory()) {
+      // Capture nested files so delete_directory / move of folders can undo.
+      snapshot.beforeContents.set(normalized, null);
+      for (const child of listFilesRecursively(abs)) {
+        const childRel = join(normalized, child).replace(/\\/g, '/');
+        if (snapshot.beforeContents.has(childRel)) continue;
+        try {
+          snapshot.beforeContents.set(
+            childRel,
+            readFileSync(join(workspaceRoot, childRel), 'utf8'),
+          );
+          snapshot.mutatedPaths.add(childRel);
+        } catch {
+          snapshot.beforeContents.set(childRel, null);
+        }
+      }
+      return;
+    }
     snapshot.beforeContents.set(normalized, readFileSync(abs, 'utf8'));
   } catch {
     snapshot.beforeContents.set(normalized, null);
@@ -274,14 +338,26 @@ export function buildRunFileChangesView(options: {
     const abs = join(workspaceRoot, path);
     let after: string | null = null;
     try {
-      after = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+      if (existsSync(abs) && !statSync(abs).isDirectory()) {
+        after = readFileSync(abs, 'utf8');
+      } else {
+        after = null;
+      }
     } catch {
       after = null;
     }
     const before = snapshot.beforeContents.has(path)
       ? (snapshot.beforeContents.get(path) ?? null)
       : null;
+    // Directory markers are tracked for undo nesting; skip empty dir entries in UI.
+    if (before === null && after === null && !snapshot.beforeContents.has(path)) {
+      continue;
+    }
     if (before === after) continue;
+    // Skip pure directory placeholder rows (null→null) unless we recorded children.
+    if (before === null && after === null) {
+      continue;
+    }
 
     const { additions, deletions } = countLineDiff(before, after);
     totalAdditions += additions;
@@ -311,6 +387,7 @@ export function buildRunFileChangesView(options: {
 
 /**
  * Restore files to the before-contents captured in the snapshot.
+ * Reverts only this run's Mitii edits — not unrelated dirty files.
  */
 export function undoRunFileChanges(options: {
   workspaceRoot: string;
@@ -324,7 +401,12 @@ export function undoRunFileChanges(options: {
   const restored: string[] = [];
   const failed: Array<{ path: string; error: string }> = [];
 
-  for (const path of targets) {
+  // Restore deepest paths first so directory placeholders come after children.
+  const ordered = [...targets].sort(
+    (a, b) => b.split('/').length - a.split('/').length || b.localeCompare(a),
+  );
+
+  for (const path of ordered) {
     if (!snapshot.beforeContents.has(path)) {
       failed.push({ path, error: 'No before-snapshot for path' });
       continue;
@@ -333,7 +415,14 @@ export function undoRunFileChanges(options: {
     const abs = join(workspaceRoot, path);
     try {
       if (before === null) {
-        if (existsSync(abs)) unlinkSync(abs);
+        if (existsSync(abs)) {
+          const stat = statSync(abs);
+          if (stat.isDirectory()) {
+            // Children were restored individually; remove empty leftover dirs later.
+            continue;
+          }
+          unlinkSync(abs);
+        }
       } else {
         mkdirSync(dirname(abs), { recursive: true });
         writeFileSync(abs, before, 'utf8');
@@ -348,4 +437,21 @@ export function undoRunFileChanges(options: {
   }
 
   return { restored, failed };
+}
+
+function listFilesRecursively(absDir: string): string[] {
+  const out: string[] = [];
+  const entries = readdirSync(absDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name === '.git' || entry.name === 'node_modules') continue;
+    const childAbs = join(absDir, entry.name);
+    if (entry.isDirectory()) {
+      for (const nested of listFilesRecursively(childAbs)) {
+        out.push(join(entry.name, nested));
+      }
+    } else if (entry.isFile()) {
+      out.push(entry.name);
+    }
+  }
+  return out;
 }

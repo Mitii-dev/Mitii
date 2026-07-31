@@ -47,7 +47,12 @@ export function FileChangesBar({
         </span>
       </button>
       <div className="file-changes-bar__actions">
-        <button type="button" className="btn ghost" onClick={onUndo}>
+        <button
+          type="button"
+          className="btn ghost"
+          onClick={onUndo}
+          title="Revert Mitii's edits from this run"
+        >
           Undo
         </button>
         <button type="button" className="btn" onClick={onReviewAll}>
@@ -101,7 +106,12 @@ export function FileChangesCard({
           </div>
         </div>
         <div className="file-changes-card__actions">
-          <button type="button" className="btn ghost" onClick={onUndo}>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={onUndo}
+            title="Revert Mitii's edits from this run"
+          >
             Undo
           </button>
           <button type="button" className="btn" onClick={onReviewAll}>
@@ -114,6 +124,9 @@ export function FileChangesCard({
           ) : null}
         </div>
       </header>
+      <p className="file-changes-card__hint">
+        Click a file to open it. Undo reverts only this run&apos;s Mitii edits.
+      </p>
       <ul className="file-changes-card__list">
         {visible.map((file) => {
           const { dir, name } = splitPath(file.path);

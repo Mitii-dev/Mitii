@@ -829,6 +829,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     this.channel.appendLine(
       `[file-changes] undo run=${runId} restored=${result.restored.length} failed=${result.failed.length}`,
     );
+    if (result.failed.length === 0) {
+      this.fileChangeSnapshots.delete(runId);
+    }
     this.post({
       type: 'fileChanges.undone',
       runId,
@@ -843,9 +846,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       });
     } else {
       void this.vs.window.showInformationMessage(
-        `Mitii: Restored ${result.restored.length} file${
+        `Mitii: Reverted ${result.restored.length} file${
           result.restored.length === 1 ? '' : 's'
-        }.`,
+        } from this run.`,
       );
     }
   }
@@ -1184,12 +1187,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       });
 
       const changeRoot = this.effectiveRoot();
+      const runId = outcome.result.runId;
       if (
         changeRoot &&
         this.activeFileChangeSnapshot &&
-        outcome.result.status === 'completed'
+        runId &&
+        this.activeFileChangeSnapshot.mutatedPaths.size > 0
       ) {
-        const runId = outcome.result.runId;
         this.fileChangeSnapshots.set(runId, this.activeFileChangeSnapshot);
         const changes = buildRunFileChangesView({
           runId,
@@ -1199,7 +1203,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         if (changes) {
           this.post({ type: 'run.fileChanges', changes });
           this.channel.appendLine(
-            `[file-changes] run=${runId} files=${changes.files.length} +${changes.totalAdditions} -${changes.totalDeletions}`,
+            `[file-changes] run=${runId} status=${outcome.result.status} files=${changes.files.length} +${changes.totalAdditions} -${changes.totalDeletions}`,
           );
         }
       }

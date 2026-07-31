@@ -2880,6 +2880,13 @@ select.depth-select {
   border-bottom: 1px solid var(--mitii-border-soft);
 }
 
+.file-changes-card__hint {
+  margin: 0;
+  padding: 0 12px 8px;
+  font-size: 11px;
+  color: var(--mitii-muted);
+}
+
 .file-changes-card__header {
   display: flex;
   align-items: flex-start;
