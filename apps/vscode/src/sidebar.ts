@@ -1555,6 +1555,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           this.vs.ConfigurationTarget.Workspace,
         );
       }
+      if (message.provider.preset !== undefined) {
+        await cfg.update(
+          'provider.preset',
+          message.provider.preset,
+          this.vs.ConfigurationTarget.Workspace,
+        );
+      }
       if (message.provider.baseUrl !== undefined) {
         await cfg.update(
           'provider.baseUrl',
@@ -1723,6 +1730,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         : Math.min(16_384, Math.max(1, contextWindow - 1));
     return {
       type: cfg.get<string>('provider.type') ?? 'echo',
+      preset: cfg.get<string>('provider.preset') ?? undefined,
       baseUrl: cfg.get<string>('provider.baseUrl') ?? 'http://localhost:11434/v1',
       model,
       hasApiKey,

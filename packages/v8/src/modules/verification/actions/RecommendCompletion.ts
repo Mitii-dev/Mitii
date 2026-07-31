@@ -1,30 +1,32 @@
 import type { VerificationRequirement } from "../../decision-policy";
 
 import type {
-  VerificationCheckKind,
-  VerificationCheckResult,
   VerificationReasonCode,
   VerificationStatus,
 } from "../contracts";
+import type { VerificationCheckResult } from "../contracts";
+import { assessEvidenceCoverage } from "../internal/evidencePolicy";
 
 export interface CompletionRecommendation {
   status: VerificationStatus;
   reasonCodes: VerificationReasonCode[];
 }
 
-/** Decision evidence kinds → check kinds that can satisfy them. */
-const EVIDENCE_TO_CHECK: Record<string, VerificationCheckKind[]> = {
-  diagnostics: ["diagnostics", "syntax"],
-  typecheck: ["typecheck"],
-  lint: ["lint", "format"],
-  tests: ["test", "build", "typecheck"],
-  build: ["build"],
-  diff_review: ["diff_review"],
-};
-
 /**
- * Evidence-only completion gate. Failed, skipped, unavailable, timed-out, or
- * cancelled checks MUST NOT become verified_success.
+ * Evidence-only completion gate.
+ *
+ * Outcome segregation (do not conflate these):
+ * - verified_success: required evidence covered by passed checks; no defects
+ * - verification_failed: a check failed or timed out (defect in the change)
+ * - implemented_unverified: no defects, but required evidence could not be
+ *   obtained (missing scripts/tools) or state is stale
+ * - blocked: hard infrastructure/policy blocker (unavailable pinned state,
+ *   or zero runnable checks when policy forbids unverified completion)
+ * - cancelled: run aborted
+ *
+ * Missing project scripts or tools are NOT defects and MUST NOT become
+ * `blocked` merely because `allowUnavailable` is false. That flag only
+ * gates the empty-check / no-applicable-checks case.
  */
 export function recommendCompletion(params: {
   verification: VerificationRequirement;
@@ -54,11 +56,34 @@ export function recommendCompletion(params: {
     };
   }
 
-  const runnable = params.checks.filter(
-    (check) => check.outcome !== "skipped",
-  );
+  const coverage = assessEvidenceCoverage({
+    minimumEvidence: params.verification.minimumEvidence,
+    checks: params.checks,
+  });
 
-  if (runnable.length === 0) {
+  if (coverage.hasCancelled) {
+    return {
+      status: "cancelled",
+      reasonCodes: ["cancelled"],
+    };
+  }
+
+  // Defects in the change — never treat as success or "unavailable".
+  if (coverage.hasFailed) {
+    return {
+      status: "verification_failed",
+      reasonCodes: ["checks_failed"],
+    };
+  }
+  if (coverage.hasTimedOut) {
+    return {
+      status: "verification_failed",
+      reasonCodes: ["checks_timed_out"],
+    };
+  }
+
+  // Literally nothing ran — infrastructure gap, not a code defect.
+  if (coverage.runnable.length === 0) {
     return params.verification.allowUnavailable
       ? {
           status: "implemented_unverified",
@@ -70,62 +95,28 @@ export function recommendCompletion(params: {
         };
   }
 
-  if (runnable.some((check) => check.outcome === "cancelled")) {
-    return {
-      status: "cancelled",
-      reasonCodes: ["cancelled"],
-    };
-  }
-
-  if (runnable.some((check) => check.outcome === "failed")) {
-    return {
-      status: "verification_failed",
-      reasonCodes: ["checks_failed"],
-    };
-  }
-
-  if (runnable.some((check) => check.outcome === "timed_out")) {
-    return {
-      status: "verification_failed",
-      reasonCodes: ["checks_timed_out"],
-    };
-  }
-
-  const unavailable = runnable.filter(
-    (check) => check.outcome === "unavailable",
-  );
-  const passed = runnable.filter((check) => check.outcome === "passed");
-  const passedKinds = new Set(passed.map((check) => check.kind));
-  const requiredCovered = requiredEvidenceCovered(
-    params.verification.minimumEvidence,
-    passedKinds,
-  );
-
-  if (unavailable.length > 0 || !requiredCovered) {
-    const reasonCodes: VerificationReasonCode[] = requiredCovered
-      ? ["checks_unavailable", "missing_tool_degraded"]
-      : passed.length > 0
+  // Checks ran without failing, but required evidence is incomplete
+  // (e.g. package.json has no test/typecheck scripts). Keep the work as
+  // implemented_unverified — rolling it back is incorrect.
+  if (!coverage.requiredCovered) {
+    const reasonCodes: VerificationReasonCode[] =
+      coverage.passed.length > 0
         ? ["checks_unavailable"]
         : ["no_applicable_checks", "checks_unavailable"];
-    if (unavailable.length > 0) {
+    if (coverage.unavailable.length > 0) {
       reasonCodes.push("missing_tool_degraded");
     }
-    return params.verification.allowUnavailable
-      ? {
-          status: "implemented_unverified",
-          reasonCodes: [...new Set(reasonCodes)],
-        }
-      : {
-          status: "blocked",
-          reasonCodes: [...new Set(reasonCodes)],
-        };
+    return {
+      status: "implemented_unverified",
+      reasonCodes: [...new Set(reasonCodes)],
+    };
   }
 
   const reasonCodes: VerificationReasonCode[] = ["checks_passed"];
   if (params.staleStateRisk) {
     reasonCodes.push("stale_state_risk");
   }
-  if (runnable.some((check) => check.kind === "diff_review")) {
+  if (coverage.passedKinds.has("diff_review")) {
     reasonCodes.push("diff_reviewed");
   }
 
@@ -141,17 +132,4 @@ export function recommendCompletion(params: {
     status: "verified_success",
     reasonCodes,
   };
-}
-
-function requiredEvidenceCovered(
-  minimumEvidence: readonly string[],
-  passedKinds: ReadonlySet<VerificationCheckKind>,
-): boolean {
-  if (minimumEvidence.length === 0) {
-    return passedKinds.size > 0;
-  }
-  return minimumEvidence.every((evidence) => {
-    const kinds = EVIDENCE_TO_CHECK[evidence] ?? [];
-    return kinds.some((kind) => passedKinds.has(kind));
-  });
 }

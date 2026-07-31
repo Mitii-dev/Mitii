@@ -1,20 +1,20 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { basename, join, resolve } from 'node:path';
 
+import {
+  DEFAULT_HOST_SKILLS,
+} from '@mitii/sdk';
 import {
   InMemorySkillsCatalog,
   type SkillDescriptor,
   type SkillsCatalogPort,
 } from '@mitii/v8';
 
-import { DEFAULT_HOST_SKILLS } from './defaultSkills';
-
 export type DiskSkillContentMode = 'metadata' | 'body';
 
 export interface LoadDiskSkillsOptions {
   /**
-   * Workspace root used for the default upload room under
+   * Workspace root used for uploaded skills under
    * `<workspace>/.mitii/skills/<skill-id>/SKILL.md`.
    */
   workspaceRoot?: string;
@@ -73,7 +73,10 @@ export function createFileSystemSkillsCatalog(
   return {
     async list(): Promise<readonly SkillDescriptor[]> {
       const diskSkills = await loadDiskSkills(options);
-      if (options.includeDefaults === false) {
+      if (
+        options.includeDefaults === false ||
+        options.includeBundled === false
+      ) {
         return diskSkills;
       }
       return new InMemorySkillsCatalog([
@@ -155,7 +158,6 @@ async function loadSkillFile(
 
 function resolveSkillRoots(options: LoadDiskSkillsOptions): string[] {
   const roots = [
-    ...(options.includeBundled === false ? [] : [defaultBundledSkillsRoot()]),
     ...(options.bundledRoots ?? []),
     ...(options.workspaceRoot
       ? [join(options.workspaceRoot, DEFAULT_WORKSPACE_SKILLS_DIR)]
@@ -163,15 +165,6 @@ function resolveSkillRoots(options: LoadDiskSkillsOptions): string[] {
     ...(options.roots ?? []),
   ];
   return [...new Set(roots.map((root) => resolve(root)))];
-}
-
-function defaultBundledSkillsRoot(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const packageRoot =
-    basename(here) === 'src' || basename(here) === 'dist'
-      ? resolve(here, '..')
-      : here;
-  return join(packageRoot, 'skills');
 }
 
 async function findSkillFiles(roots: readonly string[]): Promise<string[]> {

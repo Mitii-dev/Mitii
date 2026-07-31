@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import {
   EchoLlmPort,
   OpenAiCompatibleLlmPort,
-  createFileSystemSkillsCatalog,
   createMitiiClient,
   InMemoryRepositoryStateStore,
   RepositoryStatePipeline,
@@ -21,6 +20,11 @@ import {
   type ModelRequest,
   type SkillsCatalogPort,
 } from '@mitii/sdk';
+import {
+  createFileSystemSkillsCatalog,
+  createWorkspaceCheckpointStore,
+  getProviderPreset,
+} from '@mitii/host';
 import type * as vscode from 'vscode';
 
 import { VscodeDiagnosticsPort } from './diagnosticsPort.js';
@@ -137,16 +141,24 @@ export async function resolveVscodePorts(
       maximumOutputTokens,
       supportsTools: true,
     };
+    const presetId = cfg.get<string>('provider.preset') ?? 'openai-compatible';
+    const preset = getProviderPreset(presetId);
+    const authHeader = preset?.authHeader;
+    const chatCompletionsPath = preset?.chatCompletionsPath;
     const runLlm = new OpenAiCompatibleLlmPort({
       model,
       baseUrl,
       ...(secretKey ? { apiKey: secretKey } : {}),
+      ...(authHeader ? { authHeader } : {}),
+      ...(chatCompletionsPath ? { chatCompletionsPath } : {}),
       capabilities,
     });
     const understandingLlm = new OpenAiCompatibleLlmPort({
       model,
       baseUrl,
       ...(secretKey ? { apiKey: secretKey } : {}),
+      ...(authHeader ? { authHeader } : {}),
+      ...(chatCompletionsPath ? { chatCompletionsPath } : {}),
       capabilities: {
         ...capabilities,
         supportsStructuredOutput: true,
@@ -243,7 +255,10 @@ export async function createVscodeClient(
     tools,
     verification,
     toolDefinitions,
-    enableInMemoryCheckpoints: true,
+    enableInMemoryCheckpoints: false,
+    ...(workspaceRoot
+      ? { checkpointStore: createWorkspaceCheckpointStore(workspaceRoot) }
+      : {}),
     skillsCatalog:
       options.skillsCatalog ??
       createFileSystemSkillsCatalog({

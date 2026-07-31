@@ -1,10 +1,54 @@
-/** Webview-local presets (mirrors host providerPresets / modelPresets). */
+/** Webview-local presets (mirrors @mitii/host provider presets). */
 
 export const PROVIDER_OPTIONS = [
-  { type: 'echo', label: 'Echo (local stub)', baseUrl: '', model: 'echo' },
+  { type: 'echo', preset: 'echo', label: 'Echo (local stub)', baseUrl: '', model: 'echo' },
   {
     type: 'openai-compatible',
-    label: 'OpenAI-compatible (Ollama, LM Studio)',
+    preset: 'ollama',
+    label: 'Ollama (local)',
+    baseUrl: 'http://localhost:11434/v1',
+    model: 'qwen3-coder:30b',
+  },
+  {
+    type: 'openai-compatible',
+    preset: 'lm-studio',
+    label: 'LM Studio (local)',
+    baseUrl: 'http://localhost:1234/v1',
+    model: 'local-model',
+  },
+  {
+    type: 'openai-compatible',
+    preset: 'openai',
+    label: 'OpenAI',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini',
+  },
+  {
+    type: 'openai-compatible',
+    preset: 'openrouter',
+    label: 'OpenRouter',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    model: 'openai/gpt-4o-mini',
+  },
+  {
+    type: 'openai-compatible',
+    preset: 'deepseek',
+    label: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-chat',
+  },
+  {
+    type: 'openai-compatible',
+    preset: 'azure-openai',
+    label: 'Azure OpenAI',
+    baseUrl:
+      'https://YOUR_RESOURCE.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT',
+    model: 'gpt-4o-mini',
+  },
+  {
+    type: 'openai-compatible',
+    preset: 'openai-compatible',
+    label: 'Custom OpenAI-compatible',
     baseUrl: 'http://localhost:11434/v1',
     model: 'qwen3-coder:30b',
   },
@@ -24,6 +68,9 @@ export const LOCAL_MODEL_OPTIONS = [
   'mistral:latest',
 ] as const;
 
-export function getProviderPreset(type: string) {
-  return PROVIDER_OPTIONS.find((p) => p.type === type);
+export function getProviderPreset(typeOrPreset: string) {
+  return (
+    PROVIDER_OPTIONS.find((p) => p.preset === typeOrPreset) ??
+    PROVIDER_OPTIONS.find((p) => p.type === typeOrPreset)
+  );
 }

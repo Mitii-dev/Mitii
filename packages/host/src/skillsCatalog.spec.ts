@@ -1,13 +1,13 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { SkillsPipeline, SKILLS_SCHEMA_VERSION } from '@mitii/v8';
 
 import {
   createFileSystemSkillsCatalog,
   loadDiskSkills,
-  SkillsPipeline,
-  SKILLS_SCHEMA_VERSION,
-} from '@mitii/sdk';
+} from './skillsCatalog.js';
 
 describe('file system skills catalog', () => {
   let root: string;
@@ -137,7 +137,7 @@ Full body.
     expect(skills.map((skill) => skill.id)).toEqual(['enabled-skill']);
   });
 
-  it('loads bundled default skills and lets workspace skills override by id', async () => {
+  it('loads bundled roots and lets workspace skills override by id', async () => {
     const bundledRoot = join(root, 'bundled-skills');
     await writeSkillToRoot(bundledRoot, 'review-playbook', {
       description: 'Bundled review defaults.',
@@ -157,7 +157,6 @@ Full body.
     const skills = await loadDiskSkills({
       bundledRoots: [bundledRoot],
       workspaceRoot: root,
-      includeBundled: false,
     });
 
     expect(skills.map((skill) => skill.id)).toEqual(['review-playbook']);

@@ -41,6 +41,17 @@ export interface OpenAiCompatibleLlmPortConfig {
     contextWindowTokens?: number;
   };
   fetchImpl?: typeof fetch;
+  /**
+   * Extra attempts after the first failure for retryable provider errors
+   * (429 / 5xx / network). Defaults to 2 (3 total attempts).
+   */
+  maxRetries?: number;
+  /** Initial backoff delay in ms. Doubled after each retry. Defaults to 250. */
+  initialBackoffMs?: number;
+  /** Cap for exponential backoff in ms. Defaults to 8_000. */
+  maxBackoffMs?: number;
+  /** Test seam for backoff waits. Defaults to setTimeout. */
+  sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
 interface OpenAiChatCompletionResponse {
@@ -110,6 +121,13 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
     OpenAiCompatibleLlmPortConfig;
 
   private readonly fetchImpl: typeof fetch;
+  private readonly maxRetries: number;
+  private readonly initialBackoffMs: number;
+  private readonly maxBackoffMs: number;
+  private readonly sleepImpl: (
+    ms: number,
+    signal?: AbortSignal,
+  ) => Promise<void>;
 
   constructor(config: OpenAiCompatibleLlmPortConfig) {
     this.config = {
@@ -127,6 +145,19 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
     this.id =
       config.providerId ?? MODEL_GATEWAY_IDS.OPENAI_COMPATIBLE_PORT;
     this.fetchImpl = config.fetchImpl ?? fetch;
+    this.maxRetries = normalizeNonNegativeInteger(
+      config.maxRetries,
+      OPENAI_COMPATIBLE_DEFAULTS.MAX_RETRIES,
+    );
+    this.initialBackoffMs = normalizePositiveInteger(
+      config.initialBackoffMs,
+      OPENAI_COMPATIBLE_DEFAULTS.INITIAL_BACKOFF_MS,
+    );
+    this.maxBackoffMs = normalizePositiveInteger(
+      config.maxBackoffMs,
+      OPENAI_COMPATIBLE_DEFAULTS.MAX_BACKOFF_MS,
+    );
+    this.sleepImpl = config.sleepImpl ?? defaultSleep;
 
     this.capabilities = new ModelCapabilityResolver().resolve({
       modelId: config.model,
@@ -170,59 +201,160 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
     const url = this.buildUrl();
     const headers = this.buildHeaders();
     const body = this.buildBody(normalized, stream);
+    const serializedBody = JSON.stringify(body);
 
-    let response: Response;
+    let attempt = 0;
+    let lastError: ModelError | undefined;
 
-    try {
-      response = await this.fetchImpl(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: context?.abortSignal,
-      });
-    } catch (error) {
+    while (attempt <= this.maxRetries) {
       if (context?.abortSignal?.aborted) {
-        yield this.cancelledEvent("Request was aborted during transport.");
+        yield this.cancelledEvent("Request was aborted before completion.");
         return;
       }
 
-      yield {
-        type: "failed",
-        finishReason: "error",
-        error: this.toModelError(error),
-      };
-      return;
-    }
+      let response: Response;
 
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      yield {
-        type: "failed",
-        finishReason: "error",
-        error: this.mapHttpError(response.status, text),
-      };
-      return;
-    }
+      try {
+        response = await this.fetchImpl(url, {
+          method: "POST",
+          headers,
+          body: serializedBody,
+          signal: context?.abortSignal,
+        });
+      } catch (error) {
+        if (context?.abortSignal?.aborted) {
+          yield this.cancelledEvent("Request was aborted during transport.");
+          return;
+        }
 
-    if (!stream) {
-      yield* this.yieldNonStreaming(response);
-      return;
-    }
+        lastError = this.toModelError(error);
+        if (
+          !lastError.retryable ||
+          attempt >= this.maxRetries
+        ) {
+          yield {
+            type: "failed",
+            finishReason: "error",
+            error: lastError,
+          };
+          return;
+        }
 
-    if (!response.body) {
-      yield {
-        type: "failed",
-        finishReason: "error",
-        error: {
+        try {
+          await this.sleepImpl(
+            this.backoffDelayMs(attempt, lastError.retryAfterMs),
+            context?.abortSignal,
+          );
+        } catch (error) {
+          if (
+            context?.abortSignal?.aborted ||
+            (error instanceof Error && error.name === "AbortError")
+          ) {
+            yield this.cancelledEvent(
+              "Request was aborted during retry backoff.",
+            );
+            return;
+          }
+          throw error;
+        }
+        attempt += 1;
+        continue;
+      }
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        lastError = this.mapHttpError(
+          response.status,
+          text,
+          response.headers,
+        );
+        if (
+          !lastError.retryable ||
+          attempt >= this.maxRetries
+        ) {
+          yield {
+            type: "failed",
+            finishReason: "error",
+            error: lastError,
+          };
+          return;
+        }
+
+        try {
+          await this.sleepImpl(
+            this.backoffDelayMs(attempt, lastError.retryAfterMs),
+            context?.abortSignal,
+          );
+        } catch (error) {
+          if (
+            context?.abortSignal?.aborted ||
+            (error instanceof Error && error.name === "AbortError")
+          ) {
+            yield this.cancelledEvent(
+              "Request was aborted during retry backoff.",
+            );
+            return;
+          }
+          throw error;
+        }
+        attempt += 1;
+        continue;
+      }
+
+      if (!stream) {
+        yield* this.yieldNonStreaming(response);
+        return;
+      }
+
+      if (!response.body) {
+        lastError = {
           code: "provider_unavailable",
           message: MODEL_GATEWAY_MESSAGES.EMPTY_RESPONSE_BODY,
           retryable: true,
-        },
-      };
+        };
+        if (attempt >= this.maxRetries) {
+          yield {
+            type: "failed",
+            finishReason: "error",
+            error: lastError,
+          };
+          return;
+        }
+
+        try {
+          await this.sleepImpl(
+            this.backoffDelayMs(attempt, lastError.retryAfterMs),
+            context?.abortSignal,
+          );
+        } catch (error) {
+          if (
+            context?.abortSignal?.aborted ||
+            (error instanceof Error && error.name === "AbortError")
+          ) {
+            yield this.cancelledEvent(
+              "Request was aborted during retry backoff.",
+            );
+            return;
+          }
+          throw error;
+        }
+        attempt += 1;
+        continue;
+      }
+
+      yield* this.yieldStreaming(response.body);
       return;
     }
 
-    yield* this.yieldStreaming(response.body);
+    yield {
+      type: "failed",
+      finishReason: "error",
+      error: lastError ?? {
+        code: "provider_unavailable",
+        message: "Provider request failed after retries.",
+        retryable: true,
+      },
+    };
   }
 
   public async countTokens(text: string): Promise<number> {
@@ -594,12 +726,17 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
     }
   }
 
-  private mapHttpError(status: number, body: string): ModelError {
+  private mapHttpError(
+    status: number,
+    body: string,
+    headers?: Headers,
+  ): ModelError {
     const code =
       HTTP_STATUS_TO_MODEL_ERROR[status] ?? "unknown";
     const preview = body
       .slice(0, MODEL_GATEWAY_LIMITS.ERROR_BODY_PREVIEW_CHARACTERS)
       .trim();
+    const retryAfterMs = parseRetryAfterMs(headers);
 
     if (status === 401) {
       return {
@@ -627,7 +764,29 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
       retryable:
         code === "rate_limited" || code === "provider_unavailable",
       providerCode: String(status),
+      ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
     };
+  }
+
+  private backoffDelayMs(
+    attempt: number,
+    retryAfterMs?: number,
+  ): number {
+    if (
+      typeof retryAfterMs === "number" &&
+      Number.isFinite(retryAfterMs) &&
+      retryAfterMs > 0
+    ) {
+      return Math.min(
+        Math.floor(retryAfterMs),
+        MODEL_GATEWAY_LIMITS.MAXIMUM_RETRY_AFTER_MS,
+      );
+    }
+
+    const exponential = this.initialBackoffMs * 2 ** attempt;
+    const capped = Math.min(exponential, this.maxBackoffMs);
+    const jitter = Math.floor(Math.random() * Math.max(1, capped * 0.2));
+    return capped + jitter;
   }
 
   private toModelError(error: unknown): ModelError {
@@ -659,4 +818,73 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
       },
     };
   }
+}
+
+function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, Math.max(0, ms));
+
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function parseRetryAfterMs(headers?: Headers): number | undefined {
+  if (!headers) return undefined;
+  const raw = headers.get("retry-after");
+  if (!raw?.trim()) return undefined;
+
+  const asSeconds = Number(raw);
+  if (Number.isFinite(asSeconds) && asSeconds >= 0) {
+    return Math.min(
+      Math.floor(asSeconds * 1_000),
+      MODEL_GATEWAY_LIMITS.MAXIMUM_RETRY_AFTER_MS,
+    );
+  }
+
+  const asDate = Date.parse(raw);
+  if (!Number.isFinite(asDate)) return undefined;
+  const delta = asDate - Date.now();
+  if (delta <= 0) return 0;
+  return Math.min(delta, MODEL_GATEWAY_LIMITS.MAXIMUM_RETRY_AFTER_MS);
+}
+
+function normalizeNonNegativeInteger(
+  value: number | undefined,
+  fallback: number,
+): number {
+  if (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0
+  ) {
+    return Math.floor(value);
+  }
+  return fallback;
+}
+
+function normalizePositiveInteger(
+  value: number | undefined,
+  fallback: number,
+): number {
+  if (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value > 0
+  ) {
+    return Math.floor(value);
+  }
+  return fallback;
 }

@@ -4,6 +4,8 @@ import { join } from 'node:path';
 
 export interface MitiiHostConfig {
   provider?: 'echo' | 'openai-compatible';
+  /** Preset id: ollama | openai | openrouter | deepseek | azure-openai | lm-studio | openai-compatible */
+  providerPreset?: string;
   model?: string;
   baseUrl?: string;
   embeddingModel?: string;
@@ -41,6 +43,10 @@ export function loadMitiiHostConfig(cwd: string = process.cwd()): MitiiHostConfi
         provider:
           safe.provider === 'echo' || safe.provider === 'openai-compatible'
             ? safe.provider
+            : undefined,
+        providerPreset:
+          typeof safe.providerPreset === 'string'
+            ? safe.providerPreset
             : undefined,
         model: typeof safe.model === 'string' ? safe.model : undefined,
         baseUrl: typeof safe.baseUrl === 'string' ? safe.baseUrl : undefined,

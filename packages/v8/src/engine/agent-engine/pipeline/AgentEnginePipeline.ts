@@ -53,6 +53,7 @@ import {
   buildMutationBudgetInstruction,
   buildOutputTruncationRecovery,
   compactModelLoopMessages,
+  decideVerificationGate,
   filterToolDefinitions,
   mapContextToPromptSlice,
   mapUnderstandingToPlanningEvidence,
@@ -60,6 +61,7 @@ import {
   mergePromptInstructions,
   serializeToolResultForModel,
 } from "../actions";
+import type { VerificationGateDecision } from "../actions";
 import { AGENT_ENGINE_SCHEMA_VERSION } from "../constants";
 import {
   agentEngineResumeInputSchema,
@@ -126,9 +128,10 @@ type ToolLoopOutcome =
     };
 
 type VerificationGateOutcome =
-  | { kind: "ok" }
+  | { kind: "ok"; acceptKind: Extract<VerificationGateDecision, { action: "accept" }>["acceptKind"] }
   | {
       kind: "failed";
+      repairable: boolean;
       error: { code: string; message: string };
       verification?: VerificationResult;
     };
@@ -1493,7 +1496,8 @@ export class AgentEnginePipeline {
 
       if (
         repairAttempts < maxRepairAttempts &&
-        this.canAttemptVerificationRepair(verificationOutcome)
+        verificationOutcome.kind === "failed" &&
+        verificationOutcome.repairable
       ) {
         repairAttempts += 1;
         reasonCodes.push("verification_repair_attempted");
@@ -1607,8 +1611,8 @@ export class AgentEnginePipeline {
 
   /**
    * Gate completion on Verification when the decision requires it and a
-   * mutation changed files. Rolls back applied mutations on failure and
-   * commits them on success (or when verification is skipped safely).
+   * mutation changed files. Commits on accept; leaves rollback to the caller
+   * on reject (after an optional repair pass for verification_failed only).
    */
   private async runVerificationGate(params: {
     runId: string;
@@ -1633,75 +1637,61 @@ export class AgentEnginePipeline {
       warnings,
     } = params;
 
-    if (!decision.verification.required || changedFiles.length === 0) {
-      this.commitMutations(mutationCheckpointIds);
-      return { kind: "ok" };
+    const missingInfrastructure: string[] = [];
+    if (this.deps.verification === undefined) {
+      missingInfrastructure.push("verification port");
+    }
+    if (pinnedState === undefined) {
+      missingInfrastructure.push("pinned state");
+    }
+    if (input.workspaceRoot === undefined) {
+      missingInfrastructure.push("workspace root");
+    }
+    const canVerify = missingInfrastructure.length === 0;
+
+    let verificationResult: VerificationResult | undefined;
+    if (
+      decision.verification.required &&
+      changedFiles.length > 0 &&
+      canVerify
+    ) {
+      this.emitStage(bus, runId, "verifying", "started");
+      const verificationGrant = buildVerificationGrant(decision.toolGrant);
+      const projects = resolveVerificationProjects(input);
+      verificationResult = await this.deps.verification!.verify({
+        schemaVersion: VERIFICATION_SCHEMA_VERSION,
+        workspaceRoot: input.workspaceRoot!,
+        pinnedState: pinnedState!,
+        changedFiles,
+        projects,
+        verification: decision.verification,
+        grant: verificationGrant,
+        changeScope: "localized",
+        stateReadiness: input.repositoryState?.readiness ?? "ready",
+      });
+      this.emitVerificationCompleted(bus, runId, verificationResult);
     }
 
-    const canVerify =
-      this.deps.verification !== undefined &&
-      pinnedState !== undefined &&
-      input.workspaceRoot !== undefined;
-
-    if (!canVerify) {
-      if (decision.verification.allowUnavailable) {
-        reasonCodes.push("verification_skipped");
-        this.commitMutations(mutationCheckpointIds);
-        return { kind: "ok" };
-      }
-      this.emitStage(bus, runId, "verifying", "completed", [
-        "verification_failed",
-      ]);
-      await this.rollbackMutations(mutationCheckpointIds, warnings);
-      reasonCodes.push("mutation_rolled_back", "verification_failed");
-      const missing: string[] = [];
-      if (this.deps.verification === undefined) missing.push("verification port");
-      if (pinnedState === undefined) missing.push("pinned state");
-      if (input.workspaceRoot === undefined) missing.push("workspace root");
-      return {
-        kind: "failed",
-        error: {
-          code: "verification_failed",
-          message: `Verification is required but unavailable (missing ${missing.join(", ") || "verification port or pinned state"}).`,
-        },
-      };
-    }
-
-    this.emitStage(bus, runId, "verifying", "started");
-    const verificationGrant = buildVerificationGrant(decision.toolGrant);
-    const projects = resolveVerificationProjects(input);
-    const verificationResult = await this.deps.verification!.verify({
-      schemaVersion: VERIFICATION_SCHEMA_VERSION,
-      workspaceRoot: input.workspaceRoot!,
-      pinnedState: pinnedState!,
-      changedFiles,
-      projects,
-      verification: decision.verification,
-      grant: verificationGrant,
-      changeScope: "localized",
-      stateReadiness: input.repositoryState?.readiness ?? "ready",
+    const decisionOutcome = decideVerificationGate({
+      verificationRequired: decision.verification.required,
+      allowUnavailable: decision.verification.allowUnavailable,
+      changedFileCount: changedFiles.length,
+      canVerify,
+      missingInfrastructure,
+      verification: verificationResult,
     });
-    this.emitVerificationCompleted(bus, runId, verificationResult);
 
-    if (verificationResult.status === "verified_success") {
-      this.emitStage(bus, runId, "verifying", "completed", [
-        "verification_passed",
-      ]);
-      reasonCodes.push("verification_passed");
+    if (decisionOutcome.action === "accept") {
+      this.applyVerificationAcceptSideEffects({
+        bus,
+        runId,
+        acceptKind: decisionOutcome.acceptKind,
+        verification: verificationResult,
+        reasonCodes,
+        warnings,
+      });
       this.commitMutations(mutationCheckpointIds);
-      return { kind: "ok" };
-    }
-
-    if (decision.verification.allowUnavailable) {
-      this.emitStage(bus, runId, "verifying", "completed", [
-        "verification_skipped",
-      ]);
-      reasonCodes.push("verification_skipped");
-      warnings.push(
-        `Verification did not confirm success (status: ${verificationResult.status}); implementation kept unverified.`,
-      );
-      this.commitMutations(mutationCheckpointIds);
-      return { kind: "ok" };
+      return { kind: "ok", acceptKind: decisionOutcome.acceptKind };
     }
 
     this.emitStage(bus, runId, "verifying", "completed", [
@@ -1709,12 +1699,49 @@ export class AgentEnginePipeline {
     ]);
     return {
       kind: "failed",
-      verification: verificationResult,
-      error: {
-        code: "verification_failed",
-        message: `Verification did not succeed (status: ${verificationResult.status}).`,
-      },
+      repairable: decisionOutcome.repairable,
+      error: decisionOutcome.error,
+      verification: decisionOutcome.verification,
     };
+  }
+
+  private applyVerificationAcceptSideEffects(params: {
+    bus: EventBus;
+    runId: string;
+    acceptKind: Extract<VerificationGateDecision, { action: "accept" }>["acceptKind"];
+    verification: VerificationResult | undefined;
+    reasonCodes: AgentReasonCode[];
+    warnings: string[];
+  }): void {
+    const { bus, runId, acceptKind, verification, reasonCodes, warnings } =
+      params;
+
+    if (acceptKind === "skipped_not_required") {
+      return;
+    }
+
+    if (acceptKind === "verified_success") {
+      this.emitStage(bus, runId, "verifying", "completed", [
+        "verification_passed",
+      ]);
+      reasonCodes.push("verification_passed");
+      return;
+    }
+
+    // implemented_unverified | unavailable_allowed
+    this.emitStage(bus, runId, "verifying", "completed", [
+      "verification_skipped",
+    ]);
+    reasonCodes.push("verification_skipped");
+    if (acceptKind === "implemented_unverified" && verification) {
+      warnings.push(
+        `Verification incomplete (status: ${verification.status}); implementation kept unverified.`,
+      );
+    } else if (acceptKind === "unavailable_allowed") {
+      warnings.push(
+        "Verification was required but unavailable; implementation kept unverified.",
+      );
+    }
   }
 
   private commitMutations(mutationCheckpointIds: readonly string[]): void {
@@ -1754,17 +1781,6 @@ export class AgentEnginePipeline {
         );
       }
     }
-  }
-
-  private canAttemptVerificationRepair(outcome: VerificationGateOutcome): boolean {
-    if (outcome.kind !== "failed" || !outcome.verification) {
-      return false;
-    }
-    return (
-      outcome.verification.status === "verification_failed" ||
-      outcome.verification.status === "blocked" ||
-      outcome.verification.status === "implemented_unverified"
-    );
   }
 
   private emitVerificationCompleted(

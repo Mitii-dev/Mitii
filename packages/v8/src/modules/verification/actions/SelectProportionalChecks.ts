@@ -5,20 +5,9 @@ import type {
   VerificationChangeScope,
 } from "../contracts";
 import { DEFAULT_MAX_CHECKS } from "../defaults";
+import { checkKindsForEvidence } from "../internal/evidencePolicy";
 import { CHECK_KIND_PRIORITY } from "../policy";
 import type { DiscoveredCheckCandidate } from "../internal/discovery";
-
-/**
- * Map Decision Policy evidence kinds onto verification check kinds.
- */
-const EVIDENCE_TO_CHECK: Record<string, VerificationCheckKind[]> = {
-  diagnostics: ["diagnostics", "syntax"],
-  typecheck: ["typecheck"],
-  lint: ["lint", "format"],
-  tests: ["test", "build", "typecheck"],
-  build: ["build"],
-  diff_review: ["diff_review"],
-};
 
 export interface SelectProportionalChecksResult {
   selected: DiscoveredCheckCandidate[];
@@ -36,7 +25,7 @@ export function selectProportionalChecks(params: {
 }): SelectProportionalChecksResult {
   const requiredKinds = new Set<VerificationCheckKind>();
   for (const evidence of params.verification.minimumEvidence) {
-    for (const kind of EVIDENCE_TO_CHECK[evidence] ?? []) {
+    for (const kind of checkKindsForEvidence(evidence)) {
       requiredKinds.add(kind);
     }
   }

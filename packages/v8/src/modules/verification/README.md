@@ -60,9 +60,12 @@ VerificationInput
 
 - No universal hardcoded test command — discovery requires project evidence.
 - Missing tools degrade to `unavailable` and never become success.
-- Failed / skipped / timed-out / cancelled checks never become `verified_success`.
+- Undiscoverable checks (no project scripts) yield `implemented_unverified`, not `blocked`.
+- Failed / timed-out checks become `verification_failed` and never become `verified_success`.
+- `blocked` is reserved for hard blockers (unavailable state, or zero runnable checks when unverified completion is forbidden).
 - Narrow changes keep narrow checks; `cross_cutting` / `public_api` expand.
 - Only Verification may authorize `verified_success`.
+- Agent Engine commits mutations on `verified_success` and `implemented_unverified`; it rolls back only on `verification_failed` / hard `blocked`.
 
 ## Language discovery
 

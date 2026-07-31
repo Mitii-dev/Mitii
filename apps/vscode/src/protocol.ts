@@ -78,6 +78,8 @@ export interface ContextToggles {
 
 export interface ProviderSettingsSnapshot {
   type: string;
+  /** Preset id (ollama, openai, openrouter, …). */
+  preset?: string;
   baseUrl: string;
   model: string;
   hasApiKey: boolean;
@@ -375,7 +377,12 @@ export type WebviewToHostMessage =
       provider?: Partial<
         Pick<
           ProviderSettingsSnapshot,
-          'type' | 'baseUrl' | 'model' | 'contextWindow' | 'maximumOutputTokens'
+          | 'type'
+          | 'preset'
+          | 'baseUrl'
+          | 'model'
+          | 'contextWindow'
+          | 'maximumOutputTokens'
         >
       >;
       ui?: UiSettingsPatch;

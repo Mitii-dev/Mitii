@@ -383,11 +383,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 <label htmlFor="ptype">Provider</label>
                 <select
                   id="ptype"
-                  value={provider.type}
+                  value={provider.preset ?? provider.type}
                   onChange={(e) => onProviderTypeChange(e.target.value)}
                 >
                   {PROVIDER_OPTIONS.map((option) => (
-                    <option key={option.type} value={option.type}>
+                    <option key={option.preset} value={option.preset}>
                       {option.label}
                     </option>
                   ))}
@@ -777,7 +777,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
               </div>
               <p className="field-hint">
                 Preset helper:{' '}
-                {getProviderPreset(provider.type)?.label ?? provider.type}
+                {getProviderPreset(provider.preset ?? provider.type)?.label ??
+                  provider.type}
               </p>
               <p className="field-hint">
                 Startup logs appear in the Mitii Output channel on activate.

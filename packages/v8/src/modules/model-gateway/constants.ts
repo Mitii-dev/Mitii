@@ -14,8 +14,8 @@ export const MODEL_GATEWAY_IDS = {
 } as const;
 
 /**
- * Explicit provider support matrix for Phase 1.
- * Unsupported providers must stay listed until dedicated adapters land.
+ * Explicit provider support matrix for shipped adapters.
+ * Only list providers that have a working adapter path.
  */
 export const MODEL_PROVIDER_SUPPORT = {
   echo: {
@@ -38,15 +38,26 @@ export const MODEL_PROVIDER_SUPPORT = {
     adapter: "OpenAiCompatibleLlmPort",
     notes: "Generic OpenAI-compatible chat completions.",
   },
-  anthropic: {
-    status: "unsupported",
-    adapter: null,
-    notes: "Native Anthropic Messages API adapter not implemented yet.",
+  openrouter: {
+    status: "supported",
+    adapter: "OpenAiCompatibleLlmPort",
+    notes: "OpenAiCompatibleLlmPort with https://openrouter.ai/api/v1.",
   },
-  gemini: {
-    status: "unsupported",
-    adapter: null,
-    notes: "Native Gemini adapter not implemented yet.",
+  deepseek: {
+    status: "supported",
+    adapter: "OpenAiCompatibleLlmPort",
+    notes: "OpenAiCompatibleLlmPort with https://api.deepseek.com/v1.",
+  },
+  "lm-studio": {
+    status: "supported",
+    adapter: "OpenAiCompatibleLlmPort",
+    notes: "OpenAiCompatibleLlmPort with http://localhost:1234/v1.",
+  },
+  "azure-openai": {
+    status: "supported",
+    adapter: "OpenAiCompatibleLlmPort",
+    notes:
+      "OpenAiCompatibleLlmPort with authHeader api-key and Azure deployment path.",
   },
 } as const;
 
@@ -166,6 +177,9 @@ export const OPENAI_COMPATIBLE_DEFAULTS = {
     32_768,
   MAXIMUM_OUTPUT_TOKENS:
     8_192,
+  MAX_RETRIES: 2,
+  INITIAL_BACKOFF_MS: 250,
+  MAX_BACKOFF_MS: 8_000,
 } as const;
 
 export const HTTP_STATUS_TO_MODEL_ERROR: Readonly<

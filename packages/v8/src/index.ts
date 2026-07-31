@@ -158,6 +158,10 @@ export {
   MODEL_PROVIDER_SUPPORT,
   modelEventSchema,
 } from "./modules/model-gateway";
+export type {
+  OpenAiCompatibleLlmPortConfig,
+  OpenAiCompatibleAuthHeader,
+} from "./modules/model-gateway";
 
 export { ToolRuntimePipeline } from "./engine/tool-runtime";
 export {
@@ -268,6 +272,7 @@ export {
   AGENT_ENGINE_SCHEMA_VERSION,
   composeReadOnlyAgentEngine,
   InMemoryRunCheckpointStore,
+  FileRunCheckpointStore,
   AgentEngineError,
   DEFAULT_TOOL_DEFINITIONS,
 } from "./engine/agent-engine";
@@ -281,4 +286,7 @@ export type {
   AgentEngineDependencies,
   ComposeReadOnlyAgentEngineOptions,
   AgentEngineErrorCode,
+  AgentRunCheckpoint,
+  AgentEngineRunCheckpointStorePort,
+  PendingApprovalState,
 } from "./engine/agent-engine";

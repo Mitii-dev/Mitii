@@ -11,21 +11,22 @@ This document freezes **product package boundaries**. It does not redesign V8 mo
 Execution order:
 
 1. **Phase 16** — clean active tree; one `legacy/` vault + one-click purge; strip new-code compat — **done** (vault purged 2026-07-26)
-2. **Phase 17** — F5 / initial launch wiring for `apps/vscode` — **done** (`pnpm run phase17:verify`)
+2. **Phase 17** — F5 / initial launch wiring for `apps/vscode` — **done** (`pnpm run f5:verify`)
 3. **Phase 14** — `tests/` + solid benchmark + package consumer suites (last) — **in progress**
 
 ## 1. Target dependency graph
 
 ```text
 apps/vscode ──┐
-apps/cli    ──┼──► packages/sdk ──► packages/v8
-              │              │
-tests/* ──────┤              ├── modules/* (business facades)
-  (incl. tests/benchmark)    └── engine/*
+apps/cli    ──┼──► packages/host ──► packages/sdk ──► packages/v8
+              │                         │
+tests/* ──────┤                         ├── modules/* (business facades)
+  (incl. tests/benchmark)               └── engine/*
 
 Forbidden:
-  packages/v8 → apps/* | packages/sdk | vscode | webview
-  packages/sdk → apps/* | vscode
+  packages/v8 → apps/* | packages/sdk | packages/host | vscode | webview
+  packages/sdk → apps/* | packages/host | vscode
+  packages/host → apps/* | vscode
   apps/* → another app's internals
   any product package → tests/* | legacy/*
   F5 / CI → legacy/*
@@ -40,7 +41,8 @@ mitii/
 ├── .vscode/                     # F5 → apps/vscode (Phase 17)
 ├── packages/
 │   ├── v8/                      # @mitii/v8
-│   └── sdk/                     # @mitii/sdk
+│   ├── sdk/                     # @mitii/sdk
+│   └── host/                    # @mitii/host (shared indexing / presets / checkpoints)
 ├── apps/
 │   ├── vscode/
 │   └── cli/
@@ -64,6 +66,7 @@ After Phase 16 + human purge the active root must not keep a second `src/` kerne
 |---|---|---|
 | V8 runtime | `@mitii/v8` | `packages/v8` |
 | SDK | `@mitii/sdk` | hosts/tests use this |
+| Host kit | `@mitii/host` | shared indexing, embeddings, presets, checkpoints |
 | CLI | `@mitii/cli` | solid benchmark agent target |
 | VS Code extension | `@mitii/vscode` | VSIX; F5 development path |
 | Solid benchmark | `@mitii/solid-benchmark` | `tests/benchmark` |
@@ -96,7 +99,7 @@ After Phase 16 + human purge the active root must not keep a second `src/` kerne
 | 10–13 | Packaging — **done** |
 | 15 | Host UX on SDK/V8 — **done** |
 | 16 | Clean repo + `legacy/` vault + strip compat — **done** (vault **purged**) |
-| 17 | F5 / initial launch wiring — **done** (`phase17:verify`) |
+| 17 | F5 / initial launch wiring — **done** (`f5:verify`) |
 | 14 | `tests/` + solid benchmark — **next (last)** |
 
 ## 9. Related documents

@@ -1,74 +1,60 @@
-# Release and rollback (Phase 15)
+# Release and rollback
 
-Publish units and CI gates for the Mitii monorepo after packaging (Phases 10–13) and host migration (Phase 15).
+Publish units and CI gates for the Mitii monorepo.
 
 ## Packages
 
-| Unit | Path | Artifact |
-|---|---|---|
-| `@mitii/v8` | `packages/v8` | npm (workspace; publish when ready) |
-| `@mitii/sdk` | `packages/sdk` | npm over `@mitii/v8` |
-| `@mitii/cli` | `apps/cli` | npm bin `mitii` |
-| `@mitii/vscode` | `apps/vscode` | VS Code VSIX |
+| Unit | Path | Artifact | Status |
+|---|---|---|---|
+| `@mitii/v8` | `packages/v8` | npm workspace | **`private: true`** — not published |
+| `@mitii/sdk` | `packages/sdk` | npm over `@mitii/v8` | **`private: true`** — not published |
+| `@mitii/cli` | `apps/cli` | npm bin `mitii` | **`private: true`** — not published |
+| `mitii-agent` (VS Code) | `apps/vscode` | VSIX | **Ship path** via Release workflow |
 
 Workspace root `package.json` is **private** and must not ship as the product.
 
 ## Version alignment
 
-- Keep `@mitii/v8`, `@mitii/sdk`, `@mitii/cli`, and `@mitii/vscode` on the same semver line when cutting a release (use repo `sync:versions` / package bumps together).
+- Keep `@mitii/v8`, `@mitii/sdk`, `@mitii/cli`, and the VS Code extension on the same semver line when cutting a release (`pnpm run sync:versions` / package bumps together).
 - VSIX `publisher` + extension id live only under `apps/vscode/package.json`.
 
 ## Build commands
 
 ```bash
-pnpm --filter @mitii/v8 build
-pnpm --filter @mitii/sdk build
-pnpm --filter @mitii/cli build
-pnpm --filter @mitii/vscode build
-pnpm --filter @mitii/vscode package   # vsce package --no-dependencies
-```
-
-Root helpers (thin orchestrator):
-
-```bash
 pnpm run build               # v8 + sdk + cli + vscode
 pnpm run build:all           # build + Electron native SQLite staged for F5
-pnpm run build:vscode        # → @mitii/vscode build
-pnpm run build:cli           # → @mitii/cli build
-pnpm run package             # → @mitii/vscode package
+pnpm run build:vscode        # extension only
+pnpm run build:cli           # CLI only
+pnpm run package             # VSIX via apps/vscode
 ```
 
 ## Required gates before release
 
-Run and record exit codes:
-
 ```bash
 pnpm run check:architecture
-pnpm --filter @mitii/v8 test
-pnpm --filter @mitii/sdk test
-pnpm --filter @mitii/cli test
-pnpm --filter @mitii/cli build && node apps/cli/bin/mitii.js ask "ping" --echo --json
-pnpm --filter @mitii/vscode build
+pnpm run typecheck
+pnpm test
+pnpm run build:cli
+node apps/cli/bin/mitii.js ask "ping" --echo --json
+pnpm run build:vscode
+pnpm run package
 ```
 
 Do not claim a gate passed unless it actually ran successfully.
 
 ## Publish
 
-- **npm:** from each package directory (or `pnpm --filter <name> publish`) after build; respect `private: true` until intentionally opened.
-- **VSIX:** `pnpm --filter @mitii/vscode package` then `vsce publish` / `ovsx publish` from `apps/vscode` (or root scripts once they target the app package only).
+- **npm:** deferred while packages are `private: true`. The `npm publish` workflow is intentionally a no-op guard. Remove `private` and restore a real publish job only when you intend to open the packages.
+- **VSIX:** `pnpm run package` then `pnpm run publish:vsce` / `pnpm run publish:ovsx`, or cut a `v*` tag to run `.github/workflows/release.yml`.
 - Prefer SecretStorage / CI secrets for marketplace tokens — never commit them.
 
 ## Rollback
 
 1. **VSIX:** install the previous marketplace/VSIX version; disable auto-update if investigating a regression.
-2. **npm:** pin consumers to the prior `@mitii/sdk` / `@mitii/cli` version; do not delete published versions.
-3. **Hosts:** production entry points are `apps/cli` and `apps/vscode` only. Do not re-enable legacy `src/kernel` controllers on those paths.
+2. **npm:** N/A while packages remain private. After a future public release, pin consumers to the prior version; do not delete published versions.
+3. **Hosts:** production entry points are `apps/cli` and `apps/vscode` only.
 4. Feature flags: optional host settings under `mitii.*` (e.g. `provider.type=echo`) for safe local degrade.
 
 ## Legacy
 
-- Phase 16 vaulted obsolete trees under `legacy/`; human purge completed **2026-07-26** (`MITII_PURGE_LEGACY=1 pnpm run legacy:purge`).
-- Production hosts and F5 must not recreate or import `legacy/**` / `src/kernel` (architecture tests).
-- `scripts/legacy-purge.mjs` remains as a guard (exits non-zero if `legacy/` is already absent).
-- Phase 14 owns `tests/` + solid benchmark; old flat `test/` / `tools/benchmark` are gone with the vault.
+- Obsolete trees under `legacy/` were purged. Do not reintroduce `legacy/**` or vaulted kernel paths into product packages (architecture tests).

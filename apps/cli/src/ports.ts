@@ -9,11 +9,15 @@ import {
   ToolRuntimePipeline,
   VerificationPipeline,
   WorkspaceFileSystemManifestReader,
-  createFileSystemSkillsCatalog,
   createMitiiClient,
   type CreateMitiiClientOptions,
   type MitiiClient,
 } from '@mitii/sdk';
+import {
+  createFileSystemSkillsCatalog,
+  createWorkspaceCheckpointStore,
+  getProviderPreset,
+} from '@mitii/host';
 import type { LlmPort, ModelCapabilities, ModelEvent, ModelRequest } from '@mitii/v8';
 
 import { loadMitiiHostConfig, type MitiiHostConfig } from './config.js';
@@ -97,15 +101,22 @@ export function resolveCliPorts(
     }
     const model = env.MITII_MODEL ?? config.model ?? 'gpt-4o-mini';
     const baseUrl = env.MITII_BASE_URL ?? config.baseUrl;
+    const preset = getProviderPreset(config.providerPreset ?? 'openai-compatible');
+    const authHeader = preset?.authHeader;
+    const chatCompletionsPath = preset?.chatCompletionsPath;
     const runLlm = new OpenAiCompatibleLlmPort({
       model,
       apiKey,
       ...(baseUrl ? { baseUrl } : {}),
+      ...(authHeader ? { authHeader } : {}),
+      ...(chatCompletionsPath ? { chatCompletionsPath } : {}),
     });
     const understandingLlm = new OpenAiCompatibleLlmPort({
       model,
       apiKey,
       ...(baseUrl ? { baseUrl } : {}),
+      ...(authHeader ? { authHeader } : {}),
+      ...(chatCompletionsPath ? { chatCompletionsPath } : {}),
       capabilities: { supportsStructuredOutput: true },
     });
     return {
@@ -170,7 +181,8 @@ export function createCliClient(options: {
     workspaceId: ports.workspaceId,
     repositoryState,
     repositoryContext,
-    enableInMemoryCheckpoints: true,
+    enableInMemoryCheckpoints: false,
+    checkpointStore: createWorkspaceCheckpointStore(options.cwd),
     tools,
     verification,
     skillsCatalog: createFileSystemSkillsCatalog({

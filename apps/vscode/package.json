@@ -224,7 +224,22 @@
             "openai-compatible"
           ],
           "default": "echo",
-          "description": "LLM provider type"
+          "description": "LLM provider adapter family (echo or OpenAI-compatible)."
+        },
+        "mitii.provider.preset": {
+          "type": "string",
+          "enum": [
+            "echo",
+            "ollama",
+            "lm-studio",
+            "openai",
+            "openrouter",
+            "deepseek",
+            "azure-openai",
+            "openai-compatible"
+          ],
+          "default": "echo",
+          "description": "Provider preset that prefills base URL, model, and auth style. All non-echo presets use the OpenAI-compatible adapter."
         },
         "mitii.provider.baseUrl": {
           "type": "string",
@@ -472,6 +487,7 @@
     "package:raw": "pnpm exec vsce package --no-dependencies"
   },
   "dependencies": {
+    "@mitii/host": "workspace:*",
     "@mitii/sdk": "workspace:*",
     "@mitii/v8": "workspace:*",
     "better-sqlite3": "^12.11.1"

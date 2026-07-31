@@ -5,6 +5,7 @@ const version = root.version;
 const packageFiles = [
   'packages/v8/package.json',
   'packages/sdk/package.json',
+  'packages/host/package.json',
   'apps/cli/package.json',
   'apps/vscode/package.json',
 ];

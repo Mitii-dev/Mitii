@@ -32,6 +32,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@mitii/host':
+        specifier: workspace:*
+        version: link:../../packages/host
       '@mitii/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -61,6 +64,9 @@ importers:
 
   apps/vscode:
     dependencies:
+      '@mitii/host':
+        specifier: workspace:*
+        version: link:../../packages/host
       '@mitii/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -124,6 +130,29 @@ importers:
       vite:
         specifier: ^5.4.11
         version: 5.4.21(@types/node@20.19.43)
+
+  packages/host:
+    dependencies:
+      '@mitii/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+      '@mitii/v8':
+        specifier: workspace:*
+        version: link:../v8
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.5.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0)
+    optionalDependencies:
+      '@lancedb/lancedb':
+        specifier: 0.33.0
+        version: 0.33.0(apache-arrow@18.1.0)
 
   packages/sdk:
     dependencies:

@@ -32,16 +32,6 @@ export {
   DEFAULT_HOST_SKILLS,
 } from './defaultSkills';
 
-export {
-  createFileSystemSkillsCatalog,
-  loadDiskSkills,
-} from './skillsCatalog';
-export type {
-  DiskSkillContentMode,
-  DiskSkillManifest,
-  LoadDiskSkillsOptions,
-} from './skillsCatalog';
-
 /** Re-export selected V8 composition helpers for advanced host wiring. */
 export {
   composeReadOnlyAgentEngine,
@@ -49,6 +39,7 @@ export {
   OpenAiCompatibleLlmPort,
   InMemoryRepositoryStateStore,
   InMemoryRunCheckpointStore,
+  FileRunCheckpointStore,
   InMemorySkillsCatalog,
   SkillsPipeline,
   SKILLS_SCHEMA_VERSION,
@@ -102,4 +93,9 @@ export type {
   DiagnosticsPort,
   DiagnosticItem,
   GitPort,
+  AgentRunCheckpoint,
+  AgentEngineRunCheckpointStorePort,
+  PendingApprovalState,
+  OpenAiCompatibleLlmPortConfig,
+  OpenAiCompatibleAuthHeader,
 } from '@mitii/v8';
