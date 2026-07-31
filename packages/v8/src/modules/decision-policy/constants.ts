@@ -66,7 +66,12 @@ export const READ_ONLY_TOOL_IDS = [
   "read_package_scripts",
 ] as const;
 
-/** Executable mutation tools only — stubs like run_command stay out of grants. */
+/** Process tools that may change workspace state through repository scripts. */
+export const PROCESS_TOOL_IDS = [
+  "run_command",
+] as const;
+
+/** Executable mutation tools for direct workspace mutations. */
 export const MUTATION_TOOL_IDS = [
   "apply_patch",
   "delete_file",
@@ -96,6 +101,7 @@ export const DECISION_REASON_CODES = [
   "mutation_budget_relaxed",
   "mutation_budget_standard",
   "mutation_budget_tight",
+  "process_execution_granted",
   "verification_required",
   "verification_not_required",
 ] as const;

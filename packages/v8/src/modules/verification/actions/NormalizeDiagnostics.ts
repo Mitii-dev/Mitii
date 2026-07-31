@@ -11,6 +11,7 @@ import { DEFAULT_MAX_DIAGNOSTICS } from "../defaults";
 export function normalizeDiagnostics(params: {
   checks: readonly VerificationCheckResult[];
   toolOutputs: ReadonlyMap<string, unknown>;
+  baselineDiagnostics?: readonly VerificationDiagnostic[];
 }): VerificationDiagnostic[] {
   const diagnostics: VerificationDiagnostic[] = [];
 
@@ -33,7 +34,26 @@ export function normalizeDiagnostics(params: {
     );
   }
 
-  return diagnostics.slice(0, DEFAULT_MAX_DIAGNOSTICS);
+  return filterBaselineDiagnostics({
+    diagnostics,
+    baselineDiagnostics: params.baselineDiagnostics,
+  }).slice(0, DEFAULT_MAX_DIAGNOSTICS);
+}
+
+export function filterBaselineDiagnostics(params: {
+  diagnostics: readonly VerificationDiagnostic[];
+  baselineDiagnostics?: readonly VerificationDiagnostic[];
+}): VerificationDiagnostic[] {
+  if (!params.baselineDiagnostics || params.baselineDiagnostics.length === 0) {
+    return [...params.diagnostics];
+  }
+
+  const baselineKeys = new Set(
+    params.baselineDiagnostics.map(diagnosticIdentityKey),
+  );
+  return params.diagnostics.filter(
+    (diagnostic) => !baselineKeys.has(diagnosticIdentityKey(diagnostic)),
+  );
 }
 
 function fromDiagnosticsTool(
@@ -175,4 +195,18 @@ function extractCombinedText(output: unknown): string {
   return [record.stdout, record.stderr]
     .filter((value): value is string => typeof value === "string")
     .join("\n");
+}
+
+function diagnosticIdentityKey(diagnostic: VerificationDiagnostic): string {
+  return [
+    diagnostic.path,
+    diagnostic.severity,
+    diagnostic.message,
+    diagnostic.startLine ?? "",
+    diagnostic.startColumn ?? "",
+    diagnostic.endLine ?? "",
+    diagnostic.endColumn ?? "",
+    diagnostic.source ?? "",
+    diagnostic.code ?? "",
+  ].join("\u001f");
 }

@@ -200,6 +200,24 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.route).not.toBe("execute");
     expect(decision.toolGrant.maximumWorkspaceEffect).not.toBe("write");
     expect(decision.toolGrant.allowedTools).not.toContain("apply_patch");
+    expect(decision.toolGrant.allowedTools).not.toContain("run_command");
+  });
+
+  it("never grants run_command in plan mode", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "plan",
+        message: "Plan the fix and tests for auth.ts",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "bugfix",
+          interactionIntent: "act",
+        }),
+      }),
+    );
+
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
+    expect(decision.toolGrant.allowedTools).toContain("run_readonly_command");
+    expect(decision.toolGrant.allowedTools).not.toContain("run_command");
   });
 
   it("requires every_mutation approval and verification for high-risk execute", () => {
@@ -348,7 +366,10 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.allowedTools).toContain("delete_file");
     expect(decision.toolGrant.allowedTools).toContain("delete_directory");
     expect(decision.toolGrant.allowedTools).toContain("move_file");
+    expect(decision.toolGrant.allowedTools).toContain("run_command");
+    expect(decision.toolGrant.commandRules?.[0]?.prefixes).toContain("pnpm");
     expect(decision.reasonCodes).toContain("mutation_execute");
+    expect(decision.reasonCodes).toContain("process_execution_granted");
   });
 
   it("still routes agent how-to implement questions to repository_answer", () => {
@@ -371,6 +392,7 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
     expect(decision.toolGrant.allowedTools).not.toContain("apply_patch");
     expect(decision.toolGrant.allowedTools).not.toContain("delete_file");
+    expect(decision.toolGrant.allowedTools).not.toContain("run_command");
   });
 
   it("routes agent mutation intents to execute even when interaction is question", () => {
@@ -394,6 +416,7 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
     expect(decision.toolGrant.allowedTools).toContain("apply_patch");
     expect(decision.toolGrant.allowedTools).toContain("move_file");
+    expect(decision.toolGrant.allowedTools).toContain("run_command");
   });
 
   it("does not clarify clear agent implement asks even when understanding is soft-ambiguous", () => {

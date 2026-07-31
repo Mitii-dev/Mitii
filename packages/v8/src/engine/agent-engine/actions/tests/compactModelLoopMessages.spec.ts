@@ -4,12 +4,98 @@ import { CharacterTokenEstimator } from "../../../../modules/prompt-construction
 import {
   compactModelLoopMessages,
   estimateModelMessagesTokens,
+  resolveCompactionPressure,
+  resolveCompactionThresholds,
 } from "../compactModelLoopMessages";
 import type { ModelMessage } from "../../../../modules/model-gateway";
 
 const estimator = new CharacterTokenEstimator();
 
 describe("compactModelLoopMessages", () => {
+  it("reports warn pressure before auto compaction changes history", () => {
+    const messages: ModelMessage[] = [
+      { role: "system", content: "system" },
+      { role: "user", content: "x".repeat(2_900) },
+    ];
+
+    const result = compactModelLoopMessages({
+      messages,
+      estimator,
+      budgetTokens: 1_000,
+    });
+
+    expect(result.pressure).toBe("warn");
+    expect(result.compacted).toBe(false);
+    expect(result.messages).toEqual(messages);
+    expect(result.thresholds).toEqual({
+      warnTokens: 700,
+      autoTokens: 800,
+      hardTokens: 920,
+    });
+  });
+
+  it("starts auto compaction at the ladder threshold", () => {
+    const messages: ModelMessage[] = [
+      { role: "system", content: "system" },
+      { role: "user", content: "fix it" },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "call_old",
+            name: "search_files",
+            arguments: JSON.stringify({ query: "x".repeat(7_000) }),
+          },
+        ],
+      },
+      {
+        role: "tool",
+        toolCallId: "call_old",
+        content: "y".repeat(1_200),
+      },
+      { role: "assistant", content: "next" },
+    ];
+
+    const result = compactModelLoopMessages({
+      messages,
+      estimator,
+      budgetTokens: 2_400,
+      recentToolMessagesToKeepFull: 0,
+      minMessagesToKeep: 4,
+    });
+
+    expect(result.pressure).toBe("auto");
+    expect(result.compacted).toBe(true);
+    expect(result.usedTokens).toBeLessThan(
+      estimateModelMessagesTokens(messages, estimator),
+    );
+  });
+
+  it("resolves sorted compaction thresholds and pressure", () => {
+    const thresholds = resolveCompactionThresholds({
+      budgetTokens: 10_000,
+      warnRatio: 0.9,
+      autoRatio: 0.7,
+      hardRatio: 0.8,
+    });
+
+    expect(thresholds).toEqual({
+      warnTokens: 7_000,
+      autoTokens: 8_000,
+      hardTokens: 9_000,
+    });
+    expect(resolveCompactionPressure({ usedTokens: 7_500, thresholds })).toBe(
+      "warn",
+    );
+    expect(resolveCompactionPressure({ usedTokens: 8_500, thresholds })).toBe(
+      "auto",
+    );
+    expect(resolveCompactionPressure({ usedTokens: 9_500, thresholds })).toBe(
+      "hard",
+    );
+  });
+
   it("counts and compacts prior tool call arguments, not only message content", () => {
     const hugeArguments = JSON.stringify({
       path: "src/large.ts",
@@ -74,6 +160,7 @@ describe("compactModelLoopMessages", () => {
 
     expect(before).toBeGreaterThan(6_000);
     expect(result.compacted).toBe(true);
+    expect(result.pressure).toBe("hard");
     expect(result.usedTokens).toBeLessThan(before);
     expect(oldToolCall?.arguments).toContain(
       "previous_completed_tool_call_arguments_omitted",

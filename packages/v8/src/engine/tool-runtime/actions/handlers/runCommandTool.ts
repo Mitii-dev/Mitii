@@ -7,8 +7,9 @@ import {
 import { executeRunCommand } from "../ExecuteRunCommand";
 
 /**
- * Opt-in mutating argv command. Not in default MUTATION_TOOL_IDS —
- * hosts/tests must grant it explicitly with commandRules prefixes.
+ * Mutating argv command. Decision Policy grants this only on agent execute
+ * paths that need process verification; Tool Runtime still enforces write
+ * authority, approval, argv-only prefixes, and workspace cwd.
  */
 export const runCommandTool: RegisteredTool = {
   definition: defineTool({

@@ -1913,6 +1913,7 @@ export class AgentEnginePipeline {
     let answer = "";
     let truncationRecoveries = 0;
     let pendingTextContinuation = "";
+    let emittedLoopPressureWarning = false;
     let emittedLoopCompactionWarning = false;
 
     while (true) {
@@ -1949,6 +1950,20 @@ export class AgentEnginePipeline {
         estimator: this.tokenEstimator,
         budgetTokens: loopInputBudgetTokens,
       });
+      if (
+        compaction.pressure === "warn" &&
+        !emittedLoopPressureWarning &&
+        !compaction.compacted
+      ) {
+        emittedLoopPressureWarning = true;
+        this.emit(bus, {
+          type: "warning",
+          runId,
+          message:
+            "Model loop context is approaching the compaction threshold.",
+          at: this.isoNow(),
+        });
+      }
       if (compaction.compacted) {
         messages.splice(0, messages.length, ...compaction.messages);
         if (!emittedLoopCompactionWarning) {
@@ -1959,8 +1974,7 @@ export class AgentEnginePipeline {
           this.emit(bus, {
             type: "warning",
             runId,
-            message:
-              "Compacted previous tool call history before the next model call.",
+            message: `Compacted previous tool call history before the next model call (pressure=${compaction.pressure}).`,
             at: this.isoNow(),
           });
         }

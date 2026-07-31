@@ -24,5 +24,11 @@ export {
   compactModelLoopMessages,
   estimateModelMessageTokens,
   estimateModelMessagesTokens,
+  resolveCompactionPressure,
+  resolveCompactionThresholds,
 } from "./compactModelLoopMessages";
-export type { ModelLoopCompactionResult } from "./compactModelLoopMessages";
+export type {
+  ModelLoopCompactionResult,
+  ModelLoopCompactionPressure,
+  ModelLoopCompactionThresholds,
+} from "./compactModelLoopMessages";

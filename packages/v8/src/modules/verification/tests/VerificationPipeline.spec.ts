@@ -170,6 +170,94 @@ describe("VerificationPipeline", () => {
     expect(tools.execute).toHaveBeenCalled();
   });
 
+  it("filters pre-existing diagnostics from verification evidence", async () => {
+    const tools = createTools((input) => {
+      if (input.toolName === "read_diagnostics") {
+        return toolResult({
+          callId: input.callId,
+          toolName: input.toolName,
+          status: "succeeded",
+          output: {
+            diagnostics: [
+              {
+                path: "src/app.ts",
+                severity: "error",
+                message: "Existing unrelated error",
+                startLine: 4,
+                source: "tsserver",
+                code: "TS1001",
+              },
+              {
+                path: "src/app.ts",
+                severity: "error",
+                message: "New error from changed code",
+                startLine: 8,
+                source: "tsserver",
+                code: "TS2339",
+              },
+            ],
+          },
+        });
+      }
+      if (input.toolName === "read_git_status") {
+        return toolResult({
+          callId: input.callId,
+          toolName: input.toolName,
+          status: "succeeded",
+          output: {
+            staged: [],
+            unstaged: ["src/app.ts"],
+            untracked: [],
+            diff: "diff --git a/src/app.ts",
+            truncated: false,
+          },
+        });
+      }
+      return toolResult({
+        callId: input.callId,
+        toolName: input.toolName,
+        status: "succeeded",
+        output: {
+          argv: (input.arguments as { argv?: string[] }).argv ?? [],
+          exitCode: 0,
+          stdout: "ok",
+          stderr: "",
+          truncated: false,
+        },
+      });
+    });
+
+    const result = await new VerificationPipeline({
+      tools,
+      manifests: new InMemoryManifestReader(),
+    }).verify(
+      baseVerificationInput({
+        baselineDiagnostics: [
+          {
+            path: "src/app.ts",
+            severity: "error",
+            message: "Existing unrelated error",
+            startLine: 4,
+            source: "tsserver",
+            code: "TS1001",
+          },
+        ],
+        verification: {
+          required: true,
+          minimumEvidence: ["diagnostics", "diff_review"],
+          allowUnavailable: true,
+        },
+      }),
+    );
+
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        message: "New error from changed code",
+        code: "TS2339",
+      }),
+    ]);
+  });
+
   it("infers nested package checks and treats tsc build scripts as typecheck evidence", async () => {
     const manifests = new InMemoryManifestReader({
       "package.json": JSON.stringify({

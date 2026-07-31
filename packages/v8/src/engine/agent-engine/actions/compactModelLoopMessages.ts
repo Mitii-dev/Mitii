@@ -5,7 +5,18 @@ const DEFAULT_RECENT_TOOL_MESSAGES_TO_KEEP_FULL = 3;
 const DEFAULT_COMPACTED_TOOL_RESULT_CHARS = 400;
 const DEFAULT_COMPACTED_TOOL_ARGUMENT_CHARS = 256;
 const DEFAULT_MIN_MESSAGES_TO_KEEP = 6;
+const DEFAULT_WARN_RATIO = 0.7;
+const DEFAULT_AUTO_RATIO = 0.8;
+const DEFAULT_HARD_RATIO = 0.92;
 const TRUNCATED_FOR_LOOP_MARKER = "\n...[truncated from prior tool history]";
+
+export type ModelLoopCompactionPressure = "within" | "warn" | "auto" | "hard";
+
+export interface ModelLoopCompactionThresholds {
+  warnTokens: number;
+  autoTokens: number;
+  hardTokens: number;
+}
 
 export interface ModelLoopCompactionResult {
   messages: ModelMessage[];
@@ -13,6 +24,8 @@ export interface ModelLoopCompactionResult {
   omittedTokens: number;
   truncatedTokens: number;
   compacted: boolean;
+  pressure: ModelLoopCompactionPressure;
+  thresholds: ModelLoopCompactionThresholds;
 }
 
 export function compactModelLoopMessages(params: {
@@ -23,6 +36,9 @@ export function compactModelLoopMessages(params: {
   compactedToolResultChars?: number;
   compactedToolArgumentChars?: number;
   minMessagesToKeep?: number;
+  warnRatio?: number;
+  autoRatio?: number;
+  hardRatio?: number;
 }): ModelLoopCompactionResult {
   const recentToolMessagesToKeepFull =
     params.recentToolMessagesToKeepFull ??
@@ -33,6 +49,12 @@ export function compactModelLoopMessages(params: {
     params.compactedToolArgumentChars ?? DEFAULT_COMPACTED_TOOL_ARGUMENT_CHARS;
   const minMessagesToKeep =
     params.minMessagesToKeep ?? DEFAULT_MIN_MESSAGES_TO_KEEP;
+  const thresholds = resolveCompactionThresholds({
+    budgetTokens: params.budgetTokens,
+    warnRatio: params.warnRatio ?? DEFAULT_WARN_RATIO,
+    autoRatio: params.autoRatio ?? DEFAULT_AUTO_RATIO,
+    hardRatio: params.hardRatio ?? DEFAULT_HARD_RATIO,
+  });
 
   let working = params.messages.map(cloneMessage);
   let compacted = false;
@@ -42,13 +64,19 @@ export function compactModelLoopMessages(params: {
     estimateModelMessagesTokens(messages, params.estimator);
 
   let usedTokens = estimateAll(working);
-  if (usedTokens <= params.budgetTokens) {
+  const initialPressure = resolveCompactionPressure({
+    usedTokens,
+    thresholds,
+  });
+  if (usedTokens < thresholds.autoTokens) {
     return {
       messages: working,
       usedTokens,
       omittedTokens: 0,
       truncatedTokens: 0,
       compacted: false,
+      pressure: initialPressure,
+      thresholds,
     };
   }
 
@@ -58,7 +86,7 @@ export function compactModelLoopMessages(params: {
     )
     .filter((index) => index >= 0);
   const fullToolCallIndices = new Set(
-    toolCallMessageIndices.slice(-recentToolMessagesToKeepFull),
+    takeLastIndices(toolCallMessageIndices, recentToolMessagesToKeepFull),
   );
 
   working = working.map((message, index) => {
@@ -95,7 +123,7 @@ export function compactModelLoopMessages(params: {
     .map((message, index) => (message.role === "tool" ? index : -1))
     .filter((index) => index >= 0);
   const fullToolMessageIndices = new Set(
-    toolMessageIndices.slice(-recentToolMessagesToKeepFull),
+    takeLastIndices(toolMessageIndices, recentToolMessagesToKeepFull),
   );
 
   working = working.map((message, index) => {
@@ -122,7 +150,7 @@ export function compactModelLoopMessages(params: {
   usedTokens = estimateAll(working);
   const omittedBeforeDrop = usedTokens;
   while (
-    usedTokens > params.budgetTokens &&
+    usedTokens > thresholds.autoTokens &&
     countNonSystemMessages(working) > minMessagesToKeep
   ) {
     const next = dropOldestNonSystemTurn(working);
@@ -134,7 +162,7 @@ export function compactModelLoopMessages(params: {
     usedTokens = estimateAll(working);
   }
 
-  if (usedTokens > params.budgetTokens) {
+  if (usedTokens > thresholds.hardTokens) {
     const fullyCompacted = compactAllToolPayloads({
       messages: working,
       estimator: params.estimator,
@@ -152,7 +180,44 @@ export function compactModelLoopMessages(params: {
     omittedTokens: Math.max(0, omittedBeforeDrop - usedTokens),
     truncatedTokens,
     compacted,
+    pressure: initialPressure,
+    thresholds,
   };
+}
+
+export function resolveCompactionThresholds(params: {
+  budgetTokens: number;
+  warnRatio?: number;
+  autoRatio?: number;
+  hardRatio?: number;
+}): ModelLoopCompactionThresholds {
+  const budgetTokens = Math.max(1, Math.floor(params.budgetTokens));
+  const warnRatio = clampRatio(params.warnRatio ?? DEFAULT_WARN_RATIO);
+  const autoRatio = clampRatio(params.autoRatio ?? DEFAULT_AUTO_RATIO);
+  const hardRatio = clampRatio(params.hardRatio ?? DEFAULT_HARD_RATIO);
+  const sorted = [warnRatio, autoRatio, hardRatio].sort((a, b) => a - b);
+
+  return {
+    warnTokens: Math.max(1, Math.floor(budgetTokens * sorted[0]!)),
+    autoTokens: Math.max(1, Math.floor(budgetTokens * sorted[1]!)),
+    hardTokens: Math.max(1, Math.floor(budgetTokens * sorted[2]!)),
+  };
+}
+
+export function resolveCompactionPressure(params: {
+  usedTokens: number;
+  thresholds: ModelLoopCompactionThresholds;
+}): ModelLoopCompactionPressure {
+  if (params.usedTokens >= params.thresholds.hardTokens) {
+    return "hard";
+  }
+  if (params.usedTokens >= params.thresholds.autoTokens) {
+    return "auto";
+  }
+  if (params.usedTokens >= params.thresholds.warnTokens) {
+    return "warn";
+  }
+  return "within";
 }
 
 export function estimateModelMessagesTokens(
@@ -198,6 +263,13 @@ function cloneMessage(message: ModelMessage): ModelMessage {
   };
 }
 
+function clampRatio(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_AUTO_RATIO;
+  }
+  return Math.min(1, Math.max(0.01, value));
+}
+
 function buildCompactedToolArguments(toolCall: ModelToolCall): string {
   return JSON.stringify({
     compacted: true,
@@ -208,6 +280,13 @@ function buildCompactedToolArguments(toolCall: ModelToolCall): string {
 
 function countNonSystemMessages(messages: readonly ModelMessage[]): number {
   return messages.filter((message) => message.role !== "system").length;
+}
+
+function takeLastIndices(indices: readonly number[], count: number): number[] {
+  if (count <= 0) {
+    return [];
+  }
+  return indices.slice(-count);
 }
 
 function dropOldestNonSystemTurn(

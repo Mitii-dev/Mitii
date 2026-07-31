@@ -639,6 +639,27 @@ export class RepoMapRanker {
 
     const normalizedPath =
       input.file.relativePath.toLowerCase();
+    const normalizedQuery =
+      input.context.query?.toLowerCase() ?? "";
+
+    if (
+      normalizedQuery.includes(
+        normalizedPath,
+      )
+    ) {
+      score +=
+        REPO_MAP_SCORE_WEIGHTS
+          .QUERY_EXACT_PATH_MATCH;
+
+      reasons.push({
+        type: "query_path",
+        score:
+          REPO_MAP_SCORE_WEIGHTS
+            .QUERY_EXACT_PATH_MATCH,
+        evidence:
+          `Path "${input.file.relativePath}" was explicitly mentioned in the query.`,
+      });
+    }
 
     for (
       const term of

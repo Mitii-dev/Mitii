@@ -13,6 +13,7 @@ import {
   VERIFICATION_CHANGE_SCOPES,
   VERIFICATION_SCHEMA_VERSION,
 } from "../../constants";
+import { verificationDiagnosticSchema } from "../output/VerificationResult";
 
 export const verificationChangeScopeSchema = z.enum(VERIFICATION_CHANGE_SCOPES);
 
@@ -36,6 +37,11 @@ export const verificationInputSchema = z
     verification: verificationRequirementSchema,
     grant: toolGrantSchema,
     changeScope: verificationChangeScopeSchema.default("localized"),
+    /**
+     * Optional pre-mutation diagnostics snapshot. When present, verification
+     * evidence reports only diagnostics that are new after the change.
+     */
+    baselineDiagnostics: z.array(verificationDiagnosticSchema).optional(),
     /** Published readiness of the pinned state; unavailable blocks verification. */
     stateReadiness: z
       .enum(["ready", "degraded", "unavailable"])

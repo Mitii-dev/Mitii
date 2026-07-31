@@ -148,6 +148,7 @@ export class VerificationPipeline {
     const diagnostics = normalizeDiagnostics({
       checks: executed.checks,
       toolOutputs: executed.toolOutputs,
+      baselineDiagnostics: parsed.baselineDiagnostics,
     });
 
     const inspection = await inspectDiffAndStaleRisk({

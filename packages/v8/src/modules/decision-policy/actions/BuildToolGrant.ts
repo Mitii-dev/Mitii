@@ -1,7 +1,9 @@
 import type { RequestUnderstandingResult } from "../../request-understanding";
 
 import {
+  MUTATION_TASK_INTENTS,
   MUTATION_TOOL_IDS,
+  PROCESS_TOOL_IDS,
   READ_ONLY_TOOL_IDS,
 } from "../constants";
 import type {
@@ -15,7 +17,10 @@ import {
   DEFAULT_READ_ONLY_TOOL_GRANT_LIMITS,
   DEFAULT_TOOL_GRANT_LIMITS,
 } from "../defaults";
-import { DEFAULT_AGENT_READONLY_COMMAND_PREFIXES } from "./BuildVerificationGrant";
+import {
+  DEFAULT_AGENT_READONLY_COMMAND_PREFIXES,
+  DEFAULT_VERIFICATION_COMMAND_PREFIXES,
+} from "./BuildVerificationGrant";
 import { resolveMutationBudget } from "./ResolveMutationBudget";
 
 export interface ToolGrantResolution {
@@ -115,6 +120,12 @@ export function buildToolGrant(params: {
 
   const mutation = resolveMutationBudget({ understanding });
   reasonCodes.push(...mutation.reasonCodes);
+  const processExecution = resolveProcessExecutionAuthority({
+    understanding,
+    verificationRequired:
+      understanding.taskAnalysis.recommendsVerification === true,
+  });
+  reasonCodes.push(...processExecution.reasonCodes);
 
   const network = resolveNetworkAuthority({
     understanding,
@@ -128,6 +139,7 @@ export function buildToolGrant(params: {
       allowedTools: [
         ...READ_ONLY_TOOL_IDS,
         ...MUTATION_TOOL_IDS,
+        ...processExecution.allowedTools,
         ...network.allowedTools,
       ],
       allowedEffects: [
@@ -137,13 +149,52 @@ export function buildToolGrant(params: {
         ...network.allowedEffects,
       ],
       pathScopes,
-      commandRules,
+      commandRules: processExecution.commandRules,
       networkHosts: network.networkHosts,
       approvalMode,
       limits: { ...DEFAULT_TOOL_GRANT_LIMITS },
       mutationBudget: mutation.mutationBudget,
     },
     reasonCodes: [...reasonCodes, ...network.reasonCodes],
+  };
+}
+
+function resolveProcessExecutionAuthority(params: {
+  understanding: RequestUnderstandingResult;
+  verificationRequired: boolean;
+}): {
+  allowedTools: string[];
+  commandRules: ToolGrant["commandRules"];
+  reasonCodes: DecisionReasonCode[];
+} {
+  const primaryIntent =
+    params.understanding.intent.classification.primaryTaskIntent;
+  const mutationIntent = (MUTATION_TASK_INTENTS as readonly string[]).includes(
+    primaryIntent,
+  );
+
+  if (!mutationIntent && !params.verificationRequired) {
+    return {
+      allowedTools: [],
+      commandRules: [
+        {
+          prefixes: [...DEFAULT_AGENT_READONLY_COMMAND_PREFIXES],
+          allowShellMetacharacters: false,
+        },
+      ],
+      reasonCodes: [],
+    };
+  }
+
+  return {
+    allowedTools: [...PROCESS_TOOL_IDS],
+    commandRules: [
+      {
+        prefixes: [...DEFAULT_VERIFICATION_COMMAND_PREFIXES],
+        allowShellMetacharacters: false,
+      },
+    ],
+    reasonCodes: ["process_execution_granted"],
   };
 }
 
