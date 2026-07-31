@@ -19,6 +19,7 @@ build/
 coverage/
 *.lock
 *.map
+.cursor/
 
 # Benchmark / eval runtime (local generation and reports)
 # Old harness lives under legacy/tools-benchmark until human purge.
