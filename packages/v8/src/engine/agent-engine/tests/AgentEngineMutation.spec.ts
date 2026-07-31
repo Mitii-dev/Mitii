@@ -311,6 +311,98 @@ describe("AgentEnginePipeline mutation approvals (Phase 8)", () => {
     expect(rolledBack.content).toBe("const x = 1;\n");
   });
 
+  it("keeps mutations when verification returns implemented_unverified", async () => {
+    const { fs, realTools } = createWorkspace();
+    const tools = wrapTools(realTools);
+    const pinnedState = { workspaceId: "ws_1", stateToken: "tok_1" };
+
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        toolGrant: createWriteGrant({ approvalMode: "never" }),
+        pinnedState,
+        verification: {
+          required: true,
+          minimumEvidence: ["diagnostics", "diff_review", "tests"],
+          allowUnavailable: false,
+        },
+      }),
+      llm: new ScriptedLlmPort(
+        [
+          {
+            toolCalls: [
+              {
+                id: "call_patch",
+                name: "apply_patch",
+                arguments: JSON.stringify(APPLY_PATCH_ARGS),
+              },
+            ],
+          },
+          { content: "Updated dependency in package.json." },
+        ],
+        createCapabilities({ supportsTools: true }),
+      ),
+    });
+    deps.tools = tools;
+    deps.verification = {
+      verify: async (): Promise<VerificationResult> => ({
+        schemaVersion: VERIFICATION_SCHEMA_VERSION,
+        status: "implemented_unverified",
+        stateToken: pinnedState.stateToken,
+        affectedProjectIds: [],
+        checks: [
+          {
+            checkId: "diagnostics:workspace",
+            kind: "diagnostics",
+            label: "diagnostics",
+            evidenceSource: "tool:read_diagnostics",
+            outcome: "passed",
+            summary: "Read workspace diagnostics completed.",
+          },
+          {
+            checkId: "diff_review:workspace",
+            kind: "diff_review",
+            label: "diff review",
+            evidenceSource: "tool:read_git_status",
+            outcome: "passed",
+            summary: "Inspect git status and diff completed.",
+          },
+        ],
+        diagnostics: [],
+        diff: {
+          reviewed: true,
+          staleStateRisk: false,
+          summary: "reviewed",
+          changedPaths: ["src/a.ts"],
+        },
+        warnings: [
+          'package.json at "package.json" has no discoverable typecheck/lint/test/build scripts.',
+        ],
+        reasonCodes: ["narrow_scope_selected", "checks_unavailable"],
+        durationMs: 5,
+      }),
+    };
+    const engine = new AgentEnginePipeline(deps);
+
+    const result = await engine.start(
+      baseStartInput({
+        repositoryState: { reference: pinnedState, readiness: "ready" },
+      }),
+    ).result;
+
+    expect(result.status).toBe("completed");
+    expect(result.reasonCodes).toContain("verification_skipped");
+    expect(result.reasonCodes).toContain("mutation_applied");
+    expect(result.reasonCodes).not.toContain("mutation_rolled_back");
+    expect(result.reasonCodes).not.toContain("verification_failed");
+    expect(result.warnings.some((warning) => warning.includes("unverified"))).toBe(
+      true,
+    );
+
+    const kept = await fs.readFile(`${WORKSPACE}/src/a.ts`);
+    expect(kept.content).toBe("const x = 2;\n");
+  });
+
   it("reports verification unavailability instead of the stale model answer", async () => {
     const { fs, realTools } = createWorkspace();
     const tools = wrapTools(realTools);

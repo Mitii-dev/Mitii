@@ -379,9 +379,50 @@ describe("VerificationPipeline", () => {
     );
 
     expect(result.checks.some((check) => check.kind === "test")).toBe(false);
-    expect(result.status).not.toBe("verified_success");
+    expect(result.status).toBe("implemented_unverified");
+    expect(result.reasonCodes).toContain("checks_unavailable");
     expect(
       result.warnings.some((warning) => warning.includes("no discoverable")),
+    ).toBe(true);
+  });
+
+  it("treats missing scripts as implemented_unverified even when allowUnavailable is false", async () => {
+    const manifests = new InMemoryManifestReader({
+      "package.json": JSON.stringify({ name: "empty", scripts: {} }),
+    });
+    const tools = createTools((input) =>
+      toolResult({
+        callId: input.callId,
+        toolName: input.toolName,
+        status: "succeeded",
+        output:
+          input.toolName === "read_diagnostics"
+            ? { diagnostics: [] }
+            : { staged: [], unstaged: [], untracked: [], truncated: false },
+      }),
+    );
+
+    const result = await new VerificationPipeline({
+      tools,
+      manifests,
+    }).verify(
+      baseVerificationInput({
+        verification: {
+          required: true,
+          minimumEvidence: ["diagnostics", "diff_review", "tests"],
+          allowUnavailable: false,
+        },
+      }),
+    );
+
+    expect(result.status).toBe("implemented_unverified");
+    expect(result.reasonCodes).toContain("checks_unavailable");
+    expect(result.status).not.toBe("blocked");
+    expect(
+      result.checks.every(
+        (check) =>
+          check.outcome === "passed" || check.outcome === "unavailable",
+      ),
     ).toBe(true);
   });
 
@@ -543,7 +584,8 @@ describe("VerificationPipeline", () => {
       }),
     );
 
-    expect(["blocked", "implemented_unverified"]).toContain(result.status);
+    expect(result.status).toBe("implemented_unverified");
     expect(result.status).not.toBe("verified_success");
+    expect(result.reasonCodes).toContain("checks_unavailable");
   });
 });

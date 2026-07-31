@@ -7,6 +7,8 @@ export type {
   ClarificationOptionPayload,
   ClarificationPayload,
 } from "./buildClarificationPayload";
+export { decideVerificationGate } from "./decideVerificationGate";
+export type { VerificationGateDecision } from "./decideVerificationGate";
 export { mapContextToPromptSlice } from "./mapContextToPromptSlice";
 export { mapUnderstandingToSkillEvidence } from "./mapUnderstandingToSkillEvidence";
 export { mapUnderstandingToPlanningEvidence } from "./mapUnderstandingToPlanningEvidence";
