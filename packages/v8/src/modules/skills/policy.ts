@@ -16,6 +16,8 @@ export const SKILLS_THRESHOLDS = {
   routeWeight: 0.7,
   /** Weight for keyword/tag overlap with the user message. */
   keywordWeight: 0.4,
+  /** Small boost once a path-gated skill is eligible. */
+  pathWeight: 0.1,
   /** Always-apply skills receive this base score before other signals. */
   alwaysApplyBaseScore: 1,
 } as const;

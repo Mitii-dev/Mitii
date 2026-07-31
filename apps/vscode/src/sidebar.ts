@@ -4,10 +4,10 @@ import type * as vscode from 'vscode';
 
 import {
   AGENT_ENGINE_SCHEMA_VERSION,
-  DEFAULT_HOST_SKILLS,
   type MitiiClient,
   type MitiiResumeInput,
 } from '@mitii/sdk';
+import { loadDiskSkills } from '@mitii/host';
 import type { SkillDescriptor } from '@mitii/v8';
 
 import {
@@ -645,7 +645,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       }
       case 'requestSkillCatalog': {
         const q = (message.query ?? '').toLowerCase();
-        const catalog: readonly SkillDescriptor[] = DEFAULT_HOST_SKILLS;
+        const catalog = await loadDiskSkills({
+          workspaceRoot: this.getWorkspaceRoot(),
+          contentMode: 'metadata',
+        });
         const items = catalog
           .filter((skill: SkillDescriptor) => {
             return (

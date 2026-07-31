@@ -82,6 +82,52 @@ describe("PlanningPipeline", () => {
     expect(result.reasonCodes).toContain("plan_skills_considered");
   });
 
+  it("uses selected skill planning phases when available", () => {
+    const result = pipeline.plan(
+      baseInput({
+        skills: [
+          {
+            id: "planning-default",
+            title: "Default Planning",
+            content: [
+              "Skill: Default Planning",
+              "Description: Plan repository work with Discover, Change, and Verify phases.",
+              "Planning:",
+              "Discover:",
+              "- Locate current behavior",
+              "- Collect evidence",
+              "",
+              "Change:",
+              "- Choose non-hardcoded extension approach",
+              "- Implement smallest coherent change",
+              "",
+              "Verify:",
+              "- Run lint/typecheck/tests",
+            ].join("\n"),
+            priority: 180,
+          },
+        ],
+      }),
+    );
+
+    expect(result.plan?.phases.map((phase) => phase.name)).toEqual([
+      "Discover",
+      "Change",
+      "Verify",
+    ]);
+    expect(result.plan?.phases[0]?.steps.map((step) => step.intent)).toEqual([
+      "Locate current behavior",
+      "Collect evidence",
+    ]);
+    expect(result.plan?.phases[1]?.steps.map((step) => step.intent)).toContain(
+      "Implement smallest coherent change",
+    );
+    expect(result.plan?.phases[2]?.steps[0]?.verification).toContain(
+      "typecheck",
+    );
+    expect(result.reasonCodes).toContain("plan_skills_considered");
+  });
+
   it("serializes plan for prompt and answer", () => {
     const result = pipeline.plan(baseInput());
     const text = serializePlanForPrompt(result.plan!);

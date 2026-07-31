@@ -86,6 +86,40 @@ Mitii keeps this body out of the prompt by default.
 | `when` | No | Compact activation hints injected in metadata mode. |
 | `instruction` | No | One short instruction injected in metadata mode. |
 
+## Optional planning block
+
+Skills may include a compact planning template in the markdown body. In
+metadata mode, Mitii extracts only this small block, not the whole playbook.
+
+Use one of these headings:
+
+```md
+# Agent Discovery
+# Planning
+# Plan Template
+```
+
+Then add phase names with bullet steps:
+
+```md
+# Agent Discovery
+
+Discover:
+- Locate current behavior
+- Collect evidence
+
+Change:
+- Choose non-hardcoded extension approach
+- Implement smallest coherent change
+
+Verify:
+- Run lint/typecheck/tests
+```
+
+When this skill is selected, V8 treats these as planning hints. V8 still
+validates, budgets, and normalizes the final plan; skills never grant tools or
+permissions.
+
 Valid `routes`:
 
 ```text

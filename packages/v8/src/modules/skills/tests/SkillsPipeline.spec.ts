@@ -16,6 +16,7 @@ const catalog: SkillDescriptor[] = [
     intents: ["bugfix"],
     routes: ["execute", "diagnose"],
     tags: ["null", "fix"],
+    paths: [],
     priority: 120,
     alwaysApply: false,
   },
@@ -26,6 +27,7 @@ const catalog: SkillDescriptor[] = [
     intents: ["review"],
     routes: ["direct_answer", "repository_answer"],
     tags: ["review"],
+    paths: [],
     priority: 100,
     alwaysApply: false,
   },
@@ -36,6 +38,7 @@ const catalog: SkillDescriptor[] = [
     intents: [],
     routes: [],
     tags: [],
+    paths: [],
     priority: 200,
     alwaysApply: true,
   },
@@ -46,6 +49,7 @@ const catalog: SkillDescriptor[] = [
     intents: ["bugfix"],
     routes: ["execute"],
     tags: [],
+    paths: [],
     priority: 50,
     conflictGroup: "bugfix-style",
     alwaysApply: false,
@@ -57,6 +61,7 @@ const catalog: SkillDescriptor[] = [
     intents: ["bugfix"],
     routes: ["execute"],
     tags: [],
+    paths: [],
     priority: 150,
     conflictGroup: "bugfix-style",
     alwaysApply: false,
@@ -152,6 +157,7 @@ describe("SkillsPipeline", () => {
           intents: ["docs"],
           routes: ["direct_answer"],
           tags: [],
+          paths: [],
           priority: 10,
           alwaysApply: false,
         },
@@ -167,6 +173,73 @@ describe("SkillsPipeline", () => {
 
     expect(result.status).toBe("empty");
     expect(result.reasonCodes).toContain("no_matching_skills");
+    expect(result.instructions).toEqual([]);
+  });
+
+  it("gates path-scoped skills on repository evidence paths", async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: new InMemorySkillsCatalog([
+        {
+          id: "vscode-bugfix",
+          title: "VS Code bugfix",
+          content: "Use VS Code extension APIs and webview protocol checks.",
+          intents: ["bugfix"],
+          routes: ["execute"],
+          tags: ["sidebar"],
+          paths: ["apps/vscode/**"],
+          priority: 200,
+          alwaysApply: false,
+        },
+        {
+          id: "cli-bugfix",
+          title: "CLI bugfix",
+          content: "Use CLI session and stdout conventions.",
+          intents: ["bugfix"],
+          routes: ["execute"],
+          tags: ["cli"],
+          paths: ["apps/cli/**"],
+          priority: 100,
+          alwaysApply: false,
+        },
+      ]),
+    });
+
+    const result = await pipeline.select(
+      baseInput({
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+          paths: ["apps/vscode/src/sidebar.ts"],
+        },
+      }),
+    );
+
+    expect(result.status).toBe("selected");
+    expect(result.instructions.map((block) => block.id)).toEqual([
+      "vscode-bugfix",
+    ]);
+  });
+
+  it("does not select path-scoped skills without path evidence", async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: new InMemorySkillsCatalog([
+        {
+          id: "vscode-bugfix",
+          title: "VS Code bugfix",
+          content: "Use VS Code extension APIs.",
+          intents: ["bugfix"],
+          routes: ["execute"],
+          tags: [],
+          paths: ["apps/vscode/**"],
+          priority: 200,
+          alwaysApply: false,
+        },
+      ]),
+    });
+
+    const result = await pipeline.select(baseInput());
+
+    expect(result.status).toBe("empty");
     expect(result.instructions).toEqual([]);
   });
 });

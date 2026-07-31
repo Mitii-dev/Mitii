@@ -528,6 +528,7 @@ export class AgentEnginePipeline {
 
       // --- Pin + Context ---
       let repositoryContext: PromptRepositoryContext | undefined;
+      let contextPaths: string[] = [];
       pinnedState = await this.resolveAndPinState({
         runId,
         decision,
@@ -586,7 +587,7 @@ export class AgentEnginePipeline {
 
         repositoryContext = mapContextToPromptSlice(contextResult);
         reasonCodes.push("context_retrieved");
-        const contextPaths = contextResult.assembly.blocks
+        contextPaths = contextResult.assembly.blocks
           .map((block) => block.relativePath)
           .filter((path): path is string => Boolean(path?.trim()))
           .slice(0, 12);
@@ -615,12 +616,22 @@ export class AgentEnginePipeline {
       let selectedSkills: PromptInstructions["skills"];
       if (this.deps.skills) {
         this.emitStage(bus, runId, "skills_ready", "started");
+        const skillEvidencePaths = [
+          ...new Set([...(input.dirtyPaths ?? []), ...contextPaths]),
+        ]
+          .filter((path) => path.trim().length > 0)
+          .slice(0, 50);
         const skillsResult = await this.deps.skills.select({
           schemaVersion: SKILLS_SCHEMA_VERSION,
           query: extractPrimaryUserMessage(envelope.message),
           mode: envelope.mode,
           route: decision.route,
-          evidence: mapUnderstandingToSkillEvidence(understanding),
+          evidence: {
+            ...mapUnderstandingToSkillEvidence(understanding),
+            ...(skillEvidencePaths.length > 0
+              ? { paths: skillEvidencePaths }
+              : {}),
+          },
         });
         selectedSkills = skillsResult.instructions.map((block) => ({
           id: block.id,

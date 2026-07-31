@@ -23,6 +23,9 @@ export function matchSkills(params: {
     if (!skill.content.trim()) {
       continue;
     }
+    if (!isPathGateSatisfied(skill, input)) {
+      continue;
+    }
 
     let score = 0;
     const reasons: string[] = [];
@@ -62,6 +65,10 @@ export function matchSkills(params: {
         score += SKILLS_THRESHOLDS.keywordWeight * fraction;
         reasons.push("keyword");
       }
+    }
+    if (skill.paths.length > 0) {
+      score += SKILLS_THRESHOLDS.pathWeight;
+      reasons.push("path");
     }
 
     const hasIntentMatch =
@@ -120,4 +127,64 @@ function tokenize(text: string): Set<string> {
       .split(/[^a-z0-9_+.-]+/i)
       .filter((token) => token.length >= 2),
   );
+}
+
+function isPathGateSatisfied(
+  skill: SkillDescriptor,
+  input: SkillsSelectParsedInput,
+): boolean {
+  if (skill.paths.length === 0) {
+    return true;
+  }
+  const evidencePaths = input.evidence.paths ?? [];
+  if (evidencePaths.length === 0) {
+    return false;
+  }
+  return skill.paths.some((pattern) =>
+    evidencePaths.some((path) => matchesPathGlob(pattern, path)),
+  );
+}
+
+export function matchesPathGlob(pattern: string, path: string): boolean {
+  const normalizedPattern = normalizePath(pattern);
+  const normalizedPath = normalizePath(path);
+  if (!normalizedPattern || !normalizedPath) {
+    return false;
+  }
+  return globToRegExp(normalizedPattern).test(normalizedPath);
+}
+
+function normalizePath(value: string): string {
+  return value.trim().replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
+function globToRegExp(pattern: string): RegExp {
+  let source = "^";
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index]!;
+    if (char === "*") {
+      if (pattern[index + 1] === "*") {
+        index += 1;
+        if (pattern[index + 1] === "/") {
+          index += 1;
+          source += "(?:.*/)?";
+        } else {
+          source += ".*";
+        }
+      } else {
+        source += "[^/]*";
+      }
+      continue;
+    }
+    if (char === "?") {
+      source += "[^/]";
+      continue;
+    }
+    source += escapeRegExp(char);
+  }
+  return new RegExp(`${source}$`);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
 }

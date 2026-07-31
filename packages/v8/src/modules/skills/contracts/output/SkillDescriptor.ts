@@ -13,6 +13,13 @@ export const skillDescriptorSchema = z
     routes: z.array(executionRouteSchema).default([]),
     /** Free-form tags matched against the user query. */
     tags: z.array(z.string().min(1)).default([]),
+    /**
+     * Optional repository path globs that gate this skill. Empty = any path.
+     *
+     * Hosts may map disk `paths:` frontmatter into this field, but Skills still
+     * never reads the filesystem directly.
+     */
+    paths: z.array(z.string().min(1)).default([]),
     /** Higher wins when multiple skills compete. */
     priority: z.number().int().nonnegative().default(100),
     /** When set, only one skill from the group may be selected. */

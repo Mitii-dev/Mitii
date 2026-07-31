@@ -32,6 +32,7 @@ description: Find and fix nullable-value crashes with a small regression test.
 intents: [bugfix, diagnose]
 routes: [execute, diagnose]
 tags: [null, crash, test]
+paths: [apps/vscode/**, packages/v8/**]
 priority: 150
 conflictGroup: debugging
 when: [The user reports a null crash, A regression test is needed]
@@ -46,7 +47,10 @@ It is intentionally not injected in metadata mode.
       'utf8',
     );
 
-    const skills = await loadDiskSkills({ workspaceRoot: root });
+    const skills = await loadDiskSkills({
+      workspaceRoot: root,
+      includeBundled: false,
+    });
 
     expect(skills).toHaveLength(1);
     expect(skills[0]).toMatchObject({
@@ -55,6 +59,7 @@ It is intentionally not injected in metadata mode.
       intents: ['bugfix', 'diagnose'],
       routes: ['execute', 'diagnose'],
       tags: ['null', 'crash', 'test'],
+      paths: ['apps/vscode/**', 'packages/v8/**'],
       priority: 150,
       conflictGroup: 'debugging',
       alwaysApply: false,
@@ -63,6 +68,51 @@ It is intentionally not injected in metadata mode.
       'Description: Find and fix nullable-value crashes',
     );
     expect(skills[0]?.content).not.toContain('Long internal playbook');
+  });
+
+  it('extracts compact planning blocks without injecting the whole skill body', async () => {
+    const skillDir = join(root, '.mitii', 'skills', 'planning-default');
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(
+      join(skillDir, 'SKILL.md'),
+      `---
+name: planning-default
+description: Plan work with Discover, Change, and Verify phases.
+intents: [feature, bugfix]
+routes: [plan, execute]
+tags: [plan]
+priority: 180
+---
+
+# Agent Discovery
+
+Discover:
+- Locate current behavior
+- Collect evidence
+
+Change:
+- Implement smallest coherent change
+
+Verify:
+- Run lint/typecheck/tests
+
+# Long Playbook
+
+This long body should not be injected in metadata mode.
+`,
+      'utf8',
+    );
+
+    const skills = await loadDiskSkills({
+      workspaceRoot: root,
+      includeBundled: false,
+    });
+
+    expect(skills[0]?.content).toContain('Planning:');
+    expect(skills[0]?.content).toContain('Discover:');
+    expect(skills[0]?.content).toContain('- Locate current behavior');
+    expect(skills[0]?.content).not.toContain('Long Playbook');
+    expect(skills[0]?.content).not.toContain('This long body');
   });
 
   it('selects a matching uploaded skill without injecting the whole catalog', async () => {
@@ -85,6 +135,7 @@ It is intentionally not injected in metadata mode.
       catalog: createFileSystemSkillsCatalog({
         workspaceRoot: root,
         includeDefaults: false,
+        includeBundled: false,
       }),
     });
 
@@ -105,6 +156,50 @@ It is intentionally not injected in metadata mode.
     ]);
     expect(result.instructions[0]?.content).toContain('Description:');
     expect(result.instructions[0]?.content).not.toContain('docs-writing');
+  });
+
+  it('passes path-gated uploaded skills only when evidence paths match', async () => {
+    await writeSkill(root, 'vscode-sidebar-bugfix', {
+      description: 'Fix VS Code sidebar bugs.',
+      intents: ['bugfix'],
+      routes: ['execute'],
+      tags: ['sidebar'],
+      paths: ['apps/vscode/**'],
+      priority: 150,
+    });
+    await writeSkill(root, 'cli-output-bugfix', {
+      description: 'Fix CLI output bugs.',
+      intents: ['bugfix'],
+      routes: ['execute'],
+      tags: ['cli'],
+      paths: ['apps/cli/**'],
+      priority: 140,
+    });
+
+    const pipeline = new SkillsPipeline({
+      catalog: createFileSystemSkillsCatalog({
+        workspaceRoot: root,
+        includeDefaults: false,
+        includeBundled: false,
+      }),
+    });
+
+    const result = await pipeline.select({
+      schemaVersion: SKILLS_SCHEMA_VERSION,
+      query: 'Fix the sidebar crash',
+      mode: 'agent',
+      route: 'execute',
+      evidence: {
+        primaryIntent: 'bugfix',
+        secondaryIntents: [],
+        paths: ['apps/vscode/src/sidebar.ts'],
+      },
+    });
+
+    expect(result.status).toBe('selected');
+    expect(result.instructions.map((skill) => skill.id)).toEqual([
+      'vscode-sidebar-bugfix',
+    ]);
   });
 
   it('skips uploaded skills marked enabled false', async () => {
@@ -132,7 +227,10 @@ Full body.
       priority: 100,
     });
 
-    const skills = await loadDiskSkills({ workspaceRoot: root });
+    const skills = await loadDiskSkills({
+      workspaceRoot: root,
+      includeBundled: false,
+    });
 
     expect(skills.map((skill) => skill.id)).toEqual(['enabled-skill']);
   });
@@ -156,12 +254,54 @@ Full body.
 
     const skills = await loadDiskSkills({
       bundledRoots: [bundledRoot],
+      includeBundled: false,
       workspaceRoot: root,
     });
 
     expect(skills.map((skill) => skill.id)).toEqual(['review-playbook']);
     expect(skills[0]?.content).toContain('Workspace override review defaults');
     expect(skills[0]?.priority).toBe(180);
+  });
+
+  it('loads the SDK bundled markdown skills by default', async () => {
+    const skills = await loadDiskSkills({ workspaceRoot: root });
+
+    expect(skills.map((skill) => skill.id)).toEqual(
+      expect.arrayContaining([
+        'ask-concise',
+        'bugfix-localize',
+        'planning-default',
+        'safety-always',
+      ]),
+    );
+  });
+
+  it('selects the bundled planning skill for plan requests', async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: createFileSystemSkillsCatalog({
+        workspaceRoot: root,
+      }),
+    });
+
+    const result = await pipeline.select({
+      schemaVersion: SKILLS_SCHEMA_VERSION,
+      query: 'Create a plan before implementing SSO login',
+      mode: 'plan',
+      route: 'plan',
+      evidence: {
+        primaryIntent: 'feature',
+        secondaryIntents: [],
+      },
+    });
+
+    expect(result.status).toBe('selected');
+    expect(result.instructions.map((skill) => skill.id)).toEqual(
+      expect.arrayContaining(['planning-default']),
+    );
+    expect(
+      result.instructions.find((skill) => skill.id === 'planning-default')
+        ?.content,
+    ).toContain('Planning:');
   });
 });
 
@@ -173,6 +313,7 @@ async function writeSkill(
     intents: readonly string[];
     routes: readonly string[];
     tags: readonly string[];
+    paths?: readonly string[];
     priority: number;
   },
 ): Promise<void> {
@@ -187,6 +328,7 @@ async function writeSkillToRoot(
     intents: readonly string[];
     routes: readonly string[];
     tags: readonly string[];
+    paths?: readonly string[];
     priority: number;
   },
 ): Promise<void> {
@@ -200,6 +342,7 @@ description: ${params.description}
 intents: [${params.intents.join(', ')}]
 routes: [${params.routes.join(', ')}]
 tags: [${params.tags.join(', ')}]
+${params.paths ? `paths: [${params.paths.join(', ')}]\n` : ''}
 priority: ${params.priority}
 ---
 

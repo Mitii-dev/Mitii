@@ -4,9 +4,6 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import {
-  DEFAULT_HOST_SKILLS,
-} from '@mitii/sdk';
-import {
   InMemorySkillsCatalog,
   type SkillDescriptor,
   type SkillsCatalogPort,
@@ -51,6 +48,7 @@ export interface DiskSkillManifest {
   enabled?: boolean | string;
   when?: readonly string[] | string;
   instruction?: string;
+  paths?: readonly string[] | string;
 }
 
 interface ParsedSkillFile {
@@ -78,10 +76,7 @@ export function createFileSystemSkillsCatalog(
       if (options.includeDefaults === false) {
         return diskSkills;
       }
-      return new InMemorySkillsCatalog([
-        ...DEFAULT_HOST_SKILLS,
-        ...diskSkills,
-      ]).list();
+      return new InMemorySkillsCatalog(diskSkills).list();
     },
   };
 }
@@ -136,7 +131,7 @@ async function loadSkillFile(
   const content =
     contentMode === 'body'
       ? body.trim() || compactSkillContent({ title, description, manifest })
-      : compactSkillContent({ title, description, manifest });
+      : compactSkillContent({ title, description, manifest, body });
 
   return {
     id,
@@ -147,6 +142,7 @@ async function loadSkillFile(
       VALID_ROUTES.has(route),
     ) as SkillDescriptor['routes'],
     tags: normalizeList(manifest.tags),
+    paths: normalizeList(manifest.paths),
     priority: normalizePriority(manifest.priority),
     ...(cleanScalar(manifest.conflictGroup)
       ? { conflictGroup: cleanScalar(manifest.conflictGroup) }
@@ -156,17 +152,15 @@ async function loadSkillFile(
 }
 
 function resolveSkillRoots(options: LoadDiskSkillsOptions): string[] {
-  const bundled =
+  const defaultBundled =
     options.includeBundled === false
       ? []
-      : [
-          ...(resolveDefaultBundledSkillsRoot()
-            ? [resolveDefaultBundledSkillsRoot()!]
-            : []),
-          ...(options.bundledRoots ?? []),
-        ];
+      : resolveDefaultBundledSkillsRoot()
+        ? [resolveDefaultBundledSkillsRoot()!]
+        : [];
   const roots = [
-    ...bundled,
+    ...defaultBundled,
+    ...(options.bundledRoots ?? []),
     ...(options.workspaceRoot
       ? [join(options.workspaceRoot, DEFAULT_WORKSPACE_SKILLS_DIR)]
       : []),
@@ -316,6 +310,7 @@ function compactSkillContent(params: {
   title: string;
   description: string;
   manifest: DiskSkillManifest;
+  body?: string;
 }): string {
   const lines = [
     `Skill: ${params.title}`,
@@ -329,7 +324,41 @@ function compactSkillContent(params: {
   if (instruction) {
     lines.push(`Instruction: ${instruction}`);
   }
+  const planningBlock = extractPlanningBlock(params.body ?? '');
+  if (planningBlock) {
+    lines.push(`Planning:\n${planningBlock}`);
+  }
   return lines.join('\n');
+}
+
+function extractPlanningBlock(body: string): string | undefined {
+  const lines = body.split(/\r?\n/);
+  const start = lines.findIndex((line) =>
+    /^#{1,3}\s+(agent\s+discovery|planning|plan\s+template)\s*$/i.test(
+      line.trim(),
+    ),
+  );
+  if (start < 0) {
+    return undefined;
+  }
+
+  const collected: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    const trimmed = line.trimEnd();
+    if (/^#{1,3}\s+\S/.test(trimmed)) {
+      break;
+    }
+    collected.push(trimmed);
+  }
+
+  const compact = collected
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  if (!compact || !/^[A-Za-z][\w -]{1,80}:\s*$/m.test(compact)) {
+    return undefined;
+  }
+  return compact.length > 1_200 ? `${compact.slice(0, 1_197)}...` : compact;
 }
 
 function normalizeId(value: unknown): string | undefined {

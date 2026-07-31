@@ -17,5 +17,6 @@ export function mapUnderstandingToSkillEvidence(
     risk: understanding.taskAnalysis.risk,
     recommendsPlanning: understanding.taskAnalysis.recommendsPlanning,
     recommendsVerification: understanding.taskAnalysis.recommendsVerification,
+    paths: [],
   };
 }

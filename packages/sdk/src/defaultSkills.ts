@@ -5,47 +5,17 @@ import {
 } from '@mitii/v8';
 
 /**
- * Minimal host skills for local F5 / CLI smoke.
- * Hosts may replace this catalog; marketplace/plugin loaders stay out of SDK.
+ * Bundled default skills live as `packages/sdk/skills/<skill-id>/SKILL.md`.
+ *
+ * Keep this export as an empty compatibility surface so callers do not carry a
+ * second in-code default catalog. Hosts should use @mitii/host's filesystem
+ * catalog to load bundled and workspace skills from markdown.
  */
-export const DEFAULT_HOST_SKILLS: readonly SkillDescriptor[] = [
-  {
-    id: 'safety-always',
-    title: 'Safety',
-    content:
-      'Never invent permissions beyond the granted tools. Prefer the smallest safe change.',
-    intents: [],
-    routes: [],
-    tags: [],
-    priority: 200,
-    alwaysApply: true,
-  },
-  {
-    id: 'ask-concise',
-    title: 'Concise answers',
-    content:
-      'Answer directly with evidence. Prefer short explanations over long narratives.',
-    intents: ['question'],
-    routes: ['direct_answer', 'repository_answer'],
-    tags: ['ask', 'explain'],
-    priority: 110,
-    alwaysApply: false,
-  },
-  {
-    id: 'bugfix-localize',
-    title: 'Localize bug fixes',
-    content: 'Prefer the smallest change that fixes the reported failure.',
-    intents: ['bugfix'],
-    routes: ['execute', 'diagnose'],
-    tags: ['null', 'fix', 'error'],
-    priority: 120,
-    alwaysApply: false,
-  },
-];
+export const DEFAULT_HOST_SKILLS: readonly SkillDescriptor[] = [];
 
-/** In-memory catalog used by CLI and VS Code when no custom catalog is injected. */
+/** In-memory catalog for tests/custom callers that explicitly pass extras. */
 export function createDefaultSkillsCatalog(
   extras: readonly SkillDescriptor[] = [],
 ): SkillsCatalogPort {
-  return new InMemorySkillsCatalog([...DEFAULT_HOST_SKILLS, ...extras]);
+  return new InMemorySkillsCatalog(extras);
 }

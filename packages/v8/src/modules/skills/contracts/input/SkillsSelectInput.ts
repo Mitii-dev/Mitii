@@ -23,6 +23,11 @@ export const skillTaskEvidenceSchema = z
     risk: z.string().min(1).optional(),
     recommendsPlanning: z.boolean().optional(),
     recommendsVerification: z.boolean().optional(),
+    /**
+     * Repository paths already discovered by the host/context layer. Used only
+     * to gate path-scoped skills; Skills never scans the workspace.
+     */
+    paths: z.array(z.string().min(1)).max(50).default([]),
   })
   .strict();
 

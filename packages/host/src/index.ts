@@ -94,6 +94,15 @@ export type {
 } from './prompt/projectRules.js';
 
 // ---------------------------------------------------------------------------
+// Diff previews — host-owned proposed edit files under `.mitii/diff-preview`
+// ---------------------------------------------------------------------------
+export { FileDiffPreviewStore } from './preview/diffPreviewStore.js';
+export type {
+  DiffPreviewFile,
+  PatchDiffPreviewFiles,
+} from './preview/diffPreviewStore.js';
+
+// ---------------------------------------------------------------------------
 // Config UX — OpenAI-compatible endpoint presets (not a V8 port)
 // ---------------------------------------------------------------------------
 export {
