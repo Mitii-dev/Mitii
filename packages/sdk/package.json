@@ -16,6 +16,7 @@
   },
   "files": [
     "dist",
+    "skills",
     "README.md",
     "LEGACY_EXPORTS.md",
     "LICENSE"

@@ -9,7 +9,7 @@ import {
   ToolRuntimePipeline,
   VerificationPipeline,
   WorkspaceFileSystemManifestReader,
-  createDefaultSkillsCatalog,
+  createFileSystemSkillsCatalog,
   createMitiiClient,
   type CreateMitiiClientOptions,
   type MitiiClient,
@@ -155,6 +155,7 @@ export function createCliClient(options: {
   });
   const env = options.env ?? process.env;
   const config = loadMitiiHostConfig(options.cwd);
+  const workspaceSkillsEnabled = env.MITII_DISABLE_WORKSPACE_SKILLS !== '1';
   const repositoryContext = createHostRepositoryContext({
     repositoryState,
     workspaceRoot: options.cwd,
@@ -172,7 +173,10 @@ export function createCliClient(options: {
     enableInMemoryCheckpoints: true,
     tools,
     verification,
-    skillsCatalog: createDefaultSkillsCatalog(),
+    skillsCatalog: createFileSystemSkillsCatalog({
+      workspaceRoot: workspaceSkillsEnabled ? options.cwd : undefined,
+      contentMode: 'metadata',
+    }),
     ...options.clientOverrides,
   });
   return { client, ports };

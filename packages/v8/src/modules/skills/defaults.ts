@@ -1,8 +1,8 @@
 /** Soft token budget for the skills section before Prompt Construction. */
-export const DEFAULT_SKILLS_BUDGET_TOKENS = 800;
+export const DEFAULT_SKILLS_BUDGET_TOKENS = 1200;
 
 /** Hard cap on how many skills may be selected for one turn. */
-export const DEFAULT_MAX_SKILLS = 3;
+export const DEFAULT_MAX_SKILLS = 2;
 
 /** Characters-per-token estimate used when no estimator is injected. */
 export const DEFAULT_CHARACTERS_PER_TOKEN = 4;

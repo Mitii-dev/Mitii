@@ -32,6 +32,16 @@ export {
   DEFAULT_HOST_SKILLS,
 } from './defaultSkills';
 
+export {
+  createFileSystemSkillsCatalog,
+  loadDiskSkills,
+} from './skillsCatalog';
+export type {
+  DiskSkillContentMode,
+  DiskSkillManifest,
+  LoadDiskSkillsOptions,
+} from './skillsCatalog';
+
 /** Re-export selected V8 composition helpers for advanced host wiring. */
 export {
   composeReadOnlyAgentEngine,
@@ -40,6 +50,8 @@ export {
   InMemoryRepositoryStateStore,
   InMemoryRunCheckpointStore,
   InMemorySkillsCatalog,
+  SkillsPipeline,
+  SKILLS_SCHEMA_VERSION,
   RepositoryStatePipeline,
   publishRepositoryStateInputSchema,
   REPOSITORY_STATE_SCHEMA_VERSION,
