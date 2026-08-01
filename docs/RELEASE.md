@@ -51,7 +51,7 @@ Add these under **Settings → Secrets and variables → Actions** (values are n
 
 | Secret | Required | Purpose |
 |---|---|---|
-| `NPM_TOKEN` | Yes (npm job) | npm automation token with publish rights for `@mitii/*` |
+| `NPM_TOKEN` | Optional fallback | npm automation token with publish rights for `@mitii/*` when trusted publishing is not configured |
 | `VSCE_PAT` | Yes (marketplace job) | Azure DevOps PAT with Marketplace publish scope for publisher `mitii` |
 | `OVSX_PAT` | Optional | Open VSX token; Open VSX publish is skipped when unset |
 
@@ -66,7 +66,7 @@ Add these under **Settings → Secrets and variables → Actions** (values are n
    - Attach them to a GitHub Release
    - Publish all four targets to the VS Code Marketplace (`VSCE_PAT`)
    - Publish to Open VSX when `OVSX_PAT` is set
-   - Call **npm publish** for `@mitii/v8` → `@mitii/sdk` → `@mitii/host` → `@mitii/cli` (`NPM_TOKEN`)
+   - Call **npm publish** for `@mitii/v8` → `@mitii/sdk` → `@mitii/host` → `@mitii/cli` (GitHub OIDC trusted publishing, with `NPM_TOKEN` fallback)
 
 ### Local / manual
 
