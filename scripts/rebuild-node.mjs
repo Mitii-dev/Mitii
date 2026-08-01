@@ -19,19 +19,42 @@ const require = createRequire(resolve(v8PackageRoot, 'package.json'));
 const MODULES = ['better-sqlite3'];
 
 function moduleDir(name) {
-  return require.resolve(`${name}/package.json`).replace(/package\.json$/, '');
+  return dirname(require.resolve(`${name}/package.json`));
+}
+
+function run(command, args, cwd) {
+  return spawnSync(command, args, {
+    cwd,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+    env: process.env,
+  });
 }
 
 export function rebuildForNode() {
   for (const name of MODULES) {
     const dir = moduleDir(name);
     console.log(`Rebuilding ${name} for Node ${process.version}…`);
-    const result = spawnSync(
+
+    // Prefer the package install script (prebuild-install, then compile).
+    const install = run(
+      'npm',
+      ['run', 'install', '--ignore-scripts=false'],
+      dir,
+    );
+    if (install.status === 0) {
+      continue;
+    }
+
+    console.warn(
+      `${name} install script failed — falling back to node-gyp rebuild…`,
+    );
+    const gyp = run(
       'pnpm',
       ['exec', 'node-gyp', 'rebuild', `--directory=${dir}`],
-      { cwd: v8PackageRoot, stdio: 'inherit', shell: process.platform === 'win32' },
+      repoRoot,
     );
-    if (result.status !== 0) {
+    if (gyp.status !== 0) {
       return false;
     }
   }

@@ -29,8 +29,11 @@ jobs:
             echo "::error::NPM_TOKEN secret is missing. Add an npm automation token in repo Settings → Secrets → Actions."
             exit 1
           fi
+      - name: Install native build tools
+        run: sudo apt-get update && sudo apt-get install -y build-essential python3
       - run: pnpm install --frozen-lockfile
       - run: pnpm run sync:versions -- --check
+      - run: pnpm run rebuild:node
       - run: pnpm run build:v8
       - run: pnpm run build:sdk
       - run: pnpm run build:host
