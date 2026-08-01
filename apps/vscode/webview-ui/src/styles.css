@@ -2385,27 +2385,200 @@ select.depth-select {
   border: 1px solid color-mix(in srgb, var(--mitii-accent) 16%, transparent);
 }
 
-.md-code-block {
+.md-code-card,
+.md-diagram-card {
   position: relative;
   margin: 0;
-  padding: 22px 10px 10px;
-  border-radius: 6px;
+  min-width: 0;
+  border-radius: 7px;
   border: 1px solid var(--mitii-border-soft);
-  background: color-mix(in srgb, var(--vscode-editor-background) 90%, #000);
+  background: var(--vscode-editor-background, var(--mitii-panel));
+  overflow: hidden;
+}
+
+.md-code-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--mitii-border-soft);
+  background: color-mix(in srgb, var(--mitii-surface) 70%, var(--mitii-panel));
+}
+
+.md-code-window {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.md-code-window span {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 70%, transparent);
+  background: color-mix(in srgb, var(--mitii-muted) 28%, transparent);
+}
+
+.md-code-window span:nth-child(1) {
+  background: color-mix(in srgb, var(--mitii-danger) 50%, transparent);
+}
+
+.md-code-window span:nth-child(2) {
+  background: color-mix(in srgb, var(--mitii-warn) 58%, transparent);
+}
+
+.md-code-window span:nth-child(3) {
+  background: color-mix(in srgb, var(--mitii-ok) 48%, transparent);
+}
+
+.md-code-lang,
+.md-diagram-title {
+  min-width: 0;
+  color: var(--mitii-muted);
+  font-family: var(--mitii-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.md-diagram-title {
+  color: color-mix(in srgb, var(--mitii-text) 88%, var(--mitii-muted));
+}
+
+.md-copy-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  min-width: 0;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--mitii-muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.md-copy-button svg {
+  width: 13px;
+  height: 13px;
+}
+
+.md-copy-button:hover {
+  border-color: color-mix(in srgb, var(--mitii-accent) 46%, var(--mitii-border));
+  color: var(--mitii-text);
+}
+
+.md-code-block {
+  margin: 0;
+  padding: 8px 0;
+  max-height: min(52vh, 520px);
   overflow: auto;
   font-family: var(--mitii-font-mono);
   font-size: 11px;
-  line-height: 1.4;
+  line-height: 1.55;
+  scrollbar-width: thin;
 }
 
-.md-code-lang {
-  position: absolute;
-  top: 4px;
-  right: 8px;
+.md-code-block code {
+  display: table;
+  min-width: 100%;
+  white-space: pre;
+}
+
+.md-code-line {
+  display: table-row;
+}
+
+.md-code-line__number,
+.md-code-line__text {
+  display: table-cell;
+}
+
+.md-code-line__number {
+  width: 1%;
+  min-width: 36px;
+  padding: 0 10px;
+  border-right: 1px solid color-mix(in srgb, var(--mitii-border) 62%, transparent);
+  color: color-mix(in srgb, var(--mitii-muted) 70%, transparent);
+  text-align: right;
+  user-select: none;
+}
+
+.md-code-line__text {
+  padding: 0 12px;
+  color: color-mix(in srgb, var(--mitii-text) 94%, var(--mitii-muted));
+}
+
+.md-code-line--add .md-code-line__text {
+  background: color-mix(in srgb, var(--mitii-ok) 12%, transparent);
+  color: color-mix(in srgb, var(--mitii-ok) 78%, var(--mitii-text));
+}
+
+.md-code-line--del .md-code-line__text {
+  background: color-mix(in srgb, var(--mitii-danger) 12%, transparent);
+  color: color-mix(in srgb, var(--mitii-danger) 78%, var(--mitii-text));
+}
+
+.md-diagram-toolbar {
+  background: color-mix(in srgb, var(--mitii-surface) 74%, var(--mitii-panel));
+}
+
+.md-diagram-stage {
+  overflow: auto;
+  padding: 12px;
+  scrollbar-width: thin;
+}
+
+.md-diagram {
+  display: block;
+  min-width: 520px;
+  max-width: 100%;
+  height: auto;
+}
+
+.md-diagram-edge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--mitii-muted) 64%, var(--mitii-border));
+  stroke-width: 1.4;
+}
+
+.md-diagram-arrow {
+  fill: color-mix(in srgb, var(--mitii-muted) 72%, var(--mitii-border));
+}
+
+.md-diagram-edge-label {
+  fill: var(--mitii-muted);
+  font-family: var(--mitii-font-mono);
   font-size: 10px;
-  color: var(--mitii-muted);
-  text-transform: uppercase;
-  letter-spacing: 0;
+  paint-order: stroke;
+  stroke: var(--vscode-editor-background, var(--mitii-panel));
+  stroke-width: 4px;
+  text-anchor: middle;
+}
+
+.md-diagram-node {
+  fill: color-mix(in srgb, var(--vscode-editorWidget-background, var(--mitii-panel)) 86%, var(--mitii-surface));
+  stroke: color-mix(in srgb, var(--mitii-accent) 34%, var(--mitii-border));
+  stroke-width: 1;
+}
+
+.md-diagram-node-label {
+  fill: var(--mitii-text);
+  font-family: var(--mitii-font-ui);
+  font-size: 11px;
+  font-weight: 650;
+  text-anchor: middle;
 }
 
 .md-pending {
