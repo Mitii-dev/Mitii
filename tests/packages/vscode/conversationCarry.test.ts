@@ -120,6 +120,14 @@ describe('conversationCarry (VS Code host)', () => {
 
     expect(
       enrichAssistantCarryText({
+        answer:
+          'All selector naming is now consistent. Let me run the verification steps from the plan - lint and typecheck:',
+        changedPaths: ['test/shared/pages/BasePage.ts'],
+      }),
+    ).toMatch(/^Completed workspace edits/);
+
+    expect(
+      enrichAssistantCarryText({
         answer: 'Removed the old page objects and updated imports.',
         changedPaths: ['test/a.ts'],
       }),
@@ -138,6 +146,31 @@ describe('conversationCarry (VS Code host)', () => {
         finalAnswer: 'Let me check kitchen-flow.spec.ts more carefully:',
       }),
     ).toContain('Updated Desktop and Tablet imports');
+
+    expect(
+      resolveDisplayedAssistantText({
+        streamedText: streamed,
+        finalAnswer:
+          'Now let me do the same for the Tablet BasePage - delete and recreate it extending the shared base:',
+      }),
+    ).toContain('Updated Desktop and Tablet imports');
+
+    const fallbackFinal =
+      'Completed workspace edits (1 file): test/a.ts\n\nChanged files (1): test/a.ts';
+    expect(
+      resolveDisplayedAssistantText({
+        streamedText: streamed,
+        finalAnswer:
+          'All selector naming is now consistent. Let me run verification:',
+      }),
+    ).toContain('Updated Desktop and Tablet imports');
+
+    expect(
+      resolveDisplayedAssistantText({
+        streamedText: streamed,
+        finalAnswer: fallbackFinal,
+      }),
+    ).toContain('Changed files (1)');
 
     expect(
       resolveDisplayedAssistantText({

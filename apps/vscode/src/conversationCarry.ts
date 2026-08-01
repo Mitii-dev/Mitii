@@ -97,14 +97,41 @@ function truncateMessage(text: string, maxChars: number): string {
   return `${text.slice(0, maxChars - 1)}…`;
 }
 
-const TRANSITIONAL_ASSISTANT =
-  /^(?:okay[,.]?\s+|ok[,.]?\s+|sure[,.]?\s+)?(?:let me|i(?:'ll| will)|now let me)\b/i;
+/** Keep in sync with packages/v8 isTransitionalAssistantAnswer heuristics. */
+const TRANSITIONAL_OPENERS =
+  /^(?:okay[,.]?\s+|ok[,.]?\s+|sure[,.]?\s+|alright[,.]?\s+|right[,.]?\s+)?(?:let me|i(?:'ll| will)|i(?:'m| am) going to|now let me|next[,]? (?:i(?:'ll| will)|let me)|i need to|i should)\b/i;
+const TRANSITIONAL_INTENT =
+  /\b(?:let me|i(?:'ll| will)|i(?:'m| am) going to)\b/i;
+const TRANSITIONAL_CLOSERS = /(?::|\.\.\.|…)\s*$/;
+const TRAILING_INTENT_CLAUSE =
+  /[.!,;]\s*(?:let me|i(?:'ll| will)|i(?:'m| am) going to)\b[\s\S]{0,160}$/i;
 
 function isWeakAssistantDisplay(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed.length === 0) return true;
-  if (trimmed.length < 220 && TRANSITIONAL_ASSISTANT.test(trimmed)) return true;
   if (/^(?:\([\w_]+\)|Error:)/.test(trimmed) && trimmed.length < 80) return true;
+  if (trimmed.length > 600) return false;
+
+  const singleBeat =
+    trimmed.split(/\n+/).filter((line) => line.trim().length > 0).length <= 2;
+  if (!singleBeat) return false;
+
+  if (TRANSITIONAL_OPENERS.test(trimmed) && TRANSITIONAL_CLOSERS.test(trimmed)) {
+    return true;
+  }
+  if (
+    TRANSITIONAL_OPENERS.test(trimmed) &&
+    trimmed.length < 180 &&
+    !/[.!]["']?\s*$/.test(trimmed)
+  ) {
+    return true;
+  }
+  if (TRANSITIONAL_INTENT.test(trimmed) && TRANSITIONAL_CLOSERS.test(trimmed)) {
+    return true;
+  }
+  if (trimmed.length < 280 && TRAILING_INTENT_CLAUSE.test(trimmed)) {
+    return true;
+  }
   return false;
 }
 
