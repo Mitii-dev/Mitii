@@ -1,9 +1,11 @@
 {
   "name": "@mitii/cli",
-  "version": "2.7.158",
+  "version": "2.7.159",
   "description": "Mitii headless CLI over @mitii/sdk.",
   "license": "AGPL-3.0-or-later",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "bin": {
     "mitii": "./bin/mitii.js"
@@ -21,7 +23,7 @@
   "scripts": {
     "build": "node scripts/build-cli.cjs && node -e \"require('node:fs').accessSync('dist/cli.js')\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
+    "test": "node ../../scripts/ensure-node-native.mjs && vitest run",
     "start": "node dist/cli.js",
     "mitii": "node bin/mitii.js"
   },

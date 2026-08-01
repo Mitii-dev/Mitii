@@ -2,17 +2,19 @@
 /**
  * Rebuild native modules for VS Code / Cursor Electron.
  * A normal install compiles for Node.js; the extension host uses Electron's ABI.
- * Rebuilds better-sqlite3 for the Extension Host Electron ABI, then stages the
- * binding into apps/vscode/dist/native for F5 / code+text indexes.
+ * Rebuilds better-sqlite3 for the Extension Host Electron ABI, stages the
+ * binding into apps/vscode/dist/native for F5 / code+text indexes, then restores
+ * node_modules to the system Node ABI so Vitest/CLI keep working.
  *
  * Override: MITII_ELECTRON_VERSION=42.6.0 pnpm run rebuild:native
  * Override editor: MITII_EDITOR=cursor pnpm run rebuild:native
+ * Skip Node restore: MITII_SKIP_NODE_RESTORE=1 pnpm run rebuild:native
  */
 import { createRequire } from 'module';
 import { execSync, spawnSync } from 'child_process';
 import { existsSync } from 'fs';
 import { dirname, resolve } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const MODULES = ['better-sqlite3'];
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -91,7 +93,7 @@ function detectElectronVersion() {
   return '42.6.0';
 }
 
-function main() {
+async function main() {
   const electronVersion = detectElectronVersion();
   console.log(`Rebuilding native modules for Electron ${electronVersion}…`);
 
@@ -131,8 +133,31 @@ function main() {
     process.exit(1);
   }
 
-  console.log('\nNative rebuild complete. Reload the Extension Development Host (F5).');
-  console.log('Note: run "pnpm run rebuild:node" before CLI eval or "pnpm test" if native modules fail under Node.');
+  if (process.env.MITII_SKIP_NODE_RESTORE === '1') {
+    console.log(
+      '\nNative rebuild complete (Node restore skipped). Reload the Extension Development Host (F5).',
+    );
+    console.log(
+      'Run `pnpm run rebuild:node` before Vitest/CLI — node_modules still has the Electron ABI.',
+    );
+    return;
+  }
+
+  console.log('\nRestoring better-sqlite3 in node_modules for system Node…');
+  const rebuildNodePath = resolve(repoRoot, 'scripts/rebuild-node.mjs');
+  const { rebuildForNode } = await import(pathToFileURL(rebuildNodePath).href);
+  if (!rebuildForNode()) {
+    console.error(
+      '\nElectron staging succeeded, but restoring the Node ABI failed.',
+    );
+    console.error('Run `pnpm run rebuild:node` before Vitest/CLI.');
+    process.exit(1);
+  }
+
+  console.log(
+    '\nNative rebuild complete. Electron binding staged; node_modules restored for Node.',
+  );
+  console.log('Reload the Extension Development Host (F5). Vitest/CLI can run without another rebuild.');
 }
 
-main();
+await main();

@@ -26,4 +26,4 @@ NOTE
 fi
 
 echo "Setup complete. Press F5 in VS Code / Cursor to launch the Extension Development Host."
-echo "Code/text indexes need the Electron SQLite binding from rebuild:native (included above on macOS)."
+echo "Electron SQLite is staged under apps/vscode/dist/native; node_modules is restored for Node tests."

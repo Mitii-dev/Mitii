@@ -103,11 +103,12 @@ See [tests/benchmark/README.md](tests/benchmark/README.md) and [docs/TESTS.md](d
 ### Run tests
 
 ```bash
-pnpm run rebuild:node   # if better-sqlite3 fails under vitest
-pnpm test               # architecture + selected V8 Vitest suites
+pnpm test               # architecture + selected Vitest suites (auto-heals SQLite ABI)
 pnpm run test:v8        # @mitii/v8 package tests
 pnpm run test:watch     # watch mode
 ```
+
+If `better-sqlite3` was last built for Electron, pretest runs `rebuild:node` automatically.
 
 ### Typecheck
 
@@ -131,10 +132,10 @@ Install locally: **Extensions → ... → Install from VSIX**.
 | Full F5-ready build | `pnpm run build:all` |
 | F5 / VS Code extension host | `pnpm run rebuild:native` |
 | Cursor extension host | `MITII_EDITOR=cursor pnpm run rebuild:native` |
-| Local vitest | `pnpm run rebuild:node` |
-| Both (Node then Electron; ends F5-ready) | `pnpm run rebuild:all` |
+| Local vitest / CLI only | `pnpm run rebuild:node` |
+| Both (Electron staged + Node restored) | `pnpm run rebuild:all` |
 
-`rebuild:native` also stages `better_sqlite3.node` into `apps/vscode/dist/native`. Without that Electron ABI binding, code/text indexes fail in the Extension Host.
+`rebuild:native` stages `better_sqlite3.node` into `apps/vscode/dist/native`, then restores the system Node ABI in `node_modules`. The extension host loads the staged Electron binding; Vitest/CLI use `node_modules`. Without the staged Electron binding, code/text indexes fail in the Extension Host.
 
 If SQLite throws on startup, this is almost always the fix.
 

@@ -9,7 +9,7 @@ Publish units and CI gates for the Mitii monorepo.
 | `@mitii/v8` | `packages/v8` | npm workspace | **`private: true`** — not published |
 | `@mitii/sdk` | `packages/sdk` | npm over `@mitii/v8` | **`private: true`** — not published |
 | `@mitii/cli` | `apps/cli` | npm bin `mitii` | **`private: true`** — not published |
-| `mitii-agent` (VS Code) | `apps/vscode` | VSIX | **Ship path** via Release workflow |
+| `mitii-ai-agent` (VS Code) | `apps/vscode` | VSIX | **Ship path** via Release workflow — Marketplace id `mitii.mitii-ai-agent` |
 
 Workspace root `package.json` is **private** and must not ship as the product.
 

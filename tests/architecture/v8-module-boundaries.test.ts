@@ -472,7 +472,7 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
       main?: string;
       dependencies?: Record<string, string>;
     };
-    expect(vscodePkg.name).toBe('mitii-agent');
+    expect(vscodePkg.name).toBe('mitii-ai-agent');
     expect(vscodePkg.name).toMatch(/^[a-z0-9][a-z0-9-]*$/);
     expect(vscodePkg.contributes).toBeTruthy();
     expect(vscodePkg.activationEvents).toBeTruthy();

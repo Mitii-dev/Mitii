@@ -1,50 +1,96 @@
-# mitii-agent
+# Mitii AI Agent
 
-VS Code extension for Mitii: local-first AI coding agent with repository-aware context, Ask / Plan / Agent modes, approvals, checkpoints, and OpenAI-compatible providers (including Ollama / LM Studio).
+**Marketplace id:** `mitii.mitii-ai-agent`
+
+Local-first AI coding agent for VS Code. Mitii indexes your repository, answers in Ask mode, plans in Plan mode, and applies changes in Agent mode — with approvals, checkpoints, and OpenAI-compatible providers (Ollama, LM Studio, cloud `/v1` APIs).
+
+![Mitii chat in VS Code](media/mitii-vs-code-chat-ui.png)
 
 ## Install
 
-- **Marketplace / Open VSX** — search for Mitii (when published), or install a VSIX from a release.
-- **From source** (this monorepo):
+1. In VS Code: **Extensions** → search **Mitii AI Agent** → Install  
+   Or open: [Marketplace — mitii.mitii-ai-agent](https://marketplace.visualstudio.com/items?itemName=mitii.mitii-ai-agent)
+2. Open a trusted workspace folder
+3. Click the Mitii icon in the activity bar
+4. Wait for indexing to finish (status in the sidebar / Settings → Index)
+5. In **Settings → Provider**, choose:
+   - **echo** — local stub (no API key)
+   - **openai-compatible** — Ollama / LM Studio / OpenRouter / OpenAI / Azure / DeepSeek, etc.
+
+For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code SecretStorage). Local Ollama/LM Studio usually need no key.
+
+**Requires VS Code 1.124+.** License: AGPL-3.0-or-later.
+
+## What you get
+
+- **Repository-aware context** — SQLite FTS5, symbols, optional vectors, repo map, diagnostics, Git state, and `@` attachments
+- **Ask / Plan / Agent** — read-only Q&A, structured plans, controlled edits with cancel / clarify / approve
+- **Safety** — configurable approvals, path containment, command policy, pre-write checkpoints, workspace trust
+- **Providers** — Echo + OpenAI-compatible endpoints (native Anthropic / Gemini / Bedrock adapters not shipped yet)
+- **MCP** — optional stdio servers (`mitii.mcp` / `.mitii/mcp.json`); off by default
+- **Evidence** — session logs and audit-pack export (secrets redacted). Org SSO / RBAC / SIEM are not included
+
+## Quick commands
+
+| Command | Purpose |
+|---|---|
+| **Mitii: Open Chat** | Open the sidebar |
+| **Mitii: Index Workspace** | Rebuild repository index |
+| **Mitii: Show Settings** | Provider, index, MCP, workspace |
+| **Mitii: Set Provider API Key** | Store cloud API key in SecretStorage |
+| **Mitii: Generate Commit Message** | SCM commit helper |
+| **Mitii: Export Session Log** | Export session JSON |
+| **Mitii: Export Audit Pack** | Redacted audit bundle |
+
+## Settings (common)
+
+| Setting | Notes |
+|---|---|
+| `mitii.provider.type` | `echo` or `openai-compatible` |
+| `mitii.provider.baseUrl` | e.g. `http://localhost:11434/v1` for Ollama |
+| `mitii.provider.model` | Model id |
+| `mitii.workspace.rootPathOverride` | Only when no folder is open |
+| `mitii.mcp` | MCP server config (disabled by default) |
+| `mitii.ui.showReasoning` | Show streamed reasoning when available |
+
+All product settings use the `mitii.*` prefix.
+
+## Platform notes
+
+VSIX builds are **platform-specific** (they include a native SQLite binding):
+
+- macOS Apple Silicon (`darwin-arm64`)
+- macOS Intel (`darwin-x64`)
+- Linux x64 (`linux-x64`)
+- Windows x64 (`win32-x64`)
+
+Install from the Marketplace for your OS, or pick the matching asset from a [GitHub release](https://github.com/Mitii-dev/Mitii/releases).
+
+## Develop from source
+
+This extension lives in the [Mitii monorepo](https://github.com/Mitii-dev/Mitii) under `apps/vscode`.
 
 ```bash
+git clone https://github.com/Mitii-dev/Mitii.git
+cd Mitii
 pnpm run setup
-# or Cursor on macOS:
-pnpm run setup:cursor
+# Cursor on macOS: pnpm run setup:cursor
 ```
 
-Press **F5** to launch an Extension Development Host. See [docs/INITIAL_LAUNCH.md](../../docs/INITIAL_LAUNCH.md).
+Press **F5** for an Extension Development Host. Details: [docs/INITIAL_LAUNCH.md](https://github.com/Mitii-dev/Mitii/blob/main/docs/INITIAL_LAUNCH.md).
 
-Requires **VS Code 1.85+** and **Node.js 20+** for development. License: **AGPL-3.0-or-later**.
-
-Runtime path: extension → `@mitii/host` → `@mitii/sdk` → `@mitii/v8` (no legacy kernel).
-
-## Features
-
-- Premium React sidebar (`webview-ui`): Chat | Settings
-- Modes: Ask / Plan / Agent, `@` context pins, live activity stream
-- Settings tabs: Workspace · Index · Provider · MCP
-- Cancel / clarify / approve in-chat (fallback QuickInput on non-webview runs)
-- Provider settings: `mitii.provider.type|baseUrl|model` (openai-compatible works without API key for Ollama/LM Studio)
-- Provider UI: model dropdown, Test connection (`GET /models` / chat ping), session token meter
-- UI prefs: `mitii.ui.showReasoning|reasoningPreviewMaxChars|depth`
-- Workspace override: `mitii.workspace.rootPathOverride`
-- MCP: `mitii.mcp` + `.mitii/mcp.json` — off by default. Settings can add builtins (Filesystem, Sequential Thinking, Memory, Puppeteer) or custom stdio servers; tools register as `mcp__*` in Agent mode only
-- Token meter: chat I/O plus context-window breakdown
-- API key: **Mitii: Set Provider API Key** → SecretStorage `mitii.provider.apiKey` (cloud endpoints only)
-- Index / commit-message / session export / audit-pack commands
-
-## Package from source
+Runtime stack: extension → `@mitii/host` → `@mitii/sdk` → `@mitii/v8`.
 
 ```bash
 pnpm --filter ./apps/vscode build
-pnpm --filter ./apps/vscode package
+pnpm run package   # writes dist-vsix/mitii-ai-agent-<version>-<target>.vsix
 ```
 
-Release gates: [docs/RELEASE.md](../../docs/RELEASE.md).
+Release process: [docs/RELEASE.md](https://github.com/Mitii-dev/Mitii/blob/main/docs/RELEASE.md).
 
 ## Links
 
-- Product README: [../../README.md](../../README.md)
-- Architecture: [`packages/v8/ARCHITECTURE.md`](../../packages/v8/ARCHITECTURE.md)
+- Website: [mitii.dev](https://mitii.dev)
 - Docs: [docs.mitii.dev](https://docs.mitii.dev)
+- Issues: [Mitii-dev/Mitii](https://github.com/Mitii-dev/Mitii/issues)
+- Architecture: [packages/v8/ARCHITECTURE.md](https://github.com/Mitii-dev/Mitii/blob/main/packages/v8/ARCHITECTURE.md)

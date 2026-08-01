@@ -98,7 +98,7 @@ pnpm --filter @mitii/v8 test
 pnpm --filter @mitii/v8 build
 ```
 
-Native modules used by hosts/tests (`better-sqlite3`, optional LanceDB) may need `pnpm run rebuild:node` when switching Node versions.
+`pnpm --filter @mitii/v8 test` auto-heals `better-sqlite3` ABI mismatches (Electron vs system Node). Prefer `pnpm run rebuild:native` for F5 — it stages the Electron binding and restores Node ABI afterward.
 
 ## Links
 

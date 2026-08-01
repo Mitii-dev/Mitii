@@ -1,9 +1,8 @@
 {
   "name": "@mitii/host",
-  "version": "2.7.158",
+  "version": "2.7.159",
   "description": "Shared host kit for Mitii apps: SQLite injection, workspace indexing, repository context, durable ports (checkpoints/memory/skills/search), project rules, provider presets.",
   "license": "AGPL-3.0-or-later",
-  "private": true,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -13,6 +12,18 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mitii-dev/Mitii.git",
+    "directory": "packages/host"
+  },
+  "homepage": "https://github.com/Mitii-dev/Mitii/tree/main/packages/host",
+  "bugs": {
+    "url": "https://github.com/Mitii-dev/Mitii/issues"
   },
   "files": [
     "dist",

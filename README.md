@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.7.158" src="https://img.shields.io/badge/version-2.7.158-111111">
+  <img alt="Version 2.7.159" src="https://img.shields.io/badge/version-2.7.159-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
 
@@ -195,13 +195,16 @@ pnpm run package            # build the target-specific VSIX (apps/vscode)
 pnpm run package:preflight  # release checks, tests, and package
 ```
 
-Native modules target different runtimes:
+Native modules target different runtimes. `rebuild:native` stages the Electron
+binding for F5 and restores the Node ABI in `node_modules`, so tests keep working:
 
 ```bash
-pnpm run rebuild:native     # VS Code/Electron (+ stage dist/native)
-pnpm run rebuild:node       # local Node.js tests
-pnpm run rebuild:all        # Node then Electron (ends F5-ready)
+pnpm run rebuild:native     # Electron → dist/native, then restore Node ABI
+pnpm run rebuild:node       # Node-only (tests/CLI)
+pnpm run rebuild:all        # alias of rebuild:native (both targets ready)
 ```
+
+Vitest scripts auto-heal ABI mismatches via `scripts/ensure-node-native.mjs`.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for coding conventions and pull request guidance.
 
