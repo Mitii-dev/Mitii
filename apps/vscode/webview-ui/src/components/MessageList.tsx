@@ -77,7 +77,11 @@ export function MessageList({
 }: MessageListProps) {
   if (turns.length === 0) {
     return (
-      <div className="messages" ref={containerRef} onScroll={onScroll}>
+      <div
+        className="messages messages--empty"
+        ref={containerRef}
+        onScroll={onScroll}
+      >
         <div className="empty-state">
           <h2>Ready when you are</h2>
           <p>Workspace context is ready. Start with the outcome you want.</p>
@@ -115,11 +119,6 @@ export function MessageList({
                 ) : null}
                 {turn.route ? <span className="meta-pill">{turn.route}</span> : null}
               </div>
-              <AgentActivityPanel
-                events={turn.activity}
-                open={activityOpen}
-                onToggle={onToggleActivity}
-              />
               {turn.text || turn.streaming ? (
                 <div
                   className={`bubble assistant ${turn.streaming ? 'streaming' : ''}`}
@@ -131,6 +130,11 @@ export function MessageList({
                   />
                 </div>
               ) : null}
+              <AgentActivityPanel
+                events={turn.activity}
+                open={activityOpen}
+                onToggle={onToggleActivity}
+              />
               {turn.fileChanges ? (
                 <FileChangesCard
                   changes={turn.fileChanges}
@@ -147,9 +151,7 @@ export function MessageList({
                   }
                 />
               ) : null}
-              {turn.streaming ? (
-                <AgentThinkingPanel events={turn.activity} loading={true} />
-              ) : null}
+              <AgentThinkingPanel events={turn.activity} />
               {turn.suspension ? (
                 <ApprovalCards
                   suspension={turn.suspension}

@@ -127,11 +127,24 @@ function buildCoreSystemPrompt(
     `Planning depth: ${decision.planningDepth}.`,
     `Plan gate: ${decision.planGate}.`,
     `Run disposition: ${decision.runDisposition}.`,
+    buildRouteGuidance(decision),
     planGuidance,
     toolGuidance,
   ]
     .filter((line) => line.length > 0)
     .join("\n");
+}
+
+function buildRouteGuidance(decision: ExecutionDecision): string {
+  if (
+    decision.route === "direct_answer" ||
+    decision.route === "repository_answer" ||
+    decision.route === "diagnose" ||
+    decision.toolGrant.maximumWorkspaceEffect !== "write"
+  ) {
+    return "This is a read-only answer route. Do not claim you are applying edits, adding files, or running a change now; explain findings, recommendations, or exact steps instead.";
+  }
+  return "";
 }
 
 function buildToolGuidance(decision: ExecutionDecision): string {

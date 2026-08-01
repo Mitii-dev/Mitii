@@ -210,6 +210,22 @@ describe("PromptConstructionPipeline", () => {
     }
   });
 
+  it("tells read-only answer routes not to claim edits are being applied", () => {
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        decision: createDecision({
+          mode: "ask",
+          message: "How do I add a direct bill endpoint?",
+          primaryTaskIntent: "question",
+        }),
+      }),
+    );
+
+    const system = result.request.messages[0]?.content ?? "";
+    expect(system).toContain("read-only answer route");
+    expect(system).toContain("Do not claim you are applying edits");
+  });
+
   it("reports omitted repository blocks when budget is tight", () => {
     const largeBlocks = Array.from({ length: 12 }, (_, index) => ({
       id: `block_${index}`,

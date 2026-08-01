@@ -248,6 +248,49 @@ describe("network and mutating command tools", () => {
     expect(approved.status).toBe("succeeded");
   });
 
+  it("run_command rejects forced audit remediation even with a broad npm grant", async () => {
+    const runtime = new ToolRuntimePipeline({
+      fileSystem: new InMemoryFileSystemAdapter(WORKSPACE, directory({})),
+      process: new InMemoryProcessAdapter(async () => ({
+        exitCode: 0,
+        stdout: "should not run",
+        stderr: "",
+        timedOut: false,
+        cancelled: false,
+        truncated: false,
+      })),
+    });
+
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "c_audit_force",
+      toolName: "run_command",
+      arguments: { argv: ["npm", "audit", "fix", "--force"] },
+      grant: {
+        maximumWorkspaceEffect: "write",
+        allowedTools: ["run_command"],
+        allowedEffects: ["workspace_write", "process_execute"],
+        pathScopes: ["."],
+        commandRules: [
+          { prefixes: ["npm"], allowShellMetacharacters: false },
+        ],
+        networkHosts: [],
+        approvalMode: "never",
+        limits: {
+          maxToolCalls: 8,
+          maxWallTimeMs: 30_000,
+          maxOutputBytes: 64_000,
+          maxConcurrentTools: 1,
+        },
+      },
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCode).toBe("command_not_allowed");
+    expect(result.warnings.join(" ")).toContain("audit fix");
+  });
+
   it("read_package_scripts returns scripts map", async () => {
     const runtime = new ToolRuntimePipeline({
       fileSystem: new InMemoryFileSystemAdapter(

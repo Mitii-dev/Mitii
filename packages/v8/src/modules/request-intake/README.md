@@ -38,6 +38,7 @@ CreateUserRequestInput
 ## Do not put here
 
 - Intent classification or task analysis (`request-understanding`)
+- LLM / model calls of any size (including quick classification)
 - Decision policy, routing, or tool grants
 - Repository indexing or context retrieval
 

@@ -13,6 +13,7 @@ export default defineConfig({
     include: [
       'src/engine/**/*.spec.ts',
       'src/modules/decision-policy/**/*.spec.ts',
+      'src/modules/request-intake/tests/**/*.spec.ts',
       'src/modules/memory/**/*.spec.ts',
       'src/modules/planning/**/*.spec.ts',
       'src/modules/prompt-construction/**/*.spec.ts',

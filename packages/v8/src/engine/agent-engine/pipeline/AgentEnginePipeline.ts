@@ -422,8 +422,9 @@ export class AgentEnginePipeline {
       }
 
       // --- Understand ---
+      // Module facade re-validates: message may be conversation-amended here.
       this.emitStage(bus, runId, "understood", "started");
-      const understandingEnvelope =
+      const understandingEnvelope: UserRequestEnvelope =
         input.conversation.length > 0
           ? {
               ...envelope,
@@ -446,9 +447,12 @@ export class AgentEnginePipeline {
       }
 
       // --- Decide ---
+      // Validates composed DecisionPolicyInput at its boundary (not a second
+      // intake). Uses the original intake envelope, not the amended message.
       this.emitStage(bus, runId, "decided", "started");
       const decision = this.deps.decision.decide({
         schemaVersion: DECISION_POLICY_SCHEMA_VERSION,
+        // Hand-written envelope types use readonly arrays; Zod infer is mutable.
         envelope: envelope as DecisionPolicyInput["envelope"],
         understanding,
         repositoryState: input.repositoryState,

@@ -21,6 +21,7 @@ export default defineConfig({
       // Vitest-owned @mitii/v8 suites only (node:test specs stay on disk).
       'packages/v8/src/engine/**/*.spec.ts',
       'packages/v8/src/modules/decision-policy/**/*.spec.ts',
+      'packages/v8/src/modules/request-intake/tests/**/*.spec.ts',
       'packages/v8/src/modules/memory/**/*.spec.ts',
       'packages/v8/src/modules/planning/**/*.spec.ts',
       'packages/v8/src/modules/prompt-construction/**/*.spec.ts',

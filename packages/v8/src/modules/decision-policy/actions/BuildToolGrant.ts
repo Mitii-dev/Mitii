@@ -205,6 +205,16 @@ function resolveProcessExecutionAuthority(params: {
 function resolvePathScopes(
   understanding: RequestUnderstandingResult,
 ): string[] {
+  const primaryIntent =
+    understanding.intent.classification.primaryTaskIntent;
+  if (
+    primaryIntent === "dependency" ||
+    primaryIntent === "security" ||
+    primaryIntent === "audit"
+  ) {
+    return ["."];
+  }
+
   const explicitPaths = understanding.taskAnalysis.targets
     .filter(
       (target) =>

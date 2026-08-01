@@ -106,11 +106,70 @@ export function validateReadonlyCommand(params: {
     }
   }
 
+  rejectUnsafePackageManagerMutation(argv);
+
   return {
     argv,
     matchedPrefix,
     env: pickAllowedEnv(process.env),
   };
+}
+
+/**
+ * Prefix grants such as "npm", "pnpm", and "yarn" are broad enough for
+ * normal verification (`npm test`, `pnpm run build`, `yarn lint`). Keep
+ * irreversible dependency remediation out of tool execution even when the
+ * model has a mutating command grant and the host approved the call.
+ */
+function rejectUnsafePackageManagerMutation(argv: readonly string[]): void {
+  const manager = argv[0];
+  if (
+    manager !== "npm" &&
+    manager !== "pnpm" &&
+    manager !== "yarn" &&
+    manager !== "bun"
+  ) {
+    return;
+  }
+
+  const subcommands = argv
+    .slice(1)
+    .filter((part) => !part.startsWith("-"))
+    .map((part) => part.toLowerCase());
+  const first = subcommands[0];
+  const second = subcommands[1];
+  const hasForce =
+    argv.includes("--force") ||
+    argv.includes("-f") ||
+    argv.some((part) => part.toLowerCase() === "--legacy-peer-deps");
+
+  if (manager === "npm" && first === "audit" && second === "fix") {
+    throw new CommandPolicyError(
+      "command_not_allowed",
+      "Refusing to run npm audit fix. Preview and patch dependency changes explicitly; forced audit remediation is not allowed.",
+    );
+  }
+
+  const dependencyMutationCommands = new Set([
+    "add",
+    "dedupe",
+    "install",
+    "i",
+    "remove",
+    "rm",
+    "uninstall",
+    "unlink",
+    "up",
+    "update",
+    "upgrade",
+  ]);
+
+  if (first && dependencyMutationCommands.has(first) && hasForce) {
+    throw new CommandPolicyError(
+      "command_not_allowed",
+      `Refusing to run forced dependency mutation: ${argv.join(" ")}.`,
+    );
+  }
 }
 
 export function pickAllowedEnv(

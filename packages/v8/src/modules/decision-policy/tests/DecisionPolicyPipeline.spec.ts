@@ -220,6 +220,46 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.allowedTools).not.toContain("run_command");
   });
 
+  it("keeps dependency and security execute tasks scoped to the workspace root", () => {
+    const dependencyDecision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "Upgrade the vulnerable dependencies in package.json",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "dependency",
+          interactionIntent: "act",
+          taskAnalysis: {
+            targets: [
+              { kind: "file", value: "package.json", explicit: true },
+            ],
+          },
+        }),
+      }),
+    );
+
+    expect(dependencyDecision.route).toBe("execute");
+    expect(dependencyDecision.toolGrant.pathScopes).toEqual(["."]);
+
+    const securityDecision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "Fix package.json security vulnerabilities",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "security",
+          interactionIntent: "act",
+          taskAnalysis: {
+            targets: [
+              { kind: "file", value: "package.json", explicit: true },
+            ],
+          },
+        }),
+      }),
+    );
+
+    expect(securityDecision.route).toBe("execute");
+    expect(securityDecision.toolGrant.pathScopes).toEqual(["."]);
+  });
+
   it("requires every_mutation approval and verification for high-risk execute", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({
