@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.8.5",
+  "version": "2.8.6",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -271,7 +271,7 @@
         "mitii.semanticIndex.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable semantic workspace indexing when the provider is openai-compatible. If embeddings or LanceDB are unavailable, Mitii keeps vector search unavailable and continues with lexical indexing."
+          "description": "Enable semantic workspace indexing when the provider is OpenAI-compatible. Local endpoints require an explicit mitii.semanticIndex.model so chat-only models are not used for embeddings by default. If embeddings or LanceDB are unavailable, Mitii keeps vector search unavailable and continues with lexical indexing."
         },
         "mitii.semanticIndex.model": {
           "type": "string",
@@ -369,7 +369,7 @@
             "pilot"
           ],
           "default": "guided",
-          "description": "Approval autonomy: safe (ask for approval), guided (approve for me), pilot (full access). Legacy builder maps to guided."
+          "description": "Approval autonomy: safe (ask before mutations), guided (approve tool use automatically), pilot (full access including plan approval). Legacy builder maps to guided."
         },
         "mitii.runBudget.unlimited": {
           "type": "boolean",

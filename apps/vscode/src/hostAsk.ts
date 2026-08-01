@@ -338,6 +338,30 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
   }
 }
 
+type ApprovalViewSource = NonNullable<
+  NonNullable<AgentRunResult['suspension']>['approval']
+>;
+
+function shellQuoteArg(value: string): string {
+  if (/^[A-Za-z0-9_./:=@%+-]+$/.test(value)) return value;
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function approvalDetail(approval: ApprovalViewSource): string | undefined {
+  const args = approval.arguments;
+  if (
+    approval.toolName === 'run_command' &&
+    args &&
+    typeof args === 'object' &&
+    Array.isArray((args as { argv?: unknown }).argv)
+  ) {
+    return (args as { argv: unknown[] }).argv
+      .map((arg) => shellQuoteArg(String(arg)))
+      .join(' ');
+  }
+  return approval.paths?.join(', ');
+}
+
 export function resultToSuspension(
   result: AgentRunResult,
 ): SuspensionPayload | undefined {
@@ -362,6 +386,7 @@ export function resultToSuspension(
         toolName: suspension.approval.toolName,
         paths: suspension.approval.paths,
         proposedText: suspension.approval.proposedText,
+        arguments: suspension.approval.arguments,
       },
     };
   }
@@ -417,7 +442,7 @@ async function resolveSuspensionNative(
         {
           label: 'Approve',
           description: suspension.approval.toolName,
-          detail: suspension.approval.paths?.join(', '),
+          detail: approvalDetail(suspension.approval),
         },
         { label: 'Deny', description: 'No mutation' },
       ],
@@ -557,7 +582,7 @@ function readPinnedFileContents(
   return `Pinned file contents:\n\n${blocks.join('\n\n')}`;
 }
 
-function resolveApprovalPolicy(preset: string | undefined): {
+export function resolveApprovalPolicy(preset: string | undefined): {
   approvalMode: 'never' | 'when_required' | 'every_mutation';
   planApproval: 'policy' | 'never';
 } {
@@ -565,13 +590,26 @@ function resolveApprovalPolicy(preset: string | undefined): {
     case 'safe':
       return { approvalMode: 'every_mutation', planApproval: 'policy' };
     case 'builder':
+    case 'guided':
       return { approvalMode: 'never', planApproval: 'policy' };
     case 'pilot':
       return { approvalMode: 'never', planApproval: 'never' };
-    case 'guided':
     default:
       return { approvalMode: 'when_required', planApproval: 'policy' };
   }
+}
+
+function withCurrentApprovalPolicy(
+  vs: typeof vscode,
+  resume: MitiiResumeInput,
+): MitiiResumeInput {
+  const preset =
+    vs.workspace.getConfiguration('mitii').get<string>('safety.approvalMode') ??
+    'guided';
+  return {
+    ...resume,
+    approvalMode: resolveApprovalPolicy(preset).approvalMode,
+  };
 }
 
 function resolveRunBudget(vs: typeof vscode): AgentRunBudget {
@@ -1011,7 +1049,7 @@ export async function runAskInOutputChannel(options: {
           };
         }
         channel.appendLine('[mitii] resuming…');
-        run = client.resume(resume);
+        run = client.resume(withCurrentApprovalPolicy(vs, resume));
       } finally {
         cancelSub.dispose();
       }

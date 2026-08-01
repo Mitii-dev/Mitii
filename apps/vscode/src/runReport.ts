@@ -81,9 +81,6 @@ export function formatVisibleFailureDetails(options: {
   if (result.error?.message) {
     lines.push(`Reason: ${result.error.message}`);
   }
-  if (result.reasonCodes?.length) {
-    lines.push(`Reason codes: ${result.reasonCodes.join(', ')}`);
-  }
   if (
     result.reasonCodes?.includes('prompt_blocked') ||
     result.error?.code === 'prompt_blocked'
@@ -93,13 +90,31 @@ export function formatVisibleFailureDetails(options: {
     );
   }
   if (verification?.type === 'verification_completed') {
+    const verificationReasons = verification.reasonCodes
+      .filter((code: string) => code !== 'run_started')
+      .slice(0, 4);
     lines.push(
-      `Verification: ${verification.status} (${verification.reasonCodes.join(', ')})`,
+      `Verification: ${verification.status}${
+        verificationReasons.length
+          ? ` (${verificationReasons.join(', ')})`
+          : ''
+      }`,
     );
-    for (const check of verification.checks.slice(0, 6)) {
+    const failedChecks = verification.checks.filter(
+      (check: { outcome: string }) =>
+        check.outcome === 'failed' || check.outcome === 'timed_out',
+    );
+    const checksToShow = failedChecks.length
+      ? failedChecks
+      : verification.checks.slice(0, 3);
+    for (const check of checksToShow.slice(0, 6)) {
       lines.push(`- ${check.kind}/${check.outcome}: ${check.summary}`);
     }
-    for (const diagnostic of verification.diagnostics.slice(0, 6)) {
+    const diagnosticsToShow = verification.diagnostics.filter(
+      (diagnostic: { severity: string }) =>
+        diagnostic.severity === 'error' || diagnostic.severity === 'warning',
+    );
+    for (const diagnostic of diagnosticsToShow.slice(0, 6)) {
       const line = diagnostic.startLine ? `:${diagnostic.startLine}` : '';
       lines.push(
         `- ${diagnostic.path}${line} ${diagnostic.severity}: ${diagnostic.message}`,

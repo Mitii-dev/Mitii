@@ -54,6 +54,7 @@ export const agentRunSuspensionSchema = z
         toolName: z.string().min(1),
         callId: z.string().min(1),
         paths: z.array(z.string()).optional(),
+        arguments: z.unknown().optional(),
       })
       .strict()
       .optional(),

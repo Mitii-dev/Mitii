@@ -36,7 +36,11 @@ import {
   undoRunFileChanges,
   type FileChangeRunSnapshot,
 } from './fileChanges.js';
-import { runAskInOutputChannel, runEventToActivity } from './hostAsk.js';
+import {
+  resolveApprovalPolicy,
+  runAskInOutputChannel,
+  runEventToActivity,
+} from './hostAsk.js';
 import { buildContextUsageBreakdown } from './contextUsage.js';
 import { getSharedMcpManager } from './mcp/manager.js';
 import {
@@ -56,6 +60,7 @@ import type {
   PlanView,
   ProviderSettingsSnapshot,
   RunBudgetSettingsSnapshot,
+  SuspensionPayload,
   RunUsagePayload,
   TokenUsageSnapshot,
   UiSettingsSnapshot,
@@ -297,6 +302,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   private pendingResume?: {
     resolve: (value: MitiiResumeInput | 'stop') => void;
   };
+  private pendingSuspension?: SuspensionPayload;
   private lastIndex: IndexStatusSnapshot = {
     fileCount: 0,
     truncated: false,
@@ -351,6 +357,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const runId = this.lastSuspensionRunId;
     const { resolve } = this.pendingResume;
     this.pendingResume = undefined;
+    this.pendingSuspension = undefined;
     this.lastSuspensionRunId = undefined;
     this.post({ type: 'run.resumed', runId });
     resolve({
@@ -904,6 +911,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     if (!this.pendingResume) return;
     const { resolve } = this.pendingResume;
     this.pendingResume = undefined;
+    this.pendingSuspension = undefined;
     if (message.clarificationAnswer?.trim()) {
       this.post({ type: 'run.resumed', runId: message.runId });
       this.lastSuspensionRunId = undefined;
@@ -937,6 +945,38 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
     resolve('stop');
+  }
+
+  private autoApprovePendingToolApprovalIfAllowed(
+    approvalMode: string | undefined,
+  ): void {
+    const pending = this.pendingSuspension;
+    if (
+      !this.pendingResume ||
+      !pending ||
+      pending.kind !== 'approval_required' ||
+      !pending.approval?.approvalId ||
+      resolveApprovalPolicy(approvalMode).approvalMode !== 'never'
+    ) {
+      return;
+    }
+
+    const { resolve } = this.pendingResume;
+    this.pendingResume = undefined;
+    this.pendingSuspension = undefined;
+    this.lastSuspensionRunId = undefined;
+    this.host.inlineDiff.setPending(undefined);
+    this.host.onInlineDiffPending(false);
+    this.post({ type: 'run.resumed', runId: pending.runId });
+    resolve({
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: pending.runId,
+      approvalMode: 'never',
+      approval: {
+        approvalId: pending.approval.approvalId,
+        decision: 'approved',
+      },
+    });
   }
 
   private mcpRuntimeStatus(): McpRuntimeStatus {
@@ -1145,6 +1185,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
               }
             }
             this.lastSuspensionRunId = suspension.runId;
+            this.pendingSuspension = suspension;
             this.post({ type: 'run.suspended', suspension });
             return new Promise<MitiiResumeInput | 'stop'>((resolve) => {
               this.pendingResume = { resolve };
@@ -1321,6 +1362,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         this.pendingResume.resolve('stop');
         this.pendingResume = undefined;
       }
+      this.pendingSuspension = undefined;
     }
   }
 
@@ -1754,6 +1796,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         message.approvalMode,
         this.vs.ConfigurationTarget.Workspace,
       );
+      this.autoApprovePendingToolApprovalIfAllowed(message.approvalMode);
     }
     if (message.workspaceRootOverride !== undefined) {
       await cfg.update(

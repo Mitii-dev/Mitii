@@ -1002,8 +1002,18 @@ export class AgentEnginePipeline {
     }
 
     const requestId = checkpoint.requestId;
-    const decision = checkpoint.decision;
-    const startInput = checkpoint.input;
+    const decision = input.approvalMode
+      ? {
+          ...checkpoint.decision,
+          toolGrant: {
+            ...checkpoint.decision.toolGrant,
+            approvalMode: input.approvalMode,
+          },
+        }
+      : checkpoint.decision;
+    const startInput = input.approvalMode
+      ? { ...checkpoint.input, approvalMode: input.approvalMode }
+      : checkpoint.input;
     const pinnedState = checkpoint.pinnedState;
     const reasonCodes: AgentReasonCode[] = [...checkpoint.reasonCodes];
     const warnings: string[] = [...checkpoint.warnings];
@@ -1472,6 +1482,7 @@ export class AgentEnginePipeline {
               toolName: currentOutcome.pendingApproval.toolName,
               callId: currentOutcome.pendingApproval.callId,
               paths: currentOutcome.pendingApproval.paths,
+              arguments: currentOutcome.pendingApproval.arguments,
             },
           },
           reasonCodes,

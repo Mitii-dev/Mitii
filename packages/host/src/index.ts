@@ -33,9 +33,13 @@ export {
   writeIndexRuntimeMetadata,
   readIndexRuntimeMetadata,
   normalizePositiveInteger,
+  shouldEnableSemanticIndex,
+  DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL,
+  DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_DIMENSIONS,
 } from './indexing/semanticIndex.js';
 export type {
   SemanticIndexSettings,
+  SemanticIndexEnablementOptions,
   IndexRuntimeMetadata,
 } from './indexing/semanticIndex.js';
 

@@ -84,7 +84,7 @@ const APPROVAL_OPTIONS: ComposerOption<ApprovalUiMode>[] = [
   {
     id: 'guided',
     label: 'Approve for me',
-    description: 'Only ask for actions detected as potentially unsafe',
+    description: 'Approve tool use automatically; keep plan checkpoints',
     color: 'var(--mitii-text)',
     icon: <IconApproveForMe />,
   },

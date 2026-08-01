@@ -70,6 +70,37 @@ function compactText(text: string | undefined, max = 900): string | undefined {
   return cleaned.length > max ? `${cleaned.slice(0, max - 1)}…` : cleaned;
 }
 
+function shellQuoteArg(value: string): string {
+  if (/^[A-Za-z0-9_./:=@%+-]+$/.test(value)) return value;
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function approvalCommandText(approval: SuspensionPayload['approval']): string | undefined {
+  const args = approval?.arguments;
+  if (
+    approval?.toolName === 'run_command' &&
+    args &&
+    typeof args === 'object' &&
+    Array.isArray((args as { argv?: unknown }).argv)
+  ) {
+    return (args as { argv: unknown[] }).argv
+      .map((arg) => shellQuoteArg(String(arg)))
+      .join(' ');
+  }
+  return undefined;
+}
+
+function approvalArgumentsText(
+  approval: SuspensionPayload['approval'],
+): string | undefined {
+  if (!approval?.arguments || approvalCommandText(approval)) return undefined;
+  try {
+    return JSON.stringify(approval.arguments, null, 2);
+  } catch {
+    return String(approval.arguments);
+  }
+}
+
 export function ApprovalCards({
   suspension,
   clarifyText,
@@ -85,6 +116,8 @@ export function ApprovalCards({
   const approval = suspension.approval;
   const options = suspension.clarificationOptions ?? [];
   const planText = suspension.planText;
+  const commandText = approvalCommandText(approval);
+  const argumentsText = approvalArgumentsText(approval);
   const objective = extractField(planText, 'Objective');
   const scope = extractField(planText, 'Scope');
   const verification = extractField(planText, 'Verification');
@@ -115,6 +148,22 @@ export function ApprovalCards({
           {approval.paths?.length ? (
             <span className="mono">{approval.paths.join(', ')}</span>
           ) : null}
+        </div>
+      ) : null}
+      {!isClarify && !isPlan && commandText ? (
+        <div className="approval-command">
+          <span>Command to run</span>
+          <pre className="approval-plan__raw approval-plan__raw--command">
+            {commandText}
+          </pre>
+        </div>
+      ) : null}
+      {!isClarify && !isPlan && argumentsText ? (
+        <div className="approval-command">
+          <span>Tool arguments</span>
+          <pre className="approval-plan__raw approval-plan__raw--command">
+            {compactText(argumentsText, 1200)}
+          </pre>
         </div>
       ) : null}
       {isPlan && suspension.plan ? (

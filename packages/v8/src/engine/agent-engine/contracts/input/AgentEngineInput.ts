@@ -107,6 +107,12 @@ export const agentEngineResumeInputSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Optional host override captured at resume time. This lets a permission
+     * change made while a run is suspended apply to later tool calls in the
+     * same run.
+     */
+    approvalMode: agentApprovalModeSchema.optional(),
     clarificationAnswer: z.string().min(1).optional(),
     planDecision: z
       .object({

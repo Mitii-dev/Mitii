@@ -7,6 +7,12 @@ import type {
   LanceDbConnectionPort,
 } from '@mitii/v8';
 
+import { isLocalBaseUrl } from '../config/providerPresets.js';
+
+export const DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL =
+  'text-embedding-3-small';
+export const DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_DIMENSIONS = 1536;
+
 export interface SemanticIndexSettings {
   enabled: boolean;
   baseUrl: string;
@@ -17,6 +23,13 @@ export interface SemanticIndexSettings {
   fetchImpl?: typeof fetch;
 }
 
+export interface SemanticIndexEnablementOptions {
+  requested: boolean;
+  providerType: string;
+  baseUrl: string;
+  embeddingModelConfigured: boolean;
+}
+
 export interface IndexRuntimeMetadata {
   schemaVersion: 1;
   workspaceId: string;
@@ -24,6 +37,18 @@ export interface IndexRuntimeMetadata {
   lanceDbPath: string;
   embeddingProfile: EmbeddingProfile;
   generatedAt: string;
+}
+
+export function shouldEnableSemanticIndex(
+  options: SemanticIndexEnablementOptions,
+): boolean {
+  if (!options.requested || options.providerType !== 'openai-compatible') {
+    return false;
+  }
+  if (!isLocalBaseUrl(options.baseUrl)) {
+    return true;
+  }
+  return options.embeddingModelConfigured;
 }
 
 export class OpenAiCompatibleEmbeddingProvider implements EmbeddingProvider {

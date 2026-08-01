@@ -1155,6 +1155,18 @@ select.depth-select {
   word-break: break-word;
 }
 
+.approval-command {
+  display: grid;
+  gap: 4px;
+}
+
+.approval-command > span {
+  color: var(--mitii-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .approval-plan {
   display: grid;
   gap: 8px;
@@ -1255,6 +1267,11 @@ select.depth-select {
 
 .approval-plan__raw--diff {
   max-height: min(36vh, 260px);
+}
+
+.approval-plan__raw--command {
+  max-height: min(24vh, 160px);
+  color: var(--mitii-text);
 }
 
 @media (max-width: 360px) {

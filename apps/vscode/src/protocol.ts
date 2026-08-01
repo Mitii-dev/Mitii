@@ -225,6 +225,7 @@ export interface SuspensionPayload {
     toolName: string;
     paths?: string[];
     proposedText?: string;
+    arguments?: unknown;
   };
 }
 
