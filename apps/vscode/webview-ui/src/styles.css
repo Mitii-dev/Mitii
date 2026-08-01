@@ -1798,13 +1798,13 @@ select.depth-select {
   align-items: center;
   flex-wrap: wrap;
   row-gap: 2px;
-  gap: 4px;
+  gap: 5px;
   max-width: 100%;
-  border: none;
-  background: transparent;
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--mitii-panel) 42%, transparent);
   color: var(--mitii-muted);
-  border-radius: 4px;
-  padding: 2px 6px;
+  border-radius: 6px;
+  padding: 3px 7px;
   font-size: 10px;
   font-family: var(--mitii-font-mono);
   cursor: pointer;
@@ -1813,11 +1813,13 @@ select.depth-select {
 .token-chip--active,
 .token-chip:hover {
   color: var(--mitii-text);
-  background: color-mix(in srgb, var(--mitii-text) 4%, transparent);
+  border-color: color-mix(in srgb, var(--mitii-accent) 34%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-text) 5%, transparent);
 }
 
 .token-chip--live {
   color: var(--mitii-text);
+  border-color: color-mix(in srgb, var(--mitii-accent) 38%, transparent);
 }
 
 .token-chip__live {
@@ -1850,18 +1852,21 @@ select.depth-select {
   bottom: calc(100% + 8px);
   width: min(320px, calc(100vw - 20px));
   max-width: calc(100vw - 20px);
-  padding: 12px;
+  padding: 10px;
   border: 1px solid var(--mitii-border);
   border-radius: 8px;
   background: var(--vscode-editorWidget-background, var(--mitii-panel));
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  box-shadow:
+    0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset,
+    0 14px 34px color-mix(in srgb, #000 34%, transparent);
   z-index: 100;
 }
 
 .token-popover__panel--wide {
-  width: min(360px, calc(100vw - 20px));
-  max-height: min(70vh, 520px);
+  width: min(390px, calc(100vw - 20px));
+  max-height: min(78vh, 620px);
   overflow: auto;
+  scrollbar-width: thin;
 }
 
 .token-popover__section-meta {
@@ -1873,7 +1878,7 @@ select.depth-select {
 
 .token-fill {
   margin-top: 8px;
-  height: 6px;
+  height: 7px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--mitii-text) 10%, transparent);
   overflow: hidden;
@@ -1893,6 +1898,22 @@ select.depth-select {
   box-shadow: 0 0 10px color-mix(in srgb, var(--mitii-accent) 26%, transparent);
 }
 
+.token-fill--segmented {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  padding: 1px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 66%, transparent);
+  background: color-mix(in srgb, var(--mitii-panel) 70%, transparent);
+}
+
+.token-fill__segment {
+  min-width: 2px;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--token-slice-color, var(--mitii-accent));
+}
+
 .token-context-slices {
   list-style: none;
   margin: 8px 0 0;
@@ -1900,6 +1921,10 @@ select.depth-select {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.token-context-slices--monitor {
+  gap: 7px;
 }
 
 .token-context-slice__label {
@@ -1910,6 +1935,13 @@ select.depth-select {
   color: var(--mitii-text);
 }
 
+.token-context-slice__label span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .token-context-slice__label span:last-child {
   font-family: var(--mitii-font-mono);
   color: var(--mitii-muted);
@@ -1918,7 +1950,7 @@ select.depth-select {
 
 .token-context-slice__track {
   margin-top: 3px;
-  height: 4px;
+  height: 5px;
   border-radius: 999px;
   background: color-mix(
     in srgb,
@@ -1966,15 +1998,19 @@ select.depth-select {
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--mitii-border-soft);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--mitii-text);
 }
 
 .token-popover__header strong {
-  color: var(--mitii-muted);
-  font-size: 11px;
-  font-weight: 600;
+  color: var(--mitii-accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
 .token-popover__summary {
@@ -1999,6 +2035,10 @@ select.depth-select {
   font-weight: 600;
 }
 
+.token-popover__section-title--flush {
+  margin-top: 0;
+}
+
 .token-popover__stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2008,12 +2048,16 @@ select.depth-select {
 
 .token-popover__stats--primary {
   margin-top: 10px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--mitii-border);
+  padding-top: 10px;
+  border-top: 1px solid var(--mitii-border-soft);
 }
 
 .token-popover__stats div {
   min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 58%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--mitii-text) 3%, transparent);
 }
 
 .token-popover__stats dt {
@@ -2031,6 +2075,114 @@ select.depth-select {
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.token-popover__stats--compact {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.token-popover__stats--compact div,
+.token-popover__stats--tiny div {
+  padding: 6px;
+}
+
+.token-popover__stats--compact dd,
+.token-popover__stats--tiny dd {
+  font-size: 11px;
+}
+
+.token-popover__stats--tiny {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.token-call-card {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--mitii-accent) 30%, var(--mitii-border));
+  border-radius: 8px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--mitii-accent) 7%, transparent),
+      color-mix(in srgb, var(--mitii-text) 3%, transparent)
+    );
+}
+
+.token-call-card__top,
+.token-call-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.token-call-card__top span {
+  color: var(--mitii-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.token-call-card__top strong {
+  color: var(--mitii-text);
+  font-family: var(--mitii-font-mono);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.token-call-card__io {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.token-call-card__io div {
+  min-width: 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--mitii-panel) 66%, transparent);
+}
+
+.token-call-card__io span,
+.token-call-card__meta {
+  color: var(--mitii-muted);
+  font-size: 10px;
+}
+
+.token-call-card__io strong {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--mitii-text);
+  font-family: var(--mitii-font-mono);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token-call-card__meta {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  font-family: var(--mitii-font-mono);
+}
+
+.token-call-card__meta span:not(:first-child) {
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mitii-text) 5%, transparent);
+}
+
+.token-source-panel {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 72%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mitii-panel) 64%, transparent);
 }
 
 .token-popover__turns {
