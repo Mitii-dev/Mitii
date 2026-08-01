@@ -11,10 +11,6 @@ import {
 import { onHostMessage, postToHost } from './bridge';
 import { ContextPanel, type ContextPin } from './components/ContextPanel';
 import { ErrorBanner } from './components/ErrorBanner';
-import {
-  FileChangesBar,
-  FileChangesCard,
-} from './components/FileChangesCard';
 import { HistoryPanel } from './components/HistoryPanel';
 import { IconButton } from './components/IconButton';
 import {
@@ -187,15 +183,12 @@ export function App() {
   const [depth, setDepth] = useState<AgentUiDepth>('auto');
   const [prompt, setPrompt] = useState('');
   const [pinned, setPinned] = useState<ContextPin[]>([]);
-  const [fileChanges, setFileChanges] = useState<RunFileChangesView | null>(
-    null,
-  );
-  const [fileChangesBarExpanded, setFileChangesBarExpanded] = useState(false);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<PathSuggestion[]>([]);
   const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestQuery, setSuggestQuery] = useState('');
   const [activeSuggest, setActiveSuggest] = useState(0);
   const [workspace, setWorkspace] = useState<WorkspaceSnapshotInfo>({});
@@ -369,8 +362,6 @@ export function App() {
           setRunning(true);
           setError(null);
           setPlan(null);
-          setFileChanges(null);
-          setFileChangesBarExpanded(false);
           stickToBottomRef.current = true;
           forceScrollToBottomRef.current = true;
           const userId = uid('user');
@@ -496,7 +487,8 @@ export function App() {
         case 'paths.results':
           if (msg.requestId === lastSearchId.current) {
             setSuggestions(msg.suggestions);
-            setSuggestOpen(msg.suggestions.length > 0);
+            setSuggestLoading(false);
+            setSuggestOpen(true);
             setActiveSuggest(0);
           }
           break;
@@ -545,22 +537,21 @@ export function App() {
           break;
         }
         case 'run.fileChanges': {
-          setFileChanges(msg.changes);
-          setFileChangesBarExpanded(false);
           const id = activeAssistantId.current;
-          if (id) {
-            setTurns((prev) =>
-              prev.map((t) =>
-                t.id === id ? { ...t, fileChanges: msg.changes } : t,
-              ),
+          setTurns((prev) => {
+            const targetId =
+              id ??
+              [...prev]
+                .reverse()
+                .find((turn) => turn.role === 'assistant')?.id;
+            if (!targetId) return prev;
+            return prev.map((t) =>
+              t.id === targetId ? { ...t, fileChanges: msg.changes } : t,
             );
-          }
+          });
           break;
         }
         case 'fileChanges.undone': {
-          setFileChanges((prev) =>
-            prev?.runId === msg.runId ? null : prev,
-          );
           setTurns((prev) =>
             prev.map((t) =>
               t.fileChanges?.runId === msg.runId
@@ -586,10 +577,6 @@ export function App() {
             contextWindow: provider.contextWindow || 32768,
           });
           setTurns(msg.messages.map((m) => toChatTurn(m)));
-          setFileChanges(
-            [...msg.messages].reverse().find((m) => m.fileChanges)?.fileChanges ??
-              null,
-          );
           setNav('chat');
           break;
         case 'setPlan':
@@ -681,6 +668,7 @@ export function App() {
       pinnedPaths: pinned.map((p) => p.path),
     });
     setPrompt('');
+    setSuggestLoading(false);
     setSuggestOpen(false);
   }, [prompt, running, mode, depth, pinned]);
 
@@ -692,8 +680,11 @@ export function App() {
       setSuggestQuery(q);
       const requestId = String(++searchReq.current);
       lastSearchId.current = requestId;
+      setSuggestLoading(true);
+      setSuggestOpen(true);
       postToHost({ type: 'paths.search', query: q, requestId });
     } else {
+      setSuggestLoading(false);
       setSuggestOpen(false);
     }
   };
@@ -712,6 +703,7 @@ export function App() {
       }
       return [...prev, { path, source: 'user' }];
     });
+    setSuggestLoading(false);
     setSuggestOpen(false);
   };
 
@@ -744,7 +736,6 @@ export function App() {
 
   const dismissFileChanges = useCallback((runId: string) => {
     postToHost({ type: 'dismissFileChanges', runId });
-    setFileChanges((prev) => (prev?.runId === runId ? null : prev));
     setTurns((prev) =>
       prev.map((t) =>
         t.fileChanges?.runId === runId
@@ -972,31 +963,6 @@ export function App() {
           </div>
         ) : (
           <div className={`chat-view${running ? ' chat-view--running' : ''}`}>
-            {fileChanges ? (
-              <FileChangesBar
-                changes={fileChanges}
-                onExpand={() => setFileChangesBarExpanded(true)}
-                onUndo={() => undoFileChanges(fileChanges.runId)}
-                onReviewAll={() => reviewAllFileChanges(fileChanges)}
-              />
-            ) : null}
-            {fileChangesBarExpanded && fileChanges ? (
-              <div className="file-changes-bar-panel">
-                <FileChangesCard
-                  changes={fileChanges}
-                  onOpenFile={(path) => openFile(path)}
-                  onReviewFile={(path) =>
-                    reviewFileChange(fileChanges.runId, path)
-                  }
-                  onUndo={() => undoFileChanges(fileChanges.runId)}
-                  onReviewAll={() => reviewAllFileChanges(fileChanges)}
-                  onDismiss={() => {
-                    setFileChangesBarExpanded(false);
-                    dismissFileChanges(fileChanges.runId);
-                  }}
-                />
-              </div>
-            ) : null}
             <PlanPanel plan={plan} />
             <MessageList
               turns={turns}
@@ -1086,7 +1052,17 @@ export function App() {
               <div className="composer-box">
                 {suggestOpen ? (
                   <div className="suggest-pop" role="listbox">
-                    {suggestions.map((s, i) => (
+                    {suggestLoading ? (
+                      <div className="suggest-item suggest-item--loading">
+                        <span className="mono">Loading files…</span>
+                      </div>
+                    ) : null}
+                    {!suggestLoading && suggestions.length === 0 ? (
+                      <div className="suggest-item suggest-item--loading">
+                        <span className="mono">No matching files</span>
+                      </div>
+                    ) : null}
+                    {!suggestLoading ? suggestions.map((s, i) => (
                       <button
                         key={s.path}
                         type="button"
@@ -1096,7 +1072,7 @@ export function App() {
                         <span className="mono">@{s.path}</span>
                         <span className="suggest-kind">{s.kind}</span>
                       </button>
-                    ))}
+                    )) : null}
                   </div>
                 ) : null}
                 <textarea

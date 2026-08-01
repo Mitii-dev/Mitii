@@ -1104,6 +1104,15 @@ select.depth-select {
   background: var(--vscode-list-hoverBackground, var(--mitii-accent-soft));
 }
 
+.suggest-item--loading {
+  color: var(--mitii-muted);
+  cursor: default;
+}
+
+.suggest-item--loading:hover {
+  background: transparent;
+}
+
 .suggest-kind {
   color: var(--mitii-muted);
   font-size: 10px;
@@ -2200,7 +2209,10 @@ select.depth-select {
   color: var(--mitii-ok);
 }
 
-.indexing-chip--indexing .indexing-chip__label,
+.indexing-chip--indexing .indexing-chip__label {
+  color: var(--mitii-warn);
+}
+
 .indexing-chip--warn .indexing-chip__label {
   color: var(--mitii-danger);
 }
@@ -2866,10 +2878,11 @@ select.depth-select {
 
 .file-changes-card {
   border: 1px solid var(--mitii-border);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--mitii-panel) 82%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mitii-panel) 90%, transparent);
   overflow: hidden;
   margin: 8px 0;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--mitii-text) 5%, transparent);
 }
 
 .file-changes-card__note {
@@ -2880,19 +2893,12 @@ select.depth-select {
   border-bottom: 1px solid var(--mitii-border-soft);
 }
 
-.file-changes-card__hint {
-  margin: 0;
-  padding: 0 12px 8px;
-  font-size: 11px;
-  color: var(--mitii-muted);
-}
-
 .file-changes-card__header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 12px;
 }
 
 .file-changes-card__title-row {
@@ -2903,12 +2909,13 @@ select.depth-select {
 
 .file-changes-card__badge {
   display: inline-flex;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   align-items: center;
   justify-content: center;
-  border-radius: 5px;
-  border: 1px solid var(--mitii-border);
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--mitii-ok, #22c55e) 36%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-ok, #22c55e) 11%, transparent);
   color: var(--mitii-ok, #22c55e);
   font-weight: 700;
   flex-shrink: 0;
@@ -2921,10 +2928,12 @@ select.depth-select {
 
 .file-changes-card__stats {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  margin-top: 2px;
+  margin-top: 3px;
   font-family: var(--mitii-font-mono);
   font-size: 11px;
+  color: var(--mitii-muted);
 }
 
 .file-changes-card__actions {
@@ -2933,10 +2942,71 @@ select.depth-select {
   align-items: center;
 }
 
+.file-changes-card__status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px 10px 46px;
+}
+
+.file-changes-card__status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--mitii-border-soft);
+  background: color-mix(in srgb, var(--mitii-surface) 88%, transparent);
+  color: var(--mitii-muted);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.file-changes-card__status-chip strong {
+  color: var(--mitii-text);
+  font-weight: 700;
+}
+
+.file-changes-card__status-chip--edited {
+  border-color: color-mix(in srgb, #60a5fa 34%, var(--mitii-border));
+  background: color-mix(in srgb, #60a5fa 10%, transparent);
+}
+
+.file-changes-card__status-chip--added {
+  border-color: color-mix(in srgb, var(--mitii-ok, #22c55e) 34%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-ok, #22c55e) 10%, transparent);
+}
+
+.file-changes-card__status-chip--deleted {
+  border-color: color-mix(in srgb, var(--mitii-danger, #ef4444) 34%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-danger, #ef4444) 10%, transparent);
+}
+
+.file-changes-card__summary {
+  display: grid;
+  gap: 4px;
+  padding: 0 12px 10px 46px;
+  color: var(--mitii-muted);
+  font-size: 11px;
+}
+
+.file-changes-card__summary > div {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.file-changes-card__summary-label {
+  color: var(--mitii-text);
+  font-weight: 650;
+  flex: 0 0 auto;
+}
+
 .file-changes-card__list {
   list-style: none;
   margin: 0;
-  padding: 0 0 6px;
+  padding: 4px 0 6px;
   border-top: 1px solid var(--mitii-border-soft);
 }
 
@@ -2948,7 +3018,46 @@ select.depth-select {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
+  padding: 7px 12px;
+  min-height: 34px;
+}
+
+.file-changes-card__file-row:hover {
+  background: color-mix(in srgb, var(--mitii-text) 4%, transparent);
+}
+
+.file-changes-card__file-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  min-height: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--mitii-border-soft);
+  background: color-mix(in srgb, var(--mitii-surface) 88%, transparent);
+  color: var(--mitii-muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.file-changes-card__file-status--edited {
+  color: #60a5fa;
+  border-color: color-mix(in srgb, #60a5fa 32%, var(--mitii-border));
+  background: color-mix(in srgb, #60a5fa 9%, transparent);
+}
+
+.file-changes-card__file-status--added {
+  color: var(--mitii-ok, #22c55e);
+  border-color: color-mix(in srgb, var(--mitii-ok, #22c55e) 32%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-ok, #22c55e) 9%, transparent);
+}
+
+.file-changes-card__file-status--deleted {
+  color: var(--mitii-danger, #ef4444);
+  border-color: color-mix(in srgb, var(--mitii-danger, #ef4444) 32%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-danger, #ef4444) 9%, transparent);
 }
 
 .file-changes-card__path {
@@ -2986,10 +3095,10 @@ select.depth-select {
   font-family: var(--mitii-font-mono);
   font-size: 11px;
   flex-shrink: 0;
-  border: 0;
-  background: transparent;
-  padding: 2px 4px;
-  border-radius: 4px;
+  border: 1px solid var(--mitii-border-soft);
+  background: color-mix(in srgb, var(--mitii-surface) 82%, transparent);
+  padding: 3px 6px;
+  border-radius: 999px;
   cursor: pointer;
 }
 

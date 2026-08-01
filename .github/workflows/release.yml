@@ -1,3 +1,5 @@
+# Tag release: multi-platform VSIX + GitHub Release + Marketplace (+ Open VSX) + npm.
+# Requires secrets: NPM_TOKEN, VSCE_PAT. Optional: OVSX_PAT.
 name: Release
 
 on:
@@ -28,9 +30,10 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm run sync:versions -- --check
       - run: pnpm run typecheck
       - run: pnpm test
       - run: pnpm run rebuild:native
@@ -61,3 +64,41 @@ jobs:
         with:
           body_path: release-notes.md
           files: 'dist-vsix/*.vsix'
+
+  publish-marketplace:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Require VSCE_PAT
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::error::VSCE_PAT secret is missing. Add an Azure DevOps PAT with Marketplace publish scope for publisher mitii."
+            exit 1
+          fi
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-vsix
+          merge-multiple: true
+      - name: Publish to VS Code Marketplace
+        run: node scripts/publish-vscode-vsix.cjs
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      - name: Publish to Open VSX
+        run: node scripts/publish-ovsx-vsix.cjs
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+
+  npm:
+    uses: ./.github/workflows/npm-publish.yml
+    secrets: inherit

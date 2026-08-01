@@ -24,7 +24,7 @@ npm install @mitii/host
 
 Requires **Node.js 20+**. Depends on `@mitii/sdk` and `@mitii/v8`. Optional: `@lancedb/lancedb` for vectors. License: **AGPL-3.0-or-later**.
 
-> Until published from this monorepo, consume via the workspace (`pnpm --filter @mitii/host`).
+Published on `v*` release tags. For local development, consume via the workspace (`pnpm --filter @mitii/host`).
 
 ## Intent
 

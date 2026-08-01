@@ -5,6 +5,7 @@ const { spawnSync } = require('node:child_process');
 const repoRoot = resolve(__dirname, '..');
 const vsixDir = join(repoRoot, 'dist-vsix');
 const extensionPackage = require(join(repoRoot, 'apps', 'vscode', 'package.json'));
+const requiredTargets = ['darwin-arm64', 'darwin-x64', 'linux-x64', 'win32-x64'];
 
 function listVsixFiles() {
   try {
@@ -34,6 +35,27 @@ if (stale.length > 0) {
     console.error(`  - ${file}`);
   }
   process.exit(1);
+}
+
+if (process.env.MITII_ALLOW_PARTIAL_VSCE_PUBLISH !== '1') {
+  const basenames = new Set(files.map((file) => file.split(/[\\/]/).pop()));
+  const missingTargets = requiredTargets.filter(
+    (target) =>
+      !basenames.has(
+        `${extensionPackage.name}-${extensionPackage.version}-${target}.vsix`,
+      ),
+  );
+  if (missingTargets.length > 0) {
+    console.error(
+      'Refusing to publish an incomplete VS Code Marketplace set. Native SQLite indexing requires one VSIX per platform.',
+    );
+    console.error(`Expected targets: ${requiredTargets.join(', ')}`);
+    console.error(`Missing targets: ${missingTargets.join(', ')}`);
+    console.error(
+      'Build/download all release artifacts into dist-vsix/, then rerun publish. Set MITII_ALLOW_PARTIAL_VSCE_PUBLISH=1 only for an intentional single-target release.',
+    );
+    process.exit(1);
+  }
 }
 
 const result = spawnSync(

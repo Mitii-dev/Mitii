@@ -17,6 +17,10 @@ function isWeakAssistantDisplay(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed.length === 0) return true;
   if (/^(?:\([\w_]+\)|Error:)/.test(trimmed) && trimmed.length < 80) return true;
+  if (/^Completed workspace edits\b/i.test(trimmed) && trimmed.length < 260) return true;
+  if (/^Completed workspace edits\b[\s\S]*\bChanged files \(\d+\):/i.test(trimmed)) {
+    return true;
+  }
   if (trimmed.length > 600) return false;
 
   const singleBeat =
@@ -60,9 +64,5 @@ export function resolveDisplayedAssistantText(options: {
 
   if (!streamedStronger) return final;
 
-  const changedIdx = final.indexOf('Changed files (');
-  if (changedIdx >= 0 && !streamed.includes('Changed files (')) {
-    return `${streamed}\n\n${final.slice(changedIdx).trim()}`;
-  }
   return streamed;
 }

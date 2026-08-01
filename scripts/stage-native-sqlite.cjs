@@ -4,7 +4,7 @@
  * Used by the VS Code extension build and rebuild:native so F5 always
  * loads the Electron ABI binding, not a stale Node-built copy.
  */
-const { copyFileSync, existsSync, mkdirSync } = require('node:fs');
+const { copyFileSync, existsSync, mkdirSync, readdirSync } = require('node:fs');
 const { createRequire } = require('node:module');
 const { dirname, join, resolve } = require('node:path');
 
@@ -18,20 +18,52 @@ function resolveBetterSqliteRoot() {
   try {
     return dirname(requireFromVscode.resolve('better-sqlite3/package.json'));
   } catch {
-    const requireFromV8 = createRequire(join(repoRoot, 'packages', 'v8', 'package.json'));
+    const requireFromV8 = createRequire(
+      join(repoRoot, 'packages', 'v8', 'package.json'),
+    );
     return dirname(requireFromV8.resolve('better-sqlite3/package.json'));
   }
 }
 
 function findNativeBinding(betterSqliteRoot) {
+  const binRoot = join(betterSqliteRoot, 'bin');
+  const binCandidates = [];
+  const explicitAbi = process.env.MITII_ELECTRON_ABI;
+  if (explicitAbi) {
+    binCandidates.push(
+      join(
+        binRoot,
+        `${process.platform}-${process.arch}-${explicitAbi}`,
+        'better-sqlite3.node',
+      ),
+    );
+  }
+
+  if (existsSync(binRoot)) {
+    const prefix = `${process.platform}-${process.arch}-`;
+    const abiDirs = readdirSync(binRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith(prefix))
+      .map((entry) => ({
+        name: entry.name,
+        abi: Number(entry.name.slice(prefix.length)),
+      }))
+      .filter((entry) => Number.isFinite(entry.abi))
+      // Prefer Electron ABI folders over the current terminal Node ABI.
+      .sort((a, b) => {
+        const current = Number(process.versions.modules);
+        if (a.abi === current && b.abi !== current) return 1;
+        if (b.abi === current && a.abi !== current) return -1;
+        return b.abi - a.abi;
+      });
+
+    for (const entry of abiDirs) {
+      binCandidates.push(join(binRoot, entry.name, 'better-sqlite3.node'));
+    }
+  }
+
   const candidates = [
+    ...binCandidates,
     join(betterSqliteRoot, 'build', 'Release', 'better_sqlite3.node'),
-    join(
-      betterSqliteRoot,
-      'bin',
-      `${process.platform}-${process.arch}-${process.versions.modules}`,
-      'better-sqlite3.node',
-    ),
   ];
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
@@ -59,7 +91,7 @@ function stageNativeSqliteBinding(options = {}) {
 
   mkdirSync(distNativeDir, { recursive: true });
   copyFileSync(source, target);
-  console.log(`staged native SQLite binding ${target}`);
+  console.log(`staged native SQLite binding ${source} -> ${target}`);
   return target;
 }
 

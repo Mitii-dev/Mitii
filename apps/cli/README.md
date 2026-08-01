@@ -12,14 +12,14 @@ npx @mitii/cli --help
 
 Requires **Node.js 20+**. Native dependency: `better-sqlite3` (optional LanceDB for vectors). License: **AGPL-3.0-or-later**.
 
-> Until published from this monorepo, build from source:
+Published from this monorepo on `v*` release tags. For local development:
 
 ```bash
 pnpm --filter @mitii/cli build
 node apps/cli/bin/mitii.js --help
 ```
 
-Legacy npm `@mitii/cli@2.7.x` is a different binary stack — do not mix with this tree until publish replaces it.
+Legacy npm `@mitii/cli@2.7.x` is a different binary stack — prefer versions published from this tree.
 
 ## Quick start
 

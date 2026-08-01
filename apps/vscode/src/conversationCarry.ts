@@ -110,6 +110,10 @@ function isWeakAssistantDisplay(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed.length === 0) return true;
   if (/^(?:\([\w_]+\)|Error:)/.test(trimmed) && trimmed.length < 80) return true;
+  if (/^Completed workspace edits\b/i.test(trimmed) && trimmed.length < 260) return true;
+  if (/^Completed workspace edits\b[\s\S]*\bChanged files \(\d+\):/i.test(trimmed)) {
+    return true;
+  }
   if (trimmed.length > 600) return false;
 
   const singleBeat =
@@ -147,24 +151,16 @@ export function enrichAssistantCarryText(options: {
   const paths = [...(options.changedPaths ?? [])].filter(
     (path) => path.trim().length > 0,
   );
-  const list =
-    paths.length > 0
-      ? `${paths.slice(0, 40).join(', ')}${paths.length > 40 ? ', …' : ''}`
-      : '';
   const incomplete = isWeakAssistantDisplay(answer);
 
   if (paths.length === 0) {
     return answer || '(no answer)';
   }
 
-  const summary = `Changed files (${paths.length}): ${list}`;
   if (incomplete) {
-    return `Completed workspace edits.\n${summary}`;
+    return `Completed workspace edits (${paths.length} file${paths.length === 1 ? '' : 's'} changed).`;
   }
-  if (answer.includes('Changed files (')) {
-    return answer;
-  }
-  return `${answer}\n\n${summary}`;
+  return answer;
 }
 
 /**
@@ -189,10 +185,6 @@ export function resolveDisplayedAssistantText(options: {
 
   if (!streamedStronger) return final;
 
-  const changedIdx = final.indexOf('Changed files (');
-  if (changedIdx >= 0 && !streamed.includes('Changed files (')) {
-    return `${streamed}\n\n${final.slice(changedIdx).trim()}`;
-  }
   return streamed;
 }
 

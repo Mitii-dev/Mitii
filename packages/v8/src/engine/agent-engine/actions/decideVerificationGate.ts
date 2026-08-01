@@ -14,7 +14,7 @@ import type { VerificationResult } from "../../../modules/verification";
  *
  * Reject (eligible for repair only when repairable):
  * - verification_failed → repairable (model can fix the change)
- * - blocked / cancelled / infrastructure missing → not repairable
+ * - hard blocked / cancelled / infrastructure missing → not repairable
  */
 export type VerificationGateDecision =
   | {
@@ -100,6 +100,12 @@ export function decideVerificationGate(params: {
         },
       };
     case "blocked":
+      if (isSoftUnavailableBlock(verification, params.allowUnavailable)) {
+        // Compatibility guard for older verification results that reported
+        // missing evidence as blocked even though no check failed. Keep the
+        // user's changes as implemented-but-unverified instead of rolling back.
+        return { action: "accept", acceptKind: "implemented_unverified" };
+      }
       return {
         action: "reject",
         // State/grant blockers are not fixed by rewriting application code.
@@ -136,4 +142,41 @@ export function decideVerificationGate(params: {
       };
     }
   }
+}
+
+function isSoftUnavailableBlock(
+  verification: VerificationResult,
+  allowUnavailable: boolean,
+): boolean {
+  const reasonCodes = new Set(verification.reasonCodes);
+  const hasHardBlocker =
+    reasonCodes.has("state_unavailable") ||
+    reasonCodes.has("grant_insufficient") ||
+    reasonCodes.has("cancelled");
+  if (hasHardBlocker) {
+    return false;
+  }
+
+  const hasUnavailableReason =
+    reasonCodes.has("checks_unavailable") ||
+    reasonCodes.has("no_applicable_checks") ||
+    reasonCodes.has("missing_tool_degraded");
+  if (!hasUnavailableReason) {
+    return false;
+  }
+
+  const hasDefectiveCheck = verification.checks.some(
+    (check) =>
+      check.outcome === "failed" ||
+      check.outcome === "timed_out" ||
+      check.outcome === "cancelled",
+  );
+  if (hasDefectiveCheck) {
+    return false;
+  }
+
+  const hasPassedEvidence = verification.checks.some(
+    (check) => check.outcome === "passed",
+  );
+  return hasPassedEvidence || allowUnavailable;
 }

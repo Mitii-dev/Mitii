@@ -22,9 +22,11 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm run sync:versions -- --check
       - run: pnpm run release:check-assets
       - run: pnpm run typecheck
       - run: pnpm test
       - run: pnpm run check:architecture
       - run: pnpm run build:cli
+      - run: pnpm run build:vscode
       - run: pnpm run benchmark:validate

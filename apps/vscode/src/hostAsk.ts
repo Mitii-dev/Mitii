@@ -650,7 +650,7 @@ export async function runAskInOutputChannel(options: {
     (!hasPinnedContext || options.depth === 'deep');
   if (includeRepoMap) {
     try {
-      const maxFiles = hasPinnedContext ? 80 : 400;
+      const maxFiles = hasPinnedContext ? 60 : 200;
       const snap = await buildWorkspaceSnapshot({
         workspaceRoot,
         workspaceId: options.workspaceId ?? 'vscode_workspace',

@@ -1,7 +1,8 @@
 import { createRequire } from 'node:module';
+import { existsSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 import {
   InMemorySkillsCatalog,
@@ -177,6 +178,11 @@ function resolveSkillRoots(options: LoadDiskSkillsOptions): string[] {
  * extension is esbuild-bundled as CJS where `import.meta.url` is undefined.
  */
 function resolveDefaultBundledSkillsRoot(): string | undefined {
+  const adjacent = resolveAdjacentBundledSkillsRoot();
+  if (adjacent) {
+    return adjacent;
+  }
+
   try {
     const req = createRequire(resolveRequireFilename());
     const sdkEntry = req.resolve('@mitii/sdk');
@@ -187,6 +193,15 @@ function resolveDefaultBundledSkillsRoot(): string | undefined {
 }
 
 function resolveRequireFilename(): string {
+  return resolveRuntimeFilename();
+}
+
+function resolveAdjacentBundledSkillsRoot(): string | undefined {
+  const candidate = join(dirname(resolveRuntimeFilename()), 'skills');
+  return existsSync(candidate) ? candidate : undefined;
+}
+
+function resolveRuntimeFilename(): string {
   const metaUrl =
     typeof import.meta !== 'undefined' &&
     typeof import.meta.url === 'string' &&
@@ -194,15 +209,16 @@ function resolveRequireFilename(): string {
       ? import.meta.url
       : undefined;
   if (metaUrl) {
-    return metaUrl;
+    return fileURLToPath(metaUrl);
   }
   // CJS host (bundled VS Code extension): esbuild leaves import.meta.url
-  // undefined; use the bundle __filename when present.
-  const cjsFilename = (globalThis as { __filename?: unknown }).__filename;
+  // undefined; use the bundle filename when present.
+  const cjsFilename =
+    typeof __filename !== 'undefined' ? __filename : undefined;
   if (typeof cjsFilename === 'string' && cjsFilename.length > 0) {
     return cjsFilename;
   }
-  return pathToFileURL(join(process.cwd(), 'package.json')).href;
+  return join(process.cwd(), 'package.json');
 }
 
 async function findSkillFiles(roots: readonly string[]): Promise<string[]> {

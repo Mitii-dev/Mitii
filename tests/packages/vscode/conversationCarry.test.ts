@@ -116,7 +116,7 @@ describe('conversationCarry (VS Code host)', () => {
         answer: 'Let me check kitchen-flow.spec.ts more carefully:',
         changedPaths: ['test/a.ts', 'test/b.ts'],
       }),
-    ).toContain('Changed files (2)');
+    ).toBe('Completed workspace edits (2 files changed).');
 
     expect(
       enrichAssistantCarryText({
@@ -124,14 +124,14 @@ describe('conversationCarry (VS Code host)', () => {
           'All selector naming is now consistent. Let me run the verification steps from the plan - lint and typecheck:',
         changedPaths: ['test/shared/pages/BasePage.ts'],
       }),
-    ).toMatch(/^Completed workspace edits/);
+    ).toBe('Completed workspace edits (1 file changed).');
 
     expect(
       enrichAssistantCarryText({
         answer: 'Removed the old page objects and updated imports.',
         changedPaths: ['test/a.ts'],
       }),
-    ).toContain('Removed the old page objects');
+    ).toBe('Removed the old page objects and updated imports.');
   });
 
   it('keeps streamed text when the final answer is transitional', () => {
@@ -155,8 +155,7 @@ describe('conversationCarry (VS Code host)', () => {
       }),
     ).toContain('Updated Desktop and Tablet imports');
 
-    const fallbackFinal =
-      'Completed workspace edits (1 file): test/a.ts\n\nChanged files (1): test/a.ts';
+    const fallbackFinal = 'Completed workspace edits (1 file changed).';
     expect(
       resolveDisplayedAssistantText({
         streamedText: streamed,
@@ -170,7 +169,7 @@ describe('conversationCarry (VS Code host)', () => {
         streamedText: streamed,
         finalAnswer: fallbackFinal,
       }),
-    ).toContain('Changed files (1)');
+    ).toContain('Updated Desktop and Tablet imports');
 
     expect(
       resolveDisplayedAssistantText({

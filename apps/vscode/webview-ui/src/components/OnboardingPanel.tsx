@@ -13,7 +13,17 @@ export function OnboardingPanel({
   onComplete,
   onOpenSettings,
 }: OnboardingPanelProps) {
-  const indexed = index.fileCount > 0;
+  const indexing =
+    index.readiness === 'indexing' ||
+    index.readiness === 'pending' ||
+    (index.message ?? '').toLowerCase().includes('indexing') ||
+    (index.message ?? '').toLowerCase().includes('checking');
+  const indexed = index.fileCount > 0 && !indexing;
+  const indexMessage = indexing
+    ? (index.message ?? 'Indexing workspace…')
+    : indexed
+      ? `Indexed ${index.fileCount} file${index.fileCount === 1 ? '' : 's'}${index.readiness ? ` · ${index.readiness}` : ''}.`
+      : 'Build the local index so Ask, Plan, Agent, and Review have useful repository context.';
 
   return (
     <section className="onboarding" aria-label="First run setup">
@@ -42,17 +52,23 @@ export function OnboardingPanel({
 
       <div className="onboarding__body">
         <h3>2. Index workspace</h3>
-        <p>
-          {indexed
-            ? `Indexed ${index.fileCount} item${index.fileCount === 1 ? '' : 's'}${index.readiness ? ` · ${index.readiness}` : ''}.`
-            : 'Build the local index so Ask, Plan, Agent, and Review have useful repository context.'}
-        </p>
+        <p>{indexMessage}</p>
         <div className="row">
-          <button type="button" className="btn ghost" onClick={onIndex}>
-            Index workspace
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={onIndex}
+            disabled={indexing}
+          >
+            {indexing ? 'Indexing…' : indexed ? 'Reindex' : 'Index workspace'}
           </button>
-          <button type="button" className="btn" onClick={onComplete}>
-            Complete
+          <button
+            type="button"
+            className="btn"
+            onClick={onComplete}
+            disabled={indexing}
+          >
+            {indexed ? 'Start chatting' : 'Complete'}
           </button>
         </div>
       </div>

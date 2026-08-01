@@ -57,7 +57,9 @@ function resolveIndexTone(index: IndexStatusSnapshot): IndexTone {
 function shortLabel(tone: IndexTone, index: IndexStatusSnapshot): string {
   switch (tone) {
     case 'indexing':
-      return 'Indexing';
+      return (index.message ?? '').toLowerCase().includes('checking')
+        ? 'Checking'
+        : 'Indexing';
     case 'ready':
       return 'Indexed';
     case 'warn':

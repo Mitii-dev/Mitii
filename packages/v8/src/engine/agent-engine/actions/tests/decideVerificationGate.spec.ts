@@ -79,6 +79,64 @@ describe("decideVerificationGate", () => {
     });
   });
 
+  it("accepts legacy soft blocked results when checks only show unavailable evidence", () => {
+    expect(
+      decideVerificationGate({
+        verificationRequired: true,
+        allowUnavailable: false,
+        changedFileCount: 1,
+        canVerify: true,
+        verification: {
+          ...result("blocked", [
+            "narrow_scope_selected",
+            "no_applicable_checks",
+            "checks_unavailable",
+          ]),
+          checks: [
+            {
+              checkId: "diagnostics:workspace",
+              kind: "diagnostics",
+              label: "diagnostics",
+              evidenceSource: "tool:read_diagnostics",
+              outcome: "passed",
+              summary: "Read workspace diagnostics completed.",
+            },
+            {
+              checkId: "diff_review:workspace",
+              kind: "diff_review",
+              label: "diff review",
+              evidenceSource: "tool:read_git_status",
+              outcome: "passed",
+              summary: "Inspect git status and diff completed.",
+            },
+          ],
+        },
+      }),
+    ).toEqual({
+      action: "accept",
+      acceptKind: "implemented_unverified",
+    });
+  });
+
+  it("keeps hard blocked verification results as rejects", () => {
+    expect(
+      decideVerificationGate({
+        verificationRequired: true,
+        allowUnavailable: true,
+        changedFileCount: 1,
+        canVerify: true,
+        verification: result("blocked", [
+          "no_applicable_checks",
+          "grant_insufficient",
+        ]),
+      }),
+    ).toMatchObject({
+      action: "reject",
+      repairable: false,
+      rejectKind: "blocked",
+    });
+  });
+
   it("does not treat allowUnavailable as permission to accept failed checks", () => {
     const decision = decideVerificationGate({
       verificationRequired: true,
