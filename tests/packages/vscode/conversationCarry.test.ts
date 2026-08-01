@@ -116,14 +116,22 @@ describe('conversationCarry (VS Code host)', () => {
         answer: 'Let me check kitchen-flow.spec.ts more carefully:',
         changedPaths: ['test/a.ts', 'test/b.ts'],
       }),
-    ).toContain('Changed files (2)');
+    ).toBe('Completed workspace edits (2 files changed).');
+
+    expect(
+      enrichAssistantCarryText({
+        answer:
+          'All selector naming is now consistent. Let me run the verification steps from the plan - lint and typecheck:',
+        changedPaths: ['test/shared/pages/BasePage.ts'],
+      }),
+    ).toBe('Completed workspace edits (1 file changed).');
 
     expect(
       enrichAssistantCarryText({
         answer: 'Removed the old page objects and updated imports.',
         changedPaths: ['test/a.ts'],
       }),
-    ).toContain('Removed the old page objects');
+    ).toBe('Removed the old page objects and updated imports.');
   });
 
   it('keeps streamed text when the final answer is transitional', () => {
@@ -136,6 +144,30 @@ describe('conversationCarry (VS Code host)', () => {
       resolveDisplayedAssistantText({
         streamedText: streamed,
         finalAnswer: 'Let me check kitchen-flow.spec.ts more carefully:',
+      }),
+    ).toContain('Updated Desktop and Tablet imports');
+
+    expect(
+      resolveDisplayedAssistantText({
+        streamedText: streamed,
+        finalAnswer:
+          'Now let me do the same for the Tablet BasePage - delete and recreate it extending the shared base:',
+      }),
+    ).toContain('Updated Desktop and Tablet imports');
+
+    const fallbackFinal = 'Completed workspace edits (1 file changed).';
+    expect(
+      resolveDisplayedAssistantText({
+        streamedText: streamed,
+        finalAnswer:
+          'All selector naming is now consistent. Let me run verification:',
+      }),
+    ).toContain('Updated Desktop and Tablet imports');
+
+    expect(
+      resolveDisplayedAssistantText({
+        streamedText: streamed,
+        finalAnswer: fallbackFinal,
       }),
     ).toContain('Updated Desktop and Tablet imports');
 

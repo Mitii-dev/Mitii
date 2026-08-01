@@ -128,6 +128,78 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.reasonCodes).toContain("incomplete_answer_recovered");
   });
 
+  it("falls back to a changed-files summary when incomplete recoveries are exhausted", async () => {
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          toolGrant: createReadOnlyGrant({
+            maximumWorkspaceEffect: "write",
+            allowedTools: ["apply_patch"],
+            allowedEffects: ["workspace_write"],
+            approvalMode: "never",
+          }),
+          reasonCodes: ["mutation_execute"],
+        }),
+        llm: new ScriptedLlmPort([
+          {
+            content:
+              "Now let me do the same for the Tablet BasePage - delete and recreate it extending the shared base:",
+            toolCalls: [
+              {
+                id: "call_patch",
+                name: "apply_patch",
+                arguments: JSON.stringify({
+                  patches: [
+                    {
+                      path: "test/Tablet/pages/BasePage.ts",
+                      oldText: "old",
+                      newText: "new",
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+          { content: "" },
+          { content: "" },
+          {
+            content:
+              "All selector naming is now consistent. Let me run the verification steps from the plan - lint and typecheck:",
+          },
+        ]),
+        toolResults: {
+          apply_patch: {
+            status: "succeeded",
+            output: {
+              checkpointId: "cp_1",
+              changedFiles: ["test/Tablet/pages/BasePage.ts"],
+            },
+          },
+        },
+      }),
+    );
+
+    const result = await engine.start(
+      baseStartInput({
+        workspaceRoot: "/repo",
+        request: {
+          sessionId: "sess_1",
+          mode: "agent",
+          userMessage: "Refactor shared BasePage usage",
+          workspace: { workspaceId: "ws_1" },
+        },
+      }),
+    ).result;
+
+    expect(result.status).toBe("completed");
+    expect(result.answer).toContain("Completed workspace edits");
+    expect(result.answer).toContain("test/Tablet/pages/BasePage.ts");
+    expect(result.reasonCodes).toContain("incomplete_answer_recovered");
+    expect(result.reasonCodes).toContain("incomplete_answer_fallback");
+    expect(result.reasonCodes).toContain("mutation_applied");
+  });
+
   it("suspends on clarification without calling the model", async () => {
     let modelCalls = 0;
     const llm = new ScriptedLlmPort([{ content: "should not run" }]);

@@ -1,8 +1,8 @@
 const { build } = require('esbuild');
 const { createRequire } = require('node:module');
 const { builtinModules } = require('node:module');
-const { mkdirSync } = require('node:fs');
-const { dirname, join } = require('node:path');
+const { cpSync, mkdirSync, rmSync } = require('node:fs');
+const { dirname, join, resolve } = require('node:path');
 
 const root = join(__dirname, '..');
 const outfile = join(root, 'dist/cli.js');
@@ -19,6 +19,14 @@ const externals = new Set([
 ]);
 
 mkdirSync(dirname(outfile), { recursive: true });
+
+function stageBundledSkills() {
+  const source = resolve(__dirname, '../../../packages/sdk/skills');
+  const target = join(root, 'dist/skills');
+  rmSync(target, { recursive: true, force: true });
+  cpSync(source, target, { recursive: true });
+  console.log(`staged ${target}`);
+}
 
 build({
   absWorkingDir: root,
@@ -53,6 +61,7 @@ build({
   logLevel: 'info',
 })
   .then(() => {
+    stageBundledSkills();
     console.log(`built ${outfile}`);
   })
   .catch((error) => {

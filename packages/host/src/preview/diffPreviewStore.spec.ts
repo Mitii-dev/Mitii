@@ -32,7 +32,9 @@ describe('FileDiffPreviewStore', () => {
       'export const price = 12;\n',
     );
     expect(preview.relPath).toBe('src/price.ts');
-    expect(preview.previewPath).toContain('.mitii/diff-preview/src__price.ts');
+    expect(preview.previewPath).toContain(
+      join('.mitii', 'diff-preview', 'src__price.ts'),
+    );
   });
 
   it('writes old/new patch pairs for side-by-side preview', async () => {
@@ -47,7 +49,7 @@ describe('FileDiffPreviewStore', () => {
     await expect(readFile(preview.oldPath, 'utf8')).resolves.toBe('old');
     await expect(readFile(preview.newPath, 'utf8')).resolves.toBe('new');
     expect(preview.oldPath).toContain(
-      '.mitii/diff-preview/old__apps__cli__src__runReport.ts',
+      join('.mitii', 'diff-preview', 'old__apps__cli__src__runReport.ts'),
     );
   });
 

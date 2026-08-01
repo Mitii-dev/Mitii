@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentRunResult, RunEvent } from '@mitii/sdk';
 
-import { formatVisibleFailureDetails } from '../../../apps/vscode/src/runReport.ts';
+import {
+  formatRunDiagnostics,
+  formatVisibleFailureDetails,
+} from '../../../apps/vscode/src/runReport.ts';
 
 describe('runReport', () => {
   it('formats verification failure details with log path', () => {
@@ -51,5 +54,28 @@ describe('runReport', () => {
     );
     expect(details).toContain('src/app.ts:12 error: Expected string.');
     expect(details).toContain('/workspace/.mitii/logs/thread.jsonl');
+  });
+
+  it('explains prompt construction overflow failures', () => {
+    const result = {
+      status: 'failed',
+      error: {
+        code: 'prompt_blocked',
+        message: 'Prompt construction blocked the request.',
+      },
+      reasonCodes: ['prompt_blocked'],
+      usage: {
+        modelCalls: 0,
+        toolCalls: 0,
+        loopIterations: 0,
+      },
+    } as AgentRunResult;
+
+    expect(formatRunDiagnostics(result).join('\n')).toContain(
+      'composed context exceeded the model input budget',
+    );
+    expect(
+      formatVisibleFailureDetails({ result, events: [] }),
+    ).toContain('overflowed the input budget');
   });
 });

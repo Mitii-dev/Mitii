@@ -9,4 +9,5 @@ overrides:
   protobufjs: ^7.6.3
 
 onlyBuiltDependencies:
+  - better-sqlite3
   - sharp

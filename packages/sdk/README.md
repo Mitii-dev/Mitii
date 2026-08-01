@@ -10,7 +10,7 @@ npm install @mitii/sdk
 
 Requires **Node.js 20+**. Depends on `@mitii/v8`. License: **AGPL-3.0-or-later**.
 
-> Until this package is published from the current monorepo, consume it from the workspace (`pnpm --filter @mitii/sdk`). Legacy npm `@mitii/sdk@2.7.x` is a different API surface.
+Published on `v*` release tags. For local development, consume from the workspace (`pnpm --filter @mitii/sdk`). Legacy npm `@mitii/sdk@2.7.x` is a different API surface.
 
 ## Quick start
 

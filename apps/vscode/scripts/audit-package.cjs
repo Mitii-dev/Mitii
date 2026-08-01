@@ -43,6 +43,14 @@ assertFile(join(dist, 'webview', 'index.html'), 'webview index');
 assertFile(join(dist, 'webview', 'main.js'), 'webview script');
 assertFile(join(dist, 'webview', 'main.css'), 'webview style');
 assertFile(join(dist, 'native', 'better_sqlite3.node'), 'SQLite native binding');
+assertFile(
+  join(dist, 'skills', 'planning-default', 'SKILL.md'),
+  'bundled planning skill',
+);
+assertFile(
+  join(dist, 'skills', 'safety-always', 'SKILL.md'),
+  'bundled safety skill',
+);
 
 const bundlePath = join(dist, 'extension.js');
 if (existsSync(bundlePath)) {

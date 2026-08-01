@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.8.0" src="https://img.shields.io/badge/version-2.8.0-111111">
+  <img alt="Version 2.8.5" src="https://img.shields.io/badge/version-2.8.5-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
 
@@ -126,7 +126,7 @@ See [apps/cli/README.md](apps/cli/README.md) for `ask`, `session`, `index`, `sta
 
 ### SDK
 
-`@mitii/sdk`, `@mitii/v8`, and `@mitii/cli` are **private workspace packages** today (not published to npm). Consume them from this monorepo, or wait until publish is intentionally enabled.
+`@mitii/v8`, `@mitii/sdk`, `@mitii/host`, and `@mitii/cli` publish to npm on `v*` release tags (see [docs/RELEASE.md](docs/RELEASE.md)). For local development, consume them from this monorepo workspace.
 
 ```ts
 import { createMitiiClient, EchoLlmPort } from '@mitii/sdk';

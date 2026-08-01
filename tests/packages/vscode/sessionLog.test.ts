@@ -82,4 +82,62 @@ describe('sessionLog', () => {
       warnings: ['Use pnpm install if dependencies are missing.'],
     });
   });
+
+  it('keeps session logs readable by suppressing content deltas and truncating huge answers', () => {
+    const root = mkdtempSync(join(tmpdir(), 'mitii-session-log-'));
+    dirs.push(root);
+
+    const result = {
+      schemaVersion: 1,
+      runId: 'run_big',
+      requestId: 'req_big',
+      status: 'completed',
+      route: 'execute',
+      planningDepth: 'none',
+      answer: `Completed workspace edits.\n${'changed-file.ts\n'.repeat(500)}`,
+      reasonCodes: ['answer_produced'],
+      warnings: [],
+      usage: { modelCalls: 1, toolCalls: 1, loopIterations: 1 },
+      durationMs: 10,
+    } as AgentRunResult;
+
+    const events = [
+      {
+        type: 'model_delta',
+        runId: 'run_big',
+        kind: 'content',
+        preview: 'word',
+        at: '2026-07-28T00:00:00.000Z',
+      },
+      {
+        type: 'model_delta',
+        runId: 'run_big',
+        kind: 'tool_call',
+        preview: 'apply_patch',
+        at: '2026-07-28T00:00:00.000Z',
+      },
+    ] as RunEvent[];
+
+    const file = appendSessionLog(root, {
+      kind: 'run',
+      at: '2026-07-28T00:00:00.000Z',
+      prompt: 'fix',
+      mode: 'agent',
+      result,
+      events,
+    });
+
+    const lines = readFileSync(file!, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(lines.some((line) => line.type === 'model_delta' && line.deltaKind === 'content')).toBe(false);
+    expect(lines.some((line) => line.type === 'model_delta' && line.deltaKind === 'tool_call')).toBe(true);
+    const runEnd = lines.find((line) => line.kind === 'run_end');
+    expect(runEnd).toMatchObject({
+      answerChars: result.answer!.length,
+      answerTruncated: true,
+    });
+    expect(String(runEnd?.answer).length).toBeLessThan(result.answer!.length);
+  });
 });

@@ -420,10 +420,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     if (!message || typeof message !== 'object') return;
     switch (message.type) {
       case 'ready': {
-        // Post a quick bootstrap first, then index so the UI is not blank.
+        // Post a quick bootstrap first, then continue index work in the background.
         await this.sendBootstrap();
-        const indexed = await this.ensureIndexed();
-        this.post({ type: 'index.status', index: indexed });
+        this.startBackgroundIndex('initial load');
         return;
       }
       case 'ask':
@@ -730,14 +729,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         this.post({ type: 'index.status', index: await this.readIndexStatus() });
         return;
       case 'index.reindex': {
-        this.post({
-          type: 'index.status',
-          index: {
-            ...this.lastIndex,
-            message: 'Indexing workspace…',
-            readiness: 'indexing',
-          },
-        });
+        this.postIndexingStatus('Indexing workspace…');
         const index = await this.onIndexWorkspace();
         this.lastIndex = index;
         this.post({ type: 'index.status', index });
@@ -1392,6 +1384,50 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     };
   }
 
+  private startBackgroundIndex(reason: string): void {
+    const root = this.effectiveRoot();
+    if (!root) {
+      this.post({
+        type: 'index.status',
+        index: {
+          fileCount: 0,
+          truncated: false,
+          message: 'Open a workspace folder to index',
+        },
+      });
+      return;
+    }
+    this.postIndexingStatus('Checking repository index…');
+    void this.ensureIndexed()
+      .then((index) => {
+        this.lastIndex = index;
+        this.post({ type: 'index.status', index });
+        this.channel.appendLine(
+          `[index] ${reason} ${index.message ?? 'ready'} files=${index.fileCount}`,
+        );
+      })
+      .catch((error) => {
+        const message =
+          error instanceof Error ? error.message : String(error);
+        this.lastIndex = {
+          ...this.lastIndex,
+          readiness: 'unavailable',
+          message: `Index failed: ${message}`,
+        };
+        this.post({ type: 'index.status', index: this.lastIndex });
+        this.channel.appendLine(`[index] ${reason} failed: ${message}`);
+      });
+  }
+
+  private postIndexingStatus(message: string): void {
+    this.lastIndex = {
+      ...this.lastIndex,
+      message,
+      readiness: 'indexing',
+    };
+    this.post({ type: 'index.status', index: this.lastIndex });
+  }
+
   private async handleTestConnection(
     message: Extract<WebviewToHostMessage, { type: 'provider.testConnection' }>,
   ): Promise<void> {
@@ -1852,14 +1888,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     }
 
     this.channel.appendLine('[index] first load: publishing host snapshot…');
-    this.post({
-      type: 'index.status',
-      index: {
-        fileCount: 0,
-        truncated: false,
-        message: 'Indexing workspace…',
-      },
-    });
+    this.postIndexingStatus('Indexing workspace…');
     const status = await this.publishIndexSnapshot();
     this.channel.appendLine(
       `[index] first-load ${status.message ?? 'done'} readiness=${status.readiness ?? 'n/a'}`,

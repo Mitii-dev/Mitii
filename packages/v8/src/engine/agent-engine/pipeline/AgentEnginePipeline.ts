@@ -57,6 +57,7 @@ import {
   decideVerificationGate,
   filterToolDefinitions,
   isEmptyAssistantTurn,
+  isTransitionalAssistantAnswer,
   mapContextToPromptSlice,
   mapUnderstandingToPlanningEvidence,
   mapUnderstandingToSkillEvidence,
@@ -2222,12 +2223,16 @@ export class AgentEnginePipeline {
             content: answer,
             toolCallCount: 0,
             changedFileCount: changedFiles.length,
-          })
+          }) ||
+          (changedFiles.length > 0 &&
+            (answer.trim().length === 0 ||
+              isTransitionalAssistantAnswer(answer)))
         ) {
           answer = synthesizeFallbackAnswer({
             priorAnswer: answer,
             changedFiles,
           });
+          reasonCodes.push("incomplete_answer_fallback");
         }
 
         return {

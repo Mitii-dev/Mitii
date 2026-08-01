@@ -22,7 +22,7 @@ describe("isIncompleteAssistantTurn", () => {
     ).toBe(false);
   });
 
-  it("detects transitional narration from the billbuddy log", () => {
+  it("detects transitional narration from the billbuddy logs", () => {
     expect(
       isTransitionalAssistantAnswer(
         "Let me check kitchen-flow.spec.ts more carefully:",
@@ -31,6 +31,16 @@ describe("isIncompleteAssistantTurn", () => {
     expect(
       isTransitionalAssistantAnswer(
         "Now let me read more files to understand the full picture:",
+      ),
+    ).toBe(true);
+    expect(
+      isTransitionalAssistantAnswer(
+        "Now let me do the same for the Tablet BasePage - delete and recreate it extending the shared base:",
+      ),
+    ).toBe(true);
+    expect(
+      isTransitionalAssistantAnswer(
+        "All selector naming is now consistent. Let me run the verification steps from the plan - lint and typecheck:",
       ),
     ).toBe(true);
     expect(
@@ -57,6 +67,14 @@ describe("isIncompleteAssistantTurn", () => {
     ).toBe(true);
     expect(
       shouldRecoverIncompleteAssistantTurn({
+        content:
+          "All selector naming is now consistent. Let me run the verification steps from the plan - lint and typecheck:",
+        toolCallCount: 0,
+        changedFileCount: 5,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRecoverIncompleteAssistantTurn({
         content: "Let me explore the project:",
         toolCallCount: 2,
         changedFileCount: 0,
@@ -78,6 +96,14 @@ describe("isIncompleteAssistantTurn", () => {
         changedFiles: ["test/a.ts"],
       }),
     ).toContain("Completed workspace edits");
+
+    expect(
+      synthesizeFallbackAnswer({
+        priorAnswer:
+          "All selector naming is now consistent. Let me run the verification steps from the plan - lint and typecheck:",
+        changedFiles: ["test/shared/pages/BasePage.ts"],
+      }),
+    ).toMatch(/^Completed workspace edits/);
   });
 
   it("amends understanding message with prior conversation", () => {

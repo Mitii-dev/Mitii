@@ -47,6 +47,15 @@ export function formatRunDiagnostics(result: AgentRunResult): string[] {
     );
   }
 
+  if (codes.has('prompt_blocked') || result.error?.code === 'prompt_blocked') {
+    lines.push(
+      '[prompt] blocked — composed context exceeded the model input budget before the first model call.',
+    );
+    lines.push(
+      '[hint] Use a larger context window, lower max output, disable extra context toggles, or pin fewer/shorter files.',
+    );
+  }
+
   return lines;
 }
 
@@ -74,6 +83,14 @@ export function formatVisibleFailureDetails(options: {
   }
   if (result.reasonCodes?.length) {
     lines.push(`Reason codes: ${result.reasonCodes.join(', ')}`);
+  }
+  if (
+    result.reasonCodes?.includes('prompt_blocked') ||
+    result.error?.code === 'prompt_blocked'
+  ) {
+    lines.push(
+      'Hint: prompt construction overflowed the input budget before any model/tool call ran.',
+    );
   }
   if (verification?.type === 'verification_completed') {
     lines.push(

@@ -1,18 +1,45 @@
-# @mitii/v8, @mitii/sdk, and @mitii/cli ship with "private": true.
-# Public npm publish is deferred until those flags are intentionally removed.
-# Product releases today are VSIX artifacts via .github/workflows/release.yml.
-name: npm publish (deferred)
+# Publishes @mitii/v8 → @mitii/sdk → @mitii/host → @mitii/cli to npm.
+# Invoked from the Release workflow on v* tags, or manually via workflow_dispatch.
+# Requires repository secret: NPM_TOKEN
+name: npm publish
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 jobs:
-  deferred:
+  publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
-      - name: Packages are private
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+      - name: Require NPM_TOKEN
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          echo "::notice::npm publish is deferred while packages remain private: true."
-          echo "Ship the VS Code extension via the Release workflow (VSIX)."
-          echo "To publish npm later: remove private flags, then restore a real publish job."
-          exit 1
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::error::NPM_TOKEN secret is missing. Add an npm automation token in repo Settings → Secrets → Actions."
+            exit 1
+          fi
+      - name: Install native build tools
+        run: sudo apt-get update && sudo apt-get install -y build-essential python3
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run sync:versions -- --check
+      - run: pnpm run rebuild:node
+      - run: pnpm run build:v8
+      - run: pnpm run build:sdk
+      - run: pnpm run build:host
+      - run: pnpm run build:cli
+      - run: pnpm run check:architecture
+      - name: Publish npm packages
+        run: node scripts/publish-npm.cjs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

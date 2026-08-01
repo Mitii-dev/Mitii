@@ -42,6 +42,23 @@ function writeLine(file: string, entry: unknown): void {
   appendFileSync(file, `${JSON.stringify(entry)}\n`, 'utf8');
 }
 
+function compactText(text: string | undefined, maxChars = 4000): {
+  text?: string;
+  chars: number;
+  truncated: boolean;
+} {
+  const value = text ?? '';
+  if (!value) return { chars: 0, truncated: false };
+  if (value.length <= maxChars) {
+    return { text: value, chars: value.length, truncated: false };
+  }
+  return {
+    text: `${value.slice(0, maxChars)}…`,
+    chars: value.length,
+    truncated: true,
+  };
+}
+
 function compactEvent(event: RunEvent): Record<string, unknown> {
   const base: Record<string, unknown> = {
     kind: 'event',
@@ -63,7 +80,7 @@ function compactEvent(event: RunEvent): Record<string, unknown> {
       return {
         ...base,
         deltaKind: event.kind,
-        preview: event.preview,
+        ...(event.kind === 'tool_call' ? { preview: event.preview } : {}),
       };
     case 'tool_started':
       return { ...base, toolName: event.toolName, summary: event.summary };
@@ -109,11 +126,14 @@ function compactEvent(event: RunEvent): Record<string, unknown> {
         warnings: event.warnings,
       };
     case 'terminal':
+      const answer = compactText(event.result.answer, 1200);
       return {
         ...base,
         status: event.status,
         usage: event.result.usage,
-        answerChars: (event.result.answer ?? '').length,
+        answerChars: answer.chars,
+        answerTruncated: answer.truncated,
+        ...(answer.text ? { answerPreview: answer.text } : {}),
         error: event.result.error?.message,
       };
     case 'state_pinned':
@@ -166,14 +186,15 @@ export function appendSessionLog(
   });
 
   for (const event of entry.events) {
-    // Skip per-token reasoning previews that only duplicate the stream;
-    // keep content + tool_call deltas and all non-delta events.
-    if (event.type === 'model_delta' && event.kind === 'reasoning') {
+    // Skip per-token text/reasoning previews that duplicate the final answer
+    // and make logs unreadable; keep tool-call deltas and structured events.
+    if (event.type === 'model_delta' && event.kind !== 'tool_call') {
       continue;
     }
     writeLine(file, compactEvent(event));
   }
 
+  const answer = compactText(entry.result.answer);
   writeLine(file, {
     kind: 'run_end',
     at: new Date().toISOString(),
@@ -182,7 +203,9 @@ export function appendSessionLog(
     route: entry.result.route,
     usage: entry.result.usage,
     durationMs: entry.result.durationMs,
-    answer: entry.result.answer,
+    answerChars: answer.chars,
+    answerTruncated: answer.truncated,
+    ...(answer.text ? { answer: answer.text } : {}),
     error: entry.result.error,
     reasonCodes: entry.result.reasonCodes,
   });

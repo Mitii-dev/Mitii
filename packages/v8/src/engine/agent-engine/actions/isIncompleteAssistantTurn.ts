@@ -6,8 +6,15 @@
 const TRANSITIONAL_OPENERS =
   /^(?:okay[,.]?\s+|ok[,.]?\s+|sure[,.]?\s+|alright[,.]?\s+|right[,.]?\s+)?(?:let me|i(?:'ll| will)|i(?:'m| am) going to|now let me|next[,]? (?:i(?:'ll| will)|let me)|i need to|i should)\b/i;
 
+const TRANSITIONAL_INTENT =
+  /\b(?:let me|i(?:'ll| will)|i(?:'m| am) going to)\b/i;
+
 const TRANSITIONAL_CLOSERS =
   /(?::|\.\.\.|…)\s*$/;
+
+/** Trailing intent after a short prior sentence: ". Let me …" / ", I'll …" */
+const TRAILING_INTENT_CLAUSE =
+  /[.!,;]\s*(?:let me|i(?:'ll| will)|i(?:'m| am) going to)\b[\s\S]{0,160}$/i;
 
 export function isEmptyAssistantTurn(params: {
   content: string;
@@ -42,6 +49,16 @@ export function isTransitionalAssistantAnswer(content: string): boolean {
     return true;
   }
 
+  // Mid-text intent that still ends unfinished ("… Let me run …:")
+  if (TRANSITIONAL_INTENT.test(text) && TRANSITIONAL_CLOSERS.test(text)) {
+    return true;
+  }
+
+  // Conclusion sentence that trails into another intent clause.
+  if (text.length < 280 && TRAILING_INTENT_CLAUSE.test(text)) {
+    return true;
+  }
+
   return false;
 }
 
@@ -52,6 +69,10 @@ export function shouldRecoverIncompleteAssistantTurn(params: {
 }): boolean {
   if (params.toolCallCount > 0) return false;
   if (isEmptyAssistantTurn(params)) return true;
+  // Defense in depth: blank stored answer after mutations must not complete.
+  if (params.content.trim().length === 0 && params.changedFileCount > 0) {
+    return true;
+  }
   if (
     isTransitionalAssistantAnswer(params.content) &&
     (params.changedFileCount > 0 || params.content.trim().length < 180)

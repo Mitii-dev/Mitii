@@ -1,17 +1,48 @@
 /**
  * Prefer a substantive final answer; keep streamed text when the final answer
  * is empty/transitional so the chat does not collapse to a one-liner.
- * Keep in sync with apps/vscode/src/conversationCarry.ts resolveDisplayedAssistantText.
+ * Keep in sync with apps/vscode/src/conversationCarry.ts resolveDisplayedAssistantText
+ * and packages/v8 isTransitionalAssistantAnswer heuristics.
  */
 
-const TRANSITIONAL_ASSISTANT =
-  /^(?:okay[,.]?\s+|ok[,.]?\s+|sure[,.]?\s+)?(?:let me|i(?:'ll| will)|now let me)\b/i;
+const TRANSITIONAL_OPENERS =
+  /^(?:okay[,.]?\s+|ok[,.]?\s+|sure[,.]?\s+|alright[,.]?\s+|right[,.]?\s+)?(?:let me|i(?:'ll| will)|i(?:'m| am) going to|now let me|next[,]? (?:i(?:'ll| will)|let me)|i need to|i should)\b/i;
+const TRANSITIONAL_INTENT =
+  /\b(?:let me|i(?:'ll| will)|i(?:'m| am) going to)\b/i;
+const TRANSITIONAL_CLOSERS = /(?::|\.\.\.|…)\s*$/;
+const TRAILING_INTENT_CLAUSE =
+  /[.!,;]\s*(?:let me|i(?:'ll| will)|i(?:'m| am) going to)\b[\s\S]{0,160}$/i;
 
 function isWeakAssistantDisplay(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed.length === 0) return true;
-  if (trimmed.length < 220 && TRANSITIONAL_ASSISTANT.test(trimmed)) return true;
   if (/^(?:\([\w_]+\)|Error:)/.test(trimmed) && trimmed.length < 80) return true;
+  if (/^Completed workspace edits\b/i.test(trimmed) && trimmed.length < 260) return true;
+  if (/^Completed workspace edits\b[\s\S]*\bChanged files \(\d+\):/i.test(trimmed)) {
+    return true;
+  }
+  if (trimmed.length > 600) return false;
+
+  const singleBeat =
+    trimmed.split(/\n+/).filter((line) => line.trim().length > 0).length <= 2;
+  if (!singleBeat) return false;
+
+  if (TRANSITIONAL_OPENERS.test(trimmed) && TRANSITIONAL_CLOSERS.test(trimmed)) {
+    return true;
+  }
+  if (
+    TRANSITIONAL_OPENERS.test(trimmed) &&
+    trimmed.length < 180 &&
+    !/[.!]["']?\s*$/.test(trimmed)
+  ) {
+    return true;
+  }
+  if (TRANSITIONAL_INTENT.test(trimmed) && TRANSITIONAL_CLOSERS.test(trimmed)) {
+    return true;
+  }
+  if (trimmed.length < 280 && TRAILING_INTENT_CLAUSE.test(trimmed)) {
+    return true;
+  }
   return false;
 }
 
@@ -33,9 +64,5 @@ export function resolveDisplayedAssistantText(options: {
 
   if (!streamedStronger) return final;
 
-  const changedIdx = final.indexOf('Changed files (');
-  if (changedIdx >= 0 && !streamed.includes('Changed files (')) {
-    return `${streamed}\n\n${final.slice(changedIdx).trim()}`;
-  }
   return streamed;
 }
