@@ -741,6 +741,13 @@ export async function runAskInOutputChannel(options: {
 
   channel.show(true);
   channel.appendLine(`> ${options.prompt}`);
+  if (options.conversation && options.conversation.length > 0) {
+    channel.appendLine(
+      `[context] conversation carry: ${options.conversation.length} prior turn(s)`,
+    );
+  } else {
+    channel.appendLine('[context] conversation carry: none (first turn or empty history)');
+  }
 
   const emitHostNote = (line: string, title: string, detail?: string) => {
     channel.appendLine(line);
@@ -853,6 +860,7 @@ export async function runAskInOutputChannel(options: {
       prompt,
       mode: options.mode ?? 'ask',
       workspaceRoot,
+      ...(options.sessionId ? { sessionId: options.sessionId } : {}),
       approvalMode: approvalPolicy.approvalMode,
       planApproval: approvalPolicy.planApproval,
       budget: resolveRunBudget(vs),
@@ -945,6 +953,7 @@ export async function runAskInOutputChannel(options: {
             at: new Date().toISOString(),
             prompt: options.prompt,
             mode: options.mode,
+            conversationCount: options.conversation?.length ?? 0,
             result,
             events,
           }, { sessionId: options.sessionId });
@@ -987,6 +996,7 @@ export async function runAskInOutputChannel(options: {
             at: new Date().toISOString(),
             prompt: options.prompt,
             mode: options.mode,
+            conversationCount: options.conversation?.length ?? 0,
             result,
             events,
           }, { sessionId: options.sessionId });

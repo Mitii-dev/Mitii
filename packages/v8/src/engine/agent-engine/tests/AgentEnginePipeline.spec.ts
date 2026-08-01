@@ -103,6 +103,31 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.reasonCodes).toContain("output_truncation_recovered");
   });
 
+  it("recovers empty model turns instead of completing with stale narration", async () => {
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({ route: "direct_answer" }),
+        llm: new ScriptedLlmPort(
+          [
+            { content: "Let me check kitchen-flow.spec.ts more carefully:" },
+            { content: "" },
+            {
+              content:
+                "Yes — kitchen-flow.spec.ts imports were updated; old paths were removed.",
+            },
+          ],
+          createCapabilities({ supportsTools: false }),
+        ),
+      }),
+    );
+
+    const result = await engine.start(baseStartInput()).result;
+
+    expect(result.status).toBe("completed");
+    expect(result.answer).toContain("kitchen-flow.spec.ts imports were updated");
+    expect(result.reasonCodes).toContain("incomplete_answer_recovered");
+  });
+
   it("suspends on clarification without calling the model", async () => {
     let modelCalls = 0;
     const llm = new ScriptedLlmPort([{ content: "should not run" }]);

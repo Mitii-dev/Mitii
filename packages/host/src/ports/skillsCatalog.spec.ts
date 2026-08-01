@@ -272,6 +272,14 @@ Full body.
         'bugfix-localize',
         'planning-default',
         'safety-always',
+        'spec-driven-development',
+        'planning-and-task-breakdown',
+        'incremental-implementation',
+        'test-driven-development',
+        'debugging-and-error-recovery',
+        'code-review-and-quality',
+        'security-and-hardening',
+        'git-workflow-and-versioning',
       ]),
     );
   });
@@ -295,12 +303,15 @@ Full body.
     });
 
     expect(result.status).toBe('selected');
+    // Engineering pack planning skill shares conflictGroup "planning" and
+    // outranks planning-default (priority 190 > 180).
     expect(result.instructions.map((skill) => skill.id)).toEqual(
-      expect.arrayContaining(['planning-default']),
+      expect.arrayContaining(['planning-and-task-breakdown']),
     );
     expect(
-      result.instructions.find((skill) => skill.id === 'planning-default')
-        ?.content,
+      result.instructions.find(
+        (skill) => skill.id === 'planning-and-task-breakdown',
+      )?.content,
     ).toContain('Planning:');
   });
 });

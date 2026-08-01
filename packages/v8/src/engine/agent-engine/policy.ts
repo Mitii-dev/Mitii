@@ -10,6 +10,11 @@ import {
 export const AGENT_ENGINE_THRESHOLDS = {
   /** Max automatic recoveries after finishReason=length with incomplete tools. */
   maxTruncationRecoveries: 3,
+  /**
+   * Max nudges when the model returns empty content or transitional narration
+   * ("Let me check…") with no tool calls instead of a final answer.
+   */
+  maxIncompleteAnswerRecoveries: 2,
   /** Fallback preferred batch size when grant omits mutationBudget. */
   defaultPreferredBatchSize: 3,
   /** Fallback hard patch cap when grant omits mutationBudget. */

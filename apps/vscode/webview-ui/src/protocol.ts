@@ -249,6 +249,12 @@ export interface ChatMessageView {
   role: 'user' | 'assistant';
   text: string;
   mode?: AgentUiMode;
+  /** Compact activity timeline for restore after reload (assistant turns). */
+  activity?: ActivityEventPayload[];
+  /** File mutations from this turn, restored with the message. */
+  fileChanges?: RunFileChangesView;
+  status?: string;
+  route?: string | null;
 }
 
 export interface PlanStepView {

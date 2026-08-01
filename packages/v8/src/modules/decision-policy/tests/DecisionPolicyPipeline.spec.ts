@@ -447,6 +447,27 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
   });
 
+  it("routes agent past-tense follow-ups about prior work to repository_answer", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "did you clear the old files ??",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "repository",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("repository_answer");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
+    expect(decision.toolGrant.allowedTools).not.toContain("apply_patch");
+  });
+
   it("never grants web_search unless hostCapabilities.webSearch is true", () => {
     const withoutPort = new DecisionPolicyPipeline().decide(
       createInput({

@@ -69,6 +69,8 @@ import type {
 } from './protocol';
 import { modeColor } from './modeColors';
 import { TokenMeter } from './TokenMeter';
+import { resolveDisplayedAssistantText } from './assistantDisplay';
+import type { ChatMessageView } from './protocol';
 
 const EMPTY_TOKEN_USAGE: TokenUsageSnapshot = {
   sessionTotal: 0,
@@ -151,6 +153,19 @@ function mergeActivityEvent(
 
 function uid(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function toChatTurn(message: ChatMessageView): ChatTurn {
+  return {
+    id: message.id,
+    role: message.role,
+    text: message.text,
+    mode: message.mode,
+    activity: message.activity ?? [],
+    ...(message.fileChanges ? { fileChanges: message.fileChanges } : {}),
+    ...(message.status ? { status: message.status } : {}),
+    ...(message.route !== undefined ? { route: message.route } : {}),
+  };
 }
 
 function mergeModelOptions(
@@ -320,13 +335,7 @@ export function App() {
         setActiveThreadId(msg.activeThreadId);
         if (!activeAssistantId.current) {
           setTurns(
-            (msg.activeThreadMessages ?? []).map((m) => ({
-              id: m.id,
-              role: m.role,
-              text: m.text,
-              mode: m.mode,
-              activity: [],
-            })),
+            (msg.activeThreadMessages ?? []).map((m) => toChatTurn(m)),
           );
         }
         setMemories(msg.memories);
@@ -455,18 +464,20 @@ export function App() {
           setTurns((prev) =>
             prev.map((t) => {
               if (!id || t.id !== id) return t;
+              const nextText = resolveDisplayedAssistantText({
+                streamedText: t.text,
+                finalAnswer: msg.answer?.trim()
+                  ? msg.answer
+                  : msg.error
+                    ? `Error: ${msg.error}`
+                    : `(${msg.status})`,
+              });
               return {
                 ...t,
                 streaming: false,
                 status: msg.status,
                 route: msg.route,
-                text: msg.answer?.trim()
-                  ? msg.answer
-                  : t.text.trim()
-                    ? t.text
-                    : msg.error
-                      ? `Error: ${msg.error}`
-                      : `(${msg.status})`,
+                text: nextText,
                 suspension: undefined,
               };
             }),
@@ -574,14 +585,10 @@ export function App() {
             ...EMPTY_TOKEN_USAGE,
             contextWindow: provider.contextWindow || 32768,
           });
-          setTurns(
-            msg.messages.map((m) => ({
-              id: m.id,
-              role: m.role,
-              text: m.text,
-              mode: m.mode,
-              activity: [],
-            })),
+          setTurns(msg.messages.map((m) => toChatTurn(m)));
+          setFileChanges(
+            [...msg.messages].reverse().find((m) => m.fileChanges)?.fileChanges ??
+              null,
           );
           setNav('chat');
           break;

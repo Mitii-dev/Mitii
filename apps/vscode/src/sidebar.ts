@@ -36,7 +36,7 @@ import {
   undoRunFileChanges,
   type FileChangeRunSnapshot,
 } from './fileChanges.js';
-import { runAskInOutputChannel } from './hostAsk.js';
+import { runAskInOutputChannel, runEventToActivity } from './hostAsk.js';
 import { buildContextUsageBreakdown } from './contextUsage.js';
 import { getSharedMcpManager } from './mcp/manager.js';
 import {
@@ -66,6 +66,10 @@ import type {
 import { planViewFromArtifact } from './planView.js';
 import {
   buildConversationCarry,
+  compactActivityForHistory,
+  compactFileChangesForHistory,
+  enrichAssistantCarryText,
+  resolveDisplayedAssistantText,
   resolvePlanHandoff,
 } from './conversationCarry.js';
 import {
@@ -311,6 +315,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   private runBaseOutputTokens = 0;
   private hostHelpers?: SidebarHostHelpers;
   private lastAssistantText = '';
+  private liveStreamText = '';
   private activeThreadId?: string;
   private lastSuspensionRunId?: string;
   /** Per-run file mutation snapshots for undo / diff preview. */
@@ -995,6 +1000,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     }
     this.post({ type: 'run.started', mode: message.mode, prompt });
     this.pendingRunTurns = [];
+    this.liveStreamText = '';
     this.runBaseTurns = [...(this.tokenUsage.turns ?? [])];
     this.runBaseInputTokens = this.tokenUsage.inputTokensTotal;
     this.runBaseOutputTokens = this.tokenUsage.outputTokensTotal;
@@ -1087,6 +1093,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
             }
           },
           onDelta: (text) => {
+            this.liveStreamText += text;
             this.post({ type: 'run.delta', text });
           },
           onSuspended: async (_result, suspension) => {
@@ -1162,12 +1169,23 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         outcome.contextBreakdown,
       );
       const answer = outcome.result.answer ?? '';
-      const assistantText = answer.trim()
-        ? answer
-        : outcome.result.error?.message
-          ? `Error: ${outcome.result.error.message}`
-          : `(${outcome.result.status})`;
+      const changedPaths = this.activeFileChangeSnapshot
+        ? [...this.activeFileChangeSnapshot.mutatedPaths]
+        : [];
+      const enrichedAnswer = enrichAssistantCarryText({
+        answer: answer.trim()
+          ? answer
+          : outcome.result.error?.message
+            ? `Error: ${outcome.result.error.message}`
+            : `(${outcome.result.status})`,
+        changedPaths,
+      });
+      const assistantText = resolveDisplayedAssistantText({
+        streamedText: this.liveStreamText,
+        finalAnswer: enrichedAnswer,
+      });
       this.lastAssistantText = assistantText;
+      this.liveStreamText = '';
       const resultPlan = outcome.result.plan;
       const plan =
         message.mode === 'plan'
@@ -1176,6 +1194,29 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           : approvedPlan
             ? planViewFromArtifact(approvedPlan)
             : null;
+
+      const changeRoot = this.effectiveRoot();
+      const runId = outcome.result.runId;
+      let persistedFileChanges =
+        changeRoot &&
+        this.activeFileChangeSnapshot &&
+        runId &&
+        this.activeFileChangeSnapshot.mutatedPaths.size > 0
+          ? buildRunFileChangesView({
+              runId,
+              workspaceRoot: changeRoot,
+              snapshot: this.activeFileChangeSnapshot,
+            })
+          : null;
+      persistedFileChanges =
+        compactFileChangesForHistory(persistedFileChanges) ?? null;
+
+      const activity = compactActivityForHistory(
+        outcome.events
+          .map((event) => runEventToActivity(event))
+          .filter((event): event is NonNullable<typeof event> => Boolean(event)),
+      );
+
       this.post({
         type: 'run.result',
         status: outcome.result.status,
@@ -1186,26 +1227,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         plan,
       });
 
-      const changeRoot = this.effectiveRoot();
-      const runId = outcome.result.runId;
-      if (
-        changeRoot &&
-        this.activeFileChangeSnapshot &&
-        runId &&
-        this.activeFileChangeSnapshot.mutatedPaths.size > 0
-      ) {
+      if (persistedFileChanges && runId && this.activeFileChangeSnapshot) {
         this.fileChangeSnapshots.set(runId, this.activeFileChangeSnapshot);
-        const changes = buildRunFileChangesView({
-          runId,
-          workspaceRoot: changeRoot,
-          snapshot: this.activeFileChangeSnapshot,
-        });
-        if (changes) {
-          this.post({ type: 'run.fileChanges', changes });
-          this.channel.appendLine(
-            `[file-changes] run=${runId} status=${outcome.result.status} files=${changes.files.length} +${changes.totalAdditions} -${changes.totalDeletions}`,
-          );
-        }
+        this.post({ type: 'run.fileChanges', changes: persistedFileChanges });
+        this.channel.appendLine(
+          `[file-changes] run=${runId} status=${outcome.result.status} files=${persistedFileChanges.files.length} +${persistedFileChanges.totalAdditions} -${persistedFileChanges.totalDeletions}`,
+        );
       }
       this.activeFileChangeSnapshot = undefined;
 
@@ -1241,6 +1268,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         userText: prompt,
         assistantText,
         mode: message.mode,
+        activity,
+        ...(persistedFileChanges
+          ? { fileChanges: persistedFileChanges }
+          : {}),
+        status: outcome.result.status,
+        route: outcome.result.route ?? null,
         ...(message.mode === 'plan' && resultPlan
           ? { pendingPlan: resultPlan }
           : {}),

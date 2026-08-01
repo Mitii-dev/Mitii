@@ -131,6 +131,8 @@ export interface SessionLogAppend {
   at: string;
   prompt: string;
   mode?: string;
+  /** Prior user/assistant turns forwarded into the engine for this run. */
+  conversationCount?: number;
   result: AgentRunResult;
   events: RunEvent[];
 }
@@ -158,6 +160,7 @@ export function appendSessionLog(
     sessionId,
     prompt: entry.prompt,
     mode: entry.mode,
+    conversationCount: entry.conversationCount ?? 0,
     runId: entry.result.runId,
     requestId: entry.result.requestId,
   });

@@ -331,13 +331,17 @@ function looksLikeAgentMutationRequest(message: string): boolean {
     return false;
   }
 
-  // How-to / what-is phrasing expects an answer, not a write grant.
+  // How-to / what-is / past-tense status phrasing expects an answer, not a write grant.
   if (
-    /^(?:how\s+(?:do|does|did|can|should|would|to)|why\s+|what\s+(?:is|are|does|would)|when\s+|where\s+|which\s+)/i.test(
+    /^(?:how\s+(?:do|does|did|can|should|would|to)|why\s+|what\s+(?:is|are|does|would|did|was|were)|when\s+|where\s+|which\s+)/i.test(
       text,
     ) ||
     /^(?:can you\s+)?(?:how|why|what|when|where|which)\b/i.test(text) ||
     /^(?:please\s+)?(?:explain|compare|describe|clarify|tell me|find|list|show|summarize|analyse|analyze)\b/i.test(
+      text,
+    ) ||
+    // Follow-ups about prior work ("did you clear…?", "have you finished…?")
+    /^(?:so\s+|and\s+|ok[,.]?\s+|okay[,.]?\s+)?(?:did|have|has|were|was|are|is)\s+(?:you|we|it|they|the)\b/i.test(
       text,
     )
   ) {

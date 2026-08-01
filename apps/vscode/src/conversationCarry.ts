@@ -96,3 +96,163 @@ function truncateMessage(text: string, maxChars: number): string {
   if (maxChars <= 1) return '…';
   return `${text.slice(0, maxChars - 1)}…`;
 }
+
+const TRANSITIONAL_ASSISTANT =
+  /^(?:okay[,.]?\s+|ok[,.]?\s+|sure[,.]?\s+)?(?:let me|i(?:'ll| will)|now let me)\b/i;
+
+function isWeakAssistantDisplay(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return true;
+  if (trimmed.length < 220 && TRANSITIONAL_ASSISTANT.test(trimmed)) return true;
+  if (/^(?:\([\w_]+\)|Error:)/.test(trimmed) && trimmed.length < 80) return true;
+  return false;
+}
+
+/**
+ * Persist a carry-friendly assistant turn: if the model ended mid-narration but
+ * mutated files, attach a changed-files summary so the next turn has memory.
+ */
+export function enrichAssistantCarryText(options: {
+  answer: string;
+  changedPaths?: readonly string[];
+}): string {
+  const answer = options.answer.trim();
+  const paths = [...(options.changedPaths ?? [])].filter(
+    (path) => path.trim().length > 0,
+  );
+  const list =
+    paths.length > 0
+      ? `${paths.slice(0, 40).join(', ')}${paths.length > 40 ? ', …' : ''}`
+      : '';
+  const incomplete = isWeakAssistantDisplay(answer);
+
+  if (paths.length === 0) {
+    return answer || '(no answer)';
+  }
+
+  const summary = `Changed files (${paths.length}): ${list}`;
+  if (incomplete) {
+    return `Completed workspace edits.\n${summary}`;
+  }
+  if (answer.includes('Changed files (')) {
+    return answer;
+  }
+  return `${answer}\n\n${summary}`;
+}
+
+/**
+ * Prefer a substantive final answer; keep streamed text when the final answer
+ * is empty/transitional so the chat does not collapse to a one-liner.
+ */
+export function resolveDisplayedAssistantText(options: {
+  streamedText: string;
+  finalAnswer: string;
+}): string {
+  const streamed = options.streamedText.trim();
+  const final = options.finalAnswer.trim();
+  if (!final) return streamed || '(no answer)';
+  if (!streamed) return final;
+
+  const finalWeak = isWeakAssistantDisplay(final);
+  if (!finalWeak) return final;
+
+  const streamedStronger =
+    streamed.length > final.length * 1.35 ||
+    (!isWeakAssistantDisplay(streamed) && streamed.length >= final.length);
+
+  if (!streamedStronger) return final;
+
+  const changedIdx = final.indexOf('Changed files (');
+  if (changedIdx >= 0 && !streamed.includes('Changed files (')) {
+    return `${streamed}\n\n${final.slice(changedIdx).trim()}`;
+  }
+  return streamed;
+}
+
+/** Keep a bounded, low-noise activity trail for memento / reload. */
+export function compactActivityForHistory(
+  events: readonly {
+    id: string;
+    at: number;
+    kind: string;
+    title: string;
+    detail?: string;
+    status?: string;
+  }[],
+  limit = 40,
+): Array<{
+  id: string;
+  at: number;
+  kind:
+    | 'thinking'
+    | 'delta'
+    | 'context'
+    | 'tool'
+    | 'decision'
+    | 'warning'
+    | 'suspended'
+    | 'terminal'
+    | 'info';
+  title: string;
+  detail?: string;
+  status?: string;
+}> {
+  const allowed = new Set([
+    'context',
+    'tool',
+    'decision',
+    'warning',
+    'suspended',
+    'terminal',
+    'info',
+  ]);
+  return events
+    .filter((event) => allowed.has(event.kind))
+    .slice(-limit)
+    .map((event) => ({
+      id: event.id,
+      at: event.at,
+      kind: event.kind as
+        | 'context'
+        | 'tool'
+        | 'decision'
+        | 'warning'
+        | 'suspended'
+        | 'terminal'
+        | 'info',
+      title: event.title.slice(0, 160),
+      ...(event.detail
+        ? { detail: event.detail.slice(0, 400) }
+        : {}),
+      ...(event.status ? { status: event.status.slice(0, 64) } : {}),
+    }));
+}
+
+/** Drop bulky patch previews before persisting file-change cards. */
+export function compactFileChangesForHistory<
+  T extends {
+    runId: string;
+    files: Array<{
+      path: string;
+      additions: number;
+      deletions: number;
+      status: 'A' | 'M' | 'D' | '?';
+      patchPreview?: string;
+      wasPreDirty?: boolean;
+    }>;
+    totalAdditions: number;
+    totalDeletions: number;
+  },
+>(changes: T | null | undefined): T | undefined {
+  if (!changes || changes.files.length === 0) return undefined;
+  return {
+    ...changes,
+    files: changes.files.slice(0, 80).map((file) => ({
+      path: file.path,
+      additions: file.additions,
+      deletions: file.deletions,
+      status: file.status,
+      ...(file.wasPreDirty ? { wasPreDirty: true } : {}),
+    })),
+  };
+}

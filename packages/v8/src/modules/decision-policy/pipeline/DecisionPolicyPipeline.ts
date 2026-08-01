@@ -17,6 +17,7 @@ import type {
   DecisionReasonCode,
   ExecutionDecision,
 } from "../contracts";
+import { extractPrimaryUserMessage } from "../../request-understanding/intent/extractPrimaryUserMessage";
 
 export class DecisionPolicyPipeline {
   public decide(input: DecisionPolicyInput): ExecutionDecision {
@@ -34,10 +35,12 @@ export class DecisionPolicyPipeline {
     }
 
     const mode = parsed.envelope.mode;
-    const message = parsed.envelope.message;
+    const rawMessage = parsed.envelope.message;
+    // Route heuristics must see the primary ask, not host-wrapped context.
+    const message = extractPrimaryUserMessage(rawMessage) || rawMessage;
     const understanding = parsed.understanding;
 
-    const injection = scanPromptInjection(message);
+    const injection = scanPromptInjection(rawMessage);
     const routeResult = resolveRoute({ mode, understanding, message });
     const depthResult = resolvePlanningDepth({
       mode,

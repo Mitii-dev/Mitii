@@ -2,7 +2,12 @@ import { createHash } from 'node:crypto';
 import type * as vscode from 'vscode';
 import type { PlanArtifact } from '@mitii/sdk';
 
-import type { ChatMessageView, ChatThreadSummary } from './protocol.js';
+import type {
+  ActivityEventPayload,
+  ChatMessageView,
+  ChatThreadSummary,
+  RunFileChangesView,
+} from './protocol.js';
 import { parsePendingPlan } from './conversationCarry.js';
 
 const HISTORY_KEY = 'mitii.chatHistory.v1';
@@ -29,13 +34,37 @@ function emptyHistory(): HistoryStore {
   return { threads: [], activeThreadId: undefined };
 }
 
+function normalizeMessage(raw: ChatMessageView): ChatMessageView {
+  const message: ChatMessageView = {
+    id: String(raw.id ?? `m_${Date.now()}`),
+    role: raw.role === 'assistant' ? 'assistant' : 'user',
+    text: typeof raw.text === 'string' ? raw.text : '',
+    ...(raw.mode ? { mode: raw.mode } : {}),
+  };
+  if (Array.isArray(raw.activity) && raw.activity.length > 0) {
+    message.activity = raw.activity as ActivityEventPayload[];
+  }
+  if (raw.fileChanges && Array.isArray(raw.fileChanges.files)) {
+    message.fileChanges = raw.fileChanges as RunFileChangesView;
+  }
+  if (typeof raw.status === 'string' && raw.status) {
+    message.status = raw.status;
+  }
+  if (raw.route !== undefined) {
+    message.route = raw.route;
+  }
+  return message;
+}
+
 function normalizeThread(raw: StoredThread): StoredThread {
   const pendingPlan = parsePendingPlan(raw.pendingPlan);
   return {
     id: raw.id,
     title: raw.title,
     updatedAt: raw.updatedAt,
-    messages: Array.isArray(raw.messages) ? raw.messages : [],
+    messages: Array.isArray(raw.messages)
+      ? raw.messages.map((message) => normalizeMessage(message))
+      : [],
     ...(pendingPlan ? { pendingPlan } : {}),
   };
 }
@@ -82,6 +111,10 @@ export async function appendTurn(
     userText: string;
     assistantText: string;
     mode?: ChatMessageView['mode'];
+    activity?: ActivityEventPayload[];
+    fileChanges?: RunFileChangesView;
+    status?: string;
+    route?: string | null;
     /** When set, replaces the thread pending plan (plan-mode completion). */
     pendingPlan?: PlanArtifact | null;
     /** Drop pending plan after a successful agent handoff. */
@@ -112,6 +145,12 @@ export async function appendTurn(
     role: 'assistant',
     text: options.assistantText,
     mode: options.mode,
+    ...(options.activity && options.activity.length > 0
+      ? { activity: options.activity }
+      : {}),
+    ...(options.fileChanges ? { fileChanges: options.fileChanges } : {}),
+    ...(options.status ? { status: options.status } : {}),
+    ...(options.route !== undefined ? { route: options.route } : {}),
   });
   thread.updatedAt = new Date().toISOString();
   if (!thread.title || thread.title === 'New chat') {

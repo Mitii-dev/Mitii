@@ -3,8 +3,12 @@ import { PLANNING_SCHEMA_VERSION } from '@mitii/sdk';
 
 import {
   buildConversationCarry,
+  compactActivityForHistory,
+  compactFileChangesForHistory,
   CONVERSATION_CARRY_LIMITS,
+  enrichAssistantCarryText,
   parsePendingPlan,
+  resolveDisplayedAssistantText,
   resolvePlanHandoff,
 } from '../../../apps/vscode/src/conversationCarry.ts';
 
@@ -104,5 +108,87 @@ describe('conversationCarry (VS Code host)', () => {
   it('rejects invalid persisted plan shapes', () => {
     expect(parsePendingPlan({ objective: 'missing fields' })).toBeUndefined();
     expect(parsePendingPlan(samplePlan('Valid'))?.objective).toBe('Valid');
+  });
+
+  it('enriches incomplete assistant answers with changed-file memory', () => {
+    expect(
+      enrichAssistantCarryText({
+        answer: 'Let me check kitchen-flow.spec.ts more carefully:',
+        changedPaths: ['test/a.ts', 'test/b.ts'],
+      }),
+    ).toContain('Changed files (2)');
+
+    expect(
+      enrichAssistantCarryText({
+        answer: 'Removed the old page objects and updated imports.',
+        changedPaths: ['test/a.ts'],
+      }),
+    ).toContain('Removed the old page objects');
+  });
+
+  it('keeps streamed text when the final answer is transitional', () => {
+    const streamed = [
+      "I'll start by discovering the current structure.",
+      '',
+      'Updated Desktop and Tablet imports, then cleaned unused page objects.',
+    ].join('\n');
+    expect(
+      resolveDisplayedAssistantText({
+        streamedText: streamed,
+        finalAnswer: 'Let me check kitchen-flow.spec.ts more carefully:',
+      }),
+    ).toContain('Updated Desktop and Tablet imports');
+
+    expect(
+      resolveDisplayedAssistantText({
+        streamedText: 'Short note',
+        finalAnswer:
+          'Yes — the old files were removed and imports were updated across specs.',
+      }),
+    ).toContain('old files were removed');
+  });
+
+  it('compacts activity and file changes for history', () => {
+    const activity = compactActivityForHistory([
+      {
+        id: '1',
+        at: 1,
+        kind: 'delta',
+        title: 'Writing',
+        detail: 'x',
+      },
+      {
+        id: '2',
+        at: 2,
+        kind: 'tool',
+        title: 'Running apply_patch',
+        detail: 'paths=a.ts',
+        status: 'succeeded',
+      },
+      {
+        id: '3',
+        at: 3,
+        kind: 'info',
+        title: 'Run summary',
+      },
+    ]);
+    expect(activity).toHaveLength(2);
+    expect(activity.every((e) => e.kind !== 'delta')).toBe(true);
+
+    const changes = compactFileChangesForHistory({
+      runId: 'run_1',
+      files: [
+        {
+          path: 'a.ts',
+          additions: 2,
+          deletions: 1,
+          status: 'M' as const,
+          patchPreview: 'huge '.repeat(200),
+        },
+      ],
+      totalAdditions: 2,
+      totalDeletions: 1,
+    });
+    expect(changes?.files[0]?.patchPreview).toBeUndefined();
   });
 });

@@ -50,16 +50,21 @@ import {
   amendMessageWithClarification,
   assembleToolCalls,
   buildClarificationPayload,
+  buildIncompleteAnswerRecoveryMessage,
   buildMutationBudgetInstruction,
   buildOutputTruncationRecovery,
   compactModelLoopMessages,
   decideVerificationGate,
   filterToolDefinitions,
+  isEmptyAssistantTurn,
   mapContextToPromptSlice,
   mapUnderstandingToPlanningEvidence,
   mapUnderstandingToSkillEvidence,
   mergePromptInstructions,
   serializeToolResultForModel,
+  shouldRecoverIncompleteAssistantTurn,
+  synthesizeFallbackAnswer,
+  amendMessageWithPriorConversation,
 } from "../actions";
 import type { VerificationGateDecision } from "../actions";
 import { AGENT_ENGINE_SCHEMA_VERSION } from "../constants";
@@ -85,7 +90,11 @@ import { EventBus } from "../internal/EventBus";
 import { RunBudgetTracker } from "../internal/RunBudget";
 import type { PendingApprovalState } from "../internal/RunCheckpoint";
 import { ToolCallCache } from "../internal/ToolCallCache";
-import { DEFAULT_TOOL_DEFINITIONS, PHASE8_SUPPORTED_ROUTES } from "../policy";
+import {
+  AGENT_ENGINE_THRESHOLDS,
+  DEFAULT_TOOL_DEFINITIONS,
+  PHASE8_SUPPORTED_ROUTES,
+} from "../policy";
 
 export type AgentEnginePipelineDependencies = AgentEngineDependencies;
 
@@ -413,7 +422,19 @@ export class AgentEnginePipeline {
 
       // --- Understand ---
       this.emitStage(bus, runId, "understood", "started");
-      const understanding = await this.deps.understanding.understand(envelope);
+      const understandingEnvelope =
+        input.conversation.length > 0
+          ? {
+              ...envelope,
+              message: amendMessageWithPriorConversation(
+                envelope.message,
+                input.conversation,
+                extractPrimaryUserMessage,
+              ),
+            }
+          : envelope;
+      const understanding =
+        await this.deps.understanding.understand(understandingEnvelope);
       reasonCodes.push("understanding_complete");
       this.emitStage(bus, runId, "understood", "completed", [
         "understanding_complete",
@@ -1947,6 +1968,7 @@ export class AgentEnginePipeline {
     const grant = decision.toolGrant;
     let answer = "";
     let truncationRecoveries = 0;
+    let incompleteAnswerRecoveries = 0;
     let pendingTextContinuation = "";
     let emittedLoopPressureWarning = false;
     let emittedLoopCompactionWarning = false;
@@ -2149,6 +2171,65 @@ export class AgentEnginePipeline {
       ]);
 
       if (turn.toolCalls.length === 0) {
+        if (
+          shouldRecoverIncompleteAssistantTurn({
+            content: turn.content,
+            toolCallCount: 0,
+            changedFileCount: changedFiles.length,
+          }) &&
+          incompleteAnswerRecoveries <
+            AGENT_ENGINE_THRESHOLDS.maxIncompleteAnswerRecoveries &&
+          budget.canStartModelCall()
+        ) {
+          incompleteAnswerRecoveries += 1;
+          reasonCodes.push("incomplete_answer_recovered");
+          const emptyTurn = isEmptyAssistantTurn({
+            content: turn.content,
+            toolCallCount: 0,
+          });
+          const recoveryContent = buildIncompleteAnswerRecoveryMessage({
+            changedFiles,
+            emptyTurn,
+          });
+          if (turn.content.trim().length > 0) {
+            messages.push({
+              role: "assistant",
+              content: turn.content,
+            });
+          }
+          messages.push({
+            role: "user",
+            content: recoveryContent,
+          });
+          warnings.push(
+            emptyTurn
+              ? "Empty model turn recovered; requesting a final answer or next tool call."
+              : "Transitional narration recovered; requesting a final answer or next tool call.",
+          );
+          this.emit(bus, {
+            type: "warning",
+            runId,
+            message: emptyTurn
+              ? "Model returned an empty turn; continuing for a complete answer."
+              : "Model ended on transitional narration; continuing for a complete answer.",
+            at: this.isoNow(),
+          });
+          continue;
+        }
+
+        if (
+          shouldRecoverIncompleteAssistantTurn({
+            content: answer,
+            toolCallCount: 0,
+            changedFileCount: changedFiles.length,
+          })
+        ) {
+          answer = synthesizeFallbackAnswer({
+            priorAnswer: answer,
+            changedFiles,
+          });
+        }
+
         return {
           kind: "completed",
           answer,

@@ -34,3 +34,11 @@ export type {
   ModelLoopCompactionPressure,
   ModelLoopCompactionThresholds,
 } from "./compactModelLoopMessages";
+export {
+  buildIncompleteAnswerRecoveryMessage,
+  isEmptyAssistantTurn,
+  isTransitionalAssistantAnswer,
+  shouldRecoverIncompleteAssistantTurn,
+  synthesizeFallbackAnswer,
+  amendMessageWithPriorConversation,
+} from "./isIncompleteAssistantTurn";
