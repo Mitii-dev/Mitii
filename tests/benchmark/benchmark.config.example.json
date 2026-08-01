@@ -1,0 +1,35 @@
+{
+  "agent": {
+    "command": "node",
+    "args": [
+      "apps/cli/bin/mitii.js",
+      "{mode}",
+      "{prompt}",
+      "--cwd",
+      "{workspace}",
+      "--json",
+      "--echo"
+    ],
+    "cwd": "../../..",
+    "timeoutMs": 120000,
+    "env": {}
+  },
+  "run": {
+    "concurrency": 1,
+    "keepWorkspaces": false,
+    "ignoreChanges": [
+      ".git",
+      ".mitii",
+      "node_modules",
+      "dist",
+      ".next",
+      "coverage"
+    ]
+  },
+  "gates": {
+    "easy": 0.95,
+    "medium": 0.85,
+    "hard": 0.7,
+    "overall": 0.85
+  }
+}

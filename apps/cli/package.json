@@ -1,0 +1,45 @@
+{
+  "name": "@mitii/cli",
+  "version": "2.8.0",
+  "description": "Mitii headless CLI over @mitii/sdk.",
+  "license": "AGPL-3.0-or-later",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "bin": {
+    "mitii": "./bin/mitii.js"
+  },
+  "main": "./dist/cli.js",
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build-cli.cjs && node -e \"require('node:fs').accessSync('dist/cli.js')\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node ../../scripts/ensure-node-native.mjs && vitest run",
+    "start": "node dist/cli.js",
+    "mitii": "node bin/mitii.js"
+  },
+  "dependencies": {
+    "@mitii/host": "workspace:*",
+    "@mitii/sdk": "workspace:*",
+    "@mitii/v8": "workspace:*",
+    "better-sqlite3": "^12.11.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.5.2",
+    "vitest": "^3.2.7"
+  },
+  "optionalDependencies": {
+    "@lancedb/lancedb": "0.33.0"
+  }
+}

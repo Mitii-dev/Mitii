@@ -1,6 +1,12 @@
 packages:
-  - 'tools/*'
   - 'packages/*'
+  - 'apps/*'
+  - 'apps/vscode/webview-ui'
+  - 'tests'
+  - 'tests/benchmark'
+
+overrides:
+  protobufjs: ^7.6.3
 
 onlyBuiltDependencies:
   - sharp

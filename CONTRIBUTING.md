@@ -37,63 +37,47 @@ Optional but useful for full feature coverage:
 git clone https://github.com/Mitii-dev/Mitii.git
 cd Mitii
 pnpm install
-pnpm run rebuild:native   # required for better-sqlite3 in VS Code
-pnpm run compile
+pnpm run build:all   # packages + Electron better-sqlite3 staged into apps/vscode/dist/native
 ```
+
+Or: `pnpm run setup` / `pnpm run setup:cursor` (install + Node rebuild + build + Electron rebuild).
 
 Git hooks are installed automatically via `pnpm install` -> `prepare` -> `scripts/install-git-hooks.mjs`. The pre-commit hook stages version bumps from `scripts/bump-version.mjs`.
 
 ### Launch the extension
 
-1. Open the repo root in VS Code
-2. Press **F5** — this opens an Extension Development Host
-3. In the new window, open a project folder (not the mitii-ai-agent repo itself, unless you're dogfooding)
+1. Open the repo root in VS Code / Cursor
+2. Press **F5** (loads `apps/vscode` via `.vscode/launch.json`)
+3. In the Extension Development Host, open a project folder
 4. Click the Mitii icon in the activity bar
+
+Automated F5 gate (no Extension Host): `pnpm run f5:verify` — see [docs/INITIAL_LAUNCH.md](docs/INITIAL_LAUNCH.md).
 
 ### Watch mode (day-to-day dev)
 
 ```bash
-pnpm run watch
+pnpm --filter @mitii/vscode build
 ```
 
-Rebuilds the extension bundle and webview on save. Reload the Extension Development Host window after extension-side changes (`Ctrl/Cmd+R` in the host window, or restart the debug session).
+Rebuild the extension package after host changes. Phase 17 F5 wiring is complete (`docs/INITIAL_LAUNCH.md`). Reload the Extension Development Host after rebuilds.
 
 ---
 
 ## Project layout
 
+Canonical packaging layout: [docs/REPO_LAYOUT.md](docs/REPO_LAYOUT.md). Canonical V8 architecture: [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md).
+
 ```
 mitii-ai-agent/
-├── src/
-│   ├── extension.ts              # VS Code entry point
-│   ├── core/                     # Agent logic (editor-agnostic)
-│   │   ├── agent/                # AgentLoop, ResearchAgent, PlanExecutor
-│   │   ├── apply/                # Patches, checkpoints, auto-apply
-│   │   ├── context/              # Retrieval, budgeter, repo map
-│   │   ├── indexing/             # Scanner, FTS, vectors, symbols
-│   │   ├── llm/                  # Providers (OpenAI-compatible, Echo)
-│   │   ├── mcp/                  # MCP client and built-in servers
-│   │   ├── memory/               # Long-term memory service
-│   │   ├── planning/             # Plan/Act engine, prompts
-│   │   ├── safety/               # Policy engine, approvals
-│   │   ├── session/              # Session persistence
-│   │   ├── skills/               # Skill catalog
-│   │   ├── telemetry/            # Logging, session JSONL
-│   │   ├── tools/                # Builtin tools, ToolRuntime
-│   │   ├── ChatOrchestrator.ts   # Main chat + agent orchestration
-│   │   └── ThunderController.ts  # Wires everything together
-│   ├── vscode/                   # VS Code adapters
-│   │   ├── webview/              # Webview provider + message types
-│   │   └── commands.ts
-│   └── webview-ui/               # React sidebar (Vite)
-│       └── src/
-├── test/                         # Vitest tests
-├── scripts/                      # Build, audit, hook helpers
-├── tools/benchmark/              # @mitii/benchmark — fixtures, enterprise + eval harness
-├── dist/                         # Compiled output (gitignored)
-├── packages/                     # SDK, daemon, CLI, channels, and board packages
-├── pnpm-workspace.yaml           # Workspace: tools/* and packages/*
-└── package.json                  # Extension manifest + settings schema
+├── packages/v8/                  # @mitii/v8 — host-neutral runtime
+├── packages/sdk/                 # @mitii/sdk — public API over V8
+├── apps/vscode/                  # VS Code extension
+├── apps/cli/                     # Headless CLI
+├── tests/                        # Phase 14 architecture, consumer, solid benchmark
+├── docs/
+├── scripts/
+├── pnpm-workspace.yaml
+└── package.json                  # Private workspace orchestrator
 ```
 
 **Related repos** (standalone — not part of this package):
@@ -101,22 +85,16 @@ mitii-ai-agent/
 - [mitii-docs](https://github.com/codewithshinde/mitii-docs) → docs.mitii.dev
 - [mitii-website](https://github.com/codewithshinde/mitii-website) → mitii.dev
 
-Scaffolds may exist at `mitii-docs/` and `mitii-website/` in this tree while you split them out. Brand constants: `src/shared/brand.ts` (sync with each repo's `brand.ts`).
+**Rule of thumb:** hosts use `@mitii/sdk` only. Do not import V8 `actions/` / `internal/`. Prefer `packages → apps` dependency direction. Do not recreate purged `legacy/` or `src/kernel`.
 
-**Rule of thumb:** keep VS Code APIs out of `src/core/`. Core should be testable without launching an editor. Put platform glue in `src/vscode/`. Keep benchmark and eval in `tools/benchmark/` — they are not extension runtime code.
-
-### Benchmark and eval
+### Benchmark
 
 ```bash
-pnpm run compile:cli
-pnpm run benchmark:smoke
-pnpm run eval:preflight       # before real-runtime eval
-pnpm run eval:generate
-pnpm run eval:standard -- --provider openai-compatible \
-  --base-url http://localhost:11434/v1 --model qwen3-coder:30b --limit 50
+pnpm run benchmark:validate
+pnpm run benchmark
 ```
 
-See [tools/benchmark/README.md](tools/benchmark/README.md) for sharded runs, Ollama matrix, and Inspect AI.
+See [tests/benchmark/README.md](tests/benchmark/README.md) and [docs/TESTS.md](docs/TESTS.md). The old `tools/benchmark` harness was purged with `legacy/` (2026-07-26).
 
 ---
 
@@ -125,23 +103,24 @@ See [tools/benchmark/README.md](tools/benchmark/README.md) for sharded runs, Oll
 ### Run tests
 
 ```bash
-pnpm run rebuild:node   # if better-sqlite3 fails under vitest
-pnpm test               # full suite
+pnpm test               # architecture + selected Vitest suites (auto-heals SQLite ABI)
+pnpm run test:v8        # @mitii/v8 package tests
 pnpm run test:watch     # watch mode
-pnpm run smoke          # smoke tests only
 ```
+
+If `better-sqlite3` was last built for Electron, pretest runs `rebuild:node` automatically.
 
 ### Typecheck
 
 ```bash
-pnpm run lint           # tsc --noEmit
+pnpm run typecheck      # typecheck v8 + sdk + cli + vscode
 ```
 
 ### Build a VSIX
 
 ```bash
-pnpm run compile
-pnpm run package        # outputs mitii-ai-agent-<version>.vsix
+pnpm run build
+pnpm run package        # outputs mitii-ai-agent-<version>.vsix via @mitii/vscode
 ```
 
 Install locally: **Extensions → ... → Install from VSIX**.
@@ -150,10 +129,13 @@ Install locally: **Extensions → ... → Install from VSIX**.
 
 | Scenario | Command |
 |----------|---------|
+| Full F5-ready build | `pnpm run build:all` |
 | F5 / VS Code extension host | `pnpm run rebuild:native` |
 | Cursor extension host | `MITII_EDITOR=cursor pnpm run rebuild:native` |
-| Local vitest | `pnpm run rebuild:node` |
-| Both | `pnpm run rebuild:all` |
+| Local vitest / CLI only | `pnpm run rebuild:node` |
+| Both (Electron staged + Node restored) | `pnpm run rebuild:all` |
+
+`rebuild:native` stages `better_sqlite3.node` into `apps/vscode/dist/native`, then restores the system Node ABI in `node_modules`. The extension host loads the staged Electron binding; Vitest/CLI use `node_modules`. Without the staged Electron binding, code/text indexes fail in the Extension Host.
 
 If SQLite throws on startup, this is almost always the fix.
 
@@ -190,11 +172,11 @@ The pre-commit hook may stage a version bump in `package.json`. Include that in 
 
 ### Code style
 
-- TypeScript strict mode - `pnpm run lint` must pass
+- TypeScript strict mode - `pnpm run typecheck` must pass
 - Match surrounding patterns: no drive-by refactors in unrelated files
-- Logging via `createLogger('ComponentName')` from `src/core/telemetry/Logger.ts`, not raw `console.log`
-- New VS Code settings go in `package.json` contributes **and** `src/core/config/schema.ts` **and** `src/core/config/vscodeSettings.ts`
-- Webview message types: update both `src/vscode/webview/messages.ts` and the React handlers in `src/webview-ui/`
+- Prefer structured logging in V8/SDK; do not log secrets
+- New VS Code settings go in `apps/vscode/package.json` contributes (`mitii.*` only)
+- Do not recreate purged `legacy/` or import vaulted kernel paths from product packages
 
 ### Adding a tool
 
@@ -216,7 +198,7 @@ The pre-commit hook may stage a version bump in `package.json`. Include that in 
 
 1. Fork and branch from `main`
 2. Make your change; keep the diff focused
-3. Run `pnpm run lint` and `pnpm test`
+3. Run `pnpm run typecheck` and `pnpm test`
 4. Manually smoke-test in the Extension Development Host if you touched agent behavior or UI
 5. Open a PR against `main` with:
    - What changed and why (2–4 sentences is fine)

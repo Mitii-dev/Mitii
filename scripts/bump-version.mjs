@@ -39,4 +39,4 @@ if (shouldStage) {
   if (result.status) process.exit(result.status);
 }
 
-console.log(`Thunder version bumped to ${version}`);
+console.log(`Mitii version bumped to ${version}`);

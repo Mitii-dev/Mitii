@@ -10,6 +10,7 @@ dist/
 .mitii/
 .mitti/
 project-goals/
+legacy/project-goals/
 mitii-debug-logs/
 vendor/
 tmp/
@@ -18,23 +19,35 @@ build/
 coverage/
 *.lock
 *.map
+.cursor/
 
 # Benchmark / eval runtime (local generation and reports)
-tools/benchmark/tasks/eval/generated/
-tools/benchmark/tasks/eval/generated-smoke/
-tools/benchmark/results/
+# Old harness lives under legacy/tools-benchmark until human purge.
+legacy/tools-benchmark/tasks/eval/generated/
+legacy/tools-benchmark/tasks/eval/generated-smoke/
+legacy/tools-benchmark/results/
+
+# Solid benchmark (Phase 14 under tests/)
+tests/benchmark/results/
+tests/benchmark/benchmark.config.json
+tests/benchmark/fixtures/**/.mitii/
+tests/benchmark/fixtures/**/.next/
+tests/benchmark/fixtures/**/dist/
+tests/benchmark/fixtures/**/node_modules/
+tests/benchmark/fixtures/**/package-lock.json
+tests/benchmark/fixtures/**/pnpm-lock.yaml
 
 # Fixture sandboxes — deps, builds, Mitii session state
-tools/benchmark/fixtures/**/.mitii/
-tools/benchmark/fixtures/**/.next/
-tools/benchmark/fixtures/**/dist/
-tools/benchmark/fixtures/**/node_modules/
-tools/benchmark/fixtures/**/package-lock.json
-tools/benchmark/fixtures/**/pnpm-lock.yaml
+legacy/tools-benchmark/fixtures/**/.mitii/
+legacy/tools-benchmark/fixtures/**/.next/
+legacy/tools-benchmark/fixtures/**/dist/
+legacy/tools-benchmark/fixtures/**/node_modules/
+legacy/tools-benchmark/fixtures/**/package-lock.json
+legacy/tools-benchmark/fixtures/**/pnpm-lock.yaml
 
 # Agent-created during eval (not part of pinned fixture baseline)
-tools/benchmark/fixtures/**/docs/
-tools/benchmark/fixtures/**/index.html
-tools/benchmark/fixtures/**/src/index.css
-tools/benchmark/fixtures/**/src/main.ts
-tools/benchmark/fixtures/**/src/main.tsx
+legacy/tools-benchmark/fixtures/**/docs/
+legacy/tools-benchmark/fixtures/**/index.html
+legacy/tools-benchmark/fixtures/**/src/index.css
+legacy/tools-benchmark/fixtures/**/src/main.ts
+legacy/tools-benchmark/fixtures/**/src/main.tsx

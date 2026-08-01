@@ -1,13 +1,11 @@
-name: native binaries
+name: VS Code native VSIX
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 jobs:
-  build:
+  package:
+    name: package (${{ matrix.target }})
     strategy:
       fail-fast: false
       matrix:
@@ -26,13 +24,17 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter mitii build:platform
+      - run: pnpm run typecheck
+      - run: pnpm run rebuild:native
         env:
-          MITII_PLATFORM_TARGET: ${{ matrix.target }}
+          MITII_ELECTRON_VERSION: 42.6.0
+      - run: pnpm run package
+        env:
+          MITII_VSCODE_TARGET: ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
-          name: mitii-${{ matrix.target }}
-          path: dist-native/${{ matrix.target }}
+          name: vscode-vsix-${{ matrix.target }}
+          path: dist-vsix/*.vsix

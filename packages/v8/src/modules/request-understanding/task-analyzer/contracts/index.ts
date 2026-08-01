@@ -1,0 +1,72 @@
+export {
+  taskAnalyzerInputSchema,
+  superIntentResultSchema,
+} from "./input/TaskAnalyzerInput";
+export type { TaskAnalyzerInput } from "./input/TaskAnalyzerInput";
+
+export {
+  EstimatedFileImpactSchema,
+  TaskAnalysisSchema,
+  TaskAnalysisSignalSchema,
+  TaskAnalysisSignalTypeSchema,
+  TaskClaritySchema,
+  TaskComplexitySchema,
+  TaskRiskSchema,
+  TaskScopeSchema,
+  TaskTargetKindSchema,
+  TaskTargetSchema,
+} from "./output/TaskAnalysis";
+export type {
+  EstimatedFileImpact,
+  TaskAnalysis,
+  TaskAnalysisSignal,
+  TaskAnalysisSignalType,
+  TaskClarity,
+  TaskComplexity,
+  TaskRisk,
+  TaskScope,
+  TaskTarget,
+} from "./output/TaskAnalysis";
+
+export {
+  OutcomeCandidateSchema,
+  ReferencedArtifactKindSchema,
+  ReferencedArtifactSchema,
+  TaskClarityAnalysisSchema,
+  TaskClarityAnalyzerInputSchema,
+  TaskClaritySignalSchema,
+  TaskComplexityDetailsSchema,
+  TaskComplexitySignalSchema,
+  TaskConstraintExtractionSchema,
+  TaskConstraintKindSchema,
+  TaskConstraintSchema,
+  TaskOutcomeExtractionSchema,
+  TaskOutcomeSchema,
+  TaskRiskAnalysisSchema,
+  TaskRiskSignalSchema,
+  TaskScopeAnalysisSchema,
+  TaskScopeAnalyzerInputSchema,
+  TaskScopeSignalSchema,
+  TaskRiskAnalyzerInputSchema,
+} from "./output/TaskAnalysisStages";
+export type {
+  OutcomeCandidate,
+  ReferencedArtifact,
+  ReferencedArtifactKind,
+  TaskClarityAnalysis,
+  TaskClarityAnalyzerInput,
+  TaskClaritySignal,
+  TaskComplexityDetails,
+  TaskComplexitySignal,
+  TaskConstraint,
+  TaskConstraintExtraction,
+  TaskConstraintKind,
+  TaskOutcome,
+  TaskOutcomeExtraction,
+  TaskRiskAnalysis,
+  TaskRiskAnalyzerInput,
+  TaskRiskSignal,
+  TaskScopeAnalysis,
+  TaskScopeAnalyzerInput,
+  TaskScopeSignal,
+} from "./output/TaskAnalysisStages";

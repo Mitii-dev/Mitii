@@ -2,26 +2,26 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run Extension (this folder)",
+      "name": "Run Extension (apps/vscode)",
       "type": "extensionHost",
       "request": "launch",
       "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--extensionDevelopmentPath=${workspaceFolder}/apps/vscode",
         "${workspaceFolder}"
       ],
-      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
-      "preLaunchTask": "thunder: prelaunch"
+      "outFiles": ["${workspaceFolder}/apps/vscode/dist/**/*.js"],
+      "preLaunchTask": "mitii: prelaunch"
     },
     {
-      "name": "Run Extension (parent monorepo)",
+      "name": "Run Extension (fixture: node-express)",
       "type": "extensionHost",
       "request": "launch",
       "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}",
-        "${workspaceFolder}/.."
+        "--extensionDevelopmentPath=${workspaceFolder}/apps/vscode",
+        "${workspaceFolder}/tests/benchmark/fixtures/node-express"
       ],
-      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
-      "preLaunchTask": "thunder: prelaunch"
+      "outFiles": ["${workspaceFolder}/apps/vscode/dist/**/*.js"],
+      "preLaunchTask": "mitii: prelaunch"
     }
   ]
 }

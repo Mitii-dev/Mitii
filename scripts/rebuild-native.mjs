@@ -2,34 +2,24 @@
 /**
  * Rebuild native modules for VS Code / Cursor Electron.
  * A normal install compiles for Node.js; the extension host uses Electron's ABI.
- * Also ensures sharp carries vendored libvips so MiniLM text embeddings do not fail
- * when @xenova/transformers imports its image utility module.
+ * Rebuilds better-sqlite3 for the Extension Host Electron ABI, stages the
+ * binding into apps/vscode/dist/native for F5 / code+text indexes, then restores
+ * node_modules to the system Node ABI so Vitest/CLI keep working.
  *
- * Override: MITII_ELECTRON_VERSION=42.2.0 pnpm run rebuild:native
+ * Override: MITII_ELECTRON_VERSION=42.6.0 pnpm run rebuild:native
  * Override editor: MITII_EDITOR=cursor pnpm run rebuild:native
+ * Skip Node restore: MITII_SKIP_NODE_RESTORE=1 pnpm run rebuild:native
  */
+import { createRequire } from 'module';
 import { execSync, spawnSync } from 'child_process';
 import { existsSync } from 'fs';
 import { dirname, resolve } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const MODULES = ['better-sqlite3'];
-const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-
-function ensureSharpVendor() {
-  console.log('Ensuring sharp vendored libvips is installed for MiniLM embeddings…');
-  const result = spawnSync(
-    'pnpm',
-    ['rebuild', 'sharp'],
-    {
-      cwd: packageRoot,
-      stdio: 'inherit',
-      shell: process.platform === 'win32',
-      env: { ...process.env, SHARP_IGNORE_GLOBAL_LIBVIPS: '1' },
-    }
-  );
-  return result.status === 0;
-}
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const require = createRequire(import.meta.url);
+const { stageNativeSqliteBinding } = require('./stage-native-sqlite.cjs');
 
 function readElectronFromPlist(plistPath) {
   if (!existsSync(plistPath)) return null;
@@ -40,6 +30,34 @@ function readElectronFromPlist(plistPath) {
   } catch {
     return null;
   }
+}
+
+function inferPreferredEditor() {
+  const explicit = (
+    process.env.MITII_EDITOR ??
+    process.env.THUNDER_EDITOR ??
+    ''
+  ).toLowerCase();
+  if (explicit === 'cursor' || explicit === 'vscode') {
+    return explicit;
+  }
+
+  // Prefer the editor that is actually hosting this process (F5 / agent terminals).
+  const cursorHints = [
+    process.env.CURSOR_AGENT,
+    process.env.CURSOR_EXTENSION_HOST_ROLE,
+    process.env.CURSOR_WORKSPACE_LABEL,
+    process.env.VSCODE_CODE_CACHE_PATH,
+    process.env.VSCODE_IPC_HOOK,
+  ]
+    .filter(Boolean)
+    .join('\n')
+    .toLowerCase();
+  if (cursorHints.includes('cursor')) {
+    return 'cursor';
+  }
+
+  return 'vscode';
 }
 
 function detectElectronVersion() {
@@ -58,7 +76,7 @@ function detectElectronVersion() {
     },
   };
 
-  const preferred = (process.env.MITII_EDITOR ?? process.env.THUNDER_EDITOR ?? 'vscode').toLowerCase();
+  const preferred = inferPreferredEditor();
   const order =
     preferred === 'cursor' ? ['cursor', 'vscode'] : ['vscode', 'cursor'];
 
@@ -71,16 +89,11 @@ function detectElectronVersion() {
   }
 
   // VS Code 1.124+ / Electron 42 (NODE_MODULE_VERSION 146)
-  console.warn('Could not detect editor — falling back to Electron 42.2.0');
-  return '42.2.0';
+  console.warn('Could not detect editor — falling back to Electron 42.6.0');
+  return '42.6.0';
 }
 
-function main() {
-  if (!ensureSharpVendor()) {
-    console.error('\nRebuild failed for sharp/libvips.');
-    process.exit(1);
-  }
-
+async function main() {
   const electronVersion = detectElectronVersion();
   console.log(`Rebuilding native modules for Electron ${electronVersion}…`);
 
@@ -89,26 +102,62 @@ function main() {
     [
       'exec',
       'electron-rebuild',
+      '--build-from-source',
       '-f',
       '-v',
       electronVersion,
       '-m',
-      '.',
+      repoRoot,
       '-w',
       ...MODULES,
     ],
-    { cwd: packageRoot, stdio: 'inherit', shell: true }
+    { cwd: repoRoot, stdio: 'inherit', shell: true }
   );
 
   if (result.status !== 0) {
     console.error('\nRebuild failed. Try:');
-    console.error('  MITII_ELECTRON_VERSION=42.2.0 pnpm run rebuild:native   # VS Code 1.124+');
-    console.error('  MITII_ELECTRON_VERSION=39.8.1 pnpm run rebuild:native   # Cursor');
+    console.error('  MITII_ELECTRON_VERSION=42.6.0 pnpm run rebuild:native   # VS Code 1.124+');
+    console.error('  MITII_EDITOR=cursor pnpm run rebuild:native             # Cursor (auto-detects Electron)');
+    console.error('  MITII_ELECTRON_VERSION=40.10.3 pnpm run rebuild:native  # Cursor Electron pin');
     process.exit(result.status ?? 1);
   }
 
-  console.log('\nNative rebuild complete. Reload the Extension Development Host (F5).');
-  console.log('Note: run "pnpm run rebuild:node" before CLI eval or "pnpm test" if native modules fail under Node.');
+  try {
+    stageNativeSqliteBinding({ createDist: true });
+  } catch (error) {
+    console.error(
+      `\nNative rebuild succeeded but staging failed: ${
+        error instanceof Error ? error.message : error
+      }`,
+    );
+    process.exit(1);
+  }
+
+  if (process.env.MITII_SKIP_NODE_RESTORE === '1') {
+    console.log(
+      '\nNative rebuild complete (Node restore skipped). Reload the Extension Development Host (F5).',
+    );
+    console.log(
+      'Run `pnpm run rebuild:node` before Vitest/CLI — node_modules still has the Electron ABI.',
+    );
+    return;
+  }
+
+  console.log('\nRestoring better-sqlite3 in node_modules for system Node…');
+  const rebuildNodePath = resolve(repoRoot, 'scripts/rebuild-node.mjs');
+  const { rebuildForNode } = await import(pathToFileURL(rebuildNodePath).href);
+  if (!rebuildForNode()) {
+    console.error(
+      '\nElectron staging succeeded, but restoring the Node ABI failed.',
+    );
+    console.error('Run `pnpm run rebuild:node` before Vitest/CLI.');
+    process.exit(1);
+  }
+
+  console.log(
+    '\nNative rebuild complete. Electron binding staged; node_modules restored for Node.',
+  );
+  console.log('Reload the Extension Development Host (F5). Vitest/CLI can run without another rebuild.');
 }
 
-main();
+await main();

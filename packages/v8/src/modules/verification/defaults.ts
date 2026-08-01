@@ -1,0 +1,3 @@
+export const DEFAULT_MAX_CHECKS = 8;
+export const DEFAULT_MAX_DIAGNOSTICS = 200;
+export const DEFAULT_DIFF_PREVIEW_CHARS = 8_000;

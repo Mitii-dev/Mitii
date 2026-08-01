@@ -1,0 +1,113 @@
+import { describe, expect, it } from "vitest";
+
+import { VERIFICATION_SCHEMA_VERSION } from "../../../../modules/verification";
+import type { VerificationResult } from "../../../../modules/verification";
+
+import { decideVerificationGate } from "../decideVerificationGate";
+
+function result(
+  status: VerificationResult["status"],
+  reasonCodes: VerificationResult["reasonCodes"] = ["checks_passed"],
+): VerificationResult {
+  return {
+    schemaVersion: VERIFICATION_SCHEMA_VERSION,
+    status,
+    stateToken: "tok",
+    affectedProjectIds: [],
+    checks: [],
+    diagnostics: [],
+    diff: {
+      reviewed: false,
+      staleStateRisk: false,
+      summary: "n/a",
+      changedPaths: [],
+    },
+    warnings: [],
+    reasonCodes,
+    durationMs: 1,
+  };
+}
+
+describe("decideVerificationGate", () => {
+  it("accepts verified_success and implemented_unverified (keeps mutations)", () => {
+    expect(
+      decideVerificationGate({
+        verificationRequired: true,
+        allowUnavailable: false,
+        changedFileCount: 1,
+        canVerify: true,
+        verification: result("verified_success"),
+      }),
+    ).toEqual({ action: "accept", acceptKind: "verified_success" });
+
+    expect(
+      decideVerificationGate({
+        verificationRequired: true,
+        allowUnavailable: false,
+        changedFileCount: 1,
+        canVerify: true,
+        verification: result("implemented_unverified", ["checks_unavailable"]),
+      }),
+    ).toEqual({ action: "accept", acceptKind: "implemented_unverified" });
+  });
+
+  it("rejects verification_failed as repairable and blocked as not repairable", () => {
+    const failed = decideVerificationGate({
+      verificationRequired: true,
+      allowUnavailable: false,
+      changedFileCount: 1,
+      canVerify: true,
+      verification: result("verification_failed", ["checks_failed"]),
+    });
+    expect(failed).toMatchObject({
+      action: "reject",
+      repairable: true,
+      rejectKind: "verification_failed",
+    });
+
+    const blocked = decideVerificationGate({
+      verificationRequired: true,
+      allowUnavailable: false,
+      changedFileCount: 1,
+      canVerify: true,
+      verification: result("blocked", ["state_unavailable"]),
+    });
+    expect(blocked).toMatchObject({
+      action: "reject",
+      repairable: false,
+      rejectKind: "blocked",
+    });
+  });
+
+  it("does not treat allowUnavailable as permission to accept failed checks", () => {
+    const decision = decideVerificationGate({
+      verificationRequired: true,
+      allowUnavailable: true,
+      changedFileCount: 1,
+      canVerify: true,
+      verification: result("verification_failed", ["checks_failed"]),
+    });
+    expect(decision.action).toBe("reject");
+    expect(decision).toMatchObject({ repairable: true });
+  });
+
+  it("skips when verification is not required or no files changed", () => {
+    expect(
+      decideVerificationGate({
+        verificationRequired: false,
+        allowUnavailable: false,
+        changedFileCount: 1,
+        canVerify: false,
+      }),
+    ).toEqual({ action: "accept", acceptKind: "skipped_not_required" });
+
+    expect(
+      decideVerificationGate({
+        verificationRequired: true,
+        allowUnavailable: false,
+        changedFileCount: 0,
+        canVerify: true,
+      }),
+    ).toEqual({ action: "accept", acceptKind: "skipped_not_required" });
+  });
+});

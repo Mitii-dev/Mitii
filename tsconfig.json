@@ -1,23 +1,24 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "lib": ["ES2022"],
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
     "outDir": "dist",
     "rootDir": ".",
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noEmit": true
   },
-  "include": ["src/**/*", "test/**/*"],
-  "exclude": ["node_modules", "dist", "src/webview-ui"]
+  "include": [
+    "tests/architecture/**/*.ts",
+    "tests/packages/**/*.ts",
+    "tests/contract/**/*.ts",
+    "tests/integration/**/*.ts",
+    "tests/e2e/**/*.ts",
+    "tests/setup.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "legacy",
+    "packages",
+    "apps",
+    "tests/benchmark"
+  ]
 }

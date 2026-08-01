@@ -1,7 +1,7 @@
 # Mitii AI Agent
 
 <p align="center">
-  <img src="media/Mitii.png" alt="Mitii AI Agent logo" width="160" />
+  <img src="apps/vscode/media/Mitii.png" alt="Mitii AI Agent logo" width="160" />
 </p>
 
 <p align="center">
@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.7.62" src="https://img.shields.io/badge/version-2.7.62-111111">
+  <img alt="Version 2.8.0" src="https://img.shields.io/badge/version-2.8.0-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
 
@@ -20,10 +20,10 @@
   <code>AI coding agent</code> · <code>VS Code</code> · <code>local-first</code> · <code>MCP</code> · <code>Ollama</code> · <code>TypeScript</code>
 </p>
 
-Mitii understands a repository before it changes it. It combines local indexing, Ask/Plan/Agent workflows, approval-aware tools, checkpoints, memory, and audit logs in one VS Code experience. Use a local model for privacy or connect a supported cloud provider when more capability is required.
+Mitii understands a repository before it changes it. It combines local indexing, Ask/Plan/Agent workflows, approval-aware tools, checkpoints, memory, and session logs in one VS Code experience. Use a local OpenAI-compatible model for privacy, or any OpenAI-compatible cloud endpoint when more capability is required.
 
 <p align="center">
-  <img src="media/mitii-vs-code-chat-ui.png" alt="Mitii chat interface in VS Code" width="520" />
+  <img src="apps/vscode/media/mitii-vs-code-chat-ui.png" alt="Mitii chat interface in VS Code" width="520" />
 </p>
 
 ## What Mitii provides
@@ -31,9 +31,9 @@ Mitii understands a repository before it changes it. It combines local indexing,
 - **Repository-aware context** — SQLite FTS5, symbols, vectors, repo maps, diagnostics, Git state, and explicitly attached files.
 - **Clear operating modes** — Ask for read-only analysis, Plan complex work, Agent applies changes, and Review inspects results.
 - **Controlled execution** — configurable approvals, dangerous-command blocking, workspace trust checks, and pre-write checkpoints.
-- **Model flexibility** — Ollama, LM Studio, OpenAI-compatible APIs, OpenRouter, OpenAI, Azure OpenAI, Bedrock, Anthropic, Gemini, DeepSeek, and test providers.
-- **Extensible workflows** — built-in tools, MCP servers, project rules, reusable skills, typed subagents, and GitHub issue context.
-- **Enterprise evidence** — local session logs, redacted audit packs, provider boundaries, managed settings, and optional SIEM webhooks.
+- **Model flexibility** — `echo` (local stub) and **OpenAI-compatible** endpoints (Ollama, LM Studio, OpenRouter, OpenAI, Azure OpenAI, DeepSeek, and similar `/v1` APIs). Native Anthropic, Gemini, and Bedrock adapters are not shipped yet.
+- **Extensible workflows** — built-in tools, MCP servers (VS Code), project rules, and reusable skills.
+- **Local evidence** — session logs and a basic audit-pack export from the VS Code host (settings redacted). Org SSO/RBAC, SIEM webhooks, and managed enterprise policy packs are not implemented yet.
 
 ## How it works
 
@@ -52,7 +52,7 @@ flowchart LR
   Loop --> Provider[Local or cloud model]
 ```
 
-The extension can run the engine in-process or connect to the HTTP/SSE daemon. The CLI and `@mitii/sdk` use the same headless event model. See [ARCHITECTURE.md](ARCHITECTURE.md) for component boundaries, request flows, storage, security, and an end-to-end example.
+The extension and CLI talk to the agent through `@mitii/sdk` → `@mitii/v8`. See [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md) for component boundaries, request flows, storage, security, and an end-to-end example.
 
 ## Quick start
 
@@ -113,106 +113,115 @@ Mitii retrieves relevant context, selects the required capabilities, requests ap
 
 ## CLI and SDK
 
-Start the shared daemon:
+### CLI
 
 ```bash
-mitii serve --cwd /path/to/project
-curl http://127.0.0.1:4310/health
+pnpm run build:cli
+node apps/cli/bin/mitii.js ask "Summarize the authentication flow" --echo
+node apps/cli/bin/mitii.js index --cwd /path/to/project
+node apps/cli/bin/mitii.js status --json
 ```
 
-Install and import the Node SDK:
+See [apps/cli/README.md](apps/cli/README.md) for `ask`, `session`, `index`, `status`, and `export-session`. Daemon / `mitii serve` is deferred.
 
-```bash
-npm install @mitii/sdk
-```
+### SDK
+
+`@mitii/sdk`, `@mitii/v8`, and `@mitii/cli` are **private workspace packages** today (not published to npm). Consume them from this monorepo, or wait until publish is intentionally enabled.
 
 ```ts
-import { query } from '@mitii/sdk';
+import { createMitiiClient, EchoLlmPort } from '@mitii/sdk';
 
-for await (const event of query({
-  cwd: process.cwd(),
+const client = createMitiiClient({
+  understandingLlm: /* host LlmPort */,
+  runLlm: new EchoLlmPort(),
+  workspaceRoot: process.cwd(),
+  defaultMode: 'ask',
+});
+
+const run = client.start({
   prompt: 'Summarize the authentication flow',
   mode: 'ask',
-  provider: 'openai-compatible',
-  baseUrl: 'http://localhost:11434/v1',
-  model: 'qwen3-coder:30b',
-  allowNetwork: false,
-})) {
-  if (event.type === 'assistant_delta') process.stdout.write(event.content);
+});
+
+for await (const event of run.events) {
+  if (event.type === 'model_delta' && event.preview) {
+    process.stdout.write(event.preview);
+  }
 }
+
+await run.result;
 ```
 
-Use `DaemonClient` from `@mitii/sdk/daemon` for persistent sessions, replayable SSE events, approvals, and cancellation. More examples are in [packages/sdk/README.md](packages/sdk/README.md) and [packages/cli/README.md](packages/cli/README.md).
+The live surface is `createMitiiClient` / `start` / `resume` — not a legacy `query()` helper or `DaemonClient`. More detail: [packages/sdk/README.md](packages/sdk/README.md).
 
-## Enterprise controls
+## Local safety controls
 
 Mitii keeps indexes, plans, memory, logs, and checkpoints local by default. Only context sent to the configured model provider crosses that provider boundary.
 
-Key controls include:
+What exists today:
 
-- local-provider enforcement with `mitii.enterprise.localProvidersOnly`
 - approval presets and workspace trust enforcement
-- redacted, hash-verifiable audit pack exports
-- optional removal of file contents from audit exports
-- optional signed SIEM/webhook delivery
-- policy switches for channels, remote writes, and parallel sessions
+- SecretStorage for API keys (VS Code)
+- session logs and a basic audit-pack export (redacted settings + run events)
+- OpenAI-compatible local endpoints (Ollama / LM Studio) for privacy-sensitive work
 
-Security, compliance, procurement, and deployment guidance is available in [docs/enterprise](docs/enterprise/README.md).
+Not yet product features: `mitii.enterprise.localProvidersOnly`, signed SIEM/webhook delivery, SSO/OIDC, RBAC, or a dedicated `docs/enterprise/` pack.
 
 ## Repository layout
 
 ```text
 mitii-ai-agent/
-├── src/
-│   ├── extension.ts          # VS Code entry point
-│   ├── core/                 # runtime, context, safety, tools, providers
-│   ├── vscode/               # editor adapters and webview bridge
-│   ├── webview-ui/           # React sidebar
-│   └── node/                 # CLI entry point and VS Code shim
 ├── packages/
-│   ├── sdk/                  # @mitii/sdk
-│   ├── daemon/               # HTTP/SSE runtime
-│   ├── cli/                  # platform launcher
-│   ├── channels/             # external channel adapters
-│   └── board/                # parallel-agent task board
-├── tools/benchmark/          # benchmark and evaluation harness
-├── docs/                     # user, developer, and enterprise guides
-├── test/                     # Vitest suite
+│   ├── v8/                   # @mitii/v8 — host-neutral agent runtime
+│   └── sdk/                  # @mitii/sdk — public API over V8
+├── apps/
+│   ├── vscode/               # VS Code extension (F5 target)
+│   └── cli/                  # headless CLI
+├── tests/                    # architecture + consumer suites + solid benchmark
+├── docs/                     # developer and release guides
 └── scripts/                  # build, release, and audit automation
 ```
+
+See [docs/REPO_LAYOUT.md](docs/REPO_LAYOUT.md). Canonical architecture: [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md).
 
 ## Development
 
 ```bash
-pnpm run watch              # extension and webview watch builds
-pnpm run lint               # TypeScript validation
-pnpm test                   # full Vitest suite
-pnpm run smoke              # smoke tests
-pnpm run package            # build the VSIX
+pnpm run build:all          # build all packages + Electron SQLite for F5 / indexes
+pnpm run build              # packages only (v8 + sdk + cli + vscode)
+pnpm run typecheck          # typecheck v8 + sdk + cli + vscode
+pnpm test                   # architecture + selected Vitest suites
+pnpm run package            # build the target-specific VSIX (apps/vscode)
 pnpm run package:preflight  # release checks, tests, and package
 ```
 
-Native modules target different runtimes:
+Native modules target different runtimes. `rebuild:native` stages the Electron
+binding for F5 and restores the Node ABI in `node_modules`, so tests keep working:
 
 ```bash
-pnpm run rebuild:native     # VS Code/Electron
-pnpm run rebuild:node       # local Node.js tests
+pnpm run rebuild:native     # Electron → dist/native, then restore Node ABI
+pnpm run rebuild:node       # Node-only (tests/CLI)
+pnpm run rebuild:all        # alias of rebuild:native (both targets ready)
 ```
+
+Vitest scripts auto-heal ABI mismatches via `scripts/ensure-node-native.mjs`.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for coding conventions and pull request guidance.
 
 ## Documentation
 
-- [Architecture](ARCHITECTURE.md)
+- [Architecture](packages/v8/ARCHITECTURE.md)
+- [Repository layout](docs/REPO_LAYOUT.md)
+- [Release / publish units](docs/RELEASE.md)
 - [User and developer guides](docs/)
-- [Enterprise pack](docs/enterprise/README.md)
-- [Benchmark harness](tools/benchmark/README.md)
+- [Solid benchmark](tests/benchmark/README.md)
+- [Tests layout](docs/TESTS.md)
 - [Website](https://mitii.dev)
 - [Hosted documentation](https://docs.mitii.dev)
 
 ## Contributing and support
 
-Contributions are welcome. Keep changes focused and run `pnpm run lint` and `pnpm test` before opening a pull request.
+Contributions are welcome. Keep changes focused and run `pnpm run typecheck` and `pnpm test` before opening a pull request.
 
 - Issues: [github.com/Mitii-dev/Mitii/issues](https://github.com/Mitii-dev/Mitii/issues)
 - Author: [@codewithshinde](https://github.com/codewithshinde)

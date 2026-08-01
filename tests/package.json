@@ -1,0 +1,15 @@
+{
+  "name": "@mitii/tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Consumer test orchestrator for architecture, package smoke, and solid benchmark.",
+  "scripts": {
+    "test": "cd .. && vitest run tests/architecture tests/packages",
+    "architecture": "cd .. && vitest run tests/architecture",
+    "benchmark": "pnpm --filter @mitii/solid-benchmark benchmark",
+    "benchmark:validate": "pnpm --filter @mitii/solid-benchmark validate"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

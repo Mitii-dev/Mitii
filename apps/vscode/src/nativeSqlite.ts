@@ -1,0 +1,47 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
+import Database from 'better-sqlite3';
+
+type SqliteDatabase = Database.Database;
+type SqliteOptions = Database.Options;
+
+export type NativeSqliteDatabase = SqliteDatabase;
+
+const NATIVE_BINDING_FILE = 'better_sqlite3.node';
+
+export function openSqliteDatabase(
+  filename: string,
+  options: SqliteOptions = {},
+): SqliteDatabase {
+  const nativeBinding = resolveNativeSqliteBinding();
+  return new Database(filename, {
+    ...options,
+    ...(nativeBinding ? { nativeBinding } : {}),
+  });
+}
+
+export function resolveNativeSqliteBinding(): string | undefined {
+  const override = process.env.MITII_SQLITE_NATIVE_BINDING;
+  if (override && existsSync(override)) {
+    return override;
+  }
+
+  if (!process.versions.electron) {
+    return undefined;
+  }
+
+  const candidates = [
+    join(__dirname, 'native', NATIVE_BINDING_FILE),
+    join(__dirname, '..', 'dist', 'native', NATIVE_BINDING_FILE),
+    join(__dirname, '..', 'native', NATIVE_BINDING_FILE),
+  ];
+  const bundled = candidates.find((candidate) => existsSync(candidate));
+  if (bundled) {
+    return bundled;
+  }
+
+  throw new Error(
+    `Mitii SQLite native binding is missing. Checked: ${candidates.join(', ')}. Run \`pnpm run build:all\` (or \`pnpm run rebuild:native\`) so ${NATIVE_BINDING_FILE} is staged into dist/native for the Electron extension host.`,
+  );
+}

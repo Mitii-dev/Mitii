@@ -1,32 +1,18 @@
-name: npm publish
+# @mitii/v8, @mitii/sdk, and @mitii/cli ship with "private": true.
+# Public npm publish is deferred until those flags are intentionally removed.
+# Product releases today are VSIX artifacts via .github/workflows/release.yml.
+name: npm publish (deferred)
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 jobs:
-  publish:
+  deferred:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          registry-url: https://registry.npmjs.org
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm sync:versions
-      - run: pnpm -r build
-      - run: pnpm test
-      - run: npm publish --workspace packages/sdk --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - run: npm publish --workspace packages/daemon --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Packages are private
+        run: |
+          echo "::notice::npm publish is deferred while packages remain private: true."
+          echo "Ship the VS Code extension via the Release workflow (VSIX)."
+          echo "To publish npm later: remove private flags, then restore a real publish job."
+          exit 1

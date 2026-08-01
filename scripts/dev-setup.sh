@@ -8,11 +8,14 @@ editor="${MITII_EDITOR:-${THUNDER_EDITOR:-vscode}}"
 echo "Installing dependencies..."
 pnpm install
 
-echo "Compiling extension and webview..."
-pnpm run compile
+echo "Rebuilding native modules for local Node tests..."
+pnpm run rebuild:node
+
+echo "Building packages, extension, and webview..."
+pnpm run build
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  echo "Rebuilding native modules for ${editor}..."
+  echo "Rebuilding + staging native modules for ${editor} (Electron)..."
   MITII_EDITOR="${editor}" pnpm run rebuild:native
 else
   cat <<'NOTE'
@@ -22,7 +25,5 @@ Set MITII_ELECTRON_VERSION for your editor, then run:
 NOTE
 fi
 
-echo "Rebuilding native modules for local Node tests..."
-pnpm run rebuild:node
-
-echo "Setup complete. Press F5 in VS Code to launch the Extension Development Host."
+echo "Setup complete. Press F5 in VS Code / Cursor to launch the Extension Development Host."
+echo "Electron SQLite is staged under apps/vscode/dist/native; node_modules is restored for Node tests."

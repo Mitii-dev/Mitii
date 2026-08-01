@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Unused-dependency audit via depcheck across monorepo package roots.
- * Not a CVE scanner — use audit-vulnerabilities.mjs for security advisories.
+ * Not a CVE scanner — use `pnpm audit` for security advisories.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -126,7 +126,7 @@ const output = {
   ok: true,
   kind: 'unused-dependency-audit',
   note:
-    'This script reports UNUSED dependencies (depcheck), not CVEs. For vulnerability/CVE scanning use audit-vulnerabilities.mjs or `pnpm/npm audit`.',
+    'This script reports UNUSED dependencies (depcheck), not CVEs. For vulnerability/CVE scanning use `pnpm audit`.',
   workspace: cwd,
   scannedRoots: roots.map((d) => relative(cwd, d) || '.'),
   totals: { unusedAcrossPackages: totalUnused },

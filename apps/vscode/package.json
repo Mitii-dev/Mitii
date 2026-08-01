@@ -1,0 +1,510 @@
+{
+  "name": "mitii-ai-agent",
+  "displayName": "Mitii AI Agent",
+  "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
+  "version": "2.8.0",
+  "publisher": "mitii",
+  "license": "AGPL-3.0-or-later",
+  "icon": "media/mitii-short-logo.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Mitii-dev/Mitii.git",
+    "directory": "apps/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/Mitii-dev/Mitii/issues"
+  },
+  "homepage": "https://mitii.dev",
+  "galleryBanner": {
+    "color": "#111111",
+    "theme": "dark"
+  },
+  "pricing": "Free",
+  "qna": false,
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Education",
+    "Testing",
+    "AI",
+    "Chat"
+  ],
+  "keywords": [
+    "ai",
+    "coding agent",
+    "vscode extension",
+    "local-first",
+    "ollama",
+    "openai-compatible",
+    "repo indexing",
+    "developer tools",
+    "typescript"
+  ],
+  "engines": {
+    "vscode": "^1.124.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Mitii can open its UI in Restricted Mode, but repository indexing, agent execution, shell tools, and file mutations require a trusted workspace.",
+      "restrictedConfigurations": [
+        "mitii.workspace.rootPathOverride",
+        "mitii.mcp"
+      ]
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Mitii requires a file-system workspace for repository indexing, SQLite-backed code/text indexes, audit artifacts, and controlled file mutations."
+    }
+  },
+  "activationEvents": [
+    "onView:mitii.sidebar",
+    "onCommand:mitii.openChat",
+    "onCommand:mitii.indexWorkspace",
+    "onCommand:mitii.showSettings",
+    "onCommand:mitii.generateCommitMessage",
+    "onCommand:mitii.exportSessionLog",
+    "onCommand:mitii.exportAuditPack",
+    "onCommand:mitii.openSessionLog",
+    "onCommand:mitii.generateChangelog",
+    "onCommand:mitii.prepareRelease",
+    "onCommand:mitii.showInlineDiff",
+    "onCommand:mitii.acceptInlineDiff",
+    "onCommand:mitii.rejectInlineDiff",
+    "onCommand:mitii.setApiKey",
+    "onCommand:mitii.clearApiKey"
+  ],
+  "main": "./dist/extension.js",
+  "files": [
+    "dist/extension.js",
+    "dist/native/better_sqlite3.node",
+    "dist/webview/**/*",
+    "media/**/*",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE.txt",
+    "package.json"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "mitii.openChat",
+        "title": "Mitii: Open Chat",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.indexWorkspace",
+        "title": "Mitii: Index Workspace",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.showSettings",
+        "title": "Mitii: Show Settings",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.exportSessionLog",
+        "title": "Mitii: Export Session Log",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.exportAuditPack",
+        "title": "Mitii: Export Audit Pack",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.openSessionLog",
+        "title": "Mitii: Open Session Log",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.generateChangelog",
+        "title": "Mitii: Generate Changelog",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.prepareRelease",
+        "title": "Mitii: Prepare Release Notes",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.showInlineDiff",
+        "title": "Mitii: Show Inline Diff",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.acceptInlineDiff",
+        "title": "Mitii: Accept Inline Diff",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.rejectInlineDiff",
+        "title": "Mitii: Reject Inline Diff",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.generateCommitMessage",
+        "title": "Mitii: Generate Commit Message",
+        "category": "Mitii",
+        "icon": "media/mitii-activitybar.svg"
+      },
+      {
+        "command": "mitii.setApiKey",
+        "title": "Mitii: Set Provider API Key",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.clearApiKey",
+        "title": "Mitii: Clear Provider API Key",
+        "category": "Mitii"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "mitii.acceptInlineDiff",
+        "key": "ctrl+shift+enter",
+        "mac": "cmd+shift+enter",
+        "when": "mitii.inlineDiffPending"
+      },
+      {
+        "command": "mitii.rejectInlineDiff",
+        "key": "ctrl+shift+backspace",
+        "mac": "cmd+shift+backspace",
+        "when": "mitii.inlineDiffPending"
+      }
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "mitii.generateCommitMessage",
+          "when": "scmProvider == git && gitOpenRepositoryCount != 0",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "mitii.acceptInlineDiff",
+          "when": "mitii.inlineDiffPending"
+        },
+        {
+          "command": "mitii.rejectInlineDiff",
+          "when": "mitii.inlineDiffPending"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "mitii",
+          "title": "Mitii",
+          "icon": "media/mitii-activitybar.svg"
+        }
+      ]
+    },
+    "views": {
+      "mitii": [
+        {
+          "type": "webview",
+          "id": "mitii.sidebar",
+          "name": "Mitii AI Agent"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Mitii AI Agent",
+      "properties": {
+        "mitii.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable debug logging in the Mitii Output channel (auto-shows the channel; includes stack traces on failures)"
+        },
+        "mitii.provider.type": {
+          "type": "string",
+          "enum": [
+            "echo",
+            "openai-compatible"
+          ],
+          "default": "echo",
+          "description": "LLM provider adapter family (echo or OpenAI-compatible)."
+        },
+        "mitii.provider.preset": {
+          "type": "string",
+          "enum": [
+            "echo",
+            "ollama",
+            "lm-studio",
+            "openai",
+            "openrouter",
+            "deepseek",
+            "azure-openai",
+            "openai-compatible"
+          ],
+          "default": "echo",
+          "description": "Provider preset that prefills base URL, model, and auth style. All non-echo presets use the OpenAI-compatible adapter."
+        },
+        "mitii.provider.baseUrl": {
+          "type": "string",
+          "default": "http://localhost:11434/v1",
+          "description": "OpenAI-compatible API base URL"
+        },
+        "mitii.provider.model": {
+          "type": "string",
+          "default": "qwen3-coder:30b",
+          "description": "Model name"
+        },
+        "mitii.provider.contextWindow": {
+          "type": "number",
+          "default": 32768,
+          "minimum": 1024,
+          "description": "Model context window in tokens. Used for prompt budgeting, max output reserve, and the token meter. Prefer the real window for your model (or leave unset to use the model preset)."
+        },
+        "mitii.provider.maximumOutputTokens": {
+          "type": "number",
+          "default": 16384,
+          "minimum": 256,
+          "description": "Maximum tokens the model may generate per call. Higher defaults help multi-file apply_patch batches; still pair with mutation batching for 30+ file tasks."
+        },
+        "mitii.semanticIndex.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable semantic workspace indexing when the provider is openai-compatible. If embeddings or LanceDB are unavailable, Mitii keeps vector search unavailable and continues with lexical indexing."
+        },
+        "mitii.semanticIndex.model": {
+          "type": "string",
+          "default": "text-embedding-3-small",
+          "description": "Embedding model used for the semantic workspace index."
+        },
+        "mitii.semanticIndex.dimensions": {
+          "type": "number",
+          "default": 1536,
+          "minimum": 1,
+          "description": "Embedding vector dimensions for the semantic workspace index. Changing this creates a distinct vector profile."
+        },
+        "mitii.semanticIndex.normalized": {
+          "type": "boolean",
+          "default": true,
+          "description": "Normalize embedding vectors before storing and querying the semantic workspace index. Changing this creates a distinct vector profile."
+        },
+        "mitii.workspace.rootPathOverride": {
+          "type": "string",
+          "default": "",
+          "description": "Optional workspace root override used for indexing and agent runs"
+        },
+        "mitii.skills.workspace.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Load workspace-uploaded skills from .mitii/skills. Disable to run with only bundled/default skills."
+        },
+        "mitii.ui.showReasoning": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show live reasoning / thinking activity in the Mitii chat UI"
+        },
+        "mitii.ui.reasoningPreviewMaxChars": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 500,
+          "maximum": 50000,
+          "description": "Maximum characters retained in the reasoning preview stream"
+        },
+        "mitii.ui.depth": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "quick",
+            "deep"
+          ],
+          "default": "auto",
+          "description": "Default planning depth hint for chat turns"
+        },
+        "mitii.ui.contextToggles.repoMap": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include repository map hints in agent context"
+        },
+        "mitii.ui.contextToggles.diagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include Problems diagnostics in agent context"
+        },
+        "mitii.ui.contextToggles.gitDiff": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include git status/diff hints in agent context"
+        },
+        "mitii.ui.contextToggles.editor": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-include the active editor in agent context"
+        },
+        "mitii.ui.contextToggles.openTabs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include open editor tab paths in agent context"
+        },
+        "mitii.ui.contextToggles.memory": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include session memory when available"
+        },
+        "mitii.scm.commitMessageStyle": {
+          "type": "string",
+          "enum": [
+            "conventional",
+            "plain"
+          ],
+          "default": "conventional",
+          "description": "Style hint for generated commit messages"
+        },
+        "mitii.safety.approvalMode": {
+          "type": "string",
+          "enum": [
+            "safe",
+            "guided",
+            "builder",
+            "pilot"
+          ],
+          "default": "guided",
+          "description": "Approval autonomy: safe (ask for approval), guided (approve for me), pilot (full access). Legacy builder maps to guided."
+        },
+        "mitii.runBudget.unlimited": {
+          "type": "boolean",
+          "default": false,
+          "description": "Disable practical per-run model/tool/loop/wall-time caps for long-running local work. Provider quotas and machine limits still apply."
+        },
+        "mitii.runBudget.maxModelCalls": {
+          "type": "number",
+          "default": 64,
+          "minimum": 1,
+          "description": "Maximum model calls allowed in one Mitii run before it stops with budget_exhausted."
+        },
+        "mitii.runBudget.maxToolCalls": {
+          "type": "number",
+          "default": 128,
+          "minimum": 1,
+          "description": "Maximum tool calls allowed in one Mitii run before it stops with budget_exhausted."
+        },
+        "mitii.runBudget.maxLoopIterations": {
+          "type": "number",
+          "default": 96,
+          "minimum": 1,
+          "description": "Maximum model/tool loop iterations allowed in one Mitii run before it stops with budget_exhausted."
+        },
+        "mitii.runBudget.maxWallTimeMinutes": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "description": "Maximum active wall-clock minutes allowed in one Mitii run. Time waiting for user approval is excluded by the engine."
+        },
+        "mitii.onboarding.completed": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether first-run onboarding has been completed for this workspace"
+        },
+        "mitii.mcp": {
+          "type": "object",
+          "default": {
+            "enabled": false,
+            "servers": []
+          },
+          "description": "MCP store install list (mirrored to .mitii/mcp.json). Off by default; add servers from the Settings store or as custom stdio/SSE entries. Deleting removes them from the install list.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Master switch for all installed MCP servers"
+            },
+            "servers": {
+              "type": "array",
+              "description": "Installed MCP servers (empty until added from the store)",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "transport"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Stable server id (builtins: filesystem, sequential-thinking, memory, puppeteer)"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "transport": {
+                    "type": "string",
+                    "enum": [
+                      "stdio",
+                      "sse",
+                      "streamable-http"
+                    ],
+                    "default": "stdio"
+                  },
+                  "command": {
+                    "type": "string"
+                  },
+                  "args": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "cwd": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Per-server on/off within the install list"
+                  },
+                  "disabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Legacy inverse of enabled"
+                  },
+                  "builtin": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build-extension.cjs",
+    "build:prod": "node scripts/build-extension.cjs --production",
+    "build:webview": "pnpm --filter @mitii/vscode-webview build",
+    "audit:package": "node scripts/audit-package.cjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:webview": "pnpm --filter @mitii/vscode-webview typecheck",
+    "package": "node scripts/package-extension.cjs",
+    "package:raw": "pnpm exec vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "@mitii/host": "workspace:*",
+    "@mitii/sdk": "workspace:*",
+    "@mitii/v8": "workspace:*",
+    "better-sqlite3": "^12.11.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.5.2"
+  },
+  "optionalDependencies": {
+    "@lancedb/lancedb": "0.33.0"
+  }
+}

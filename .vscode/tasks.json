@@ -2,24 +2,42 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "thunder: compile",
-      "type": "npm",
-      "script": "compile",
-      "problemMatcher": ["$tsc"],
-      "group": "build"
-    },
-    {
-      "label": "thunder: rebuild native",
+      "label": "mitii: build:v8",
       "type": "shell",
-      "command": "pnpm run rebuild:native",
-      "problemMatcher": [],
-      "presentation": { "reveal": "always", "panel": "shared" }
+      "command": "pnpm --filter @mitii/v8 build",
+      "problemMatcher": ["$tsc"],
+      "group": "build",
+      "presentation": { "reveal": "silent", "panel": "shared", "showReuseMessage": false }
     },
     {
-      "label": "thunder: prelaunch",
+      "label": "mitii: build:sdk",
+      "type": "shell",
+      "command": "pnpm --filter @mitii/sdk build",
+      "problemMatcher": ["$tsc"],
+      "group": "build",
+      "presentation": { "reveal": "silent", "panel": "shared", "showReuseMessage": false }
+    },
+    {
+      "label": "mitii: build:vscode",
+      "type": "shell",
+      "command": "pnpm --filter @mitii/vscode build",
+      "problemMatcher": ["$tsc"],
+      "group": "build",
+      "presentation": { "reveal": "silent", "panel": "shared", "showReuseMessage": false }
+    },
+    {
+      "label": "mitii: prelaunch",
       "dependsOrder": "sequence",
-      "dependsOn": ["thunder: rebuild native", "thunder: compile"],
-      "problemMatcher": []
+      "dependsOn": [
+        "mitii: build:v8",
+        "mitii: build:sdk",
+        "mitii: build:vscode"
+      ],
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
     }
   ]
 }

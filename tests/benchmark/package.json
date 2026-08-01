@@ -1,0 +1,17 @@
+{
+  "name": "@mitii/solid-benchmark",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fixed, deterministic coding-agent benchmark with 500 Easy, 500 Medium, and 500 Hard cases",
+  "scripts": {
+    "validate": "node src/cli.mjs validate",
+    "list": "node src/cli.mjs list",
+    "benchmark": "node src/cli.mjs run",
+    "fixtures:install": "node scripts/install-fixtures.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
