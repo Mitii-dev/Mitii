@@ -6,8 +6,10 @@ Output: SkillsSelectResult { status, instructions[], omissions[], usedTokens, re
 ```
 
 Selects applicable skill instructions from a host-supplied catalog using task
-evidence, route, and keyword signals. Applies a dedicated budget and conflict
-resolution before Prompt Construction.
+evidence, route, and keyword signals. Optional `recommendedSkillTags` from
+Request Understanding are soft boosts / tie-breakers only — never sole
+authority. Applies a dedicated budget and conflict resolution before Prompt
+Construction.
 
 Does not own general prompt construction, retrieval, or run orchestration.
 

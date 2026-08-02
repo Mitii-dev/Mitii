@@ -167,6 +167,43 @@ describe("PromptConstructionPipeline", () => {
     expect(system).toContain("untrusted evidence");
   });
 
+  it("wraps host-injected context as untrusted evidence outside the user request", () => {
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        userMessage: [
+          "<<<MITII_USER_MESSAGE>>>",
+          "I need to design an API for bill analytics",
+          "",
+          "<<<MITII_HOST_CONTEXT>>>",
+          "Workspace file map (2 files):",
+          "- app/admin/services/analytics/index.ts",
+          "- app/admin/services/bills/index.ts",
+        ].join("\n"),
+      }),
+    );
+
+    const userMessage = result.request.messages.find(
+      (message) => message.role === "user",
+    );
+    const content = userMessage?.content ?? "";
+    expect(content).toContain("<user_request trust=\"instruction\">");
+    expect(content).toContain("I need to design an API for bill analytics");
+    expect(content).toContain("<host_context trust=\"untrusted_data\">");
+    expect(content).toContain("Workspace file map (2 files):");
+    expect(content).not.toContain("<<<MITII_USER_MESSAGE>>>");
+    expect(content).not.toContain("<<<MITII_HOST_CONTEXT>>>");
+
+    const userRequestStart = content.indexOf("<user_request");
+    const userRequestEnd = content.indexOf("</user_request>");
+    const hostContextStart = content.indexOf("<host_context");
+    expect(userRequestStart).toBeGreaterThanOrEqual(0);
+    expect(userRequestEnd).toBeGreaterThan(userRequestStart);
+    expect(hostContextStart).toBeGreaterThan(userRequestEnd);
+
+    const system = result.request.messages[0]?.content ?? "";
+    expect(system).toContain("workspace file map shows paths and metadata");
+  });
+
   it("omits tools when the provider does not support tools", () => {
     const result = new PromptConstructionPipeline().construct(
       createPromptInput({

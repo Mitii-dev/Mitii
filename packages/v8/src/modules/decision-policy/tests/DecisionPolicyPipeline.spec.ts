@@ -359,6 +359,34 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.repositoryContextRequired).toBe(true);
   });
 
+  it("routes ask-mode API design requests to repository_answer even when classified as a question", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "ask",
+        message: [
+          "I need an api to get the analytic results based on the user query",
+          "the analytics will be based on the bill and items",
+          "I need to design an api It accepts the user message and ask llm with a prompt and get the results from db",
+        ].join("\n"),
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "unknown",
+            recommendsRepositoryDiscovery: false,
+            recommendsVerification: false,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("repository_answer");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
+    expect(decision.toolGrant.allowedTools).toContain("read_file");
+    expect(decision.toolGrant.allowedTools).toContain("search_files");
+    expect(decision.repositoryContextRequired).toBe(true);
+  });
+
   it("keeps pure knowledge questions on direct_answer without tools", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({

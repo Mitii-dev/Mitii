@@ -147,6 +147,80 @@ describe("SkillsPipeline", () => {
     expect(result.usedTokens).toBeLessThanOrEqual(20);
   });
 
+  it("soft-boosts already-applicable skills with recommendedSkillTags", async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: new InMemorySkillsCatalog([
+        {
+          id: "bugfix-localize",
+          title: "Localize",
+          content: "Prefer the smallest change that fixes the failure.",
+          intents: ["bugfix"],
+          routes: ["execute"],
+          tags: ["localize"],
+          paths: [],
+          priority: 10,
+          alwaysApply: false,
+        },
+        {
+          id: "bugfix-generic",
+          title: "Generic bugfix",
+          content: "General bugfix guidance.",
+          intents: ["bugfix"],
+          routes: ["execute"],
+          tags: ["general"],
+          paths: [],
+          priority: 200,
+          alwaysApply: false,
+        },
+      ]),
+    });
+
+    const result = await pipeline.select(
+      baseInput({
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+          recommendedSkillTags: ["localize"],
+        },
+      }),
+    );
+
+    expect(result.status).toBe("selected");
+    expect(result.instructions[0]?.id).toBe("bugfix-localize");
+  });
+
+  it("does not select skills from recommendedSkillTags alone", async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: new InMemorySkillsCatalog([
+        {
+          id: "docs-localize",
+          title: "Docs localize",
+          content: "Only for documentation tasks.",
+          intents: ["docs"],
+          routes: ["direct_answer"],
+          tags: ["localize"],
+          paths: [],
+          priority: 200,
+          alwaysApply: false,
+        },
+      ]),
+    });
+
+    const result = await pipeline.select(
+      baseInput({
+        route: "execute",
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+          recommendedSkillTags: ["localize"],
+        },
+      }),
+    );
+
+    expect(result.status).toBe("empty");
+    expect(result.instructions).toEqual([]);
+  });
+
   it("returns empty when the catalog has no matches", async () => {
     const pipeline = new SkillsPipeline({
       catalog: new InMemorySkillsCatalog([

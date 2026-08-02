@@ -4,6 +4,7 @@ import {
   amendMessageWithPriorConversation,
   buildIncompleteAnswerRecoveryMessage,
   isEmptyAssistantTurn,
+  isPseudoToolRequestAnswer,
   isTransitionalAssistantAnswer,
   shouldRecoverIncompleteAssistantTurn,
   synthesizeFallbackAnswer,
@@ -48,6 +49,29 @@ describe("isIncompleteAssistantTurn", () => {
         "Yes — the old Desktop/Tablet page objects were removed and imports were updated.",
       ),
     ).toBe(false);
+  });
+
+  it("detects instruction-shaped pseudo tool requests from thinking models", () => {
+    const answer = [
+      "I'll look at the existing analytics service files and bill/item models to understand the current structure before designing the API.",
+      "",
+      "<user_request trust=\"instruction\">",
+      "Read the following files:",
+      "- app/admin/services/analytics/analytics.api.ts",
+      "- app/admin/services/analytics/analytics.router.ts",
+      "- app/admin/model/bill-modal.ts",
+      "</user_request>",
+    ].join("\n");
+
+    expect(isPseudoToolRequestAnswer(answer)).toBe(true);
+    expect(isTransitionalAssistantAnswer(answer)).toBe(true);
+    expect(
+      shouldRecoverIncompleteAssistantTurn({
+        content: answer,
+        toolCallCount: 0,
+        changedFileCount: 0,
+      }),
+    ).toBe(true);
   });
 
   it("recovers empty and transitional finals", () => {

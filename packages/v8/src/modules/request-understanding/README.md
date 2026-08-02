@@ -26,10 +26,14 @@ const result = await pipeline.understand(envelope);
 
 ```text
 UserRequestEnvelope
-  → IntentRouter.classify()          (private)
-  → TaskAnalyzer.analyze(...)        (private)
+  → IntentRouter.classify()          (private; skip LLM on explicit /intent)
+  → TaskAnalyzer.analyze(...)        (private; merge optional LLM taskHints)
   → RequestUnderstandingResult
 ```
+
+Understanding may return optional `taskHints` (targets, constraints, outcomes,
+clarity, skill tags). These are evidence only — Decision Policy authorizes
+routes/grants, and Skills owns final skill selection (tags are soft boosts).
 
 ## Contracts
 
@@ -44,6 +48,7 @@ contracts/
 - Raw envelope validation (`request-intake`)
 - Repository indexing or context retrieval
 - Decision policy, tool runtime, or agent loop orchestration
+- Skill catalog selection / conflict / budget (`skills`)
 
 ## Tests
 

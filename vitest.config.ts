@@ -22,6 +22,7 @@ export default defineConfig({
       'packages/v8/src/engine/**/*.spec.ts',
       'packages/v8/src/modules/decision-policy/**/*.spec.ts',
       'packages/v8/src/modules/request-intake/tests/**/*.spec.ts',
+      'packages/v8/src/modules/request-understanding/tests/**/*.spec.ts',
       'packages/v8/src/modules/memory/**/*.spec.ts',
       'packages/v8/src/modules/planning/**/*.spec.ts',
       'packages/v8/src/modules/prompt-construction/**/*.spec.ts',

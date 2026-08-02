@@ -18,6 +18,16 @@ interface ContextPanelProps {
   onKeep?: (path: string) => void;
 }
 
+function splitPath(path: string): { dir: string; name: string } {
+  const normalized = path.replace(/\\/g, '/');
+  const index = normalized.lastIndexOf('/');
+  if (index < 0) return { dir: '', name: normalized };
+  return {
+    dir: normalized.slice(0, index),
+    name: normalized.slice(index + 1) || normalized,
+  };
+}
+
 export function ContextPanel({
   pins,
   modeColor,
@@ -46,38 +56,45 @@ export function ContextPanel({
       </div>
       <div className="pins">
         {pins.length > 0 ? (
-          pins.map((pin) => (
-            <span
-              key={pin.path}
-              className={`pin-chip${pin.source === 'auto' ? ' pin-chip--auto' : ''}`}
-              title={
-                pin.source === 'auto'
-                  ? 'Auto from open editor - closes with the tab'
-                  : pin.path
-              }
-            >
-              <button
-                type="button"
-                className="pin-chip__path"
-                onClick={() => onKeep?.(pin.path)}
+          pins.map((pin) => {
+            const file = splitPath(pin.path);
+            return (
+              <span
+                key={pin.path}
+                className={`pin-chip${pin.source === 'auto' ? ' pin-chip--auto' : ''}`}
                 title={
                   pin.source === 'auto'
-                    ? 'Keep this file in context'
+                    ? `Auto from open editor - ${pin.path}`
                     : pin.path
                 }
               >
-                @{pin.path}
-              </button>
-              <button
-                type="button"
-                aria-label={`Unpin ${pin.path}`}
-                title={`Unpin ${pin.path}`}
-                onClick={() => onRemove(pin.path)}
-              >
-                ×
-              </button>
-            </span>
-          ))
+                <button
+                  type="button"
+                  className="pin-chip__path"
+                  onClick={() => onKeep?.(pin.path)}
+                  title={
+                    pin.source === 'auto'
+                      ? `Keep this file in context: ${pin.path}`
+                      : pin.path
+                  }
+                >
+                  <span className="pin-chip__name">@{file.name}</span>
+                  {file.dir ? (
+                    <span className="pin-chip__dir">{file.dir}</span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  className="pin-chip__remove"
+                  aria-label={`Unpin ${pin.path}`}
+                  title={`Unpin ${pin.path}`}
+                  onClick={() => onRemove(pin.path)}
+                >
+                  ×
+                </button>
+              </span>
+            );
+          })
         ) : (
           <span className="context-empty-text">
             Type @ to search files, or pin files here.

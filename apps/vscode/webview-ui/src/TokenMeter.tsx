@@ -9,17 +9,17 @@ interface TokenMeterProps {
 }
 
 const CONTEXT_SLICE_COLORS: Record<string, string> = {
-  prompt: '#4f8cff',
-  conversation: '#19a974',
-  pinned: '#f2a93b',
-  memory: '#d46bff',
-  editor: '#ff6b8a',
-  diagnostics: '#ff5f57',
-  gitDiff: '#2fb7c9',
-  repoMap: '#7cc36a',
-  mcp: '#b48cff',
+  prompt: '#7c8794',
+  conversation: '#64748b',
+  pinned: '#8b949e',
+  memory: '#6b7280',
+  editor: '#707b87',
+  diagnostics: '#9a6b6b',
+  gitDiff: '#6f8794',
+  repoMap: '#71806f',
+  mcp: '#777189',
   depth: '#9aa6b2',
-  runtime: '#6f7f8f',
+  runtime: '#5f6b77',
 };
 
 function contextSliceColor(id: string): string {
@@ -183,13 +183,57 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
           <div className="token-popover__header">
             <span>{usage.live ? 'Live token monitor' : 'Chat token summary'}</span>
             <strong>
-              {usage.live
-                ? 'Live'
-                : usage.estimated
-                  ? 'Estimated'
-                : 'Provider reported'}
+              {usage.live ? 'Live' : usage.estimated ? 'Estimated' : 'Reported'}
             </strong>
           </div>
+
+          {!usage.live ? (
+            <dl className="token-popover__stats token-popover__stats--primary token-popover__stats--first">
+              <div>
+                <dt>Total tokens</dt>
+                <dd>{sessionTotal.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Total sent</dt>
+                <dd>{inputTotal.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Total received</dt>
+                <dd>{outputTotal.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Model calls</dt>
+                <dd>{usage.modelCalls.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Tool calls</dt>
+                <dd>{usage.toolCalls.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Duration</dt>
+                <dd>{formatDuration(usage.durationMs)}</dd>
+              </div>
+            </dl>
+          ) : (
+            <dl className="token-popover__stats token-popover__stats--primary token-popover__stats--compact token-popover__stats--first">
+              <div>
+                <dt>Run total</dt>
+                <dd>{usage.currentTurnTotal.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Latest sent</dt>
+                <dd>{latestInput.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Latest received</dt>
+                <dd>{latestOutput.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Calls</dt>
+                <dd>{usage.modelCalls.toLocaleString()}</dd>
+              </div>
+            </dl>
+          )}
 
           <section className="token-call-card" aria-label="Latest model call">
             <div className="token-call-card__top">
@@ -216,6 +260,25 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
               {latestCall?.estimated || usage.estimated ? <span>estimated</span> : null}
             </div>
           </section>
+
+          <dl className="token-popover__stats token-popover__stats--tiny">
+            <div>
+              <dt>Context window</dt>
+              <dd>{windowLabel ?? '—'}</dd>
+            </div>
+            <div>
+              <dt>Window used</dt>
+              <dd>{breakdown ? formatPct(fillRatio) : '—'}</dd>
+            </div>
+            <div>
+              <dt>Context tokens</dt>
+              <dd>{breakdown ? breakdown.totalTokens.toLocaleString() : '—'}</dd>
+            </div>
+            <div>
+              <dt>Turns</dt>
+              <dd>{usage.turnCount.toLocaleString()}</dd>
+            </div>
+          </dl>
 
           {breakdown ? (
             <section className="token-source-panel" aria-label="Input attribution">
@@ -313,73 +376,6 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
               <span>Context attribution will appear once the run builds a prompt.</span>
             </div>
           )}
-
-          {!usage.live ? (
-            <dl className="token-popover__stats token-popover__stats--primary">
-              <div>
-                <dt>Total sent</dt>
-                <dd>{inputTotal.toLocaleString()}</dd>
-              </div>
-              <div>
-                <dt>Total received</dt>
-                <dd>{outputTotal.toLocaleString()}</dd>
-              </div>
-              <div>
-                <dt>Total tokens</dt>
-                <dd>{sessionTotal.toLocaleString()}</dd>
-              </div>
-              <div>
-                <dt>Model calls</dt>
-                <dd>{usage.modelCalls.toLocaleString()}</dd>
-              </div>
-              <div>
-                <dt>Tools</dt>
-                <dd>{usage.toolCalls.toLocaleString()}</dd>
-              </div>
-              <div>
-                <dt>Duration</dt>
-                <dd>{formatDuration(usage.durationMs)}</dd>
-              </div>
-            </dl>
-          ) : (
-            <dl className="token-popover__stats token-popover__stats--primary token-popover__stats--compact">
-              <div>
-                <dt>Latest sent</dt>
-                <dd>{latestInput.toLocaleString()}</dd>
-              </div>
-              <div>
-                <dt>Latest received</dt>
-                <dd>{latestOutput.toLocaleString()}</dd>
-              </div>
-              <div>
-                <dt>Run total</dt>
-                <dd>{usage.currentTurnTotal.toLocaleString()}</dd>
-              </div>
-              <div>
-                <dt>Calls</dt>
-                <dd>{usage.modelCalls.toLocaleString()}</dd>
-              </div>
-            </dl>
-          )}
-
-          <dl className="token-popover__stats token-popover__stats--tiny">
-            <div>
-              <dt>Context window</dt>
-              <dd>{windowLabel ?? '—'}</dd>
-            </div>
-            <div>
-              <dt>Window used</dt>
-              <dd>{breakdown ? formatPct(fillRatio) : '—'}</dd>
-            </div>
-            <div>
-              <dt>Tool calls</dt>
-              <dd>{usage.toolCalls.toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt>Turns</dt>
-              <dd>{usage.turnCount.toLocaleString()}</dd>
-            </div>
-          </dl>
         </div>
       ) : null}
     </div>

@@ -269,12 +269,19 @@ export const CONTEXT_SELECTION_EXCLUDED_PATH_SEGMENTS =
     ".git",
     ".mitii",
     ".thunder",
+    "logs",
     "node_modules",
     "dist",
     "build",
     "out",
     "coverage",
     ".cache",
+  ]);
+
+export const CONTEXT_SELECTION_EXCLUDED_FILE_NAMES =
+  new Set([
+    ".pnp.cjs",
+    ".pnp.loader.mjs",
   ]);
 
 export const CONTEXT_SELECTION_ORIGIN_ORDER:

@@ -5,6 +5,8 @@ const DEFAULT_IGNORED_DIRECTORY_NAMES = new Set<string>([
 
   ".mitii",
 
+  "logs",
+
   "node_modules",
   "bower_components",
 
@@ -45,6 +47,12 @@ const DEFAULT_IGNORED_DIRECTORY_NAMES = new Set<string>([
   "obj",
 ]);
 
+const DEFAULT_IGNORED_FILE_NAMES = new Set<string>([
+  ".pnp.cjs",
+  ".pnp.loader.mjs",
+]);
+
 export const WS_CONSTANTS = {
   DEFAULT_IGNORED_DIRECTORY_NAMES,
+  DEFAULT_IGNORED_FILE_NAMES,
 };

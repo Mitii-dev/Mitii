@@ -1,5 +1,8 @@
 import { UNTRUSTED_CONTENT_INJECTION_PATTERNS } from "../policy";
 
+const MITII_USER_MESSAGE_MARKER = "<<<MITII_USER_MESSAGE>>>";
+const MITII_HOST_CONTEXT_MARKER = "<<<MITII_HOST_CONTEXT>>>";
+
 export function wrapUntrustedRepositoryContent(params: {
   stateToken: string;
   body: string;
@@ -41,11 +44,49 @@ export function wrapUntrustedFileBlock(params: {
 }
 
 export function wrapUserRequest(message: string): string {
-  return [
+  const split = splitUserAndHostContext(message);
+  const parts = [
     `<user_request trust="instruction">`,
-    message,
+    split.userMessage,
     `</user_request>`,
-  ].join("\n");
+  ];
+  if (split.hostContext) {
+    parts.push(
+      `<host_context trust="untrusted_data">`,
+      split.hostContext,
+      `</host_context>`,
+    );
+  }
+  return parts.join("\n");
+}
+
+function splitUserAndHostContext(message: string): {
+  userMessage: string;
+  hostContext?: string;
+} {
+  const text = message.trim();
+  const userIdx = text.indexOf(MITII_USER_MESSAGE_MARKER);
+  if (userIdx < 0) {
+    return { userMessage: message };
+  }
+
+  const afterUserMarker = text
+    .slice(userIdx + MITII_USER_MESSAGE_MARKER.length)
+    .trimStart();
+  const hostIdx = afterUserMarker.indexOf(MITII_HOST_CONTEXT_MARKER);
+  if (hostIdx < 0) {
+    return { userMessage: afterUserMarker.trim() || message };
+  }
+
+  const userMessage = afterUserMarker.slice(0, hostIdx).trim();
+  const hostContext = afterUserMarker
+    .slice(hostIdx + MITII_HOST_CONTEXT_MARKER.length)
+    .trim();
+
+  return {
+    userMessage: userMessage || message,
+    ...(hostContext ? { hostContext } : {}),
+  };
 }
 
 export function countInjectionSignals(content: string): number {

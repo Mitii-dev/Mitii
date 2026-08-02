@@ -61,6 +61,11 @@ export class IntentRouter {
         }
       : null;
 
+    // Explicit slash/exact intents are authoritative — skip the LLM round-trip.
+    if (ruleResult?.source === "explicit_rule") {
+      return this.buildExplicitRuleResult(normalizedInput.mode, ruleResult);
+    }
+
     // 2. Attempt LLM classification (fall back to rule/safe default on failure).
     let llmResult: IntentClassifierResult;
     try {
@@ -97,6 +102,52 @@ export class IntentRouter {
       mode: input.mode,
       userMessage: extractPrimaryUserMessage(input.userMessage),
       referencedArtifacts: input.referencedArtifacts ?? [],
+    };
+  }
+
+  private buildExplicitRuleResult(
+    mode: IntentClassificationInput["mode"],
+    ruleResult: IntentClassifierResult,
+  ): SuperIntentResult {
+    const classification = this.modePolicy.apply(mode, {
+      ...ruleResult.classification,
+      confidence: 1,
+      needsClarification: false,
+      reason:
+        ruleResult.classification.reason ||
+        `Explicitly selected ${ruleResult.classification.primaryTaskIntent}.`,
+    });
+
+    return {
+      status: "accepted",
+      classification,
+      scores: [
+        {
+          intent: classification.primaryTaskIntent,
+          score: 1,
+          ruleScore: 1,
+          llmScore: 0,
+        },
+      ],
+      confidenceMargin: 1,
+      recommendsClarification: false,
+      diagnostics: {
+        ruleSource: "explicit_rule",
+        ...(ruleResult.matchedRule
+          ? { matchedRule: ruleResult.matchedRule }
+          : {}),
+        rulePrimaryIntent: ruleResult.classification.primaryTaskIntent,
+        llmPrimaryIntent: classification.primaryTaskIntent,
+        ruleInteractionIntent: ruleResult.classification.interactionIntent,
+        llmInteractionIntent: classification.interactionIntent,
+        taskAgreement: true,
+        interactionAgreement: true,
+        interactionConflict: false,
+        agreementBonusApplied: 0,
+        disagreementPenaltyApplied: 0,
+        minimumConfidence: INTENT_CONSTANTS.SCORE_DEFAULT_OPTIONS.minimumConfidence,
+        minimumMargin: INTENT_CONSTANTS.SCORE_DEFAULT_OPTIONS.minimumMargin,
+      },
     };
   }
 

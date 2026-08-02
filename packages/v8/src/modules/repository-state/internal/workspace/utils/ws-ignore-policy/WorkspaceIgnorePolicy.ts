@@ -49,11 +49,19 @@ export class WorkspaceIgnorePolicy {
         .filter(Boolean),
     );
 
-    this.ignoredFileNames = new Set(
-      (options.ignoredFileNames ?? [])
-        .map((fileName) => this.normalizeName(fileName))
-        .filter(Boolean),
+    const ignoredFileNames = new Set(
+      WS_CONSTANTS.DEFAULT_IGNORED_FILE_NAMES,
     );
+
+    for (const fileName of options.ignoredFileNames ?? []) {
+      const normalized = this.normalizeName(fileName);
+
+      if (normalized) {
+        ignoredFileNames.add(normalized);
+      }
+    }
+
+    this.ignoredFileNames = ignoredFileNames;
 
     this.ignoredExtensions = new Set(
       (options.ignoredExtensions ?? [])

@@ -16,11 +16,32 @@ const TRANSITIONAL_CLOSERS =
 const TRAILING_INTENT_CLAUSE =
   /[.!,;]\s*(?:let me|i(?:'ll| will)|i(?:'m| am) going to)\b[\s\S]{0,160}$/i;
 
+const PSEUDO_TOOL_REQUEST =
+  /<user_request\b[^>]*>\s*(?:read|open|inspect|look at)\b[\s\S]{0,800}<\/user_request>/i;
+
+const READ_FILES_REQUEST =
+  /^(?:i(?:'ll| will)|let me|i need to|i should)\b[\s\S]{0,240}\b(?:read|open|inspect|look at)\b[\s\S]{0,240}\b(?:files?|models?|services?|routes?)\b/i;
+
 export function isEmptyAssistantTurn(params: {
   content: string;
   toolCallCount: number;
 }): boolean {
   return params.content.trim().length === 0 && params.toolCallCount === 0;
+}
+
+/**
+ * Some reasoning models respond with an instruction-shaped request for the
+ * user/runtime to read files, but without issuing real tool calls. That is not
+ * a final answer.
+ */
+export function isPseudoToolRequestAnswer(content: string): boolean {
+  const text = content.trim();
+  if (text.length === 0) return false;
+  if (PSEUDO_TOOL_REQUEST.test(text)) return true;
+  if (READ_FILES_REQUEST.test(text) && /(?:^|\n)\s*-\s+\S+/m.test(text)) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -30,6 +51,7 @@ export function isEmptyAssistantTurn(params: {
 export function isTransitionalAssistantAnswer(content: string): boolean {
   const text = content.trim();
   if (text.length === 0) return true;
+  if (isPseudoToolRequestAnswer(text)) return true;
   if (text.length > 600) return false;
 
   const singleBeat = text.split(/\n+/).filter((line) => line.trim().length > 0)
@@ -69,6 +91,7 @@ export function shouldRecoverIncompleteAssistantTurn(params: {
 }): boolean {
   if (params.toolCallCount > 0) return false;
   if (isEmptyAssistantTurn(params)) return true;
+  if (isPseudoToolRequestAnswer(params.content)) return true;
   // Defense in depth: blank stored answer after mutations must not complete.
   if (params.content.trim().length === 0 && params.changedFileCount > 0) {
     return true;

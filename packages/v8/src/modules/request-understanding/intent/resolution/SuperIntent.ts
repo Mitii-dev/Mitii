@@ -272,6 +272,10 @@ export class SuperIntent {
       })),
       needsClarification: recommendsClarification,
       reason,
+      // Preserve optional LLM taskHints (evidence only; never authority).
+      ...(llmClassification.taskHints
+        ? { taskHints: llmClassification.taskHints }
+        : {}),
     });
 
     const result: SuperIntentResult = {
@@ -595,8 +599,13 @@ export class SuperIntent {
         confidence: this.findIntentScore(classification, intent),
       }));
 
+    const hintedQuestion = classification.taskHints?.ambiguityQuestion?.trim();
+
     return {
-      question: "What outcome do you want from this request?",
+      question:
+        hintedQuestion && hintedQuestion.length > 0
+          ? hintedQuestion
+          : "What outcome do you want from this request?",
       options,
     };
   }

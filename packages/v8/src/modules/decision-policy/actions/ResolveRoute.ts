@@ -349,7 +349,10 @@ function looksLikeAgentMutationRequest(message: string): boolean {
   }
 
   return (
-    /(?:^|\b)(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|let(?:'s|\s+us)\s+)?(?:implement|build|create|add|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|generate|scaffold|install|upgrade)\b/i.test(
+    /(?:^|\b)(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|let(?:'s|\s+us)\s+)?(?:implement|build|create|design|develop|write|add|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|generate|scaffold|install|upgrade)\b/i.test(
+      text,
+    ) ||
+    /\bi\s+need\s+(?:to\s+design\s+|to\s+create\s+|to\s+build\s+|an?\s+|the\s+)*(?:api|endpoint|route)\b/i.test(
       text,
     )
   );
@@ -383,6 +386,14 @@ function looksLikeWorkspaceGroundedRequest(message: string): boolean {
 
   if (
     /\b(?:test cases?|specs?|page objects?|how to run|architecture|redundant code|working tree|file map|source files?)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    /\b(?:i\s+need|we\s+need|design|create|build|implement)\b[\s\S]{0,100}\b(?:api|endpoint|route|controller|service|database|db|query|analytics?)\b/i.test(
       text,
     )
   ) {

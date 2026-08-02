@@ -28,6 +28,13 @@ export const skillTaskEvidenceSchema = z
      * to gate path-scoped skills; Skills never scans the workspace.
      */
     paths: z.array(z.string().min(1)).max(50).default([]),
+    /**
+     * Soft tags from Request Understanding. Boost only — never sole authority.
+     */
+    recommendedSkillTags: z
+      .array(z.string().min(1).max(64))
+      .max(10)
+      .default([]),
   })
   .strict();
 

@@ -7,6 +7,9 @@ import type { SkillTaskEvidence } from "../../../modules/skills";
 export function mapUnderstandingToSkillEvidence(
   understanding: RequestUnderstandingResult,
 ): SkillTaskEvidence {
+  const recommendedSkillTags =
+    understanding.intent.classification.taskHints?.recommendedSkillTags ?? [];
+
   return {
     primaryIntent: understanding.intent.classification.primaryTaskIntent,
     secondaryIntents: [
@@ -18,5 +21,6 @@ export function mapUnderstandingToSkillEvidence(
     recommendsPlanning: understanding.taskAnalysis.recommendsPlanning,
     recommendsVerification: understanding.taskAnalysis.recommendsVerification,
     paths: [],
+    recommendedSkillTags: [...recommendedSkillTags],
   };
 }

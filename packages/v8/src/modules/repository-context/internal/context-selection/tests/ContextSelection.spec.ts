@@ -356,6 +356,58 @@ test(
 );
 
 test(
+  "package manager artifacts and runtime logs are excluded from retrieved context",
+  () => {
+    const selector =
+      new ContextSelector();
+    const result =
+      selector.select({
+        query:
+          "Research receipt designer",
+        retrieval:
+          retrieval([
+            chunk(
+              ".pnp.cjs",
+              "pnp",
+              0.99,
+            ),
+            chunk(
+              "logs/pm2-out-0.log",
+              "runtime-log",
+              0.98,
+            ),
+            chunk(
+              "app/admin/model/client-modal.ts",
+              "client",
+              0.8,
+            ),
+          ]),
+      });
+
+    assert.deepEqual(
+      result.items.map(
+        (item) =>
+          item.relativePath,
+      ),
+      [
+        "app/admin/model/client-modal.ts",
+      ],
+    );
+    assert.equal(
+      result.dropped.length,
+      2,
+    );
+    assert.ok(
+      result.dropped.every(
+        (item) =>
+          item.cause ===
+          "excluded_path",
+      ),
+    );
+  },
+);
+
+test(
   "explicit context can survive a failed retrieval as a partial selection",
   () => {
     const selector =

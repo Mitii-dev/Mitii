@@ -91,6 +91,22 @@ export function matchSkills(params: {
       continue;
     }
 
+    // Soft understanding tags boost score only after applicability is earned.
+    const recommendedTags = input.evidence.recommendedSkillTags ?? [];
+    if (skill.tags.length > 0 && recommendedTags.length > 0) {
+      const recommended = new Set(
+        recommendedTags.map((tag) => tag.toLowerCase()),
+      );
+      const hits = skill.tags.filter((tag) =>
+        recommended.has(tag.toLowerCase()),
+      ).length;
+      if (hits > 0) {
+        score +=
+          SKILLS_THRESHOLDS.recommendedTagWeight * (hits / skill.tags.length);
+        reasons.push("recommended_tag");
+      }
+    }
+
     const normalized = Math.min(1, score);
     if (
       !skill.alwaysApply &&
@@ -105,6 +121,12 @@ export function matchSkills(params: {
   return scored.sort((a, b) => {
     if (b.score !== a.score) {
       return b.score - a.score;
+    }
+    // Soft understanding tags break ties only among already-applicable skills.
+    const aRecommended = a.reasons.includes("recommended_tag") ? 1 : 0;
+    const bRecommended = b.reasons.includes("recommended_tag") ? 1 : 0;
+    if (bRecommended !== aRecommended) {
+      return bRecommended - aRecommended;
     }
     if (b.skill.priority !== a.skill.priority) {
       return b.skill.priority - a.skill.priority;
