@@ -9,6 +9,9 @@ import {
 } from "..";
 import { assembleToolCalls } from "../actions";
 import type { ModelRequest } from "../../../../modules/model-gateway";
+import type {
+  RepositoryContextPipelineInput,
+} from "../../../../modules/repository-context";
 import {
   createDecision,
   createReadOnlyGrant,
@@ -322,6 +325,59 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     for (const event of events) {
       expect(() => runEventSchema.parse(event)).not.toThrow();
     }
+  });
+
+  it("scales repository selection budget from model context window", async () => {
+    let capturedContextInput:
+      | RepositoryContextPipelineInput
+      | undefined;
+    const dependencies = createStubDependencies({
+      decision: createDecision({
+        route: "repository_answer",
+        repositoryContextRequired: true,
+        pinnedState: { workspaceId: "ws_1", stateToken: "tok_1" },
+      }),
+      llm: new ScriptedLlmPort(
+        [{ content: "done" }],
+        createCapabilities({
+          contextWindowTokens: 252_000,
+          maximumOutputTokens: 64_000,
+        }),
+      ),
+    });
+    const originalExecute =
+      dependencies.repositoryContext?.execute.bind(
+        dependencies.repositoryContext,
+      );
+    dependencies.repositoryContext = {
+      execute: async (input) => {
+        capturedContextInput = input;
+        return originalExecute!(input);
+      },
+    };
+
+    const result = await new AgentEnginePipeline(dependencies)
+      .start(
+        baseStartInput({
+          workspaceRoot: "/repo",
+          repositoryState: {
+            reference: { workspaceId: "ws_1", stateToken: "tok_1" },
+            readiness: "ready",
+          },
+          request: {
+            sessionId: "sess_1",
+            mode: "ask",
+            userMessage: "Use repo context",
+            workspace: { workspaceId: "ws_1" },
+          },
+        }),
+      )
+      .result;
+
+    expect(result.status).toBe("completed");
+    expect(capturedContextInput?.selectionBudget?.maximumTokens).toBe(63_000);
+    expect(capturedContextInput?.selectionBudget?.maximumItems).toBe(126);
+    expect(capturedContextInput?.selectionBudget?.maximumFiles).toBe(84);
   });
 
   it("compacts completed tool call history before later model calls", async () => {

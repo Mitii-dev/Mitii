@@ -91,8 +91,8 @@ export const MODEL_ERROR_CODES = [
   readonly ModelErrorCode[];
 
 export const MODEL_GATEWAY_DEFAULTS = {
-  MAXIMUM_OUTPUT_TOKENS:
-    4_096,
+  MAXIMUM_OUTPUT_CONTEXT_RATIO:
+    0.25,
   SUPPORTS_STREAMING:
     true,
   SUPPORTS_TOOLS:
@@ -175,8 +175,6 @@ export const OPENAI_COMPATIBLE_DEFAULTS = {
     "authorization" as const,
   CONTEXT_WINDOW_TOKENS:
     32_768,
-  MAXIMUM_OUTPUT_TOKENS:
-    8_192,
   MAX_RETRIES: 2,
   INITIAL_BACKOFF_MS: 250,
   MAX_BACKOFF_MS: 8_000,

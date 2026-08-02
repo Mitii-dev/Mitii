@@ -42,14 +42,83 @@ function writeLine(file: string, entry: unknown): void {
   appendFileSync(file, `${JSON.stringify(entry)}\n`, 'utf8');
 }
 
-function compactText(text: string | undefined, maxChars = 4000): {
+const SESSION_LOG_SIZE_POLICY = {
+  charsPerTokenEstimate: 4,
+  terminalPreviewOutputWindowRatio: 0.25,
+  runEndAnswerContextWindowRatio: 1,
+  /** Legacy floors when the host omits model context settings. */
+  fallbackTerminalAnswerPreviewChars: 1_200,
+  fallbackRunEndAnswerMaxChars: 4_000,
+} as const;
+
+export interface SessionLogTextLimits {
+  terminalAnswerPreviewChars?: number;
+  runEndAnswerMaxChars?: number;
+}
+
+export function resolveSessionLogTextLimits(settings: {
+  contextWindowTokens?: number;
+  maximumOutputTokens?: number;
+}): SessionLogTextLimits {
+  const contextWindowTokens = normalizePositiveNumber(
+    settings.contextWindowTokens,
+  );
+  if (!contextWindowTokens) {
+    return {
+      terminalAnswerPreviewChars:
+        SESSION_LOG_SIZE_POLICY.fallbackTerminalAnswerPreviewChars,
+      runEndAnswerMaxChars:
+        SESSION_LOG_SIZE_POLICY.fallbackRunEndAnswerMaxChars,
+    };
+  }
+
+  const maximumOutputTokens =
+    normalizePositiveNumber(settings.maximumOutputTokens) ??
+    contextWindowTokens;
+  const effectiveOutputTokens = Math.min(
+    maximumOutputTokens,
+    contextWindowTokens,
+  );
+
+  return {
+    terminalAnswerPreviewChars: tokensToChars(
+      effectiveOutputTokens,
+      SESSION_LOG_SIZE_POLICY.terminalPreviewOutputWindowRatio,
+    ),
+    runEndAnswerMaxChars: tokensToChars(
+      contextWindowTokens,
+      SESSION_LOG_SIZE_POLICY.runEndAnswerContextWindowRatio,
+    ),
+  };
+}
+
+function normalizePositiveNumber(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+  return Math.floor(value);
+}
+
+function tokensToChars(tokens: number, ratio: number): number {
+  return Math.max(
+    1,
+    Math.floor(tokens * ratio * SESSION_LOG_SIZE_POLICY.charsPerTokenEstimate),
+  );
+}
+
+function compactText(text: string | undefined, maxChars?: number): {
   text?: string;
   chars: number;
   truncated: boolean;
 } {
   const value = text ?? '';
   if (!value) return { chars: 0, truncated: false };
-  if (value.length <= maxChars) {
+  if (
+    maxChars === undefined ||
+    !Number.isFinite(maxChars) ||
+    maxChars <= 0 ||
+    value.length <= maxChars
+  ) {
     return { text: value, chars: value.length, truncated: false };
   }
   return {
@@ -59,7 +128,10 @@ function compactText(text: string | undefined, maxChars = 4000): {
   };
 }
 
-function compactEvent(event: RunEvent): Record<string, unknown> {
+function compactEvent(
+  event: RunEvent,
+  limits: SessionLogTextLimits,
+): Record<string, unknown> {
   const base: Record<string, unknown> = {
     kind: 'event',
     at: 'at' in event && typeof event.at === 'string' ? event.at : new Date().toISOString(),
@@ -126,7 +198,10 @@ function compactEvent(event: RunEvent): Record<string, unknown> {
         warnings: event.warnings,
       };
     case 'terminal':
-      const answer = compactText(event.result.answer, 1200);
+      const answer = compactText(
+        event.result.answer,
+        limits.terminalAnswerPreviewChars,
+      );
       return {
         ...base,
         status: event.status,
@@ -164,9 +239,14 @@ export interface SessionLogAppend {
 export function appendSessionLog(
   workspaceRoot: string | undefined,
   entry: SessionLogAppend,
-  options: { sessionId?: string } = {},
+  options: {
+    sessionId?: string;
+    contextWindowTokens?: number;
+    maximumOutputTokens?: number;
+  } = {},
 ): string | undefined {
   if (!workspaceRoot) return undefined;
+  const textLimits = resolveSessionLogTextLimits(options);
   const dir = mitiiLogsDir(workspaceRoot);
   mkdirSync(dir, { recursive: true });
   const sessionId = safeLogId(options.sessionId ?? entry.result.runId ?? 'session');
@@ -191,10 +271,13 @@ export function appendSessionLog(
     if (event.type === 'model_delta' && event.kind !== 'tool_call') {
       continue;
     }
-    writeLine(file, compactEvent(event));
+    writeLine(file, compactEvent(event, textLimits));
   }
 
-  const answer = compactText(entry.result.answer);
+  const answer = compactText(
+    entry.result.answer,
+    textLimits.runEndAnswerMaxChars,
+  );
   writeLine(file, {
     kind: 'run_end',
     at: new Date().toISOString(),

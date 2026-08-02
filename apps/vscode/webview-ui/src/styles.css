@@ -709,7 +709,7 @@ input:focus-visible {
   padding: 0;
 }
 
-.composer-dropdown-row--with-model .model-select {
+.composer-dropdown-row--with-model .composer-dropdown--model {
   flex: 1 1 128px;
   min-width: 112px;
   max-width: 100%;
@@ -773,6 +773,22 @@ input:focus-visible {
   box-shadow: none;
 }
 
+.composer-dropdown__button--link {
+  justify-content: flex-start;
+  border-color: transparent;
+  background: transparent;
+  color: color-mix(in srgb, var(--composer-control-color) 78%, var(--mitii-text));
+  text-decoration: none;
+}
+
+.composer-dropdown__button--link:hover,
+.composer-dropdown__button--link:focus-visible,
+.composer-dropdown__button--link[aria-expanded='true'] {
+  background: color-mix(in srgb, var(--composer-control-color) 10%, transparent);
+  border-color: color-mix(in srgb, var(--composer-control-color) 34%, transparent);
+  color: var(--mitii-text);
+}
+
 .composer-dropdown__value {
   display: inline-flex;
   align-items: center;
@@ -784,6 +800,16 @@ input:focus-visible {
 
 .composer-dropdown__value .composer-dropdown__icon {
   display: none;
+}
+
+.composer-dropdown--model .composer-dropdown__value {
+  gap: 6px;
+}
+
+.composer-dropdown--model .composer-dropdown__value .composer-dropdown__icon {
+  display: inline-flex;
+  color: var(--composer-control-color);
+  background: color-mix(in srgb, var(--composer-control-color) 14%, transparent);
 }
 
 .composer-dropdown__value > span:last-child {
@@ -870,14 +896,16 @@ input:focus-visible {
 }
 
 .composer-dropdown--approval .composer-dropdown__menu,
-.composer-dropdown--depth .composer-dropdown__menu {
+.composer-dropdown--depth .composer-dropdown__menu,
+.composer-dropdown--model .composer-dropdown__menu {
   left: auto;
   right: 0;
 }
 
 @media (max-width: 360px) {
   .composer-dropdown--approval .composer-dropdown__menu,
-  .composer-dropdown--depth .composer-dropdown__menu {
+  .composer-dropdown--depth .composer-dropdown__menu,
+  .composer-dropdown--model .composer-dropdown__menu {
     right: auto;
     left: 0;
   }
@@ -886,6 +914,12 @@ input:focus-visible {
 .composer-dropdown--approval .composer-dropdown__menu {
   width: max(300px, 100%);
   max-width: min(360px, calc(100vw - 24px));
+}
+
+.composer-dropdown--model .composer-dropdown__menu {
+  width: max(280px, 100%);
+  max-height: min(360px, 58vh);
+  overflow: auto;
 }
 
 .composer-dropdown__option {

@@ -30,7 +30,6 @@ export function allocateBudget(params: {
     PROMPT_CONSTRUCTION_THRESHOLDS.minimumOutputReserveTokens,
     Math.min(
       capabilities.maximumOutputTokens,
-      PROMPT_CONSTRUCTION_THRESHOLDS.maximumOutputReserveTokens,
       Math.max(1, contextWindowTokens - 1),
     ),
   );

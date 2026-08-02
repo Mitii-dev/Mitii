@@ -8,7 +8,9 @@ export {
   repositoryContextPipelineInputSchema,
   repositoryContextPipelineResultSchema,
 } from "./contracts/schema";
+export { deriveContextSelectionBudget } from "./policy";
 export type {
+  ContextSelectionBudget,
   RepositoryContextPipelineInput,
   RepositoryContextPipelineResult,
   RepositoryContextAssemblerPort,

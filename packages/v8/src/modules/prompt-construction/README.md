@@ -50,8 +50,8 @@ PromptConstructionInput
 ## Token strategy
 
 - **Output first:** `AllocateBudget` reserves output tokens before filling
-  input sections (`outputReserveRatio`, min 4k, max 16k, capped by provider
-  `maximumOutputTokens`).
+  input sections (`outputReserveRatio`, min floor, capped by provider
+  `maximumOutputTokens` and the model context window).
 - **Conversation compaction:** Older tool results shrink to
   `compactedToolResultCharacters`; only the most recent
   `compactedToolResultKeepRecent` tool messages stay full. Oldest turns drop

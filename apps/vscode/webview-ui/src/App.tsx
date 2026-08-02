@@ -15,8 +15,10 @@ import { HistoryPanel } from './components/HistoryPanel';
 import { IconButton } from './components/IconButton';
 import {
   IconChat,
+  IconCheck,
   IconCopy,
   IconHistory,
+  IconModel,
   IconPlus,
   IconSend,
   IconSettings,
@@ -208,6 +210,7 @@ export function App() {
     null,
   );
   const [customModel, setCustomModel] = useState(false);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [index, setIndex] = useState<IndexStatusSnapshot>({
     fileCount: 0,
     truncated: false,
@@ -237,6 +240,7 @@ export function App() {
   const lastSearchId = useRef('');
   const messagesRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const modelMenuRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const forceScrollToBottomRef = useRef(false);
   const lastTurnCountRef = useRef(0);
@@ -798,6 +802,11 @@ export function App() {
     () => mergeModelOptions(provider.availableModels, provider.model),
     [provider.availableModels, provider.model],
   );
+  const selectedModelIsCustom =
+    customModel || !modelOptions.includes(provider.model);
+  const selectedModelLabel = selectedModelIsCustom
+    ? provider.model.trim() || 'Custom model'
+    : provider.model || 'Select model';
 
   const saveModel = (model: string) => {
     setProvider((p) => ({ ...p, model }));
@@ -806,6 +815,24 @@ export function App() {
       provider: { model },
     });
   };
+
+  useEffect(() => {
+    if (!modelMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!modelMenuRef.current?.contains(event.target as Node)) {
+        setModelMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setModelMenuOpen(false);
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [modelMenuOpen]);
 
   const saveUi = (patch: UiSettingsPatch) => {
     const next = {
@@ -1123,33 +1150,141 @@ export function App() {
                         saveUi({ depth: next });
                       }}
                     />
-                    <select
-                      className="depth-select model-select"
-                      value={
-                        customModel || !modelOptions.includes(provider.model)
-                          ? '__custom__'
-                          : provider.model
+                    <div
+                      className="composer-dropdown composer-dropdown--model"
+                      ref={modelMenuRef}
+                      style={
+                        {
+                          '--composer-control-color': '#38bdf8',
+                        } as CSSProperties
                       }
-                      onChange={(e) => {
-                        const next = e.target.value;
-                        if (next === '__custom__') {
-                          setCustomModel(true);
-                          return;
-                        }
-                        setCustomModel(false);
-                        saveModel(next);
-                      }}
-                      title="Model"
-                      aria-label="Model"
                     >
-                      {modelOptions.map((id) => (
-                        <option key={id} value={id}>
-                          {id}
-                        </option>
-                      ))}
-                      <option value="__custom__">Custom…</option>
-                    </select>
-                    {customModel || !modelOptions.includes(provider.model) ? (
+                      <button
+                        type="button"
+                        className="composer-dropdown__button composer-dropdown__button--link"
+                        aria-haspopup="listbox"
+                        aria-expanded={modelMenuOpen}
+                        aria-label="Model"
+                        title={`Model: ${selectedModelLabel}`}
+                        onClick={() => setModelMenuOpen((open) => !open)}
+                      >
+                        <span className="composer-dropdown__value">
+                          <span className="composer-dropdown__icon" aria-hidden>
+                            <IconModel />
+                          </span>
+                          <span>{selectedModelLabel}</span>
+                        </span>
+                        <span className="composer-dropdown__chevron" aria-hidden>
+                          ▾
+                        </span>
+                      </button>
+                      {modelMenuOpen ? (
+                        <div
+                          className="composer-dropdown__menu"
+                          role="listbox"
+                          aria-label="Model"
+                        >
+                          {modelOptions.map((id) => {
+                            const selectedOption =
+                              !selectedModelIsCustom && id === provider.model;
+                            return (
+                              <button
+                                key={id}
+                                type="button"
+                                className={[
+                                  'composer-dropdown__option',
+                                  selectedOption
+                                    ? 'composer-dropdown__option--selected'
+                                    : '',
+                                ]
+                                  .filter(Boolean)
+                                  .join(' ')}
+                                style={
+                                  {
+                                    '--composer-option-color': '#38bdf8',
+                                  } as CSSProperties
+                                }
+                                role="option"
+                                aria-selected={selectedOption}
+                                title={`Use ${id}`}
+                                onClick={() => {
+                                  setCustomModel(false);
+                                  setModelMenuOpen(false);
+                                  saveModel(id);
+                                }}
+                              >
+                                <span
+                                  className="composer-dropdown__option-icon"
+                                  aria-hidden
+                                >
+                                  <IconModel />
+                                </span>
+                                <span className="composer-dropdown__option-text">
+                                  <span>{id}</span>
+                                  <small>Use this model</small>
+                                </span>
+                                {selectedOption ? (
+                                  <span
+                                    className="composer-dropdown__option-check"
+                                    aria-hidden
+                                  >
+                                    <IconCheck />
+                                  </span>
+                                ) : (
+                                  <span
+                                    className="composer-dropdown__option-check"
+                                    aria-hidden
+                                  />
+                                )}
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            className={[
+                              'composer-dropdown__option',
+                              selectedModelIsCustom
+                                ? 'composer-dropdown__option--selected'
+                                : '',
+                            ]
+                              .filter(Boolean)
+                              .join(' ')}
+                            role="option"
+                            aria-selected={selectedModelIsCustom}
+                            title="Enter a custom model id"
+                            onClick={() => {
+                              setCustomModel(true);
+                              setModelMenuOpen(false);
+                            }}
+                          >
+                            <span
+                              className="composer-dropdown__option-icon"
+                              aria-hidden
+                            >
+                              <IconModel />
+                            </span>
+                            <span className="composer-dropdown__option-text">
+                              <span>Custom model</span>
+                              <small>Type a model id manually</small>
+                            </span>
+                            {selectedModelIsCustom ? (
+                              <span
+                                className="composer-dropdown__option-check"
+                                aria-hidden
+                              >
+                                <IconCheck />
+                              </span>
+                            ) : (
+                              <span
+                                className="composer-dropdown__option-check"
+                                aria-hidden
+                              />
+                            )}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                    {selectedModelIsCustom ? (
                       <input
                         className="model-custom-input"
                         value={provider.model}

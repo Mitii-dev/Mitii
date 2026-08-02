@@ -26,6 +26,7 @@ export default defineConfig({
       'packages/v8/src/modules/memory/**/*.spec.ts',
       'packages/v8/src/modules/planning/**/*.spec.ts',
       'packages/v8/src/modules/prompt-construction/**/*.spec.ts',
+      'packages/v8/src/modules/repository-context/tests/**/*.spec.ts',
       'packages/v8/src/modules/skills/**/*.spec.ts',
       'packages/v8/src/modules/verification/**/*.spec.ts',
       'packages/v8/src/modules/repository-state/internal/repo-map/**/*.spec.ts',

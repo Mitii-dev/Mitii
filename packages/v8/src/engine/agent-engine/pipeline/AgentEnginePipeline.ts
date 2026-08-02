@@ -35,6 +35,7 @@ import type {
   ProjectDescriptor,
   RepositoryStateReference,
 } from "../../../modules/repository-state";
+import { deriveContextSelectionBudget } from "../../../modules/repository-context";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
 import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
 import { SKILLS_SCHEMA_VERSION } from "../../../modules/skills";
@@ -98,6 +99,10 @@ import {
 } from "../policy";
 
 export type AgentEnginePipelineDependencies = AgentEngineDependencies;
+
+const AGENT_ENGINE_CONTEXT_WINDOW_POLICY = {
+  loopInputBudgetSafetyRatio: 0.94,
+} as const;
 
 type ToolCallOutcome =
   | { kind: "message"; message: ModelMessage }
@@ -590,6 +595,9 @@ export class AgentEnginePipeline {
           state: pinnedState,
           query: extractPrimaryUserMessage(envelope.message),
           mode: envelope.mode,
+          selectionBudget: deriveContextSelectionBudget(
+            this.deps.llm.capabilities.contextWindowTokens,
+          ),
           abortSignal: signal,
         });
 
@@ -2700,7 +2708,13 @@ export class AgentEnginePipeline {
       Math.max(0, outputReserve) -
       toolDefinitionTokens;
 
-    return Math.max(512, Math.floor(rawBudget * 0.94));
+    return Math.max(
+      1,
+      Math.floor(
+        Math.max(0, rawBudget) *
+          AGENT_ENGINE_CONTEXT_WINDOW_POLICY.loopInputBudgetSafetyRatio,
+      ),
+    );
   }
 
   private async consumeModelTurn(params: {

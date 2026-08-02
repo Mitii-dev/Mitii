@@ -83,7 +83,7 @@ describe('sessionLog', () => {
     });
   });
 
-  it('keeps session logs readable by suppressing content deltas and truncating huge answers', () => {
+  it('keeps session logs readable by suppressing content deltas and truncating answers by context budget', () => {
     const root = mkdtempSync(join(tmpdir(), 'mitii-session-log-'));
     dirs.push(root);
 
@@ -94,7 +94,7 @@ describe('sessionLog', () => {
       status: 'completed',
       route: 'execute',
       planningDepth: 'none',
-      answer: `Completed workspace edits.\n${'changed-file.ts\n'.repeat(500)}`,
+      answer: `Completed workspace edits.\n${'changed-file.ts\n'.repeat(22_000)}`,
       reasonCodes: ['answer_produced'],
       warnings: [],
       usage: { modelCalls: 1, toolCalls: 1, loopIterations: 1 },
@@ -125,6 +125,9 @@ describe('sessionLog', () => {
       mode: 'agent',
       result,
       events,
+    }, {
+      contextWindowTokens: 8_192,
+      maximumOutputTokens: 4_096,
     });
 
     const lines = readFileSync(file!, 'utf8')
@@ -139,5 +142,86 @@ describe('sessionLog', () => {
       answerTruncated: true,
     });
     expect(String(runEnd?.answer).length).toBeLessThan(result.answer!.length);
+  });
+
+  it('falls back to fixed answer truncation when context window is omitted', () => {
+    const root = mkdtempSync(join(tmpdir(), 'mitii-session-log-'));
+    dirs.push(root);
+
+    const result = {
+      schemaVersion: 1,
+      runId: 'run_fallback_limits',
+      requestId: 'req_fallback_limits',
+      status: 'completed',
+      route: 'execute',
+      planningDepth: 'none',
+      answer: `Completed workspace edits.\n${'changed-file.ts\n'.repeat(500)}`,
+      reasonCodes: ['answer_produced'],
+      warnings: [],
+      usage: { modelCalls: 1, toolCalls: 0, loopIterations: 1 },
+      durationMs: 10,
+    } as AgentRunResult;
+
+    const file = appendSessionLog(root, {
+      kind: 'run',
+      at: '2026-07-28T00:00:00.000Z',
+      prompt: 'fix',
+      mode: 'agent',
+      result,
+      events: [],
+    });
+
+    const lines = readFileSync(file!, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const runEnd = lines.find((line) => line.kind === 'run_end');
+    expect(runEnd).toMatchObject({
+      answerChars: result.answer!.length,
+      answerTruncated: true,
+    });
+    expect(String(runEnd?.answer).length).toBeLessThanOrEqual(4_001);
+  });
+
+  it('scales answer retention for large-context models', () => {
+    const root = mkdtempSync(join(tmpdir(), 'mitii-session-log-'));
+    dirs.push(root);
+
+    const result = {
+      schemaVersion: 1,
+      runId: 'run_large_context',
+      requestId: 'req_large_context',
+      status: 'completed',
+      route: 'execute',
+      planningDepth: 'none',
+      answer: `Long answer\n${'section body\n'.repeat(20_000)}`,
+      reasonCodes: ['answer_produced'],
+      warnings: [],
+      usage: { modelCalls: 1, toolCalls: 1, loopIterations: 1 },
+      durationMs: 10,
+    } as AgentRunResult;
+
+    const file = appendSessionLog(root, {
+      kind: 'run',
+      at: '2026-07-28T00:00:00.000Z',
+      prompt: 'explain',
+      mode: 'ask',
+      result,
+      events: [],
+    }, {
+      contextWindowTokens: 252_000,
+      maximumOutputTokens: 64_000,
+    });
+
+    const lines = readFileSync(file!, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const runEnd = lines.find((line) => line.kind === 'run_end');
+    expect(runEnd).toMatchObject({
+      answerChars: result.answer!.length,
+      answerTruncated: false,
+      answer: result.answer,
+    });
   });
 });

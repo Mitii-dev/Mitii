@@ -164,6 +164,20 @@ test("openai compatible port maps SSE streaming chunks", async () => {
   assert.equal(content, "hello");
 });
 
+test("openai compatible port derives output tokens from configured context", () => {
+  const port = new OpenAiCompatibleLlmPort({
+    baseUrl: "https://example.test/v1",
+    model: "large-context-model",
+    capabilities: {
+      contextWindowTokens: 252_000,
+    },
+    fetchImpl: async () => new Response("{}", { status: 200 }),
+  });
+
+  assert.equal(port.capabilities.contextWindowTokens, 252_000);
+  assert.equal(port.capabilities.maximumOutputTokens, 63_000);
+});
+
 test("openai compatible port maps authentication failures", async () => {
   const fetchImpl: typeof fetch = async () =>
     new Response("unauthorized", { status: 401 });

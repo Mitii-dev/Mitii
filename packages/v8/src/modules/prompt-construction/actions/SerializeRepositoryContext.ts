@@ -1,6 +1,5 @@
 import type { TokenEstimatorPort } from "../contracts";
 import type { PromptRepositoryBlock, PromptRepositoryContext } from "../contracts";
-import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../policy";
 import {
   countInjectionSignals,
   wrapUntrustedFileBlock,
@@ -38,8 +37,7 @@ export function serializeRepositoryContext(params: {
         return scoreDelta;
       }
       return b.priority - a.priority;
-    })
-    .slice(0, PROMPT_CONSTRUCTION_THRESHOLDS.maximumRepositoryBlocks);
+    });
 
   const seenContent = new Set<string>();
   const fileBodies: string[] = [];

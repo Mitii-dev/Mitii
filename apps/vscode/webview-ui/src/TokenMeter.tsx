@@ -59,7 +59,10 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
   const latestInput = latestCall?.inputTokens ?? usage.lastPromptTokens;
   const latestOutput = latestCall?.outputTokens ?? usage.lastResponseTokens;
   const latestTotal = latestInput + latestOutput;
-  const liveCallLabel = latestCall ? `Call ${latestCall.turnIndex + 1}` : 'Latest call';
+  const liveCallLabel = latestCall
+    ? `Call ${latestCall.turnIndex + 1}`
+    : 'Latest call';
+  const runTotal = usage.currentTurnTotal;
   const attributedInputTokens = breakdown?.totalTokens ?? 0;
   const runtimeTokens =
     breakdown && latestInput > attributedInputTokens
@@ -92,7 +95,7 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
   const fillRatio = breakdown?.fillRatio ?? 0;
 
   const tooltip = [
-    usage.live ? 'Live · updating each model call' : null,
+    usage.live ? 'Live · updating cumulative chat totals' : null,
     `This chat: ${sessionTotal.toLocaleString()} tokens (input + output)`,
     `Input: ${inputTotal.toLocaleString()} · Output: ${outputTotal.toLocaleString()}`,
     `Latest call: ${latestInput.toLocaleString()} in · ${latestOutput.toLocaleString()} out`,
@@ -142,25 +145,25 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
         <span className="token-chip__glyph" aria-hidden="true">
           <IconTokens width={14} height={14} />
         </span>
-        <span>{usage.live ? liveCallLabel : formatCompact(sessionTotal)}</span>
+        <span>{formatCompact(sessionTotal)}</span>
         <span className="token-chip__sep">·</span>
         <span
           className="token-chip__io"
           aria-label={
-            usage.live
-              ? `Latest input ${latestInput.toLocaleString()} tokens, latest output ${latestOutput.toLocaleString()} tokens`
-              : `Input ${inputTotal.toLocaleString()} tokens, output ${outputTotal.toLocaleString()} tokens`
+            `Input ${inputTotal.toLocaleString()} tokens, output ${outputTotal.toLocaleString()} tokens`
           }
         >
           <span aria-hidden="true">↑</span>
-          <span>{formatCompact(usage.live ? latestInput : inputTotal)}</span>
+          <span>{formatCompact(inputTotal)}</span>
           <span aria-hidden="true">↓</span>
-          <span>{formatCompact(usage.live ? latestOutput : outputTotal)}</span>
+          <span>{formatCompact(outputTotal)}</span>
         </span>
         {usage.live ? (
           <>
             <span className="token-chip__sep">·</span>
-            <span className="token-chip__live">live</span>
+            <span className="token-chip__live">
+              live {formatCompact(runTotal)}
+            </span>
           </>
         ) : null}
         {windowLabel ? (
@@ -181,7 +184,9 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
           aria-label="Token usage details"
         >
           <div className="token-popover__header">
-            <span>{usage.live ? 'Live token monitor' : 'Chat token summary'}</span>
+            <span>
+              {usage.live ? 'Live chat token monitor' : 'Chat token summary'}
+            </span>
             <strong>
               {usage.live ? 'Live' : usage.estimated ? 'Estimated' : 'Reported'}
             </strong>
@@ -217,20 +222,20 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
           ) : (
             <dl className="token-popover__stats token-popover__stats--primary token-popover__stats--compact token-popover__stats--first">
               <div>
-                <dt>Run total</dt>
-                <dd>{usage.currentTurnTotal.toLocaleString()}</dd>
+                <dt>Chat total</dt>
+                <dd>{sessionTotal.toLocaleString()}</dd>
               </div>
               <div>
-                <dt>Latest sent</dt>
-                <dd>{latestInput.toLocaleString()}</dd>
+                <dt>Total sent</dt>
+                <dd>{inputTotal.toLocaleString()}</dd>
               </div>
               <div>
-                <dt>Latest received</dt>
-                <dd>{latestOutput.toLocaleString()}</dd>
+                <dt>Total received</dt>
+                <dd>{outputTotal.toLocaleString()}</dd>
               </div>
               <div>
-                <dt>Calls</dt>
-                <dd>{usage.modelCalls.toLocaleString()}</dd>
+                <dt>Current run</dt>
+                <dd>{runTotal.toLocaleString()}</dd>
               </div>
             </dl>
           )}
@@ -253,7 +258,7 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
             <div className="token-call-card__meta">
               <span>
                 {usage.live ? 'Current run' : 'Last completed run'} ·{' '}
-                {formatCompact(usage.currentTurnTotal)} tokens
+                {formatCompact(runTotal)} tokens
               </span>
               {latestCall?.finishReason ? <span>{latestCall.finishReason}</span> : null}
               {latestCall?.truncated ? <span>truncated</span> : null}

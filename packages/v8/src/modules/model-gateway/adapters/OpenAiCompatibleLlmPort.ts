@@ -181,9 +181,9 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
       ...(config.capabilities?.agenticTier
         ? { agenticTier: config.capabilities.agenticTier }
         : {}),
-      maximumOutputTokens:
-        config.capabilities?.maximumOutputTokens ??
-        OPENAI_COMPATIBLE_DEFAULTS.MAXIMUM_OUTPUT_TOKENS,
+      ...(config.capabilities?.maximumOutputTokens
+        ? { maximumOutputTokens: config.capabilities.maximumOutputTokens }
+        : {}),
     });
   }
 

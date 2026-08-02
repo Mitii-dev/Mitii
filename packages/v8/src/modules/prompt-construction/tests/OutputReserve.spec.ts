@@ -39,6 +39,20 @@ describe("prompt construction output reserve", () => {
     expect(result.budget.outputReservedTokens).toBeLessThanOrEqual(2_048);
     expect(result.request.maximumOutputTokens).toBeLessThanOrEqual(2_048);
   });
+
+  it("does not apply a fixed output ceiling to large context windows", () => {
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        capabilities: createCapabilities({
+          contextWindowTokens: 252_000,
+          maximumOutputTokens: 64_000,
+        }),
+      }),
+    );
+
+    expect(result.budget.outputReservedTokens).toBe(64_000);
+    expect(result.request.maximumOutputTokens).toBe(64_000);
+  });
 });
 
 describe("estimateTurnOutputHeadroom", () => {

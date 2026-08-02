@@ -12,9 +12,6 @@ export const PROMPT_CONSTRUCTION_THRESHOLDS = {
   /** Absolute floor for output reserve tokens when the window is large enough. */
   minimumOutputReserveTokens: 4_096,
 
-  /** Absolute ceiling for output reserve (still capped by provider max output). */
-  maximumOutputReserveTokens: 16_384,
-
   /** Soft minimum tokens retained for the required system safety preamble. */
   minimumSystemTokens: 200,
 
@@ -29,9 +26,6 @@ export const PROMPT_CONSTRUCTION_THRESHOLDS = {
    * older tool messages are truncated to compactedToolResultCharacters.
    */
   compactedToolResultKeepRecent: 3,
-
-  /** Maximum repository blocks serialized even when budget remains. */
-  maximumRepositoryBlocks: 48,
 
   /**
    * Soft fraction of maximumOutputTokens used as a headroom hint for

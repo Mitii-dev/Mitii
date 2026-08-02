@@ -319,6 +319,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   private runBaseTurns: TokenUsageSnapshot['turns'] = [];
   private runBaseInputTokens = 0;
   private runBaseOutputTokens = 0;
+  private runBaseModelCalls = 0;
+  private runBaseToolCalls = 0;
+  private runBaseLoopIterations = 0;
+  private runBaseTurnCount = 0;
   private hostHelpers?: SidebarHostHelpers;
   private lastAssistantText = '';
   private liveStreamText = '';
@@ -478,6 +482,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         await saveHistory(this.host.workspaceState, store);
         this.setActiveThreadUsage(
           this.tokenUsageByThread.get(thread.id) ??
+            thread.tokenUsage ??
             emptyTokenUsage(resolveContextWindow(this.vs)),
         );
         this.post({
@@ -500,6 +505,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         if (this.activeThreadId) {
           this.setActiveThreadUsage(
             this.tokenUsageByThread.get(this.activeThreadId) ??
+              store.threads.find((t) => t.id === this.activeThreadId)
+                ?.tokenUsage ??
               emptyTokenUsage(resolveContextWindow(this.vs)),
           );
         } else {
@@ -1036,6 +1043,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     this.runBaseTurns = [...(this.tokenUsage.turns ?? [])];
     this.runBaseInputTokens = this.tokenUsage.inputTokensTotal;
     this.runBaseOutputTokens = this.tokenUsage.outputTokensTotal;
+    this.runBaseModelCalls = this.tokenUsage.modelCalls;
+    this.runBaseToolCalls = this.tokenUsage.toolCalls;
+    this.runBaseLoopIterations = this.tokenUsage.loopIterations;
+    this.runBaseTurnCount = this.tokenUsage.turnCount;
     const contextWindow = resolveContextWindow(this.vs);
     const toggles = readContextToggles(this.vs);
     const memoryBlock = toggles.memory
@@ -1055,6 +1066,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       type: 'tokenUsage',
       usage: {
         ...this.tokenUsage,
+        inputTokensTotal:
+          this.runBaseInputTokens + provisionalContextBreakdown.totalTokens,
+        outputTokensTotal: this.runBaseOutputTokens,
+        sessionTotal:
+          this.runBaseInputTokens +
+          this.runBaseOutputTokens +
+          provisionalContextBreakdown.totalTokens,
         currentTurnTotal: provisionalContextBreakdown.totalTokens,
         currentTurnInputTokens: provisionalContextBreakdown.totalTokens,
         currentTurnOutputTokens: 0,
@@ -1313,6 +1331,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         ...(usedPlanHandoff && outcome.result.status === 'completed'
           ? { clearPendingPlan: true }
           : {}),
+        tokenUsage: this.tokenUsage,
       });
       this.activeThreadId = store.activeThreadId;
       this.post({
@@ -1519,7 +1538,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     this.pendingRunTurns = [
       ...this.pendingRunTurns,
       {
-        turnIndex: event.turnIndex,
+        turnIndex: this.runBaseTurns.length + this.pendingRunTurns.length,
         at: event.at,
         inputTokens: input,
         outputTokens: output,
@@ -1612,7 +1631,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         ? pending
         : [
             {
-              turnIndex: this.tokenUsage.modelCalls,
+              turnIndex: this.runBaseTurns.length,
               at: new Date().toISOString(),
               inputTokens: input,
               outputTokens: output,
@@ -1624,7 +1643,17 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const baseTurns = this.runBaseTurns;
     const baseInput = this.runBaseInputTokens;
     const baseOutput = this.runBaseOutputTokens;
+    const baseModelCalls = this.runBaseModelCalls;
+    const baseToolCalls = this.runBaseToolCalls;
+    const baseLoopIterations = this.runBaseLoopIterations;
+    const baseTurnCount = this.runBaseTurnCount;
     this.runBaseTurns = [];
+    this.runBaseInputTokens = 0;
+    this.runBaseOutputTokens = 0;
+    this.runBaseModelCalls = 0;
+    this.runBaseToolCalls = 0;
+    this.runBaseLoopIterations = 0;
+    this.runBaseTurnCount = 0;
 
     this.tokenUsage = {
       ...this.tokenUsage,
@@ -1634,14 +1663,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       currentTurnTotal: turnTotal,
       currentTurnInputTokens: input,
       currentTurnOutputTokens: output,
-      aiCallCount: this.tokenUsage.aiCallCount + result.usage.modelCalls,
-      modelCalls: this.tokenUsage.modelCalls + result.usage.modelCalls,
-      toolCalls: this.tokenUsage.toolCalls + result.usage.toolCalls,
-      loopIterations:
-        this.tokenUsage.loopIterations + result.usage.loopIterations,
+      aiCallCount: baseModelCalls + result.usage.modelCalls,
+      modelCalls: baseModelCalls + result.usage.modelCalls,
+      toolCalls: baseToolCalls + result.usage.toolCalls,
+      loopIterations: baseLoopIterations + result.usage.loopIterations,
       lastPromptTokens: input,
       lastResponseTokens: output,
-      turnCount: this.tokenUsage.turnCount + 1,
+      turnCount: baseTurnCount + 1,
       contextWindow,
       estimated,
       durationMs: result.durationMs,
@@ -2135,6 +2163,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     if (this.activeThreadId) {
       this.setActiveThreadUsage(
         this.tokenUsageByThread.get(this.activeThreadId) ??
+          activeThread?.tokenUsage ??
           emptyTokenUsage(resolveContextWindow(this.vs)),
       );
     } else {

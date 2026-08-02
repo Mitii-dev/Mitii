@@ -52,6 +52,16 @@ export function IconTokens(props: IconProps) {
   );
 }
 
+export function IconModel(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <rect x="3" y="4" width="10" height="8" rx="1.5" />
+      <path d="M5.5 6.5h5M5.5 9.5h3" />
+      <path d="M6 2.5v1.5M10 2.5v1.5M6 12v1.5M10 12v1.5" />
+    </svg>
+  );
+}
+
 export function IconPlus(props: IconProps) {
   return (
     <svg {...defaults} {...props}>

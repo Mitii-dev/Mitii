@@ -754,6 +754,15 @@ export async function runAskInOutputChannel(options: {
     cfg.get<number>('provider.contextWindow') ||
     findLocalModelPreset(model)?.contextWindow ||
     32_768;
+  const configuredMaximumOutputTokens = cfg.get<number>(
+    'provider.maximumOutputTokens',
+  );
+  const maximumOutputTokens =
+    typeof configuredMaximumOutputTokens === 'number' &&
+    Number.isFinite(configuredMaximumOutputTokens) &&
+    configuredMaximumOutputTokens > 0
+      ? Math.floor(configuredMaximumOutputTokens)
+      : undefined;
   const mcpCatalogTokens = getSharedMcpManager().snapshot().toolsCatalogTokens;
   const memoryBlock =
     toggles.memory && options.workspaceState && options.workspaceId
@@ -894,6 +903,7 @@ export async function runAskInOutputChannel(options: {
     const projectRules = workspaceRoot
       ? await loadProjectRules({ workspaceRoot })
       : [];
+    const runStartedAt = new Date().toISOString();
     let run = client.start({
       prompt,
       mode: options.mode ?? 'ask',
@@ -988,13 +998,17 @@ export async function runAskInOutputChannel(options: {
           }
           const logPath = appendSessionLog(workspaceRoot, {
             kind: 'run',
-            at: new Date().toISOString(),
+            at: runStartedAt,
             prompt: options.prompt,
             mode: options.mode,
             conversationCount: options.conversation?.length ?? 0,
             result,
             events,
-          }, { sessionId: options.sessionId });
+          }, {
+            sessionId: options.sessionId,
+            contextWindowTokens: contextWindow,
+            maximumOutputTokens,
+          });
           if (logPath) {
             channel.appendLine(`[log] ${logPath}`);
           }
@@ -1031,13 +1045,17 @@ export async function runAskInOutputChannel(options: {
         if (resume === 'stop') {
           const logPath = appendSessionLog(workspaceRoot, {
             kind: 'run',
-            at: new Date().toISOString(),
+            at: runStartedAt,
             prompt: options.prompt,
             mode: options.mode,
             conversationCount: options.conversation?.length ?? 0,
             result,
             events,
-          }, { sessionId: options.sessionId });
+          }, {
+            sessionId: options.sessionId,
+            contextWindowTokens: contextWindow,
+            maximumOutputTokens,
+          });
           if (logPath) {
             channel.appendLine(`[log] ${logPath}`);
           }
