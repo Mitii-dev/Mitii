@@ -70,12 +70,41 @@ function buildObjective(
   evidence: PlanningTaskEvidence,
 ): string {
   if (evidence.requestedOutcomes.length > 0) {
-    return evidence.requestedOutcomes[0]!.slice(0, 1_000);
+    const outcome = evidence.requestedOutcomes[0]!.trim().replace(/\s+/g, " ");
+    if (outcome.length >= 24 && !isPronounOnlyFollowUp(outcome)) {
+      return outcome.slice(0, 1_000);
+    }
   }
+
   const trimmed = query.trim().replace(/\s+/g, " ");
+  const targetSummary = evidence.targets
+    .filter((target) => target.explicit)
+    .map((target) => target.value)
+    .slice(0, 4)
+    .join(", ");
+
+  if (trimmed.length > 0 && !isPronounOnlyFollowUp(trimmed)) {
+    return targetSummary
+      ? `${trimmed.slice(0, 700)} (targets: ${targetSummary})`.slice(0, 1_000)
+      : trimmed.slice(0, 1_000);
+  }
+
+  if (targetSummary) {
+    return `Resolve ${evidence.primaryIntent} for ${targetSummary}`.slice(
+      0,
+      1_000,
+    );
+  }
+
   return trimmed.length > 0
     ? trimmed.slice(0, 1_000)
     : `Complete ${evidence.primaryIntent} safely within the stated scope.`;
+}
+
+function isPronounOnlyFollowUp(text: string): boolean {
+  return /^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:fix|update|change|check|do|handle|implement)\s+(?:it|this|that)\b/i.test(
+    text,
+  ) || text.length < 24;
 }
 
 function buildAssumptions(evidence: PlanningTaskEvidence): string[] {

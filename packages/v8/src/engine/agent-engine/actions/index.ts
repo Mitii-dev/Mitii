@@ -36,8 +36,11 @@ export type {
 } from "./compactModelLoopMessages";
 export {
   buildIncompleteAnswerRecoveryMessage,
+  hasLeakedToolCallMarkup,
   isEmptyAssistantTurn,
+  isPseudoToolRequestAnswer,
   isTransitionalAssistantAnswer,
+  isUnfinishedInvestigationAnswer,
   shouldRecoverIncompleteAssistantTurn,
   synthesizeFallbackAnswer,
   amendMessageWithPriorConversation,

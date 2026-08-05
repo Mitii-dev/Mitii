@@ -7,7 +7,10 @@ import type {
   RequestUnderstandingPipelineInput,
   RequestUnderstandingResult,
 } from "../contracts";
-import { extractPrimaryUserMessage } from "../intent/extractPrimaryUserMessage";
+import {
+  extractCurrentUserRequestForAnalysis,
+  extractPrimaryUserMessage,
+} from "../intent/extractPrimaryUserMessage";
 import { IntentRouter } from "../intent/IntentRouter";
 import type { IntentRouterDependencies } from "../intent/types";
 import { TaskAnalyzer } from "../task-analyzer/TaskAnalyzer";
@@ -40,6 +43,11 @@ export class RequestUnderstandingPipeline {
       requestUnderstandingPipelineInputSchema.parse(input);
 
     const userMessage = extractPrimaryUserMessage(envelope.message);
+    // Intent may see prior-turn context (follow-up status questions). Targets /
+    // constraints must not inherit file paths from prior assistant answers.
+    const analysisMessage = extractCurrentUserRequestForAnalysis(
+      envelope.message,
+    );
 
     const intent = await this.intentRouter.classify({
       mode: envelope.mode,
@@ -48,7 +56,7 @@ export class RequestUnderstandingPipeline {
     });
 
     const taskAnalysis = this.taskAnalyzer.analyze({
-      userMessage,
+      userMessage: analysisMessage || userMessage,
       intent,
       referencedArtifacts: envelope.referencedArtifacts.map((artifact) => ({
         name: artifact.name,

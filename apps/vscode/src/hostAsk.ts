@@ -118,8 +118,10 @@ const STAGE_LABELS: Record<string, string> = {
   context_ready: 'Gathering context',
   skills_ready: 'Loading skills',
   memory_ready: 'Loading memory',
+  plan_ready: 'Planning',
   model_running: 'Running model',
   tool_running: 'Running tools',
+  verifying: 'Verifying changes',
   answering: 'Answering',
   planning: 'Planning',
   acting: 'Acting',
@@ -237,15 +239,23 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         detail: event.summary,
         status: 'running',
       };
-    case 'tool_completed':
+    case 'tool_completed': {
+      const reason =
+        'reasonCode' in event && typeof event.reasonCode === 'string'
+          ? event.reasonCode
+          : undefined;
+      const detail = [event.summary, reason ? `(${reason})` : undefined]
+        .filter(Boolean)
+        .join(' ');
       return {
         id,
         at,
         kind: 'tool',
         title: event.toolName,
-        detail: event.summary,
+        detail: detail || undefined,
         status: event.status,
       };
+    }
     case 'context_ready': {
       const rawPaths =
         'paths' in event && Array.isArray(event.paths) ? event.paths : [];
@@ -331,7 +341,18 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         at,
         kind: 'info',
         title: 'Plan ready',
-        detail: `${event.phaseCount} phases · ${event.planningDepth}`,
+        detail: [
+          `${event.phaseCount} phase${event.phaseCount === 1 ? '' : 's'}`,
+          event.plan
+            ? `${event.plan.phases.reduce(
+                (sum: number, phase: PlanArtifact['phases'][number]) =>
+                  sum + phase.steps.length,
+                0,
+              )} steps`
+            : undefined,
+          event.planningDepth,
+          event.approvalRequired ? 'approval required' : undefined,
+        ].filter(Boolean).join(' · '),
       };
     default:
       return undefined;
@@ -913,6 +934,7 @@ export async function runAskInOutputChannel(options: {
       planApproval: approvalPolicy.planApproval,
       budget: resolveRunBudget(vs),
       ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
+      ...(pinnedPaths.length > 0 ? { pinnedPaths } : {}),
       ...(options.conversation && options.conversation.length > 0
         ? { conversation: options.conversation }
         : {}),

@@ -4,7 +4,7 @@ const INTENT_PATTERNS: IntentRule[] = [
   {
     intent: "bugfix",
     pattern:
-      /\b(?:fix|resolve|repair|patch|correct)\b.*\b(?:bug|issue|error|defect|crash|exception|failing tests?|regression|broken behavior)\b/i,
+      /\b(?:fix|resolve|repair|patch|correct)\b.*\b(?:bug|issue|error|defect|crash|exception|failing tests?|regression|broken behavior)\b|\b(?:SyntaxError|TypeError|ReferenceError|RangeError|NameError|AttributeError|ImportError|ModuleNotFoundError|[A-Z][A-Za-z0-9]*(?:Error|Exception))\b|\b(?:has already been declared|is not defined|cannot read propert(?:y|ies) of undefined|undefined reference|unresolved import|traceback|panic:)\b/i,
     confidence: 0.88,
   },
   {
@@ -28,7 +28,7 @@ const INTENT_PATTERNS: IntentRule[] = [
   {
     intent: "diagnose",
     pattern:
-      /\b(?:diagnose|investigate|troubleshoot)\b|\bfind\s+(?:the\s+)?root\s+cause\b|\bwhy\s+(?:is|does|did|has|was)\b/i,
+      /\b(?:diagnose|investigate|troubleshoot)\b|\bfind\s+(?:the\s+)?root\s+cause\b|\bwhy\s+(?:is|does|did|has|was)\b|\b(?:no preview|preview (?:is )?(?:not|never)|doesn'?t load|blank (?:page|preview)|runtime error|stack trace)\b/i,
     confidence: 0.84,
   },
   {

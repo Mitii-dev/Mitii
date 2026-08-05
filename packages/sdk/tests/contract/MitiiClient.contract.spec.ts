@@ -154,6 +154,37 @@ describe('MitiiClient contract (Phase 12)', () => {
     expect(engineInput.request.mode).toBe('agent');
   });
 
+  it('maps pinnedPaths to referencedArtifacts with robust kind inference', () => {
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'Inspect pinned context',
+        mode: 'ask',
+        pinnedPaths: [
+          'packages/core',
+          'apps/docs/README.md',
+          'Makefile',
+          'backend/api/',
+          'packages.legacy',
+        ],
+      },
+      { mode: 'ask', sessionId: 'sess_test' },
+    );
+
+    const artifacts = engineInput.request.referencedArtifacts ?? [];
+    expect(artifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: 'packages/core', kind: 'folder' }),
+        expect.objectContaining({
+          path: 'apps/docs/README.md',
+          kind: 'file',
+        }),
+        expect.objectContaining({ path: 'Makefile', kind: 'file' }),
+        expect.objectContaining({ path: 'backend/api', kind: 'folder' }),
+        expect.objectContaining({ path: 'packages.legacy', kind: 'folder' }),
+      ]),
+    );
+  });
+
   it('rejects resume without approval or clarificationAnswer', () => {
     const parsed = mitiiResumeInputSchema.safeParse({
       schemaVersion: 1,

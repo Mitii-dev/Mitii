@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  extractCurrentUserRequestForAnalysis,
   extractPrimaryUserMessage,
   MITII_HOST_CONTEXT_MARKER,
   MITII_USER_MESSAGE_MARKER,
@@ -44,5 +45,21 @@ test("extractPrimaryUserMessage leaves plain asks unchanged", () => {
   assert.equal(
     extractPrimaryUserMessage("explain this project"),
     "explain this project",
+  );
+});
+
+test("extractCurrentUserRequestForAnalysis ignores prior-turn file paths", () => {
+  const amended = [
+    "Prior conversation (for intent routing only; not the live user request):",
+    "user: SyntaxError in apps/docs",
+    "assistant: Check apps/docs/src/components/live-demo-mui.tsx",
+    "",
+    "Current user request:",
+    "check in @packages and fix it",
+  ].join("\n");
+
+  assert.equal(
+    extractCurrentUserRequestForAnalysis(amended),
+    "check in @packages and fix it",
   );
 });

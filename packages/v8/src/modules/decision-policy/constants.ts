@@ -98,6 +98,8 @@ export const DECISION_REASON_CODES = [
   "direct_knowledge_answer",
   "repository_grounded_answer",
   "mutation_execute",
+  /** Workspace-grounded bug report promoted to execute (may still be diagnose-first). */
+  "workspace_bug_execute",
   "mutation_budget_relaxed",
   "mutation_budget_standard",
   "mutation_budget_tight",

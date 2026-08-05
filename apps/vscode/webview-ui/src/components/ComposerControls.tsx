@@ -205,7 +205,7 @@ export function ComposerControls({
       >
         <button
           type="button"
-          className={`composer-dropdown__button${selected.warning ? ' composer-dropdown__button--warning' : ''}`}
+          className={`composer-dropdown__button composer-dropdown__button--link${selected.warning ? ' composer-dropdown__button--warning' : ''}`}
           aria-haspopup="listbox"
           aria-expanded={isOpen}
           aria-label={label}

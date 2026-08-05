@@ -43,6 +43,8 @@ export const AGENT_REASON_CODES = [
   "plan_approved",
   /** Host supplied an approved plan on start (cross-run plan→execute handoff). */
   "plan_carried",
+  /** Plan mode finished with the structured plan as the terminal answer. */
+  "plan_mode_completed",
   "plan_rejected",
   "plan_edited",
   "approval_suspended",

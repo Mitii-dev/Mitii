@@ -76,6 +76,11 @@ export const mitiiStartInputSchema = z
     planApproval: z.enum(['policy', 'never']).optional(),
     dirtyPaths: z.array(z.string().min(1)).optional(),
     /**
+     * Host-pinned workspace paths (@mentions). Mapped to intake
+     * referencedArtifacts so understanding/context can prefer them.
+     */
+    pinnedPaths: z.array(z.string().min(1)).max(32).optional(),
+    /**
      * Host-loaded project rules (AGENTS.md, .mitii/rules, MITTII.local.md).
      * Mapped to Agent Engine Prompt Construction `instructions.projectRules`.
      */
@@ -115,11 +120,26 @@ export function toAgentEngineStartInput(
   defaults: MitiiStartDefaults,
 ): AgentEngineStartInput {
   const parsed = mitiiStartInputSchema.parse(input);
+  const pinnedArtifacts = (parsed.pinnedPaths ?? [])
+    .map((path) => path.replace(/\\/g, '/').replace(/^@/, '').trim())
+    .filter((path) => path.length > 0)
+    .slice(0, 32)
+    .map((path) => {
+      const normalized = path.replace(/\/+$/, '') || path;
+      return {
+        name: normalized,
+        path: normalized,
+        kind: inferPinnedArtifactKind(path),
+      };
+    });
   const request = createUserRequestInputSchema.parse({
     requestId: parsed.requestId,
     sessionId: parsed.sessionId ?? defaults.sessionId,
     mode: parsed.mode ?? defaults.mode,
     userMessage: parsed.prompt,
+    ...(pinnedArtifacts.length > 0
+      ? { referencedArtifacts: pinnedArtifacts }
+      : {}),
     workspace:
       parsed.workspaceId || defaults.workspaceId
         ? { workspaceId: parsed.workspaceId ?? defaults.workspaceId }
@@ -160,4 +180,37 @@ export function toAgentEngineStartInput(
           }
         : undefined,
   });
+}
+
+/**
+ * Infer artifact kind for host-pinned paths without a workspace walk.
+ * Trailing slash ⇒ folder; known extensionless filenames and common
+ * file extensions ⇒ file. Dotted folder names (packages.legacy) stay folders.
+ */
+function inferPinnedArtifactKind(path: string): 'file' | 'folder' {
+  const normalized = path.replace(/\\/g, '/').trim();
+  if (normalized.endsWith('/')) {
+    return 'folder';
+  }
+  const base = normalized.split('/').pop() ?? normalized;
+  if (
+    /^(?:Makefile|Dockerfile|Gemfile|Procfile|Rakefile|Podfile|Cargo\.toml|Cargo\.lock|go\.mod|go\.sum|Pipfile|poetry\.lock)$/i.test(
+      base,
+    )
+  ) {
+    return 'file';
+  }
+  // Dotfiles (.env, .gitignore).
+  if (/^\.[A-Za-z0-9][\w.-]*$/.test(base)) {
+    return 'file';
+  }
+  // Common multi-language source / config extensions (not "any dot").
+  if (
+    /\.(?:[cm]?[jt]sx?|mjs|cjs|py|go|rs|java|kt|kts|swift|rb|php|cs|cpp|cxx|cc|h|hpp|hh|md|mdx|json|ya?ml|toml|xml|html?|css|scss|sass|less|sql|sh|bash|zsh|ps1|bat|cmd|env|lock|txt|csv|svg|png|jpe?g|webp|gif|wasm|proto|graphql|gql|dart|lua|r|jl|ex|exs|erl|hs|scala|clj|cljs|fs|fsx|vb|pl|pm|raku|zig|nim|v|d|f90|f95|asm|s|ipynb|vue|svelte|astro|tf|hcl|bicep|gradle|groovy|cmake|makefile)$/i.test(
+      base,
+    )
+  ) {
+    return 'file';
+  }
+  return 'folder';
 }

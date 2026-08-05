@@ -13,6 +13,7 @@ import type { SkillDescriptor } from '@mitii/v8';
 import {
   appendTurn,
   clearHistory,
+  clearPendingPlan,
   deleteThread,
   loadCheckpoints,
   loadHistory,
@@ -93,6 +94,11 @@ import {
   estimateMemoryPromptBlock,
   loadMemoriesForView,
 } from './memoryStore.js';
+
+/** Companion markdown path for a saved plan JSON relative path. */
+function savedPlanMarkdownRelative(jsonRelativePath: string): string {
+  return jsonRelativePath.replace(/\.json$/i, '.md');
+}
 
 const DEFAULT_CONTEXT_WINDOW = 32768;
 const DEFAULT_RUN_BUDGET: RunBudgetSettingsSnapshot = {
@@ -439,6 +445,11 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       case 'ask':
         await this.handleAsk(message);
         return;
+      case 'clearPendingPlan': {
+        await clearPendingPlan(this.host.workspaceState, this.activeThreadId);
+        this.post({ type: 'setPlan', plan: null });
+        return;
+      }
       case 'cancel':
         this.runCancel?.cancel();
         return;
@@ -469,7 +480,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           type: 'thread.loaded',
           threadId: this.activeThreadId,
           messages: [],
+          pendingPlan: null,
         });
+        this.post({ type: 'setPlan', plan: null });
         this.post({ type: 'tokenUsage', usage: this.tokenUsage });
         return;
       }
@@ -485,11 +498,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
             thread.tokenUsage ??
             emptyTokenUsage(resolveContextWindow(this.vs)),
         );
+        const pendingPlan = planViewFromArtifact(thread.pendingPlan);
         this.post({
           type: 'thread.loaded',
           threadId: thread.id,
           messages: thread.messages,
+          pendingPlan: pendingPlan,
         });
+        this.post({ type: 'setPlan', plan: pendingPlan });
         this.post({
           type: 'history',
           threads: toThreadSummaries(store),
@@ -1129,6 +1145,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           },
           onEvent: (event, activity) => {
             this.post({ type: 'run.event', event: activity });
+            if (event?.type === 'plan_ready' && event.plan) {
+              const livePlan = planViewFromArtifact(event.plan, {
+                stepStatus: 'activeFirst',
+              });
+              if (livePlan) {
+                this.post({ type: 'setPlan', plan: livePlan });
+              }
+            }
             const changeRoot = this.effectiveRoot();
             if (changeRoot && this.activeFileChangeSnapshot && event) {
               noteMutatedPathsFromEvent(
@@ -1146,7 +1170,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
             this.liveStreamText += text;
             this.post({ type: 'run.delta', text });
           },
-          onSuspended: async (_result, suspension) => {
+          onSuspended: async (result, suspension) => {
             if (
               suspension.kind === 'approval_required' &&
               suspension.approval?.paths?.length &&
@@ -1180,26 +1204,33 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
                 this.host.onInlineDiffPending(true);
               }
             }
-            if (
-              suspension.kind === 'plan_approval_required' &&
-              suspension.plan
-            ) {
-              this.post({ type: 'setPlan', plan: suspension.plan });
+            if (suspension.kind === 'plan_approval_required') {
+              const artifact = result.plan;
               const root = this.effectiveRoot();
-              if (root) {
+              let savedPlanPath: string | undefined;
+              if (root && artifact) {
                 try {
                   const saved = savePlanToWorkspace({
                     workspaceRoot: root,
-                    plan: suspension.plan,
+                    plan: artifact,
                     source: 'plan_approval',
                     threadId: this.activeThreadId,
                   });
+                  savedPlanPath = savedPlanMarkdownRelative(saved.relativePath);
                   this.channel.appendLine(`[plan] saved ${saved.relativePath}`);
                 } catch (error) {
                   this.channel.appendLine(
                     `[plan] save failed: ${error instanceof Error ? error.message : String(error)}`,
                   );
                 }
+              }
+              const planView =
+                planViewFromArtifact(artifact, { savedPlanPath }) ??
+                suspension.plan ??
+                null;
+              if (planView) {
+                suspension.plan = planView;
+                this.post({ type: 'setPlan', plan: planView });
               }
             }
             this.lastSuspensionRunId = suspension.runId;
@@ -1238,13 +1269,51 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       this.lastAssistantText = assistantText;
       this.liveStreamText = '';
       const resultPlan = outcome.result.plan;
+      const usedPlanHandoff = Boolean(approvedPlan);
+      let savedPlanPath: string | undefined;
+      if (resultPlan) {
+        const root = this.effectiveRoot();
+        if (root) {
+          try {
+            const saved = savePlanToWorkspace({
+              workspaceRoot: root,
+              plan: resultPlan,
+              source:
+                message.mode === 'plan'
+                  ? 'plan_mode'
+                  : approvedPlan
+                    ? 'plan_approval'
+                    : 'agent',
+              threadId: this.activeThreadId,
+            });
+            savedPlanPath = savedPlanMarkdownRelative(saved.relativePath);
+            this.channel.appendLine(`[plan] saved ${saved.relativePath}`);
+          } catch (error) {
+            this.channel.appendLine(
+              `[plan] save failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+      }
       const plan =
         message.mode === 'plan'
-          ? planViewFromArtifact(resultPlan) ??
+          ? planViewFromArtifact(resultPlan, { savedPlanPath }) ??
             this.planFromAnswer(message.mode, answer)
           : approvedPlan
-            ? planViewFromArtifact(approvedPlan)
-            : null;
+            ? planViewFromArtifact(approvedPlan, {
+                savedPlanPath,
+                stepStatus:
+                  outcome.result.status === 'completed'
+                    ? 'done'
+                    : 'activeFirst',
+              })
+            : resultPlan
+              ? planViewFromArtifact(resultPlan, {
+                  savedPlanPath,
+                  stepStatus:
+                    outcome.result.status === 'completed' ? 'done' : 'pending',
+                })
+              : null;
 
       const changeRoot = this.effectiveRoot();
       const runId = outcome.result.runId;
@@ -1268,6 +1337,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           .filter((event): event is NonNullable<typeof event> => Boolean(event)),
       );
 
+      const pendingPlanForUi =
+        message.mode === 'plan' && resultPlan && plan
+          ? plan
+          : usedPlanHandoff && outcome.result.status === 'completed'
+            ? null
+            : undefined;
+
       this.post({
         type: 'run.result',
         status: outcome.result.status,
@@ -1276,6 +1352,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         error: outcome.result.error?.message,
         usage,
         plan,
+        ...(pendingPlanForUi !== undefined
+          ? { pendingPlan: pendingPlanForUi }
+          : {}),
       });
 
       if (persistedFileChanges && runId && this.activeFileChangeSnapshot) {
@@ -1288,32 +1367,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       this.activeFileChangeSnapshot = undefined;
 
       this.post({ type: 'tokenUsage', usage: this.tokenUsage });
-      const usedPlanHandoff = Boolean(approvedPlan);
-      if (resultPlan) {
-        const root = this.effectiveRoot();
-        if (root) {
-          try {
-            const saved = savePlanToWorkspace({
-              workspaceRoot: root,
-              plan: resultPlan,
-              source:
-                message.mode === 'plan'
-                  ? 'plan_mode'
-                  : approvedPlan
-                    ? 'plan_approval'
-                    : 'agent',
-              threadId: this.activeThreadId,
-            });
-            this.channel.appendLine(
-              `[plan] saved ${saved.relativePath}`,
-            );
-          } catch (error) {
-            this.channel.appendLine(
-              `[plan] save failed: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
-        }
-      }
       const store = await appendTurn(this.host.workspaceState, {
         threadId: this.activeThreadId,
         userText: prompt,
@@ -2190,6 +2243,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       history: toThreadSummaries(history),
       activeThreadId: history.activeThreadId,
       activeThreadMessages: activeThread?.messages ?? [],
+      pendingPlan: planViewFromArtifact(activeThread?.pendingPlan),
       memories: await loadMemoriesForView(
         this.host.workspaceState,
         this.getWorkspaceId(),

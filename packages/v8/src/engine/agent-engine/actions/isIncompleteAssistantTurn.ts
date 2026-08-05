@@ -19,8 +19,25 @@ const TRAILING_INTENT_CLAUSE =
 const PSEUDO_TOOL_REQUEST =
   /<user_request\b[^>]*>\s*(?:read|open|inspect|look at)\b[\s\S]{0,800}<\/user_request>/i;
 
+const LITERAL_TOOL_TAG_REQUEST =
+  /<(?:read_file|read_many_files|search_files|glob_files|list_directory)\b[^>]*>(?:\s*<\/(?:read_file|read_many_files|search_files|glob_files|list_directory)>)?/i;
+
+/**
+ * Provider / model tool XML that leaked into assistant text instead of a
+ * structured tool call (seen when output truncates mid-tool).
+ */
+const LEAKED_TOOL_CALL_MARKUP =
+  /<\/?(?:tool_call|function|parameter|tool_request|invoke)\b/i;
+
 const READ_FILES_REQUEST =
   /^(?:i(?:'ll| will)|let me|i need to|i should)\b[\s\S]{0,240}\b(?:read|open|inspect|look at)\b[\s\S]{0,240}\b(?:files?|models?|services?|routes?)\b/i;
+
+/**
+ * Long monologues that still end by announcing the next investigation step
+ * ("But first, let me check…") are not final answers — regardless of length.
+ */
+const ENDS_WITH_CONTINUE_INVESTIGATION =
+  /(?:^|[.!\n])\s*(?:wait[,.]?\s+)?(?:(?:but\s+)?(?:first|actually)[,.]?\s+)?(?:let me|i(?:'ll| will)|i(?:'m| am) going to|i need to|i should)\b[\s\S]{0,220}(?:check|look(?:\s+at)?|read|inspect|search|try|build|run|see|verify|examine|investigate|open|find|re-?read)\b[\s\S]{0,160}$/i;
 
 export function isEmptyAssistantTurn(params: {
   content: string;
@@ -38,10 +55,16 @@ export function isPseudoToolRequestAnswer(content: string): boolean {
   const text = content.trim();
   if (text.length === 0) return false;
   if (PSEUDO_TOOL_REQUEST.test(text)) return true;
+  if (LITERAL_TOOL_TAG_REQUEST.test(text)) return true;
+  if (hasLeakedToolCallMarkup(text)) return true;
   if (READ_FILES_REQUEST.test(text) && /(?:^|\n)\s*-\s+\S+/m.test(text)) {
     return true;
   }
   return false;
+}
+
+export function hasLeakedToolCallMarkup(content: string): boolean {
+  return LEAKED_TOOL_CALL_MARKUP.test(content);
 }
 
 /**
@@ -52,6 +75,7 @@ export function isTransitionalAssistantAnswer(content: string): boolean {
   const text = content.trim();
   if (text.length === 0) return true;
   if (isPseudoToolRequestAnswer(text)) return true;
+  if (isUnfinishedInvestigationAnswer(text)) return true;
   if (text.length > 600) return false;
 
   const singleBeat = text.split(/\n+/).filter((line) => line.trim().length > 0)
@@ -84,6 +108,25 @@ export function isTransitionalAssistantAnswer(content: string): boolean {
   return false;
 }
 
+/**
+ * Long investigation dumps that still announce the next look/check step.
+ * Unlike short transitional narration, these are often >600 chars, so the
+ * length short-circuit must not hide them.
+ */
+export function isUnfinishedInvestigationAnswer(content: string): boolean {
+  const text = content.trim();
+  if (text.length === 0) return false;
+  if (hasLeakedToolCallMarkup(text)) return true;
+
+  const cleaned = text
+    .replace(/<\/?(?:tool_call|function|parameter|tool_request|invoke)\b[^>]*>/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleaned.length === 0) return true;
+
+  return ENDS_WITH_CONTINUE_INVESTIGATION.test(cleaned);
+}
+
 export function shouldRecoverIncompleteAssistantTurn(params: {
   content: string;
   toolCallCount: number;
@@ -92,6 +135,7 @@ export function shouldRecoverIncompleteAssistantTurn(params: {
   if (params.toolCallCount > 0) return false;
   if (isEmptyAssistantTurn(params)) return true;
   if (isPseudoToolRequestAnswer(params.content)) return true;
+  if (isUnfinishedInvestigationAnswer(params.content)) return true;
   // Defense in depth: blank stored answer after mutations must not complete.
   if (params.content.trim().length === 0 && params.changedFileCount > 0) {
     return true;
@@ -128,9 +172,9 @@ export function buildIncompleteAnswerRecoveryMessage(params: {
   }
 
   return [
-    "Your previous reply looked like mid-task narration, not a final answer.",
-    "Continue: call needed tools, or finish with a clear user-facing summary of what you did and the outcome.",
-    "Do not end on transitional phrases like \"Let me…\" or \"Now let me…\".",
+    "Your previous reply looked like mid-task narration or an incomplete tool attempt, not a final answer.",
+    "Continue: call needed tools (including apply_patch when a fix is required), or finish with a clear user-facing summary of the outcome.",
+    "Do not end on transitional phrases like \"Let me…\", \"Actually…\", or leaked tool markup.",
     changed,
   ]
     .filter((part) => part.length > 0)
@@ -195,6 +239,7 @@ export function amendMessageWithPriorConversation(
     "Prior conversation (for intent routing only; not the live user request):",
     ...lines,
     "",
+    // Keep in sync with extractCurrentUserRequestForAnalysis.
     "Current user request:",
     primary,
   ].join("\n");

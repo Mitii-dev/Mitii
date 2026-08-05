@@ -19,7 +19,9 @@ export class PathContainmentError extends Error {
 export function normalizeRelativePath(targetPath: string): string {
   assertNoNullBytes(targetPath);
 
-  const slashNormalized = targetPath.replace(/\\/g, "/");
+  // Chat @-mentions (@packages, @apps/docs) should resolve as workspace paths.
+  const withoutAtMention = targetPath.replace(/^@(?=[A-Za-z0-9_.-])/, "");
+  const slashNormalized = withoutAtMention.replace(/\\/g, "/");
   if (isAbsolutePath(slashNormalized)) {
     throw new PathContainmentError(
       "path_escape",

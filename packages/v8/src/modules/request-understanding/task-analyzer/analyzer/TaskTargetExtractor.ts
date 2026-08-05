@@ -16,7 +16,9 @@ export class TaskTargetExtractor {
     this.extractArtifactTargets(referencedArtifacts, targets, seen);
     this.extractFileTargets(userMessage, targets, seen);
     this.extractFolderTargets(userMessage, targets, seen);
+    this.extractAtPathTargets(userMessage, targets, seen);
     this.extractSymbolTargets(userMessage, targets, seen);
+    this.extractErrorSymbolTargets(userMessage, targets, seen);
     this.extractScopeTargets(userMessage, targets, seen);
 
     return targets;
@@ -118,6 +120,28 @@ export class TaskTargetExtractor {
     }
   }
 
+  private extractAtPathTargets(
+    userMessage: string,
+    targets: TaskTarget[],
+    seen: Set<string>,
+  ): void {
+    const pattern =
+      TASK_ANALYZER_CONSTANTS.TARGET_PATTERNS.AT_PATH_REFERENCE;
+
+    for (const match of userMessage.matchAll(this.cloneGlobalPattern(pattern))) {
+      const value = this.cleanTargetValue(match[1] ?? "");
+      if (!value) {
+        continue;
+      }
+
+      this.addTarget(targets, seen, {
+        kind: "folder",
+        value: value.replace(/\/+$/, ""),
+        explicit: true,
+      });
+    }
+  }
+
   private extractSymbolTargets(
     userMessage: string,
     targets: TaskTarget[],
@@ -130,6 +154,28 @@ export class TaskTargetExtractor {
       const value = match[1]?.trim();
 
       if (!value) {
+        continue;
+      }
+
+      this.addTarget(targets, seen, {
+        kind: "symbol",
+        value,
+        explicit: true,
+      });
+    }
+  }
+
+  private extractErrorSymbolTargets(
+    userMessage: string,
+    targets: TaskTarget[],
+    seen: Set<string>,
+  ): void {
+    const pattern =
+      TASK_ANALYZER_CONSTANTS.TARGET_PATTERNS.ERROR_SYMBOL_REFERENCE;
+
+    for (const match of userMessage.matchAll(this.cloneGlobalPattern(pattern))) {
+      const value = (match[1] ?? match[2] ?? "").trim();
+      if (!value || value.length < 2) {
         continue;
       }
 

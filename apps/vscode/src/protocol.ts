@@ -263,11 +263,45 @@ export interface PlanStepView {
   title: string;
   status: 'pending' | 'active' | 'done' | 'skipped';
   detail?: string;
+  riskLevel?: string;
+  targetRefs?: string[];
+  expectedOutcome?: string;
+  verification?: string;
+}
+
+export interface PlanPhaseView {
+  id: string;
+  name: string;
+  purpose?: string;
+  steps: PlanStepView[];
+}
+
+export interface PlanRiskView {
+  id: string;
+  summary: string;
+  severity?: string;
+  mitigation?: string;
+}
+
+export interface PlanDimensionsView {
+  scope: string;
+  risk: string;
+  clarity: string;
+  complexity: string;
 }
 
 export interface PlanView {
   title: string;
+  /** Flat steps kept for back-compat with older UI/history. */
   steps: PlanStepView[];
+  objective?: string;
+  dimensions?: PlanDimensionsView;
+  phases?: PlanPhaseView[];
+  risks?: PlanRiskView[];
+  openQuestions?: string[];
+  verificationSummary?: string;
+  /** Workspace-relative path to the saved markdown plan under `.mitii/plans/`. */
+  savedPlanPath?: string;
 }
 
 export interface ReviewDiffView {
@@ -410,7 +444,9 @@ export type WebviewToHostMessage =
   | { type: 'openFile'; path: string; line?: number; column?: number }
   | { type: 'undoFileChanges'; runId: string }
   | { type: 'reviewFileChange'; runId: string; path: string }
-  | { type: 'dismissFileChanges'; runId: string };
+  | { type: 'dismissFileChanges'; runId: string }
+  /** Drop the active thread's pending plan without starting a run. */
+  | { type: 'clearPendingPlan' };
 
 /** Host → webview */
 export type HostToWebviewMessage =
@@ -431,6 +467,8 @@ export type HostToWebviewMessage =
       history: ChatThreadSummary[];
       activeThreadId?: string;
       activeThreadMessages?: ChatMessageView[];
+      /** Pending plan awaiting Agent-mode handoff for the active thread. */
+      pendingPlan?: PlanView | null;
       memories: MemoryItemView[];
       checkpoints: CheckpointItemView[];
     }
@@ -467,6 +505,8 @@ export type HostToWebviewMessage =
       error?: string;
       usage?: RunUsagePayload;
       plan?: PlanView | null;
+      /** Explicit pending-plan handoff state for the active thread. */
+      pendingPlan?: PlanView | null;
     }
   | { type: 'run.cancelled' }
   | { type: 'error'; message: string }
@@ -484,6 +524,8 @@ export type HostToWebviewMessage =
       type: 'thread.loaded';
       threadId: string;
       messages: ChatMessageView[];
+      /** Pending plan awaiting Agent-mode handoff for this thread. */
+      pendingPlan?: PlanView | null;
     }
   | { type: 'setPlan'; plan: PlanView | null }
   | { type: 'setReviewDiff'; review: ReviewDiffView | null }

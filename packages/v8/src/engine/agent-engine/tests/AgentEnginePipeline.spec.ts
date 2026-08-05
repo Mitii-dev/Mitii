@@ -849,6 +849,117 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(resumed.answer).toBe("Executed after plan.");
   });
 
+  it("completes plan mode with the structured plan as the answer", async () => {
+    const { PLANNING_SCHEMA_VERSION, formatPlanAsAnswer } = await import(
+      "../../../modules/planning"
+    );
+
+    const mockPlan = {
+      schemaVersion: PLANNING_SCHEMA_VERSION,
+      objective: "Add SSO without breaking password login",
+      assumptions: ["Password login remains"],
+      openQuestions: ["Which OIDC provider?"],
+      contextReviewed: [],
+      constraints: ["Keep password login working"],
+      dimensions: {
+        scope: "package",
+        risk: "high" as const,
+        clarity: "partially_clear",
+        complexity: "complex",
+        changeImpact: ["code" as const, "security" as const],
+      },
+      phases: [
+        {
+          id: "phase-1",
+          name: "Discover",
+          purpose: "Map auth seams",
+          steps: [
+            {
+              id: "step-1",
+              intent: "Locate auth flow",
+              targetRefs: ["src/auth"],
+              actionSummary: "Search and read auth module",
+              expectedOutcome: "Targets known",
+              riskLevel: "medium" as const,
+            },
+          ],
+          dependencies: [],
+          successCriteria: ["Targets identified"],
+        },
+      ],
+      risks: [
+        {
+          id: "risk-1",
+          summary: "Session regression",
+          severity: "high" as const,
+        },
+      ],
+      alternatives: [],
+      verification: {
+        checks: ["tests"],
+        manualQa: [],
+        commands: [],
+      },
+      rollback: "Revert auth changes",
+      approvalRequired: true,
+      processHintsApplied: [],
+    };
+
+    let modelCalls = 0;
+    const llm = new ScriptedLlmPort([{ content: "should not run in plan mode" }]);
+    const original = llm.complete.bind(llm);
+    llm.complete = async function* (...args) {
+      modelCalls += 1;
+      yield* original(...args);
+    };
+
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "plan",
+          planningDepth: "visible",
+          planGate: "none",
+          repositoryContextRequired: false,
+          toolGrant: createReadOnlyGrant(),
+          reasonCodes: ["mode_plan_only", "explicit_plan_request"],
+        }),
+        llm,
+        planning: {
+          plan: () => ({
+            schemaVersion: PLANNING_SCHEMA_VERSION,
+            status: "validated",
+            plan: mockPlan,
+            warnings: [],
+            reasonCodes: ["plan_drafted", "plan_validated"],
+            usedTokens: 40,
+            budgetTokens: 1_200,
+            durationMs: 1,
+          }),
+        },
+      }),
+    );
+
+    const result = await engine.start(
+      baseStartInput({
+        request: {
+          sessionId: "sess_1",
+          mode: "plan",
+          userMessage: "Plan SSO login without breaking password login",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/repo",
+      }),
+    ).result;
+
+    expect(result.status).toBe("completed");
+    expect(result.plan?.objective).toBe("Add SSO without breaking password login");
+    expect(result.answer).toBe(formatPlanAsAnswer(mockPlan));
+    expect(result.reasonCodes).toContain("plan_drafted");
+    expect(result.reasonCodes).toContain("plan_mode_completed");
+    expect(result.reasonCodes).toContain("answer_produced");
+    expect(modelCalls).toBe(0);
+  });
+
   it("carries host conversation into the model request", async () => {
     const captured: ModelRequest[] = [];
     const llm = new ScriptedLlmPort(

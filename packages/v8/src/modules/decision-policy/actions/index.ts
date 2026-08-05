@@ -1,6 +1,8 @@
 export { resolveRoute, isMutationIntent, isDiagnosisIntent } from "./ResolveRoute";
 export type { RouteResolution } from "./ResolveRoute";
 
+export { looksLikeWorkspaceBugReport } from "./LooksLikeWorkspaceBugReport";
+
 export { resolvePlanningDepth } from "./ResolvePlanningDepth";
 export type { PlanningDepthResolution } from "./ResolvePlanningDepth";
 

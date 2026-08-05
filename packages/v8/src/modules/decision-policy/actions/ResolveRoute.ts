@@ -6,6 +6,7 @@ import {
 } from "../constants";
 import type { DecisionReasonCode, ExecutionRoute } from "../contracts";
 import { DECISION_POLICY_THRESHOLDS } from "../policy";
+import { looksLikeWorkspaceBugReport } from "./LooksLikeWorkspaceBugReport";
 
 export interface RouteResolution {
   route: ExecutionRoute;
@@ -95,6 +96,15 @@ export function resolveRoute(params: {
       looksLikeAgentMutationRequest(message))
   ) {
     reasonCodes.push("mutation_execute");
+    return {
+      route: "execute",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
+  if (looksLikeWorkspaceBugReport(message)) {
+    reasonCodes.push("workspace_bug_execute");
     return {
       route: "execute",
       runDisposition: "continue",
@@ -405,6 +415,10 @@ function looksLikeWorkspaceGroundedRequest(message: string): boolean {
       text,
     )
   ) {
+    return true;
+  }
+
+  if (looksLikeWorkspaceBugReport(text)) {
     return true;
   }
 

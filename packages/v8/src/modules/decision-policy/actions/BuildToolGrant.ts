@@ -215,20 +215,56 @@ function resolvePathScopes(
     return ["."];
   }
 
-  const explicitPaths = understanding.taskAnalysis.targets
-    .filter(
-      (target) =>
-        target.explicit &&
-        (target.kind === "file" || target.kind === "folder") &&
-        target.value.length > 0,
-    )
-    .map((target) => target.value);
+  const { taskAnalysis } = understanding;
 
-  if (explicitPaths.length > 0) {
-    return explicitPaths;
+  // Discovery-heavy work must keep workspace-wide read access. Narrowing
+  // pathScopes to a few chat-mentioned files rejects search_files/glob/list
+  // outside those exact paths (seen when prior turns leaked into targets).
+  if (
+    taskAnalysis.recommendsRepositoryDiscovery ||
+    taskAnalysis.scope === "repository" ||
+    taskAnalysis.scope === "workspace" ||
+    taskAnalysis.scope === "package" ||
+    taskAnalysis.scope === "multi_file" ||
+    taskAnalysis.scope === "unknown"
+  ) {
+    return ["."];
   }
 
-  return ["."];
+  const scopes = new Set<string>();
+  for (const target of taskAnalysis.targets) {
+    if (!target.explicit || target.value.length === 0) {
+      continue;
+    }
+    if (target.kind === "folder") {
+      scopes.add(normalizeScopePath(target.value));
+      continue;
+    }
+    if (target.kind === "file") {
+      // File scopes only allow that exact path; use the parent directory so
+      // siblings and nearby discovery tools still work.
+      scopes.add(parentDirectoryScope(target.value));
+    }
+  }
+
+  if (scopes.size === 0) {
+    return ["."];
+  }
+
+  return [...scopes];
+}
+
+function normalizeScopePath(value: string): string {
+  return value.replace(/\\/g, "/").replace(/^\.?\//, "").replace(/\/+$/, "") || ".";
+}
+
+function parentDirectoryScope(filePath: string): string {
+  const normalized = normalizeScopePath(filePath);
+  const slash = normalized.lastIndexOf("/");
+  if (slash <= 0) {
+    return ".";
+  }
+  return normalized.slice(0, slash);
 }
 
 /**

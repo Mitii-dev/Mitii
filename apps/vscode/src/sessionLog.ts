@@ -180,6 +180,25 @@ function compactEvent(
         omitted: 'omitted' in event ? event.omitted : undefined,
         status: event.status,
       };
+    case 'plan_ready':
+      return {
+        ...base,
+        planningDepth: event.planningDepth,
+        phaseCount: event.phaseCount,
+        approvalRequired: event.approvalRequired,
+        ...(event.plan
+          ? {
+              objective: event.plan.objective,
+              stepCount: event.plan.phases.reduce(
+                (
+                  sum: number,
+                  phase: NonNullable<typeof event.plan>['phases'][number],
+                ) => sum + phase.steps.length,
+                0,
+              ),
+            }
+          : {}),
+      };
     case 'suspended':
       return {
         ...base,

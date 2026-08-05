@@ -37,6 +37,7 @@ import type {
 } from "../../../modules/repository-state";
 import { deriveContextSelectionBudget } from "../../../modules/repository-context";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
+import type { RequestUnderstandingResult } from "../../../modules/request-understanding";
 import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
 import { SKILLS_SCHEMA_VERSION } from "../../../modules/skills";
 import {
@@ -591,13 +592,27 @@ export class AgentEnginePipeline {
         }
 
         this.emitStage(bus, runId, "context_ready", "started");
+        const contextQuery = extractPrimaryUserMessage(envelope.message);
+        const contextFocus = deriveContextFocusFromUnderstanding(understanding);
         const contextResult = await this.deps.repositoryContext.execute({
           state: pinnedState,
-          query: extractPrimaryUserMessage(envelope.message),
+          query: contextQuery,
           mode: envelope.mode,
           selectionBudget: deriveContextSelectionBudget(
             this.deps.llm.capabilities.contextWindowTokens,
           ),
+          ...(contextFocus.folderPrefix
+            ? { folderPrefix: contextFocus.folderPrefix }
+            : {}),
+          ...(contextFocus.filePaths.length > 0
+            ? { filePaths: contextFocus.filePaths }
+            : {}),
+          ...(contextFocus.kinds.length > 0
+            ? { kinds: contextFocus.kinds }
+            : {}),
+          ...(contextFocus.references
+            ? { references: contextFocus.references }
+            : {}),
           abortSignal: signal,
         });
 
@@ -772,7 +787,10 @@ export class AgentEnginePipeline {
           }));
         const planningResult = this.deps.planning.plan({
           schemaVersion: PLANNING_SCHEMA_VERSION,
-          query: extractPrimaryUserMessage(envelope.message),
+          query: buildPlanningQuery(
+            extractPrimaryUserMessage(envelope.message),
+            input.conversation,
+          ),
           mode: envelope.mode,
           route: decision.route,
           planningDepth: decision.planningDepth,
@@ -799,6 +817,7 @@ export class AgentEnginePipeline {
             planningDepth: decision.planningDepth,
             phaseCount: planningResult.plan.phases.length,
             approvalRequired: planningResult.plan.approvalRequired,
+            plan: planningResult.plan,
             at: this.isoNow(),
           });
           this.emitStage(bus, runId, "plan_ready", "completed", [
@@ -850,6 +869,21 @@ export class AgentEnginePipeline {
                 rationale,
                 plan: planningResult.plan,
               },
+              reasonCodes,
+            });
+          }
+
+          // Plan mode deliverable: structured plan is the terminal answer.
+          // Skip the model/tool loop — it does not revise PlanArtifact today.
+          if (envelope.mode === "plan") {
+            reasonCodes.push("plan_mode_completed", "answer_produced");
+            await this.safeUnpin(runId, pinnedState);
+            return finish({
+              status: "completed",
+              route: decision.route,
+              planningDepth: decision.planningDepth,
+              plan: planningResult.plan,
+              answer: formatPlanAsAnswer(planningResult.plan),
               reasonCodes,
             });
           }
@@ -2425,6 +2459,7 @@ export class AgentEnginePipeline {
         toolName: toolCall.name,
         status: cached.status,
         ...(summary ? { summary } : {}),
+        ...(cached.reasonCode ? { reasonCode: cached.reasonCode } : {}),
         at: this.isoNow(),
       });
       return {
@@ -2468,6 +2503,7 @@ export class AgentEnginePipeline {
         toolName: toolCall.name,
         status: result.status,
         ...(summary ? { summary } : {}),
+        ...(result.reasonCode ? { reasonCode: result.reasonCode } : {}),
         at: this.isoNow(),
       });
       // Do not cache: resume must re-execute this call once approved.
@@ -2514,6 +2550,7 @@ export class AgentEnginePipeline {
       toolName: toolCall.name,
       status: result.status,
       ...(summary ? { summary } : {}),
+      ...(result.reasonCode ? { reasonCode: result.reasonCode } : {}),
       at: this.isoNow(),
     });
 
@@ -2942,6 +2979,106 @@ function inferLanguageFromPaths(paths: readonly string[]): ProjectDescriptor["pr
   if (/\.php\b/.test(joined)) return "php";
   if (/\.swift\b/.test(joined)) return "swift";
   return "typescript";
+}
+
+/**
+ * Prefer a substantive prior user ask when the live turn is a short follow-up
+ * ("fix it") so plan objectives stay grounded.
+ */
+function buildPlanningQuery(
+  currentQuery: string,
+  conversation: readonly { role: string; content: string }[],
+): string {
+  const current = currentQuery.trim().replace(/\s+/g, " ");
+  const priorUser = [...conversation]
+    .reverse()
+    .find(
+      (entry) => entry.role === "user" && entry.content.trim().length >= 24,
+    )
+    ?.content.trim()
+    .replace(/\s+/g, " ");
+
+  if (
+    priorUser &&
+    (current.length < 24 ||
+      /^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:fix|update|change|check|do|handle|implement)\s+(?:it|this|that)\b/i.test(
+        current,
+      ))
+  ) {
+    return `${priorUser}\n\nFollow-up: ${current}`.slice(0, 1_000);
+  }
+
+  return current.slice(0, 1_000);
+}
+
+/**
+ * Map understanding targets into repository-context filters so @packages /
+ * symbols / explicit files steer retrieval instead of only the raw query text.
+ */
+function deriveContextFocusFromUnderstanding(
+  understanding: RequestUnderstandingResult,
+): {
+  folderPrefix?: string;
+  filePaths: string[];
+  kinds: Array<"code_symbol" | "code_region" | "markdown_section" | "text">;
+  references?: {
+    explicitFiles: Array<{ relativePath: string }>;
+  };
+} {
+  const filePaths: string[] = [];
+  const folderPrefixes: string[] = [];
+  const hasSymbol = understanding.taskAnalysis.targets.some(
+    (target) => target.explicit && target.kind === "symbol",
+  );
+
+  for (const target of understanding.taskAnalysis.targets) {
+    if (target.value.length === 0) {
+      continue;
+    }
+    // Include pinned/artifact paths (explicit:false) so @apps/docs / @packages
+    // steer retrieval even when they were not typed as plain folder refs.
+    if (target.kind !== "file" && target.kind !== "folder") {
+      continue;
+    }
+    const value = target.value
+      .replace(/\\/g, "/")
+      .replace(/^@/, "")
+      .replace(/\/+$/, "");
+    if (!value || value.includes("..")) {
+      continue;
+    }
+    if (target.kind === "file") {
+      filePaths.push(value);
+    } else {
+      folderPrefixes.push(value);
+    }
+  }
+
+  const kinds: Array<
+    "code_symbol" | "code_region" | "markdown_section" | "text"
+  > = hasSymbol ? ["code_symbol", "code_region"] : [];
+
+  const uniqueFolders = [...new Set(folderPrefixes)];
+  // Prefer the most specific (longest) folder when several were mentioned.
+  const preferredFolder = [...uniqueFolders].sort(
+    (a, b) => b.length - a.length || a.localeCompare(b),
+  )[0];
+  const uniqueFiles = [...new Set(filePaths)].slice(0, 12);
+
+  return {
+    ...(preferredFolder ? { folderPrefix: preferredFolder } : {}),
+    filePaths: uniqueFiles,
+    kinds,
+    ...(uniqueFiles.length > 0
+      ? {
+          references: {
+            explicitFiles: uniqueFiles.slice(0, 8).map((relativePath) => ({
+              relativePath,
+            })),
+          },
+        }
+      : {}),
+  };
 }
 
 function appendTextContinuation(prefix: string, continuation: string): string {

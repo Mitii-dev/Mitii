@@ -463,6 +463,149 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.allowedTools).not.toContain("run_command");
   });
 
+  it("routes agent workspace bug reports with unknown scope to execute", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: [
+          "I have a issue I'm unable to preview in ui anything imported from ffb-mui",
+          "Preview is not at all working when I load the UI",
+        ].join("\n"),
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "unknown",
+            recommendsRepositoryDiscovery: false,
+            recommendsVerification: false,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(decision.toolGrant.allowedTools).toContain("read_file");
+    expect(decision.toolGrant.allowedTools).toContain("search_files");
+    expect(decision.toolGrant.allowedTools).toContain("apply_patch");
+    expect(decision.reasonCodes).toContain("workspace_bug_execute");
+    expect(decision.reasonCodes).toContain("repository_context_required");
+  });
+
+  it("routes SyntaxError / stack-trace workspace reports to execute", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: [
+          "SyntaxError: Identifier 'InputTypes' has already been declared",
+          "http://localhost:3000/ffb-mui-docs/components/select/introduction",
+          "no preview loads in docs for mui libs @apps/docs",
+        ].join("\n"),
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "unknown",
+            recommendsRepositoryDiscovery: false,
+            recommendsVerification: false,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(decision.toolGrant.allowedTools).toContain("search_files");
+    expect(decision.toolGrant.pathScopes).toEqual(["."]);
+  });
+
+  it("routes agent working vs mistyped-not-working localhost follow-ups to execute", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: [
+          "working",
+          "http://localhost:3000/core-docs/components/multi-text/basic-multi-text",
+          "",
+          "nbot working",
+          "http://localhost:3000/ffb-mui-docs/components/select/introduction",
+          "",
+          "id ont know it is packacke or code editor preview",
+        ].join("\n"),
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "unknown",
+            recommendsRepositoryDiscovery: false,
+            recommendsVerification: false,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(decision.toolGrant.allowedTools).toContain("apply_patch");
+    expect(decision.reasonCodes).toContain("workspace_bug_execute");
+  });
+
+  it("does not treat unrelated 'got working' phrasing as a workspace bug report", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "got working preview links for the docs site",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "unknown",
+            recommendsRepositoryDiscovery: false,
+            recommendsVerification: false,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).not.toBe("execute");
+    expect(decision.toolGrant.allowedTools).not.toContain("apply_patch");
+  });
+
+  it("keeps discovery pathScopes at workspace root even with explicit file targets", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "check in @packages and fix it",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "bugfix",
+          interactionIntent: "act",
+          taskAnalysis: {
+            scope: "multi_file",
+            recommendsRepositoryDiscovery: true,
+            targets: [
+              {
+                kind: "file",
+                value: "apps/docs/src/components/live-demo-mui.tsx",
+                explicit: true,
+              },
+              {
+                kind: "folder",
+                value: "packages",
+                explicit: true,
+              },
+            ],
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.toolGrant.pathScopes).toEqual(["."]);
+    expect(decision.toolGrant.allowedTools).toContain("search_files");
+    expect(decision.toolGrant.allowedTools).toContain("glob_files");
+    expect(decision.toolGrant.allowedTools).toContain("list_directory");
+  });
+
   it("routes agent mutation intents to execute even when interaction is question", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({

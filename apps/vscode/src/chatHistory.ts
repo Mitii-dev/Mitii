@@ -236,6 +236,24 @@ export async function appendTurn(
   return store;
 }
 
+/**
+ * Clear a thread's pending plan handoff state (UI dismiss / cancel).
+ */
+export async function clearPendingPlan(
+  state: vscode.Memento,
+  threadId?: string,
+): Promise<HistoryStore> {
+  const store = loadHistory(state);
+  const thread = threadId
+    ? store.threads.find((t) => t.id === threadId)
+    : store.threads.find((t) => t.id === store.activeThreadId);
+  if (thread?.pendingPlan) {
+    delete thread.pendingPlan;
+    await saveHistory(state, store);
+  }
+  return store;
+}
+
 export async function deleteThread(
   state: vscode.Memento,
   id: string,

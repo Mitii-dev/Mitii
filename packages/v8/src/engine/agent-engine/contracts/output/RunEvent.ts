@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { executionRouteSchema } from "../../../../modules/decision-policy";
+import { planArtifactSchema } from "../../../../modules/planning";
 import { repositoryStateReferenceSchema } from "../../../../modules/repository-state";
 import {
   verificationCheckKindSchema,
@@ -90,6 +91,7 @@ export const runEventSchema = z.discriminatedUnion("type", [
       planningDepth: z.enum(["none", "internal", "visible"]),
       phaseCount: z.number().int().nonnegative(),
       approvalRequired: z.boolean(),
+      plan: planArtifactSchema.optional(),
       at: z.string().datetime(),
     })
     .strict(),
@@ -145,6 +147,7 @@ export const runEventSchema = z.discriminatedUnion("type", [
       toolName: z.string().min(1),
       status: z.string().min(1),
       summary: z.string().min(1).max(500).optional(),
+      reasonCode: z.string().min(1).max(80).optional(),
       at: z.string().datetime(),
     })
     .strict(),

@@ -3,7 +3,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
-import type { AgentRunResult, RunEvent } from '@mitii/sdk';
+import {
+  PLANNING_SCHEMA_VERSION,
+  type AgentRunResult,
+  type RunEvent,
+} from '@mitii/sdk';
 
 import { appendSessionLog } from '../../../apps/vscode/src/sessionLog.ts';
 
@@ -142,6 +146,99 @@ describe('sessionLog', () => {
       answerTruncated: true,
     });
     expect(String(runEnd?.answer).length).toBeLessThan(result.answer!.length);
+  });
+
+  it('persists compact plan_ready metadata without dumping the full plan', () => {
+    const root = mkdtempSync(join(tmpdir(), 'mitii-session-log-'));
+    dirs.push(root);
+
+    const plan = {
+      schemaVersion: PLANNING_SCHEMA_VERSION,
+      objective: 'Fix live preview imports',
+      assumptions: [],
+      openQuestions: [],
+      contextReviewed: [],
+      constraints: [],
+      dimensions: {
+        scope: 'single_location',
+        risk: 'low' as const,
+        clarity: 'clear',
+        complexity: 'simple',
+        changeImpact: ['code' as const],
+      },
+      phases: [
+        {
+          id: 'phase-1',
+          name: 'Fix',
+          purpose: 'Patch preview rendering',
+          steps: [
+            {
+              id: 'step-1',
+              intent: 'Wrap preview',
+              targetRefs: ['apps/docs/src/components/live-demo-mui.tsx'],
+              actionSummary: 'Add provider',
+              expectedOutcome: 'Preview renders',
+              riskLevel: 'low' as const,
+            },
+          ],
+          dependencies: [],
+          successCriteria: ['Typecheck passes'],
+        },
+      ],
+      risks: [],
+      alternatives: [],
+      verification: { checks: ['typecheck'], manualQa: [], commands: [] },
+      approvalRequired: false,
+      processHintsApplied: [],
+    };
+
+    const result = {
+      schemaVersion: 1,
+      runId: 'run_plan',
+      requestId: 'req_plan',
+      status: 'completed',
+      route: 'execute',
+      planningDepth: 'internal',
+      plan,
+      answer: 'done',
+      reasonCodes: ['plan_drafted'],
+      warnings: [],
+      usage: { modelCalls: 1, toolCalls: 0, loopIterations: 1 },
+      durationMs: 10,
+    } as AgentRunResult;
+
+    const event = {
+      type: 'plan_ready',
+      runId: 'run_plan',
+      planningDepth: 'internal',
+      phaseCount: 1,
+      approvalRequired: false,
+      plan,
+      at: '2026-07-28T00:00:00.000Z',
+    } as RunEvent;
+
+    const file = appendSessionLog(root, {
+      kind: 'run',
+      at: '2026-07-28T00:00:00.000Z',
+      prompt: 'fix preview',
+      mode: 'agent',
+      result,
+      events: [event],
+    });
+
+    const lines = readFileSync(file!, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const planLine = lines.find((line) => line.type === 'plan_ready');
+    expect(planLine).toMatchObject({
+      planningDepth: 'internal',
+      phaseCount: 1,
+      approvalRequired: false,
+      objective: 'Fix live preview imports',
+      stepCount: 1,
+    });
+    expect(planLine).not.toHaveProperty('plan');
   });
 
   it('falls back to fixed answer truncation when context window is omitted', () => {

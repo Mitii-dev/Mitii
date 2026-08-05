@@ -33,7 +33,8 @@ import {
   type ApprovalUiMode,
 } from './components/ComposerControls';
 import { OnboardingPanel } from './components/OnboardingPanel';
-import { PlanPanel } from './components/PlanPanel';
+import { PendingPlanBanner } from './components/PendingPlanBanner';
+import { PlanFollowStrip } from './components/PlanPanel';
 import { ReviewPanel } from './components/ReviewPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { SkillManagementPanel } from './components/skills/SkillManagementPanel';
@@ -231,6 +232,8 @@ export function App() {
   const [memories, setMemories] = useState<MemoryItemView[]>([]);
   const [checkpoints, setCheckpoints] = useState<CheckpointItemView[]>([]);
   const [plan, setPlan] = useState<PlanView | null>(null);
+  const [pendingPlan, setPendingPlan] = useState<PlanView | null>(null);
+  const pendingPlanRef = useRef<PlanView | null>(null);
   const [review, setReview] = useState<ReviewDiffView | null>(null);
   const [skillItems, setSkillItems] = useState<SkillCatalogItem[]>([]);
   const [skillError, setSkillError] = useState<string | null>(null);
@@ -335,6 +338,9 @@ export function App() {
             (msg.activeThreadMessages ?? []).map((m) => toChatTurn(m)),
           );
         }
+        const bootstrapPlan = msg.pendingPlan ?? null;
+        setPendingPlan(bootstrapPlan);
+        if (bootstrapPlan) setPlan(bootstrapPlan);
         setMemories(msg.memories);
         setCheckpoints(msg.checkpoints);
       }
@@ -353,6 +359,10 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    pendingPlanRef.current = pendingPlan;
+  }, [pendingPlan]);
+
+  useEffect(() => {
     const off = onHostMessage((msg) => {
       switch (msg.type) {
         case 'bootstrap':
@@ -365,7 +375,8 @@ export function App() {
         case 'run.started': {
           setRunning(true);
           setError(null);
-          setPlan(null);
+          // Keep a pending-plan handoff visible, but clear stale plans for new runs.
+          if (msg.mode === 'plan' || !pendingPlanRef.current) setPlan(null);
           stickToBottomRef.current = true;
           forceScrollToBottomRef.current = true;
           const userId = uid('user');
@@ -456,6 +467,10 @@ export function App() {
           const id = activeAssistantId.current;
           activeAssistantId.current = null;
           if (msg.plan !== undefined) setPlan(msg.plan ?? null);
+          if (msg.pendingPlan !== undefined) {
+            setPendingPlan(msg.pendingPlan);
+            if (msg.pendingPlan) setPlan(msg.pendingPlan);
+          }
           setTurns((prev) =>
             prev.map((t) => {
               if (!id || t.id !== id) return t;
@@ -481,12 +496,10 @@ export function App() {
         }
         case 'run.cancelled':
           setRunning(false);
-          setPlan(null);
           break;
         case 'error':
           setError(msg.message);
           setRunning(false);
-          setPlan(null);
           break;
         case 'paths.results':
           if (msg.requestId === lastSearchId.current) {
@@ -572,7 +585,7 @@ export function App() {
           setHistory(msg.threads);
           setActiveThreadId(msg.activeThreadId);
           break;
-        case 'thread.loaded':
+        case 'thread.loaded': {
           setActiveThreadId(msg.threadId);
           stickToBottomRef.current = true;
           forceScrollToBottomRef.current = true;
@@ -581,8 +594,12 @@ export function App() {
             contextWindow: provider.contextWindow || 32768,
           });
           setTurns(msg.messages.map((m) => toChatTurn(m)));
+          const loadedPlan = msg.pendingPlan ?? null;
+          setPendingPlan(loadedPlan);
+          setPlan(loadedPlan);
           setNav('chat');
           break;
+        }
         case 'setPlan':
           setPlan(msg.plan);
           break;
@@ -675,6 +692,23 @@ export function App() {
     setSuggestLoading(false);
     setSuggestOpen(false);
   }, [prompt, running, mode, depth, pinned]);
+
+  const executePendingPlan = useCallback(() => {
+    if (running) return;
+    stickToBottomRef.current = true;
+    forceScrollToBottomRef.current = true;
+    setMode('agent');
+    postToHost({
+      type: 'ask',
+      prompt: 'Implement the pending plan.',
+      mode: 'agent',
+      depth,
+      pinnedPaths: pinned.map((p) => p.path),
+    });
+    setPrompt('');
+    setSuggestLoading(false);
+    setSuggestOpen(false);
+  }, [running, depth, pinned]);
 
   const onPromptChange = (value: string) => {
     setPrompt(value);
@@ -873,6 +907,8 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nav, skillManagement]);
 
+  const followingPlan = Boolean(plan) && mode === 'agent';
+
   if (onboardingRequired) {
     return (
       <div className="app">
@@ -914,6 +950,7 @@ export function App() {
                   postToHost({ type: 'newChat' });
                   setTurns([]);
                   setPlan(null);
+                  setPendingPlan(null);
                   setActiveThreadId(undefined);
                   setTokenUsage(EMPTY_TOKEN_USAGE);
                 }}
@@ -990,7 +1027,6 @@ export function App() {
           </div>
         ) : (
           <div className={`chat-view${running ? ' chat-view--running' : ''}`}>
-            <PlanPanel plan={plan} />
             <MessageList
               turns={turns}
               activityOpen={activityOpen}
@@ -1059,24 +1095,39 @@ export function App() {
             />
 
             <div className="composer-dock">
-              <ContextPanel
-                pins={pinned}
-                modeColor={currentModeColor}
-                onRemove={(path) =>
-                  setPinned((prev) => prev.filter((x) => x.path !== path))
-                }
-                onClear={() => setPinned([])}
-                onPick={() => postToHost({ type: 'pickContextPath' })}
-                onKeep={(path) =>
-                  setPinned((prev) =>
-                    prev.map((p) =>
-                      p.path === path ? { ...p, source: 'user' } : p,
-                    ),
-                  )
-                }
+              <PendingPlanBanner
+                visible={Boolean(pendingPlan) && mode !== 'agent'}
+                onExecuteInAgent={executePendingPlan}
+                onDismiss={() => {
+                  setPendingPlan(null);
+                  setPlan(null);
+                  postToHost({ type: 'clearPendingPlan' });
+                }}
               />
-
+              {followingPlan ? (
+                <PlanFollowStrip
+                  plan={plan}
+                  running={running}
+                  onOpenPlanFile={openFile}
+                />
+              ) : null}
               <div className="composer-box">
+                <ContextPanel
+                  pins={pinned}
+                  modeColor={currentModeColor}
+                  onRemove={(path) =>
+                    setPinned((prev) => prev.filter((x) => x.path !== path))
+                  }
+                  onClear={() => setPinned([])}
+                  onPick={() => postToHost({ type: 'pickContextPath' })}
+                  onKeep={(path) =>
+                    setPinned((prev) =>
+                      prev.map((p) =>
+                        p.path === path ? { ...p, source: 'user' } : p,
+                      ),
+                    )
+                  }
+                />
                 {suggestOpen ? (
                   <div className="suggest-pop" role="listbox">
                     {suggestLoading ? (

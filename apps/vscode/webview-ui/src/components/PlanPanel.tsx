@@ -1,62 +1,97 @@
 import type { PlanView } from '../protocol';
 
-interface PlanPanelProps {
+interface PlanFollowStripProps {
   plan: PlanView | null;
+  running?: boolean;
+  onOpenPlanFile?: (path: string) => void;
 }
 
-const STATUS_LABEL: Record<PlanView['steps'][number]['status'], string> = {
-  pending: 'Pending',
-  active: 'Active',
-  done: 'Done',
-  skipped: 'Skipped',
-};
+interface CurrentPlanStep {
+  step: PlanView['steps'][number];
+  index: number;
+  total: number;
+  complete: boolean;
+}
 
-function statusGlyph(status: PlanView['steps'][number]['status']): string {
-  switch (status) {
-    case 'done':
-      return '✓';
-    case 'active':
-      return '•';
-    case 'skipped':
-      return '–';
-    default:
-      return '';
+function currentPlanStep(plan: PlanView | null): CurrentPlanStep | null {
+  const steps = plan?.steps ?? [];
+  if (steps.length === 0) return null;
+
+  const activeIndex = steps.findIndex((step) => step.status === 'active');
+  if (activeIndex >= 0) {
+    return {
+      step: steps[activeIndex]!,
+      index: activeIndex,
+      total: steps.length,
+      complete: false,
+    };
   }
+
+  const pendingIndex = steps.findIndex((step) => step.status === 'pending');
+  if (pendingIndex >= 0) {
+    return {
+      step: steps[pendingIndex]!,
+      index: pendingIndex,
+      total: steps.length,
+      complete: false,
+    };
+  }
+
+  let doneIndex = 0;
+  for (let index = steps.length - 1; index >= 0; index -= 1) {
+    if (steps[index]?.status === 'done') {
+      doneIndex = index;
+      break;
+    }
+  }
+  return {
+    step: steps[doneIndex]!,
+    index: doneIndex,
+    total: steps.length,
+    complete: steps.every((step) => step.status === 'done'),
+  };
 }
 
-export function PlanPanel({ plan }: PlanPanelProps) {
-  if (!plan || plan.steps.length === 0) return null;
+export function PlanFollowStrip({
+  plan,
+  running = false,
+  onOpenPlanFile,
+}: PlanFollowStripProps) {
+  const current = currentPlanStep(plan);
+  if (!plan || !current) return null;
 
-  const done = plan.steps.filter((s) => s.status === 'done').length;
+  const statusText = current.complete ? 'Done' : 'Following';
+  const showLoader = running && !current.complete;
 
   return (
-    <section className="plan-panel" aria-label="Plan">
-      <div className="plan-panel__header">
-        <h3 className="plan-panel__title">{plan.title || 'Plan'}</h3>
-        <span className="plan-panel__progress">
-          {done}/{plan.steps.length}
+    <section className="plan-follow" aria-label="Current plan step">
+      <div className="plan-follow__top">
+        <span className="plan-follow__eyebrow">
+          {current.complete ? 'Plan complete' : 'Following plan'}
         </span>
+        {plan.savedPlanPath && onOpenPlanFile ? (
+          <button
+            type="button"
+            className="plan-follow__location"
+            onClick={() => onOpenPlanFile(plan.savedPlanPath!)}
+            title={`Open ${plan.savedPlanPath}`}
+          >
+            Location
+          </button>
+        ) : null}
       </div>
-      <ol className="plan-panel__steps">
-        {plan.steps.map((step, index) => (
-          <li key={step.id} className={`plan-step plan-step--${step.status}`}>
-            <span
-              className={`plan-step__check plan-step__check--${step.status}`}
-              aria-hidden="true"
-            >
-              {statusGlyph(step.status)}
-            </span>
-            <span className="plan-step__index">{index + 1}</span>
-            <div className="plan-step__body">
-              <span className="plan-step__title">{step.title}</span>
-              {step.detail ? (
-                <span className="plan-step__detail">{step.detail}</span>
-              ) : null}
-            </div>
-            <span className="plan-step__status">{STATUS_LABEL[step.status]}</span>
-          </li>
-        ))}
-      </ol>
+      <div className="plan-follow__step">
+        <span className="plan-follow__count">
+          Step ({current.index + 1}/{current.total}):
+        </span>
+        <span className="plan-follow__title">{current.step.title}</span>
+        <span
+          className={`plan-follow__state plan-follow__state--${current.complete ? 'done' : 'following'}`}
+        >
+          {statusText}
+        </span>
+        {showLoader ? <span className="plan-follow__loader" aria-hidden /> : null}
+      </div>
     </section>
   );
 }

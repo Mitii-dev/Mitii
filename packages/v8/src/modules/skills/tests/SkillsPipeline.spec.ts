@@ -316,4 +316,52 @@ describe("SkillsPipeline", () => {
     expect(result.status).toBe("empty");
     expect(result.instructions).toEqual([]);
   });
+
+  it("does not apply intent-matched skills on incompatible routes", async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: new InMemorySkillsCatalog([
+        {
+          id: "ask-concise",
+          title: "Ask concise",
+          content: "Keep answers short in ask routes.",
+          intents: ["question", "docs", "explain"],
+          routes: ["direct_answer", "repository_answer"],
+          tags: ["concise"],
+          paths: [],
+          priority: 180,
+          alwaysApply: false,
+        },
+        {
+          id: "safety-always",
+          title: "Safety",
+          content: "Never invent permissions beyond the granted tools.",
+          intents: [],
+          routes: [],
+          tags: [],
+          paths: [],
+          priority: 200,
+          alwaysApply: true,
+        },
+      ]),
+    });
+
+    const result = await pipeline.select(
+      baseInput({
+        route: "execute",
+        query: "Explain how the preview loader works",
+        evidence: {
+          primaryIntent: "question",
+          secondaryIntents: [],
+        },
+      }),
+    );
+
+    expect(result.status).toBe("selected");
+    expect(result.instructions.map((block) => block.id)).toEqual([
+      "safety-always",
+    ]);
+    expect(result.instructions.map((block) => block.id)).not.toContain(
+      "ask-concise",
+    );
+  });
 });

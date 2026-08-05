@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   amendMessageWithPriorConversation,
   buildIncompleteAnswerRecoveryMessage,
+  hasLeakedToolCallMarkup,
   isEmptyAssistantTurn,
   isPseudoToolRequestAnswer,
   isTransitionalAssistantAnswer,
+  isUnfinishedInvestigationAnswer,
   shouldRecoverIncompleteAssistantTurn,
   synthesizeFallbackAnswer,
 } from "../isIncompleteAssistantTurn";
@@ -72,6 +74,95 @@ describe("isIncompleteAssistantTurn", () => {
         changedFileCount: 0,
       }),
     ).toBe(true);
+  });
+
+  it("detects literal tool tags emitted as text", () => {
+    const answer = [
+      "Let me check the relevant files for the ffb-mui preview setup.",
+      "",
+      '<read_file path="apps/docs/src/components/live-demo-mui.tsx"> </read_file>',
+    ].join("\n");
+
+    expect(isPseudoToolRequestAnswer(answer)).toBe(true);
+    expect(
+      shouldRecoverIncompleteAssistantTurn({
+        content: answer,
+        toolCallCount: 0,
+        changedFileCount: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("recovers long unfinished investigation monologues with leaked tool markup", () => {
+    const answer = [
+      "everything looks correct in the code. The SELECT type is defined, the FieldSelect component exists, and it's properly imported in the dynamic field renderer.",
+      "",
+      "The issue might be that the LiveError component is rendered but not showing anything visible, or there could be a runtime error that's being swallowed by react-live.",
+      "",
+      "Let me think about what could cause the select to not work while multi-text does:",
+      "",
+      "1. Both use the same live-demo-mui component",
+      "2. Both import from ffb-mui",
+      "3. The SELECT type is defined and exported",
+      "4. The FieldSelect component exists",
+      "",
+      "Wait - looking at the user's original complaint again.",
+      "",
+      "Actually, I think the real issue might be simpler - let me re-read the user's original request more carefully.",
+      "",
+      "But first, let me check the ffb-mui index exports to make sure FieldSelect is properly exported.",
+      "</parameter>",
+      "</function>",
+      "</tool_call>",
+    ].join("\n");
+
+    expect(answer.length).toBeGreaterThan(600);
+    expect(hasLeakedToolCallMarkup(answer)).toBe(true);
+    expect(isUnfinishedInvestigationAnswer(answer)).toBe(true);
+    expect(isPseudoToolRequestAnswer(answer)).toBe(true);
+    expect(
+      shouldRecoverIncompleteAssistantTurn({
+        content: answer,
+        toolCallCount: 0,
+        changedFileCount: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("recovers long answers that end with continue-investigation intent without markup", () => {
+    const answer = [
+      "I compared the working core-docs multi-text page with the broken ffb-mui select introduction.",
+      "Both appear to share the live demo wrapper, and the package exports look present.",
+      "There may still be a transform or scope issue in the MDX example.",
+      "But first, let me check the live-demo-mui transformCode path once more.",
+    ].join("\n");
+
+    expect(answer.length).toBeGreaterThan(200);
+    expect(isUnfinishedInvestigationAnswer(answer)).toBe(true);
+    expect(
+      shouldRecoverIncompleteAssistantTurn({
+        content: answer,
+        toolCallCount: 0,
+        changedFileCount: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not recover finished investigative answers", () => {
+    const answer = [
+      "Root cause: live-demo-mui strips imports inconsistently for SELECT demos.",
+      "I updated apps/docs/src/components/live-demo-mui.tsx so transformCode always runs.",
+      "Verification: typecheck passed and the preview path should load again.",
+    ].join("\n");
+
+    expect(isUnfinishedInvestigationAnswer(answer)).toBe(false);
+    expect(
+      shouldRecoverIncompleteAssistantTurn({
+        content: answer,
+        toolCallCount: 0,
+        changedFileCount: 1,
+      }),
+    ).toBe(false);
   });
 
   it("recovers empty and transitional finals", () => {

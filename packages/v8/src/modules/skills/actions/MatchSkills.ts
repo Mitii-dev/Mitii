@@ -79,13 +79,18 @@ export function matchSkills(params: {
     // Intent-scoped skills require an intent hit; route/keyword only boost.
     // Route-scoped skills (no intents) require a route hit.
     // Unscoped skills may load from keyword overlap alone.
+    // When a skill declares routes, do not apply it on incompatible routes
+    // (e.g. ask-concise on execute, or spec-driven on direct_answer).
+    const routeCompatible =
+      skill.routes.length === 0 || hasRouteMatch || skill.alwaysApply;
     const applicable =
       skill.alwaysApply ||
-      (skill.intents.length > 0
-        ? hasIntentMatch
-        : skill.routes.length > 0
-          ? hasRouteMatch
-          : reasons.includes("keyword"));
+      (routeCompatible &&
+        (skill.intents.length > 0
+          ? hasIntentMatch
+          : skill.routes.length > 0
+            ? hasRouteMatch
+            : reasons.includes("keyword")));
 
     if (!applicable) {
       continue;
