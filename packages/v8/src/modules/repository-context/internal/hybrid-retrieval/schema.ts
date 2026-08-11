@@ -59,6 +59,7 @@ const retrievalReasonTypeSchema =
     "repo_map_rank",
     "graph_path_match",
     "graph_symbol_match",
+    "graph_call_neighbor",
     "graph_import_neighbor",
     "graph_reference_neighbor",
     "reranked",

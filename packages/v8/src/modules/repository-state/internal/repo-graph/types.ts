@@ -75,6 +75,7 @@ export type RepoGraphEdgeType =
   | "contains"
   | "declares"
   | "imports"
+  | "calls"
   | "references"
   | "workspace_member"
   | "depends_on"
@@ -173,6 +174,7 @@ export interface RepoGraphStatistics {
   containsEdges: number;
   declaresEdges: number;
   importEdges: number;
+  callEdges: number;
   referenceEdges: number;
   projectRelationshipEdges: number;
   unresolvedImports: number;

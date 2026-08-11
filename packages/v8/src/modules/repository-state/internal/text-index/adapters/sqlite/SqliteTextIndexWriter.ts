@@ -3,6 +3,9 @@ import {
   TEXT_INDEX_SCHEMA_VERSION,
   TEXT_INDEX_SQL,
 } from "../../constants";
+import {
+  splitCodeIdentifier,
+} from "../../TextQueryNormalizer";
 
 import {
   textIndexDocumentLocatorSchema,
@@ -133,6 +136,10 @@ export class SqliteTextIndexWriter
             );
 
           this.upsertDocument(
+            validated,
+          );
+
+          this.deleteDocumentFts(
             validated,
           );
 
@@ -323,6 +330,10 @@ export class SqliteTextIndexWriter
               validated,
             );
 
+          this.deleteDocumentFts(
+            validated,
+          );
+
           const result =
             this.database
               .prepare(
@@ -480,6 +491,14 @@ export class SqliteTextIndexWriter
             const relativePath of
               removedPaths
           ) {
+            this.deleteDocumentFts({
+              workspace:
+                input.workspace,
+              rootId:
+                input.rootId,
+              relativePath,
+            });
+
             this.database
               .prepare(
                 TEXT_INDEX_SQL
@@ -596,6 +615,72 @@ export class SqliteTextIndexWriter
         chunk.startLine,
         chunk.endLine,
       );
+
+    this.database
+      .prepare(
+        TEXT_INDEX_SQL
+          .INSERT_CHUNK_FTS,
+      )
+      .run(
+        this.ftsText(
+          chunk.title ?? "",
+        ),
+        this.ftsText(
+          [
+            chunk.relativePath,
+            chunk.title ?? "",
+            chunk.content,
+          ].join(" "),
+        ),
+        workspace,
+        chunk.id,
+      );
+  }
+
+  private deleteDocumentFts(
+    locator: TextIndexDocumentLocator,
+  ): void {
+    this.database
+      .prepare(
+        TEXT_INDEX_SQL
+          .DELETE_DOCUMENT_FTS,
+      )
+      .run(
+        locator.workspace,
+        locator.rootId,
+        locator.relativePath,
+      );
+  }
+
+  private ftsText(value: string): string {
+    const identifiers =
+      value.match(
+        /[A-Za-z_$][A-Za-z0-9_$]*/g,
+      ) ?? [];
+
+    const expanded =
+      identifiers.flatMap(
+        (identifier) => {
+          const parts =
+            splitCodeIdentifier(
+              identifier,
+            );
+          const compact =
+            parts.join("");
+
+          return compact
+            ? [
+                ...parts,
+                compact,
+              ]
+            : parts;
+        },
+      );
+
+    return [
+      value,
+      ...expanded,
+    ].join(" ");
   }
 
   private deleteDocumentChunks(

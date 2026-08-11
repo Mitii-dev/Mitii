@@ -12,6 +12,32 @@ import type {
   TextSearchWarning,
 } from "./types";
 
+export function splitCodeIdentifier(
+  term: string,
+): string[] {
+  return term
+    .replace(
+      /([a-z0-9])([A-Z])/g,
+      "$1 $2",
+    )
+    .replace(
+      /([A-Z]+)([A-Z][a-z])/g,
+      "$1 $2",
+    )
+    .split(
+      /[^a-zA-Z0-9]+/,
+    )
+    .map((value) =>
+      value.toLowerCase(),
+    )
+    .filter(
+      (value) =>
+        value.length >=
+        TEXT_INDEX_DEFAULTS
+          .MINIMUM_TERM_CHARACTERS,
+    );
+}
+
 export class TextQueryNormalizer {
   public normalize(
     input: TextSearchInput,
@@ -58,21 +84,20 @@ export class TextQueryNormalizer {
           .QUERY_TERM,
       ) ?? [];
 
+    const expandedTerms =
+      rawTerms.map(
+        (term) =>
+          this.expandTerm(term),
+      );
+
     const eligibleTerms =
-      rawTerms
-        .map((term) =>
-          term.toLowerCase(),
-        )
-        .filter(
-          (term) =>
-            term.length >=
-            TEXT_INDEX_DEFAULTS
-              .MINIMUM_TERM_CHARACTERS,
-        );
+      expandedTerms.flat();
 
     if (
-      eligibleTerms.length !==
-      rawTerms.length
+      expandedTerms.some(
+        (terms) =>
+          terms.length === 0,
+      )
     ) {
       warnings.push({
         code: "terms_removed",
@@ -222,6 +247,44 @@ export class TextQueryNormalizer {
     );
   }
 
+  private expandTerm(
+    term: string,
+  ): string[] {
+    const lower =
+      term.toLowerCase();
+    const parts =
+      splitCodeIdentifier(
+        term,
+      );
+
+    const expanded =
+      [
+        lower,
+        ...parts,
+      ];
+
+    const compact =
+      parts.join("");
+
+    if (
+      compact.length >=
+        TEXT_INDEX_DEFAULTS
+          .MINIMUM_TERM_CHARACTERS &&
+      compact !== lower
+    ) {
+      expanded.push(
+        compact,
+      );
+    }
+
+    return expanded.filter(
+      (value) =>
+        value.length >=
+        TEXT_INDEX_DEFAULTS
+          .MINIMUM_TERM_CHARACTERS,
+    );
+  }
+
   private resolveBoundedPositive(
     value:
       number | undefined,
@@ -259,4 +322,3 @@ export class TextQueryNormalizer {
       .replace(/^\/+|\/+$/g, "");
   }
 }
-

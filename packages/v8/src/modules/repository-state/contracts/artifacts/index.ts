@@ -18,6 +18,7 @@ export type {
   RepoGraphNode,
   RepoGraphSymbolNode,
   RepoGraphEdge,
+  RepoGraphEdgeType,
 } from "../../internal/repo-graph/types";
 export { repoGraphSchema } from "../../internal/repo-graph/schema";
 

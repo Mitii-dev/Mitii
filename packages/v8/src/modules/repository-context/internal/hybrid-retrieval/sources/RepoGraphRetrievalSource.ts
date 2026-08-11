@@ -19,6 +19,7 @@ import {
 
 import type {
   RepoGraphEdge,
+  RepoGraphEdgeType,
   RepoGraphFileNode,
   RepoGraphNode,
   RepoGraphSymbolNode,
@@ -70,6 +71,13 @@ export class RepoGraphRetrievalSource
           .maximumNeighborsPerAnchor ??
         HYBRID_RETRIEVAL_DEFAULTS
           .GRAPH_MAXIMUM_NEIGHBORS_PER_ANCHOR,
+      maximumHops:
+        options.maximumHops ??
+        HYBRID_RETRIEVAL_DEFAULTS
+          .GRAPH_MAXIMUM_HOPS,
+      edgeTypes:
+        options.edgeTypes ??
+        HYBRID_RETRIEVAL_GRAPH_EDGE_TYPES,
     };
 
     this.validateOptions();
@@ -247,124 +255,15 @@ export class RepoGraphRetrievalSource
       );
     }
 
-    const anchorScoreByNodeId =
-      new Map(
-        directMatches.map(
-          (match) => [
-            match.nodeId,
-            match.candidate
-              .sourceScore,
-          ],
-        ),
-      );
-
-    const neighborCounts =
-      new Map<string, number>();
-
-    for (const edge of edges) {
-      if (
-        !this.isRetrievalEdge(
-          edge,
-        )
-      ) {
-        continue;
-      }
-
-      const fromScore =
-        anchorScoreByNodeId.get(
-          edge.fromNodeId,
-        );
-      const toScore =
-        anchorScoreByNodeId.get(
-          edge.toNodeId,
-        );
-
-      if (
-        fromScore ===
-          undefined &&
-        toScore ===
-          undefined
-      ) {
-        continue;
-      }
-
-      const anchorNodeId =
-        fromScore !== undefined
-          ? edge.fromNodeId
-          : edge.toNodeId;
-      const neighborNodeId =
-        fromScore !== undefined
-          ? edge.toNodeId
-          : edge.fromNodeId;
-      const anchorScore =
-        fromScore ??
-        toScore ??
-        0;
-
-      const currentCount =
-        neighborCounts.get(
-          anchorNodeId,
-        ) ?? 0;
-
-      if (
-        currentCount >=
-        this.options
-          .maximumNeighborsPerAnchor
-      ) {
-        continue;
-      }
-
-      const neighborNode =
-        nodeById.get(
-          neighborNodeId,
-        );
-
-      if (!neighborNode) {
-        continue;
-      }
-
-      const candidate =
-        this.toCandidate(
-          neighborNode,
-          fileByFileId,
-          Math.max(
-            HYBRID_RETRIEVAL_DEFAULTS
-              .GRAPH_MINIMUM_NEIGHBOR_SCORE,
-            anchorScore *
-              HYBRID_RETRIEVAL_DEFAULTS
-                .GRAPH_NEIGHBOR_SCORE_FACTOR,
-          ),
-          {
-            type:
-              edge.type ===
-                "imports"
-                ? "graph_import_neighbor"
-                : "graph_reference_neighbor",
-            evidence:
-              `${edge.type} relationship from graph edge ${edge.id}.`,
-          },
-        );
-
-      if (
-        !candidate ||
-        !this.matchesScope(
-          candidate,
-          request,
-        )
-      ) {
-        continue;
-      }
-
-      neighborCounts.set(
-        anchorNodeId,
-        currentCount + 1,
-      );
-
-      this.addCandidate(
-        candidateByKey,
-        candidate,
-      );
-    }
+    this.expandBlastRadius({
+      anchors:
+        directMatches,
+      edges,
+      nodeById,
+      fileByFileId,
+      request,
+      candidateByKey,
+    });
 
     const candidates = [
       ...candidateByKey
@@ -439,6 +338,307 @@ export class RepoGraphRetrievalSource
       truncated,
       warnings,
     });
+  }
+
+  private expandBlastRadius(input: {
+    anchors: readonly {
+      nodeId: string;
+      candidate:
+        RetrievalCandidate;
+    }[];
+    edges: readonly RepoGraphEdge[];
+    nodeById:
+      ReadonlyMap<
+        string,
+        RepoGraphNode
+      >;
+    fileByFileId:
+      ReadonlyMap<
+        string,
+        RepoGraphFileNode
+      >;
+    request:
+      NormalizedHybridRetrievalRequest;
+    candidateByKey:
+      Map<
+        string,
+        RetrievalCandidate
+      >;
+  }): void {
+    const adjacency =
+      this.createRetrievalAdjacency(
+        input.edges,
+        input.nodeById,
+      );
+
+    for (const anchor of input.anchors) {
+      let acceptedNeighbors = 0;
+      const visited =
+        new Set([
+          anchor.nodeId,
+        ]);
+      const queue: {
+        nodeId: string;
+        depth: number;
+      }[] = [
+        {
+          nodeId:
+            anchor.nodeId,
+          depth: 0,
+        },
+      ];
+
+      while (queue.length > 0) {
+        const current =
+          queue.shift();
+
+        if (!current) {
+          break;
+        }
+
+        if (
+          current.depth >=
+          this.options.maximumHops
+        ) {
+          continue;
+        }
+
+        const neighbors =
+          adjacency.get(
+            current.nodeId,
+          ) ?? [];
+
+        for (const neighbor of neighbors) {
+          if (
+            visited.has(
+              neighbor.nodeId,
+            )
+          ) {
+            continue;
+          }
+
+          visited.add(
+            neighbor.nodeId,
+          );
+
+          const nextDepth =
+            current.depth + 1;
+          queue.push({
+            nodeId:
+              neighbor.nodeId,
+            depth:
+              nextDepth,
+          });
+
+          if (
+            acceptedNeighbors >=
+            this.options
+              .maximumNeighborsPerAnchor
+          ) {
+            continue;
+          }
+
+          const node =
+            input.nodeById.get(
+              neighbor.nodeId,
+            );
+
+          if (!node) {
+            continue;
+          }
+
+          const candidate =
+            this.toCandidate(
+              node,
+              input.fileByFileId,
+              this.neighborScore(
+                anchor.candidate
+                  .sourceScore,
+                nextDepth,
+              ),
+              this.graphNeighborReason(
+                neighbor.edge,
+                nextDepth,
+              ),
+            );
+
+          if (
+            !candidate ||
+            !this.matchesScope(
+              candidate,
+              input.request,
+            )
+          ) {
+            continue;
+          }
+
+          acceptedNeighbors += 1;
+
+          this.addCandidate(
+            input.candidateByKey,
+            candidate,
+          );
+        }
+      }
+    }
+  }
+
+  private createRetrievalAdjacency(
+    edges: readonly RepoGraphEdge[],
+    nodeById:
+      ReadonlyMap<
+        string,
+        RepoGraphNode
+      >,
+  ): ReadonlyMap<
+    string,
+    readonly {
+      nodeId: string;
+      edge: RepoGraphEdge;
+    }[]
+  > {
+    const adjacency =
+      new Map<
+        string,
+        {
+          nodeId: string;
+          edge: RepoGraphEdge;
+        }[]
+      >();
+
+    for (const edge of edges) {
+      if (
+        !this.isRetrievalEdge(
+          edge,
+        ) ||
+        !nodeById.has(
+          edge.fromNodeId,
+        ) ||
+        !nodeById.has(edge.toNodeId)
+      ) {
+        continue;
+      }
+
+      this.addAdjacentEdge(
+        adjacency,
+        edge.fromNodeId,
+        edge.toNodeId,
+        edge,
+      );
+      this.addAdjacentEdge(
+        adjacency,
+        edge.toNodeId,
+        edge.fromNodeId,
+        edge,
+      );
+    }
+
+    for (
+      const neighbors of
+      adjacency.values()
+    ) {
+      neighbors.sort(
+        (left, right) =>
+          this.edgeTypeOrder(
+            left.edge.type,
+          ) -
+            this.edgeTypeOrder(
+              right.edge.type,
+            ) ||
+          left.nodeId.localeCompare(
+            right.nodeId,
+          ) ||
+          left.edge.id.localeCompare(
+            right.edge.id,
+          ),
+      );
+    }
+
+    return adjacency;
+  }
+
+  private addAdjacentEdge(
+    adjacency:
+      Map<
+        string,
+        {
+          nodeId: string;
+          edge: RepoGraphEdge;
+        }[]
+      >,
+    fromNodeId: string,
+    toNodeId: string,
+    edge: RepoGraphEdge,
+  ): void {
+    const neighbors =
+      adjacency.get(fromNodeId) ?? [];
+
+    neighbors.push({
+      nodeId:
+        toNodeId,
+      edge,
+    });
+
+    adjacency.set(
+      fromNodeId,
+      neighbors,
+    );
+  }
+
+  private graphNeighborReason(
+    edge: RepoGraphEdge,
+    hop: number,
+  ): RetrievalReason {
+    return {
+      type:
+        this.graphNeighborReasonType(
+          edge.type,
+        ),
+      evidence:
+        `${edge.type} relationship from graph edge ${edge.id} at hop ${hop}.`,
+    };
+  }
+
+  private graphNeighborReasonType(
+    edgeType:
+      RepoGraphEdgeType,
+  ): RetrievalReason["type"] {
+    if (edgeType === "calls") {
+      return "graph_call_neighbor";
+    }
+
+    if (edgeType === "imports") {
+      return "graph_import_neighbor";
+    }
+
+    return "graph_reference_neighbor";
+  }
+
+  private neighborScore(
+    anchorScore: number,
+    hop: number,
+  ): number {
+    return Math.max(
+      HYBRID_RETRIEVAL_DEFAULTS
+        .GRAPH_MINIMUM_NEIGHBOR_SCORE,
+      anchorScore *
+        HYBRID_RETRIEVAL_DEFAULTS
+          .GRAPH_NEIGHBOR_SCORE_FACTOR **
+          hop,
+    );
+  }
+
+  private edgeTypeOrder(
+    edgeType:
+      RepoGraphEdgeType,
+  ): number {
+    const index =
+      this.options.edgeTypes
+        .indexOf(edgeType);
+
+    return index >= 0
+      ? index
+      : Number.MAX_SAFE_INTEGER;
   }
 
   private directScore(
@@ -784,10 +984,8 @@ export class RepoGraphRetrievalSource
   private isRetrievalEdge(
     edge: RepoGraphEdge,
   ): boolean {
-    return (
-      HYBRID_RETRIEVAL_GRAPH_EDGE_TYPES as
-        readonly string[]
-    ).includes(edge.type);
+    return this.options.edgeTypes
+      .includes(edge.type);
   }
 
   private validateOptions(): void {
@@ -818,6 +1016,12 @@ export class RepoGraphRetrievalSource
       HYBRID_RETRIEVAL_LIMITS
         .MAXIMUM_GRAPH_NEIGHBORS_PER_ANCHOR,
       "maximumNeighborsPerAnchor",
+    );
+    this.validatePositiveInteger(
+      this.options.maximumHops,
+      HYBRID_RETRIEVAL_LIMITS
+        .MAXIMUM_GRAPH_HOPS,
+      "maximumHops",
     );
   }
 

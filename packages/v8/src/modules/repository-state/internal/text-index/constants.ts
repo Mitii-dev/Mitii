@@ -1,5 +1,5 @@
 export const TEXT_INDEX_SCHEMA_VERSION =
-  1 as const;
+  2 as const;
 
 export const TEXT_INDEX_IDS = {
   QUERY_NORMALIZER:
@@ -16,7 +16,7 @@ export const TEXT_INDEX_IDS = {
 
 export const TEXT_INDEX_DEFAULTS = {
   PIPELINE_VERSION:
-    "chunking-v1",
+    "chunking-v2-identifier-fts",
 
   SEARCH_MODE:
     "any" as const,
@@ -43,7 +43,7 @@ export const TEXT_INDEX_DEFAULTS = {
     24,
 
   MINIMUM_TERM_CHARACTERS:
-    3,
+    2,
 
   MAXIMUM_FILTER_VALUES:
     100,
@@ -63,7 +63,7 @@ export const TEXT_INDEX_PATTERNS = {
     /^[a-f0-9]{16,128}$/,
 
   QUERY_TERM:
-    /[\p{L}\p{N}_-]+/gu,
+    /[\p{L}\p{N}_$-]+/gu,
 } as const;
 
 export const TEXT_INDEX_TABLES = {
@@ -193,68 +193,59 @@ export const TEXT_INDEX_SQL = {
       kind UNINDEXED,
       title,
       content,
-      tokenize = 'trigram'
+      tokenize = "unicode61 remove_diacritics 2 tokenchars '_$'"
+    );
+  `,
+
+  RECREATE_IDENTIFIER_FTS: `
+    DROP TRIGGER IF EXISTS text_index_chunks_after_insert;
+    DROP TRIGGER IF EXISTS text_index_chunks_before_delete;
+    DROP TRIGGER IF EXISTS text_index_chunks_after_update;
+    DROP TABLE IF EXISTS text_index_fts;
+
+    CREATE VIRTUAL TABLE text_index_fts USING fts5(
+      chunk_id UNINDEXED,
+      workspace UNINDEXED,
+      root_id UNINDEXED,
+      relative_path,
+      kind UNINDEXED,
+      title,
+      content,
+      tokenize = "unicode61 remove_diacritics 2 tokenchars '_$'"
     );
 
-    CREATE TRIGGER IF NOT EXISTS text_index_chunks_after_insert
-    AFTER INSERT ON text_index_chunks
-    BEGIN
-      INSERT INTO text_index_fts (
-        rowid,
-        chunk_id,
-        workspace,
-        root_id,
-        relative_path,
-        kind,
-        title,
-        content
-      )
-      VALUES (
-        new.rowid,
-        new.id,
-        new.workspace,
-        new.root_id,
-        new.relative_path,
-        new.kind,
-        COALESCE(new.title, ''),
-        new.content
-      );
-    END;
+    INSERT INTO text_index_fts (
+      rowid,
+      chunk_id,
+      workspace,
+      root_id,
+      relative_path,
+      kind,
+      title,
+      content
+    )
+    SELECT
+      c.rowid,
+      c.id,
+      c.workspace,
+      c.root_id,
+      c.relative_path,
+      c.kind,
+      COALESCE(c.title, ''),
+      c.content || ' '
+        || replace(replace(replace(c.relative_path, '_', ' '), '$', ' '), '-', ' ')
+        || ' '
+        || replace(replace(replace(COALESCE(c.title, ''), '_', ' '), '$', ' '), '-', ' ')
+        || ' '
+        || replace(replace(replace(c.content, '_', ' '), '$', ' '), '-', ' ')
+    FROM text_index_chunks AS c;
 
-    CREATE TRIGGER IF NOT EXISTS text_index_chunks_before_delete
-    BEFORE DELETE ON text_index_chunks
-    BEGIN
-      DELETE FROM text_index_fts
-      WHERE rowid = old.rowid;
-    END;
-
-    CREATE TRIGGER IF NOT EXISTS text_index_chunks_after_update
-    AFTER UPDATE ON text_index_chunks
-    BEGIN
-      DELETE FROM text_index_fts
-      WHERE rowid = old.rowid;
-
-      INSERT INTO text_index_fts (
-        rowid,
-        chunk_id,
-        workspace,
-        root_id,
-        relative_path,
-        kind,
-        title,
-        content
-      )
-      VALUES (
-        new.rowid,
-        new.id,
-        new.workspace,
-        new.root_id,
-        new.relative_path,
-        new.kind,
-        COALESCE(new.title, ''),
-        new.content
-      );
-    END;
+    UPDATE text_index_metadata
+    SET
+      schema_version = 2,
+      revision = revision + 1,
+      updated_at = unixepoch() * 1000
+    WHERE schema_version < 2;
   `,
 
   GET_DOCUMENT_STATE: `
@@ -337,6 +328,17 @@ export const TEXT_INDEX_SQL = {
       AND relative_path = ?
   `,
 
+  DELETE_DOCUMENT_FTS: `
+    DELETE FROM text_index_fts
+    WHERE rowid IN (
+      SELECT rowid
+      FROM text_index_chunks
+      WHERE workspace = ?
+        AND root_id = ?
+        AND relative_path = ?
+    )
+  `,
+
   INSERT_CHUNK: `
     INSERT INTO text_index_chunks (
       id,
@@ -359,6 +361,31 @@ export const TEXT_INDEX_SQL = {
       end_line
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+
+  INSERT_CHUNK_FTS: `
+    INSERT INTO text_index_fts (
+      rowid,
+      chunk_id,
+      workspace,
+      root_id,
+      relative_path,
+      kind,
+      title,
+      content
+    )
+    SELECT
+      rowid,
+      id,
+      workspace,
+      root_id,
+      relative_path,
+      kind,
+      ?,
+      ?
+    FROM text_index_chunks
+    WHERE workspace = ?
+      AND id = ?
   `,
 
   DELETE_DOCUMENT: `

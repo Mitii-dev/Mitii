@@ -76,6 +76,8 @@ export const HYBRID_RETRIEVAL_DEFAULTS = {
     24,
   GRAPH_MAXIMUM_NEIGHBORS_PER_ANCHOR:
     12,
+  GRAPH_MAXIMUM_HOPS:
+    2,
 
   MINIMUM_QUERY_TOKEN_CHARACTERS:
     2,
@@ -124,6 +126,8 @@ export const HYBRID_RETRIEVAL_LIMITS = {
     1_000,
   MAXIMUM_GRAPH_NEIGHBORS_PER_ANCHOR:
     1_000,
+  MAXIMUM_GRAPH_HOPS:
+    4,
 } as const;
 
 export const HYBRID_RETRIEVAL_SOURCE_WEIGHTS:
@@ -147,6 +151,7 @@ export const HYBRID_RETRIEVAL_SOURCE_WEIGHTS:
 };
 
 export const HYBRID_RETRIEVAL_GRAPH_EDGE_TYPES = [
+  "calls",
   "imports",
   "references",
 ] as const;

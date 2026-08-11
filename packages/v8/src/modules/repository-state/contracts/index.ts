@@ -103,6 +103,7 @@ export type {
   RepoGraphNode,
   RepoGraphSymbolNode,
   RepoGraphEdge,
+  RepoGraphEdgeType,
   RepoMap,
   RepoMapEntry,
   Chunk,

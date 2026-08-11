@@ -644,6 +644,204 @@ test(
 );
 
 test(
+  "repo graph retrieval expands call blast radius across bounded hops",
+  async () => {
+    const nodes:
+      RepoGraphNode[] = [
+        {
+          id:
+            "file:entry",
+          kind:
+            "file",
+          fileId:
+            "entry",
+          rootId:
+            "root",
+          relativePath:
+            "src/entry.ts",
+        },
+        {
+          id:
+            "file:service",
+          kind:
+            "file",
+          fileId:
+            "service",
+          rootId:
+            "root",
+          relativePath:
+            "src/service.ts",
+        },
+        {
+          id:
+            "file:auth",
+          kind:
+            "file",
+          fileId:
+            "auth",
+          rootId:
+            "root",
+          relativePath:
+            "src/auth.ts",
+        },
+        {
+          id:
+            "symbol:entry",
+          kind:
+            "symbol",
+          symbolId:
+            "symbol:entry",
+          fileId:
+            "entry",
+          name:
+            "main",
+          symbolKind:
+            "function",
+          startLine:
+            1,
+        },
+        {
+          id:
+            "symbol:service",
+          kind:
+            "symbol",
+          symbolId:
+            "symbol:service",
+          fileId:
+            "service",
+          name:
+            "validateSession",
+          symbolKind:
+            "function",
+          startLine:
+            1,
+        },
+        {
+          id:
+            "symbol:auth",
+          kind:
+            "symbol",
+          symbolId:
+            "symbol:auth",
+          fileId:
+            "auth",
+          name:
+            "validateJwt",
+          symbolKind:
+            "function",
+          startLine:
+            1,
+        },
+      ];
+
+    const edges:
+      RepoGraphEdge[] = [
+        {
+          id:
+            "edge:entry-service",
+          type:
+            "calls",
+          fromNodeId:
+            "symbol:entry",
+          toNodeId:
+            "symbol:service",
+          weight:
+            1,
+          evidenceCount:
+            1,
+          evidence: [
+            {
+              source:
+                "code_index_reference",
+              detail:
+                "call",
+              line:
+                3,
+            },
+          ],
+          evidenceTruncated:
+            false,
+        },
+        {
+          id:
+            "edge:service-auth",
+          type:
+            "calls",
+          fromNodeId:
+            "symbol:service",
+          toNodeId:
+            "symbol:auth",
+          weight:
+            1,
+          evidenceCount:
+            1,
+          evidence: [
+            {
+              source:
+                "code_index_reference",
+              detail:
+                "call",
+              line:
+                4,
+            },
+          ],
+          evidenceTruncated:
+            false,
+        },
+      ];
+
+    const retriever =
+      new HybridRetriever([
+        {
+          source:
+            new RepoGraphRetrievalSource(
+              {
+                maximumHops: 2,
+                maximumNeighborsPerAnchor:
+                  4,
+              },
+            ),
+        },
+      ]);
+
+    const result =
+      await retriever.retrieve({
+        ...baseInput,
+        query:
+          "validateJwt",
+        repoGraph:
+          createGraph(
+            nodes,
+            edges,
+          ),
+      });
+
+    assert.deepEqual(
+      result.candidates.map(
+        (entry) =>
+          entry.relativePath,
+      ),
+      [
+        "src/auth.ts",
+        "src/service.ts",
+        "src/entry.ts",
+      ],
+    );
+    assert.ok(
+      result.candidates
+        .slice(1)
+        .every((entry) =>
+          entry.reasons.some(
+            (reason) =>
+              reason.type ===
+              "graph_call_neighbor",
+          ),
+        ),
+    );
+  },
+);
+
+test(
   "factory rejects incomplete vector configuration",
   () => {
     const factory =
@@ -677,23 +875,52 @@ function createGraph(
     warnings: [],
     statistics: {
       availableFiles:
-        2,
+        nodes.filter(
+          (node) =>
+            node.kind === "file",
+        ).length,
       indexedFiles:
-        2,
+        nodes.filter(
+          (node) =>
+            node.kind === "file",
+        ).length,
       projectNodes:
-        0,
+        nodes.filter(
+          (node) =>
+            node.kind ===
+            "project",
+        ).length,
       fileNodes:
-        2,
+        nodes.filter(
+          (node) =>
+            node.kind === "file",
+        ).length,
       symbolNodes:
-        0,
+        nodes.filter(
+          (node) =>
+            node.kind ===
+            "symbol",
+        ).length,
       containsEdges:
         0,
       declaresEdges:
         0,
       importEdges:
-        1,
+        edges.filter(
+          (edge) =>
+            edge.type === "imports",
+        ).length,
+      callEdges:
+        edges.filter(
+          (edge) =>
+            edge.type === "calls",
+        ).length,
       referenceEdges:
-        0,
+        edges.filter(
+          (edge) =>
+            edge.type ===
+            "references",
+        ).length,
       projectRelationshipEdges:
         0,
       unresolvedImports:

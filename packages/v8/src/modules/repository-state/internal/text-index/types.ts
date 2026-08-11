@@ -4,6 +4,10 @@ import type {
 } from "../chunking/types";
 
 import type {
+  TEXT_INDEX_SCHEMA_VERSION,
+} from "./constants";
+
+import type {
   SqliteDatabasePort,
   SqliteReadDatabasePort,
 } from "../shared/sqlite";
@@ -24,7 +28,7 @@ export type TextIndexDocumentStatus =
   | "empty";
 
 export interface TextIndexDocument {
-  schemaVersion: 1;
+  schemaVersion: typeof TEXT_INDEX_SCHEMA_VERSION;
 
   workspace: string;
   rootId: string;
@@ -146,7 +150,7 @@ export interface TextSearchWarning {
 }
 
 export interface TextSearchResult {
-  schemaVersion: 1;
+  schemaVersion: typeof TEXT_INDEX_SCHEMA_VERSION;
 
   query: string;
   normalizedTerms: string[];
@@ -381,7 +385,7 @@ export interface TextIndexCoordinatorInput
 }
 
 export interface TextIndexCoordinatorResult {
-  schemaVersion: 1;
+  schemaVersion: typeof TEXT_INDEX_SCHEMA_VERSION;
   status: TextIndexCoordinatorStatus;
   chunkingStatus: ChunkingResult["status"];
   update?: TextIndexUpdateResult;
@@ -474,7 +478,7 @@ export interface SqliteTextIndexChunkIdRow {
 }
 
 export interface TextIndexMigrationResult {
-  schemaVersion: 1;
+  schemaVersion: typeof TEXT_INDEX_SCHEMA_VERSION;
 }
 
 export interface SqliteTextIndexModule {

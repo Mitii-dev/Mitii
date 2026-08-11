@@ -8,6 +8,7 @@ import type {
 
 import type {
   RepoGraph,
+  RepoGraphEdgeType,
 } from "../../../repository-state/index";
 
 import type {
@@ -92,6 +93,7 @@ export type RetrievalReasonType =
   | "repo_map_rank"
   | "graph_path_match"
   | "graph_symbol_match"
+  | "graph_call_neighbor"
   | "graph_import_neighbor"
   | "graph_reference_neighbor"
   | "reranked";
@@ -434,6 +436,8 @@ export interface RepoGraphRetrievalSourceOptions {
   maximumEdgesScanned?: number;
   maximumAnchorNodes?: number;
   maximumNeighborsPerAnchor?: number;
+  maximumHops?: number;
+  edgeTypes?: readonly RepoGraphEdgeType[];
 }
 
 export interface ResolvedRepoGraphRetrievalSourceOptions {
@@ -441,6 +445,8 @@ export interface ResolvedRepoGraphRetrievalSourceOptions {
   maximumEdgesScanned: number;
   maximumAnchorNodes: number;
   maximumNeighborsPerAnchor: number;
+  maximumHops: number;
+  edgeTypes: readonly RepoGraphEdgeType[];
 }
 
 /**

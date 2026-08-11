@@ -475,6 +475,7 @@ export class RepoMapRanker {
     for (const edge of edges) {
       if (
         edge.type !== "imports" &&
+        edge.type !== "calls" &&
         edge.type !== "references"
       ) {
         continue;
@@ -554,8 +555,11 @@ export class RepoMapRanker {
           to: toFileId,
           weight:
             count *
-            REPO_MAP_SCORE_WEIGHTS
-              .REFERENCE_EDGE,
+            (edge.type === "calls"
+              ? REPO_MAP_SCORE_WEIGHTS
+                  .CALL_EDGE
+              : REPO_MAP_SCORE_WEIGHTS
+                  .REFERENCE_EDGE),
         });
       }
     }

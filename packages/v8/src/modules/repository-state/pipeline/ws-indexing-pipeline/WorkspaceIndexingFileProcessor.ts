@@ -31,6 +31,9 @@ import type {
 import type {
   TextIndexDocumentState,
 } from "../../internal/text-index/types";
+import {
+  TEXT_INDEX_SCHEMA_VERSION,
+} from "../../internal/text-index/constants";
 
 export class WorkspaceIndexingFileProcessor {
   public readonly id =
@@ -762,7 +765,7 @@ export class WorkspaceIndexingFileProcessor {
       textIndex:
         {
           schemaVersion:
-            1,
+            TEXT_INDEX_SCHEMA_VERSION,
           status:
             "unchanged",
           chunkingStatus:

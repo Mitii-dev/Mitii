@@ -623,6 +623,7 @@ export class SqliteCodeIndexAdapter
         {
           fromFileId: string;
           symbolName: string;
+          kind: CodeIndexReference["kind"];
           line?: number;
           candidates: Map<
             string,
@@ -648,7 +649,7 @@ export class SqliteCodeIndexAdapter
           .prepare(
             `${SQLITE_CODE_INDEX_SQL.GET_REFERENCES_PREFIX}
              (${this.placeholders(batch.length)})
-             ORDER BY sr.file_id, sr.line, sr.symbol_name, target_symbol.file_id`,
+             ORDER BY sr.file_id, sr.line, sr.symbol_name, sr.reference_kind, target_symbol.file_id`,
           )
           .all(
             this.workspace,
@@ -668,6 +669,7 @@ export class SqliteCodeIndexAdapter
           const key = [
             fromFileId,
             row.symbolName,
+            row.kind,
             row.line,
           ].join("\u0000");
 
@@ -679,6 +681,8 @@ export class SqliteCodeIndexAdapter
               fromFileId,
               symbolName:
                 row.symbolName,
+              kind:
+                row.kind,
               ...this.optionalLine(
                 "line",
                 row.line,
@@ -757,6 +761,8 @@ export class SqliteCodeIndexAdapter
                   group.fromFileId,
                 symbolName:
                   group.symbolName,
+                kind:
+                  group.kind,
                 ...(group.line !==
                 undefined
                   ? {
@@ -776,6 +782,8 @@ export class SqliteCodeIndexAdapter
                   group.fromFileId,
                 symbolName:
                   group.symbolName,
+                kind:
+                  group.kind,
                 ...(group.line !==
                 undefined
                   ? {
@@ -802,6 +810,7 @@ export class SqliteCodeIndexAdapter
             left.fromFileId,
             left.line ?? 0,
             left.symbolName,
+            left.kind,
           ]
             .join("\u0000")
             .localeCompare(
@@ -809,6 +818,7 @@ export class SqliteCodeIndexAdapter
                 right.fromFileId,
                 right.line ?? 0,
                 right.symbolName,
+                right.kind,
               ].join("\u0000"),
             ),
       );

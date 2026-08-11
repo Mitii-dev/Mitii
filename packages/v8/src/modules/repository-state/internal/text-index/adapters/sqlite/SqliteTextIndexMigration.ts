@@ -13,6 +13,10 @@ import type {
   TextIndexSqliteDatabasePort,
 } from "../../types";
 
+interface MigrationNeededRow {
+  value: number;
+}
+
 export class SqliteTextIndexMigration {
   public async migrate(
     database:
@@ -24,6 +28,17 @@ export class SqliteTextIndexMigration {
           TEXT_INDEX_SQL
             .CREATE_SCHEMA,
         );
+
+        if (
+          this.needsIdentifierFtsMigration(
+            database,
+          )
+        ) {
+          database.exec(
+            TEXT_INDEX_SQL
+              .RECREATE_IDENTIFIER_FTS,
+          );
+        }
       }) as unknown;
 
       if (typeof transaction === "function") {
@@ -46,5 +61,45 @@ export class SqliteTextIndexMigration {
         },
       );
     }
+  }
+
+  private needsIdentifierFtsMigration(
+    database:
+      TextIndexSqliteDatabasePort,
+  ): boolean {
+    const staleMetadata =
+      database
+        .prepare(
+          `
+            SELECT COUNT(*) AS value
+            FROM text_index_metadata
+            WHERE schema_version < ?
+          `,
+        )
+        .get(
+          TEXT_INDEX_SCHEMA_VERSION,
+        ) as MigrationNeededRow;
+
+    if (staleMetadata.value > 0) {
+      return true;
+    }
+
+    const staleTriggers =
+      database
+        .prepare(
+          `
+            SELECT COUNT(*) AS value
+            FROM sqlite_schema
+            WHERE type = 'trigger'
+              AND name IN (
+                'text_index_chunks_after_insert',
+                'text_index_chunks_before_delete',
+                'text_index_chunks_after_update'
+              )
+          `,
+        )
+        .get() as MigrationNeededRow;
+
+    return staleTriggers.value > 0;
   }
 }
