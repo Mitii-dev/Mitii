@@ -178,6 +178,9 @@ importers:
       fast-xml-parser:
         specifier: ^5.10.1
         version: 5.10.1
+      smol-toml:
+        specifier: ^1.7.0
+        version: 1.7.0
       typescript:
         specifier: ^5.5.2
         version: 5.9.3

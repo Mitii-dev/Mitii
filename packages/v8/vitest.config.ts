@@ -22,6 +22,7 @@ export default defineConfig({
       'src/modules/skills/**/*.spec.ts',
       'src/modules/verification/**/*.spec.ts',
       'src/modules/repository-state/internal/repo-map/**/*.spec.ts',
+      'src/modules/repository-state/internal/catalog/**/*.spec.ts',
       'src/modules/repository-state/adapters/**/*.spec.ts',
       'src/modules/model-gateway/tests/OpenAiCompatibleRetry.spec.ts',
     ],
