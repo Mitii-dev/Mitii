@@ -36,6 +36,17 @@ export type {
   WorkspaceRetrievalRuntime,
   WorkspaceRetrievalRuntimeVectorOptions,
 } from "./adapters";
+export type {
+  SourceImportKind,
+  SourceLanguageId,
+  SourceReferenceKind,
+  TreeSitterRuntimeImport,
+  TreeSitterRuntimeParseInput,
+  TreeSitterRuntimeParseResult,
+  TreeSitterRuntimePort,
+  TreeSitterRuntimeReference,
+  TreeSitterRuntimeSymbol,
+} from "./internal/source-analysis/types";
 
 export {
   LANGUAGE_IDS,

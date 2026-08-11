@@ -88,6 +88,15 @@ export type {
   SqliteCodeIndexDatabasePort,
   SqliteTextIndexModule,
   TextIndexSqliteDatabasePort,
+  SourceImportKind,
+  SourceLanguageId,
+  SourceReferenceKind,
+  TreeSitterRuntimeImport,
+  TreeSitterRuntimeParseInput,
+  TreeSitterRuntimeParseResult,
+  TreeSitterRuntimePort,
+  TreeSitterRuntimeReference,
+  TreeSitterRuntimeSymbol,
 } from "./modules/repository-state";
 
 export { RepositoryContextPipeline } from "./modules/repository-context";

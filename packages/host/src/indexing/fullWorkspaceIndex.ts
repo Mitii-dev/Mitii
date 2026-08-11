@@ -19,6 +19,7 @@ import {
   writeIndexRuntimeMetadata,
   type SemanticIndexSettings,
 } from './semanticIndex.js';
+import { createDefaultTreeSitterRuntime } from './treeSitter/createDefaultTreeSitterRuntime.js';
 import type {
   HostSqliteDatabase,
   OpenHostSqliteDatabase,
@@ -77,10 +78,12 @@ export async function runFullWorkspaceIndex(options: {
       options.semanticIndex,
       lanceDbPath,
     );
+    const treeSitterRuntime = await createDefaultTreeSitterRuntime();
     const components = await createWorkspaceIndexRuntime({
       fileSystem,
       codeIndexDatabase: database as never,
       textIndexDatabase: database as never,
+      ...(treeSitterRuntime ? { treeSitterRuntime } : {}),
       ...(semanticRuntime.status === 'ready'
         ? { vector: semanticRuntime.vector }
         : {}),

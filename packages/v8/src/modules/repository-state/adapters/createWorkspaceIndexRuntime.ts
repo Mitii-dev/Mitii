@@ -38,6 +38,9 @@ import type {
 import type {
   WorkspaceIndexingPipeline,
 } from "../pipeline/ws-indexing-pipeline/WorkspaceIndexingPipeline";
+import type {
+  TreeSitterRuntimePort,
+} from "../internal/source-analysis/types";
 import {
   WorkspaceIndexingAdapterFactory,
 } from "./WorkspaceIndexingAdapterFactory";
@@ -55,6 +58,7 @@ export interface CreateWorkspaceIndexRuntimeOptions {
   fileSystem?: FileSystemPort;
   ignorePolicy?: WorkspaceIgnorePolicyOptions;
   filePolicy?: WorkspaceIndexingFilePolicyPort;
+  treeSitterRuntime?: TreeSitterRuntimePort;
   vector?: WorkspaceIndexRuntimeVectorOptions;
 }
 
@@ -77,6 +81,12 @@ export async function createWorkspaceIndexRuntime(
     ...(options.fileSystem ? { fileSystem: options.fileSystem } : {}),
     ...(options.ignorePolicy ? { ignorePolicy: options.ignorePolicy } : {}),
     ...(options.filePolicy ? { filePolicy: options.filePolicy } : {}),
+    ...(options.treeSitterRuntime
+      ? {
+          treeSitterRuntime:
+            options.treeSitterRuntime,
+        }
+      : {}),
     codeIndexDatabase: options.codeIndexDatabase,
     textIndexDatabase: options.textIndexDatabase,
     ...(options.vector

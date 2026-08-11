@@ -48,6 +48,18 @@ export {
 } from './indexing/fullWorkspaceIndex.js';
 export type { FullWorkspaceIndexResult } from './indexing/fullWorkspaceIndex.js';
 
+export {
+  WEB_TREE_SITTER_GRAMMAR_WASM_BY_LANGUAGE,
+  WebTreeSitterRuntime,
+  resolveTreeSitterPackageAsset,
+} from './indexing/treeSitter/WebTreeSitterRuntime.js';
+export type {
+  WebTreeSitterRuntimeOptions,
+} from './indexing/treeSitter/WebTreeSitterRuntime.js';
+export {
+  createDefaultTreeSitterRuntime,
+} from './indexing/treeSitter/createDefaultTreeSitterRuntime.js';
+
 /**
  * Fingerprint-only publish candidate (honest: indexes unavailable).
  * Not the V8 `WorkspaceSnapshot` artifact used by indexing/retrieval.

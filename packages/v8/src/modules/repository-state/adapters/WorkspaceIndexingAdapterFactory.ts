@@ -23,6 +23,9 @@ import {
 import type {
   WorkspaceIgnorePolicyOptions,
 } from "../internal/workspace/types";
+import type {
+  TreeSitterRuntimePort,
+} from "../internal/source-analysis/types";
 import {
   SourceFileReader,
 } from "../internal/source-analysis/SourceFileReader";
@@ -77,6 +80,7 @@ export interface WorkspaceIndexingAdapterFactoryOptions {
   fileSystem?: FileSystemPort;
   ignorePolicy?: WorkspaceIgnorePolicyOptions;
   filePolicy?: WorkspaceIndexingFilePolicyPort;
+  treeSitterRuntime?: TreeSitterRuntimePort;
   codeIndexDatabase: SqliteCodeIndexDatabasePort;
   textIndexDatabase: TextIndexSqliteDatabasePort;
   embedding?: WorkspaceIndexingEmbeddingSynchronizerPort;
@@ -129,7 +133,14 @@ export class WorkspaceIndexingAdapterFactory {
         fileSystem,
       );
     const sourceAnalyzer =
-      createSourceAnalysisBuilder();
+      createSourceAnalysisBuilder({
+        ...(options.treeSitterRuntime
+          ? {
+              treeSitterRuntime:
+                options.treeSitterRuntime,
+            }
+          : {}),
+      });
     const chunker =
       new ChunkingFactory()
         .create({
