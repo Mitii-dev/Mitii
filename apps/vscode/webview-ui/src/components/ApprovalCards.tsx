@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import type { ClarificationOptionView, SuspensionPayload } from '../protocol';
 
 interface ApprovalCardsProps {
@@ -111,6 +113,7 @@ export function ApprovalCards({
   onDeny,
   onShowInlineDiff,
 }: ApprovalCardsProps) {
+  const [planExpanded, setPlanExpanded] = useState(true);
   const isClarify = suspension.kind === 'clarification_required';
   const isPlan = suspension.kind === 'plan_approval_required';
   const approval = suspension.approval;
@@ -177,54 +180,66 @@ export function ApprovalCards({
       ) : null}
       {isPlan ? (
         <div className="approval-plan">
-          {objective || scope || verification ? (
-            <div className="approval-plan__facts">
-              {objective ? (
-                <div>
-                  <span>Objective</span>
-                  <strong>{objective}</strong>
+          <button
+            type="button"
+            className="approval-plan__toggle"
+            onClick={() => setPlanExpanded((value) => !value)}
+            aria-expanded={planExpanded}
+          >
+            {planExpanded ? 'Collapse plan' : 'Expand plan'}
+          </button>
+          {planExpanded ? (
+            <>
+              {objective || scope || verification ? (
+                <div className="approval-plan__facts">
+                  {objective ? (
+                    <div>
+                      <span>Objective</span>
+                      <strong>{objective}</strong>
+                    </div>
+                  ) : null}
+                  {scope ? (
+                    <div>
+                      <span>Scope</span>
+                      <strong>{scope}</strong>
+                    </div>
+                  ) : null}
+                  {verification ? (
+                    <div>
+                      <span>Verify</span>
+                      <strong>{verification}</strong>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
-              {scope ? (
-                <div>
-                  <span>Scope</span>
-                  <strong>{scope}</strong>
+              {suspension.plan?.steps.length ? (
+                <ol className="approval-plan__steps">
+                  {suspension.plan.steps.map((step, index) => (
+                    <li key={step.id}>
+                      <span>{index + 1}</span>
+                      <p>{step.title}</p>
+                    </li>
+                  ))}
+                </ol>
+              ) : fallbackPlanSteps.length ? (
+                <ol className="approval-plan__steps">
+                  {fallbackPlanSteps.map((step, index) => (
+                    <li key={`${index}:${step}`}>
+                      <span>{index + 1}</span>
+                      <p>{step}</p>
+                    </li>
+                  ))}
+                </ol>
+              ) : planText ? (
+                <pre className="approval-plan__raw">{compactText(planText)}</pre>
+              ) : null}
+              {riskItems.length ? (
+                <div className="approval-plan__risks">
+                  <span>Risks</span>
+                  {riskItems.join(' · ')}
                 </div>
               ) : null}
-              {verification ? (
-                <div>
-                  <span>Verify</span>
-                  <strong>{verification}</strong>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          {suspension.plan?.steps.length ? (
-            <ol className="approval-plan__steps">
-              {suspension.plan.steps.map((step, index) => (
-                <li key={step.id}>
-                  <span>{index + 1}</span>
-                  <p>{step.title}</p>
-                </li>
-              ))}
-            </ol>
-          ) : fallbackPlanSteps.length ? (
-            <ol className="approval-plan__steps">
-              {fallbackPlanSteps.map((step, index) => (
-                <li key={`${index}:${step}`}>
-                  <span>{index + 1}</span>
-                  <p>{step}</p>
-                </li>
-              ))}
-            </ol>
-          ) : planText ? (
-            <pre className="approval-plan__raw">{compactText(planText)}</pre>
-          ) : null}
-          {riskItems.length ? (
-            <div className="approval-plan__risks">
-              <span>Risks</span>
-              {riskItems.join(' · ')}
-            </div>
+            </>
           ) : null}
         </div>
       ) : null}

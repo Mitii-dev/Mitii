@@ -476,7 +476,7 @@ input:focus-visible {
   border-left: 2px solid color-mix(in srgb, var(--mitii-border) 88%, transparent);
   background: transparent;
   font-family: var(--mitii-font-mono);
-  max-height: calc(6 * 18px + 6px);
+  max-height: calc(4 * 18px + 6px);
   overflow: hidden;
 }
 
@@ -491,10 +491,7 @@ input:focus-visible {
 }
 
 .activity-list--open {
-  max-height: min(34vh, 340px);
-  overflow: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
+  max-height: calc(4 * 18px + 6px);
 }
 
 .activity-item {
@@ -1271,6 +1268,22 @@ select.depth-select {
   border: 1px solid var(--mitii-border-soft);
   border-radius: 6px;
   background: color-mix(in srgb, var(--mitii-surface) 68%, transparent);
+}
+
+.approval-plan__toggle {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--mitii-accent) 78%, var(--mitii-text));
+  padding: 0;
+  font-size: 11px;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.approval-plan__toggle:hover {
+  color: var(--mitii-text);
 }
 
 .approval-plan__facts {
@@ -2804,20 +2817,22 @@ select.depth-select {
 }
 
 .plan-follow {
+  --plan-follow-accent: var(--mitii-accent);
   display: grid;
-  gap: 6px;
-  padding: 9px 11px;
-  border: 1px solid color-mix(in srgb, var(--mitii-accent) 32%, var(--mitii-border));
+  gap: 8px;
+  padding: 10px 11px 11px;
+  border: 1px solid
+    color-mix(in srgb, var(--plan-follow-accent) 38%, var(--mitii-border));
   border-radius: 8px;
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--mitii-accent) 6%, var(--mitii-panel)),
-      color-mix(in srgb, var(--mitii-panel) 98%, var(--mitii-surface) 2%)
+      color-mix(in srgb, var(--plan-follow-accent) 15%, var(--mitii-panel)),
+      color-mix(in srgb, var(--plan-follow-accent) 8%, var(--mitii-panel))
     );
   box-shadow:
     0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset,
-    0 6px 18px color-mix(in srgb, #000 7%, transparent);
+    0 8px 20px color-mix(in srgb, #000 10%, transparent);
 }
 
 .plan-follow__top,
@@ -2832,6 +2847,20 @@ select.depth-select {
   gap: 8px;
 }
 
+.plan-follow__heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.plan-follow__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 .plan-follow__eyebrow {
   color: var(--mitii-muted);
   font-size: 10px;
@@ -2840,11 +2869,18 @@ select.depth-select {
   text-transform: uppercase;
 }
 
+.plan-follow__progress {
+  color: color-mix(in srgb, var(--plan-follow-accent) 76%, var(--mitii-text));
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .plan-follow__location {
   flex: 0 0 auto;
   border: 0;
   background: transparent;
-  color: color-mix(in srgb, var(--mitii-accent) 78%, var(--mitii-text));
+  color: color-mix(in srgb, var(--plan-follow-accent) 78%, var(--mitii-text));
   padding: 0;
   font-size: 11px;
   font-weight: 650;
@@ -2856,17 +2892,39 @@ select.depth-select {
   color: var(--mitii-text);
 }
 
+.plan-follow__toggle {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--plan-follow-accent) 78%, var(--mitii-text));
+  padding: 0;
+  font-size: 11px;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.plan-follow__toggle:hover {
+  color: var(--mitii-text);
+}
+
 .plan-follow__step {
-  gap: 6px;
+  gap: 8px;
   color: var(--mitii-text);
   line-height: 1.35;
+  padding: 8px;
+  border: 1px solid
+    color-mix(in srgb, var(--plan-follow-accent) 24%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--mitii-panel) 82%, transparent);
 }
 
 .plan-follow__count {
   flex: 0 0 auto;
-  color: var(--mitii-muted);
+  color: color-mix(in srgb, var(--plan-follow-accent) 78%, var(--mitii-text));
   font-family: var(--mitii-font-mono);
   font-size: 11px;
+  font-weight: 700;
 }
 
 .plan-follow__title {
@@ -2875,7 +2933,7 @@ select.depth-select {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 700;
 }
 
 .plan-follow__state {
@@ -2891,9 +2949,9 @@ select.depth-select {
 }
 
 .plan-follow__state--following {
-  border: 1px solid color-mix(in srgb, var(--mitii-accent) 42%, transparent);
-  background: color-mix(in srgb, var(--mitii-accent) 11%, transparent);
-  color: color-mix(in srgb, var(--mitii-accent) 72%, var(--mitii-text));
+  border: 1px solid color-mix(in srgb, var(--plan-follow-accent) 42%, transparent);
+  background: color-mix(in srgb, var(--plan-follow-accent) 14%, transparent);
+  color: color-mix(in srgb, var(--plan-follow-accent) 78%, var(--mitii-text));
 }
 
 .plan-follow__state--done {
@@ -2907,9 +2965,114 @@ select.depth-select {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--mitii-accent) 24%, transparent);
-  border-top-color: color-mix(in srgb, var(--mitii-accent) 86%, var(--mitii-text));
+  border: 2px solid
+    color-mix(in srgb, var(--plan-follow-accent) 24%, transparent);
+  border-top-color: color-mix(
+    in srgb,
+    var(--plan-follow-accent) 86%,
+    var(--mitii-text)
+  );
   animation: mitii-loader-spin 800ms linear infinite;
+}
+
+.plan-follow__steps {
+  display: grid;
+  gap: 4px;
+  margin: 2px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid
+    color-mix(in srgb, var(--plan-follow-accent) 20%, var(--mitii-border));
+  list-style: none;
+}
+
+.plan-follow__steps-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--mitii-text);
+  min-height: 26px;
+  padding: 3px 6px 3px 4px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+
+.plan-follow__steps-item--active {
+  border-color: color-mix(in srgb, var(--plan-follow-accent) 35%, transparent);
+  background: color-mix(in srgb, var(--plan-follow-accent) 12%, transparent);
+}
+
+.plan-follow__steps-item--done {
+  color: color-mix(in srgb, var(--mitii-text) 58%, transparent);
+}
+
+.plan-follow__steps-item--skipped {
+  color: var(--mitii-muted);
+  opacity: 0.76;
+}
+
+.plan-follow__steps-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mitii-muted) 14%, transparent);
+  color: var(--mitii-muted);
+  font-family: var(--mitii-font-mono);
+  font-size: 10px;
+}
+
+.plan-follow__steps-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.plan-follow__steps-item--active .plan-follow__steps-index {
+  background: color-mix(in srgb, var(--plan-follow-accent) 24%, transparent);
+  color: color-mix(in srgb, var(--plan-follow-accent) 82%, var(--mitii-text));
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--plan-follow-accent) 36%, transparent) inset;
+}
+
+.plan-follow__steps-item--active .plan-follow__steps-title {
+  font-weight: 700;
+}
+
+.plan-follow__steps-item--done .plan-follow__steps-index {
+  background: color-mix(in srgb, var(--mitii-ok) 18%, transparent);
+  color: color-mix(in srgb, var(--mitii-ok) 78%, var(--mitii-text));
+}
+
+.plan-follow__steps-item--done .plan-follow__steps-title {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--mitii-ok) 62%,
+    var(--mitii-muted)
+  );
+}
+
+.plan-follow__steps-status {
+  color: var(--mitii-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.plan-follow__steps-item--active .plan-follow__steps-status {
+  color: color-mix(in srgb, var(--plan-follow-accent) 80%, var(--mitii-text));
+}
+
+.plan-follow__steps-item--done .plan-follow__steps-status {
+  color: color-mix(in srgb, var(--mitii-ok) 72%, var(--mitii-text));
 }
 
 @keyframes mitii-loader-spin {

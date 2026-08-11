@@ -1146,9 +1146,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           onEvent: (event, activity) => {
             this.post({ type: 'run.event', event: activity });
             if (event?.type === 'plan_ready' && event.plan) {
-              const livePlan = planViewFromArtifact(event.plan, {
-                stepStatus: 'activeFirst',
-              });
+              const livePlan = planViewFromArtifact(event.plan);
               if (livePlan) {
                 this.post({ type: 'setPlan', plan: livePlan });
               }
@@ -1305,7 +1303,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
                 stepStatus:
                   outcome.result.status === 'completed'
                     ? 'done'
-                    : 'activeFirst',
+                    : 'pending',
               })
             : resultPlan
               ? planViewFromArtifact(resultPlan, {
