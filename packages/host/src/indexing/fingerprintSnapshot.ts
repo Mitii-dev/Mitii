@@ -5,6 +5,7 @@ import { join, relative } from 'node:path';
 import {
   REPOSITORY_STATE_SCHEMA_VERSION,
   type PublishRepositoryStateInput,
+  type WorkspaceSnapshot as V8WorkspaceSnapshot,
 } from '@mitii/v8';
 
 import { WORKSPACE_WALK_SKIP_DIR_NAMES } from '../internal/workspaceWalk.js';
@@ -21,6 +22,12 @@ export interface WorkspaceSnapshot {
   truncated: boolean;
   /** Sorted relative paths included in the fingerprint (for lightweight repo maps). */
   relativePaths: string[];
+}
+
+export function fingerprintWorkspaceIndexSnapshot(
+  snapshot: V8WorkspaceSnapshot,
+): string {
+  return snapshot.snapshotId;
 }
 
 /**

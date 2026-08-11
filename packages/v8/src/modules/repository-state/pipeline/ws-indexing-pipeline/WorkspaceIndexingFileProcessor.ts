@@ -25,6 +25,12 @@ import type {
 import type {
   TextIndexCoordinatorResult,
 } from "../../internal/text-index/types";
+import type {
+  CodeIndexFileState,
+} from "../../internal/code-indexing/types";
+import type {
+  TextIndexDocumentState,
+} from "../../internal/text-index/types";
 
 export class WorkspaceIndexingFileProcessor {
   public readonly id =
@@ -92,10 +98,37 @@ export class WorkspaceIndexingFileProcessor {
       );
     }
 
-    const [
-      analysisAttempt,
-      hashAttempt,
-    ] =
+    let contentHash: string;
+
+    try {
+      contentHash =
+        await this.dependencies
+          .contentHasher
+          .hash(
+            source.content,
+          );
+    } catch (
+      error
+    ) {
+      return this.failed({
+        selected,
+        stage:
+          "content_hash",
+        error,
+      });
+    }
+
+    const unchanged =
+      await this.tryBuildUnchangedResult({
+        input,
+        contentHash,
+      });
+
+    if (unchanged) {
+      return unchanged;
+    }
+
+    const analysisAttempt =
       await Promise
         .allSettled([
           this.dependencies
@@ -122,30 +155,12 @@ export class WorkspaceIndexingFileProcessor {
                   }
                 : {}),
             }),
-          Promise.resolve(
-            this.dependencies
-              .contentHasher
-              .hash(
-                source.content,
-              ),
-          ),
-        ]);
+        ])
+        .then(
+          ([result]) =>
+            result,
+        );
 
-    if (
-      hashAttempt.status ===
-      "rejected"
-    ) {
-      return this.failed({
-        selected,
-        stage:
-          "content_hash",
-        error:
-          hashAttempt.reason,
-      });
-    }
-
-    const contentHash =
-      hashAttempt.value;
     const warnings:
       WorkspaceIndexingWarning[] =
       [];
@@ -524,6 +539,8 @@ export class WorkspaceIndexingFileProcessor {
         CodeIndexCoordinatorResult;
       textIndex?:
         TextIndexCoordinatorResult;
+      contentHash?:
+        string;
       warnings:
         WorkspaceIndexingWarning[];
     },
@@ -610,6 +627,266 @@ export class WorkspaceIndexingFileProcessor {
           "metadata_refreshed",
       warnings:
         input.warnings,
+      ...(input.contentHash
+        ? {
+            contentHash:
+              input.contentHash,
+          }
+        : {}),
+    };
+  }
+
+  private async tryBuildUnchangedResult(
+    values: {
+      input:
+        WorkspaceIndexingFileProcessorInput;
+      contentHash:
+        string;
+    },
+  ): Promise<
+    WorkspaceIndexingFileResult |
+    undefined
+  > {
+    const freshness =
+      this.dependencies
+        .freshness;
+
+    if (!freshness) {
+      return undefined;
+    }
+
+    const {
+      request,
+      selected,
+    } = values.input;
+
+    let codeState:
+      CodeIndexFileState | null;
+    let textState:
+      TextIndexDocumentState | null;
+
+    try {
+      [
+        codeState,
+        textState,
+      ] =
+        await Promise.all([
+          freshness
+            .getCodeFileState(
+              {
+                workspace:
+                  request.workspace,
+                rootId:
+                  selected.file.rootId,
+                relativePath:
+                  selected.file
+                    .relativePath,
+              },
+              request.abortSignal
+                ? {
+                    abortSignal:
+                      request
+                        .abortSignal,
+                  }
+                : {},
+            ),
+          freshness
+            .getTextDocumentState(
+              {
+                workspace:
+                  request.workspace,
+                rootId:
+                  selected.file.rootId,
+                relativePath:
+                  selected.file
+                    .relativePath,
+              },
+              request.abortSignal
+                ? {
+                    abortSignal:
+                      request
+                        .abortSignal,
+                  }
+                : {},
+            ),
+        ]);
+    } catch {
+      return undefined;
+    }
+
+    if (
+      !this.codeStateIsFresh(
+        codeState,
+        selected,
+        values.contentHash,
+        request.analysisVersion,
+      ) ||
+      !this.textStateIsFresh(
+        textState,
+        values.contentHash,
+        request.textPipelineVersion,
+      )
+    ) {
+      return undefined;
+    }
+
+    return this.buildResult({
+      selected,
+      status:
+        "complete",
+      codeIndex:
+        {
+          status:
+            codeState
+              .analysisStatus ===
+              "unsupported"
+              ? "unsupported"
+              : "unchanged",
+          analysis:
+            this.syntheticAnalysis(
+              selected,
+              codeState,
+            ),
+          update:
+            {
+              status:
+                "unchanged",
+              plan: {
+                action:
+                  "skip",
+                reason:
+                  "unchanged",
+              },
+            },
+        },
+      textIndex:
+        {
+          schemaVersion:
+            1,
+          status:
+            "unchanged",
+          chunkingStatus:
+            textState
+              .chunkingStatus,
+          update:
+            {
+              status:
+                "unchanged",
+              plan: {
+                action:
+                  "skip",
+                reason:
+                  "unchanged",
+              },
+            },
+        },
+      contentHash:
+        values.contentHash,
+      warnings:
+        [],
+    });
+  }
+
+  private codeStateIsFresh(
+    state:
+      CodeIndexFileState |
+      null,
+    selected:
+      WorkspaceIndexingFileProcessorInput[
+        "selected"
+      ],
+    contentHash:
+      string,
+    analysisVersion:
+      string,
+  ): state is CodeIndexFileState {
+    if (
+      !state ||
+      state.contentHash !==
+        contentHash ||
+      state.analysisVersion !==
+        analysisVersion
+    ) {
+      return false;
+    }
+
+    const file =
+      selected.file;
+
+    if (
+      state.providerPath !==
+        file.providerPath ||
+      state.size !==
+        (file.size ?? 0) ||
+      state.modifiedAt !==
+        file.modifiedAt
+    ) {
+      return false;
+    }
+
+    return (
+      !selected.language ||
+      selected.language ===
+        state.language
+    );
+  }
+
+  private textStateIsFresh(
+    state:
+      TextIndexDocumentState |
+      null,
+    contentHash:
+      string,
+    pipelineVersion:
+      string,
+  ): state is TextIndexDocumentState {
+    return Boolean(
+      state &&
+        state.sourceContentHash ===
+          contentHash &&
+        state.pipelineVersion ===
+          pipelineVersion,
+    );
+  }
+
+  private syntheticAnalysis(
+    selected:
+      WorkspaceIndexingFileProcessorInput[
+        "selected"
+      ],
+    state:
+      CodeIndexFileState,
+  ): SourceAnalysis {
+    return {
+      schemaVersion:
+        1,
+      sourceId:
+        selected.sourceId,
+      rootId:
+        selected.file.rootId,
+      relativePath:
+        selected.file
+          .relativePath,
+      ...(state.language
+        ? {
+            language:
+              state.language,
+          }
+        : {}),
+      languageSource:
+        "explicit",
+      quality:
+        "none",
+      status:
+        state.analysisStatus,
+      symbols:
+        [],
+      imports:
+        [],
+      references:
+        [],
+      warnings:
+        [],
     };
   }
 

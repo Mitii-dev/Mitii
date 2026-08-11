@@ -14,6 +14,8 @@ export async function runFullWorkspaceIndex(options: {
   workspaceId: string;
   maximumFiles?: number;
   semanticIndex?: SemanticIndexSettings;
+  force?: boolean;
+  filePaths?: readonly string[];
 }): Promise<FullWorkspaceIndexResult> {
   return runSharedFullWorkspaceIndex({
     ...options,

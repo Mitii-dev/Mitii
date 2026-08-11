@@ -1,4 +1,5 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
@@ -16,10 +17,13 @@ import {
 import {
   OpenAiCompatibleEmbeddingProvider,
   createLanceDbConnection,
+  readIndexRuntimeMetadata,
   writeIndexRuntimeMetadata,
+  type IndexRuntimeMetadata,
   type SemanticIndexSettings,
 } from './semanticIndex.js';
 import { createDefaultTreeSitterRuntime } from './treeSitter/createDefaultTreeSitterRuntime.js';
+import { fingerprintWorkspaceIndexSnapshot } from './fingerprintSnapshot.js';
 import type {
   HostSqliteDatabase,
   OpenHostSqliteDatabase,
@@ -37,6 +41,7 @@ type BuiltProjectCatalog = Awaited<
 >;
 
 export interface FullWorkspaceIndexResult {
+  status: 'indexed' | 'unchanged';
   indexing: WorkspaceIndexingPipelineResult;
   fileCount: number;
   truncated: boolean;
@@ -62,31 +67,29 @@ export async function runFullWorkspaceIndex(options: {
   openDatabase: OpenHostSqliteDatabase;
   maximumFiles?: number;
   semanticIndex?: SemanticIndexSettings;
+  force?: boolean;
+  filePaths?: readonly string[];
 }): Promise<FullWorkspaceIndexResult> {
   mkdirSync(options.mitiiDir, { recursive: true });
 
   const databasePath = join(options.mitiiDir, INDEX_DB_FILE);
   const lanceDbPath = join(options.mitiiDir, LANCEDB_DIR);
   const runtimeMetadataPath = join(options.mitiiDir, INDEX_RUNTIME_FILE);
+  const previousMetadata = readIndexRuntimeMetadata(runtimeMetadataPath);
+  const semanticProfile = options.semanticIndex?.enabled
+    ? new OpenAiCompatibleEmbeddingProvider(options.semanticIndex).profile
+    : undefined;
+  const vectorRuntimeKey = semanticProfile?.id ?? 'unavailable';
   const database = options.openDatabase(databasePath);
   try {
     database.pragma('journal_mode = WAL');
     database.pragma('foreign_keys = ON');
 
     const fileSystem = new NodeFileSystemAdapter();
-    const semanticRuntime = await resolveSemanticRuntime(
-      options.semanticIndex,
-      lanceDbPath,
-    );
-    const treeSitterRuntime = await createDefaultTreeSitterRuntime();
     const components = await createWorkspaceIndexRuntime({
       fileSystem,
       codeIndexDatabase: database as never,
       textIndexDatabase: database as never,
-      ...(treeSitterRuntime ? { treeSitterRuntime } : {}),
-      ...(semanticRuntime.status === 'ready'
-        ? { vector: semanticRuntime.vector }
-        : {}),
     });
 
     const maximumFiles = options.maximumFiles ?? DEFAULT_MAXIMUM_FILES;
@@ -94,23 +97,73 @@ export async function runFullWorkspaceIndex(options: {
       roots: [options.workspaceRoot],
       maximumFiles,
     });
-    const cleanupMissing = snapshot.status === 'complete';
+    const snapshotFingerprint = fingerprintWorkspaceIndexSnapshot(snapshot);
+    const unchangedCheck = {
+      metadata: previousMetadata,
+      workspaceId: options.workspaceId,
+      snapshotFingerprint,
+      vectorRuntimeKey,
+      force: options.force === true,
+      scoped: Boolean(options.filePaths?.length),
+    };
 
-    const indexing = await components.pipeline.execute({
+    if (isUnchangedFullIndex(unchangedCheck)) {
+      const metadata = unchangedCheck.metadata;
+      return {
+        status: 'unchanged',
+        indexing: metadata.lastIndexingResult,
+        fileCount: metadata.fileCount,
+        truncated: metadata.truncated,
+        databasePath,
+        vectorIndex: vectorIndexFromMetadata({
+          metadata,
+          semanticProfileId: semanticProfile?.id,
+          lanceDbPath,
+          runtimeMetadataPath,
+        }),
+        catalogRevisionByRoot: metadata.catalogRevisionByRoot,
+        graphRevisionByRoot: metadata.graphRevisionByRoot,
+        mapRevisionByRoot: metadata.mapRevisionByRoot,
+        graphArtifactPaths: metadata.graphArtifactPaths,
+        mapArtifactPaths: metadata.mapArtifactPaths,
+      };
+    }
+
+    const semanticRuntime = await resolveSemanticRuntime(
+      options.semanticIndex,
+      lanceDbPath,
+    );
+    const treeSitterRuntime = await createDefaultTreeSitterRuntime();
+    const indexingRuntime =
+      treeSitterRuntime || semanticRuntime.status === 'ready'
+        ? await createWorkspaceIndexRuntime({
+            fileSystem,
+            codeIndexDatabase: database as never,
+            textIndexDatabase: database as never,
+            ...(treeSitterRuntime ? { treeSitterRuntime } : {}),
+            ...(semanticRuntime.status === 'ready'
+              ? { vector: semanticRuntime.vector }
+              : {}),
+          })
+        : components;
+
+    const cleanupMissing =
+      snapshot.status === 'complete' && !options.filePaths?.length;
+
+    const indexing = await indexingRuntime.pipeline.execute({
       workspace: options.workspaceId,
       snapshot,
       indexedAt: Date.now(),
       maximumFiles,
       maximumReportedFileResults: maximumFiles,
       cleanupMissing,
-      synchronizeEmbeddings: components.synchronizeEmbeddings,
+      ...(options.filePaths?.length ? { filePaths: options.filePaths } : {}),
+      synchronizeEmbeddings: indexingRuntime.synchronizeEmbeddings,
     });
 
-    const vectorIndex = finalizeVectorRuntimeMetadata({
+    const vectorIndex = resolveVectorIndexStatus({
       semanticRuntime,
       indexing,
-      workspaceId: options.workspaceId,
-      sqlitePath: databasePath,
       lanceDbPath,
       runtimeMetadataPath,
     });
@@ -121,9 +174,33 @@ export async function runFullWorkspaceIndex(options: {
       workspaceId: options.workspaceId,
       snapshot,
       fileSystem,
+      previousMetadata,
+      force: options.force === true,
+      dirtyRootIds: dirtyRootIdsFromIndexing(indexing),
+    });
+
+    writeIndexRuntimeMetadata(runtimeMetadataPath, {
+      schemaVersion: 1,
+      workspaceId: options.workspaceId,
+      sqlitePath: databasePath,
+      lanceDbPath,
+      ...(semanticRuntime.status === 'ready' && vectorIndex.status === 'ready'
+        ? { embeddingProfile: semanticRuntime.provider.profile }
+        : {}),
+      vectorRuntimeKey:
+        semanticRuntime.status === 'ready' && vectorIndex.status === 'ready'
+          ? semanticRuntime.provider.profile.id
+          : 'unavailable',
+      snapshotFingerprint,
+      fileCount: snapshot.statistics.files,
+      truncated: snapshot.status !== 'complete',
+      lastIndexingResult: indexing,
+      ...graphMap,
+      generatedAt: new Date(indexing.indexedAt).toISOString(),
     });
 
     return {
+      status: 'indexed',
       indexing,
       fileCount: snapshot.statistics.files,
       truncated: snapshot.status !== 'complete',
@@ -142,6 +219,9 @@ async function buildGraphMapArtifacts(options: {
   workspaceId: string;
   snapshot: WorkspaceSnapshot;
   fileSystem: NodeFileSystemAdapter;
+  previousMetadata?: IndexRuntimeMetadata;
+  force?: boolean;
+  dirtyRootIds?: ReadonlySet<string>;
 }): Promise<{
   catalogRevisionByRoot: Record<string, string>;
   graphRevisionByRoot: Record<string, string>;
@@ -165,6 +245,30 @@ async function buildGraphMapArtifacts(options: {
   for (const root of options.snapshot.roots) {
     if (root.kind === 'unavailable') continue;
     catalogRevisionByRoot[root.id] = catalogRevision;
+    const previousCanBeReused =
+      options.force !== true &&
+      !options.dirtyRootIds?.has(root.id) &&
+      options.previousMetadata?.catalogRevisionByRoot?.[root.id] ===
+        catalogRevision &&
+      options.previousMetadata.graphRevisionByRoot?.[root.id] &&
+      options.previousMetadata.mapRevisionByRoot?.[root.id] &&
+      options.previousMetadata.graphArtifactPaths?.[root.id] &&
+      options.previousMetadata.mapArtifactPaths?.[root.id] &&
+      existsSync(options.previousMetadata.graphArtifactPaths[root.id]!) &&
+      existsSync(options.previousMetadata.mapArtifactPaths[root.id]!);
+
+    if (previousCanBeReused) {
+      graphRevisionByRoot[root.id] =
+        options.previousMetadata!.graphRevisionByRoot![root.id]!;
+      mapRevisionByRoot[root.id] =
+        options.previousMetadata!.mapRevisionByRoot![root.id]!;
+      graphArtifactPaths[root.id] =
+        options.previousMetadata!.graphArtifactPaths![root.id]!;
+      mapArtifactPaths[root.id] =
+        options.previousMetadata!.mapArtifactPaths![root.id]!;
+      continue;
+    }
+
     const codeIndex = new SqliteCodeIndexAdapter(options.database as never, {
       workspace: options.workspaceId,
       rootId: root.id,
@@ -208,13 +312,10 @@ function writeArtifact(
 }
 
 function catalogRevisionToken(catalog: BuiltProjectCatalog): string {
-  return [
-    catalog.workspaceSnapshotId,
-    catalog.status,
-    catalog.projects.length,
-    catalog.warnings.length,
-    catalog.generatedAt,
-  ].join(':');
+  return createHash('sha256')
+    .update(stableStringify(stripGeneratedAt(catalog)))
+    .digest('hex')
+    .slice(0, 32);
 }
 
 function mapRevision(repoMap: RepoMap): string {
@@ -228,6 +329,137 @@ function mapRevision(repoMap: RepoMap): string {
 
 function safeArtifactName(value: string): string {
   return value.replace(/[^a-zA-Z0-9_.-]+/g, '_');
+}
+
+function isUnchangedFullIndex(input: {
+  metadata: IndexRuntimeMetadata | undefined;
+  workspaceId: string;
+  snapshotFingerprint: string;
+  vectorRuntimeKey: string;
+  force: boolean;
+  scoped: boolean;
+}): input is {
+  metadata: IndexRuntimeMetadata & {
+    snapshotFingerprint: string;
+    fileCount: number;
+    truncated: boolean;
+    lastIndexingResult: WorkspaceIndexingPipelineResult;
+    catalogRevisionByRoot: Record<string, string>;
+    graphRevisionByRoot: Record<string, string>;
+    mapRevisionByRoot: Record<string, string>;
+    graphArtifactPaths: Record<string, string>;
+    mapArtifactPaths: Record<string, string>;
+  };
+  workspaceId: string;
+  snapshotFingerprint: string;
+  vectorRuntimeKey: string;
+  force: boolean;
+  scoped: boolean;
+} {
+  const metadata = input.metadata;
+
+  if (
+    input.force ||
+    input.scoped ||
+    !metadata ||
+    metadata.workspaceId !== input.workspaceId ||
+    metadata.snapshotFingerprint !== input.snapshotFingerprint ||
+    metadata.vectorRuntimeKey !== input.vectorRuntimeKey ||
+    typeof metadata.fileCount !== 'number' ||
+    typeof metadata.truncated !== 'boolean' ||
+    !metadata.lastIndexingResult ||
+    !metadata.catalogRevisionByRoot ||
+    !metadata.graphRevisionByRoot ||
+    !metadata.mapRevisionByRoot ||
+    !metadata.graphArtifactPaths ||
+    !metadata.mapArtifactPaths
+  ) {
+    return false;
+  }
+
+  return [
+    ...Object.values(metadata.graphArtifactPaths),
+    ...Object.values(metadata.mapArtifactPaths),
+  ].every((path) => existsSync(path));
+}
+
+function vectorIndexFromMetadata(input: {
+  metadata: IndexRuntimeMetadata;
+  semanticProfileId?: string;
+  lanceDbPath: string;
+  runtimeMetadataPath: string;
+}): FullWorkspaceIndexResult['vectorIndex'] {
+  if (
+    input.semanticProfileId &&
+    input.metadata.embeddingProfile?.id === input.semanticProfileId
+  ) {
+    return {
+      status: 'ready',
+      profileId: input.semanticProfileId,
+      lanceDbPath: input.lanceDbPath,
+      runtimeMetadataPath: input.runtimeMetadataPath,
+    };
+  }
+
+  return {
+    status: 'unavailable',
+    reason: 'Semantic index is disabled or not configured.',
+  };
+}
+
+function dirtyRootIdsFromIndexing(
+  indexing: WorkspaceIndexingPipelineResult,
+): ReadonlySet<string> {
+  const dirty = new Set<string>();
+
+  for (const file of indexing.fileResults) {
+    if (file.codeIndexChanged || file.status !== 'complete') {
+      dirty.add(file.rootId);
+    }
+  }
+
+  for (const root of indexing.rootResults) {
+    if (
+      root.codeIndexRemovedFiles > 0 ||
+      root.status !== 'complete'
+    ) {
+      dirty.add(root.rootId);
+    }
+  }
+
+  return dirty;
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+
+  const object = value as Record<string, unknown>;
+  return `{${Object.keys(object)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(object[key])}`)
+    .join(',')}}`;
+}
+
+function stripGeneratedAt(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripGeneratedAt(item));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => key !== 'generatedAt')
+      .map(([key, item]) => [key, stripGeneratedAt(item)]),
+  );
 }
 
 async function resolveSemanticRuntime(
@@ -274,16 +506,13 @@ async function resolveSemanticRuntime(
   }
 }
 
-function finalizeVectorRuntimeMetadata(options: {
+function resolveVectorIndexStatus(options: {
   semanticRuntime: Awaited<ReturnType<typeof resolveSemanticRuntime>>;
   indexing: WorkspaceIndexingPipelineResult;
-  workspaceId: string;
-  sqlitePath: string;
   lanceDbPath: string;
   runtimeMetadataPath: string;
 }): FullWorkspaceIndexResult['vectorIndex'] {
   if (options.semanticRuntime.status !== 'ready') {
-    removeStaleRuntimeMetadata(options.runtimeMetadataPath);
     return {
       status: 'unavailable',
       reason: options.semanticRuntime.reason,
@@ -313,15 +542,6 @@ function finalizeVectorRuntimeMetadata(options: {
     );
 
   if (vectorReady) {
-    writeIndexRuntimeMetadata(options.runtimeMetadataPath, {
-      schemaVersion: 1,
-      workspaceId: options.workspaceId,
-      sqlitePath: options.sqlitePath,
-      lanceDbPath: options.lanceDbPath,
-      embeddingProfile: options.semanticRuntime.provider.profile,
-      generatedAt: new Date(options.indexing.indexedAt).toISOString(),
-    });
-
     return {
       status: 'ready',
       profileId: options.semanticRuntime.provider.profile.id,
@@ -330,7 +550,6 @@ function finalizeVectorRuntimeMetadata(options: {
     };
   }
 
-  removeStaleRuntimeMetadata(options.runtimeMetadataPath);
   const anyPartial = options.indexing.rootResults.some(
     (root: WorkspaceIndexingPipelineResult['rootResults'][number]) =>
       root.embeddingStatus === 'partial',
@@ -344,12 +563,4 @@ function finalizeVectorRuntimeMetadata(options: {
     lanceDbPath: options.lanceDbPath,
     runtimeMetadataPath: options.runtimeMetadataPath,
   };
-}
-
-function removeStaleRuntimeMetadata(path: string): void {
-  try {
-    rmSync(path, { force: true });
-  } catch {
-    // Best effort: stale metadata must not fail lexical indexing.
-  }
 }

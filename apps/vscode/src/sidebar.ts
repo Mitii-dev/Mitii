@@ -2097,7 +2097,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     return this.lastIndex;
   }
 
-  async publishIndexSnapshot(): Promise<IndexStatusSnapshot> {
+  async publishIndexSnapshot(options: { force?: boolean } = {}): Promise<IndexStatusSnapshot> {
     const root = this.effectiveRoot();
     if (!root) {
       return {
@@ -2118,6 +2118,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         mitiiDir: dir,
         workspaceRoot: root,
         workspaceId: this.getWorkspaceId(),
+        force: options.force === true,
         semanticIndex: await resolveVsCodeSemanticIndexSettings(
           this.vs,
           this.secrets,

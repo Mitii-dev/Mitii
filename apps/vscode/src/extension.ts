@@ -171,7 +171,7 @@ export function activate(context: ExtensionContext): void {
       };
     }
     if (sidebar) {
-      const status = await sidebar.publishIndexSnapshot();
+      const status = await sidebar.publishIndexSnapshot({ force: true });
       void vscode.window.showInformationMessage(
         status.message ?? 'Mitii index updated.',
       );
@@ -190,6 +190,7 @@ export function activate(context: ExtensionContext): void {
         mitiiDir: dir,
         workspaceRoot: root,
         workspaceId,
+        force: true,
         semanticIndex: await resolveVsCodeSemanticIndexSettings(
           vscode,
           context.secrets,

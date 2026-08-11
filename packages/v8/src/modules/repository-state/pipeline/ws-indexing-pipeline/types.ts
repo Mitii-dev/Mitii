@@ -6,6 +6,8 @@ import type {
 
 import type {
   CodeIndexCoordinatorResult,
+  CodeIndexFileLocator,
+  CodeIndexFileState,
   CodeIndexPreparedFileIndexerPort,
   CodeIndexRemoveMissingInput,
   CodeIndexRemoveMissingResult,
@@ -27,6 +29,8 @@ import type {
 import type {
   TextIndexCoordinatorInput,
   TextIndexCoordinatorResult,
+  TextIndexDocumentLocator,
+  TextIndexDocumentState,
   TextIndexRemoveMissingInput,
   TextIndexRemoveMissingResult,
   TextIndexWriteContext,
@@ -185,6 +189,7 @@ export interface WorkspaceIndexingFileResult {
   codeIndexChanged: boolean;
   textIndexStatus?: TextIndexCoordinatorResult["status"];
   textIndexChanged: boolean;
+  contentHash?: string;
 
   warnings: WorkspaceIndexingWarning[];
 }
@@ -217,6 +222,18 @@ export interface WorkspaceIndexingTextIndexerPort {
   index(
     input: TextIndexCoordinatorInput,
   ): Promise<TextIndexCoordinatorResult>;
+}
+
+export interface WorkspaceIndexingFreshnessPort {
+  getCodeFileState(
+    file: CodeIndexFileLocator,
+    context?: CodeIndexWriteContext,
+  ): Promise<CodeIndexFileState | null>;
+
+  getTextDocumentState(
+    document: TextIndexDocumentLocator,
+    context?: TextIndexWriteContext,
+  ): Promise<TextIndexDocumentState | null>;
 }
 
 export interface WorkspaceIndexingCodeIndexMaintenancePort {
@@ -258,6 +275,7 @@ export interface WorkspaceIndexingFileProcessorDependencies {
   chunker: ChunkingServicePort;
   codeIndexer: CodeIndexPreparedFileIndexerPort;
   textIndexer: WorkspaceIndexingTextIndexerPort;
+  freshness?: WorkspaceIndexingFreshnessPort;
 }
 
 export interface WorkspaceIndexingRootFinalizerDependencies {

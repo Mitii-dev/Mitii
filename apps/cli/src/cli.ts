@@ -349,6 +349,7 @@ async function runIndex(options: {
     const full = await runFullWorkspaceIndex({
       cwd: options.cwd,
       workspaceId: ports.workspaceId,
+      force: true,
       semanticIndex: resolveCliSemanticIndexSettings({
         env: process.env,
         config,

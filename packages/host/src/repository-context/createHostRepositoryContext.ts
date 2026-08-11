@@ -278,6 +278,13 @@ async function resolveVectorRetrievalRuntime(options: {
       reason: 'Vector retrieval is unavailable: index-runtime.json is missing or invalid.',
     };
   }
+  if (!metadata.embeddingProfile?.id) {
+    return {
+      status: 'unavailable',
+      reason:
+        'Vector retrieval is unavailable: index-runtime.json does not describe a ready embedding profile.',
+    };
+  }
   if (
     !descriptorHasReadyVectorProfile(
       options.descriptor,

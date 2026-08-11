@@ -5,6 +5,7 @@ import type {
   EmbeddingProfile,
   EmbeddingProvider,
   LanceDbConnectionPort,
+  WorkspaceIndexingPipelineResult,
 } from '@mitii/v8';
 
 import { isLocalBaseUrl } from '../config/providerPresets.js';
@@ -35,7 +36,17 @@ export interface IndexRuntimeMetadata {
   workspaceId: string;
   sqlitePath: string;
   lanceDbPath: string;
-  embeddingProfile: EmbeddingProfile;
+  embeddingProfile?: EmbeddingProfile;
+  vectorRuntimeKey?: string;
+  snapshotFingerprint?: string;
+  fileCount?: number;
+  truncated?: boolean;
+  lastIndexingResult?: WorkspaceIndexingPipelineResult;
+  catalogRevisionByRoot?: Record<string, string>;
+  graphRevisionByRoot?: Record<string, string>;
+  mapRevisionByRoot?: Record<string, string>;
+  graphArtifactPaths?: Record<string, string>;
+  mapArtifactPaths?: Record<string, string>;
   generatedAt: string;
 }
 
@@ -169,8 +180,7 @@ export function readIndexRuntimeMetadata(
       parsed?.schemaVersion !== 1 ||
       !parsed.workspaceId ||
       !parsed.sqlitePath ||
-      !parsed.lanceDbPath ||
-      !parsed.embeddingProfile?.id
+      !parsed.lanceDbPath
     ) {
       return undefined;
     }

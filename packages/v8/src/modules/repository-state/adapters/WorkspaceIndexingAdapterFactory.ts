@@ -202,6 +202,22 @@ export class WorkspaceIndexingAdapterFactory {
                       ...args,
                     ),
             },
+          freshness:
+            {
+              getCodeFileState:
+                (...args) =>
+                  codeWriter
+                    .getFileState(
+                      ...args,
+                    ),
+              getTextDocumentState:
+                (...args) =>
+                  textIndex
+                    .writer
+                    .getDocumentState(
+                      ...args,
+                    ),
+            },
           embedding:
             embedding ??
             new DisabledEmbeddingSynchronizer(),
