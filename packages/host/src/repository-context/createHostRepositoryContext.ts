@@ -83,6 +83,7 @@ export function createHostRepositoryContext(options: {
   const textIndexDatabasePath =
     options.textIndexDatabasePath ?? join(workspaceRoot, '.mitii', INDEX_DB_FILE);
   const resolvedDescriptors = new Map<string, RepositoryStateDescriptor>();
+  const resolvedRepoMaps = new Map<string, RepoMap>();
   const selector: RepositoryContextSelectorPort = new ContextSelector();
   const defaultAssembler = new ContextAssemblyFactory().create({
     fileSystem: new NodeFileSystemAdapter(),
@@ -123,6 +124,9 @@ export function createHostRepositoryContext(options: {
           workspaceRoot,
           descriptor,
         );
+        if (repositoryIntelligence.repoMap) {
+          resolvedRepoMaps.set(descriptor.snapshotId, repositoryIntelligence.repoMap);
+        }
         return {
           status: 'resolved',
           artifacts: {
@@ -141,7 +145,9 @@ export function createHostRepositoryContext(options: {
       semanticIndex: options.semanticIndex,
     }),
     selector,
-    assembler: createHostAssembler(defaultAssembler),
+    assembler: createHostAssembler(defaultAssembler, (snapshotId) =>
+      resolvedRepoMaps.get(snapshotId),
+    ),
   };
 
   return new GitAwareRepositoryContextPipeline(dependencies, {
@@ -473,13 +479,13 @@ function createHostRetriever(options: {
       let retrievalClose: (() => Promise<void>) | undefined;
       try {
         const runtime =
-          vectorRuntime.status === 'ready'
+          vectorRuntime.status === 'unavailable'
             ? createWorkspaceRetrievalRuntime({
                 textIndexDatabase: database as never,
-                vector: vectorRuntime.vector,
               })
             : createWorkspaceRetrievalRuntime({
                 textIndexDatabase: database as never,
+                vector: vectorRuntime.vector,
               });
         retrievalClose = () => runtime.close();
         const retriever = new HybridRetrievalFactory().create({
@@ -501,8 +507,10 @@ function createHostRetriever(options: {
               ? []
               : [
                   {
-                    code: 'required_source_unavailable' as const,
-                    message: vectorRuntime.reason,
+                    code: 'optional_source_unavailable' as const,
+                    message:
+                      vectorRuntime.reason ??
+                      'Vector retrieval is unavailable; remaining sources continued.',
                   },
                 ]),
           ],
@@ -528,7 +536,8 @@ async function resolveVectorRetrievalRuntime(options: {
   semanticIndex?: SemanticIndexSettings;
 }): Promise<
   | {
-      status: 'ready';
+      status: 'ready' | 'degraded';
+      reason?: string;
       vector: {
         embeddingProvider: ReturnType<typeof createHostEmbeddingProvider>;
         lanceConnection: Awaited<ReturnType<typeof createLanceDbConnection>>;
@@ -542,7 +551,8 @@ async function resolveVectorRetrievalRuntime(options: {
   if (!options.semanticIndex?.enabled) {
     return {
       status: 'unavailable',
-      reason: 'Vector retrieval is unavailable: semantic index is disabled or not configured.',
+      reason:
+        'Vector retrieval is unavailable (semantic_index_disabled): semantic index is disabled or not configured. Reindex after enabling embeddings.',
     };
   }
   const metadata = readIndexRuntimeMetadata(
@@ -551,26 +561,26 @@ async function resolveVectorRetrievalRuntime(options: {
   if (!metadata) {
     return {
       status: 'unavailable',
-      reason: 'Vector retrieval is unavailable: index-runtime.json is missing or invalid.',
+      reason:
+        'Vector retrieval is unavailable (runtime_missing): index-runtime.json is missing or invalid. Reindex the workspace.',
     };
   }
   if (!metadata.embeddingProfile?.id) {
     return {
       status: 'unavailable',
       reason:
-        'Vector retrieval is unavailable: index-runtime.json does not describe a ready embedding profile.',
+        'Vector retrieval is unavailable (embedding_profile_missing): index-runtime.json does not describe a ready embedding profile. Reindex the workspace.',
     };
   }
-  if (
-    !descriptorHasReadyVectorProfile(
-      options.descriptor,
-      metadata.embeddingProfile.id,
-    )
-  ) {
+  const vectorCapability = vectorCapabilityForProfile(
+    options.descriptor,
+    metadata.embeddingProfile.id,
+  );
+  if (!vectorCapability) {
     return {
       status: 'unavailable',
       reason:
-        'Vector retrieval is unavailable: published repository state does not expose the persisted vector profile.',
+        'Vector retrieval is unavailable (published_profile_missing): published repository state does not expose the persisted vector profile. Reindex the workspace.',
     };
   }
   const alignedSettings = alignSemanticSettingsWithPersistedProfile(
@@ -581,45 +591,56 @@ async function resolveVectorRetrievalRuntime(options: {
     return {
       status: 'unavailable',
       reason:
-        'Vector retrieval is unavailable: current embedding profile differs from the profile that wrote LanceDB.',
+        'Vector retrieval is unavailable (profile_mismatch): current embedding profile differs from the profile that wrote LanceDB. Reindex to rebuild embeddings.',
     };
   }
   const provider = createHostEmbeddingProvider(alignedSettings);
   try {
+    const vector = {
+      embeddingProvider: provider,
+      lanceConnection: await createLanceDbConnection(metadata.lanceDbPath),
+    };
+    if (vectorCapability === 'degraded') {
+      return {
+        status: 'degraded',
+        reason:
+          'Vector retrieval is degraded (partial_index): the published embedding index is incomplete. Reindex to restore full semantic search.',
+        vector,
+      };
+    }
     return {
       status: 'ready',
-      vector: {
-        embeddingProvider: provider,
-        lanceConnection: await createLanceDbConnection(metadata.lanceDbPath),
-      },
+      vector,
     };
   } catch (error) {
     return {
       status: 'unavailable',
-      reason: `Vector retrieval is unavailable: ${
+      reason: `Vector retrieval is unavailable (connection_failed): ${
         error instanceof Error ? error.message : String(error)
       }`,
     };
   }
 }
 
-function descriptorHasReadyVectorProfile(
+function vectorCapabilityForProfile(
   descriptor: RepositoryStateDescriptor,
   profileId: string,
-): boolean {
-  return descriptor.roots.some(
-    (root: RepositoryRootState) =>
-      root.vectorProfile === profileId &&
-      root.capabilities.some(
-        (capability: RepositoryCapabilityStatus) =>
-          capability.capability === 'vectorIndex' &&
-          capability.status === 'ready',
-      ),
-  );
+): 'ready' | 'degraded' | undefined {
+  for (const root of descriptor.roots) {
+    if (root.vectorProfile !== profileId) continue;
+    const capability = root.capabilities.find(
+      (entry: RepositoryCapabilityStatus) => entry.capability === 'vectorIndex',
+    );
+    if (capability?.status === 'ready' || capability?.status === 'degraded') {
+      return capability.status;
+    }
+  }
+  return undefined;
 }
 
 function createHostAssembler(
   defaultAssembler: RepositoryContextAssemblerPort,
+  getRepoMap: (snapshotId: string) => RepoMap | undefined,
 ): RepositoryContextAssemblerPort {
   return {
     assemble: async (
@@ -628,7 +649,10 @@ function createHostAssembler(
       if (input.selection.items.length > 0) {
         return defaultAssembler.assemble(input);
       }
-      return assembleFileMapFallback(input);
+      return assembleFileMapFallback(
+        input,
+        getRepoMap(input.snapshot.snapshotId),
+      );
     },
   };
 }
@@ -678,8 +702,9 @@ function emptyHostRetrieval(
 
 function assembleFileMapFallback(
   input: ContextAssemblyInput,
+  repoMap?: RepoMap,
 ): ContextAssemblyResult {
-  const paths = input.snapshot.entries
+  const snapshotPaths = input.snapshot.entries
     .filter(
       (entry: unknown): entry is WorkspaceFileEntry =>
         typeof entry === 'object' &&
@@ -687,21 +712,39 @@ function assembleFileMapFallback(
         'kind' in entry &&
         entry.kind === 'file',
     )
-    .map((entry: WorkspaceFileEntry) => entry.relativePath)
-    .slice(0, MAX_REPO_MAP_FILES);
-  let content = `Workspace file map (${paths.length} files):\n${paths
-    .map((path: string) => `- ${path}`)
-    .join('\n')}`;
+    .map((entry: WorkspaceFileEntry) => entry.relativePath);
+  const rankedPaths = [...(repoMap?.entries ?? [])]
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        left.file.relativePath.localeCompare(right.file.relativePath),
+    )
+    .map((entry) => entry.file.relativePath);
+  const paths: string[] = [];
+  const seen = new Set<string>();
+  for (const path of [...rankedPaths, ...snapshotPaths]) {
+    if (seen.has(path)) continue;
+    seen.add(path);
+    paths.push(path);
+    if (paths.length >= MAX_REPO_MAP_FILES) break;
+  }
+  const ranked = rankedPaths.length > 0;
+  let content = `Workspace file map (${paths.length} files${
+    ranked ? ', ranked by repository map' : ''
+  }):\n${paths.map((path: string) => `- ${path}`).join('\n')}`;
   if (content.length > MAX_REPO_MAP_CHARS) {
     content = `${content.slice(0, MAX_REPO_MAP_CHARS)}\n...(truncated)`;
   }
-  const truncated = content.includes('...(truncated)');
+  const truncated =
+    content.includes('...(truncated)') ||
+    snapshotPaths.length > paths.length ||
+    rankedPaths.length > paths.length;
   const tokens = Math.max(1, Math.ceil(content.length / 4));
   return {
     schemaVersion: 1 as const,
     workspaceSnapshotId: input.snapshot.snapshotId,
     selectionStatus: input.selection.status,
-    status: 'complete' as const,
+    status: 'partial' as const,
     blocks: [
       {
         id: 'host_repo_map',
@@ -729,7 +772,14 @@ function assembleFileMapFallback(
       },
     ],
     dropped: [],
-    warnings: [],
+    warnings: [
+      {
+        code: 'file_map_fallback' as const,
+        message: ranked
+          ? 'Retrieval selected no items; assembled a repository-map-ranked file list instead of file contents.'
+          : 'Retrieval selected no items; assembled a workspace file list instead of file contents.',
+      },
+    ],
     budget: {
       allocatedTokens: tokens,
       usedTokens: tokens,

@@ -94,6 +94,50 @@ describe("RepoGraphRetrievalSource blast radius", () => {
     ).toBe(true);
   });
 
+  it("anchors blast radius on pinned files even when the query does not mention them", async () => {
+    const source = new RepoGraphRetrievalSource({
+      maximumHops: 1,
+      maximumNeighborsPerAnchor: 4,
+    });
+
+    const result = await source.retrieve({
+      ...baseRequest,
+      query: "fix the regression",
+      anchorFilePaths: ["src/auth.ts"],
+      repoGraph: createGraph(
+        [
+          fileNode("auth", "src/auth.ts"),
+          fileNode("service", "src/service.ts"),
+          fileNode("unrelated", "src/unrelated.ts"),
+          symbolNode("auth", "authenticate"),
+          symbolNode("service", "validateSession"),
+        ],
+        [
+          callEdge("service-auth", "symbol:service", "symbol:auth"),
+        ],
+      ),
+    });
+
+    const paths = result.candidates.map((candidate) => candidate.relativePath);
+    expect(paths).toContain("src/auth.ts");
+    expect(paths).toContain("src/service.ts");
+    expect(paths).not.toContain("src/unrelated.ts");
+    expect(
+      result.candidates.some((candidate) =>
+        candidate.reasons.some((reason) => reason.type === "graph_file_anchor"),
+      ),
+    ).toBe(true);
+    expect(
+      result.candidates.some(
+        (candidate) =>
+          candidate.relativePath === "src/service.ts" &&
+          candidate.reasons.some(
+            (reason) => reason.type === "graph_call_neighbor",
+          ),
+      ),
+    ).toBe(true);
+  });
+
   it("honors the per-anchor neighbor budget during BFS", async () => {
     const source =
       new RepoGraphRetrievalSource({
@@ -214,6 +258,7 @@ const baseRequest:
     "validateJwt",
   rootIds: [],
   filePaths: [],
+  anchorFilePaths: [],
   kinds: [],
   maximumResults:
     10,

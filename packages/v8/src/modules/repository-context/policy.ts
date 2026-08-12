@@ -2,7 +2,11 @@ import {
   CONTEXT_SELECTION_DEFAULTS,
   CONTEXT_SELECTION_LIMITS,
 } from "./internal/context-selection/constants";
-import type { ContextSelectionBudget } from "./internal/context-selection/types";
+import type {
+  ContextFileReference,
+  ContextSelectionBudget,
+  ContextSelectionReferences,
+} from "./internal/context-selection/types";
 
 /**
  * Public selection-budget policy for callers (Agent Engine) that scale
@@ -12,6 +16,50 @@ export const REPOSITORY_CONTEXT_BUDGET_POLICY = {
   /** Fraction of model context window used for repository selection tokens. */
   selectionBudgetContextWindowRatio: 0.25,
 } as const;
+
+export const REPOSITORY_CONTEXT_RETRIEVAL_POLICY = {
+  /** Cap on editor/git file priors used as RepoGraph blast-radius anchors. */
+  maximumGraphFileAnchors: 16,
+} as const;
+
+/**
+ * Collect open / current / git-dirty paths as graph retrieval anchors.
+ * These seed blast-radius expansion and must not be used as `filePaths` filters.
+ */
+export function collectRepositoryContextGraphAnchors(
+  references?: ContextSelectionReferences,
+): string[] {
+  if (!references) {
+    return [];
+  }
+
+  const paths: string[] = [];
+  const seen = new Set<string>();
+  const add = (reference?: ContextFileReference) => {
+    const relativePath = reference?.relativePath.trim();
+    if (!relativePath || seen.has(relativePath)) {
+      return;
+    }
+    if (
+      paths.length >=
+      REPOSITORY_CONTEXT_RETRIEVAL_POLICY.maximumGraphFileAnchors
+    ) {
+      return;
+    }
+    seen.add(relativePath);
+    paths.push(relativePath);
+  };
+
+  add(references.currentFile);
+  for (const file of references.openFiles ?? []) {
+    add(file);
+  }
+  for (const file of references.gitDiffFiles ?? []) {
+    add(file);
+  }
+
+  return paths;
+}
 
 /**
  * Derive a ContextSelectionBudget from the active model context window.

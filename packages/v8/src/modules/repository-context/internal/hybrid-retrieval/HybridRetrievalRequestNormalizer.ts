@@ -76,6 +76,12 @@ export class HybridRetrievalRequestNormalizer {
         warnings,
       );
 
+    const anchorFilePaths =
+      this.uniqueSorted(
+        parsed.anchorFilePaths ?? [],
+        warnings,
+      );
+
     const kinds =
       this.uniqueSorted(
         parsed.kinds ?? [],
@@ -99,6 +105,7 @@ export class HybridRetrievalRequestNormalizer {
             }
           : {}),
         filePaths,
+        anchorFilePaths,
         kinds,
         maximumResults:
           parsed.maximumResults ??

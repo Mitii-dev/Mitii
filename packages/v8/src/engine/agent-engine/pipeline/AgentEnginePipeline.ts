@@ -649,6 +649,20 @@ export class AgentEnginePipeline {
           ...(contextPaths.length > 0 ? { paths: contextPaths } : {}),
           at: this.isoNow(),
         });
+        for (const warning of contextResult.warnings) {
+          if (
+            warning.code === "optional_source_unavailable" ||
+            warning.code === "file_map_fallback" ||
+            warning.code === "state_degraded"
+          ) {
+            this.emit(bus, {
+              type: "warning",
+              runId,
+              message: warning.message,
+              at: this.isoNow(),
+            });
+          }
+        }
         this.emitStage(bus, runId, "context_ready", "completed", [
           "context_retrieved",
         ]);

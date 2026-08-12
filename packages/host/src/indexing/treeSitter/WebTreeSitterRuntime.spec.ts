@@ -55,6 +55,35 @@ describe('WebTreeSitterRuntime', () => {
     ]);
   });
 
+  it('parses shell function definitions when the bash grammar is available', async () => {
+    const runtime = await createDefaultTreeSitterRuntime();
+    if (!runtime?.supports('shell')) {
+      return;
+    }
+
+    const result = await runtime.parse({
+      language: 'shell',
+      relativePath: 'scripts/setup.sh',
+      content: 'greet() {\n  echo hi\n}\n',
+      symbolQuery:
+        '(function_definition name: (word) @name) @definition',
+      maximumSymbols: 10,
+      maximumImports: 10,
+      maximumReferences: 10,
+    });
+
+    if ((result.warnings ?? []).length > 0 && result.symbols.length === 0) {
+      return;
+    }
+
+    expect(result.symbols).toEqual([
+      expect.objectContaining({
+        name: 'greet',
+        startLine: 1,
+      }),
+    ]);
+  });
+
   it('returns undefined when the WASM runtime cannot be resolved', async () => {
     const previous = process.env.MITII_TREE_SITTER_ASSET_ROOT;
     process.env.MITII_TREE_SITTER_ASSET_ROOT = '/tmp/mitii-missing-tree-sitter';

@@ -58,6 +58,7 @@ const retrievalReasonTypeSchema =
     "semantic_match",
     "repo_map_rank",
     "graph_path_match",
+    "graph_file_anchor",
     "graph_symbol_match",
     "graph_call_neighbor",
     "graph_import_neighbor",
@@ -153,6 +154,10 @@ export const hybridRetrievalInputSchema =
       z.array(
         canonicalRelativePathSchema,
       ).optional(),
+    anchorFilePaths:
+      z.array(
+        canonicalRelativePathSchema,
+      ).optional(),
     kinds:
       z.array(
         chunkKindSchema,
@@ -218,6 +223,10 @@ export const normalizedHybridRetrievalRequestSchema =
       canonicalRelativePathSchema
         .optional(),
     filePaths:
+      uniqueStringsSchema(
+        canonicalRelativePathSchema,
+      ),
+    anchorFilePaths:
       uniqueStringsSchema(
         canonicalRelativePathSchema,
       ),
@@ -608,6 +617,7 @@ export const hybridRetrievalWarningSchema =
       "duplicate_filter_removed",
       "source_failed",
       "required_source_unavailable",
+      "optional_source_unavailable",
       "source_truncated",
       "result_limit_reached",
       "failure_policy_unsatisfied",

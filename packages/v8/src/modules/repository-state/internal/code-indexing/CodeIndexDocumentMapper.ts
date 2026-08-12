@@ -51,6 +51,12 @@ export class CodeIndexDocumentMapper {
               item.specifier,
             snapshot:
               input.snapshot,
+            ...(input.analysis.language
+              ? {
+                  language:
+                    input.analysis.language,
+                }
+              : {}),
           }),
         }),
       );

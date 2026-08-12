@@ -622,6 +622,14 @@ export const SOURCE_TREE_SITTER_SYMBOL_QUERIES: Readonly<
     (function_definition name: (name) @name) @definition
     (method_declaration name: (name) @name) @definition
   `,
+  shell: `
+    (function_definition name: (word) @name) @definition
+  `,
+  sql: `
+    (create_function (identifier) @name) @definition
+    (create_table (identifier) @name) @definition
+    (create_view (identifier) @name) @definition
+  `,
 };
 
 export const SOURCE_TREE_SITTER_REFERENCE_QUERIES: Readonly<
@@ -664,6 +672,7 @@ export const SOURCE_TREE_SITTER_REFERENCE_QUERIES: Readonly<
   swift: `(simple_identifier) @reference.read`,
   ruby: `(identifier) @reference.read`,
   php: `(name) @reference.read`,
+  shell: `(command_name) @reference.call`,
 };
 
 export const resolveSourceFileReaderOptions = (

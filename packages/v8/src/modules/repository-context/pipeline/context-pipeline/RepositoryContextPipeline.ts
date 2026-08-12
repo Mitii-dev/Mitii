@@ -25,6 +25,7 @@ import type {
   RepositoryContextPipelineStage,
   RepositoryContextResolvedState,
 } from "../../contracts/types";
+import { collectRepositoryContextGraphAnchors } from "../../policy";
 
 function deriveCodeIndexChangeToken(
   artifacts: RepositoryContextResolvedState,
@@ -220,6 +221,9 @@ export class RepositoryContextPipeline {
     }
 
     const codeIndexChangeToken = deriveCodeIndexChangeToken(artifacts);
+    const anchorFilePaths = collectRepositoryContextGraphAnchors(
+      input.references,
+    );
 
     const retrieval = await this.dependencies.retriever.retrieve({
       workspace: artifacts.descriptor.workspaceId,
@@ -243,6 +247,11 @@ export class RepositoryContextPipeline {
       ...(input.filePaths
         ? {
             filePaths: input.filePaths,
+          }
+        : {}),
+      ...(anchorFilePaths.length > 0
+        ? {
+            anchorFilePaths,
           }
         : {}),
       ...(input.kinds

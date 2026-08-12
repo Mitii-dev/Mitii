@@ -97,11 +97,13 @@ function displayCapabilityStatus(capability: {
   status: string;
   reasonCode?: string;
 }): { className: string; label: string } {
-  if (
-    capability.capability === 'vectorIndex' &&
-    capability.status === 'unavailable'
-  ) {
-    return { className: 'optional', label: 'not configured' };
+  if (capability.capability === 'vectorIndex') {
+    if (capability.status === 'unavailable') {
+      return { className: 'optional', label: 'not configured' };
+    }
+    if (capability.status === 'degraded') {
+      return { className: 'degraded', label: 'degraded — reindex' };
+    }
   }
   return { className: capability.status, label: capability.status };
 }
@@ -356,10 +358,23 @@ export function SettingsPanel(props: SettingsPanelProps) {
               <p className="field-hint">
                 {index.message ?? 'No index yet'}
                 {index.truncated ? ' · truncated' : ''}
+                {index.capabilities?.some(
+                  (capability) =>
+                    capability.capability === 'vectorIndex' &&
+                    capability.status === 'degraded',
+                )
+                  ? ' · Semantic search is degraded. Reindex to rebuild embeddings.'
+                  : ''}
               </p>
               <div className="row">
                 <button type="button" className="btn" onClick={onReindex}>
-                  Reindex
+                  {index.capabilities?.some(
+                    (capability) =>
+                      capability.capability === 'vectorIndex' &&
+                      capability.status === 'degraded',
+                  )
+                    ? 'Reindex embeddings'
+                    : 'Reindex'}
                 </button>
                 <button
                   type="button"

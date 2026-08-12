@@ -102,6 +102,8 @@ export const WEB_TREE_SITTER_GRAMMAR_WASM_BY_LANGUAGE = {
   python: 'tree-sitter-python.wasm',
   ruby: 'tree-sitter-ruby.wasm',
   rust: 'tree-sitter-rust.wasm',
+  shell: 'tree-sitter-bash.wasm',
+  sql: 'tree-sitter-sql.wasm',
   swift: 'tree-sitter-swift.wasm',
   tsx: 'tree-sitter-tsx.wasm',
   typescript: 'tree-sitter-typescript.wasm',

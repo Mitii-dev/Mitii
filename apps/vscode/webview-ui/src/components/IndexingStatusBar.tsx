@@ -28,10 +28,10 @@ function resolveIndexTone(index: IndexStatusSnapshot): IndexTone {
   const missingRequired = requiredCapabilities.some(
     (capability) => capability.status !== 'ready',
   );
-  const missingVector = capabilities.some(
+  const vectorDegraded = capabilities.some(
     (capability) =>
       capability.capability === 'vectorIndex' &&
-      capability.status !== 'ready',
+      capability.status === 'degraded',
   );
   if (
     message.includes('indexing') ||
@@ -48,7 +48,7 @@ function resolveIndexTone(index: IndexStatusSnapshot): IndexTone {
   if (missingRequired || readiness === 'unavailable' || readiness === 'degraded') {
     return 'warn';
   }
-  if (missingVector && readiness !== 'ready') return 'warn';
+  if (vectorDegraded) return 'warn';
   if (coreReady) return 'ready';
   if (index.fileCount > 0 || readiness) return 'ready';
   return 'idle';
@@ -70,9 +70,15 @@ function shortLabel(tone: IndexTone, index: IndexStatusSnapshot): string {
           ) && capability.status !== 'ready',
       )
         ? 'Index Issue'
-        : index.readiness === 'degraded'
-          ? 'Degraded'
-          : 'Unavailable';
+        : index.capabilities?.some(
+              (capability) =>
+                capability.capability === 'vectorIndex' &&
+                capability.status === 'degraded',
+            )
+          ? 'Embeddings'
+          : index.readiness === 'degraded'
+            ? 'Degraded'
+            : 'Unavailable';
     default:
       return 'Index';
   }
@@ -93,7 +99,11 @@ function detailTooltip(index: IndexStatusSnapshot): string {
   for (const capability of index.capabilities ?? []) {
     const label =
       CAPABILITY_LABELS[capability.capability] ?? capability.capability;
-    parts.push(`${label}: ${capability.status}`);
+    parts.push(
+      capability.capability === 'vectorIndex' && capability.status === 'degraded'
+        ? `${label}: degraded — reindex to restore semantic search`
+        : `${label}: ${capability.status}`,
+    );
   }
   if (index.truncated) parts.push('Scan truncated');
   if (index.message) parts.push(index.message);

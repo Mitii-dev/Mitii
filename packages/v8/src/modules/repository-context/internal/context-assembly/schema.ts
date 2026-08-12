@@ -273,6 +273,7 @@ const warningSchema =
         "content_unavailable",
         "content_source_failed",
         "representation_fallback",
+        "file_map_fallback",
         "content_sanitized",
         "secrets_redacted",
         "content_truncated",

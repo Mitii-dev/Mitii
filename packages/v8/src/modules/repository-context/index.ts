@@ -9,7 +9,11 @@ export {
   repositoryContextPipelineInputSchema,
   repositoryContextPipelineResultSchema,
 } from "./contracts/schema";
-export { deriveContextSelectionBudget } from "./policy";
+export {
+  collectRepositoryContextGraphAnchors,
+  deriveContextSelectionBudget,
+  REPOSITORY_CONTEXT_RETRIEVAL_POLICY,
+} from "./policy";
 export type {
   ContextSelectionBudget,
   RepositoryContextPipelineInput,

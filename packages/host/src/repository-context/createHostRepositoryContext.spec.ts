@@ -12,6 +12,122 @@ import { describe, expect, it } from 'vitest';
 
 import { createHostRepositoryContext } from './createHostRepositoryContext.js';
 
+describe('createHostRepositoryContext file-map fallback', () => {
+  it('ranks the empty-selection fallback by repo map score and marks it partial', async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'mitii-file-map-'));
+
+    try {
+      await mkdir(join(workspaceRoot, 'src'), { recursive: true });
+      await writeFile(join(workspaceRoot, 'src', 'alpha.ts'), 'export const alpha = 1;\n', 'utf8');
+      await writeFile(join(workspaceRoot, 'src', 'zeta.ts'), 'export const zeta = 1;\n', 'utf8');
+      await mkdir(join(workspaceRoot, '.mitii'), { recursive: true });
+      await writeFile(
+        join(workspaceRoot, '.mitii', 'repository-map-workspace.json'),
+        JSON.stringify({
+          schemaVersion: 1,
+          workspaceSnapshotId:
+            '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+          codeIndexChangeToken: 'index-1',
+          entries: [
+            {
+              file: {
+                id: 'file:zeta',
+                rootId: 'workspace',
+                relativePath: 'src/zeta.ts',
+              },
+              symbols: [],
+              score: 0.9,
+              pageRank: 0.9,
+              inboundImportCount: 4,
+              outboundImportCount: 0,
+              inboundReferenceCount: 0,
+              outboundReferenceCount: 0,
+              reasons: [],
+            },
+            {
+              file: {
+                id: 'file:alpha',
+                rootId: 'workspace',
+                relativePath: 'src/alpha.ts',
+              },
+              symbols: [],
+              score: 0.1,
+              pageRank: 0.1,
+              inboundImportCount: 0,
+              outboundImportCount: 0,
+              inboundReferenceCount: 0,
+              outboundReferenceCount: 0,
+              reasons: [],
+            },
+          ],
+          statistics: {
+            availableFiles: 2,
+            rankedFiles: 2,
+            includedFiles: 2,
+            includedSymbols: 0,
+            estimatedTokens: 40,
+            durationMs: 0,
+          },
+          status: 'complete',
+          generatedAt: new Date(0).toISOString(),
+        }),
+        'utf8',
+      );
+
+      const repositoryState = new RepositoryStatePipeline({
+        store: new InMemoryRepositoryStateStore(),
+      });
+      const published = await repositoryState.publish(
+        publishRepositoryStateInputSchema.parse({
+          schemaVersion: 1,
+          workspaceId: 'workspace-test',
+          snapshotId:
+            '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+          scanCompleteness: 'complete',
+          roots: [
+            {
+              rootId: 'workspace',
+              projectCatalogRevision: 'catalog-1',
+              mapRevision: 'map-1',
+              capabilities: [
+                { capability: 'catalog', status: 'ready' },
+                { capability: 'map', status: 'ready' },
+              ],
+            },
+          ],
+          reasons: [],
+          generatedAt: new Date(0).toISOString(),
+        }),
+      );
+      expect(published.status).toBe('published');
+      if (published.status !== 'published') return;
+
+      const result = await createHostRepositoryContext({
+        repositoryState,
+        workspaceRoot,
+        openDatabase: (() => {
+          throw new Error('text index database should not be opened');
+        }) as never,
+      }).execute({
+        state: published.reference,
+        query: 'where is the important code',
+        mode: 'ask',
+      });
+
+      expect(result.assembly.status).toBe('partial');
+      expect(
+        result.warnings.some((warning) => warning.code === 'file_map_fallback'),
+      ).toBe(true);
+      const content = result.assembly.blocks[0]?.content ?? '';
+      expect(content.indexOf('src/zeta.ts')).toBeLessThan(
+        content.indexOf('src/alpha.ts'),
+      );
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('createHostRepositoryContext git priors', () => {
   it('adds dirty git files as git_diff selection origins', async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), 'mitii-git-priors-'));

@@ -106,6 +106,11 @@ export type {
 
 export { RepositoryContextPipeline } from "./modules/repository-context";
 export {
+  collectRepositoryContextGraphAnchors,
+  deriveContextSelectionBudget,
+  REPOSITORY_CONTEXT_RETRIEVAL_POLICY,
+} from "./modules/repository-context";
+export {
   ContextAssemblyFactory,
   ContextSelector,
   HybridRetrievalFactory,

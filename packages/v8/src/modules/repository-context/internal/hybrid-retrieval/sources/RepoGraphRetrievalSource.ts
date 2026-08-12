@@ -179,7 +179,7 @@ export class RepoGraphRetrievalSource
       request.query
         .toLowerCase();
 
-    const directMatches =
+    const queryMatches =
       nodes.flatMap(
         (node) => {
           const score =
@@ -232,12 +232,17 @@ export class RepoGraphRetrievalSource
               .localeCompare(
                 right.nodeId,
               ),
-        )
-        .slice(
-          0,
-          this.options
-            .maximumAnchorNodes,
         );
+
+    const directMatches =
+      this.mergeAnchorMatches(
+        this.collectFileAnchors(
+          nodes,
+          fileByFileId,
+          request,
+        ),
+        queryMatches,
+      );
 
     const candidateByKey =
       new Map<
@@ -338,6 +343,115 @@ export class RepoGraphRetrievalSource
       truncated,
       warnings,
     });
+  }
+
+  private collectFileAnchors(
+    nodes: readonly RepoGraphNode[],
+    fileByFileId: ReadonlyMap<string, RepoGraphFileNode>,
+    request: NormalizedHybridRetrievalRequest,
+  ): Array<{
+    nodeId: string;
+    candidate: RetrievalCandidate;
+  }> {
+    const anchors = new Set(request.anchorFilePaths ?? []);
+    if (anchors.size === 0) {
+      return [];
+    }
+
+    const matches: Array<{
+      nodeId: string;
+      candidate: RetrievalCandidate;
+    }> = [];
+    const anchoredFileIds = new Set<string>();
+
+    for (const node of nodes) {
+      if (node.kind !== "file" || !anchors.has(node.relativePath)) {
+        continue;
+      }
+
+      const candidate = this.toCandidate(
+        node,
+        fileByFileId,
+        HYBRID_RETRIEVAL_DEFAULTS.GRAPH_FILE_ANCHOR_SCORE,
+        {
+          type: "graph_file_anchor",
+          evidence: `Pinned file prior for ${node.relativePath}.`,
+        },
+      );
+
+      if (!candidate || !this.matchesScope(candidate, request)) {
+        continue;
+      }
+
+      anchoredFileIds.add(node.fileId);
+      matches.push({
+        nodeId: node.id,
+        candidate,
+      });
+    }
+
+    for (const node of nodes) {
+      if (
+        node.kind !== "symbol" ||
+        !anchoredFileIds.has(node.fileId)
+      ) {
+        continue;
+      }
+
+      const candidate = this.toCandidate(
+        node,
+        fileByFileId,
+        HYBRID_RETRIEVAL_DEFAULTS.GRAPH_FILE_ANCHOR_SCORE,
+        {
+          type: "graph_file_anchor",
+          evidence: `Pinned file prior for ${
+            fileByFileId.get(node.fileId)?.relativePath ?? node.name
+          }.`,
+        },
+      );
+
+      if (!candidate || !this.matchesScope(candidate, request)) {
+        continue;
+      }
+
+      matches.push({
+        nodeId: node.id,
+        candidate,
+      });
+    }
+
+    return matches.sort(
+      (left, right) =>
+        left.nodeId.localeCompare(right.nodeId),
+    );
+  }
+
+  private mergeAnchorMatches(
+    fileAnchors: readonly {
+      nodeId: string;
+      candidate: RetrievalCandidate;
+    }[],
+    queryMatches: readonly {
+      nodeId: string;
+      candidate: RetrievalCandidate;
+    }[],
+  ): Array<{
+    nodeId: string;
+    candidate: RetrievalCandidate;
+  }> {
+    const reserved = fileAnchors.slice(
+      0,
+      this.options.maximumAnchorNodes,
+    );
+    const reservedIds = new Set(
+      reserved.map((match) => match.nodeId),
+    );
+    const remaining =
+      this.options.maximumAnchorNodes - reserved.length;
+    const queryFill = queryMatches
+      .filter((match) => !reservedIds.has(match.nodeId))
+      .slice(0, remaining);
+    return [...reserved, ...queryFill];
   }
 
   private expandBlastRadius(input: {

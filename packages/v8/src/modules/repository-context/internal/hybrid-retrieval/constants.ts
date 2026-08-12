@@ -89,6 +89,8 @@ export const HYBRID_RETRIEVAL_DEFAULTS = {
 
   GRAPH_EXACT_PATH_SCORE:
     1,
+  GRAPH_FILE_ANCHOR_SCORE:
+    1,
   GRAPH_FILE_NAME_SCORE:
     0.92,
   GRAPH_PATH_TOKEN_SCORE:
@@ -207,6 +209,8 @@ export const HYBRID_RETRIEVAL_MESSAGES = {
     "A retrieval source failed.",
   REQUIRED_SOURCE_UNAVAILABLE:
     "A required retrieval source was unavailable.",
+  OPTIONAL_SOURCE_UNAVAILABLE:
+    "An optional retrieval source was unavailable; remaining sources continued.",
   SOURCE_TRUNCATED:
     "A retrieval source reached its candidate limit.",
   RESULT_LIMIT_REACHED:

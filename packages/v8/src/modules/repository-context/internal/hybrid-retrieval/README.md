@@ -8,6 +8,7 @@ agent tools.
 
 - Normalize and validate one retrieval request.
 - Query independent lexical, vector, Repo Map, and Repo Graph sources.
+- Treat `anchorFilePaths` as extra RepoGraph file-node anchors (not a scope filter).
 - Bound every candidate pool.
 - Fuse heterogeneous rankings with weighted reciprocal-rank fusion.
 - Preserve source contributions and human-readable ranking evidence.
