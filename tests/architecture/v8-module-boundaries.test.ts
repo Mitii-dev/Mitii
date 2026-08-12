@@ -20,6 +20,7 @@ const PUBLIC_MODULES = [
   'skills',
   'memory',
   'planning',
+  'code-navigation',
 ] as const;
 
 const PUBLIC_ENGINE_COMPONENTS = [
@@ -127,6 +128,8 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(index).toContain('MemoryPipeline');
     expect(index).toContain('memoryRetrieveInputSchema');
     expect(index).toContain('memoryFactSchema');
+    expect(index).toContain('CodeNavigationPipeline');
+    expect(index).toContain('codeNavigationInputSchema');
     expect(index).not.toContain('IntentRouter');
     expect(index).not.toContain('TaskAnalyzer');
     expect(index).not.toContain('resolveRoute');

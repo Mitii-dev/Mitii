@@ -9,7 +9,9 @@ import { deleteFileTool } from "./deleteFileTool";
 import { fetchDocsTool } from "./fetchDocsTool";
 import { fetchUrlTool } from "./fetchUrlTool";
 import { fileMetadataTool } from "./fileMetadataTool";
+import { findReferencesTool } from "./findReferencesTool";
 import { globFilesTool } from "./globFilesTool";
+import { gotoDefinitionTool } from "./gotoDefinitionTool";
 import { listDirectoryTool } from "./listDirectoryTool";
 import { moveFileTool } from "./moveFileTool";
 import { readDiagnosticsTool } from "./readDiagnosticsTool";
@@ -38,6 +40,8 @@ export const BUILTIN_TOOLS: readonly RegisteredTool[] = [
   searchFilesTool,
   readDiagnosticsTool,
   readGitStatusTool,
+  gotoDefinitionTool,
+  findReferencesTool,
   runReadonlyCommandTool,
   readPackageScriptsTool,
   applyPatchTool,
@@ -87,6 +91,8 @@ export {
   searchFilesTool,
   readDiagnosticsTool,
   readGitStatusTool,
+  gotoDefinitionTool,
+  findReferencesTool,
   runReadonlyCommandTool,
   readPackageScriptsTool,
   applyPatchTool,

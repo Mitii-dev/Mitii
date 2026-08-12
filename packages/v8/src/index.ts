@@ -109,6 +109,7 @@ export {
   ContextAssemblyFactory,
   ContextSelector,
   HybridRetrievalFactory,
+  IdentifierAwareRetrievalReranker,
 } from "./modules/repository-context";
 export {
   repositoryContextPipelineInputSchema,
@@ -262,6 +263,22 @@ export type {
   MemoryFact,
   MemoryStorePort,
 } from "./modules/memory";
+
+export { CodeNavigationPipeline } from "./modules/code-navigation";
+export {
+  GraphCodeNavigationAdapter,
+  FallbackCodeNavigationAdapter,
+  codeNavigationInputSchema,
+  codeNavigationResultSchema,
+  CODE_NAVIGATION_SCHEMA_VERSION,
+} from "./modules/code-navigation";
+export type {
+  CodeNavigationInput,
+  CodeNavigationResult,
+  CodeNavigationPort,
+  CodeNavigationQuery,
+  CodeNavigationLocation,
+} from "./modules/code-navigation";
 
 export { PlanningPipeline } from "./modules/planning";
 export {

@@ -2616,6 +2616,18 @@ export class AgentEnginePipeline {
         ]
           .filter(Boolean)
           .join(" ");
+      case "goto_definition":
+      case "find_references":
+        return [
+          path ? `path=${path}` : undefined,
+          typeof args.line === "number" ? `line=${args.line}` : undefined,
+          typeof args.column === "number" ? `column=${args.column}` : undefined,
+          typeof args.symbolName === "string"
+            ? `symbol=${args.symbolName}`
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join(" ");
       case "read_diagnostics":
       case "read_git_status":
         return [

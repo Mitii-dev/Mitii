@@ -13,7 +13,8 @@ defaults with the active model window.
 
 Hosts may inject `gitDiffFiles`, `currentFile`, and `openFiles` as selection
 priors. After a text-index schema upgrade, rebuild the workspace index so
-identifier-aware FTS and call-graph hops stay current.
+identifier-aware FTS and call-graph hops stay current. Hosts inject
+`IdentifierAwareRetrievalReranker` after RRF for identifier/path overlap.
 
 ## Layout
 

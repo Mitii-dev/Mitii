@@ -57,6 +57,24 @@ function createRuntime(options?: { processHandler?: ProcessHandler }) {
       untracked: [],
       raw: "",
     }),
+    codeNavigation: {
+      id: "test-graph",
+      provider: "repo_graph" as const,
+      definition: async () => [
+        {
+          relativePath: "src/util.ts",
+          startLine: 1,
+          symbolName: "n",
+        },
+      ],
+      references: async () => [
+        {
+          relativePath: "src/other.ts",
+          startLine: 1,
+          symbolName: "n",
+        },
+      ],
+    },
   });
 }
 
@@ -194,5 +212,33 @@ describe("ToolRuntimePipeline", () => {
       workspaceRoot: WORKSPACE,
     });
     expect(git.status).toBe("succeeded");
+
+    const definition = await runtime.execute({
+      schemaVersion: 1,
+      callId: "nav1",
+      toolName: "goto_definition",
+      arguments: { path: "src/util.ts", line: 1 },
+      grant,
+      workspaceRoot: WORKSPACE,
+    });
+    expect(definition.status).toBe("succeeded");
+    expect(
+      (definition.output as { locations: Array<{ symbolName?: string }> })
+        .locations[0]?.symbolName,
+    ).toBe("n");
+
+    const references = await runtime.execute({
+      schemaVersion: 1,
+      callId: "nav2",
+      toolName: "find_references",
+      arguments: { path: "src/util.ts", line: 1 },
+      grant,
+      workspaceRoot: WORKSPACE,
+    });
+    expect(references.status).toBe("succeeded");
+    expect(
+      (references.output as { locations: Array<{ path?: string }> })
+        .locations[0]?.path,
+    ).toBe("src/other.ts");
   });
 });

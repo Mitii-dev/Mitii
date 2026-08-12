@@ -90,6 +90,8 @@ export type {
   HostEditorContextReferences,
 } from './repository-context/createHostRepositoryContext.js';
 
+export { createHostCodeNavigationPort } from './code-navigation/createHostCodeNavigationPort.js';
+
 // ---------------------------------------------------------------------------
 // Port adapters — satisfy V8/SDK injection points with FS / vendor code
 // ---------------------------------------------------------------------------

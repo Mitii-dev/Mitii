@@ -93,6 +93,7 @@ export type {
   GitPort,
   NetworkPort,
   SearchPort,
+  CodeNavigationPort,
 } from "./contracts";
 
 export {

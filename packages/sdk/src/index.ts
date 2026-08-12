@@ -93,6 +93,8 @@ export type {
   DiagnosticsPort,
   DiagnosticItem,
   GitPort,
+  CodeNavigationPort,
+  CodeNavigationQuery,
   AgentRunCheckpoint,
   AgentEngineRunCheckpointStorePort,
   PendingApprovalState,

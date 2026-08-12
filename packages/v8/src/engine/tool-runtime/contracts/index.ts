@@ -58,3 +58,4 @@ export type {
   WebSearchHit,
   WebSearchResult,
 } from "./ports/ToolRuntimePorts";
+export type { CodeNavigationPort } from "../../../modules/code-navigation";

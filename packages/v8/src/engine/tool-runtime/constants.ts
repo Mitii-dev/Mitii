@@ -13,6 +13,8 @@ export const READ_ONLY_TOOL_IDS = [
   "search_files",
   "read_diagnostics",
   "read_git_status",
+  "goto_definition",
+  "find_references",
   "run_readonly_command",
   "read_package_scripts",
 ] as const;

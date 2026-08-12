@@ -176,6 +176,15 @@ function buildToolGuidance(decision: ExecutionDecision): string {
     );
   }
 
+  if (
+    grant.allowedTools.includes("goto_definition") ||
+    grant.allowedTools.includes("find_references")
+  ) {
+    lines.push(
+      "When you need a symbol definition or its call sites, use goto_definition and find_references instead of grepping the workspace.",
+    );
+  }
+
   return lines.join("\n");
 }
 

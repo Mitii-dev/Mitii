@@ -157,6 +157,8 @@ describe("model tool definition single source", () => {
 
     const readOnly = listBuiltinReadOnlyModelToolDefinitions().map((t) => t.name);
     expect(readOnly).toContain("glob_files");
+    expect(readOnly).toContain("goto_definition");
+    expect(readOnly).toContain("find_references");
     expect(readOnly).not.toContain("apply_patch");
     expect(readOnly).not.toContain("delete_file");
     expect(readOnly).not.toContain("move_file");

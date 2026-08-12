@@ -47,8 +47,7 @@ responsibilities previously spread across:
 - the single-file portion of `tsMorphScopedAst.ts`
 
 `WorkspaceLanguageService` is not replaced here. Cross-file definition,
-caller, and language-server behavior belongs in a later `code-navigation`
-module.
+caller, and language-server behavior belongs in `code-navigation`.
 
 ## Default wiring
 

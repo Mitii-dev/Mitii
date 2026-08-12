@@ -5,7 +5,7 @@ import {
 
 import {
   SOURCE_LANGUAGE_BASENAMES,
-  SOURCE_LANGUAGE_EXTENSIONS,
+  SOURCE_LANGUAGE_DIALECT_EXTENSIONS,
 } from "./constants";
 
 import type {
@@ -38,6 +38,7 @@ export class LanguageDetector {
     this.registry = registry;
     this.basenames = {
       ...SOURCE_LANGUAGE_BASENAMES,
+      ...this.registry.filenameIndex(),
       ...this.normalizeMap(
         options.additionalBasenames,
         false,
@@ -45,7 +46,8 @@ export class LanguageDetector {
     };
 
     this.extensions = {
-      ...SOURCE_LANGUAGE_EXTENSIONS,
+      ...this.registry.extensionIndex(),
+      ...SOURCE_LANGUAGE_DIALECT_EXTENSIONS,
       ...this.normalizeMap(
         options.additionalExtensions,
         true,

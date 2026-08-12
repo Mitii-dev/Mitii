@@ -55,6 +55,7 @@ Agent Engine
         â”œâ”€â”€ Memory
         â”œâ”€â”€ Planning
         â”œâ”€â”€ Repository Context â”€â”€ Repository State
+        â”œâ”€â”€ Code Navigation
         â”œâ”€â”€ Prompt Construction
         â”œâ”€â”€ Model Gateway
         â”œâ”€â”€ Tool Runtime
@@ -95,6 +96,7 @@ belongs to the tool-runtime engine package path. Business facades remain under
 | `skills` | Task evidence + budget â†’ selected instructions | Selection, conflicts, provenance, instruction budgeting | General prompt construction |
 | `memory` | Scoped query/commit â†’ memory result | Retrieval, relevance, retention, provenance, privacy | Run orchestration |
 | `planning` | Task evidence + decision depth (+ optional skills/process hints) â†’ `PlanArtifact` | Dimension-driven plan drafting, validation, compaction, serialization | Route authority, tool execution, hard-coded plan types |
+| `code-navigation` | Path + caret -> definitions / references / hover | Language-server and repo-graph navigation | Indexing, retrieval budgets, spawning servers |
 
 Adding a top-level module requires all of:
 

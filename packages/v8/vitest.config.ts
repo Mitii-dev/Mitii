@@ -17,6 +17,8 @@ export default defineConfig({
       'src/modules/request-understanding/tests/**/*.spec.ts',
       'src/modules/memory/**/*.spec.ts',
       'src/modules/planning/**/*.spec.ts',
+      'src/modules/code-navigation/**/*.spec.ts',
+      'src/modules/repository-context/internal/hybrid-retrieval/IdentifierAwareRetrievalReranker.spec.ts',
       'src/modules/prompt-construction/**/*.spec.ts',
       'src/modules/repository-context/tests/**/*.spec.ts',
       'src/modules/skills/**/*.spec.ts',

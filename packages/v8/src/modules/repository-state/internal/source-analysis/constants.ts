@@ -53,42 +53,13 @@ export const SOURCE_LANGUAGE_BASENAMES: Readonly<
   workspace: "starlark",
 };
 
-export const SOURCE_LANGUAGE_EXTENSIONS: Readonly<
+/**
+ * Dialects that are not first-class LanguageProfileRegistry IDs.
+ * Target-language extensions live only on LanguageProfileRegistry.
+ */
+export const SOURCE_LANGUAGE_DIALECT_EXTENSIONS: Readonly<
   Record<string, SourceLanguageId>
 > = {
-  ".ts": "typescript",
-  ".mts": "typescript",
-  ".cts": "typescript",
-  ".tsx": "typescript",
-
-  ".js": "javascript",
-  ".mjs": "javascript",
-  ".cjs": "javascript",
-  ".jsx": "javascript",
-
-  ".py": "python",
-  ".pyi": "python",
-  ".pyw": "python",
-
-  ".java": "java",
-  ".kt": "kotlin",
-  ".kts": "kotlin",
-
-  ".go": "go",
-  ".rs": "rust",
-
-  ".c": "c",
-  ".h": "c",
-  ".cpp": "cpp",
-  ".cc": "cpp",
-  ".cxx": "cpp",
-  ".hpp": "cpp",
-  ".hxx": "cpp",
-
-  ".cs": "csharp",
-  ".rb": "ruby",
-  ".php": "php",
-  ".swift": "swift",
   ".scala": "scala",
 
   ".lua": "lua",
@@ -98,11 +69,6 @@ export const SOURCE_LANGUAGE_EXTENSIONS: Readonly<
   ".zig": "zig",
   ".dart": "dart",
 
-  ".sh": "shell",
-  ".bash": "shell",
-  ".zsh": "shell",
-
-  ".sql": "sql",
   ".tf": "hcl",
   ".tfvars": "hcl",
   ".proto": "proto",

@@ -41,6 +41,13 @@ test("shell and python resolve from extension or shebang without core branching"
   );
 });
 
+test("extension index is the single source for target-language mappings", () => {
+  const extensions = defaultLanguageProfileRegistry.extensionIndex();
+  assert.equal(extensions[".ts"], "typescript");
+  assert.equal(extensions[".py"], "python");
+  assert.equal(extensions[".vue"], undefined);
+});
+
 test("project descriptor contract pins a primary language id", () => {
   const project = projectDescriptorSchema.parse({
     projectId: "app",

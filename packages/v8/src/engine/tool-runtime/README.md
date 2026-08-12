@@ -64,6 +64,8 @@ const runtime = new ToolRuntimePipeline(ports, { registry });
 - `search_files`
 - `read_diagnostics`
 - `read_git_status`
+- `goto_definition`
+- `find_references`
 - `run_readonly_command` (argv only; no shell; agent grant = toolchain + git read prefixes)
 - `read_package_scripts`
 

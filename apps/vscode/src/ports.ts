@@ -23,6 +23,7 @@ import {
 } from '@mitii/sdk';
 import {
   createFileSystemSkillsCatalog,
+  createHostCodeNavigationPort,
   createOptionalSearchPort,
   createWorkspaceCheckpointStore,
   getProviderPreset,
@@ -36,6 +37,7 @@ import { findLocalModelPreset } from './modelPresets.js';
 import { createHostRepositoryContext } from './repositoryContextHost.js';
 import { readContextToggles } from './contextToggles.js';
 import { createVsCodeMemoryStore } from './memoryStore.js';
+import { createVsCodeCodeNavigationPort } from './codeNavigation.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
 
 const DEFAULT_CONTEXT_WINDOW = 32_768;
@@ -205,6 +207,12 @@ export async function createVscodeClient(
     : undefined;
   const search = createOptionalSearchPort(process.env);
   const git = workspaceRoot ? new NodeGitAdapter() : undefined;
+  const codeNavigation = workspaceRoot
+    ? createHostCodeNavigationPort({
+        workspaceRoot,
+        languageServer: createVsCodeCodeNavigationPort(vs, workspaceRoot),
+      })
+    : undefined;
   const tools = workspaceRoot && fileSystem
     ? new ToolRuntimePipeline(
         {
@@ -214,6 +222,7 @@ export async function createVscodeClient(
           git,
           diagnostics: new VscodeDiagnosticsPort(vs, workspaceRoot),
           ...(search ? { search } : {}),
+          ...(codeNavigation ? { codeNavigation } : {}),
         },
         { registry: mcpManager.createRegistry() },
       )

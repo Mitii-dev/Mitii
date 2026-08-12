@@ -16,6 +16,7 @@ import {
 } from '@mitii/sdk';
 import {
   createFileSystemSkillsCatalog,
+  createHostCodeNavigationPort,
   createOptionalSearchPort,
   createWorkspaceCheckpointStore,
   createWorkspaceMemoryStore,
@@ -160,6 +161,9 @@ export function createCliClient(options: {
     process: new NodeProcessAdapter(),
     network: new NodeNetworkAdapter(),
     git,
+    codeNavigation: createHostCodeNavigationPort({
+      workspaceRoot: options.cwd,
+    }),
     ...(search ? { search } : {}),
   });
   const verification = new VerificationPipeline({

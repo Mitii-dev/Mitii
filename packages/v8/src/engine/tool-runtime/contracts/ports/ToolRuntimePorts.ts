@@ -1,3 +1,4 @@
+import type { CodeNavigationPort } from "../../../../modules/code-navigation";
 import type { DiagnosticsPort } from "./DiagnosticsPort";
 import type { GitPort } from "./GitPort";
 import type { NetworkPort } from "./NetworkPort";
@@ -12,6 +13,7 @@ export interface ToolRuntimePorts {
   git?: GitPort;
   network?: NetworkPort;
   search?: SearchPort;
+  codeNavigation?: CodeNavigationPort;
 }
 
 export type {

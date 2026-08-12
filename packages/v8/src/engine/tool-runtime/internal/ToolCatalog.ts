@@ -103,6 +103,47 @@ export const readDiagnosticsOutputSchema = z
   })
   .strict();
 
+export const gotoDefinitionInputSchema = z
+  .object({
+    path: z.string().min(1),
+    line: z.number().int().positive(),
+    column: z.number().int().positive().optional(),
+    symbolName: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const findReferencesInputSchema = z
+  .object({
+    path: z.string().min(1),
+    line: z.number().int().positive(),
+    column: z.number().int().positive().optional(),
+    symbolName: z.string().min(1).optional(),
+    includeDeclaration: z.boolean().optional(),
+  })
+  .strict();
+
+export const codeNavigationLocationOutputSchema = z
+  .object({
+    path: z.string(),
+    line: z.number().int().positive(),
+    column: z.number().int().positive().optional(),
+    symbolName: z.string().optional(),
+    symbolKind: z.string().optional(),
+    preview: z.string().optional(),
+  })
+  .strict();
+
+export const gotoDefinitionOutputSchema = z
+  .object({
+    path: z.string(),
+    locations: z.array(codeNavigationLocationOutputSchema),
+    provider: z.string(),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const findReferencesOutputSchema = gotoDefinitionOutputSchema;
+
 export const readGitStatusInputSchema = z
   .object({
     includeDiff: z.boolean().optional(),

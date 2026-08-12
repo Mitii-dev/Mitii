@@ -6,6 +6,7 @@ import {
   ContextAssemblyFactory,
   ContextSelector,
   HybridRetrievalFactory,
+  IdentifierAwareRetrievalReranker,
   NodeFileSystemAdapter,
   RepositoryContextPipeline,
   type GitPort,
@@ -483,6 +484,7 @@ function createHostRetriever(options: {
         retrievalClose = () => runtime.close();
         const retriever = new HybridRetrievalFactory().create({
           textIndex: runtime.textIndex,
+          reranker: new IdentifierAwareRetrievalReranker(),
           ...(runtime.vectorIndex && runtime.embeddingProvider
             ? {
                 vectorIndex: runtime.vectorIndex,

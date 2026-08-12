@@ -3,6 +3,7 @@ export {
   ContextAssemblyFactory,
   ContextSelector,
   HybridRetrievalFactory,
+  IdentifierAwareRetrievalReranker,
 } from "./adapters";
 export {
   repositoryContextPipelineInputSchema,
