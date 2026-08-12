@@ -23,6 +23,8 @@ an injected token estimator.
 | `ModelCapabilityResolver` | Normalize declared capabilities |
 | `EchoLlmPort` | Offline/test adapter |
 | `OpenAiCompatibleLlmPort` | OpenAI-compatible chat completions |
+| `AnthropicLlmPort` | Native Anthropic Messages API (Claude) |
+| `GeminiLlmPort` | Native Gemini generateContent API |
 | `MODEL_PROVIDER_SUPPORT` | Explicit supported/unsupported matrix |
 
 ```ts
@@ -48,8 +50,9 @@ for await (const event of port.complete({
 | OpenAI | supported | `OpenAiCompatibleLlmPort` |
 | Ollama | supported | `OpenAiCompatibleLlmPort` |
 | OpenAI-compatible | supported | `OpenAiCompatibleLlmPort` |
-| Anthropic | unsupported | — |
-| Gemini | unsupported | — |
+| DeepSeek | supported | `OpenAiCompatibleLlmPort` |
+| Anthropic (Claude) | supported | `AnthropicLlmPort` |
+| Gemini | supported | `GeminiLlmPort` |
 
 ## Layout
 
@@ -57,6 +60,7 @@ for await (const event of port.complete({
 model-gateway/
 ├── contracts/          # request/event/capability schemas + types
 ├── adapters/
+├── internal/           # HTTP retry + SSE (not public)
 ├── ModelCapabilityResolver.ts
 ├── constants.ts
 └── index.ts
@@ -67,7 +71,9 @@ model-gateway/
 ```text
 adapters/
 ├── EchoLlmPort.ts
-└── OpenAiCompatibleLlmPort.ts
+├── OpenAiCompatibleLlmPort.ts
+├── AnthropicLlmPort.ts
+└── GeminiLlmPort.ts
 ```
 
 ## Do not put here

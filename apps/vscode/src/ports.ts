@@ -1,8 +1,6 @@
 import { createHash } from 'node:crypto';
 import { relative } from 'node:path';
 import {
-  EchoLlmPort,
-  OpenAiCompatibleLlmPort,
   createMitiiClient,
   InMemoryRepositoryStateStore,
   RepositoryStatePipeline,
@@ -24,9 +22,10 @@ import {
 import {
   createFileSystemSkillsCatalog,
   createHostCodeNavigationPort,
+  createHostLlmPorts,
   createOptionalSearchPort,
   createWorkspaceCheckpointStore,
-  getProviderPreset,
+  resolveProviderApiKey,
 } from '@mitii/host';
 import type * as vscode from 'vscode';
 
@@ -132,54 +131,41 @@ export async function resolveVscodePorts(
     'http://localhost:11434/v1';
   const workspaceId = resolveWorkspaceId(workspaceRoot);
 
-  const secretKey =
-    (await secrets.get('mitii.provider.apiKey')) ??
-    process.env.MITII_API_KEY ??
-    process.env.OPENAI_API_KEY;
+  const secretKey = resolveProviderApiKey({
+    type: providerType,
+    env: process.env,
+    secretKey:
+      (await secrets.get('mitii.provider.apiKey')) ?? undefined,
+  });
+  const presetId = cfg.get<string>('provider.preset') ?? providerType;
 
-  if (providerType === 'openai-compatible') {
-    const contextWindowTokens = resolveContextWindow(cfg, model);
-    const maximumOutputTokens = resolveMaximumOutput(cfg, contextWindowTokens);
-    const capabilities = {
-      contextWindowTokens,
-      maximumOutputTokens,
-      supportsTools: true,
-    };
-    const presetId = cfg.get<string>('provider.preset') ?? 'openai-compatible';
-    const preset = getProviderPreset(presetId);
-    const authHeader = preset?.authHeader;
-    const chatCompletionsPath = preset?.chatCompletionsPath;
-    const runLlm = new OpenAiCompatibleLlmPort({
-      model,
-      baseUrl,
-      ...(secretKey ? { apiKey: secretKey } : {}),
-      ...(authHeader ? { authHeader } : {}),
-      ...(chatCompletionsPath ? { chatCompletionsPath } : {}),
-      capabilities,
-    });
-    const understandingLlm = new OpenAiCompatibleLlmPort({
-      model,
-      baseUrl,
-      ...(secretKey ? { apiKey: secretKey } : {}),
-      ...(authHeader ? { authHeader } : {}),
-      ...(chatCompletionsPath ? { chatCompletionsPath } : {}),
-      capabilities: {
-        ...capabilities,
-        supportsStructuredOutput: true,
-      },
-    });
+  if (providerType === 'echo') {
     return {
-      understandingLlm,
-      runLlm,
-      providerLabel: `openai-compatible:${model}`,
+      understandingLlm: new LocalUnderstandingLlmPort(),
+      runLlm: createHostLlmPorts({ type: 'echo', model: 'echo' }).runLlm,
+      providerLabel: 'echo',
       workspaceId,
     };
   }
 
+  const contextWindowTokens = resolveContextWindow(cfg, model);
+  const maximumOutputTokens = resolveMaximumOutput(cfg, contextWindowTokens);
+  const ports = createHostLlmPorts({
+    type: providerType,
+    preset: presetId,
+    model,
+    baseUrl,
+    ...(secretKey ? { apiKey: secretKey } : {}),
+    capabilities: {
+      contextWindowTokens,
+      maximumOutputTokens,
+      supportsTools: true,
+    },
+  });
   return {
-    understandingLlm: new LocalUnderstandingLlmPort(),
-    runLlm: new EchoLlmPort(),
-    providerLabel: 'echo',
+    understandingLlm: ports.understandingLlm,
+    runLlm: ports.runLlm,
+    providerLabel: ports.providerLabel,
     workspaceId,
   };
 }

@@ -124,7 +124,7 @@ export function activate(context: ExtensionContext): void {
     invalidateClient();
     channel.appendLine('[mitii] SecretStorage mitii.provider.apiKey updated');
     void vscode.window.showInformationMessage(
-      'Mitii API key saved. Use Provider → openai-compatible for cloud APIs; local Ollama does not need a key.',
+      'Mitii API key saved. Choose Anthropic, Gemini, DeepSeek, OpenAI, or a custom OpenAI-compatible endpoint in Settings. Local Ollama does not need a key.',
     );
   };
 

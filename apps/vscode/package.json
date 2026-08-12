@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.8.21",
+  "version": "2.8.22",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -227,10 +227,12 @@
           "type": "string",
           "enum": [
             "echo",
-            "openai-compatible"
+            "openai-compatible",
+            "anthropic",
+            "gemini"
           ],
           "default": "echo",
-          "description": "LLM provider adapter family (echo or OpenAI-compatible)."
+          "description": "LLM provider adapter: echo, OpenAI-compatible (/v1), Anthropic Messages (Claude), or Gemini."
         },
         "mitii.provider.preset": {
           "type": "string",
@@ -242,20 +244,22 @@
             "openrouter",
             "deepseek",
             "azure-openai",
-            "openai-compatible"
+            "openai-compatible",
+            "anthropic",
+            "gemini"
           ],
           "default": "echo",
-          "description": "Provider preset that prefills base URL, model, and auth style. All non-echo presets use the OpenAI-compatible adapter."
+          "description": "Provider preset that prefills base URL, model, and adapter. Use openai-compatible for any /v1 chat completions API."
         },
         "mitii.provider.baseUrl": {
           "type": "string",
           "default": "http://localhost:11434/v1",
-          "description": "OpenAI-compatible API base URL"
+          "description": "Provider API base URL (OpenAI-compatible /v1, https://api.anthropic.com, or https://generativelanguage.googleapis.com)."
         },
         "mitii.provider.model": {
           "type": "string",
           "default": "qwen3-coder:30b",
-          "description": "Model name"
+          "description": "Model id (for example gpt-4o-mini, claude-sonnet-4-5, gemini-2.5-flash, deepseek-chat)."
         },
         "mitii.provider.contextWindow": {
           "type": "number",

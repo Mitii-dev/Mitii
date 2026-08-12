@@ -23,13 +23,17 @@ Signals:
 
 Config (no secrets):
   .mitii/config.json or ~/.mitii/config.json
-  Fields: provider, model, baseUrl, workspaceId, defaultMode
-  API keys: MITII_API_KEY / OPENAI_API_KEY only (never in config files)
+  Fields: provider, providerPreset, model, baseUrl, workspaceId, defaultMode
+  provider: echo | openai-compatible | anthropic | gemini
+  API keys never go in config files
 
 Environment:
-  MITII_API_KEY / OPENAI_API_KEY   Provider API key (optional)
-  MITII_BASE_URL                   OpenAI-compatible base URL
-  MITII_MODEL                      Model id (default: gpt-4o-mini)
+  MITII_PROVIDER                   echo | openai-compatible | anthropic | gemini
+  MITII_MODEL / MITII_BASE_URL     Model id and API base URL
+  MITII_API_KEY                    Generic key (any provider)
+  ANTHROPIC_API_KEY                Claude / Anthropic
+  GEMINI_API_KEY / GOOGLE_API_KEY  Gemini
+  OPENAI_API_KEY                   OpenAI-compatible (OpenAI, DeepSeek, …)
 
 Hosts stream events, cancel, clarify/approve, index/status,
 usage/context inspection, and secret-free session export.

@@ -48,4 +48,22 @@ describe('CLI resolveCliPorts', () => {
     });
     expect(ports.providerLabel).toBe('echo');
   });
+
+  it('selects anthropic when ANTHROPIC_API_KEY is set', () => {
+    const ports = resolveCliPorts({
+      env: { ANTHROPIC_API_KEY: 'sk-ant-test' },
+    });
+    expect(ports.providerLabel).toBe('anthropic:claude-sonnet-4-5');
+  });
+
+  it('selects gemini from explicit MITII_PROVIDER', () => {
+    const ports = resolveCliPorts({
+      env: {
+        MITII_PROVIDER: 'gemini',
+        GEMINI_API_KEY: 'g-test',
+        MITII_MODEL: 'gemini-2.5-pro',
+      },
+    });
+    expect(ports.providerLabel).toBe('gemini:gemini-2.5-pro');
+  });
 });

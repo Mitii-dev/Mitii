@@ -55,19 +55,55 @@ mitii export-session "Summarize this repo" --out session.json --echo
 
 `SIGINT` cancels the active run via `run.cancel()`.
 
-## Config
+## Connect an API
 
-No secrets in files:
+Keys go in the environment. Provider and model go in `.mitii/config.json` or `~/.mitii/config.json`.
 
-- `.mitii/config.json` (cwd) or `~/.mitii/config.json`
-- Fields: `provider`, `model`, `baseUrl`, `workspaceId`, `defaultMode`
+```bash
+# Anthropic (Claude)
+export ANTHROPIC_API_KEY=sk-ant-...
+mitii ask "What is recursion?"
+```
 
-API keys via environment only:
+```json
+{ "provider": "anthropic", "model": "claude-sonnet-4-5" }
+```
 
-- `MITII_API_KEY` / `OPENAI_API_KEY`
-- `MITII_BASE_URL`, `MITII_MODEL` (optional overrides)
+```bash
+# Gemini
+export GEMINI_API_KEY=...
+# DeepSeek (OpenAI-compatible)
+export MITII_API_KEY=...
+# OpenAI
+export OPENAI_API_KEY=sk-...
+```
 
-Works with local OpenAI-compatible servers (Ollama, LM Studio) without a key when pointed at a local base URL.
+```json
+{ "provider": "gemini", "model": "gemini-2.5-flash" }
+```
+
+```json
+{
+  "provider": "openai-compatible",
+  "providerPreset": "deepseek",
+  "model": "deepseek-chat",
+  "baseUrl": "https://api.deepseek.com/v1"
+}
+```
+
+```json
+{
+  "provider": "openai-compatible",
+  "baseUrl": "http://localhost:11434/v1",
+  "model": "qwen3-coder:30b"
+}
+```
+
+Overrides: `MITII_PROVIDER`, `MITII_MODEL`, `MITII_BASE_URL`, `MITII_API_KEY`.
+
+Local Ollama / LM Studio do not need a key. Anthropic and Gemini do.
+
+Cursor Cloud Agents are a separate agent API, not an LLM endpoint. Point `openai-compatible` at any `/v1/chat/completions` proxy if you need a custom gateway.
 
 ## Out of scope
 

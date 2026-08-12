@@ -28,6 +28,8 @@ export default defineConfig({
       'src/modules/repository-state/adapters/**/*.spec.ts',
       'src/modules/repository-state/*.spec.ts',
       'src/modules/model-gateway/tests/OpenAiCompatibleRetry.spec.ts',
+      'src/modules/model-gateway/tests/AnthropicLlmPort.spec.ts',
+      'src/modules/model-gateway/tests/GeminiLlmPort.spec.ts',
     ],
   },
 });

@@ -7,7 +7,11 @@ import {
   type MitiiClient,
   type MitiiResumeInput,
 } from '@mitii/sdk';
-import { loadDiskSkills } from '@mitii/host';
+import {
+  getProviderPreset,
+  loadDiskSkills,
+  resolveProviderApiKey,
+} from '@mitii/host';
 import type { SkillDescriptor } from '@mitii/v8';
 
 import {
@@ -1549,10 +1553,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       message: 'Testing…',
       testing: true,
     });
-    const apiKey =
-      (await this.secrets.get('mitii.provider.apiKey')) ??
-      process.env.MITII_API_KEY ??
-      process.env.OPENAI_API_KEY;
+    const apiKey = resolveProviderApiKey({
+      type: message.provider.type,
+      env: process.env,
+      secretKey:
+        (await this.secrets.get('mitii.provider.apiKey')) ?? undefined,
+    });
     const result = await testProviderConnection({
       type: message.provider.type,
       baseUrl: message.provider.baseUrl,
@@ -1900,10 +1906,20 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     return this.getWorkspaceRoot();
   }
 
-  private buildAvailableModels(currentModel: string): string[] {
+  private buildAvailableModels(
+    currentModel: string,
+    type?: string,
+    presetId?: string,
+  ): string[] {
     const set = new Set<string>();
     if (currentModel.trim()) set.add(currentModel.trim());
-    for (const preset of LOCAL_MODEL_PRESETS) set.add(preset.model);
+    const providerPreset = getProviderPreset(presetId ?? type ?? '');
+    if (providerPreset?.type === 'openai-compatible' || !providerPreset) {
+      for (const preset of LOCAL_MODEL_PRESETS) set.add(preset.model);
+    }
+    for (const id of providerPreset?.models ?? []) {
+      if (id.trim()) set.add(id.trim());
+    }
     for (const id of this.discoveredModels) {
       if (id.trim()) set.add(id.trim());
     }
@@ -1912,10 +1928,15 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
 
   private async readProvider(): Promise<ProviderSettingsSnapshot> {
     const cfg = this.vs.workspace.getConfiguration('mitii');
+    const type = cfg.get<string>('provider.type') ?? 'echo';
+    const preset = cfg.get<string>('provider.preset') ?? undefined;
     const hasApiKey = Boolean(
-      (await this.secrets.get('mitii.provider.apiKey')) ??
-        process.env.MITII_API_KEY ??
-        process.env.OPENAI_API_KEY,
+      resolveProviderApiKey({
+        type,
+        env: process.env,
+        secretKey:
+          (await this.secrets.get('mitii.provider.apiKey')) ?? undefined,
+      }),
     );
     const model = cfg.get<string>('provider.model') ?? 'qwen3-coder:30b';
     const contextWindow = resolveContextWindow(this.vs);
@@ -1927,12 +1948,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         ? Math.floor(fromMaxOut)
         : Math.min(16_384, Math.max(1, contextWindow - 1));
     return {
-      type: cfg.get<string>('provider.type') ?? 'echo',
-      preset: cfg.get<string>('provider.preset') ?? undefined,
+      type,
+      preset,
       baseUrl: cfg.get<string>('provider.baseUrl') ?? 'http://localhost:11434/v1',
       model,
       hasApiKey,
-      availableModels: this.buildAvailableModels(model),
+      availableModels: this.buildAvailableModels(model, type, preset),
       contextWindow,
       maximumOutputTokens,
       connectionOk: this.connectionOk,

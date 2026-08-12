@@ -22,6 +22,7 @@ export const PROVIDER_OPTIONS = [
     label: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4o-mini',
+    models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1', 'o4-mini'],
   },
   {
     type: 'openai-compatible',
@@ -29,6 +30,11 @@ export const PROVIDER_OPTIONS = [
     label: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
     model: 'openai/gpt-4o-mini',
+    models: [
+      'openai/gpt-4o-mini',
+      'anthropic/claude-sonnet-4',
+      'google/gemini-2.5-flash',
+    ],
   },
   {
     type: 'openai-compatible',
@@ -36,6 +42,7 @@ export const PROVIDER_OPTIONS = [
     label: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com/v1',
     model: 'deepseek-chat',
+    models: ['deepseek-chat', 'deepseek-reasoner'],
   },
   {
     type: 'openai-compatible',
@@ -51,6 +58,22 @@ export const PROVIDER_OPTIONS = [
     label: 'Custom OpenAI-compatible',
     baseUrl: 'http://localhost:11434/v1',
     model: 'qwen3-coder:30b',
+  },
+  {
+    type: 'anthropic',
+    preset: 'anthropic',
+    label: 'Anthropic (Claude)',
+    baseUrl: 'https://api.anthropic.com',
+    model: 'claude-sonnet-4-5',
+    models: ['claude-sonnet-4-5', 'claude-opus-4-1', 'claude-haiku-4-5'],
+  },
+  {
+    type: 'gemini',
+    preset: 'gemini',
+    label: 'Google Gemini',
+    baseUrl: 'https://generativelanguage.googleapis.com',
+    model: 'gemini-2.5-flash',
+    models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
   },
 ] as const;
 
@@ -73,4 +96,16 @@ export function getProviderPreset(typeOrPreset: string) {
     PROVIDER_OPTIONS.find((p) => p.preset === typeOrPreset) ??
     PROVIDER_OPTIONS.find((p) => p.type === typeOrPreset)
   );
+}
+
+export function modelsForProvider(typeOrPreset: string): string[] {
+  const preset = getProviderPreset(typeOrPreset);
+  const fromPreset =
+    preset && 'models' in preset && preset.models
+      ? [...preset.models]
+      : [];
+  if (preset?.type === 'openai-compatible' || !preset || preset.type === 'echo') {
+    return [...fromPreset, ...LOCAL_MODEL_OPTIONS];
+  }
+  return fromPreset;
 }

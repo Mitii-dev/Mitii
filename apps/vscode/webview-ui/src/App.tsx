@@ -39,7 +39,7 @@ import { ReviewPanel } from './components/ReviewPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { SkillManagementPanel } from './components/skills/SkillManagementPanel';
 import { WorkspaceBanner } from './components/WorkspaceBanner';
-import { getProviderPreset } from './providerOptions';
+import { getProviderPreset, modelsForProvider } from './providerOptions';
 import type {
   AgentUiDepth,
   AgentUiMode,
@@ -833,8 +833,15 @@ export function App() {
   };
 
   const modelOptions = useMemo(
-    () => mergeModelOptions(provider.availableModels, provider.model),
-    [provider.availableModels, provider.model],
+    () =>
+      mergeModelOptions(
+        [
+          ...modelsForProvider(provider.preset ?? provider.type),
+          ...(provider.availableModels ?? []),
+        ],
+        provider.model,
+      ),
+    [provider.availableModels, provider.model, provider.preset, provider.type],
   );
   const selectedModelIsCustom =
     customModel || !modelOptions.includes(provider.model);

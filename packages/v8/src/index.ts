@@ -182,12 +182,16 @@ export {
   ModelCapabilityResolver,
   EchoLlmPort,
   OpenAiCompatibleLlmPort,
+  AnthropicLlmPort,
+  GeminiLlmPort,
   MODEL_PROVIDER_SUPPORT,
   modelEventSchema,
 } from "./modules/model-gateway";
 export type {
   OpenAiCompatibleLlmPortConfig,
   OpenAiCompatibleAuthHeader,
+  AnthropicLlmPortConfig,
+  GeminiLlmPortConfig,
 } from "./modules/model-gateway";
 
 export { ToolRuntimePipeline } from "./engine/tool-runtime";

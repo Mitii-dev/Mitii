@@ -2,9 +2,11 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+import { isHostProviderType, type HostProviderType } from '@mitii/host';
+
 export interface MitiiHostConfig {
-  provider?: 'echo' | 'openai-compatible';
-  /** Preset id: ollama | openai | openrouter | deepseek | azure-openai | lm-studio | openai-compatible */
+  provider?: HostProviderType;
+  /** Preset id: ollama | openai | openrouter | deepseek | azure-openai | anthropic | gemini | ... */
   providerPreset?: string;
   model?: string;
   baseUrl?: string;
@@ -42,7 +44,7 @@ export function loadMitiiHostConfig(cwd: string = process.cwd()): MitiiHostConfi
       } = raw;
       return {
         provider:
-          safe.provider === 'echo' || safe.provider === 'openai-compatible'
+          typeof safe.provider === 'string' && isHostProviderType(safe.provider)
             ? safe.provider
             : undefined,
         providerPreset:

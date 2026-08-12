@@ -225,14 +225,8 @@ test("provider support matrix lists only shipped adapters", () => {
   assert.equal(MODEL_PROVIDER_SUPPORT.deepseek.status, "supported");
   assert.equal(MODEL_PROVIDER_SUPPORT["lm-studio"].status, "supported");
   assert.equal(MODEL_PROVIDER_SUPPORT["azure-openai"].status, "supported");
-  assert.equal(
-    Object.prototype.hasOwnProperty.call(MODEL_PROVIDER_SUPPORT, "anthropic"),
-    false,
-  );
-  assert.equal(
-    Object.prototype.hasOwnProperty.call(MODEL_PROVIDER_SUPPORT, "gemini"),
-    false,
-  );
+  assert.equal(MODEL_PROVIDER_SUPPORT.anthropic.status, "supported");
+  assert.equal(MODEL_PROVIDER_SUPPORT.gemini.status, "supported");
   assert.equal(modelEventSchema.safeParse({ type: "content_delta" }).success, false);
   assert.equal(
     modelEventSchema.safeParse({

@@ -392,7 +392,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
           <div className="settings-panel">
             <SettingsSection
               title="Provider"
-              description="Connect a local or cloud OpenAI-compatible endpoint."
+              description="Connect Anthropic, Gemini, DeepSeek, OpenAI, OpenRouter, or any OpenAI-compatible /v1 API."
             >
               <div className="field">
                 <label htmlFor="ptype">Provider</label>
@@ -408,19 +408,27 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   ))}
                 </select>
               </div>
-              {provider.type === 'openai-compatible' ? (
+              {provider.type !== 'echo' ? (
                 <div className="field">
                   <label htmlFor="base">Base URL</label>
                   <input
                     id="base"
                     value={provider.baseUrl}
-                    placeholder="http://localhost:11434/v1"
+                    placeholder={
+                      provider.type === 'anthropic'
+                        ? 'https://api.anthropic.com'
+                        : provider.type === 'gemini'
+                          ? 'https://generativelanguage.googleapis.com'
+                          : 'http://localhost:11434/v1'
+                    }
                     onChange={(e) =>
                       onProviderChange({ ...provider, baseUrl: e.target.value })
                     }
                   />
                   <p className="field-hint">
-                    Local hosts (localhost, LAN, Docker) do not need an API key.
+                    {provider.type === 'anthropic' || provider.type === 'gemini'
+                      ? 'Override only if you use a corporate proxy or regional endpoint.'
+                      : 'Local hosts (localhost, LAN, Docker) do not need an API key.'}
                   </p>
                 </div>
               ) : null}
@@ -511,6 +519,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
               <div className="row">
                 <span className="mono">
                   API key: {provider.hasApiKey ? 'configured' : 'not set'}
+                  {provider.type === 'anthropic' || provider.type === 'gemini'
+                    ? ' (required)'
+                    : ''}
                 </span>
                 <button
                   type="button"

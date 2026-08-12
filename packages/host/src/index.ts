@@ -136,15 +136,34 @@ export type {
 } from './preview/diffPreviewStore.js';
 
 // ---------------------------------------------------------------------------
-// Config UX — OpenAI-compatible endpoint presets (not a V8 port)
+// Config UX — provider presets, LlmPort factory, connection probe
 // ---------------------------------------------------------------------------
 export {
   PROVIDER_PRESETS,
   getProviderPreset,
+  isHostProviderType,
   isLocalBaseUrl,
   isOllamaBaseUrl,
 } from './config/providerPresets.js';
 export type {
+  HostProviderType,
   ProviderPreset,
   ProviderPresetId,
 } from './config/providerPresets.js';
+
+export { createHostLlmPorts } from './config/createHostLlmPorts.js';
+export type {
+  CreateHostLlmPortsInput,
+  HostLlmPorts,
+} from './config/createHostLlmPorts.js';
+
+export {
+  inferHostProviderType,
+  resolveProviderApiKey,
+} from './config/resolveProviderApiKey.js';
+
+export { testProviderConnection } from './config/testProviderConnection.js';
+export type {
+  ProviderConnectionResult,
+  TestProviderConnectionInput,
+} from './config/testProviderConnection.js';

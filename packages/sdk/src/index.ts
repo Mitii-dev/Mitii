@@ -37,6 +37,8 @@ export {
   composeReadOnlyAgentEngine,
   EchoLlmPort,
   OpenAiCompatibleLlmPort,
+  AnthropicLlmPort,
+  GeminiLlmPort,
   InMemoryRepositoryStateStore,
   InMemoryRunCheckpointStore,
   FileRunCheckpointStore,
@@ -102,4 +104,6 @@ export type {
   PendingApprovalState,
   OpenAiCompatibleLlmPortConfig,
   OpenAiCompatibleAuthHeader,
+  AnthropicLlmPortConfig,
+  GeminiLlmPortConfig,
 } from '@mitii/v8';
