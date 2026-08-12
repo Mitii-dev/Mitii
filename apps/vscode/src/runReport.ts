@@ -149,9 +149,19 @@ export function formatContextInspection(events: RunEvent[]): string[] {
           ? ` ids=${event.selected.slice(0, 8).join(',')}`
           : '';
       const omitted =
-        'omitted' in event && Array.isArray(event.omitted) && event.omitted.length
-          ? ` omittedIds=${event.omitted.slice(0, 8).join(',')}`
-          : '';
+        'omittedDetails' in event &&
+        Array.isArray(event.omittedDetails) &&
+        event.omittedDetails.length
+          ? ` omitted=${event.omittedDetails
+              .slice(0, 8)
+              .map(
+                (item: { id: string; reason: string }) =>
+                  `${item.id}:${item.reason}`,
+              )
+              .join(',')}`
+          : 'omitted' in event && Array.isArray(event.omitted) && event.omitted.length
+            ? ` omittedIds=${event.omitted.slice(0, 8).join(',')}`
+            : '';
       lines.push(
         `[skills] selected=${event.selectedCount}${selected} omitted=${event.omittedCount}${omitted} status=${event.status}`,
       );
@@ -160,8 +170,20 @@ export function formatContextInspection(events: RunEvent[]): string[] {
         `[memory] selected=${event.selectedCount} omitted=${event.omittedCount} status=${event.status}`,
       );
     } else if (event.type === 'decision_made') {
+      const grant =
+        'maximumWorkspaceEffect' in event && event.maximumWorkspaceEffect
+          ? ` effect=${event.maximumWorkspaceEffect}`
+          : '';
+      const scopes =
+        'pathScopes' in event && Array.isArray(event.pathScopes) && event.pathScopes.length
+          ? ` scopes=${event.pathScopes.slice(0, 8).join(',')}`
+          : '';
       lines.push(
-        `[decision] route=${event.route} disposition=${event.runDisposition}`,
+        `[decision] route=${event.route} disposition=${event.runDisposition}${grant}${scopes}`,
+      );
+    } else if (event.type === 'grant_narrowed') {
+      lines.push(
+        `[grant] narrowed effect=${event.maximumWorkspaceEffect} approval=${event.approvalMode} scopes=${event.pathScopes.slice(0, 8).join(',')}`,
       );
     }
   }

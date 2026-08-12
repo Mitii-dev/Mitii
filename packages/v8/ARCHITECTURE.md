@@ -392,6 +392,27 @@ interface ToolGrant {
 
 The model MAY propose tool calls; it MUST NOT modify the grant.
 
+Decision Policy is split conceptually into:
+
+- RoutePlanner: mode, intent, clarity, constraints, and risk become route,
+  run disposition, plan depth, and plan gate.
+- GrantCompiler: route, risk, host capabilities, path targets, command policy,
+  network allowlist, approval mode, mutation budget, and verification become a
+  `ToolGrant` snapshot.
+- InjectionGuard: prompt-injection signals may only narrow or annotate the
+  grant; they never add authority.
+
+Every policy-produced decision may include `DecisionTrace` with the route
+priority step, grant profile, mutation profile, injection clamp status, and
+signals used.
+
+After repository discovery, Agent Engine may call Decision Policy `narrow()`.
+Narrowing is monotonic: it can shrink path scopes, raise approval mode, or
+tighten mutation budget, but it cannot add tools, effects, network hosts, or
+broader paths. Tool Runtime remains the enforcement point for every tool call.
+Optional Cedar/OPA enforcement can sit beside the existing grant check, starting
+in shadow mode; deny-by-default and forbid-wins semantics are required.
+
 Planning policy:
 
 - Simple localized work: no visible plan.

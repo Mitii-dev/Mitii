@@ -14,9 +14,10 @@ tools or call models.
 
 | Export | Role |
 |--------|------|
-| `DecisionPolicyPipeline` | Public facade (`decide`) |
+| `DecisionPolicyPipeline` | Public facade (`decide`, `narrow`) |
 | `decisionPolicyInputSchema` / `DecisionPolicyInput` | Boundary input |
 | `executionDecisionSchema` / `ExecutionDecision` | Boundary result |
+| `decisionTraceSchema` / `DecisionTrace` | Structured route/grant audit summary |
 | `toolGrantSchema` / `ToolGrant` | Structured authority grant |
 | `mutationBudgetSchema` / `MutationBudget` | Per-call apply_patch batch limits on write grants |
 
@@ -36,12 +37,29 @@ const decision = pipeline.decide({
 DecisionPolicyInput
   → validate contracts
   → scan prompt-injection (annotate only; never broaden grant)
-  → resolve route + run disposition
-  → resolve planning depth
-  → build tool grant (+ resolveMutationBudget on write)
+  → RoutePlanner: resolve route + run disposition + planning depth
+  → GrantCompiler: build tool grant (+ resolveMutationBudget on write)
   → resolve verification + repository-context need
-  → ExecutionDecision
+  → ExecutionDecision + DecisionTrace
 ```
+
+Routing priority is:
+
+1. Material clarification.
+2. Mode caps: ask/plan cannot write.
+3. Explicit read-only constraints.
+4. Explicit plan request.
+5. Diagnosis intent.
+6. Mutation intent / act interaction / workspace bug report.
+7. Repository-grounded question.
+8. Direct answer.
+
+Request Understanding is the primary signal source. English phrase patterns are
+fallbacks for missed hints such as polite "Can you implement...?" requests, not
+the sole authority for execute grants.
+
+`ExecutionDecision.trace` records the selected route priority step, grant
+profile, mutation profile, injection clamp status, and the main signals used.
 
 ## Mutation budget
 
@@ -65,6 +83,10 @@ prompt instructions and truncation recovery.
 - Clarification is `runDisposition: "clarification_required"` (suspended, not failed).
 - The model cannot broaden `toolGrant`; injection attempts are ignored.
 - Injection clamping strips `mutationBudget` when write authority is removed.
+- `narrow()` may shrink path scopes, raise approval mode, or tighten mutation
+  budget after discovery. It never adds tools, effects, hosts, or broader paths.
+- Optional Cedar/OPA enforcement should start in shadow mode beside Tool Runtime
+  grant checks; default remains deny unless both grant and policy allow.
 
 ## Do not put here
 

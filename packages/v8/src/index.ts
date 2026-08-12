@@ -139,6 +139,7 @@ export type {
 export { DecisionPolicyPipeline } from "./modules/decision-policy";
 export {
   decisionPolicyInputSchema,
+  decisionTraceSchema,
   executionDecisionSchema,
   toolGrantSchema,
   approvalModeSchema,
@@ -147,6 +148,7 @@ export {
 export type {
   ApprovalMode,
   DecisionPolicyInput,
+  DecisionTrace,
   ExecutionDecision,
   ExecutionRoute,
   PlanningDepth,
@@ -240,13 +242,17 @@ export {
   skillsSelectInputSchema,
   skillsSelectResultSchema,
   skillDescriptorSchema,
+  skillIndexEntrySchema,
+  skillBodySchema,
   InMemorySkillsCatalog,
   SKILLS_SCHEMA_VERSION,
 } from "./modules/skills";
 export type {
   SkillsSelectInput,
   SkillsSelectResult,
+  SkillBody,
   SkillDescriptor,
+  SkillIndexEntry,
   SkillsCatalogPort,
 } from "./modules/skills";
 

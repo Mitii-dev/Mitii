@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { executionRouteSchema } from "../../../../modules/decision-policy";
+import {
+  approvalModeSchema,
+  decisionTraceSchema,
+  executionRouteSchema,
+  workspaceEffectSchema,
+} from "../../../../modules/decision-policy";
 import { planArtifactSchema } from "../../../../modules/planning";
 import { repositoryStateReferenceSchema } from "../../../../modules/repository-state";
 import {
@@ -51,6 +56,21 @@ export const runEventSchema = z.discriminatedUnion("type", [
       runId: z.string().min(1),
       route: executionRouteSchema,
       runDisposition: z.enum(["continue", "clarification_required"]),
+      maximumWorkspaceEffect: workspaceEffectSchema.optional(),
+      approvalMode: approvalModeSchema.optional(),
+      pathScopes: z.array(z.string().min(1).max(512)).max(20).optional(),
+      trace: decisionTraceSchema.optional(),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("grant_narrowed"),
+      runId: z.string().min(1),
+      maximumWorkspaceEffect: workspaceEffectSchema,
+      approvalMode: approvalModeSchema,
+      pathScopes: z.array(z.string().min(1).max(512)).max(20),
+      reasonCodes: z.array(z.string().min(1)).max(20).optional(),
       at: z.string().datetime(),
     })
     .strict(),
@@ -71,6 +91,18 @@ export const runEventSchema = z.discriminatedUnion("type", [
       status: z.string().min(1),
       selected: z.array(z.string().min(1).max(160)).max(20).optional(),
       omitted: z.array(z.string().min(1).max(160)).max(20).optional(),
+      omittedDetails: z
+        .array(
+          z
+            .object({
+              id: z.string().min(1).max(160),
+              reason: z.string().min(1).max(80),
+              tokens: z.number().int().nonnegative().optional(),
+            })
+            .strict(),
+        )
+        .max(20)
+        .optional(),
       at: z.string().datetime(),
     })
     .strict(),

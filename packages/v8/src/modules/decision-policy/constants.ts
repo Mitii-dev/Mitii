@@ -108,6 +108,7 @@ export const DECISION_REASON_CODES = [
   "process_execution_granted",
   "verification_required",
   "verification_not_required",
+  "grant_narrowed",
 ] as const;
 
 export const DECISION_POLICY_ERROR_CODES = [

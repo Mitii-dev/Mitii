@@ -147,6 +147,18 @@ function compactEvent(
         ...base,
         route: event.route,
         runDisposition: event.runDisposition,
+        maximumWorkspaceEffect: event.maximumWorkspaceEffect,
+        approvalMode: event.approvalMode,
+        pathScopes: event.pathScopes,
+        trace: event.trace,
+      };
+    case 'grant_narrowed':
+      return {
+        ...base,
+        maximumWorkspaceEffect: event.maximumWorkspaceEffect,
+        approvalMode: event.approvalMode,
+        pathScopes: event.pathScopes,
+        reasonCodes: event.reasonCodes,
       };
     case 'model_delta':
       return {
@@ -178,6 +190,8 @@ function compactEvent(
         omittedCount: event.omittedCount,
         selected: 'selected' in event ? event.selected : undefined,
         omitted: 'omitted' in event ? event.omitted : undefined,
+        omittedDetails:
+          'omittedDetails' in event ? event.omittedDetails : undefined,
         status: event.status,
       };
     case 'plan_ready':

@@ -6,10 +6,16 @@ Output: SkillsSelectResult { status, instructions[], omissions[], usedTokens, re
 ```
 
 Selects applicable skill instructions from a host-supplied catalog using task
-evidence, route, and keyword signals. Optional `recommendedSkillTags` from
-Request Understanding are soft boosts / tie-breakers only — never sole
-authority. Applies a dedicated budget and conflict resolution before Prompt
-Construction.
+evidence, route, path, and keyword signals. The catalog is progressive:
+
+- `SkillIndexEntry` is cheap L1 metadata used for matching and conflict checks.
+- `SkillBody` is lazy L2 content loaded only for selected L1 entries.
+- `resources` is an L3 manifest; reading or running it remains Tool Runtime /
+  Decision Policy authority, never Skills authority.
+
+Optional `recommendedSkillTags`, `languages`, and `projectKinds` are soft boosts
+only — never sole authority. Applies a dedicated budget to hydrated skill bodies
+before Prompt Construction.
 
 Does not own general prompt construction, retrieval, or run orchestration.
 
@@ -20,7 +26,9 @@ Does not own general prompt construction, retrieval, or run orchestration.
 | `SkillsPipeline` | Public facade (`select`) |
 | `skillsSelectInputSchema` / `SkillsSelectInput` | Boundary input |
 | `skillsSelectResultSchema` / `SkillsSelectResult` | Selected instructions + provenance |
-| `skillDescriptorSchema` / `SkillDescriptor` | Catalog entry shape |
+| `skillIndexEntrySchema` / `SkillIndexEntry` | L1 catalog entry shape |
+| `skillBodySchema` / `SkillBody` | L2 hydrated body shape |
+| `skillDescriptorSchema` / `SkillDescriptor` | Back-compatible full catalog entry shape |
 | `InMemorySkillsCatalog` | Test/single-process catalog |
 
 ```ts
@@ -52,7 +60,8 @@ const result = await skills.select({
 2. Load catalog
 3. Match by intent / route / keywords
 4. Resolve conflict groups
-5. Apply dedicated token budget
+5. Hydrate selected skill bodies
+6. Apply dedicated token budget
 
 ## Do not put here
 

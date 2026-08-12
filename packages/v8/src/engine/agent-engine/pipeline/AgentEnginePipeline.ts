@@ -456,7 +456,7 @@ export class AgentEnginePipeline {
       // Validates composed DecisionPolicyInput at its boundary (not a second
       // intake). Uses the original intake envelope, not the amended message.
       this.emitStage(bus, runId, "decided", "started");
-      const decision = this.deps.decision.decide({
+      let decision = this.deps.decision.decide({
         schemaVersion: DECISION_POLICY_SCHEMA_VERSION,
         // Hand-written envelope types use readonly arrays; Zod infer is mutable.
         envelope: envelope as DecisionPolicyInput["envelope"],
@@ -476,6 +476,10 @@ export class AgentEnginePipeline {
         runId,
         route: decision.route,
         runDisposition: decision.runDisposition,
+        maximumWorkspaceEffect: decision.toolGrant.maximumWorkspaceEffect,
+        approvalMode: decision.toolGrant.approvalMode,
+        pathScopes: decision.toolGrant.pathScopes.slice(0, 20),
+        trace: decision.trace,
         at: this.isoNow(),
       });
       this.emitStage(bus, runId, "decided", "completed", ["decision_complete"]);
@@ -675,12 +679,39 @@ export class AgentEnginePipeline {
         return cancelledResult();
       }
 
+      if (this.deps.decision.narrow) {
+        const narrowed = this.deps.decision.narrow({
+          previous: decision,
+          discoveredPaths: contextPaths,
+          residualRisk: understanding.taskAnalysis.risk,
+        });
+        if (narrowed.reasonCodes.includes("grant_narrowed")) {
+          decision = narrowed;
+          reasonCodes.push("grant_narrowed");
+          this.emit(bus, {
+            type: "grant_narrowed",
+            runId,
+            maximumWorkspaceEffect: decision.toolGrant.maximumWorkspaceEffect,
+            approvalMode: decision.toolGrant.approvalMode,
+            pathScopes: decision.toolGrant.pathScopes.slice(0, 20),
+            reasonCodes: decision.reasonCodes.slice(-8),
+            at: this.isoNow(),
+          });
+        }
+      }
+
       // --- Skills (optional) ---
       let selectedSkills: PromptInstructions["skills"];
       if (this.deps.skills) {
         this.emitStage(bus, runId, "skills_ready", "started");
+        const understandingSkillEvidence =
+          mapUnderstandingToSkillEvidence(understanding);
         const skillEvidencePaths = [
-          ...new Set([...(input.dirtyPaths ?? []), ...contextPaths]),
+          ...new Set([
+            ...understandingSkillEvidence.paths,
+            ...(input.dirtyPaths ?? []),
+            ...contextPaths,
+          ]),
         ]
           .filter((path) => path.trim().length > 0)
           .slice(0, 50);
@@ -690,16 +721,14 @@ export class AgentEnginePipeline {
           mode: envelope.mode,
           route: decision.route,
           evidence: {
-            ...mapUnderstandingToSkillEvidence(understanding),
-            ...(skillEvidencePaths.length > 0
-              ? { paths: skillEvidencePaths }
-              : {}),
+            ...understandingSkillEvidence,
+            paths: skillEvidencePaths,
           },
         });
         selectedSkills = skillsResult.instructions.map((block) => ({
           id: block.id,
           title: block.title,
-          content: block.content,
+          content: formatSkillPromptContent(block),
           priority: block.priority,
         }));
         reasonCodes.push(
@@ -720,6 +749,15 @@ export class AgentEnginePipeline {
           omitted: skillsResult.omissions
             .map((omission) => omission.skillId)
             .filter((id) => id.trim().length > 0)
+            .slice(0, 20),
+          omittedDetails: skillsResult.omissions
+            .map((omission) => ({
+              id: omission.skillId,
+              reason: omission.reason,
+              ...(typeof omission.tokens === "number"
+                ? { tokens: omission.tokens }
+                : {}),
+            }))
             .slice(0, 20),
           at: this.isoNow(),
         });
@@ -3122,6 +3160,28 @@ function appendTextContinuation(prefix: string, continuation: string): string {
   if (!first) return continuation;
   if (!second) return first;
   return `${first}\n${second}`;
+}
+
+function formatSkillPromptContent(block: {
+  content: string;
+  resources?: {
+    references?: readonly string[];
+    scripts?: readonly string[];
+  };
+}): string {
+  const references = block.resources?.references ?? [];
+  const scripts = block.resources?.scripts ?? [];
+  if (references.length === 0 && scripts.length === 0) {
+    return block.content;
+  }
+  const lines = ["Available skill resources (use only if normal tool policy allows):"];
+  if (references.length > 0) {
+    lines.push(`references: ${references.slice(0, 12).join(", ")}`);
+  }
+  if (scripts.length > 0) {
+    lines.push(`scripts: ${scripts.slice(0, 12).join(", ")}`);
+  }
+  return `${block.content.trim()}\n\n${lines.join("\n")}`;
 }
 
 export type { AgentRunStatus };

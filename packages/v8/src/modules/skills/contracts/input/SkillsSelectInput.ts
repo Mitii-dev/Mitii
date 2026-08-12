@@ -35,6 +35,12 @@ export const skillTaskEvidenceSchema = z
       .array(z.string().min(1).max(64))
       .max(10)
       .default([]),
+    /**
+     * Soft repository evidence passed through from Repository State/hosts.
+     * Skills core treats these as tag-like boosts only.
+     */
+    languages: z.array(z.string().min(1).max(64)).max(20).default([]),
+    projectKinds: z.array(z.string().min(1).max(64)).max(20).default([]),
   })
   .strict();
 

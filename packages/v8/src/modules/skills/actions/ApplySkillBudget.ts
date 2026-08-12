@@ -1,14 +1,19 @@
 import type {
+  SkillDescriptor,
   SkillInstructionBlock,
   SkillOmission,
 } from "../contracts";
 import { estimateTokens, type ScoredSkill } from "./MatchSkills";
 
+export type HydratedScoredSkill = Omit<ScoredSkill, "skill"> & {
+  skill: SkillDescriptor;
+};
+
 /**
  * Apply the dedicated skills token budget and max count.
  */
 export function applySkillBudget(params: {
-  scored: readonly ScoredSkill[];
+  scored: readonly HydratedScoredSkill[];
   budgetTokens: number;
   maxSkills: number;
 }): {
@@ -57,6 +62,7 @@ export function applySkillBudget(params: {
       title: entry.skill.title,
       content: blockContent,
       priority: entry.skill.priority,
+      resources: entry.skill.resources,
       provenance: {
         skillId: entry.skill.id,
         source: "skills",

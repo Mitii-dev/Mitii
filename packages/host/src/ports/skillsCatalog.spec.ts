@@ -6,6 +6,7 @@ import { SkillsPipeline, SKILLS_SCHEMA_VERSION } from '@mitii/v8';
 
 import {
   createFileSystemSkillsCatalog,
+  loadDiskSkillBody,
   loadDiskSkills,
 } from './skillsCatalog.js';
 
@@ -68,6 +69,57 @@ It is intentionally not injected in metadata mode.
       'Description: Find and fix nullable-value crashes',
     );
     expect(skills[0]?.content).not.toContain('Long internal playbook');
+  });
+
+  it('loads agentskills.io minimal skills and hydrates the body lazily', async () => {
+    const skillDir = join(root, '.mitii', 'skills', 'empty-input-parser');
+    await mkdir(join(skillDir, 'references'), { recursive: true });
+    await mkdir(join(skillDir, 'scripts'), { recursive: true });
+    await writeFile(join(skillDir, 'references', 'cases.md'), 'Cases', 'utf8');
+    await writeFile(join(skillDir, 'scripts', 'repro.ts'), 'console.log(1);', 'utf8');
+    await writeFile(
+      join(skillDir, 'SKILL.md'),
+      `---
+name: Empty Input Parser
+description: Fix empty input parser crashes in TypeScript files.
+license: MIT
+compatibility: [agentskills.io]
+allowed-tools: [bash]
+---
+
+# Full agentskills playbook
+
+Reproduce the empty-input parser crash, add the smallest guard, and test it.
+`,
+      'utf8',
+    );
+
+    const skills = await loadDiskSkills({
+      workspaceRoot: root,
+      includeBundled: false,
+    });
+
+    expect(skills).toHaveLength(1);
+    expect(skills[0]).toMatchObject({
+      id: 'empty-input-parser',
+      title: 'Empty Input Parser',
+      description: 'Fix empty input parser crashes in TypeScript files.',
+      intents: [],
+      routes: [],
+      tags: [],
+    });
+    expect(skills[0]?.content).toContain('Description:');
+    expect(skills[0]?.content).not.toContain('allowed-tools');
+
+    const body = await loadDiskSkillBody('empty-input-parser', {
+      workspaceRoot: root,
+      includeBundled: false,
+    });
+    expect(body?.content).toContain('Full agentskills playbook');
+    expect(body?.resources).toEqual({
+      references: ['references/cases.md'],
+      scripts: ['scripts/repro.ts'],
+    });
   });
 
   it('extracts compact planning blocks without injecting the whole skill body', async () => {
@@ -154,7 +206,9 @@ This long body should not be injected in metadata mode.
     expect(result.instructions.map((skill) => skill.id)).toEqual([
       'null-crash-debugging',
     ]);
-    expect(result.instructions[0]?.content).toContain('Description:');
+    expect(result.instructions[0]?.content).toContain(
+      'Full body for null-crash-debugging.',
+    );
     expect(result.instructions[0]?.content).not.toContain('docs-writing');
   });
 
@@ -312,7 +366,7 @@ Full body.
       result.instructions.find(
         (skill) => skill.id === 'planning-and-task-breakdown',
       )?.content,
-    ).toContain('Planning:');
+    ).toContain('# Planning');
   });
 });
 

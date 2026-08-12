@@ -16,6 +16,7 @@ export {
   planGateSchema,
   runDispositionSchema,
   decisionReasonCodeSchema,
+  decisionTraceSchema,
   verificationRequirementSchema,
   verificationEvidenceKindSchema,
 } from "./output/ExecutionDecision";
@@ -26,6 +27,7 @@ export type {
   PlanGate,
   RunDisposition,
   DecisionReasonCode,
+  DecisionTrace,
   VerificationRequirement,
 } from "./output/ExecutionDecision";
 

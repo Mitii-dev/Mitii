@@ -1,9 +1,9 @@
 import { DEFAULT_CHARACTERS_PER_TOKEN } from "../defaults";
-import type { SkillDescriptor, SkillsSelectParsedInput } from "../contracts";
+import type { SkillIndexEntry, SkillsSelectParsedInput } from "../contracts";
 import { SKILLS_THRESHOLDS } from "../policy";
 
 export interface ScoredSkill {
-  skill: SkillDescriptor;
+  skill: SkillIndexEntry;
   score: number;
   reasons: string[];
 }
@@ -12,7 +12,7 @@ export interface ScoredSkill {
  * Score catalog entries against task evidence, route, and query keywords.
  */
 export function matchSkills(params: {
-  catalog: readonly SkillDescriptor[];
+  catalog: readonly SkillIndexEntry[];
   input: SkillsSelectParsedInput;
 }): ScoredSkill[] {
   const { catalog, input } = params;
@@ -20,9 +20,6 @@ export function matchSkills(params: {
   const scored: ScoredSkill[] = [];
 
   for (const skill of catalog) {
-    if (!skill.content.trim()) {
-      continue;
-    }
     if (!isPathGateSatisfied(skill, input)) {
       continue;
     }
@@ -56,15 +53,10 @@ export function matchSkills(params: {
       }
     }
 
-    if (skill.tags.length > 0 && queryTokens.size > 0) {
-      const tagHits = skill.tags.filter((tag) =>
-        queryTokens.has(tag.toLowerCase()),
-      ).length;
-      if (tagHits > 0) {
-        const fraction = tagHits / skill.tags.length;
-        score += SKILLS_THRESHOLDS.keywordWeight * fraction;
-        reasons.push("keyword");
-      }
+    const keywordScore = scoreKeywordOverlap(skill, queryTokens);
+    if (keywordScore > 0) {
+      score += SKILLS_THRESHOLDS.keywordWeight * keywordScore;
+      reasons.push("keyword");
     }
     if (skill.paths.length > 0) {
       score += SKILLS_THRESHOLDS.pathWeight;
@@ -110,6 +102,22 @@ export function matchSkills(params: {
           SKILLS_THRESHOLDS.recommendedTagWeight * (hits / skill.tags.length);
         reasons.push("recommended_tag");
       }
+    }
+    const languageBoost = overlapBoost(
+      skill.languages,
+      input.evidence.languages,
+    );
+    if (languageBoost > 0) {
+      score += SKILLS_THRESHOLDS.recommendedTagWeight * languageBoost;
+      reasons.push("language");
+    }
+    const projectKindBoost = overlapBoost(
+      skill.projectKinds,
+      input.evidence.projectKinds,
+    );
+    if (projectKindBoost > 0) {
+      score += SKILLS_THRESHOLDS.recommendedTagWeight * projectKindBoost;
+      reasons.push("project_kind");
     }
 
     const normalized = Math.min(1, score);
@@ -157,7 +165,7 @@ function tokenize(text: string): Set<string> {
 }
 
 function isPathGateSatisfied(
-  skill: SkillDescriptor,
+  skill: SkillIndexEntry,
   input: SkillsSelectParsedInput,
 ): boolean {
   if (skill.paths.length === 0) {
@@ -170,6 +178,48 @@ function isPathGateSatisfied(
   return skill.paths.some((pattern) =>
     evidencePaths.some((path) => matchesPathGlob(pattern, path)),
   );
+}
+
+function scoreKeywordOverlap(
+  skill: SkillIndexEntry,
+  queryTokens: ReadonlySet<string>,
+): number {
+  if (queryTokens.size === 0) {
+    return 0;
+  }
+  const searchable = tokenize(
+    [
+      skill.title,
+      skill.description,
+      ...skill.tags,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+  if (searchable.size === 0) {
+    return 0;
+  }
+  let hits = 0;
+  for (const token of searchable) {
+    if (queryTokens.has(token)) {
+      hits += 1;
+    }
+  }
+  return hits === 0 ? 0 : Math.min(1, hits / Math.min(searchable.size, 6));
+}
+
+function overlapBoost(
+  skillValues: readonly string[] | undefined,
+  evidenceValues: readonly string[] | undefined,
+): number {
+  if (!skillValues?.length || !evidenceValues?.length) {
+    return 0;
+  }
+  const evidence = new Set(evidenceValues.map((value) => value.toLowerCase()));
+  const hits = skillValues.filter((value) =>
+    evidence.has(value.toLowerCase()),
+  ).length;
+  return hits === 0 ? 0 : hits / skillValues.length;
 }
 
 export function matchesPathGlob(pattern: string, path: string): boolean {

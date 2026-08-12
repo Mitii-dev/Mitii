@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { MEMORY_SCHEMA_VERSION } from "../../../modules/memory";
+import { DecisionPolicyPipeline } from "../../../modules/decision-policy";
 import { SKILLS_SCHEMA_VERSION } from "../../../modules/skills";
 import { AgentEnginePipeline } from "../pipeline/AgentEnginePipeline";
 import {
@@ -8,6 +9,7 @@ import {
   createStubDependencies,
   ScriptedLlmPort,
   createCapabilities,
+  createUnderstanding,
 } from "./fixtures/stubs";
 
 describe("AgentEngine Skills/Memory wiring (Phase 9)", () => {
@@ -146,6 +148,141 @@ describe("AgentEngine Skills/Memory wiring (Phase 9)", () => {
     );
     expect(skillsReady?.selected).toEqual(["bugfix-localize"]);
     expect(events.some((event) => event.type === "memory_ready")).toBe(true);
+  });
+
+  it("passes Understanding file targets into skill path evidence before context retrieval", async () => {
+    const skills = {
+      select: vi.fn(async () => ({
+        schemaVersion: SKILLS_SCHEMA_VERSION,
+        status: "empty" as const,
+        instructions: [],
+        omissions: [],
+        usedTokens: 0,
+        budgetTokens: 800,
+        warnings: [],
+        reasonCodes: ["no_matching_skills" as const],
+        durationMs: 1,
+      })),
+    };
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        repositoryContextRequired: false,
+      }),
+      understanding: createUnderstanding({
+        intent: createUnderstanding().intent,
+        taskAnalysis: {
+          ...createUnderstanding().taskAnalysis,
+          targets: [
+            { kind: "file", value: "parse.ts", explicit: true },
+            { kind: "folder", value: "@src/parsers", explicit: true },
+          ],
+        },
+      }),
+      llm: new ScriptedLlmPort(
+        [{ content: "ok" }],
+        createCapabilities({ supportsTools: false }),
+      ),
+    });
+
+    const engine = new AgentEnginePipeline({
+      ...deps,
+      skills,
+    });
+
+    const handle = engine.start({
+      schemaVersion: 1,
+      request: {
+        sessionId: "s1",
+        mode: "agent",
+        userMessage: "Fix the null crash in parse.ts",
+      },
+    });
+
+    await handle.result;
+
+    expect(skills.select).toHaveBeenCalledOnce();
+    expect(skills.select.mock.calls[0]?.[0].evidence.paths).toEqual([
+      "parse.ts",
+      "src/parsers",
+    ]);
+  });
+
+  it("narrows the decision grant after repository context discovery", async () => {
+    const construct = vi.fn(createStubDependencies({}).prompt.construct);
+    const baseDecision = createDecision({
+      route: "execute",
+      repositoryContextRequired: true,
+      toolGrant: {
+        maximumWorkspaceEffect: "write",
+        allowedTools: ["read_file", "search_files", "apply_patch"],
+        allowedEffects: ["workspace_read", "workspace_write"],
+        pathScopes: ["."],
+        approvalMode: "when_required",
+        limits: {
+          maxToolCalls: 20,
+          maxWallTimeMs: 60_000,
+          maxOutputBytes: 256_000,
+        },
+      },
+    });
+    const narrow = vi.fn(
+      (input: Parameters<DecisionPolicyPipeline["narrow"]>[0]) =>
+        new DecisionPolicyPipeline().narrow(input),
+    );
+    const deps = createStubDependencies({
+      decision: baseDecision,
+      understanding: createUnderstanding({
+        taskAnalysis: {
+          ...createUnderstanding().taskAnalysis,
+          risk: "low",
+        },
+      }),
+      contextBlocks: [
+        {
+          id: "ctx_parse",
+          relativePath: "src/parser/parse.ts",
+          content: "export function parse() {}",
+        },
+      ],
+      llm: new ScriptedLlmPort(
+        [{ content: "ok" }],
+        createCapabilities({ supportsTools: false }),
+      ),
+    });
+
+    const engine = new AgentEnginePipeline({
+      ...deps,
+      decision: {
+        decide: deps.decision.decide,
+        narrow,
+      },
+      prompt: { construct },
+    });
+
+    const handle = engine.start({
+      schemaVersion: 1,
+      request: {
+        sessionId: "s1",
+        mode: "agent",
+        userMessage: "Fix the null crash in parse.ts",
+      },
+      repositoryState: {
+        reference: { workspaceId: "ws", stateToken: "state_1" },
+        readiness: "ready",
+      },
+    });
+
+    const events = [];
+    for await (const event of handle.events) {
+      events.push(event);
+    }
+    await handle.result;
+
+    expect(narrow).toHaveBeenCalledOnce();
+    const promptInput = construct.mock.calls[0]![0];
+    expect(promptInput.decision.toolGrant.pathScopes).toEqual(["src/parser"]);
+    expect(events.some((event) => event.type === "grant_narrowed")).toBe(true);
   });
 
   it("skips memory when workspace scope is missing even if memory port exists", async () => {

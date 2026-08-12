@@ -66,6 +66,11 @@ export interface AgentEngineUnderstandingPort {
 
 export interface AgentEngineDecisionPort {
   decide(input: DecisionPolicyInput): ExecutionDecision;
+  narrow?(input: {
+    previous: ExecutionDecision;
+    discoveredPaths?: readonly string[];
+    residualRisk?: "low" | "medium" | "high" | "critical";
+  }): ExecutionDecision;
 }
 
 export interface AgentEnginePromptPort {

@@ -34,6 +34,18 @@ export type VerificationRequirement = z.infer<
   typeof verificationRequirementSchema
 >;
 
+export const decisionTraceSchema = z
+  .object({
+    routePriorityStep: z.string().min(1),
+    grantProfile: z.enum(["none", "read", "write"]),
+    mutationProfile: z.enum(["none", "relaxed", "standard", "tight"]),
+    clampedByInjection: z.boolean(),
+    signalsUsed: z.array(z.string().min(1)),
+  })
+  .strict();
+
+export type DecisionTrace = z.infer<typeof decisionTraceSchema>;
+
 export const executionDecisionSchema = z
   .object({
     schemaVersion: z.literal(DECISION_POLICY_SCHEMA_VERSION),
@@ -48,6 +60,7 @@ export const executionDecisionSchema = z
     reasonCodes: z.array(decisionReasonCodeSchema).min(1),
     rationale: z.string().min(1),
     warnings: z.array(z.string()),
+    trace: decisionTraceSchema.optional(),
   })
   .strict();
 

@@ -1,5 +1,5 @@
-/** Soft token budget for the skills section before Prompt Construction. */
-export const DEFAULT_SKILLS_BUDGET_TOKENS = 1200;
+/** Soft token budget for selected L2 skill bodies before Prompt Construction. */
+export const DEFAULT_SKILLS_BUDGET_TOKENS = 2400;
 
 /** Hard cap on how many skills may be selected for one turn. */
 export const DEFAULT_MAX_SKILLS = 2;

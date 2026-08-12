@@ -115,6 +115,76 @@ describe("SkillsPipeline", () => {
     );
   });
 
+  it("matches on L1 metadata and hydrates only selected L2 bodies", async () => {
+    const loadBodyCalls: string[] = [];
+    const pipeline = new SkillsPipeline({
+      catalog: {
+        list: () => [
+          {
+            id: "parse-ts-null-debugging",
+            title: "Parse TS null debugging",
+            description: "Fix empty-input null crashes in TypeScript parsers.",
+            intents: ["bugfix"],
+            routes: ["execute"],
+            tags: ["null", "parse"],
+            paths: ["**/parse.ts"],
+            priority: 160,
+            alwaysApply: false,
+            resources: {
+              references: ["references/checklist.md"],
+              scripts: ["scripts/repro.ts"],
+            },
+          },
+          {
+            id: "docs-style",
+            title: "Docs style",
+            description: "Write concise documentation.",
+            intents: ["docs"],
+            routes: ["execute"],
+            tags: ["docs"],
+            paths: [],
+            priority: 100,
+            alwaysApply: false,
+          },
+        ],
+        loadBody: (id: string) => {
+          loadBodyCalls.push(id);
+          if (id !== "parse-ts-null-debugging") {
+            return undefined;
+          }
+          return {
+            content:
+              "Full playbook: reproduce empty input, add the smallest guard, then test parse.ts.",
+            resources: {
+              references: ["references/checklist.md"],
+              scripts: ["scripts/repro.ts"],
+            },
+          };
+        },
+      },
+    });
+
+    const result = await pipeline.select(
+      baseInput({
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+          paths: ["src/compiler/parse.ts"],
+        },
+      }),
+    );
+
+    expect(result.status).toBe("selected");
+    expect(loadBodyCalls).toEqual(["parse-ts-null-debugging"]);
+    expect(result.instructions.map((block) => block.id)).toEqual([
+      "parse-ts-null-debugging",
+    ]);
+    expect(result.instructions[0]?.content).toContain("Full playbook");
+    expect(result.instructions[0]?.resources?.references).toEqual([
+      "references/checklist.md",
+    ]);
+  });
+
   it("resolves conflict groups to the higher-priority skill", async () => {
     const pipeline = new SkillsPipeline({
       catalog: new InMemorySkillsCatalog(catalog),

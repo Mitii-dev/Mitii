@@ -6,12 +6,16 @@ import {
 import { SKILLS_SCHEMA_VERSION } from "../constants";
 import {
   SkillsError,
+  skillBodySchema,
   skillDescriptorSchema,
+  skillIndexEntrySchema,
   skillsSelectInputSchema,
   skillsSelectResultSchema,
 } from "../contracts";
+import type { HydratedScoredSkill, ScoredSkill } from "../actions";
 import type {
-  SkillDescriptor,
+  SkillBody,
+  SkillIndexEntry,
   SkillsCatalogPort,
   SkillsSelectInput,
   SkillsSelectResult,
@@ -65,7 +69,7 @@ export class SkillsPipeline {
       );
     }
 
-    let rawCatalog: readonly SkillDescriptor[];
+    let rawCatalog: readonly SkillIndexEntry[];
     try {
       rawCatalog = await this.catalog.list();
     } catch (error) {
@@ -78,7 +82,7 @@ export class SkillsPipeline {
       );
     }
 
-    const catalog = rawCatalog.map((entry) => skillDescriptorSchema.parse(entry));
+    const catalog = rawCatalog.map((entry) => skillIndexEntrySchema.parse(entry));
     const reasonCodes: SkillReasonCode[] = [];
     const warnings: string[] = [];
 
@@ -103,17 +107,23 @@ export class SkillsPipeline {
       reasonCodes.push("conflicts_resolved");
     }
 
+    const hydrated = await this.hydrateSelected(conflicts.selected);
+
     const budgeted = applySkillBudget({
-      scored: conflicts.selected,
+      scored: hydrated.selected,
       budgetTokens: parsed.budgetTokens,
-      maxSkills: parsed.maxSkills,
+      maxSkills: resolveMaxSkills(input, parsed),
     });
 
     if (budgeted.budgetOmitted) {
       reasonCodes.push("budget_omitted_skills");
     }
 
-    const omissions = [...conflicts.omissions, ...budgeted.omissions];
+    const omissions = [
+      ...conflicts.omissions,
+      ...hydrated.omissions,
+      ...budgeted.omissions,
+    ];
 
     if (budgeted.instructions.length === 0) {
       reasonCodes.push("no_matching_skills");
@@ -143,8 +153,71 @@ export class SkillsPipeline {
       durationMs: Date.now() - startedMs,
     });
   }
+
+  private async hydrateSelected(
+    selected: readonly ScoredSkill[],
+  ): Promise<{
+    selected: HydratedScoredSkill[];
+    omissions: SkillsSelectResult["omissions"];
+  }> {
+    const hydrated: HydratedScoredSkill[] = [];
+    const omissions: SkillsSelectResult["omissions"] = [];
+
+    for (const entry of selected) {
+      const loadedBody = await this.loadBody(entry.skill);
+      const content = loadedBody?.content.trim() ?? entry.skill.content?.trim();
+      if (!content) {
+        omissions.push({ skillId: entry.skill.id, reason: "empty_content" });
+        continue;
+      }
+      const descriptor = skillDescriptorSchema.parse({
+        ...entry.skill,
+        content,
+        resources: loadedBody?.resources ?? entry.skill.resources,
+      });
+      hydrated.push({ ...entry, skill: descriptor });
+    }
+
+    return { selected: hydrated, omissions };
+  }
+
+  private async loadBody(skill: SkillIndexEntry): Promise<SkillBody | undefined> {
+    if (!this.catalog.loadBody) {
+      return undefined;
+    }
+    try {
+      const body = await this.catalog.loadBody(skill.id);
+      return body ? skillBodySchema.parse(body) : undefined;
+    } catch (error) {
+      throw new SkillsError(
+        "catalog_failed",
+        `Skills catalog failed to hydrate body for ${skill.id}.`,
+        {
+          cause: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
+  }
 }
 
 function unique(codes: readonly SkillReasonCode[]): SkillReasonCode[] {
   return [...new Set(codes)];
+}
+
+function resolveMaxSkills(
+  rawInput: SkillsSelectInput,
+  parsed: z.infer<typeof skillsSelectInputSchema>,
+): number {
+  if (typeof rawInput.maxSkills === "number") {
+    return parsed.maxSkills;
+  }
+  switch (parsed.evidence.complexity) {
+    case "complex":
+    case "very_complex":
+      return 4;
+    case "moderate":
+      return 3;
+    default:
+      return parsed.maxSkills;
+  }
 }

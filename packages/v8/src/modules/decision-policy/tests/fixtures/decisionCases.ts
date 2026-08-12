@@ -553,4 +553,49 @@ export const DECISION_EVALUATION_CASES: DecisionCaseFixture[] = [
       maximumWorkspaceEffect: "write",
     },
   },
+  {
+    id: "spanish_bugfix_understanding_execute",
+    category: "localized_bug",
+    mode: "agent",
+    message:
+      "Corrige el fallo nulo en src/parser/parse.ts y ejecuta las pruebas.",
+    understanding: createUnderstanding({
+      primaryTaskIntent: "bugfix",
+      interactionIntent: "act",
+      taskAnalysis: {
+        scope: "single_location",
+        complexity: "simple",
+        risk: "low",
+        targets: [
+          { kind: "file", value: "src/parser/parse.ts", explicit: true },
+        ],
+      },
+    }),
+    expected: {
+      route: "execute",
+      maximumWorkspaceEffect: "write",
+      planningDepth: "none",
+    },
+  },
+  {
+    id: "japanese_diagnose_understanding_readonly",
+    category: "diagnosis",
+    mode: "agent",
+    message: "ビルド失敗の原因を調査してください。ファイルは変更しないでください。",
+    understanding: createUnderstanding({
+      primaryTaskIntent: "diagnose",
+      interactionIntent: "question",
+      taskAnalysis: {
+        scope: "package",
+        complexity: "moderate",
+        risk: "low",
+        recommendsRepositoryDiscovery: true,
+        recommendsVerification: false,
+      },
+    }),
+    expected: {
+      route: "diagnose",
+      maximumWorkspaceEffect: "read",
+    },
+  },
 ];

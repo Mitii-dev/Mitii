@@ -30,9 +30,17 @@ single skill by uploading another `SKILL.md` with the same `name`.
 V8 never reads these files directly; the host loads them through
 `SkillsCatalogPort`.
 
-## Default injection behavior
+## Progressive disclosure
 
-By default, Mitii injects only compact metadata for selected skills:
+Mitii treats every skill as three layers:
+
+| Layer | Loaded When | Contents |
+|---|---|---|
+| L1 index | Always available to host-side matching | `id`, `title`, `description`, intents, routes, tags, path globs, priority, conflict group, resource manifest |
+| L2 body | Only after the L1 entry is selected | The markdown body of `SKILL.md`, injected as the selected skill instruction |
+| L3 resources | Only on demand through normal tools | Files under `references/` and scripts under `scripts/` |
+
+By default, filesystem catalogs list only compact L1 metadata:
 
 ```text
 Skill: Null Crash Debugging
@@ -41,9 +49,15 @@ Use when: The user reports a null crash; A regression test is needed
 Instruction: Keep the patch localized and verify the failing path.
 ```
 
-The markdown body can contain your full playbook for future use, but it is not
-sent to the model in the default `metadata` mode. This keeps token use low even
-when the catalog grows to 21, 50, or more skills.
+The markdown body can contain the full playbook. The V8 `SkillsPipeline` matches
+on L1, resolves conflicts, then hydrates L2 for selected skills only. The final
+skills budget is charged against hydrated L2 content, so omitted skills surface
+with reasons such as `budget`, `conflict`, or `empty_content`.
+
+L3 resource manifests are advisory. A selected skill may tell the model that
+`references/foo.md` or `scripts/repro.ts` exists, but Skills never reads or runs
+them. Normal ToolGrant/path scopes/command rules still decide whether any
+resource can be read or executed.
 
 ## Required shape
 
@@ -76,15 +90,42 @@ Mitii keeps this body out of the prompt by default.
 | `name` | Yes | Stable skill id. Use lowercase kebab-case. |
 | `title` | No | Human-friendly name. Defaults to `name`. |
 | `description` | Yes | Compact model-facing summary. Keep it one sentence. |
-| `intents` | Yes | Task intents that activate this skill. |
+| `intents` | No | Task intents that activate this skill. Standard skills may omit this and rely on stronger title/description keyword matching. |
 | `routes` | No | Decision routes that activate this skill. |
 | `tags` | No | Query keywords that boost matching. |
+| `paths` | No | Workspace-relative globs that gate a skill, for example `**/parse.ts` or `apps/vscode/**`. |
+| `languages` | No | Soft language tags from host/repository evidence. Boost only. |
+| `projectKinds` | No | Soft project-kind tags from host/repository evidence. Boost only. |
 | `priority` | No | Higher wins when multiple skills match. Default `100`. |
 | `conflictGroup` | No | Allows only one selected skill from that group. |
 | `alwaysApply` | No | Use rarely. Default `false`. |
 | `enabled` | No | Set `false` to keep a skill on disk but skip loading it. Default `true`. |
 | `when` | No | Compact activation hints injected in metadata mode. |
 | `instruction` | No | One short instruction injected in metadata mode. |
+| `license` | No | agentskills.io-compatible metadata. Parsed but not model authority. |
+| `compatibility` | No | agentskills.io-compatible metadata. Parsed but not model authority. |
+| `allowed-tools` | No | Upstream advisory field. Mitii ignores it unless Decision Policy independently grants matching tools. |
+
+Mitii accepts minimal agentskills.io-style skills with only `name` and
+`description`. Mitii extensions are optional.
+
+Package authoring should keep `name` at 64 characters or fewer and
+`description` at 1024 characters or fewer for agentskills.io compatibility.
+
+## Resource folders
+
+Optional resources live beside `SKILL.md`:
+
+```text
+.mitii/skills/null-crash-debugging/
+  SKILL.md
+  references/checklist.md
+  scripts/repro.ts
+```
+
+The catalog exposes only the relative manifest. Reading references and running
+scripts remains a tool-runtime decision; skill text cannot broaden ToolGrant,
+path scopes, allowed hosts, or command rules.
 
 ## Optional planning block
 

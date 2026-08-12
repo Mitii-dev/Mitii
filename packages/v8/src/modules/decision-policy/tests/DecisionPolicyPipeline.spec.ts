@@ -33,6 +33,12 @@ describe("DecisionPolicyPipeline", () => {
     const decision = pipeline.decide(input);
     expect(() => executionDecisionSchema.parse(decision)).not.toThrow();
     expect(() => toolGrantSchema.parse(decision.toolGrant)).not.toThrow();
+    expect(decision.trace).toMatchObject({
+      routePriorityStep: "mutation_execute",
+      grantProfile: "write",
+      mutationProfile: expect.any(String),
+      clampedByInjection: false,
+    });
   });
 
   it("raises DecisionPolicyError with stable code on invalid input", () => {
@@ -178,6 +184,7 @@ describe("DecisionPolicyPipeline", () => {
 
     expect(decision.toolGrant.maximumWorkspaceEffect).not.toBe("write");
     expect(decision.reasonCodes).toContain("prompt_injection_ignored");
+    expect(decision.trace?.clampedByInjection).toBe(true);
     expect(
       decision.warnings.some((warning) =>
         warning.toLowerCase().includes("ignored"),
@@ -704,5 +711,103 @@ describe("DecisionPolicyPipeline", () => {
       hostCapabilities: { webSearch: true },
     });
     expect(withPort.toolGrant.allowedTools).toContain("web_search");
+  });
+
+  it("narrows path scopes to discovered parents without adding authority", () => {
+    const pipeline = new DecisionPolicyPipeline();
+    const decision = pipeline.decide(
+      createInput({
+        mode: "agent",
+        message: "Fix the null crash in parse.ts",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "bugfix",
+          interactionIntent: "act",
+          taskAnalysis: {
+            scope: "unknown",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.toolGrant.pathScopes).toEqual(["."]);
+    const narrowed = pipeline.narrow({
+      previous: decision,
+      discoveredPaths: ["src/parser/parse.ts", "src/parser/parse.test.ts"],
+    });
+
+    expect(narrowed.reasonCodes).toContain("grant_narrowed");
+    expect(narrowed.toolGrant.pathScopes).toEqual(["src/parser"]);
+    expect(narrowed.toolGrant.allowedTools).toEqual(
+      decision.toolGrant.allowedTools,
+    );
+    expect(narrowed.toolGrant.allowedEffects).toEqual(
+      decision.toolGrant.allowedEffects,
+    );
+    expect(narrowed.toolGrant.networkHosts).toEqual(
+      decision.toolGrant.networkHosts,
+    );
+  });
+
+  it("does not expand a scoped grant when discovery is outside scope", () => {
+    const pipeline = new DecisionPolicyPipeline();
+    const decision = pipeline.decide(
+      createInput({
+        mode: "agent",
+        message: "Fix src/parser/parse.ts",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "bugfix",
+          interactionIntent: "act",
+          taskAnalysis: {
+            scope: "single_location",
+            recommendsRepositoryDiscovery: false,
+            targets: [
+              { kind: "file", value: "src/parser/parse.ts", explicit: true },
+            ],
+          },
+        }),
+      }),
+    );
+
+    expect(decision.toolGrant.pathScopes).toEqual(["src/parser"]);
+    const narrowed = pipeline.narrow({
+      previous: decision,
+      discoveredPaths: ["apps/other/file.ts"],
+    });
+
+    expect(narrowed.reasonCodes).not.toContain("grant_narrowed");
+    expect(narrowed.toolGrant.pathScopes).toEqual(["src/parser"]);
+  });
+
+  it("raises approval mode and tightens mutation budget on high residual risk", () => {
+    const pipeline = new DecisionPolicyPipeline();
+    const decision = pipeline.decide(
+      createInput({
+        mode: "agent",
+        message: "Fix src/parser/parse.ts",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "bugfix",
+          interactionIntent: "act",
+          taskAnalysis: {
+            risk: "low",
+            targets: [
+              { kind: "file", value: "src/parser/parse.ts", explicit: true },
+            ],
+          },
+        }),
+      }),
+    );
+
+    const narrowed = pipeline.narrow({
+      previous: decision,
+      discoveredPaths: ["src/parser/parse.ts"],
+      residualRisk: "high",
+    });
+
+    expect(narrowed.toolGrant.approvalMode).toBe("every_mutation");
+    expect(narrowed.toolGrant.mutationBudget?.requireBatchedExecution).toBe(
+      true,
+    );
+    expect(narrowed.trace?.mutationProfile).toBe("tight");
   });
 });

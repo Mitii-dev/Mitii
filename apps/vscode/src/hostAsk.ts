@@ -76,9 +76,11 @@ export function formatRunEventLine(event: RunEvent): string | undefined {
       return `[context] blocks=${event.blockCount} status=${event.status}${paths}`;
     }
     case 'decision_made':
-      return `[decision] ${event.route}`;
+      return `[decision] ${event.route}${event.maximumWorkspaceEffect ? ` effect=${event.maximumWorkspaceEffect}` : ''}${formatEventList(' scopes', event.pathScopes)}`;
+    case 'grant_narrowed':
+      return `[grant] narrowed effect=${event.maximumWorkspaceEffect} approval=${event.approvalMode}${formatEventList(' scopes', event.pathScopes)}`;
     case 'skills_ready':
-      return `[skills] selected=${event.selectedCount}${formatEventList(' ids', event.selected)} omitted=${event.omittedCount}${formatEventList(' ids', event.omitted)} status=${event.status}`;
+      return `[skills] selected=${event.selectedCount}${formatEventList(' ids', event.selected)} omitted=${event.omittedCount}${formatSkillOmissions(event)} status=${event.status}`;
     case 'memory_ready':
       return `[memory] selected=${event.selectedCount} omitted=${event.omittedCount} status=${event.status}`;
     case 'stage_started':
@@ -110,6 +112,12 @@ function formatClock(ms: number): string {
 }
 
 let activitySeq = 0;
+
+type SkillOmittedDetail = {
+  id: string;
+  reason: string;
+  tokens?: number;
+};
 
 const STAGE_LABELS: Record<string, string> = {
   received: 'Received request',
@@ -288,7 +296,29 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         at,
         kind: 'decision',
         title: 'Decision',
-        detail: String(event.route),
+        detail: [
+          String(event.route),
+          event.maximumWorkspaceEffect
+            ? `effect ${event.maximumWorkspaceEffect}`
+            : undefined,
+          event.pathScopes?.length
+            ? `scope ${event.pathScopes.slice(0, 4).join(', ')}`
+            : undefined,
+        ].filter(Boolean).join(' · '),
+      };
+    case 'grant_narrowed':
+      return {
+        id,
+        at,
+        kind: 'decision',
+        title: 'Grant narrowed',
+        detail: [
+          `effect ${event.maximumWorkspaceEffect}`,
+          `approval ${event.approvalMode}`,
+          event.pathScopes.length
+            ? `scope ${event.pathScopes.slice(0, 4).join(', ')}`
+            : undefined,
+        ].filter(Boolean).join(' · '),
       };
     case 'warning':
       return {
@@ -321,11 +351,7 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         at,
         kind: 'info',
         title: 'Skills ready',
-        detail: event.selected?.length
-          ? `${event.selected.slice(0, 6).join(', ')}${
-              event.selected.length > 6 ? ` · +${event.selected.length - 6} more` : ''
-            }`
-          : `${event.selectedCount} selected`,
+        detail: formatSkillsReadyDetail(event),
       };
     case 'memory_ready':
       return {
@@ -357,6 +383,49 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
     default:
       return undefined;
   }
+}
+
+function formatSkillOmissions(
+  event: Extract<RunEvent, { type: 'skills_ready' }>,
+): string {
+  if (event.omittedDetails?.length) {
+    const preview = event.omittedDetails
+      .slice(0, 6)
+      .map((item: SkillOmittedDetail) =>
+        item.tokens === undefined
+          ? `${item.id}:${item.reason}`
+          : `${item.id}:${item.reason}(${item.tokens})`,
+      )
+      .join(',');
+    const more =
+      event.omittedDetails.length > 6
+        ? `,+${event.omittedDetails.length - 6}`
+        : '';
+    return ` ids=${preview}${more}`;
+  }
+  return formatEventList(' ids', event.omitted);
+}
+
+function formatSkillsReadyDetail(
+  event: Extract<RunEvent, { type: 'skills_ready' }>,
+): string {
+  const selected = event.selected?.length
+    ? `${event.selected.slice(0, 6).join(', ')}${
+        event.selected.length > 6 ? ` · +${event.selected.length - 6} more` : ''
+      }`
+    : `${event.selectedCount} selected`;
+  if (!event.omittedDetails?.length) {
+    return selected;
+  }
+  const omitted = event.omittedDetails
+    .slice(0, 3)
+    .map((item: SkillOmittedDetail) => `${item.id}:${item.reason}`)
+    .join(', ');
+  const more =
+    event.omittedDetails.length > 3
+      ? ` · +${event.omittedDetails.length - 3} omitted`
+      : '';
+  return `${selected} · omitted ${omitted}${more}`;
 }
 
 type ApprovalViewSource = NonNullable<
