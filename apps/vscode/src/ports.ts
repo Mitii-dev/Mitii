@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { relative } from 'node:path';
 import {
   EchoLlmPort,
   OpenAiCompatibleLlmPort,
@@ -203,13 +204,14 @@ export async function createVscodeClient(
     ? new NodeWorkspaceFileSystemAdapter()
     : undefined;
   const search = createOptionalSearchPort(process.env);
+  const git = workspaceRoot ? new NodeGitAdapter() : undefined;
   const tools = workspaceRoot && fileSystem
     ? new ToolRuntimePipeline(
         {
           fileSystem,
           process: new NodeProcessAdapter(),
           network: new NodeNetworkAdapter(),
-          git: new NodeGitAdapter(),
+          git,
           diagnostics: new VscodeDiagnosticsPort(vs, workspaceRoot),
           ...(search ? { search } : {}),
         },
@@ -233,6 +235,9 @@ export async function createVscodeClient(
         repositoryState,
         workspaceRoot,
         semanticIndex: await resolveVsCodeSemanticIndexSettings(vs, secrets),
+        ...(git ? { git } : {}),
+        resolveEditorReferences: () =>
+          resolveVsCodeEditorReferences(vs, workspaceRoot),
       })
     : undefined;
 
@@ -281,4 +286,57 @@ function resolveWorkspaceId(workspaceRoot: string | undefined): string {
   const normalized = workspaceRoot.replace(/\\/g, '/');
   const hash = createHash('sha1').update(normalized).digest('hex').slice(0, 12);
   return `vscode_workspace_${hash}`;
+}
+
+function toWorkspaceRelativePath(
+  workspaceRoot: string,
+  filePath: string,
+): string | undefined {
+  const relativePath = relative(workspaceRoot, filePath).replace(/\\/g, '/');
+  if (
+    !relativePath ||
+    relativePath.startsWith('../') ||
+    relativePath === '..' ||
+    relativePath.startsWith('/')
+  ) {
+    return undefined;
+  }
+  return relativePath;
+}
+
+function resolveVsCodeEditorReferences(
+  vs: typeof vscode,
+  workspaceRoot: string,
+): {
+  currentFile?: { relativePath: string };
+  openFiles: Array<{ relativePath: string }>;
+} {
+  const seen = new Set<string>();
+  const openFiles: Array<{ relativePath: string }> = [];
+
+  for (const editor of vs.window.visibleTextEditors) {
+    if (editor.document.isUntitled || editor.document.uri.scheme !== 'file') {
+      continue;
+    }
+    const relativePath = toWorkspaceRelativePath(
+      workspaceRoot,
+      editor.document.uri.fsPath,
+    );
+    if (!relativePath || seen.has(relativePath)) continue;
+    seen.add(relativePath);
+    openFiles.push({ relativePath });
+  }
+
+  const active = vs.window.activeTextEditor;
+  const currentRelative =
+    active &&
+    !active.document.isUntitled &&
+    active.document.uri.scheme === 'file'
+      ? toWorkspaceRelativePath(workspaceRoot, active.document.uri.fsPath)
+      : undefined;
+
+  return {
+    ...(currentRelative ? { currentFile: { relativePath: currentRelative } } : {}),
+    openFiles,
+  };
 }

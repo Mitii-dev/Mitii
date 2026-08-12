@@ -33,6 +33,7 @@ export async function createDefaultTreeSitterRuntime(): Promise<
   )) {
     const wasmPath = resolveTreeSitterPackageAsset([
       `tree-sitter-wasms/out/${basename}`,
+      basename,
     ]);
 
     if (wasmPath) {

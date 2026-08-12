@@ -25,7 +25,7 @@ import type {
 } from "../internal/workspace/types";
 import type {
   TreeSitterRuntimePort,
-} from "../internal/source-analysis/types";
+} from "../contracts";
 import {
   SourceFileReader,
 } from "../internal/source-analysis/SourceFileReader";

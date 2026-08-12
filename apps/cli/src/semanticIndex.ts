@@ -1,7 +1,7 @@
 import {
-  DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_DIMENSIONS,
-  DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL,
+  type EmbeddingBackend,
   normalizePositiveInteger,
+  resolveDefaultEmbeddingPreset,
   shouldEnableSemanticIndex,
   type SemanticIndexSettings,
 } from '@mitii/host';
@@ -27,10 +27,21 @@ export function resolveCliSemanticIndexSettings(options: {
     options.env.MITII_BASE_URL ??
     options.config.baseUrl ??
     'https://api.openai.com/v1';
+  const requestedBackend = parseEmbeddingBackend(
+    options.env.MITII_EMBEDDING_BACKEND ??
+      options.config.embeddingBackend ??
+      'auto',
+  );
+  const preset = resolveDefaultEmbeddingPreset({
+    baseUrl,
+    backend: requestedBackend,
+  });
+  const backend: EmbeddingBackend =
+    requestedBackend === 'auto' ? preset.backend : requestedBackend;
   const embeddingModel =
     options.env.MITII_EMBEDDING_MODEL ??
     options.config.embeddingModel ??
-    DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL;
+    preset.model;
   const embeddingModelConfigured = Boolean(
     options.env.MITII_EMBEDDING_MODEL?.trim() ||
       options.config.embeddingModel?.trim(),
@@ -43,15 +54,32 @@ export function resolveCliSemanticIndexSettings(options: {
       providerType: providerConfigured ? 'openai-compatible' : 'echo',
       baseUrl,
       embeddingModelConfigured,
+      backend,
     }),
+    backend,
     baseUrl,
     model: embeddingModel,
     dimensions: normalizePositiveInteger(
       Number(options.env.MITII_EMBEDDING_DIMENSIONS) ||
         options.config.embeddingDimensions,
-      DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_DIMENSIONS,
+      preset.dimensions,
     ),
     normalized: options.env.MITII_EMBEDDING_NORMALIZED !== '0',
     ...(apiKey ? { apiKey } : {}),
   };
+}
+
+function parseEmbeddingBackend(
+  value: string | undefined,
+): EmbeddingBackend | 'auto' {
+  const normalized = value?.trim();
+  if (
+    normalized === 'auto' ||
+    normalized === 'openai-compatible' ||
+    normalized === 'ollama' ||
+    normalized === 'disabled'
+  ) {
+    return normalized;
+  }
+  return 'auto';
 }

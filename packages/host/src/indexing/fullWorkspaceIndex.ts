@@ -4,19 +4,22 @@ import { join } from 'node:path';
 
 import {
   NodeFileSystemAdapter,
+  REPOSITORY_INDEX_FORMAT,
   RepoGraphBuilder,
   RepoMapBuilder,
   SqliteCodeIndexAdapter,
   createWorkspaceIndexRuntime,
   createDefaultProjectCatalogBuilder,
+  type EmbeddingProfile,
   type RepoGraph,
   type RepoMap,
   type WorkspaceSnapshot,
   type WorkspaceIndexingPipelineResult,
 } from '@mitii/v8';
 import {
-  OpenAiCompatibleEmbeddingProvider,
+  createHostEmbeddingProvider,
   createLanceDbConnection,
+  probeEmbeddingProvider,
   readIndexRuntimeMetadata,
   writeIndexRuntimeMetadata,
   type IndexRuntimeMetadata,
@@ -58,6 +61,10 @@ export interface FullWorkspaceIndexResult {
     lanceDbPath?: string;
     runtimeMetadataPath?: string;
   };
+  treeSitter: {
+    status: 'ready' | 'unavailable';
+    reason?: string;
+  };
 }
 
 export async function runFullWorkspaceIndex(options: {
@@ -76,9 +83,9 @@ export async function runFullWorkspaceIndex(options: {
   const lanceDbPath = join(options.mitiiDir, LANCEDB_DIR);
   const runtimeMetadataPath = join(options.mitiiDir, INDEX_RUNTIME_FILE);
   const previousMetadata = readIndexRuntimeMetadata(runtimeMetadataPath);
-  const semanticProfile = options.semanticIndex?.enabled
-    ? new OpenAiCompatibleEmbeddingProvider(options.semanticIndex).profile
-    : undefined;
+  const semanticCandidate = await resolveSemanticCandidate(options.semanticIndex);
+  const semanticProfile =
+    semanticCandidate.status === 'ready' ? semanticCandidate.profile : undefined;
   const vectorRuntimeKey = semanticProfile?.id ?? 'unavailable';
   const database = options.openDatabase(databasePath);
   try {
@@ -98,6 +105,7 @@ export async function runFullWorkspaceIndex(options: {
       maximumFiles,
     });
     const snapshotFingerprint = fingerprintWorkspaceIndexSnapshot(snapshot);
+    const formatMismatch = hasIndexFormatMismatch(previousMetadata);
     const unchangedCheck = {
       metadata: previousMetadata,
       workspaceId: options.workspaceId,
@@ -105,6 +113,7 @@ export async function runFullWorkspaceIndex(options: {
       vectorRuntimeKey,
       force: options.force === true,
       scoped: Boolean(options.filePaths?.length),
+      formatMismatch,
     };
 
     if (isUnchangedFullIndex(unchangedCheck)) {
@@ -121,6 +130,7 @@ export async function runFullWorkspaceIndex(options: {
           lanceDbPath,
           runtimeMetadataPath,
         }),
+        treeSitter: treeSitterStatusFromMetadata(metadata.treeSitterRuntime),
         catalogRevisionByRoot: metadata.catalogRevisionByRoot,
         graphRevisionByRoot: metadata.graphRevisionByRoot,
         mapRevisionByRoot: metadata.mapRevisionByRoot,
@@ -129,11 +139,17 @@ export async function runFullWorkspaceIndex(options: {
       };
     }
 
-    const semanticRuntime = await resolveSemanticRuntime(
-      options.semanticIndex,
-      lanceDbPath,
-    );
+    const semanticRuntime = await resolveSemanticRuntime(semanticCandidate, lanceDbPath);
     const treeSitterRuntime = await createDefaultTreeSitterRuntime();
+    const treeSitter = treeSitterRuntime
+      ? { status: 'ready' as const }
+      : {
+          status: 'unavailable' as const,
+          reason:
+            'Tree-sitter WASM runtime is unavailable; non-TypeScript languages fall back to regex symbol extraction.',
+        };
+    // Scan used a lightweight runtime so unchanged workspaces can return before
+    // loading tree-sitter/embeddings. Rebuild with those only when indexing.
     const indexingRuntime =
       treeSitterRuntime || semanticRuntime.status === 'ready'
         ? await createWorkspaceIndexRuntime({
@@ -175,7 +191,7 @@ export async function runFullWorkspaceIndex(options: {
       snapshot,
       fileSystem,
       previousMetadata,
-      force: options.force === true,
+      force: options.force === true || formatMismatch,
       dirtyRootIds: dirtyRootIdsFromIndexing(indexing),
     });
 
@@ -195,6 +211,10 @@ export async function runFullWorkspaceIndex(options: {
       fileCount: snapshot.statistics.files,
       truncated: snapshot.status !== 'complete',
       lastIndexingResult: indexing,
+      textIndexSchemaVersion: REPOSITORY_INDEX_FORMAT.textIndexSchemaVersion,
+      textPipelineVersion: REPOSITORY_INDEX_FORMAT.textPipelineVersion,
+      graphBuilderVersion: REPOSITORY_INDEX_FORMAT.graphBuilderVersion,
+      treeSitterRuntime: treeSitter.status,
       ...graphMap,
       generatedAt: new Date(indexing.indexedAt).toISOString(),
     });
@@ -206,6 +226,7 @@ export async function runFullWorkspaceIndex(options: {
       truncated: snapshot.status !== 'complete',
       databasePath,
       vectorIndex,
+      treeSitter,
       ...graphMap,
     };
   } finally {
@@ -331,6 +352,32 @@ function safeArtifactName(value: string): string {
   return value.replace(/[^a-zA-Z0-9_.-]+/g, '_');
 }
 
+function treeSitterStatusFromMetadata(
+  status: IndexRuntimeMetadata['treeSitterRuntime'],
+): FullWorkspaceIndexResult['treeSitter'] {
+  if (status === 'ready') {
+    return { status: 'ready' };
+  }
+  return {
+    status: 'unavailable',
+    reason:
+      'Tree-sitter WASM runtime is unavailable; non-TypeScript languages fall back to regex symbol extraction.',
+  };
+}
+
+function hasIndexFormatMismatch(
+  metadata: IndexRuntimeMetadata | undefined,
+): boolean {
+  return (
+    metadata?.textIndexSchemaVersion !==
+      REPOSITORY_INDEX_FORMAT.textIndexSchemaVersion ||
+    metadata?.textPipelineVersion !==
+      REPOSITORY_INDEX_FORMAT.textPipelineVersion ||
+    metadata?.graphBuilderVersion !==
+      REPOSITORY_INDEX_FORMAT.graphBuilderVersion
+  );
+}
+
 function isUnchangedFullIndex(input: {
   metadata: IndexRuntimeMetadata | undefined;
   workspaceId: string;
@@ -338,6 +385,7 @@ function isUnchangedFullIndex(input: {
   vectorRuntimeKey: string;
   force: boolean;
   scoped: boolean;
+  formatMismatch: boolean;
 }): input is {
   metadata: IndexRuntimeMetadata & {
     snapshotFingerprint: string;
@@ -355,12 +403,14 @@ function isUnchangedFullIndex(input: {
   vectorRuntimeKey: string;
   force: boolean;
   scoped: boolean;
+  formatMismatch: boolean;
 } {
   const metadata = input.metadata;
 
   if (
     input.force ||
     input.scoped ||
+    input.formatMismatch ||
     !metadata ||
     metadata.workspaceId !== input.workspaceId ||
     metadata.snapshotFingerprint !== input.snapshotFingerprint ||
@@ -462,15 +512,60 @@ function stripGeneratedAt(value: unknown): unknown {
   );
 }
 
-async function resolveSemanticRuntime(
+type SemanticRuntimeCandidate =
+  | {
+      status: 'ready';
+      settings: SemanticIndexSettings;
+      profile: EmbeddingProfile;
+    }
+  | {
+      status: 'unavailable';
+      reason: string;
+    };
+
+async function resolveSemanticCandidate(
   settings: SemanticIndexSettings | undefined,
+): Promise<SemanticRuntimeCandidate> {
+  if (!settings?.enabled) {
+    return {
+      status: 'unavailable',
+      reason: 'Semantic index is disabled or not configured.',
+    };
+  }
+
+  const probe = await probeEmbeddingProvider(settings);
+  if (!probe.ok) {
+    return {
+      status: 'unavailable',
+      reason: probe.reason,
+    };
+  }
+
+  const runtimeSettings =
+    probe.dimensions === settings.dimensions
+      ? settings
+      : {
+          ...settings,
+          dimensions: probe.dimensions,
+        };
+  const provider = createHostEmbeddingProvider(runtimeSettings);
+
+  return {
+    status: 'ready',
+    settings: runtimeSettings,
+    profile: provider.profile,
+  };
+}
+
+async function resolveSemanticRuntime(
+  candidate: SemanticRuntimeCandidate,
   lanceDbPath: string,
 ): Promise<
   | {
       status: 'ready';
-      provider: OpenAiCompatibleEmbeddingProvider;
+      provider: ReturnType<typeof createHostEmbeddingProvider>;
       vector: {
-        embeddingProvider: OpenAiCompatibleEmbeddingProvider;
+        embeddingProvider: ReturnType<typeof createHostEmbeddingProvider>;
         lanceConnection: Awaited<ReturnType<typeof createLanceDbConnection>>;
       };
     }
@@ -479,16 +574,14 @@ async function resolveSemanticRuntime(
       reason: string;
     }
 > {
-  if (!settings?.enabled) {
+  if (candidate.status !== 'ready') {
     return {
       status: 'unavailable',
-      reason: 'Semantic index is disabled or not configured.',
+      reason: candidate.reason,
     };
   }
   try {
-    const provider = new OpenAiCompatibleEmbeddingProvider(settings);
-    // Fail fast with a clear provider error before indexing hundreds of files.
-    await provider.embed(['mitii semantic index probe']);
+    const provider = createHostEmbeddingProvider(candidate.settings);
     const lanceConnection = await createLanceDbConnection(lanceDbPath);
     return {
       status: 'ready',

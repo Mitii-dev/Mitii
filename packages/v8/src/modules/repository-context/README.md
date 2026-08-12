@@ -11,6 +11,10 @@ in `contracts/`. Callers may pass `selectionBudget`, or use
 `deriveContextSelectionBudget(contextWindowTokens)` from `policy.ts` to scale
 defaults with the active model window.
 
+Hosts may inject `gitDiffFiles`, `currentFile`, and `openFiles` as selection
+priors. After a text-index schema upgrade, rebuild the workspace index so
+identifier-aware FTS and call-graph hops stay current.
+
 ## Layout
 
 ```text

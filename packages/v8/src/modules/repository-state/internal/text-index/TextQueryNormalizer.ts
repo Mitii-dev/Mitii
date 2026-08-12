@@ -1,4 +1,8 @@
 import {
+  expandCodeIdentifierTerms,
+} from "../../codeIdentifiers";
+
+import {
   TEXT_INDEX_DEFAULTS,
   TEXT_INDEX_ERRORS,
   TEXT_INDEX_MESSAGES,
@@ -12,31 +16,9 @@ import type {
   TextSearchWarning,
 } from "./types";
 
-export function splitCodeIdentifier(
-  term: string,
-): string[] {
-  return term
-    .replace(
-      /([a-z0-9])([A-Z])/g,
-      "$1 $2",
-    )
-    .replace(
-      /([A-Z]+)([A-Z][a-z])/g,
-      "$1 $2",
-    )
-    .split(
-      /[^a-zA-Z0-9]+/,
-    )
-    .map((value) =>
-      value.toLowerCase(),
-    )
-    .filter(
-      (value) =>
-        value.length >=
-        TEXT_INDEX_DEFAULTS
-          .MINIMUM_TERM_CHARACTERS,
-    );
-}
+export {
+  splitCodeIdentifier,
+} from "../../codeIdentifiers";
 
 export class TextQueryNormalizer {
   public normalize(
@@ -250,38 +232,8 @@ export class TextQueryNormalizer {
   private expandTerm(
     term: string,
   ): string[] {
-    const lower =
-      term.toLowerCase();
-    const parts =
-      splitCodeIdentifier(
-        term,
-      );
-
-    const expanded =
-      [
-        lower,
-        ...parts,
-      ];
-
-    const compact =
-      parts.join("");
-
-    if (
-      compact.length >=
-        TEXT_INDEX_DEFAULTS
-          .MINIMUM_TERM_CHARACTERS &&
-      compact !== lower
-    ) {
-      expanded.push(
-        compact,
-      );
-    }
-
-    return expanded.filter(
-      (value) =>
-        value.length >=
-        TEXT_INDEX_DEFAULTS
-          .MINIMUM_TERM_CHARACTERS,
+    return expandCodeIdentifierTerms(
+      term,
     );
   }
 

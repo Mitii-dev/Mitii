@@ -26,6 +26,10 @@ import type {
   SourceAnalysis,
 } from "../../../internal/source-analysis/types";
 
+import {
+  TEXT_INDEX_DEFAULTS,
+} from "../../../internal/text-index/constants";
+
 import type {
   TextIndexCoordinatorResult,
 } from "../../../internal/text-index/types";
@@ -649,7 +653,8 @@ test(
               sourceContentHash:
                 CONTENT_HASH,
               pipelineVersion:
-                "chunking-v1",
+                TEXT_INDEX_DEFAULTS
+                  .PIPELINE_VERSION,
               chunkingStatus:
                 "complete",
               chunkCount:

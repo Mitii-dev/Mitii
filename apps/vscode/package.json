@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.8.17",
+  "version": "2.8.18",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -81,6 +81,7 @@
   "files": [
     "dist/extension.js",
     "dist/native/better_sqlite3.node",
+    "dist/tree-sitter/**/*",
     "dist/skills/**/*",
     "dist/webview/**/*",
     "media/**/*",
@@ -271,18 +272,29 @@
         "mitii.semanticIndex.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable semantic workspace indexing when the provider is OpenAI-compatible. Local endpoints require an explicit mitii.semanticIndex.model so chat-only models are not used for embeddings by default. If embeddings or LanceDB are unavailable, Mitii keeps vector search unavailable and continues with lexical indexing."
+          "description": "Enable semantic workspace indexing when the provider is OpenAI-compatible. Local endpoints use the Ollama nomic-embed-text embedding preset by default and fail closed to lexical indexing if the embedding probe fails."
+        },
+        "mitii.semanticIndex.backend": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "openai-compatible",
+            "ollama",
+            "disabled"
+          ],
+          "default": "auto",
+          "description": "Embedding backend for semantic indexing. Auto uses Ollama/nomic-embed-text for local endpoints and OpenAI-compatible text-embedding-3-small for cloud endpoints."
         },
         "mitii.semanticIndex.model": {
           "type": "string",
-          "default": "text-embedding-3-small",
-          "description": "Embedding model used for the semantic workspace index."
+          "default": "",
+          "description": "Embedding model used for the semantic workspace index. Empty uses the backend preset, such as nomic-embed-text for Ollama."
         },
         "mitii.semanticIndex.dimensions": {
           "type": "number",
-          "default": 1536,
-          "minimum": 1,
-          "description": "Embedding vector dimensions for the semantic workspace index. Changing this creates a distinct vector profile."
+          "default": 0,
+          "minimum": 0,
+          "description": "Embedding vector dimensions for the semantic workspace index. Set 0 to use the backend preset/probe result. Changing this creates a distinct vector profile."
         },
         "mitii.semanticIndex.normalized": {
           "type": "boolean",
@@ -506,6 +518,8 @@
     "typescript": "^5.5.2"
   },
   "optionalDependencies": {
-    "@lancedb/lancedb": "0.33.0"
+    "@lancedb/lancedb": "0.33.0",
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.24.7"
   }
 }

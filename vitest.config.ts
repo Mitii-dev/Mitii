@@ -31,6 +31,8 @@ export default defineConfig({
       'packages/v8/src/modules/verification/**/*.spec.ts',
       'packages/v8/src/modules/repository-state/internal/repo-map/**/*.spec.ts',
       'packages/v8/src/modules/repository-state/internal/catalog/**/*.spec.ts',
+      'packages/v8/src/modules/repository-state/adapters/**/*.spec.ts',
+      'packages/v8/src/modules/repository-state/*.spec.ts',
       'packages/host/src/**/*.spec.ts',
     ],
     setupFiles: ['./tests/setup.ts'],

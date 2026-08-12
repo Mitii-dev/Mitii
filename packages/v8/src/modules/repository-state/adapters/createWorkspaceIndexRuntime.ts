@@ -40,7 +40,7 @@ import type {
 } from "../pipeline/ws-indexing-pipeline/WorkspaceIndexingPipeline";
 import type {
   TreeSitterRuntimePort,
-} from "../internal/source-analysis/types";
+} from "../contracts";
 import {
   WorkspaceIndexingAdapterFactory,
 } from "./WorkspaceIndexingAdapterFactory";

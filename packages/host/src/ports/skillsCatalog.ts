@@ -2,7 +2,8 @@ import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+
+import { resolveRuntimeFilename } from '../internal/resolveRuntimeFilename.js';
 
 import {
   InMemorySkillsCatalog,
@@ -184,7 +185,7 @@ function resolveDefaultBundledSkillsRoot(): string | undefined {
   }
 
   try {
-    const req = createRequire(resolveRequireFilename());
+    const req = createRequire(resolveRuntimeFilename());
     const sdkEntry = req.resolve('@mitii/sdk');
     return join(dirname(sdkEntry), '..', 'skills');
   } catch {
@@ -192,33 +193,9 @@ function resolveDefaultBundledSkillsRoot(): string | undefined {
   }
 }
 
-function resolveRequireFilename(): string {
-  return resolveRuntimeFilename();
-}
-
 function resolveAdjacentBundledSkillsRoot(): string | undefined {
   const candidate = join(dirname(resolveRuntimeFilename()), 'skills');
   return existsSync(candidate) ? candidate : undefined;
-}
-
-function resolveRuntimeFilename(): string {
-  const metaUrl =
-    typeof import.meta !== 'undefined' &&
-    typeof import.meta.url === 'string' &&
-    import.meta.url.length > 0
-      ? import.meta.url
-      : undefined;
-  if (metaUrl) {
-    return fileURLToPath(metaUrl);
-  }
-  // CJS host (bundled VS Code extension): esbuild leaves import.meta.url
-  // undefined; use the bundle filename when present.
-  const cjsFilename =
-    typeof __filename !== 'undefined' ? __filename : undefined;
-  if (typeof cjsFilename === 'string' && cjsFilename.length > 0) {
-    return cjsFilename;
-  }
-  return join(process.cwd(), 'package.json');
 }
 
 async function findSkillFiles(roots: readonly string[]): Promise<string[]> {

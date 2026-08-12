@@ -13,6 +13,9 @@ const { dirname, join, resolve } = require('node:path');
 const {
   stageNativeSqliteBinding,
 } = require(resolve(__dirname, '../../../scripts/stage-native-sqlite.cjs'));
+const {
+  stageTreeSitterWasm,
+} = require(resolve(__dirname, '../../../scripts/stage-tree-sitter-wasm.cjs'));
 
 const root = join(__dirname, '..');
 const distDir = join(root, 'dist');
@@ -103,6 +106,7 @@ build({
       );
     }
     stageNativeSqliteBinding();
+    stageTreeSitterWasm(join(distDir, 'tree-sitter'));
     stageBundledSkills();
     console.log(`built ${outfile}`);
   })

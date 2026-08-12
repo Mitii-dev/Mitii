@@ -4,8 +4,8 @@ import {
   TEXT_INDEX_SQL,
 } from "../../constants";
 import {
-  splitCodeIdentifier,
-} from "../../TextQueryNormalizer";
+  expandFtsText,
+} from "../../../../codeIdentifiers";
 
 import {
   textIndexDocumentLocatorSchema,
@@ -622,10 +622,10 @@ export class SqliteTextIndexWriter
           .INSERT_CHUNK_FTS,
       )
       .run(
-        this.ftsText(
+        expandFtsText(
           chunk.title ?? "",
         ),
-        this.ftsText(
+        expandFtsText(
           [
             chunk.relativePath,
             chunk.title ?? "",
@@ -650,37 +650,6 @@ export class SqliteTextIndexWriter
         locator.rootId,
         locator.relativePath,
       );
-  }
-
-  private ftsText(value: string): string {
-    const identifiers =
-      value.match(
-        /[A-Za-z_$][A-Za-z0-9_$]*/g,
-      ) ?? [];
-
-    const expanded =
-      identifiers.flatMap(
-        (identifier) => {
-          const parts =
-            splitCodeIdentifier(
-              identifier,
-            );
-          const compact =
-            parts.join("");
-
-          return compact
-            ? [
-                ...parts,
-                compact,
-              ]
-            : parts;
-        },
-      );
-
-    return [
-      value,
-      ...expanded,
-    ].join(" ");
   }
 
   private deleteDocumentChunks(

@@ -1,4 +1,8 @@
 import {
+  expandFtsText,
+} from "../../../../codeIdentifiers";
+
+import {
   TEXT_INDEX_IDS,
   TEXT_INDEX_SCHEMA_VERSION,
   TEXT_INDEX_SQL,
@@ -37,6 +41,9 @@ export class SqliteTextIndexMigration {
           database.exec(
             TEXT_INDEX_SQL
               .RECREATE_IDENTIFIER_FTS,
+          );
+          this.rebuildIdentifierFts(
+            database,
           );
         }
       }) as unknown;
@@ -101,5 +108,52 @@ export class SqliteTextIndexMigration {
         .get() as MigrationNeededRow;
 
     return staleTriggers.value > 0;
+  }
+
+  private rebuildIdentifierFts(
+    database:
+      TextIndexSqliteDatabasePort,
+  ): void {
+    const rows =
+      database
+        .prepare(
+          TEXT_INDEX_SQL
+            .LIST_CHUNKS_FOR_FTS,
+        )
+        .all() as Array<{
+        rowid: number | bigint;
+        id: string;
+        workspace: string;
+        rootId: string;
+        relativePath: string;
+        kind: string;
+        title: string;
+        content: string;
+      }>;
+
+    const insert =
+      database.prepare(
+        TEXT_INDEX_SQL
+          .INSERT_CHUNK_FTS_DIRECT,
+      );
+
+    for (const row of rows) {
+      insert.run(
+        row.rowid,
+        row.id,
+        row.workspace,
+        row.rootId,
+        row.relativePath,
+        row.kind,
+        expandFtsText(row.title),
+        expandFtsText(
+          [
+            row.relativePath,
+            row.title,
+            row.content,
+          ].join(" "),
+        ),
+      );
+    }
   }
 }

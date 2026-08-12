@@ -82,7 +82,7 @@ export class TaskTargetExtractor {
     )) {
       const value = this.cleanTargetValue(match[1] ?? match[0]);
 
-      if (!value) {
+      if (!value || this.isAbsolutePathLike(value)) {
         continue;
       }
 
@@ -92,6 +92,20 @@ export class TaskTargetExtractor {
         explicit: true,
       });
     }
+  }
+
+  /**
+   * Pasted terminal/build output routinely contains absolute host filesystem
+   * paths (e.g. `/Users/.../repo/file.ts`, `C:\repo\file.ts`, `~/repo/file.ts`).
+   * Those are not workspace-relative targets and must never reach downstream
+   * consumers that require a canonical workspace-relative path.
+   */
+  private isAbsolutePathLike(value: string): boolean {
+    return (
+      value.startsWith("/") ||
+      value.startsWith("~") ||
+      /^[A-Za-z]:[\\/]/.test(value)
+    );
   }
 
   private extractFolderTargets(

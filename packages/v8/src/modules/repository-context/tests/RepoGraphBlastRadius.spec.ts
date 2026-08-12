@@ -160,6 +160,50 @@ describe("RepoGraphRetrievalSource blast radius", () => {
       "src/service.ts",
     ]);
   });
+
+  it("does not explode on a dense call graph", async () => {
+    const source =
+      new RepoGraphRetrievalSource({
+        maximumHops: 2,
+        maximumNeighborsPerAnchor:
+          3,
+      });
+    const files = Array.from(
+      { length: 40 },
+      (_, index) =>
+        fileNode(
+          `f${index}`,
+          `src/f${index}.ts`,
+        ),
+    );
+    const symbols = files.map((file, index) =>
+      symbolNode(`f${index}`, `fn${index}`),
+    );
+    const edges = symbols.slice(1).map((symbol, index) =>
+      callEdge(
+        `e${index}`,
+        symbol.id,
+        "symbol:f0",
+      ),
+    );
+
+    const result = await source.retrieve({
+      ...baseRequest,
+      query: "fn0",
+      maximumResults: 8,
+      maximumCandidatesPerSource: 8,
+      repoGraph: createGraph(
+        [...files, ...symbols],
+        edges,
+      ),
+    });
+
+    expect(result.status).not.toBe("failed");
+    expect(result.candidates.length).toBeLessThanOrEqual(8);
+    expect(result.truncated === true || result.candidates.length <= 8).toBe(
+      true,
+    );
+  });
 });
 
 const baseRequest:

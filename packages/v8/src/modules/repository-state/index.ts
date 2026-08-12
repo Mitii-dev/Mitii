@@ -36,17 +36,21 @@ export type {
   WorkspaceRetrievalRuntime,
   WorkspaceRetrievalRuntimeVectorOptions,
 } from "./adapters";
+
+export {
+  splitCodeIdentifier,
+  expandCodeIdentifierTerms,
+  expandFtsText,
+  CODE_IDENTIFIER_MINIMUM_PART_CHARACTERS,
+  CODE_IDENTIFIER_MINIMUM_TERM_CHARACTERS,
+} from "./codeIdentifiers";
+
+export {
+  REPOSITORY_INDEX_FORMAT,
+} from "./indexFormat";
 export type {
-  SourceImportKind,
-  SourceLanguageId,
-  SourceReferenceKind,
-  TreeSitterRuntimeImport,
-  TreeSitterRuntimeParseInput,
-  TreeSitterRuntimeParseResult,
-  TreeSitterRuntimePort,
-  TreeSitterRuntimeReference,
-  TreeSitterRuntimeSymbol,
-} from "./internal/source-analysis/types";
+  RepositoryIndexFormat,
+} from "./indexFormat";
 
 export {
   LANGUAGE_IDS,
@@ -137,6 +141,15 @@ export type {
   SqliteCodeIndexDatabasePort,
   SqliteTextIndexModule,
   TextIndexSqliteDatabasePort,
+  SourceImportKind,
+  SourceLanguageId,
+  SourceReferenceKind,
+  TreeSitterRuntimeImport,
+  TreeSitterRuntimeParseInput,
+  TreeSitterRuntimeParseResult,
+  TreeSitterRuntimePort,
+  TreeSitterRuntimeReference,
+  TreeSitterRuntimeSymbol,
 } from "./contracts";
 
 export {

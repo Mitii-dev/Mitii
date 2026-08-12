@@ -27,6 +27,9 @@ export interface WorkspaceSnapshot {
 export function fingerprintWorkspaceIndexSnapshot(
   snapshot: V8WorkspaceSnapshot,
 ): string {
+  // Snapshot IDs already hash root identity plus per-file size, mtime, and
+  // contentHash when the scanner recorded one. That is enough to invalidate
+  // incremental republish when files change without hashing every file twice.
   return snapshot.snapshotId;
 }
 

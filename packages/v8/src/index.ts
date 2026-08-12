@@ -48,6 +48,10 @@ export {
   repoGraphSchema,
   repoMapSchema,
   REPOSITORY_STATE_SCHEMA_VERSION,
+  REPOSITORY_INDEX_FORMAT,
+  splitCodeIdentifier,
+  expandCodeIdentifierTerms,
+  expandFtsText,
 } from "./modules/repository-state";
 export type {
   LanguageId,
@@ -97,6 +101,7 @@ export type {
   TreeSitterRuntimePort,
   TreeSitterRuntimeReference,
   TreeSitterRuntimeSymbol,
+  RepositoryIndexFormat,
 } from "./modules/repository-state";
 
 export { RepositoryContextPipeline } from "./modules/repository-context";
@@ -119,6 +124,7 @@ export type {
   HybridRetrievalInput,
   HybridRetrievalResult,
   RepositoryContextAssemblerPort,
+  RepositoryContextPipelineDependencies,
   RepositoryContextRetrieverPort,
   RepositoryContextSelectorPort,
   RepositoryContextStateResolverPort,

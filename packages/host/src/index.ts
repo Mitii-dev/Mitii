@@ -29,15 +29,27 @@ export type {
 // ---------------------------------------------------------------------------
 export {
   OpenAiCompatibleEmbeddingProvider,
+  createHostEmbeddingProvider,
   createLanceDbConnection,
+  probeEmbeddingProvider,
   writeIndexRuntimeMetadata,
   readIndexRuntimeMetadata,
   normalizePositiveInteger,
+  resolveDefaultEmbeddingPreset,
   shouldEnableSemanticIndex,
+  alignSemanticSettingsWithPersistedProfile,
+  normalizeEmbeddingRequestBaseUrl,
+  EMBEDDING_PRESETS,
   DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL,
   DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_DIMENSIONS,
+  DEFAULT_OLLAMA_EMBEDDING_MODEL,
+  DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS,
 } from './indexing/semanticIndex.js';
 export type {
+  EmbeddingBackend,
+  EmbeddingPreset,
+  EmbeddingPresetId,
+  EmbeddingProbeResult,
   SemanticIndexSettings,
   SemanticIndexEnablementOptions,
   IndexRuntimeMetadata,
@@ -74,6 +86,9 @@ export type {
 // Repository context — hybrid retrieval over published state (+ file-map fallback)
 // ---------------------------------------------------------------------------
 export { createHostRepositoryContext } from './repository-context/createHostRepositoryContext.js';
+export type {
+  HostEditorContextReferences,
+} from './repository-context/createHostRepositoryContext.js';
 
 // ---------------------------------------------------------------------------
 // Port adapters — satisfy V8/SDK injection points with FS / vendor code
@@ -125,6 +140,7 @@ export {
   PROVIDER_PRESETS,
   getProviderPreset,
   isLocalBaseUrl,
+  isOllamaBaseUrl,
 } from './config/providerPresets.js';
 export type {
   ProviderPreset,

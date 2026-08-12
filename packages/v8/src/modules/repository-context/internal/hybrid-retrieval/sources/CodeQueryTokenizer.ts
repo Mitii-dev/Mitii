@@ -1,10 +1,10 @@
 import {
+  splitCodeIdentifier,
+} from "../../../../repository-state";
+import {
   HYBRID_RETRIEVAL_DEFAULTS,
   HYBRID_RETRIEVAL_QUERY_STOP_WORDS,
 } from "../constants";
-import {
-  splitCodeIdentifier,
-} from "../../../../repository-state/internal/text-index/TextQueryNormalizer";
 
 export class CodeQueryTokenizer {
   public tokenize(

@@ -3044,7 +3044,16 @@ function deriveContextFocusFromUnderstanding(
       .replace(/\\/g, "/")
       .replace(/^@/, "")
       .replace(/\/+$/, "");
-    if (!value || value.includes("..")) {
+    // Reject absolute paths (leading "/", drive letters, "~") in addition to
+    // "..": the context pipeline requires a canonical workspace-relative
+    // path, and an absolute host path here must never reach that boundary.
+    if (
+      !value ||
+      value.includes("..") ||
+      value.startsWith("/") ||
+      value.startsWith("~") ||
+      /^[A-Za-z]:\//.test(value)
+    ) {
       continue;
     }
     if (target.kind === "file") {

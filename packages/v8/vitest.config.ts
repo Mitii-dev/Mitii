@@ -24,6 +24,7 @@ export default defineConfig({
       'src/modules/repository-state/internal/repo-map/**/*.spec.ts',
       'src/modules/repository-state/internal/catalog/**/*.spec.ts',
       'src/modules/repository-state/adapters/**/*.spec.ts',
+      'src/modules/repository-state/*.spec.ts',
       'src/modules/model-gateway/tests/OpenAiCompatibleRetry.spec.ts',
     ],
   },

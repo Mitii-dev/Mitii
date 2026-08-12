@@ -1,7 +1,7 @@
 import {
-  DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_DIMENSIONS,
-  DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL,
+  type EmbeddingBackend,
   normalizePositiveInteger,
+  resolveDefaultEmbeddingPreset,
   shouldEnableSemanticIndex,
   type SemanticIndexSettings,
 } from '@mitii/host';
@@ -26,6 +26,15 @@ export async function resolveVsCodeSemanticIndexSettings(
   const baseUrl =
     cfg.get<string>('provider.baseUrl')?.trim() ||
     'http://localhost:11434/v1';
+  const requestedBackend = parseEmbeddingBackend(
+    cfg.get<string>('semanticIndex.backend') ?? 'auto',
+  );
+  const preset = resolveDefaultEmbeddingPreset({
+    baseUrl,
+    backend: requestedBackend,
+  });
+  const backend: EmbeddingBackend =
+    requestedBackend === 'auto' ? preset.backend : requestedBackend;
   const embeddingModelConfigured = hasConfiguredValue(
     cfg.inspect<string>('semanticIndex.model'),
   );
@@ -40,18 +49,35 @@ export async function resolveVsCodeSemanticIndexSettings(
       providerType,
       baseUrl,
       embeddingModelConfigured,
+      backend,
     }),
+    backend,
     baseUrl,
     model:
       cfg.get<string>('semanticIndex.model')?.trim() ||
-      DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL,
+      preset.model,
     dimensions: normalizePositiveInteger(
       cfg.get<number>('semanticIndex.dimensions'),
-      DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_DIMENSIONS,
+      preset.dimensions,
     ),
     normalized: cfg.get<boolean>('semanticIndex.normalized') ?? true,
     ...(apiKey ? { apiKey } : {}),
   };
+}
+
+function parseEmbeddingBackend(
+  value: string | undefined,
+): EmbeddingBackend | 'auto' {
+  const normalized = value?.trim();
+  if (
+    normalized === 'auto' ||
+    normalized === 'openai-compatible' ||
+    normalized === 'ollama' ||
+    normalized === 'disabled'
+  ) {
+    return normalized;
+  }
+  return 'auto';
 }
 
 type ConfigurationInspection<T> = {

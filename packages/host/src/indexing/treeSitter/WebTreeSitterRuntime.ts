@@ -1,4 +1,8 @@
+import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+
+import { resolveRuntimeFilename } from '../../internal/resolveRuntimeFilename.js';
 
 import type {
   SourceReferenceKind,
@@ -85,8 +89,6 @@ type WebTreeSitterModule = {
   };
   Query?: TreeSitterQueryConstructor;
 };
-
-const require = createRequire(import.meta.url);
 
 export const WEB_TREE_SITTER_GRAMMAR_WASM_BY_LANGUAGE = {
   c: 'tree-sitter-c.wasm',
@@ -527,14 +529,43 @@ export class WebTreeSitterRuntime implements TreeSitterRuntimePort {
   }
 }
 
+function treeSitterAssetRoots(): string[] {
+  const roots: string[] = [];
+  const configuredRoot = process.env.MITII_TREE_SITTER_ASSET_ROOT;
+  if (configuredRoot) {
+    roots.push(configuredRoot);
+  }
+  const moduleDir = dirname(resolveRuntimeFilename());
+  roots.push(join(moduleDir, 'tree-sitter'));
+  roots.push(join(moduleDir, '..', 'tree-sitter'));
+  roots.push(join(moduleDir, '..', '..', 'tree-sitter'));
+  return roots;
+}
+
+function resolveWithNodeRequire(candidate: string): string | undefined {
+  try {
+    return createRequire(resolveRuntimeFilename()).resolve(candidate);
+  } catch {
+    return undefined;
+  }
+}
+
 export function resolveTreeSitterPackageAsset(
   candidates: readonly string[],
 ): string | undefined {
   for (const candidate of candidates) {
-    try {
-      return require.resolve(candidate);
-    } catch {
-      continue;
+    const resolved = resolveWithNodeRequire(candidate);
+    if (resolved) {
+      return resolved;
+    }
+
+    const basename = candidate.split('/').pop();
+    if (!basename) continue;
+    for (const root of treeSitterAssetRoots()) {
+      const nested = join(root, candidate);
+      const direct = join(root, basename);
+      if (existsSync(nested)) return nested;
+      if (existsSync(direct)) return direct;
     }
   }
 

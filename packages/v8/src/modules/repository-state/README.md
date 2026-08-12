@@ -51,3 +51,11 @@ Does **not** own prompting, retrieval, tool execution, or model calls.
 
 Incomplete scans (`partial` / `filtered` / `truncated` / `cancelled`) publish as
 `degraded` or `unavailable` with `cleanupAllowed: false`.
+
+## Index format upgrades
+
+Text-index schema 2 uses identifier-aware FTS (`chunking-v2-identifier-fts`).
+Hosts persist `REPOSITORY_INDEX_FORMAT` in `.mitii/index-runtime.json` and must
+rebuild (not short-circuit) when those keys change. After upgrading Mitii, run
+a full workspace index once so existing `.mitii` databases pick up camelCase /
+snake_case search and `calls` graph edges.

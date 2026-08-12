@@ -2,6 +2,7 @@ import {
   EchoLlmPort,
   InMemoryRepositoryStateStore,
   NodeNetworkAdapter,
+  NodeGitAdapter,
   NodeProcessAdapter,
   NodeWorkspaceFileSystemAdapter,
   OpenAiCompatibleLlmPort,
@@ -153,10 +154,12 @@ export function createCliClient(options: {
   const env = options.env ?? process.env;
   const fileSystem = new NodeWorkspaceFileSystemAdapter();
   const search = createOptionalSearchPort(env);
+  const git = new NodeGitAdapter();
   const tools = new ToolRuntimePipeline({
     fileSystem,
     process: new NodeProcessAdapter(),
     network: new NodeNetworkAdapter(),
+    git,
     ...(search ? { search } : {}),
   });
   const verification = new VerificationPipeline({
@@ -176,6 +179,7 @@ export function createCliClient(options: {
     repositoryState,
     workspaceRoot: options.cwd,
     semanticIndex: resolveCliSemanticIndexSettings({ env, config }),
+    git,
   });
   const client = createMitiiClient({
     understandingLlm: ports.understandingLlm,

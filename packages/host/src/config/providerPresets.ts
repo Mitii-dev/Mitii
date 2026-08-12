@@ -109,6 +109,17 @@ export function getProviderPreset(
   );
 }
 
+export function isOllamaBaseUrl(baseUrl?: string): boolean {
+  if (!baseUrl?.trim()) return false;
+  try {
+    const url = new URL(baseUrl);
+    if (url.hostname.toLowerCase().includes('ollama')) return true;
+    return url.port === '11434';
+  } catch {
+    return /11434|\bollama\b/i.test(baseUrl);
+  }
+}
+
 export function isLocalBaseUrl(baseUrl?: string): boolean {
   if (!baseUrl?.trim()) return false;
   try {

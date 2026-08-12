@@ -43,7 +43,7 @@ export const TEXT_INDEX_DEFAULTS = {
     24,
 
   MINIMUM_TERM_CHARACTERS:
-    2,
+    3,
 
   MAXIMUM_FILTER_VALUES:
     100,
@@ -214,6 +214,28 @@ export const TEXT_INDEX_SQL = {
       tokenize = "unicode61 remove_diacritics 2 tokenchars '_$'"
     );
 
+    UPDATE text_index_metadata
+    SET
+      schema_version = 2,
+      revision = revision + 1,
+      updated_at = unixepoch() * 1000
+    WHERE schema_version < 2;
+  `,
+
+  LIST_CHUNKS_FOR_FTS: `
+    SELECT
+      rowid AS rowid,
+      id AS id,
+      workspace AS workspace,
+      root_id AS rootId,
+      relative_path AS relativePath,
+      kind AS kind,
+      COALESCE(title, '') AS title,
+      content AS content
+    FROM text_index_chunks
+  `,
+
+  INSERT_CHUNK_FTS_DIRECT: `
     INSERT INTO text_index_fts (
       rowid,
       chunk_id,
@@ -224,28 +246,7 @@ export const TEXT_INDEX_SQL = {
       title,
       content
     )
-    SELECT
-      c.rowid,
-      c.id,
-      c.workspace,
-      c.root_id,
-      c.relative_path,
-      c.kind,
-      COALESCE(c.title, ''),
-      c.content || ' '
-        || replace(replace(replace(c.relative_path, '_', ' '), '$', ' '), '-', ' ')
-        || ' '
-        || replace(replace(replace(COALESCE(c.title, ''), '_', ' '), '$', ' '), '-', ' ')
-        || ' '
-        || replace(replace(replace(c.content, '_', ' '), '$', ' '), '-', ' ')
-    FROM text_index_chunks AS c;
-
-    UPDATE text_index_metadata
-    SET
-      schema_version = 2,
-      revision = revision + 1,
-      updated_at = unixepoch() * 1000
-    WHERE schema_version < 2;
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
   GET_DOCUMENT_STATE: `
