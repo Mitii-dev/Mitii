@@ -93,6 +93,24 @@ export interface ProviderSettingsSnapshot {
   connectionStatus?: string;
 }
 
+export interface SettingsProfileView {
+  id: string;
+  name: string;
+  provider: Pick<
+    ProviderSettingsSnapshot,
+    | 'type'
+    | 'preset'
+    | 'baseUrl'
+    | 'model'
+    | 'contextWindow'
+    | 'maximumOutputTokens'
+  >;
+  hasSecret: boolean;
+  /** SHA-256 fingerprint only. Raw secrets stay out of settings and profiles. */
+  secretHash?: string;
+  updatedAt?: string;
+}
+
 export interface TokenUsageTurn {
   turnIndex: number;
   at: string;
@@ -158,9 +176,16 @@ export interface UiSettingsSnapshot {
   showReasoning: boolean;
   reasoningPreviewMaxChars: number;
   depth: AgentUiDepth;
+  modeDefaults: Record<'ask' | 'plan' | 'agent', ModeDefaultSettingsSnapshot>;
   contextToggles: ContextToggles;
   approvalMode: string;
   runBudget: RunBudgetSettingsSnapshot;
+}
+
+export interface ModeDefaultSettingsSnapshot {
+  depth: AgentUiDepth;
+  approvalMode: string;
+  model?: string;
 }
 
 export interface RunBudgetSettingsSnapshot {
@@ -172,9 +197,12 @@ export interface RunBudgetSettingsSnapshot {
 }
 
 export type UiSettingsPatch = Partial<
-  Omit<UiSettingsSnapshot, 'contextToggles' | 'runBudget'> & {
+  Omit<UiSettingsSnapshot, 'contextToggles' | 'runBudget' | 'modeDefaults'> & {
     contextToggles?: Partial<ContextToggles>;
     runBudget?: Partial<RunBudgetSettingsSnapshot>;
+    modeDefaults?: Partial<
+      Record<'ask' | 'plan' | 'agent', Partial<ModeDefaultSettingsSnapshot>>
+    >;
   }
 >;
 
@@ -368,6 +396,7 @@ export type WebviewToHostMessage =
       prompt: string;
       mode: AgentUiMode;
       depth?: AgentUiDepth;
+      approvalMode?: string;
       pinnedPaths?: string[];
     }
   | { type: 'cancel' }
@@ -430,9 +459,11 @@ export type WebviewToHostMessage =
       workspaceRootOverride?: string | null;
       mcp?: McpSettings;
       approvalMode?: string;
+      profile?: SettingsProfileView;
     }
   | { type: 'settings.setApiKey' }
   | { type: 'settings.clearApiKey' }
+  | { type: 'profile.switch'; id: string }
   | {
       type: 'provider.testConnection';
       provider: { type: string; baseUrl: string; model: string };
@@ -454,6 +485,8 @@ export type HostToWebviewMessage =
       type: 'bootstrap';
       workspace: WorkspaceSnapshotInfo;
       provider: ProviderSettingsSnapshot;
+      profiles: SettingsProfileView[];
+      activeProfileId: string;
       index: IndexStatusSnapshot;
       mcp: McpSettings;
       mcpRuntimeStatus: McpRuntimeStatus;
@@ -475,6 +508,8 @@ export type HostToWebviewMessage =
   | {
       type: 'settings';
       provider: ProviderSettingsSnapshot;
+      profiles: SettingsProfileView[];
+      activeProfileId: string;
       ui: UiSettingsSnapshot;
       workspace: WorkspaceSnapshotInfo;
       mcp: McpSettings;

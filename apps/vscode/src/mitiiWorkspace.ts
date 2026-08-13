@@ -37,6 +37,7 @@ Local runtime data for this workspace. Safe to gitignore.
 | \`diff-preview/\` | Temporary diff preview files |
 | \`audit/\` | Audit pack exports |
 | \`mcp.json\` | MCP install list (off by default; add from Settings store) |
+| \`profiles.json\` | Local model/provider profiles with secret fingerprints only |
 | \`last-repository-state.json\` | Last published index descriptor |
 | \`MITTII.local.md\` | Optional personal instructions (see \`.example\`) |
 `;

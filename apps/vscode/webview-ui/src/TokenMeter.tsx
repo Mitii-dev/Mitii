@@ -162,11 +162,11 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
           <>
             <span className="token-chip__sep">·</span>
             <span className="token-chip__live">
-              live {formatCompact(runTotal)}
+              {formatCompact(runTotal)}
             </span>
           </>
         ) : null}
-        {windowLabel ? (
+        {/* {windowLabel ? (
           <>
             <span className="token-chip__sep">·</span>
             <span>
@@ -175,7 +175,7 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
                 : `${windowLabel} window`}
             </span>
           </>
-        ) : null}
+        ) : null} */}
       </button>
       {open ? (
         <div

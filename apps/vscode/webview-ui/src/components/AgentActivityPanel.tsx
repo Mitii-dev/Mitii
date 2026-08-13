@@ -1,4 +1,5 @@
 import type { ActivityEventPayload } from '../protocol';
+import LOADING from '../../../media/loading.gif';
 
 const ACTIVITY_LIMIT = 4;
 const THINKING_LINE_LIMIT = 4;
@@ -98,7 +99,12 @@ export function AgentThinkingPanel({
       aria-label="Latest thinking"
     >
       <div className="thinking-panel__header">
-        <span className="thinking-panel__pulse" />
+        <img
+          className="thinking-panel__loader"
+          src={LOADING}
+          alt=""
+          aria-hidden="true"
+        />
         <span>Thinking</span>
       </div>
       <pre className="thinking-panel__body">{thinkingTail}</pre>

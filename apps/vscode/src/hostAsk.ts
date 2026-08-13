@@ -739,6 +739,7 @@ export async function runAskInOutputChannel(options: {
   channel: vscode.OutputChannel;
   mode?: 'ask' | 'plan' | 'agent';
   depth?: string;
+  approvalMode?: string;
   pinnedPaths?: string[];
   workspaceId?: string;
   /** Used to estimate memory tokens in the context meter (not prompt-stuffed). */
@@ -837,7 +838,9 @@ export async function runAskInOutputChannel(options: {
 
   const cfg = vs.workspace.getConfiguration('mitii');
   const approvalPolicy = resolveApprovalPolicy(
-    cfg.get<string>('safety.approvalMode') ?? 'guided',
+    options.approvalMode ??
+      cfg.get<string>('safety.approvalMode') ??
+      'guided',
   );
   const model = cfg.get<string>('provider.model') ?? '';
   const contextWindow =

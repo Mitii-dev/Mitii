@@ -253,7 +253,6 @@ input:focus-visible {
   overflow: auto;
   overscroll-behavior: contain;
   scroll-padding: 12px 0;
-  padding: 10px 8px 12px 24px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -281,6 +280,14 @@ input:focus-visible {
   text-align: center;
   max-width: 280px;
   padding: 28px 16px 44px;
+}
+
+.empty-state img {
+  display: block;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 14px;
+  object-fit: contain;
 }
 
 .empty-state h2 {
@@ -335,6 +342,11 @@ input:focus-visible {
 
 .turn--assistant::before {
   border-color: color-mix(in srgb, var(--mitii-accent) 58%, var(--mitii-border));
+}
+
+.turn--suspended {
+  overflow: visible;
+  z-index: 80;
 }
 
 .bubble {
@@ -450,6 +462,13 @@ input:focus-visible {
   box-shadow: 0 0 0 3px
     color-mix(in srgb, var(--mitii-accent) 14%, transparent);
   flex: 0 0 auto;
+}
+
+.thinking-panel__loader {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  object-fit: contain;
 }
 
 .thinking-panel__body {
@@ -723,8 +742,9 @@ input:focus-visible {
 
 .composer-dropdown-row--with-model {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
+  justify-content: space-between;
   gap: 4px 8px;
   padding: 0;
 }
@@ -739,9 +759,14 @@ input:focus-visible {
 }
 
 .composer-dropdown-row--with-model .composer-dropdown--model {
-  flex: 0 1 160px;
+  flex: 0 1 150px;
   min-width: 0;
   max-width: 100%;
+}
+
+.composer-dropdown-row--with-model > .composer-dropdown--model,
+.composer-dropdown-row--with-model > .model-custom-input {
+  display: none;
 }
 
 .composer-dropdown-row--with-model .model-custom-input {
@@ -754,15 +779,75 @@ input:focus-visible {
   justify-content: space-between;
   gap: 8px;
   min-width: 0;
+  flex-wrap: nowrap;
 }
 
 .composer-left {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 7px;
+  flex-wrap: nowrap;
+  gap: 6px;
   min-width: 0;
   flex: 1;
+}
+
+.composer-left .composer-dropdown--profile {
+  display: none;
+}
+
+.composer-link-select {
+  flex: 0 1 clamp(64px, 20vw, 112px);
+  width: clamp(64px, 20vw, 112px);
+  min-width: 48px;
+  height: 22px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-foreground, var(--mitii-text));
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 650;
+  padding: 0 2px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composer-link-select:hover,
+.composer-link-select:focus-visible {
+  outline: none;
+  background: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--mitii-text) 7%, transparent));
+  color: var(--vscode-list-hoverForeground, var(--vscode-foreground, var(--mitii-text)));
+}
+
+.composer-link-select--model {
+  flex-basis: clamp(76px, 28vw, 148px);
+  width: clamp(76px, 28vw, 148px);
+}
+
+.model-custom-input--inline {
+  flex: 1 1 96px;
+  min-width: 72px;
+  max-width: 160px;
+  height: 22px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 10.5px;
+  padding: 0 4px;
+}
+
+@media (max-width: 280px) {
+  .composer-left {
+    flex-wrap: wrap;
+  }
+
+  .composer-link-select {
+    flex-basis: calc(50% - 3px);
+    width: calc(50% - 3px);
+  }
 }
 
 .composer-dropdown {
@@ -901,7 +986,7 @@ input:focus-visible {
   position: absolute;
   bottom: calc(100% + 7px);
   left: 0;
-  z-index: 50;
+  z-index: 120;
   display: grid;
   gap: 1px;
   width: max(210px, 100%);
@@ -921,6 +1006,7 @@ input:focus-visible {
 
 .composer-dropdown--approval .composer-dropdown__menu,
 .composer-dropdown--depth .composer-dropdown__menu,
+.composer-dropdown--profile .composer-dropdown__menu,
 .composer-dropdown--model .composer-dropdown__menu {
   left: auto;
   right: 0;
@@ -929,6 +1015,7 @@ input:focus-visible {
 @media (max-width: 360px) {
   .composer-dropdown--approval .composer-dropdown__menu,
   .composer-dropdown--depth .composer-dropdown__menu,
+  .composer-dropdown--profile .composer-dropdown__menu,
   .composer-dropdown--model .composer-dropdown__menu {
     right: auto;
     left: 0;
@@ -938,11 +1025,18 @@ input:focus-visible {
 .composer-dropdown--approval .composer-dropdown__menu {
   width: max(300px, 100%);
   max-width: min(360px, calc(100vw - 24px));
+  z-index: 160;
 }
 
 .composer-dropdown--model .composer-dropdown__menu {
   width: max(280px, 100%);
   max-height: min(360px, 58vh);
+  overflow: auto;
+}
+
+.composer-dropdown--profile .composer-dropdown__menu {
+  width: max(240px, 100%);
+  max-height: min(320px, 54vh);
   overflow: auto;
 }
 
@@ -1229,6 +1323,11 @@ select.depth-select {
   box-shadow: var(--mitii-shadow-tight);
 }
 
+.approval-card {
+  position: relative;
+  z-index: 140;
+}
+
 .card h3 {
   margin: 0;
   font-size: 13px;
@@ -1439,13 +1538,7 @@ select.depth-select {
   overflow: hidden;
   padding: 0;
   gap: 0;
-  background:
-    radial-gradient(
-      120% 80% at 0% 0%,
-      color-mix(in srgb, var(--mitii-accent) 7%, transparent),
-      transparent 55%
-    ),
-    var(--vscode-sideBar-background, transparent);
+  background: var(--vscode-sideBar-background, transparent);
 }
 
 .settings-toolbar {
@@ -1486,10 +1579,26 @@ select.depth-select {
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.01em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   transition:
     background 160ms ease,
     color 160ms ease,
     border-color 160ms ease;
+}
+
+.settings-tab__icon,
+.settings-section__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mitii-muted);
+}
+
+.settings-tab.active .settings-tab__icon,
+.settings-section__icon {
+  color: var(--mitii-accent);
 }
 
 .settings-tab:hover {
@@ -1503,51 +1612,41 @@ select.depth-select {
   background: color-mix(in srgb, var(--mitii-accent) 8%, transparent);
 }
 
-.settings-save-btn {
-  flex: 0 0 auto;
-  min-height: 30px;
-  padding-inline: 12px;
-}
-
 @media (max-width: 360px) {
   .settings-toolbar {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .settings-save-btn {
-    width: 100%;
-  }
 }
 
 .settings-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 14px 10px 18px;
+  padding: 10px 10px 74px;
 }
 
 .settings-panel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 }
 
 .settings-section {
   border: 1px solid color-mix(in srgb, var(--mitii-border) 80%, transparent);
-  border-radius: 12px;
-  background:
-    linear-gradient(
-      165deg,
-      color-mix(in srgb, var(--mitii-panel-raised, var(--mitii-panel)) 88%, transparent),
-      color-mix(in srgb, var(--mitii-panel) 70%, transparent)
-    );
+  border-radius: 8px;
+  background: color-mix(
+    in srgb,
+    var(--mitii-panel-raised, var(--mitii-panel)) 86%,
+    transparent
+  );
   overflow: hidden;
   box-shadow: 0 1px 0 color-mix(in srgb, var(--mitii-text) 4%, transparent);
 }
 
 .settings-section__header {
-  padding: 14px 14px 10px;
+  padding: 10px 12px 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--mitii-border) 55%, transparent);
   background: color-mix(in srgb, var(--mitii-accent) 4%, transparent);
 }
@@ -1557,6 +1656,9 @@ select.depth-select {
   font-size: 13px;
   font-weight: 650;
   letter-spacing: 0.01em;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .settings-section__desc {
@@ -1569,8 +1671,8 @@ select.depth-select {
 .settings-section__body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px 14px 14px;
+  gap: 10px;
+  padding: 10px 12px 12px;
 }
 
 .settings-path {
@@ -1580,6 +1682,24 @@ select.depth-select {
   background: var(--vscode-input-background, var(--mitii-panel));
   word-break: break-all;
   line-height: 1.4;
+}
+
+.settings-advanced {
+  border-top: 1px solid var(--mitii-border-soft);
+  padding-top: 10px;
+}
+
+.settings-advanced summary {
+  cursor: pointer;
+  color: var(--mitii-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.settings-advanced[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .settings-field-grid {
@@ -1614,8 +1734,14 @@ select.depth-select {
   background: var(--vscode-input-background, var(--mitii-panel));
   color: var(--vscode-input-foreground, var(--mitii-text));
   border-radius: 8px;
-  padding: 8px 10px;
+  min-height: 28px;
+  padding: 5px 8px;
   outline: none;
+}
+
+.settings-view .btn {
+  min-height: 28px;
+  padding: 5px 10px;
 }
 
 .field input:focus,
@@ -1632,9 +1758,139 @@ select.depth-select {
 
 .stat {
   border: 1px solid var(--mitii-border);
-  border-radius: 10px;
-  padding: 10px;
+  border-radius: 8px;
+  padding: 8px;
   background: color-mix(in srgb, var(--mitii-panel) 80%, transparent);
+}
+
+.mode-settings-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mode-settings-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 32px;
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mitii-panel) 80%, transparent);
+  color: var(--mitii-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.mode-settings-tab.active {
+  color: var(--mitii-text);
+  border-color: color-mix(in srgb, var(--mitii-accent) 42%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-accent) 9%, transparent);
+}
+
+.mode-settings-tab span:first-child {
+  display: inline-flex;
+  color: var(--mitii-accent);
+}
+
+.mode-settings-summary {
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--mitii-muted);
+  background: color-mix(in srgb, var(--mitii-text) 2%, transparent);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.settings-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--mitii-border) 70%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--vscode-sideBar-background, var(--mitii-surface)) 94%,
+    transparent
+  );
+  backdrop-filter: blur(8px);
+}
+
+.settings-footer__profiles {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-footer__profiles select {
+  min-width: 0;
+  flex: 1 1 130px;
+  height: 28px;
+  border: 1px solid var(--mitii-border);
+  border-radius: 8px;
+  background: var(--vscode-input-background, var(--mitii-panel));
+  color: var(--vscode-input-foreground, var(--mitii-text));
+  padding: 0 8px;
+}
+
+.settings-save-btn {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding-inline: 12px;
+}
+
+@media (max-width: 360px) {
+  .settings-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-footer__profiles {
+    align-items: stretch;
+  }
+
+  .settings-save-btn {
+    width: 100%;
+  }
+}
+
+.settings-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: color-mix(in srgb, black 36%, transparent);
+}
+
+.settings-modal {
+  width: min(280px, 100%);
+  border: 1px solid var(--mitii-border);
+  border-radius: 8px;
+  background: var(--vscode-quickInput-background, var(--mitii-panel));
+  box-shadow: var(--mitii-shadow-soft);
+  padding: 12px;
+}
+
+.settings-modal h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.settings-modal__actions {
+  justify-content: flex-end;
+  margin-top: 10px;
 }
 
 .stat-value {

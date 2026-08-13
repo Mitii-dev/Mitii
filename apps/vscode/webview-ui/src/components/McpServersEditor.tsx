@@ -8,7 +8,6 @@ interface McpServersEditorProps {
   storeCatalog?: McpServerConfig[];
   runtimeStatus?: string;
   onChange: (next: McpSettings) => void;
-  onSave: (next: McpSettings) => void;
 }
 
 function isEnabled(server: McpServerConfig): boolean {
@@ -25,7 +24,6 @@ export function McpServersEditor({
   storeCatalog = [],
   runtimeStatus,
   onChange,
-  onSave,
 }: McpServersEditorProps) {
   const [draft, setDraft] = useState(mcp);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -309,9 +307,6 @@ export function McpServersEditor({
           }
         >
           Add custom
-        </button>
-        <button type="button" className="btn" onClick={() => onSave(draft)}>
-          Save MCP
         </button>
       </div>
     </div>
