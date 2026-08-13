@@ -22,6 +22,7 @@ import {
   serializePlanForPrompt,
 } from "../../../modules/planning";
 import type { PlanArtifact } from "../../../modules/planning";
+import type { TaskList } from "../../../modules/task-list";
 import {
   CharacterTokenEstimator,
   PROMPT_CONSTRUCTION_SCHEMA_VERSION,
@@ -92,6 +93,16 @@ import type {
 import { EventBus } from "../internal/EventBus";
 import { RunBudgetTracker } from "../internal/RunBudget";
 import type { PendingApprovalState } from "../internal/RunCheckpoint";
+import {
+  appendTaskListToPlanText,
+  applyUpdateTodosArguments,
+  attachTaskListTool,
+  buildUpdateTodosToolResult,
+  isUpdateTodosTool,
+  progressOf,
+  seedTaskListFromPlan,
+  type TaskListRef,
+} from "../internal/taskListRuntime";
 import { ToolCallCache } from "../internal/ToolCallCache";
 import {
   AGENT_ENGINE_THRESHOLDS,
@@ -349,6 +360,28 @@ export class AgentEnginePipeline {
     let route: AgentRunResult["route"];
     let planningDepth: AgentRunResult["planningDepth"];
     let runPlan: PlanArtifact | undefined;
+    const taskListRef: TaskListRef = {
+      current:
+        input.request.mode === "ask" || planSource === "resume_approval"
+          ? undefined
+          : input.taskList,
+    };
+    let taskListSynced = false;
+    const syncTaskListOnce = () => {
+      if (taskListSynced) return;
+      taskListSynced = true;
+      this.syncTaskList({
+        mode: input.request.mode,
+        plan: runPlan,
+        planningDepth,
+        planSource,
+        taskListRef,
+        runId,
+        bus,
+        reasonCodes,
+        resetExisting: planSource === "resume_approval",
+      });
+    };
 
     const finish = (
       partial: Omit<
@@ -375,6 +408,10 @@ export class AgentEnginePipeline {
         planningDepth: partial.planningDepth ?? planningDepth,
         answer: partial.answer,
         plan: partial.plan ?? runPlan,
+        ...(input.request.mode !== "ask" &&
+        (partial.taskList ?? taskListRef.current)
+          ? { taskList: partial.taskList ?? taskListRef.current }
+          : {}),
         suspension: partial.suspension,
         pinnedState: partial.pinnedState ?? pinnedState,
         reasonCodes: partial.reasonCodes ?? reasonCodes,
@@ -518,6 +555,7 @@ export class AgentEnginePipeline {
             warnings,
             usage: budget.snapshot(),
             startedAtMs: startedMs,
+            ...(taskListRef.current ? { taskList: taskListRef.current } : {}),
           });
         }
         this.emit(bus, {
@@ -875,6 +913,7 @@ export class AgentEnginePipeline {
           this.emitStage(bus, runId, "plan_ready", "completed", [
             "plan_drafted",
           ]);
+          syncTaskListOnce();
 
           if (
             !skipPlanGate &&
@@ -901,6 +940,7 @@ export class AgentEnginePipeline {
                 warnings,
                 usage: budget.snapshot(),
                 startedAtMs: startedMs,
+                ...(taskListRef.current ? { taskList: taskListRef.current } : {}),
               });
             }
             this.emit(bus, {
@@ -949,18 +989,25 @@ export class AgentEnginePipeline {
         reasonCodes.push("plan_skipped");
       }
 
+      syncTaskListOnce();
+
       if (signal.aborted) {
         await this.safeUnpin(runId, pinnedState);
         return cancelledResult();
       }
 
       // --- Prompt ---
-      const tools = filterToolDefinitions({
-        grant: decision.toolGrant,
-        definitions:
-          input.tools ?? this.deps.toolDefinitions ?? DEFAULT_TOOL_DEFINITIONS,
-        supportsTools: this.deps.llm.capabilities.supportsTools,
+      const tools = attachTaskListTool({
+        mode: envelope.mode,
+        tools: filterToolDefinitions({
+          grant: decision.toolGrant,
+          definitions:
+            input.tools ?? this.deps.toolDefinitions ?? DEFAULT_TOOL_DEFINITIONS,
+          supportsTools: this.deps.llm.capabilities.supportsTools,
+        }),
       });
+
+      planText = appendTaskListToPlanText(planText, taskListRef.current);
 
       const mutationBudgetRule = buildMutationBudgetInstruction(
         decision.toolGrant.mutationBudget,
@@ -1034,6 +1081,7 @@ export class AgentEnginePipeline {
         toolCache,
         changedFiles,
         mutationCheckpointIds,
+        taskListRef,
         memoryFacts: selectedMemory?.map((block) => ({
           id: block.id,
           content: block.content,
@@ -1057,6 +1105,7 @@ export class AgentEnginePipeline {
         startedAtMs: startedMs,
         finish,
         cancelledResult,
+        taskListRef,
       });
     } catch (error) {
       await this.safeUnpin(runId, pinnedState);
@@ -1100,6 +1149,7 @@ export class AgentEnginePipeline {
     }
 
     const requestId = checkpoint.requestId;
+    const taskListRef: TaskListRef = { current: checkpoint.taskList };
     const decision = input.approvalMode
       ? {
           ...checkpoint.decision,
@@ -1154,6 +1204,10 @@ export class AgentEnginePipeline {
         planningDepth: partial.planningDepth ?? decision.planningDepth,
         answer: partial.answer,
         plan: partial.plan ?? checkpoint.plan,
+        ...(startInput.request.mode !== "ask" &&
+        (partial.taskList ?? taskListRef.current)
+          ? { taskList: partial.taskList ?? taskListRef.current }
+          : {}),
         suspension: partial.suspension,
         pinnedState: partial.pinnedState ?? pinnedState,
         reasonCodes: partial.reasonCodes ?? reasonCodes,
@@ -1369,6 +1423,7 @@ export class AgentEnginePipeline {
         changedFiles,
         mutationCheckpointIds,
         approvalToken,
+        taskListRef,
       });
 
       if (toolOutcome.kind === "approval_required") {
@@ -1388,13 +1443,16 @@ export class AgentEnginePipeline {
       messages.push(toolOutcome.message);
       await this.deps.checkpointStore.delete(runId);
 
-      const toolDefinitions = filterToolDefinitions({
-        grant: decision.toolGrant,
-        definitions:
-          startInput.tools ??
-          this.deps.toolDefinitions ??
-          DEFAULT_TOOL_DEFINITIONS,
-        supportsTools: this.deps.llm.capabilities.supportsTools,
+      const toolDefinitions = attachTaskListTool({
+        mode: startInput.request.mode,
+        tools: filterToolDefinitions({
+          grant: decision.toolGrant,
+          definitions:
+            startInput.tools ??
+            this.deps.toolDefinitions ??
+            DEFAULT_TOOL_DEFINITIONS,
+          supportsTools: this.deps.llm.capabilities.supportsTools,
+        }),
       });
 
       const loopOutcome = await this.runModelToolLoop({
@@ -1419,6 +1477,7 @@ export class AgentEnginePipeline {
         toolCache,
         changedFiles,
         mutationCheckpointIds,
+        taskListRef,
       });
 
       return await this.finishAfterLoop({
@@ -1444,6 +1503,7 @@ export class AgentEnginePipeline {
         startedAtMs: checkpoint.startedAtMs,
         finish,
         cancelledResult,
+        taskListRef,
       });
     } catch (error) {
       if (error instanceof AgentEngineError) {
@@ -1496,6 +1556,7 @@ export class AgentEnginePipeline {
       error?: { code: string; message: string };
     }) => AgentRunResult;
     cancelledResult: () => AgentRunResult;
+    taskListRef: TaskListRef;
   }): Promise<AgentRunResult> {
     const {
       runId,
@@ -1514,6 +1575,7 @@ export class AgentEnginePipeline {
       startedAtMs,
       finish,
       cancelledResult,
+      taskListRef,
     } = params;
 
     let currentOutcome = loopOutcome;
@@ -1554,6 +1616,7 @@ export class AgentEnginePipeline {
           startedAtMs,
           excludedWaitMs: budget.getExcludedWaitMs(),
           suspendedAtMs: Date.now(),
+          ...(taskListRef.current ? { taskList: taskListRef.current } : {}),
         });
 
         const rationale = `Approval required for "${currentOutcome.pendingApproval.toolName}".`;
@@ -1672,6 +1735,7 @@ export class AgentEnginePipeline {
           signal,
           budget,
           reasonCodes,
+          taskListRef,
           warnings,
           messages: currentOutcome.messages,
           toolCache: currentOutcome.toolCache,
@@ -2058,6 +2122,7 @@ export class AgentEnginePipeline {
     changedFiles: string[];
     mutationCheckpointIds: string[];
     memoryFacts?: readonly { id: string; content: string }[];
+    taskListRef: TaskListRef;
   }): Promise<ToolLoopOutcome> {
     const {
       runId,
@@ -2074,6 +2139,7 @@ export class AgentEnginePipeline {
       toolCache,
       changedFiles,
       mutationCheckpointIds,
+      taskListRef,
     } = params;
     const grant = decision.toolGrant;
     let answer = "";
@@ -2355,7 +2421,10 @@ export class AgentEnginePipeline {
       }
 
       // Tool phase
-      if (!this.deps.tools) {
+      const needsWorkspaceTools = turn.toolCalls.some(
+        (call) => !isUpdateTodosTool(call.name),
+      );
+      if (needsWorkspaceTools && !this.deps.tools) {
         return {
           kind: "failed",
           answer: answer || undefined,
@@ -2366,7 +2435,7 @@ export class AgentEnginePipeline {
           },
         };
       }
-      if (!workspaceRoot) {
+      if (needsWorkspaceTools && !workspaceRoot) {
         return {
           kind: "failed",
           answer: answer || undefined,
@@ -2403,7 +2472,7 @@ export class AgentEnginePipeline {
           toolCall,
           grant,
           pinnedState,
-          workspaceRoot,
+          workspaceRoot: workspaceRoot ?? ".",
           bus,
           signal,
           toolCache,
@@ -2414,6 +2483,7 @@ export class AgentEnginePipeline {
           changedFiles,
           mutationCheckpointIds,
           approvalToken: undefined,
+          taskListRef,
         });
 
         if (outcome.kind === "approval_required") {
@@ -2462,6 +2532,7 @@ export class AgentEnginePipeline {
     changedFiles: string[];
     mutationCheckpointIds: string[];
     approvalToken: ToolApprovalToken | undefined;
+    taskListRef?: TaskListRef;
   }): Promise<ToolCallOutcome> {
     const {
       runId,
@@ -2479,6 +2550,7 @@ export class AgentEnginePipeline {
       changedFiles,
       mutationCheckpointIds,
       approvalToken,
+      taskListRef,
     } = params;
 
     let argumentsValue: unknown = {};
@@ -2525,6 +2597,56 @@ export class AgentEnginePipeline {
     }
 
     budget.recordToolCall();
+
+    if (isUpdateTodosTool(toolCall.name)) {
+      const applied = applyUpdateTodosArguments({
+        current: taskListRef?.current,
+        argumentsValue,
+      });
+      const result = applied.ok
+        ? buildUpdateTodosToolResult({
+            callId: toolCall.id,
+            status: "succeeded",
+            taskList: applied.taskList,
+            warnings: applied.warnings,
+          })
+        : buildUpdateTodosToolResult({
+            callId: toolCall.id,
+            status: "rejected",
+            reasonCode: "invalid_arguments",
+            warnings: [applied.message],
+          });
+      if (applied.ok) {
+        if (taskListRef) {
+          taskListRef.current = applied.taskList;
+        }
+        if (applied.taskList) {
+          reasonCodes.push("task_list_updated");
+          this.emitTaskListUpdated(bus, runId, applied.taskList);
+        } else {
+          reasonCodes.push("task_list_updated");
+        }
+      }
+      toolCache.set(toolCall.id, result);
+      this.emit(bus, {
+        type: "tool_completed",
+        runId,
+        callId: toolCall.id,
+        toolName: toolCall.name,
+        status: result.status,
+        ...(summary ? { summary } : {}),
+        ...(result.reasonCode ? { reasonCode: result.reasonCode } : {}),
+        at: this.isoNow(),
+      });
+      return {
+        kind: "message",
+        message: {
+          role: "tool",
+          toolCallId: toolCall.id,
+          content: serializeToolResultForModel(result),
+        },
+      };
+    }
 
     const result = await this.deps.tools!.execute(
       {
@@ -2629,6 +2751,13 @@ export class AgentEnginePipeline {
     const patches = Array.isArray(args.patches) ? args.patches : undefined;
 
     switch (toolName) {
+      case "update_todos": {
+        const type = this.safeText(args.type);
+        const count = Array.isArray(args.items) ? args.items.length : 0;
+        return [type ? `type=${type}` : undefined, count ? `items=${count}` : undefined]
+          .filter(Boolean)
+          .join(" ");
+      }
       case "list_directory":
         return `path=${path ?? "."}`;
       case "read_file": {
@@ -2998,6 +3127,57 @@ export class AgentEnginePipeline {
       stage,
       at: this.isoNow(),
       reasonCodes,
+    });
+  }
+
+  private syncTaskList(params: {
+    mode: string;
+    plan?: PlanArtifact;
+    planningDepth?: AgentRunResult["planningDepth"];
+    planSource?: "host_carry" | "resume_approval";
+    taskListRef: TaskListRef;
+    runId: string;
+    bus: EventBus;
+    reasonCodes: AgentReasonCode[];
+    resetExisting?: boolean;
+  }): void {
+    const seeded = seedTaskListFromPlan({
+      mode: params.mode,
+      plan: params.plan,
+      planningDepth: params.planningDepth,
+      planSource: params.planSource,
+      taskListRef: params.taskListRef,
+      resetExisting: params.resetExisting,
+    });
+    // Do not invent Diagnose/Apply/Verify placeholders. Hosts show a list only
+    // after derive-from-plan or the model creates one via update_todos.
+    if (seeded.seeded) {
+      params.reasonCodes.push("task_list_seeded");
+    }
+    if (params.taskListRef.current) {
+      this.emitTaskListUpdated(
+        params.bus,
+        params.runId,
+        params.taskListRef.current,
+      );
+    }
+  }
+
+  private emitTaskListUpdated(
+    bus: EventBus,
+    runId: string,
+    taskList: TaskList,
+  ): void {
+    const progress = progressOf(taskList);
+    this.emit(bus, {
+      type: "task_list_updated",
+      runId,
+      source: taskList.source,
+      completedCount: progress.completedCount,
+      totalCount: progress.totalCount,
+      ...(progress.activeId ? { activeId: progress.activeId } : {}),
+      taskList,
+      at: this.isoNow(),
     });
   }
 

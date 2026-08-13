@@ -148,6 +148,26 @@ describe("isIncompleteAssistantTurn", () => {
     ).toBe(true);
   });
 
+  it("recovers a long pre-fix dump that ends with let me start", () => {
+    const answer = [
+      "There's no FieldType exported from the types index.",
+      "Let me now plan all the fixes:",
+      "1. Create a FieldType interface",
+      "2. Fix InputTypes",
+      "3. Add field property to all field component Props interfaces",
+      "Let me start with the most impactful changes first - the types that affect everything else.",
+    ].join("\n");
+
+    expect(isUnfinishedInvestigationAnswer(answer)).toBe(true);
+    expect(
+      shouldRecoverIncompleteAssistantTurn({
+        content: answer,
+        toolCallCount: 0,
+        changedFileCount: 0,
+      }),
+    ).toBe(true);
+  });
+
   it("does not recover finished investigative answers", () => {
     const answer = [
       "Root cause: live-demo-mui strips imports inconsistently for SELECT demos.",

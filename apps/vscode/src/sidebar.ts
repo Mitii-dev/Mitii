@@ -83,6 +83,8 @@ import type {
   WorkspaceSnapshotInfo,
 } from './protocol.js';
 import { planViewFromArtifact } from './planView.js';
+import { saveTaskListToWorkspace } from './taskStore.js';
+import { taskViewFromList } from './taskView.js';
 import {
   buildConversationCarry,
   compactActivityForHistory,
@@ -461,6 +463,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       case 'clearPendingPlan': {
         await clearPendingPlan(this.host.workspaceState, this.activeThreadId);
         this.post({ type: 'setPlan', plan: null });
+        this.post({ type: 'setTaskList', taskList: null });
         return;
       }
       case 'cancel':
@@ -496,6 +499,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           pendingPlan: null,
         });
         this.post({ type: 'setPlan', plan: null });
+        this.post({ type: 'setTaskList', taskList: null });
         this.post({ type: 'tokenUsage', usage: this.tokenUsage });
         return;
       }
@@ -512,13 +516,16 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
             emptyTokenUsage(resolveContextWindow(this.vs)),
         );
         const pendingPlan = planViewFromArtifact(thread.pendingPlan);
+        const pendingTaskList = taskViewFromList(thread.pendingTaskList);
         this.post({
           type: 'thread.loaded',
           threadId: thread.id,
           messages: thread.messages,
           pendingPlan: pendingPlan,
+          pendingTaskList,
         });
         this.post({ type: 'setPlan', plan: pendingPlan });
+        this.post({ type: 'setTaskList', taskList: pendingTaskList });
         this.post({
           type: 'history',
           threads: toThreadSummaries(store),
@@ -1131,6 +1138,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         mode: engineMode,
         pendingPlan: activeThread?.pendingPlan,
       });
+      const carriedTaskList =
+        engineMode === 'agent' ? activeThread?.pendingTaskList : undefined;
 
       const outcome = await runAskInOutputChannel({
         vs: this.vs,
@@ -1149,6 +1158,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         conversationText,
         conversation,
         approvedPlan,
+        taskList: carriedTaskList,
         handlers: {
           cancelToken: this.runCancel.token,
           onContextBreakdown: (breakdown) => {
@@ -1166,6 +1176,26 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
               const livePlan = planViewFromArtifact(event.plan);
               if (livePlan) {
                 this.post({ type: 'setPlan', plan: livePlan });
+              }
+            }
+            if (event?.type === 'task_list_updated' && event.taskList) {
+              const root = this.effectiveRoot();
+              let savedTaskPath: string | undefined;
+              if (root) {
+                try {
+                  const saved = saveTaskListToWorkspace({
+                    workspaceRoot: root,
+                    taskList: event.taskList,
+                    threadId: this.activeThreadId,
+                  });
+                  savedTaskPath = saved.relativePath;
+                } catch {
+                  // Best-effort file mirror for debug.
+                }
+              }
+              const view = taskViewFromList(event.taskList, { savedTaskPath });
+              if (view) {
+                this.post({ type: 'setTaskList', taskList: view });
               }
             }
             const changeRoot = this.effectiveRoot();
@@ -1317,18 +1347,34 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           : approvedPlan
             ? planViewFromArtifact(approvedPlan, {
                 savedPlanPath,
-                stepStatus:
-                  outcome.result.status === 'completed'
-                    ? 'done'
-                    : 'pending',
               })
             : resultPlan
               ? planViewFromArtifact(resultPlan, {
                   savedPlanPath,
-                  stepStatus:
-                    outcome.result.status === 'completed' ? 'done' : 'pending',
                 })
               : null;
+      let savedTaskPath: string | undefined;
+      if (outcome.result.taskList) {
+        const root = this.effectiveRoot();
+        if (root) {
+          try {
+            const saved = saveTaskListToWorkspace({
+              workspaceRoot: root,
+              taskList: outcome.result.taskList,
+              threadId: this.activeThreadId,
+            });
+            savedTaskPath = saved.relativePath;
+            this.channel.appendLine(`[tasks] saved ${saved.relativePath}`);
+          } catch (error) {
+            this.channel.appendLine(
+              `[tasks] save failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+      }
+      const resultTaskList = taskViewFromList(outcome.result.taskList, {
+        savedTaskPath,
+      });
 
       const changeRoot = this.effectiveRoot();
       const runId = outcome.result.runId;
@@ -1370,6 +1416,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         ...(pendingPlanForUi !== undefined
           ? { pendingPlan: pendingPlanForUi }
           : {}),
+        taskList: resultTaskList,
       });
 
       if (persistedFileChanges && runId && this.activeFileChangeSnapshot) {
@@ -1399,6 +1446,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         ...(usedPlanHandoff && outcome.result.status === 'completed'
           ? { clearPendingPlan: true }
           : {}),
+        pendingTaskList: outcome.result.taskList ?? null,
         tokenUsage: this.tokenUsage,
       });
       this.activeThreadId = store.activeThreadId;
@@ -2454,6 +2502,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       activeThreadId: history.activeThreadId,
       activeThreadMessages: activeThread?.messages ?? [],
       pendingPlan: planViewFromArtifact(activeThread?.pendingPlan),
+      pendingTaskList: taskViewFromList(activeThread?.pendingTaskList),
       memories: await loadMemoriesForView(
         this.host.workspaceState,
         this.getWorkspaceId(),

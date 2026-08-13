@@ -9,6 +9,8 @@ import {
 } from '@mitii/sdk';
 import * as readline from 'node:readline';
 
+import { formatTaskList } from './runReport.js';
+
 export interface SessionIo {
   writeStdout: (chunk: string) => void;
   writeStderr: (chunk: string) => void;
@@ -136,6 +138,10 @@ function streamEvents(
         io.writeStdout(event.preview);
       } else if (event.type === 'tool_started') {
         io.writeStderr(`[mitii] tool ${event.toolName}…\n`);
+      } else if (event.type === 'task_list_updated') {
+        for (const line of formatTaskList(event.taskList)) {
+          io.writeStderr(`${line}\n`);
+        }
       } else if (event.type === 'suspended') {
         io.writeStderr(
           `[mitii] suspended (${event.kind}): ${event.rationale}\n`,

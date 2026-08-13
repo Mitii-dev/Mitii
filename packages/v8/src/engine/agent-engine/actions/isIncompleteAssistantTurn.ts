@@ -37,7 +37,7 @@ const READ_FILES_REQUEST =
  * ("But first, let me check…") are not final answers — regardless of length.
  */
 const ENDS_WITH_CONTINUE_INVESTIGATION =
-  /(?:^|[.!\n])\s*(?:wait[,.]?\s+)?(?:(?:but\s+)?(?:first|actually)[,.]?\s+)?(?:let me|i(?:'ll| will)|i(?:'m| am) going to|i need to|i should)\b[\s\S]{0,220}(?:check|look(?:\s+at)?|read|inspect|search|try|build|run|see|verify|examine|investigate|open|find|re-?read)\b[\s\S]{0,160}$/i;
+  /(?:^|[.!\n])\s*(?:wait[,.]?\s+)?(?:(?:but\s+)?(?:first|actually)[,.]?\s+)?(?:let me|i(?:'ll| will)|i(?:'m| am) going to|i need to|i should)\b[\s\S]{0,220}(?:check|look(?:\s+at)?|read|inspect|search|try|build|run|see|verify|examine|investigate|open|find|re-?read|start|begin|continue|implement|fix|apply|patch)\b[\s\S]{0,200}$/i;
 
 export function isEmptyAssistantTurn(params: {
   content: string;

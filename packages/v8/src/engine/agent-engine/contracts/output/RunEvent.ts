@@ -7,6 +7,7 @@ import {
   workspaceEffectSchema,
 } from "../../../../modules/decision-policy";
 import { planArtifactSchema } from "../../../../modules/planning";
+import { taskListSchema } from "../../../../modules/task-list";
 import { repositoryStateReferenceSchema } from "../../../../modules/repository-state";
 import {
   verificationCheckKindSchema,
@@ -124,6 +125,18 @@ export const runEventSchema = z.discriminatedUnion("type", [
       phaseCount: z.number().int().nonnegative(),
       approvalRequired: z.boolean(),
       plan: planArtifactSchema.optional(),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("task_list_updated"),
+      runId: z.string().min(1),
+      source: z.enum(["plan", "agent", "user"]),
+      completedCount: z.number().int().nonnegative(),
+      totalCount: z.number().int().nonnegative(),
+      activeId: z.string().min(1).optional(),
+      taskList: taskListSchema,
       at: z.string().datetime(),
     })
     .strict(),

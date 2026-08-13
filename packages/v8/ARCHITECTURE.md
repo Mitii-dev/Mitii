@@ -96,6 +96,7 @@ belongs to the tool-runtime engine package path. Business facades remain under
 | `skills` | Task evidence + budget â†’ selected instructions | Selection, conflicts, provenance, instruction budgeting | General prompt construction |
 | `memory` | Scoped query/commit â†’ memory result | Retrieval, relevance, retention, provenance, privacy | Run orchestration |
 | `planning` | Task evidence + decision depth (+ optional skills/process hints) â†’ `PlanArtifact` | Dimension-driven plan drafting, validation, compaction, serialization | Route authority, tool execution, hard-coded plan types |
+| `task-list` | Plan artifact or apply input → live `TaskList` | Compact working checklist (max 8), derive pending tasks from a plan, markdown serialize/parse | Plan drafting, tool execution, host UI, stamping remaining items done when a run ends |
 | `code-navigation` | Path + caret -> definitions / references / hover | Language-server and repo-graph navigation | Indexing, retrieval budgets, spawning servers |
 
 Adding a top-level module requires all of:

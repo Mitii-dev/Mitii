@@ -194,6 +194,14 @@ function compactEvent(
           'omittedDetails' in event ? event.omittedDetails : undefined,
         status: event.status,
       };
+    case 'task_list_updated':
+      return {
+        ...base,
+        source: event.source,
+        completedCount: event.completedCount,
+        totalCount: event.totalCount,
+        activeId: event.activeId,
+      };
     case 'plan_ready':
       return {
         ...base,

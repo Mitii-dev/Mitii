@@ -36,6 +36,7 @@ import {
 import { OnboardingPanel } from './components/OnboardingPanel';
 import { PendingPlanBanner } from './components/PendingPlanBanner';
 import { PlanFollowStrip } from './components/PlanPanel';
+import { TaskFollowStrip } from './components/TaskFollowStrip';
 import { ReviewPanel } from './components/ReviewPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { SkillManagementPanel } from './components/skills/SkillManagementPanel';
@@ -55,6 +56,7 @@ import type {
   MemoryItemView,
   PathSuggestion,
   PlanView,
+  TaskListView,
   ProviderSettingsSnapshot,
   ReviewDiffView,
   RunFileChangesView,
@@ -297,6 +299,7 @@ export function App() {
   const [plan, setPlan] = useState<PlanView | null>(null);
   const [pendingPlan, setPendingPlan] = useState<PlanView | null>(null);
   const pendingPlanRef = useRef<PlanView | null>(null);
+  const [taskList, setTaskList] = useState<TaskListView | null>(null);
   const [review, setReview] = useState<ReviewDiffView | null>(null);
   const [skillItems, setSkillItems] = useState<SkillCatalogItem[]>([]);
   const [skillError, setSkillError] = useState<string | null>(null);
@@ -428,6 +431,7 @@ export function App() {
         const bootstrapPlan = msg.pendingPlan ?? null;
         setPendingPlan(bootstrapPlan);
         if (bootstrapPlan) setPlan(bootstrapPlan);
+        setTaskList(msg.pendingTaskList ?? null);
         setMemories(msg.memories);
         setCheckpoints(msg.checkpoints);
       }
@@ -472,6 +476,7 @@ export function App() {
           setError(null);
           // Keep a pending-plan handoff visible, but clear stale plans for new runs.
           if (msg.mode === 'plan' || !pendingPlanRef.current) setPlan(null);
+          if (msg.mode !== 'ask') setTaskList(null);
           stickToBottomRef.current = true;
           forceScrollToBottomRef.current = true;
           const userId = uid('user');
@@ -566,6 +571,7 @@ export function App() {
             setPendingPlan(msg.pendingPlan);
             if (msg.pendingPlan) setPlan(msg.pendingPlan);
           }
+          if (msg.taskList !== undefined) setTaskList(msg.taskList ?? null);
           setTurns((prev) =>
             prev.map((t) => {
               if (!id || t.id !== id) return t;
@@ -693,11 +699,15 @@ export function App() {
           const loadedPlan = msg.pendingPlan ?? null;
           setPendingPlan(loadedPlan);
           setPlan(loadedPlan);
+          setTaskList(msg.pendingTaskList ?? null);
           setNav('chat');
           break;
         }
         case 'setPlan':
           setPlan(msg.plan);
+          break;
+        case 'setTaskList':
+          setTaskList(msg.taskList);
           break;
         case 'setReviewDiff':
           setReview(msg.review);
@@ -1108,7 +1118,11 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nav, skillManagement]);
 
-  const followingPlan = Boolean(plan) && mode === 'agent';
+  const followingTasks =
+    Boolean(taskList?.items.length) &&
+    (mode === 'agent' || mode === 'plan');
+  const followingPlan =
+    !followingTasks && mode === 'plan' && Boolean(plan?.steps.length);
 
   if (onboardingRequired) {
     return (
@@ -1152,6 +1166,7 @@ export function App() {
                   setTurns([]);
                   setPlan(null);
                   setPendingPlan(null);
+                  setTaskList(null);
                   setActiveThreadId(undefined);
                   setTokenUsage(EMPTY_TOKEN_USAGE);
                 }}
@@ -1299,10 +1314,17 @@ export function App() {
                 onDismiss={() => {
                   setPendingPlan(null);
                   setPlan(null);
+                  setTaskList(null);
                   postToHost({ type: 'clearPendingPlan' });
                 }}
               />
-              {followingPlan ? (
+              {followingTasks ? (
+                <TaskFollowStrip
+                  taskList={taskList}
+                  running={running}
+                  onOpenTaskFile={openFile}
+                />
+              ) : followingPlan ? (
                 <PlanFollowStrip
                   plan={plan}
                   running={running}

@@ -7,7 +7,7 @@ Usage:
   mitii ask <prompt> [options]
   mitii index [--cwd <path>] [--json]
   mitii status [--cwd <path>] [--json]
-  mitii session [--cwd <path>] [--echo]
+  mitii session [--cwd <path>] [--echo] [--mode <mode>]
   mitii export-session <prompt> --out <file> [--echo]
 
 Options:
@@ -17,6 +17,7 @@ Options:
   --clarify <text>   Non-interactive clarification resume
   --approve / --deny Non-interactive approval resume
   --out <file>       Session export path (export-session)
+  --mode <mode>      ask | plan | agent (overrides config defaultMode)
 
 Signals:
   SIGINT (Ctrl-C)    Cancel the active run via SDK run.cancel()
@@ -36,6 +37,6 @@ Environment:
   OPENAI_API_KEY                   OpenAI-compatible (OpenAI, DeepSeek, …)
 
 Hosts stream events, cancel, clarify/approve, index/status,
-usage/context inspection, and secret-free session export.
+usage/context inspection, live task lists, and secret-free session export.
 Daemon/board/channels are out of scope for this CLI.
 `;

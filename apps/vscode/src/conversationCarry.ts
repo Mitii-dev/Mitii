@@ -1,5 +1,5 @@
-import type { MitiiConversationMessage, PlanArtifact } from '@mitii/sdk';
-import { planArtifactSchema } from '@mitii/sdk';
+import type { MitiiConversationMessage, PlanArtifact, TaskList } from '@mitii/sdk';
+import { planArtifactSchema, taskListSchema } from '@mitii/sdk';
 
 /**
  * Host-side conversation / plan carry policy.
@@ -88,6 +88,12 @@ export function resolvePlanHandoff(options: {
 export function parsePendingPlan(value: unknown): PlanArtifact | undefined {
   if (value == null) return undefined;
   const parsed = planArtifactSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+export function parsePendingTaskList(value: unknown): TaskList | undefined {
+  if (value == null) return undefined;
+  const parsed = taskListSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
 

@@ -277,15 +277,23 @@ function extractSkillPhaseHints(
 
 function extractPlanningText(content: string): string | undefined {
   const marker = content.match(/^Planning:\s*$/im);
-  if (marker?.index !== undefined) {
-    return content.slice(marker.index + marker[0].length).trim();
-  }
   const heading = content.match(
     /^#{1,3}\s+(agent\s+discovery|planning|plan\s+template)\s*$/im,
   );
-  return heading?.index !== undefined
-    ? content.slice(heading.index + heading[0].length).trim()
-    : undefined;
+  const start = marker ?? heading;
+  if (start?.index === undefined) {
+    return undefined;
+  }
+  const after = content.slice(start.index + start[0].length);
+  /**
+   * Skills often follow the compact template with a Playbook / When-to-use
+   * essay. Ingesting that prose turns process advice into 30+ fake plan steps.
+   */
+  const stop = after.search(
+    /\n#{1,3}\s+(?:playbook|when\s+to\s+use|when\s+not|overview|step\s+\d)\b/i,
+  );
+  const bounded = (stop >= 0 ? after.slice(0, stop) : after).trim();
+  return bounded.length > 0 ? bounded.slice(0, 2_000) : undefined;
 }
 
 function parsePhaseHints(text: string): SkillPhaseHint[] {
@@ -297,6 +305,10 @@ function parsePhaseHints(text: string): SkillPhaseHint[] {
     if (!line) {
       continue;
     }
+    if (/^#{1,6}\s+/.test(line)) {
+      current = undefined;
+      continue;
+    }
     const phaseMatch = /^([A-Za-z][A-Za-z0-9 /_-]{1,80}):$/.exec(line);
     if (phaseMatch) {
       current = { name: phaseMatch[1]!.trim(), steps: [] };
@@ -304,7 +316,7 @@ function parsePhaseHints(text: string): SkillPhaseHint[] {
       continue;
     }
     const stepMatch = /^[-*]\s+(.+)$/.exec(line);
-    if (stepMatch && current) {
+    if (stepMatch && current && current.steps.length < 8) {
       current.steps.push(stepMatch[1]!.trim());
     }
   }

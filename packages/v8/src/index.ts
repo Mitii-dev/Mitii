@@ -313,6 +313,28 @@ export type {
   PlanStep,
 } from "./modules/planning";
 
+export { TaskListPipeline } from "./modules/task-list";
+export {
+  taskListSchema,
+  taskListApplyInputSchema,
+  taskListApplyResultSchema,
+  TASK_LIST_SCHEMA_VERSION,
+  UPDATE_TODOS_TOOL_NAME,
+  parseTaskListMarkdown,
+  serializeTaskListMarkdown,
+  serializeTaskListForPrompt,
+  serializeTaskListGuidance,
+  taskListProgress,
+} from "./modules/task-list";
+export type {
+  TaskList,
+  TaskItem,
+  TaskItemStatus,
+  TaskListApplyInput,
+  TaskListApplyResult,
+  TaskListSource,
+} from "./modules/task-list";
+
 export { AgentEnginePipeline } from "./engine/agent-engine";
 export {
   agentEngineStartInputSchema,

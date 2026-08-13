@@ -128,6 +128,55 @@ describe("PlanningPipeline", () => {
     expect(result.reasonCodes).toContain("plan_skills_considered");
   });
 
+  it("does not ingest skill playbook or when-to-use bullets as plan steps", () => {
+    const result = pipeline.plan(
+      baseInput({
+        skills: [
+          {
+            id: "planning-and-task-breakdown",
+            title: "Planning and Task Breakdown",
+            content: [
+              "# Planning",
+              "",
+              "Discover:",
+              "- Restate the goal and constraints from the spec",
+              "- Identify dependencies and risky areas",
+              "",
+              "Change:",
+              "- Produce ordered tasks with acceptance criteria",
+              "- Keep each task small enough to verify independently",
+              "",
+              "Verify:",
+              "- Every task has a clear done check",
+              "- Order respects dependencies",
+              "",
+              "# Playbook",
+              "",
+              "## When to Use",
+              "- You have a spec and need to break it into implementable units",
+              "- A task feels too large or vague to start",
+              "- Work needs to be parallelized across multiple agents or sessions",
+            ].join("\n"),
+            priority: 190,
+          },
+        ],
+      }),
+    );
+
+    const intents =
+      result.plan?.phases.flatMap((phase) =>
+        phase.steps.map((step) => step.intent),
+      ) ?? [];
+    expect(intents).toContain("Restate the goal and constraints from the spec");
+    expect(intents.some((intent) => /you have a spec/i.test(intent))).toBe(
+      false,
+    );
+    expect(intents.some((intent) => /feels too large/i.test(intent))).toBe(
+      false,
+    );
+    expect(intents.some((intent) => /parallelized/i.test(intent))).toBe(false);
+  });
+
   it("serializes plan for prompt and answer", () => {
     const result = pipeline.plan(baseInput());
     const text = serializePlanForPrompt(result.plan!);

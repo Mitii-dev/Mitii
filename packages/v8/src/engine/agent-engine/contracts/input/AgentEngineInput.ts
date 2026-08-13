@@ -10,6 +10,7 @@ import {
   modelToolDefinitionSchema,
 } from "../../../../modules/model-gateway";
 import { planArtifactSchema } from "../../../../modules/planning";
+import { taskListSchema } from "../../../../modules/task-list";
 import { promptInstructionsSchema } from "../../../../modules/prompt-construction";
 import { projectDescriptorSchema } from "../../../../modules/repository-state";
 
@@ -73,6 +74,11 @@ export const agentEngineStartInputSchema = z
      * system prompt and skips the plan-approval gate for this start.
      */
     approvedPlan: planArtifactSchema.optional(),
+    /**
+     * Host-carried live task list from a prior turn.
+     * Engine does not stamp remaining items done when the run finishes.
+     */
+    taskList: taskListSchema.optional(),
     /** Optional override; otherwise Engine uses default tool definitions. */
     tools: z.array(modelToolDefinitionSchema).optional(),
     budget: agentRunBudgetSchema.optional(),

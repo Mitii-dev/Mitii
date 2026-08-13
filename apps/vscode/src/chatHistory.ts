@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type * as vscode from 'vscode';
-import type { PlanArtifact } from '@mitii/sdk';
+import type { PlanArtifact, TaskList } from '@mitii/sdk';
 
 import type {
   ActivityEventPayload,
@@ -9,7 +9,7 @@ import type {
   RunFileChangesView,
   TokenUsageSnapshot,
 } from './protocol.js';
-import { parsePendingPlan } from './conversationCarry.js';
+import { parsePendingPlan, parsePendingTaskList } from './conversationCarry.js';
 
 const HISTORY_KEY = 'mitii.chatHistory.v1';
 const CHECKPOINT_KEY = 'mitii.checkpoints.v1';
@@ -24,6 +24,8 @@ export interface StoredThread {
    * Cleared after a successful agent run that consumed it, or when replaced.
    */
   pendingPlan?: PlanArtifact;
+  /** Live working task list for this thread. */
+  pendingTaskList?: TaskList;
   /** Cumulative token usage for this chat thread. */
   tokenUsage?: TokenUsageSnapshot;
 }
@@ -61,6 +63,7 @@ function normalizeMessage(raw: ChatMessageView): ChatMessageView {
 
 function normalizeThread(raw: StoredThread): StoredThread {
   const pendingPlan = parsePendingPlan(raw.pendingPlan);
+  const pendingTaskList = parsePendingTaskList(raw.pendingTaskList);
   const tokenUsage = normalizeTokenUsage(raw.tokenUsage);
   return {
     id: raw.id,
@@ -70,6 +73,7 @@ function normalizeThread(raw: StoredThread): StoredThread {
       ? raw.messages.map((message) => normalizeMessage(message))
       : [],
     ...(pendingPlan ? { pendingPlan } : {}),
+    ...(pendingTaskList ? { pendingTaskList } : {}),
     ...(tokenUsage ? { tokenUsage } : {}),
   };
 }
@@ -174,6 +178,7 @@ export async function appendTurn(
     pendingPlan?: PlanArtifact | null;
     /** Drop pending plan after a successful agent handoff. */
     clearPendingPlan?: boolean;
+    pendingTaskList?: TaskList | null;
     tokenUsage?: TokenUsageSnapshot;
   },
 ): Promise<HistoryStore> {
@@ -223,6 +228,14 @@ export async function appendTurn(
     }
   }
 
+  if (options.pendingTaskList !== undefined) {
+    if (options.pendingTaskList === null || options.pendingTaskList.items.length === 0) {
+      delete thread.pendingTaskList;
+    } else {
+      thread.pendingTaskList = options.pendingTaskList;
+    }
+  }
+
   if (options.tokenUsage) {
     thread.tokenUsage = {
       ...options.tokenUsage,
@@ -247,8 +260,9 @@ export async function clearPendingPlan(
   const thread = threadId
     ? store.threads.find((t) => t.id === threadId)
     : store.threads.find((t) => t.id === store.activeThreadId);
-  if (thread?.pendingPlan) {
+  if (thread?.pendingPlan || thread?.pendingTaskList) {
     delete thread.pendingPlan;
+    delete thread.pendingTaskList;
     await saveHistory(state, store);
   }
   return store;
