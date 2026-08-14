@@ -44,6 +44,7 @@ import { SKILLS_SCHEMA_VERSION } from "../../../modules/skills";
 import {
   TOOL_RUNTIME_SCHEMA_VERSION,
   fingerprintToolCall,
+  toolResultSchema,
 } from "../../tool-runtime";
 import type { ToolApprovalToken } from "../../tool-runtime";
 import { VERIFICATION_SCHEMA_VERSION } from "../../../modules/verification";
@@ -98,6 +99,7 @@ import {
   applyUpdateTodosArguments,
   attachTaskListTool,
   buildUpdateTodosToolResult,
+  canonicalizeUpdateTodosToolName,
   isUpdateTodosTool,
   maybeAutoAdvanceTaskList,
   progressOf,
@@ -1443,6 +1445,8 @@ export class AgentEnginePipeline {
           remaining: this.deps.taskListAutoAdvance === true ? 1 : 0,
         },
         mutatingToolNames: DEFAULT_MUTATING_TOOL_NAMES,
+        // Approval resume already passed any pre-mutation gates.
+        changeImpactGate: { required: false, satisfied: true },
       });
 
       if (toolOutcome.kind === "approval_required") {
@@ -2173,6 +2177,12 @@ export class AgentEnginePipeline {
     let pendingTextContinuation = "";
     let emittedLoopPressureWarning = false;
     let emittedLoopCompactionWarning = false;
+    const changeImpactGate = {
+      required:
+        decision.reasonCodes.includes("change_impact_recommended") &&
+        grant.allowedTools.includes("analyze_change_impact"),
+      satisfied: false,
+    };
 
     while (true) {
       if (signal.aborted) {
@@ -2517,6 +2527,7 @@ export class AgentEnginePipeline {
           taskListAutoAdvance: this.deps.taskListAutoAdvance === true,
           taskListAutoAdvanceBudget,
           mutatingToolNames: DEFAULT_MUTATING_TOOL_NAMES,
+          changeImpactGate,
         });
 
         if (outcome.kind === "approval_required") {
@@ -2716,10 +2727,12 @@ export class AgentEnginePipeline {
     /** Shared remaining auto-advances for the current model turn (usually 0 or 1). */
     taskListAutoAdvanceBudget: { remaining: number };
     mutatingToolNames: ReadonlySet<string>;
+    /** Soft gate: require analyze_change_impact before first mutation when recommended. */
+    changeImpactGate?: { required: boolean; satisfied: boolean };
   }): Promise<ToolCallOutcome> {
     const {
       runId,
-      toolCall,
+      toolCall: rawToolCall,
       grant,
       pinnedState,
       workspaceRoot,
@@ -2737,7 +2750,13 @@ export class AgentEnginePipeline {
       taskListAutoAdvance,
       taskListAutoAdvanceBudget,
       mutatingToolNames,
+      changeImpactGate,
     } = params;
+
+    const toolCall: ModelToolCall = {
+      ...rawToolCall,
+      name: canonicalizeUpdateTodosToolName(rawToolCall.name),
+    };
 
     let argumentsValue: unknown = {};
     try {
@@ -2786,6 +2805,61 @@ export class AgentEnginePipeline {
     const preToolActiveId = taskListRef?.current?.items.find(
       (item) => item.status === "active",
     )?.id;
+
+    if (
+      changeImpactGate?.required &&
+      !changeImpactGate.satisfied &&
+      mutatingToolNames.has(toolCall.name)
+    ) {
+      const now = this.isoNow();
+      const result = toolResultSchema.parse({
+        schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+        callId: toolCall.id,
+        toolName: toolCall.name,
+        status: "rejected",
+        reasonCode: "invalid_arguments",
+        truncated: false,
+        redacted: false,
+        durationMs: 0,
+        bytesProduced: 0,
+        warnings: [
+          "Call analyze_change_impact on the primary seed path before the first mutating edit for this shared-scope repair.",
+        ],
+        audit: {
+          callId: toolCall.id,
+          toolName: toolCall.name,
+          startedAt: now,
+          endedAt: now,
+          status: "rejected",
+          reasonCode: "invalid_arguments",
+          inputPreview: toolCall.name,
+          bytesProduced: 0,
+          durationMs: 0,
+          truncated: false,
+          redacted: false,
+        },
+      });
+      reasonCodes.push("change_impact_gate_blocked");
+      toolCache.set(toolCall.id, result);
+      this.emit(bus, {
+        type: "tool_completed",
+        runId,
+        callId: toolCall.id,
+        toolName: toolCall.name,
+        status: result.status,
+        ...(summary ? { summary } : {}),
+        reasonCode: result.reasonCode,
+        at: now,
+      });
+      return {
+        kind: "message",
+        message: {
+          role: "tool",
+          toolCallId: toolCall.id,
+          content: serializeToolResultForModel(result),
+        },
+      };
+    }
 
     if (isUpdateTodosTool(toolCall.name)) {
       const applied = applyUpdateTodosArguments({
@@ -2889,6 +2963,10 @@ export class AgentEnginePipeline {
     toolCache.set(toolCall.id, result);
 
     if (result.status === "succeeded") {
+      if (toolCall.name === "analyze_change_impact" && changeImpactGate) {
+        changeImpactGate.satisfied = true;
+        reasonCodes.push("change_impact_observed");
+      }
       const output = result.output as
         | { checkpointId?: string; changedFiles?: string[] }
         | undefined;
@@ -2967,7 +3045,11 @@ export class AgentEnginePipeline {
     switch (toolName) {
       case "update_todos": {
         const type = this.safeText(args.type);
-        const count = Array.isArray(args.items) ? args.items.length : 0;
+        const count = Array.isArray(args.items)
+          ? args.items.length
+          : Array.isArray(args.todos)
+            ? args.todos.length
+            : 0;
         return [type ? `type=${type}` : undefined, count ? `items=${count}` : undefined]
           .filter(Boolean)
           .join(" ");

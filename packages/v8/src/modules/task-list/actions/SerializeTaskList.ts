@@ -49,7 +49,7 @@ export function serializeTaskListForPrompt(taskList: TaskList): string {
     "Live working list for this run. Use update_todos to keep it current as soon as the work is concrete.",
     "If this is a multi-step run and the list is empty after the first read/diagnose tool turn, call update_todos type=replace with concrete titles naming a file, failure, or behavior.",
     "Keep exactly one item active. Before finishing a slice, patch the active item to done and the next pending item to active.",
-    "Do not copy Discover/Change/Verify process labels into titles. If a plan-derived list is still process-shaped, replace it; otherwise prefer patch by id.",
+    "Do not copy Discover/Change/Verify process labels into titles. If a plan-derived list is still process-shaped, replace it with type=replace and items (or todos) using title (or content); otherwise prefer patch by id.",
     "Do not mark remaining items done just because the turn is ending. Skip update_todos only for trivial single-step work.",
   ];
   for (const item of taskList.items) {

@@ -1,70 +1,112 @@
-# Task list
+# Task List
 
-Status: implemented
-Facade: `TaskListPipeline`
-Primary outcome: compact live checklist (`TaskList`) for the current run
+Task List owns the compact live checklist for a run. It validates task-list updates, derives concrete lists from plans, and serializes/deserializes markdown checkbox lists for hosts and prompts.
 
-## Responsibility
+## What This Module Does
 
-Own the working task list that hosts display while Agent (or Plan) runs:
+- Applies `replace`, `patch`, and `clear` operations.
+- Enforces max item count, unique ids, and at most one active item.
+- Derives a compact checklist from concrete plan steps.
+- Parses and serializes markdown task lists.
+- Provides prompt-safe task-list guidance and progress helpers.
 
-- Replace / patch / clear a list of at most 8 items
-- Derive a compact list from a user-visible / approved `PlanArtifact` (preferred executable steps first; first item starts `active`, rest `pending`). Internal Agent plans are not copied into the live list. Skill playbook / task-breakdown methodology lines are skipped.
-- For Agent runs with no list yet, leave the list empty until the model creates one via `update_todos` (do not invent Diagnose/Apply/Verify placeholders)
-- Serialize and parse markdown checkboxes for host files and prompts
+## Structure
 
-## Input
+```text
+task-list/
+  pipeline/                 TaskListPipeline
+  actions/                  Apply, derive, serialize, parse
+  contracts/
+    input/                  TaskListApplyInput
+    output/                 TaskList, TaskListApplyResult
+    errors/                 TaskListErrors
+  tests/
+```
 
-- `TaskListApplyInput` — `replace` | `patch` | `clear` plus optional current list
-- `PlanArtifact` — only for `deriveFromPlan`
+## Types And Contracts
 
-## Output
+- `TaskListApplyInput`: current list, source, and operation.
+- `TaskListOperation`: `replace`, `patch`, or `clear`.
+- `TaskList`: schema version, source, optional title, and items.
+- `TaskItem`: id, title, status, optional detail, optional plan `sourceRef`.
+- `TaskItemStatus`: `pending`, `active`, `done`, `skipped`, or `blocked`.
+- `TaskListApplyResult`: applied/rejected status, optional task list, warnings, and reason codes.
 
-- `TaskListApplyResult` — `applied` | `rejected` with a validated `TaskList`
-- Stable reason codes (`task_list_replaced`, `task_list_patched`, …)
+## Technical Details
 
-## Pipeline stages
+- Lists are capped at eight items by default.
+- Empty replacement lists are rejected.
+- Patch operations require existing ids.
+- Derivation prefers concrete file-scoped implementation/verification steps over process-only discovery rows.
+- Agent Engine may auto-advance concrete rows after successful built-in mutations, but this module only applies validated changes.
 
-1. Validate apply input or plan
-2. Replace, patch, clear, or derive
-3. Enforce unique ids and at most one `active` item
-4. Return the public result
+## Ownership Boundaries
 
-## Dependencies and ports
+Owns checklist invariants and serialization.
 
-- Planning public `PlanArtifact` (derive only)
-- No filesystem, host, or Agent Engine imports
+Does not own planning, execution, verification, host persistence, or deciding that a run must have a task list.
 
-## Public exports
+## Tests
 
-- `TaskListPipeline`
-- `taskListSchema` / `TaskList`
-- apply input/result schemas
-- `parseTaskListMarkdown` / `serializeTaskListMarkdown` / `serializeTaskListForPrompt`
-- constants, defaults, reason codes
+```bash
+pnpm exec vitest run packages/v8/src/modules/task-list
+```
 
-## Failure modes
+## Example Flow
 
-- Invalid input throws `TaskListError` (`invalid_input`)
-- Unknown patch ids or empty replace → `status: rejected` with `task_list_invalid`
+This example uses a realistic coding-agent request and shows the kind of structure this module receives and returns. The output is representative: ids, timings, and scores are examples, but the shape matches how this module is meant to be understood.
 
-## Genericness strategy
+### Real Prompt
 
-Titles, ids, and sources are caller-supplied. Derivation reads generic plan
-phases/steps and does not hard-code languages, hosts, or providers. Change,
-verify, implement, fix, and build phases are preferred over discovery-only
-phases; discovery steps are still used as a fallback when no preferred work
-exists. Plan `sourceRef` values are retained through patches so later phases can
-bind list items back to plan steps.
+```text
+I am in a React app. In src/LoginForm.tsx, when the user clicks the "Sign in" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.
+```
 
-## Explicit non-responsibilities
+### Real Input Structure
 
-- Plan drafting or approval
-- Tool execution or verification
-- Deciding whether a successful mutating tool should advance progress. Agent
-  Engine may opt into that orchestration; this module only applies the patch and
-  enforces invariants.
-- Host persistence / UI / CLI formatting
-- Marking every item done when a run completes
-- Attaching a list to every skill
-- Dumping internal Discover/Change/Verify process templates into the live list
+TaskListApplyInput -> TaskListApplyResult:
+
+```json
+{
+  "prompt": "I am in a React app. In src/LoginForm.tsx, when the user clicks the \"Sign in\" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.",
+  "workspaceId": "workspace-1",
+  "stateToken": "state-abc",
+  "targetFile": "src/LoginForm.tsx"
+}
+```
+
+### Step-By-Step Flow
+
+1. A user sends the real prompt shown above from an editor or chat host.
+2. The host attaches workspace id `workspace-1` and the explicit target file `src/LoginForm.tsx`.
+3. The module receives the real structure shown in the input block.
+4. The module validates schema/version/limits before doing any work.
+5. The module extracts the important target: `src/LoginForm.tsx`.
+6. The module keeps the user constraint: existing validation and error handling must stay intact.
+7. The module performs only its own responsibility and does not cross into neighboring modules.
+8. Any budget, path, state, or provider constraint is applied before output is produced.
+9. The module records warnings/reason codes instead of hiding degraded behavior.
+10. The module returns the realistic output shape shown below.
+11. The next pipeline stage consumes that output without reinterpreting raw user text.
+
+### Realistic Output
+
+Task List apply result returns a result like this:
+
+```json
+{
+  "schemaVersion": 1,
+  "status": "applied",
+  "taskList": {
+    "schemaVersion": 1,
+    "source": "agent",
+    "items": [
+      { "id": "inspect-login", "title": "Inspect src/LoginForm.tsx", "status": "active" },
+      { "id": "add-loading", "title": "Add pending button state", "status": "pending" },
+      { "id": "verify-login", "title": "Verify LoginForm behavior", "status": "pending" }
+    ]
+  },
+  "warnings": [],
+  "reasonCodes": ["task_list_replaced"]
+}
+```

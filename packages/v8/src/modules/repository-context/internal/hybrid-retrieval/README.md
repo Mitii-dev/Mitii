@@ -1,95 +1,121 @@
 # Hybrid Retrieval
 
-`hybrid-retrieval` finds repository evidence. It does not assemble an LLM
-prompt, read complete file contents, choose a model, retry providers, or run
-agent tools.
+Hybrid Retrieval gathers candidate context from repository intelligence sources and fuses them into one ranked candidate list. It is the first internal stage of Repository Context after state resolution.
 
-## Responsibilities
+## What This Module Does
 
-- Normalize and validate one retrieval request.
-- Query independent lexical, vector, Repo Map, and Repo Graph sources.
-- Treat `anchorFilePaths` as extra RepoGraph file-node anchors (not a scope filter).
-- Bound every candidate pool.
-- Fuse heterogeneous rankings with weighted reciprocal-rank fusion.
-- Preserve source contributions and human-readable ranking evidence.
-- Apply an optional injected reranker.
-- Return explicit partial, cancelled, unavailable, and failed states.
-- Reject stale combinations of Workspace Snapshot, Repo Map, and Repo Graph.
+- Normalizes retrieval requests.
+- Executes registered retrieval sources.
+- Captures per-source success, failure, skip, and warning reports.
+- Deduplicates candidates across sources.
+- Combines rankings with weighted reciprocal-rank fusion.
+- Optionally reranks candidates using identifier-aware signals.
+- Returns fused candidates and retrieval statistics.
 
-## Folder structure
+## Structure
 
 ```text
 hybrid-retrieval/
-├── sources/
-│   ├── CodeQueryTokenizer.ts
-│   ├── RepoGraphRetrievalSource.ts
-│   ├── RepoMapRetrievalSource.ts
-│   ├── TextIndexRetrievalSource.ts
-│   ├── VectorIndexRetrievalSource.ts
-│   └── index.ts
-├── tests/
-│   └── HybridRetrieval.spec.ts
-├── HybridRetrievalError.ts
-├── HybridRetrievalFactory.ts
-├── HybridRetrievalRequestNormalizer.ts
-├── HybridRetriever.ts
-├── HybridRetrieverOptionsResolver.ts
-├── RetrievalCandidateKeyBuilder.ts
-├── RetrievalSourceRegistry.ts
-├── WeightedReciprocalRankFusion.ts
-├── constants.ts
-├── schema.ts
-├── types.ts
-└── index.ts
+  HybridRetriever.ts
+  HybridRetrievalFactory.ts
+  RetrievalSourceRegistry.ts
+  WeightedReciprocalRankFusion.ts
+  IdentifierAwareRetrievalReranker.ts
+  sources/
+    RepoMapRetrievalSource.ts
+    RepoGraphRetrievalSource.ts
+    TextIndexRetrievalSource.ts
+    VectorIndexRetrievalSource.ts
+  schema.ts
+  types.ts
+  tests/
 ```
 
-## Standard construction
+## Types And Contracts
 
-```ts
-const retrieval =
-  new HybridRetrievalFactory().create(
-    {
-      textIndex,
-      vectorIndex,
-      embeddingProvider,
-    },
-    {
-      maximumResults: 40,
-      failureMode: "best_effort",
-    },
-  );
+- `HybridRetrievalInput`: workspace, query, filters, anchors, consistency guards, optional repo map/graph, and abort signal.
+- `RetrievalSource`: source interface for repo map, graph, text, vector, or future sources.
+- `RetrievalCandidate`: raw candidate emitted by one source.
+- `HybridRetrievalCandidate`: fused candidate with contributions and final score.
+- `HybridRetrievalResult`: status, query, candidates, source reports, warnings, truncation, and statistics.
+- `HybridRetrievalFactoryDependencies`: dependencies needed to build a retriever from repository-state read ports.
 
-const result = await retrieval.retrieve({
-  workspace: workspaceId,
-  query: userMessage,
-  workspaceSnapshotId: snapshot.snapshotId,
-  codeIndexChangeToken: graph.codeIndexChangeToken,
-  repoMap,
-  repoGraph: graph,
-  abortSignal,
-});
+## Technical Details
+
+- File filters scope retrieval; anchor files seed graph expansion but are not scope filters.
+- Candidate keys prevent duplicate path/span/symbol results.
+- Source weights let exact text, graph, map, and vector evidence contribute differently.
+- Identifier-aware reranking boosts matches such as `LoginForm`, `login`, and `button`.
+- Partial source failures can still produce a usable `partial` result.
+
+## Ownership Boundaries
+
+Owns candidate discovery and fusion.
+
+Does not own final context selection, file content loading, secret redaction, or prompt budgeting.
+
+## Tests
+
+```bash
+pnpm exec vitest run packages/v8/src/modules/repository-context/internal/hybrid-retrieval
 ```
 
-`vectorIndex` and `embeddingProvider` are an intentional pair. Configure both
-or neither. Vector retrieval is optional; it is not a silent fallback for text
-retrieval.
+## Example Flow
 
-## Failure policy
+This example uses a realistic coding-agent request and shows the kind of structure this module receives and returns. The output is representative: ids, timings, and scores are examples, but the shape matches how this module is meant to be understood.
 
-- `best_effort`: keep valid evidence from surviving sources.
-- `required_sources`: fail when a registration marked `required` does not
-  complete.
-- `all_sources`: fail unless every configured source completes.
+### Real Prompt
 
-`minimumSuccessfulSources` is evaluated independently, and failures are
-reported through structured warnings and source reports.
+```text
+I am in a React app. In src/LoginForm.tsx, when the user clicks the "Sign in" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.
+```
 
-## Engine boundary
+### Real Input Structure
 
-The future runtime engine owns deadlines, retries, logging, telemetry,
-provider selection, cache lifecycle, progress UI, and tracing. It passes an
-`AbortSignal` into this module and records the deterministic result.
+HybridRetrievalInput -> HybridRetrievalResult:
 
-The following V8 module, `context-selection`, consumes
-`HybridRetrievalResult`. It decides which retrieved candidates deserve the
-available context budget. It must not repeat repository retrieval.
+```json
+{
+  "prompt": "I am in a React app. In src/LoginForm.tsx, when the user clicks the \"Sign in\" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.",
+  "workspaceId": "workspace-1",
+  "stateToken": "state-abc",
+  "targetFile": "src/LoginForm.tsx"
+}
+```
+
+### Step-By-Step Flow
+
+1. A user sends the real prompt shown above from an editor or chat host.
+2. The host attaches workspace id `workspace-1` and the explicit target file `src/LoginForm.tsx`.
+3. The module receives the real structure shown in the input block.
+4. The module validates schema/version/limits before doing any work.
+5. The module extracts the important target: `src/LoginForm.tsx`.
+6. The module keeps the user constraint: existing validation and error handling must stay intact.
+7. The module performs only its own responsibility and does not cross into neighboring modules.
+8. Any budget, path, state, or provider constraint is applied before output is produced.
+9. The module records warnings/reason codes instead of hiding degraded behavior.
+10. The module returns the realistic output shape shown below.
+11. The next pipeline stage consumes that output without reinterpreting raw user text.
+
+### Realistic Output
+
+Hybrid Retrieval result returns a result like this:
+
+```json
+{
+  "schemaVersion": 1,
+  "query": "Add a loading state to the login button in src/LoginForm.tsx.",
+  "status": "complete",
+  "candidates": [
+    { "key": "path:src/LoginForm.tsx", "relativePath": "src/LoginForm.tsx", "score": 0.98, "sources": ["repo_map", "text_index"] },
+    { "key": "path:src/LoginForm.test.tsx", "relativePath": "src/LoginForm.test.tsx", "score": 0.74, "sources": ["repo_graph", "text_index"] }
+  ],
+  "sourceReports": [
+    { "sourceId": "repo_map", "status": "complete", "candidates": 1 },
+    { "sourceId": "text_index", "status": "complete", "candidates": 4 }
+  ],
+  "warnings": [],
+  "truncated": false,
+  "statistics": { "attemptedSources": 4, "successfulSources": 4, "uniqueCandidates": 6, "returnedCandidates": 6 }
+}
+```

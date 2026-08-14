@@ -190,6 +190,21 @@ function buildToolGuidance(decision: ExecutionDecision): string {
     lines.push(
       "For blast-radius questions like what breaks, affected callers, or dependents of a change, use analyze_change_impact before broad text search.",
     );
+    if (
+      decision.reasonCodes.includes("change_impact_recommended") ||
+      decision.planningDepth === "visible"
+    ) {
+      lines.push(
+        "Before the first mutating edit on shared or multi-file repair work, call analyze_change_impact on the primary seed path (file or symbol) and use the affected files to sequence patches.",
+        "Do not rely on reactive apply_patch loops alone for package-wide error cleanup.",
+      );
+    }
+  }
+
+  if (grant.maximumWorkspaceEffect === "write") {
+    lines.push(
+      "For the live checklist tool, call update_todos (aliases: update_todo, task_list_update). Use type=replace|patch|clear with items (or todos) and title (or content).",
+    );
   }
 
   return lines.join("\n");
@@ -203,7 +218,7 @@ function buildPlanGuidance(
     return planText.trim();
   }
   if (decision.planningDepth === "visible") {
-    return "Provide a concise visible plan before substantive work when helpful.";
+    return "Provide a concise visible plan before substantive work. Keep the live checklist aligned with executable Change/Verify work via update_todos.";
   }
   if (decision.planningDepth === "internal") {
     return "Plan internally; do not emit a lengthy visible plan unless asked.";

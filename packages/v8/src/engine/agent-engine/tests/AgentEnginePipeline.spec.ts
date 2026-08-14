@@ -727,7 +727,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
             {
               id: "step-1",
               intent: "Locate auth flow",
-              targetRefs: ["src/auth"],
+              targetRefs: ["src/auth/login.ts"],
               actionSummary: "Search and read auth module",
               expectedOutcome: "Targets known",
               riskLevel: "medium" as const,
@@ -877,7 +877,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
             {
               id: "step-1",
               intent: "Locate auth flow",
-              targetRefs: ["src/auth"],
+              targetRefs: ["src/auth/login.ts"],
               actionSummary: "Search and read auth module",
               expectedOutcome: "Targets known",
               riskLevel: "medium" as const,
@@ -1041,7 +1041,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
             {
               id: "step-1",
               intent: "Pass conversation + plan",
-              targetRefs: ["apps/vscode"],
+              targetRefs: ["apps/vscode/src/extension.ts"],
               actionSummary: "Map thread history and pending plan into start",
               expectedOutcome: "Carry works",
               riskLevel: "low" as const,

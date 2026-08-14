@@ -6,6 +6,11 @@ export { looksLikeWorkspaceBugReport } from "./LooksLikeWorkspaceBugReport";
 export { resolvePlanningDepth } from "./ResolvePlanningDepth";
 export type { PlanningDepthResolution } from "./ResolvePlanningDepth";
 
+export {
+  isBroadSharedScopeRepair,
+  shouldElevateSharedScopeRisk,
+} from "./ClassifySharedScopeRepair";
+
 export { resolvePlanGate } from "./ResolvePlanGate";
 export type { PlanGateResolution } from "./ResolvePlanGate";
 

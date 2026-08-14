@@ -16,7 +16,7 @@ function planWithSteps(stepCount: number): PlanArtifact {
       steps: Array.from({ length: take }, (_, index) => ({
         id: `step-${phaseIndex}-${index}`,
         intent: `Do step ${phaseIndex}-${index}`,
-        targetRefs: [],
+        targetRefs: [`src/feature/step-${phaseIndex}-${index}.ts`],
         actionSummary: `Action ${phaseIndex}-${index}`,
         expectedOutcome: "Done",
         riskLevel: "low" as const,
@@ -106,7 +106,7 @@ describe("deriveTaskListFromPlan", () => {
         {
           id: "real-1",
           intent: "Run typecheck on the package",
-          targetRefs: ["packages/mui-builder"],
+          targetRefs: ["packages/mui-builder/src/index.ts"],
           actionSummary: "pnpm --filter mui-builder typecheck",
           expectedOutcome: "No TS errors",
           riskLevel: "low",
@@ -120,7 +120,52 @@ describe("deriveTaskListFromPlan", () => {
     expect(result.taskList?.items[0]?.status).toBe("active");
   });
 
-  it("orders preferred work phases before deferred discovery phases", () => {
+  it("leaves the list empty for package-wide mega-objectives without a file", () => {
+    const plan = planWithSteps(1);
+    plan.objective = "Resolve all TypeScript compilation/type errors in the target package";
+    plan.phases = [
+      {
+        id: "phase-change",
+        name: "Change",
+        purpose: "Fix",
+        steps: [
+          {
+            id: "step-implement",
+            intent: "Resolve all TypeScript compilation/type errors in the target package",
+            targetRefs: ["packages/mui-builder"],
+            actionSummary: "Fix package errors",
+            expectedOutcome: "Typecheck green",
+            riskLevel: "medium",
+          },
+        ],
+        dependencies: [],
+        successCriteria: [],
+      },
+      {
+        id: "phase-verify",
+        name: "Verify",
+        purpose: "Check",
+        steps: [
+          {
+            id: "step-verify",
+            intent: "Verify the fix in packages/mui-builder",
+            targetRefs: ["packages/mui-builder"],
+            actionSummary: "Run typecheck",
+            expectedOutcome: "Green",
+            riskLevel: "low",
+          },
+        ],
+        dependencies: [],
+        successCriteria: [],
+      },
+    ];
+    const result = pipeline.deriveFromPlan(plan);
+    expect(result.status).toBe("rejected");
+    expect(result.taskList).toBeUndefined();
+    expect(result.reasonCodes).toContain("task_list_empty");
+  });
+
+  it("keeps only preferred work phases when Change/Verify exist (no deferred Discover append)", () => {
     const plan = planWithSteps(1);
     plan.phases = [
       {
@@ -180,11 +225,9 @@ describe("deriveTaskListFromPlan", () => {
     expect(result.taskList?.items.map((item) => item.title)).toEqual([
       "Change: Update widget behavior",
       "Verify: Verify widget behavior",
-      "Discover: Inspect current behavior",
     ]);
     expect(result.taskList?.items.map((item) => item.status)).toEqual([
       "active",
-      "pending",
       "pending",
     ]);
     expect(result.taskList?.items[0]?.detail).toContain("Scope: src/widget.ts");

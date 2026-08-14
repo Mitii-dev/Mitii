@@ -5,6 +5,7 @@ import type {
   ExecutionRoute,
   PlanningDepth,
 } from "../contracts";
+import { isBroadSharedScopeRepair } from "./ClassifySharedScopeRepair";
 
 export interface PlanningDepthResolution {
   planningDepth: PlanningDepth;
@@ -50,6 +51,23 @@ export function resolvePlanningDepth(params: {
 
   if (isArchitectureScale(taskAnalysis, primary, message)) {
     reasonCodes.push("architecture_visible_plan");
+    if (mode === "agent" && route === "execute") {
+      reasonCodes.push("change_impact_recommended");
+    }
+    return { planningDepth: "visible", reasonCodes };
+  }
+
+  // Agent execute on shared-scope repair: visible plan + checklist seed.
+  if (
+    mode === "agent" &&
+    route === "execute" &&
+    isBroadSharedScopeRepair({
+      primaryTaskIntent: primary,
+      taskAnalysis,
+      message,
+    })
+  ) {
+    reasonCodes.push("broad_repair_visible_plan", "change_impact_recommended");
     return { planningDepth: "visible", reasonCodes };
   }
 

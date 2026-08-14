@@ -1,63 +1,111 @@
 # Change Impact
 
+Change Impact estimates the blast radius of a code change by walking a repository graph from a file, symbol, or caret seed. It helps policy, planning, and tools understand what else may be affected.
+
+## What This Module Does
+
+- Validates change-impact input.
+- Resolves a file/symbol/caret seed against a `RepoGraph`.
+- Traverses dependency or dependent edges.
+- Applies hop and node limits.
+- Summarizes affected nodes, files, and packages.
+- Reports truncation, unresolved seeds, stale graph signals, and warnings.
+
+## Structure
+
 ```text
-Input:  ChangeImpactInput { seed, repoGraph, direction=dependents, budgets… }
-Output: ChangeImpactResult { status, affected[], affectedFiles[], packagesAffected[], reasonCodes }
+change-impact/
+  pipeline/                 ChangeImpactPipeline
+  contracts/
+    input/                  ChangeImpactInput, ChangeImpactSeed
+    output/                 ChangeImpactResult
+    errors/                 ChangeImpactError
+  internal/                 Graph traversal and scoring helpers
+  tests/
 ```
 
-Answers “what depends on this change seed?” over a published `RepoGraph`.
-Traversal walks configured edge types in reverse (callers, importers, package
-dependents). Used by the `analyze_change_impact` tool and any other caller that
-needs a bounded blast-radius report.
+## Types And Contracts
 
-Does not own indexing, hybrid retrieval, tool grants, or planning dimensions
-(`PlanArtifact.dimensions.changeImpact` remains categorical evidence, not this
-report).
+- `ChangeImpactInput`: seed, direction, edge types, hop/node limits, package flag, repo graph, and optional code-index token.
+- `ChangeImpactSeed`: file, symbol, or caret seed.
+- `ChangeImpactResult`: status, direction, seed, resolved seeds, affected nodes, affected files, packages affected, truncation flag, warnings, reason codes, graph revision, and optional code-index token.
+- `ChangeImpactAffectedFile`: file-level impact summary used by planning or verification choices.
 
-## Pipeline stages
+## Technical Details
 
-1. Validate input
-2. Resolve seed (`file` | `symbol` | `caret`) to graph node(s)
-3. Walk reverse dependents with hop/node budgets
-4. Aggregate files and optional packages; return status + reason codes
+- The public facade method is `ChangeImpactPipeline.analyze`.
+- Direction is usually dependencies or dependents.
+- Edge types are constrained to known repository graph relationships.
+- Limits protect very large graphs and set `truncated` when reached.
+- Normal unresolved/stale cases return structured results rather than throwing.
 
-## Dependencies and ports
+## Ownership Boundaries
 
-- Public `RepoGraph` from `repository-state`
-- Optional `codeIndexChangeToken` for `graph_stale` when the caller knows a newer index watermark
-- Hop and node budgets bound both the report size and traversal work (no further enqueue once the node budget is full)
-- No filesystem, host, Agent Engine, or tool-runtime imports
+Owns graph-based impact analysis.
 
-## Public exports
+Does not own graph construction, repository indexing, route authority, verification execution, or tool mutation.
 
-| Export | Role |
-|--------|------|
-| `ChangeImpactPipeline` | Facade |
-| `changeImpactInputSchema` / `changeImpactResultSchema` | Boundary |
-| `CHANGE_IMPACT_POLICY` / constants / defaults | Budgets and stable codes |
+## Tests
 
-## Failure modes
+```bash
+pnpm exec vitest run packages/v8/src/modules/change-impact
+```
 
-| Condition | `status` | Typical `reasonCodes` |
-|-----------|----------|------------------------|
-| Dependents found | `ok` | `impact_resolved` |
-| Truncated or stale/partial graph | `partial` | `hop_limit_reached`, `node_limit_reached`, `graph_stale` |
-| Seed resolved, nothing depends | `empty` | `no_dependents` |
-| Seed missing | `empty` | `seed_unresolved` |
-| Invalid input | throws `ChangeImpactError` | `invalid_input` |
+## Example Flow
 
-Tool-runtime maps a missing/empty graph port to tool output `unavailable` /
-`graph_unavailable` without throwing.
+This example uses a realistic coding-agent request and shows the kind of structure this module receives and returns. The output is representative: ids, timings, and scores are examples, but the shape matches how this module is meant to be understood.
 
-## Genericness strategy
+### Real Prompt
 
-Edge types and scoring live in `policy.ts`. Language-specific extraction stays
-in repository-state graph construction. Seeds are path/symbol/caret only.
+```text
+I am in a React app. In src/LoginForm.tsx, when the user clicks the "Sign in" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.
+```
 
-## Explicit non-responsibilities
+### Real Input Structure
 
-- Building or refreshing RepoGraph
-- Bidirectional retrieval neighbor expansion (`repository-context`)
-- LSP find-references (use `code-navigation`)
-- Automatic pre-edit invocation in Agent Engine
-- Host UI / SDK convenience wrappers beyond V8 exports
+ChangeImpactInput -> ChangeImpactResult:
+
+```json
+{
+  "prompt": "I am in a React app. In src/LoginForm.tsx, when the user clicks the \"Sign in\" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.",
+  "workspaceId": "workspace-1",
+  "stateToken": "state-abc",
+  "targetFile": "src/LoginForm.tsx"
+}
+```
+
+### Step-By-Step Flow
+
+1. A user sends the real prompt shown above from an editor or chat host.
+2. The host attaches workspace id `workspace-1` and the explicit target file `src/LoginForm.tsx`.
+3. The module receives the real structure shown in the input block.
+4. The module validates schema/version/limits before doing any work.
+5. The module extracts the important target: `src/LoginForm.tsx`.
+6. The module keeps the user constraint: existing validation and error handling must stay intact.
+7. The module performs only its own responsibility and does not cross into neighboring modules.
+8. Any budget, path, state, or provider constraint is applied before output is produced.
+9. The module records warnings/reason codes instead of hiding degraded behavior.
+10. The module returns the realistic output shape shown below.
+11. The next pipeline stage consumes that output without reinterpreting raw user text.
+
+### Realistic Output
+
+Change Impact result returns a result like this:
+
+```json
+{
+  "schemaVersion": 1,
+  "status": "complete",
+  "direction": "dependents",
+  "seed": { "kind": "file", "relativePath": "src/LoginForm.tsx" },
+  "resolvedSeeds": [{ "nodeId": "file:src/LoginForm.tsx", "kind": "file", "relativePath": "src/LoginForm.tsx" }],
+  "affected": [
+    { "nodeId": "file:src/LoginForm.test.tsx", "kind": "file", "relativePath": "src/LoginForm.test.tsx", "hop": 1, "viaEdgeType": "imports", "score": 0.86, "evidence": ["test imports LoginForm"] }
+  ],
+  "affectedFiles": [{ "relativePath": "src/LoginForm.test.tsx", "hop": 1, "score": 0.86, "affectedNodeIds": ["file:src/LoginForm.test.tsx"], "reason": "dependent test imports changed component" }],
+  "packagesAffected": [],
+  "truncated": false,
+  "warnings": [],
+  "reasonCodes": ["impact_resolved"]
+}
+```

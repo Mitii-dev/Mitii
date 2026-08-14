@@ -21,6 +21,22 @@ export const TASK_LIST_POLICY = {
    * workspace mutation tools only, not arbitrary MCP/custom tools.
    */
   autoAdvanceOnMutationSuccess: false,
+  /**
+   * Never auto-advance Discover/Verify (or explore) process rows from a random
+   * successful patch — those need real evidence / model patches.
+   */
+  autoAdvanceBlockedTitle: /^(discover|verify|explore|investigate)\b/i,
+  /**
+   * Change-like phase prefixes (optional). Concrete file-scoped titles without
+   * a blocked prefix are also eligible.
+   */
+  autoAdvanceEligibleTitle: /^(change|implement|fix|build|apply)\b/i,
+  autoAdvanceConcreteFileHint: /\.\w{1,16}\b|:\d{1,6}\b/,
+  /**
+   * Live checklist rows must name a concrete file (or line). Package-wide
+   * mega-objectives are omitted — empty list is preferred over a fake one.
+   */
+  concreteDisplayHint: /\.\w{1,16}\b|:\d{1,6}\b/,
   /** Do not auto-complete remaining items when a run finishes. */
   stampAllDoneOnRunComplete: false,
   /**

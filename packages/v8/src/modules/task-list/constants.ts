@@ -32,3 +32,11 @@ export const TASK_LIST_ERROR_CODES = [
 ] as const;
 
 export const UPDATE_TODOS_TOOL_NAME = "update_todos" as const;
+
+/** Common model misspellings / aliases accepted by Agent Engine. */
+export const UPDATE_TODOS_TOOL_ALIASES = [
+  "update_todo",
+  "update_todo_list",
+  "task_list_update",
+  "update_task_list",
+] as const;

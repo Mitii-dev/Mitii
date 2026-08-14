@@ -208,6 +208,28 @@ export const DECISION_EVALUATION_CASES: DecisionCaseFixture[] = [
     },
   },
   {
+    id: "package_bugfix_visible_plan",
+    category: "build_failure",
+    mode: "agent",
+    message: "Resolve all TypeScript compilation errors in the mui-builder package",
+    understanding: createUnderstanding({
+      primaryTaskIntent: "bugfix",
+      interactionIntent: "act",
+      taskAnalysis: {
+        scope: "package",
+        complexity: "moderate",
+        risk: "low",
+        recommendsPlanning: true,
+        estimatedFilesAffected: { minimum: 5, maximum: 20 },
+      },
+    }),
+    expected: {
+      route: "execute",
+      planningDepth: "visible",
+      maximumWorkspaceEffect: "write",
+    },
+  },
+  {
     id: "diagnosis_only",
     category: "diagnosis",
     mode: "agent",

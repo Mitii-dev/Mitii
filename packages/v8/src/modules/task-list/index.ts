@@ -6,6 +6,7 @@ export {
   TASK_LIST_REASON_CODES,
   TASK_LIST_ERROR_CODES,
   UPDATE_TODOS_TOOL_NAME,
+  UPDATE_TODOS_TOOL_ALIASES,
 } from "./constants";
 
 export {

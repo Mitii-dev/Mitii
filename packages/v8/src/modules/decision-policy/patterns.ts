@@ -119,6 +119,18 @@ export const WORKSPACE_BUG_REPO_PATH = new RegExp(
 export const WORKSPACE_BUG_LOCALHOST =
   /\bhttps?:\/\/localhost(?::\d+)?\//i;
 
+/**
+ * Broad repair phrasing that should get a visible plan (not language-specific).
+ * Matches "fix/resolve all errors", "across the package/module", etc.
+ */
+export const BROAD_REPAIR_REQUEST =
+  /\b(?:fix|resolve|clear|eliminate)\s+all\b|\ball\s+(?:errors?|failures?|diagnostics?|warnings?)\b|\bacross\s+(?:the\s+)?(?:package|module|workspace|repository|codebase)\b|\bpackage[- ]wide\b|\bmulti[- ]file\s+(?:fix|repair|cleanup)\b/i;
+
+/** Grouped pattern catalog for decision actions. */
+export const DECISION_POLICY_PATTERNS = {
+  broadRepairRequest: BROAD_REPAIR_REQUEST,
+} as const;
+
 /** Max Levenshtein distance when treating a token as a mistyped "not". */
 export const WORKSPACE_BUG_NOT_TYPO_MAX_DISTANCE = 1;
 

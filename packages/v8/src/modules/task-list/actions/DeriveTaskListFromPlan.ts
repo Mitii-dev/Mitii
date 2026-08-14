@@ -11,7 +11,9 @@ import { taskListApplyResultSchema, taskListSchema } from "../contracts";
 
 /**
  * Compact a PlanArtifact into a live working list.
- * Prefers executable work phases, then falls back to discovery-only steps.
+ * Prefers executable work phases; when those exist, discovery is omitted.
+ * Falls back to discovery-only steps only when no preferred work exists.
+ * Only concrete file-scoped steps become live checklist rows (empty is OK).
  * Does not execute or mark completion.
  */
 export function deriveTaskListFromPlan(plan: PlanArtifact): TaskListApplyResult {
@@ -31,33 +33,37 @@ export function deriveTaskListFromPlan(plan: PlanArtifact): TaskListApplyResult 
     }
   }
 
-  const selected = [...preferred, ...deferred].slice(0, TASK_LIST_POLICY.maxTasks);
+  const selected =
+    preferred.length > 0
+      ? preferred.slice(0, TASK_LIST_POLICY.maxTasks)
+      : deferred.slice(0, TASK_LIST_POLICY.maxTasks);
   const items: TaskItem[] = [];
   for (const { phase, step } of selected) {
-    items.push(
-      buildTaskItem({
-        phaseName: phase.name,
-        step,
-        index: items.length,
-        existing: items,
-      }),
-    );
+    const item = buildTaskItem({
+      phaseName: phase.name,
+      step,
+      index: items.length,
+      existing: items,
+    });
+    // Prefer an empty list over package-wide / objective-only placeholders.
+    if (!isConcreteDisplayItem(item, step.targetRefs)) {
+      continue;
+    }
+    items.push(item);
   }
 
-  if (items.length === 0 && plan.objective.trim().length > 0) {
-    items.push({
-      id: "task-objective",
-      title: plan.objective.slice(0, DEFAULT_MAX_TASK_TITLE_CHARS),
-      // Single fallback item starts active for Agent auto-advance.
-      status: "active",
-    });
+  // Re-stamp active after filtering (first concrete item only).
+  for (const [index, item] of items.entries()) {
+    item.status = index === 0 ? "active" : "pending";
   }
 
   if (items.length === 0) {
     return taskListApplyResultSchema.parse({
       schemaVersion: TASK_LIST_SCHEMA_VERSION,
       status: "rejected",
-      warnings: ["Plan did not contain deriveable tasks."],
+      warnings: [
+        "Plan did not contain concrete file-scoped tasks for the live checklist.",
+      ],
       reasonCodes: ["task_list_empty", "task_list_invalid"],
     });
   }
@@ -84,6 +90,14 @@ export function deriveTaskListFromPlan(plan: PlanArtifact): TaskListApplyResult 
 function isProcessMetaStep(intent: string, actionSummary?: string): boolean {
   const text = `${intent} ${actionSummary ?? ""}`.trim();
   return TASK_LIST_POLICY.processMetaStep.test(text);
+}
+
+function isConcreteDisplayItem(
+  item: TaskItem,
+  targetRefs: readonly string[],
+): boolean {
+  const hint = `${item.title} ${item.detail ?? ""} ${targetRefs.join(" ")}`;
+  return TASK_LIST_POLICY.concreteDisplayHint.test(hint);
 }
 
 type PlanStepCandidate = {

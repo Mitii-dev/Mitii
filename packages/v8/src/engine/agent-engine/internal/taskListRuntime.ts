@@ -3,6 +3,7 @@ import type { PlanArtifact } from "../../../modules/planning";
 import {
   TASK_LIST_POLICY,
   TaskListPipeline,
+  UPDATE_TODOS_TOOL_ALIASES,
   UPDATE_TODOS_TOOL_NAME,
   serializeTaskListGuidance,
   taskListApplyInputSchema,
@@ -16,12 +17,51 @@ import type {
 import type { ToolResult } from "../../tool-runtime";
 import { TOOL_RUNTIME_SCHEMA_VERSION, toolResultSchema } from "../../tool-runtime";
 
+const UPDATE_TODOS_ITEM_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    id: {
+      type: "string",
+      description:
+        "Stable id. Prefer plan step ids when the list came from a plan.",
+    },
+    title: {
+      type: "string",
+      description:
+        "Short concrete work title (file, failure, or user-visible behavior).",
+    },
+    content: {
+      type: "string",
+      description: "Alias for title (accepted for compatibility).",
+    },
+    status: {
+      type: "string",
+      enum: [
+        "pending",
+        "active",
+        "done",
+        "skipped",
+        "blocked",
+        "in_progress",
+        "completed",
+        "todo",
+      ],
+      description:
+        "At most one item may be active. Use pending → active → done for progress. Aliases: in_progress→active, completed→done.",
+    },
+    detail: { type: "string" },
+  },
+} as const;
+
 export const UPDATE_TODOS_TOOL_DEFINITION: ModelToolDefinition = {
   name: UPDATE_TODOS_TOOL_NAME,
   description:
     "Create or update the live working checklist for this run (max 8 items). " +
     "If this is a multi-step run and the list is empty after the first read/diagnose tool turn, " +
     "call update_todos with type=replace and concrete titles naming a file, failure, or user-visible behavior. " +
+    "Pass checklist rows as items (preferred) or todos; each row needs title (or content). " +
+    "Aliases accepted: update_todo, update_todo_list, task_list_update, update_task_list. " +
     "Keep exactly one item active. Before finishing a slice, patch the active item to done and the next pending item to active. " +
     "Do not copy Discover/Change/Verify process labels or skill playbook bullets into titles. " +
     "If a plan-derived list is still process-shaped, replace it; otherwise prefer patch by id (stable ids / sourceRef). " +
@@ -41,30 +81,14 @@ export const UPDATE_TODOS_TOOL_DEFINITION: ModelToolDefinition = {
         type: "array",
         maxItems: 8,
         description:
-          "Checklist items. Prefer concrete Change/Verify work over vague process labels.",
-        items: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            id: {
-              type: "string",
-              description:
-                "Stable id. Prefer plan step ids when the list came from a plan.",
-            },
-            title: {
-              type: "string",
-              description:
-                "Short concrete work title (file, failure, or user-visible behavior).",
-            },
-            status: {
-              type: "string",
-              enum: ["pending", "active", "done", "skipped", "blocked"],
-              description:
-                "At most one item may be active. Use pending → active → done for progress.",
-            },
-            detail: { type: "string" },
-          },
-        },
+          "Checklist items. Prefer concrete file/failure titles over vague process labels.",
+        items: UPDATE_TODOS_ITEM_SCHEMA,
+      },
+      todos: {
+        type: "array",
+        maxItems: 8,
+        description: "Alias for items (accepted for compatibility).",
+        items: UPDATE_TODOS_ITEM_SCHEMA,
       },
     },
     required: ["type"],
@@ -91,7 +115,13 @@ export function attachTaskListTool(params: {
 }
 
 export function isUpdateTodosTool(name: string): boolean {
-  return name === UPDATE_TODOS_TOOL_NAME;
+  if (name === UPDATE_TODOS_TOOL_NAME) return true;
+  return (UPDATE_TODOS_TOOL_ALIASES as readonly string[]).includes(name);
+}
+
+/** Normalize model aliases to the canonical tool name. */
+export function canonicalizeUpdateTodosToolName(name: string): string {
+  return isUpdateTodosTool(name) ? UPDATE_TODOS_TOOL_NAME : name;
 }
 
 export function shouldSeedTaskListFromPlan(params: {
@@ -166,7 +196,16 @@ export function applyUpdateTodosArguments(params: {
     };
   }
 
-  const items = Array.isArray(raw.items) ? raw.items : [];
+  const items = resolveTodoItemRows(raw);
+  if (type !== "clear" && items.length === 0) {
+    return {
+      ok: false,
+      message:
+        'update_todos replace/patch requires a non-empty "items" (or "todos") array. ' +
+        "Each item needs title (or content).",
+    };
+  }
+
   const inputCandidate: TaskListApplyInput = {
     schemaVersion: 1,
     current: params.current,
@@ -177,36 +216,11 @@ export function applyUpdateTodosArguments(params: {
         : type === "replace"
           ? {
               type: "replace",
-              items: items.map((item) => {
-                const record = asRecord(item);
-                return {
-                  ...(typeof record.id === "string" ? { id: record.id } : {}),
-                  title:
-                    typeof record.title === "string" ? record.title : "Untitled",
-                  ...(typeof record.status === "string"
-                    ? { status: record.status as TaskList["items"][number]["status"] }
-                    : {}),
-                  ...(typeof record.detail === "string"
-                    ? { detail: record.detail }
-                    : {}),
-                };
-              }),
+              items: items.map((item) => mapReplaceDraft(item)),
             }
           : {
               type: "patch",
-              items: items.map((item) => {
-                const record = asRecord(item);
-                return {
-                  id: typeof record.id === "string" ? record.id : "",
-                  ...(typeof record.status === "string"
-                    ? { status: record.status as TaskList["items"][number]["status"] }
-                    : {}),
-                  ...(typeof record.title === "string" ? { title: record.title } : {}),
-                  ...(typeof record.detail === "string"
-                    ? { detail: record.detail }
-                    : {}),
-                };
-              }),
+              items: items.map((item) => mapPatchDraft(item)),
             },
   };
 
@@ -229,6 +243,98 @@ export function applyUpdateTodosArguments(params: {
     taskList: result.taskList,
     warnings: result.warnings,
   };
+}
+
+function resolveTodoItemRows(raw: Record<string, unknown>): unknown[] {
+  if (Array.isArray(raw.items) && raw.items.length > 0) {
+    return raw.items;
+  }
+  if (Array.isArray(raw.todos) && raw.todos.length > 0) {
+    return raw.todos;
+  }
+  if (Array.isArray(raw.items)) {
+    return raw.items;
+  }
+  if (Array.isArray(raw.todos)) {
+    return raw.todos;
+  }
+  return [];
+}
+
+function mapReplaceDraft(item: unknown): {
+  id?: string;
+  title: string;
+  status?: TaskList["items"][number]["status"];
+  detail?: string;
+} {
+  const record = asRecord(item);
+  const title = resolveTodoTitle(record);
+  const status = normalizeTodoStatus(record.status);
+  return {
+    ...(typeof record.id === "string" ? { id: record.id } : {}),
+    title: title ?? "Untitled",
+    ...(status ? { status } : {}),
+    ...(typeof record.detail === "string" ? { detail: record.detail } : {}),
+  };
+}
+
+function mapPatchDraft(item: unknown): {
+  id: string;
+  title?: string;
+  status?: TaskList["items"][number]["status"];
+  detail?: string;
+} {
+  const record = asRecord(item);
+  const title = resolveTodoTitle(record);
+  const status = normalizeTodoStatus(record.status);
+  return {
+    id: typeof record.id === "string" ? record.id : "",
+    ...(title ? { title } : {}),
+    ...(status ? { status } : {}),
+    ...(typeof record.detail === "string" ? { detail: record.detail } : {}),
+  };
+}
+
+function resolveTodoTitle(record: Record<string, unknown>): string | undefined {
+  for (const key of ["title", "content", "text"] as const) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+/** Map common model status aliases onto the task-list contract. */
+export function normalizeTodoStatus(
+  value: unknown,
+): TaskList["items"][number]["status"] | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const key = value.trim().toLowerCase().replace(/-/g, "_");
+  switch (key) {
+    case "pending":
+    case "todo":
+    case "not_started":
+      return "pending";
+    case "active":
+    case "in_progress":
+    case "doing":
+      return "active";
+    case "done":
+    case "completed":
+    case "complete":
+      return "done";
+    case "skipped":
+    case "cancelled":
+    case "canceled":
+      return "skipped";
+    case "blocked":
+      return "blocked";
+    default:
+      return undefined;
+  }
 }
 
 export function buildUpdateTodosToolResult(params: {
@@ -308,8 +414,17 @@ export function maybeAutoAdvanceTaskList(params: {
   if (params.preToolActiveId && active.id !== params.preToolActiveId) {
     return { advanced: false, warnings: [] };
   }
+  if (!isMutationAutoAdvanceEligible(active)) {
+    return { advanced: false, warnings: [] };
+  }
+
+  // Activate the next concrete change-like pending item only. Never auto-activate
+  // Discover/Verify process rows — those need model/evidence patches.
   const nextPending = params.current.items.find(
-    (item) => item.status === "pending" && item.id !== active.id,
+    (item) =>
+      item.status === "pending" &&
+      item.id !== active.id &&
+      isMutationAutoAdvanceEligible(item),
   );
   const patchItems = [
     { id: active.id, status: "done" as const },
@@ -332,6 +447,23 @@ export function maybeAutoAdvanceTaskList(params: {
     taskList: result.taskList,
     warnings: result.warnings,
   };
+}
+
+/** Mutation success may only complete concrete change-like checklist rows. */
+export function isMutationAutoAdvanceEligible(item: {
+  title: string;
+  detail?: string;
+}): boolean {
+  const title = item.title.trim();
+  if (TASK_LIST_POLICY.autoAdvanceBlockedTitle.test(title)) {
+    return false;
+  }
+  if (TASK_LIST_POLICY.deferredIntent.test(title)) {
+    return false;
+  }
+  const hint = `${title} ${item.detail ?? ""}`;
+  // Package-wide mega-objectives without a file must not burn through on one patch.
+  return TASK_LIST_POLICY.autoAdvanceConcreteFileHint.test(hint);
 }
 
 export function appendTaskListToPlanText(

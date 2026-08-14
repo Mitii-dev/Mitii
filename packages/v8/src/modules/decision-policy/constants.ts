@@ -90,6 +90,12 @@ export const DECISION_REASON_CODES = [
   "simple_localized_no_visible_plan",
   "multi_file_internal_plan",
   "architecture_visible_plan",
+  /** Package/multi-file repair execute gets a visible plan + live checklist seed. */
+  "broad_repair_visible_plan",
+  /** Prompt/engine should prefer analyze_change_impact before shared-surface mutations. */
+  "change_impact_recommended",
+  /** Understanding risk was low but shared-scope repair elevated effective grant risk. */
+  "shared_scope_risk_elevated",
   "explicit_plan_request",
   "plan_gate_none",
   "plan_gate_required",

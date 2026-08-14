@@ -125,6 +125,33 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.planningDepth).not.toBe("visible");
   });
 
+  it("forces visible planning and change-impact for package-scoped repair", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "Resolve all TypeScript compilation/type errors in packages/mui-builder",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "bugfix",
+          interactionIntent: "act",
+          taskAnalysis: {
+            scope: "package",
+            complexity: "moderate",
+            risk: "low",
+            recommendsPlanning: true,
+            estimatedFilesAffected: { minimum: 8, maximum: 20 },
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.planningDepth).toBe("visible");
+    expect(decision.reasonCodes).toContain("broad_repair_visible_plan");
+    expect(decision.reasonCodes).toContain("change_impact_recommended");
+    expect(decision.reasonCodes).toContain("shared_scope_risk_elevated");
+    expect(decision.toolGrant.allowedTools).toContain("analyze_change_impact");
+  });
+
   it("treats clarification as a suspended disposition", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({

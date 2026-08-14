@@ -1,107 +1,127 @@
 # Decision Policy
 
-```text
-Input:  DecisionPolicyInput { envelope, understanding, repositoryState? }
-Output: ExecutionDecision { route, planningDepth, toolGrant, verification, … }
-```
+Decision Policy is V8's authority module. It converts request evidence into one `ExecutionDecision` that tells the rest of the system what route to take, whether planning is required, what tools may run, how approvals work, and what verification evidence is required.
 
-Turns Request Understanding evidence into one authoritative execution decision.
-This module authorizes route, planning depth, tool grants, approval mode,
-mutation batch budgets, and verification requirements. It does not execute
-tools or call models.
+## What This Module Does
 
-## Public API
+- Resolves execution route and run disposition.
+- Applies hard caps from interaction mode.
+- Decides planning depth and plan gate.
+- Decides whether repository context is required.
+- Compiles `ToolGrant` with allowed tools, effects, paths, command/network rules, limits, approval mode, and mutation budget.
+- Scans prompt-injection signals and clamps authority when needed.
+- Builds verification requirements.
+- Produces a trace for audit/debugging.
 
-| Export | Role |
-|--------|------|
-| `DecisionPolicyPipeline` | Public facade (`decide`, `narrow`) |
-| `decisionPolicyInputSchema` / `DecisionPolicyInput` | Boundary input |
-| `executionDecisionSchema` / `ExecutionDecision` | Boundary result |
-| `decisionTraceSchema` / `DecisionTrace` | Structured route/grant audit summary |
-| `toolGrantSchema` / `ToolGrant` | Structured authority grant |
-| `mutationBudgetSchema` / `MutationBudget` | Per-call apply_patch batch limits on write grants |
-
-```ts
-const pipeline = new DecisionPolicyPipeline();
-const decision = pipeline.decide({
-  schemaVersion: 1,
-  envelope,
-  understanding,
-  repositoryState: { reference, readiness: "ready" },
-});
-```
-
-## Flow
+## Structure
 
 ```text
-DecisionPolicyInput
-  → validate contracts
-  → scan prompt-injection (annotate only; never broaden grant)
-  → RoutePlanner: resolve route + run disposition + planning depth
-  → GrantCompiler: build tool grant (+ resolveMutationBudget on write)
-  → resolve verification + repository-context need
-  → ExecutionDecision + DecisionTrace
+decision-policy/
+  pipeline/                 DecisionPolicyPipeline
+  contracts/
+    input/                  DecisionPolicyInput
+    output/                 ExecutionDecision, ToolGrant
+    errors/                 DecisionPolicyErrors
+  actions/                  Route, grant, verification, mutation, injection decisions
+  constants.ts
+  policy.ts
+  patterns.ts
+  tests/
 ```
 
-Routing priority is:
+## Types And Contracts
 
-1. Material clarification.
-2. Mode caps: ask/plan cannot write.
-3. Explicit read-only constraints.
-4. Explicit plan request.
-5. Diagnosis intent.
-6. Mutation intent / act interaction / workspace bug report.
-7. Repository-grounded question.
-8. Direct answer.
+- `DecisionPolicyInput`: envelope, understanding, optional repository-state summary, approval mode, plan approval mode, and host capability flags.
+- `ExecutionDecision`: route, planning depth, plan gate, run disposition, repository-context requirement, optional pinned state, tool grant, verification requirement, reason codes, warnings, rationale, and optional trace.
+- `ToolGrant`: maximum workspace effect, allowed tools/effects, path scopes, command rules, network hosts, approval mode, limits, and optional mutation budget.
+- `MutationBudget`: per-call patch limits and preferred batching hints.
+- `DecisionTrace`: route priority step, grant profile, mutation profile, injection clamp, and signals used.
 
-Request Understanding is the primary signal source. English phrase patterns are
-fallbacks for missed hints such as polite "Can you implement...?" requests, not
-the sole authority for execute grants.
+## Technical Details
 
-`ExecutionDecision.trace` records the selected route priority step, grant
-profile, mutation profile, injection clamp status, and the main signals used.
+- Ask and plan modes cannot receive write grants.
+- Injection scanning never broadens authority.
+- `narrow()` may reduce scope or tighten approval/budgets after discovery; it cannot add authority.
+- Mutation profiles are `relaxed`, `standard`, and `tight`.
+- Verification requirements specify required evidence and whether unavailable evidence is acceptable.
+- Host capability flags currently include web search availability.
 
-## Mutation budget
+## Ownership Boundaries
 
-Write grants carry an optional `toolGrant.mutationBudget` chosen from profiles
-in `policy.ts` (`relaxed` / `standard` / `tight`):
+Owns route authority, grant compilation, approval mode, mutation budgets, repository-context need, and verification requirement.
 
-| Profile | When | Effect |
-|---------|------|--------|
-| `relaxed` | Simple, single-location | Larger batch caps (still hard-capped) |
-| `standard` | Default execute | Balanced batch size |
-| `tight` | Large file span, complex multi-file, or recommendsPlanning | Small batches; `requireBatchedExecution` |
-
-Tool Runtime enforces `maxPatchesPerCall`, `maxUniqueFilesPerCall`, and
-`maxPatchPayloadCharacters`. Agent Engine uses `preferredBatchSize` in
-prompt instructions and truncation recovery.
-
-## Policy highlights
-
-- Simple localized tasks get `planningDepth: "none"` (no visible plan).
-- Diagnosis-only and ask/plan modes never receive write effects.
-- Clarification is `runDisposition: "clarification_required"` (suspended, not failed).
-- The model cannot broaden `toolGrant`; injection attempts are ignored.
-- Injection clamping strips `mutationBudget` when write authority is removed.
-- `narrow()` may shrink path scopes, raise approval mode, or tighten mutation
-  budget after discovery. It never adds tools, effects, hosts, or broader paths.
-- Tool Runtime runs a **structural shadow authorizer** beside ValidateGrant
-  (forbid-wins, Cedar-shaped audit text via `compileToolGrantToCedar`). Shadow
-  disagreements can be observed; set `enforceShadowAuthorization` to deny on
-  shadow Deny. Full `@cedar-policy/cedar-wasm` evaluation can plug into the same
-  `ShadowGrantAuthorizer` port later.
-- Network: concrete hosts enable fetch tools; `web_search` requires both host
-  capability and an explicit search ask (URL alone is not enough).
-
-## Do not put here
-
-- Intent classification or task analysis (`request-understanding`)
-- Tool execution (`tool-runtime`)
-- Prompt construction or model calls
-- Agent run state machine (`agent-engine`)
+Does not own classification, model prompts, tool execution, repository indexing, checkpointing, or UI.
 
 ## Tests
 
 ```bash
 pnpm exec vitest run packages/v8/src/modules/decision-policy
+```
+
+## Example Flow
+
+This example uses a realistic coding-agent request and shows the kind of structure this module receives and returns. The output is representative: ids, timings, and scores are examples, but the shape matches how this module is meant to be understood.
+
+### Real Prompt
+
+```text
+I am in a React app. In src/LoginForm.tsx, when the user clicks the "Sign in" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.
+```
+
+### Real Input Structure
+
+DecisionPolicyInput -> ExecutionDecision:
+
+```json
+{
+  "schemaVersion": 1,
+  "envelope": "UserRequestEnvelope from Request Intake",
+  "understanding": "RequestUnderstandingResult from Request Understanding",
+  "repositoryState": {
+    "reference": { "workspaceId": "workspace-1", "stateToken": "state-abc" },
+    "readiness": "ready"
+  },
+  "hostCapabilities": { "webSearch": false }
+}
+```
+
+### Step-By-Step Flow
+
+1. A user sends the real prompt shown above from an editor or chat host.
+2. The host attaches workspace id `workspace-1` and the explicit target file `src/LoginForm.tsx`.
+3. The module receives the real structure shown in the input block.
+4. The module validates schema/version/limits before doing any work.
+5. The module extracts the important target: `src/LoginForm.tsx`.
+6. The module keeps the user constraint: existing validation and error handling must stay intact.
+7. The module performs only its own responsibility and does not cross into neighboring modules.
+8. Any budget, path, state, or provider constraint is applied before output is produced.
+9. The module records warnings/reason codes instead of hiding degraded behavior.
+10. The module returns the realistic output shape shown below.
+11. The next pipeline stage consumes that output without reinterpreting raw user text.
+
+### Realistic Output
+
+Decision Policy execution decision returns a result like this:
+
+```json
+{
+  "schemaVersion": 1,
+  "route": "execute",
+  "planningDepth": "none",
+  "planGate": "not_required",
+  "runDisposition": "continue",
+  "repositoryContextRequired": true,
+  "pinnedState": { "workspaceId": "workspace-1", "stateToken": "state-abc" },
+  "toolGrant": {
+    "maximumWorkspaceEffect": "write",
+    "allowedTools": ["read_file", "search", "apply_patch", "shell"],
+    "allowedEffects": ["read", "write", "execute"],
+    "pathScopes": ["."],
+    "approvalMode": "on_request",
+    "limits": { "maxToolCalls": 20, "maxWallTimeMs": 120000, "maxOutputBytes": 256000 },
+    "mutationBudget": { "maxPatchesPerCall": 6, "maxUniqueFilesPerCall": 3, "maxPatchPayloadCharacters": 24000, "preferredBatchSize": 2, "requireBatchedExecution": false }
+  },
+  "verification": { "required": true, "minimumEvidence": ["tests_or_diagnostics"], "allowUnavailable": false },
+  "reasonCodes": ["execute_requested", "localized_change", "verification_required"]
+}
 ```

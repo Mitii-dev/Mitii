@@ -51,6 +51,8 @@ export const AGENT_REASON_CODES = [
   "task_list_seeded",
   "task_list_updated",
   "task_list_auto_advanced",
+  "change_impact_gate_blocked",
+  "change_impact_observed",
   "approval_suspended",
   "approval_denied",
   "approval_granted",

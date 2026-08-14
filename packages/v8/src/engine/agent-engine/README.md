@@ -1,140 +1,60 @@
 # Agent Engine
 
-```text
-Input:  AgentEngineStartInput { request, workspaceRoot?, dirtyPaths?, repositoryState?, budget? }
-        AgentEngineResumeInput { runId, approval? | clarificationAnswer? | planDecision? }
-Output: AgentRunHandle { runId, events, result, cancel }
-```
+Agent Engine is the full run orchestrator for V8. It owns the lifecycle of a request after the host decides to run V8 as an agent: start, event streaming, checkpointing, suspend/resume, model/tool loop coordination, task-list updates, and final result production.
 
-Coordinates public V8 facades through one cancellable run, including
-mutation routes that suspend for approval and resume across process turns.
-Optional Planning produces a generic `PlanArtifact` and may suspend for
-plan approval before execute. Does not implement intent classification,
-indexing, retrieval, prompting, tool enforcement, or verification algorithms.
+It does not own the policy decision itself. Decision Policy decides the route and grant; Agent Engine applies that decision across the rest of the run.
 
-## Public API
+## Responsibilities
 
-| Export | Role |
-|--------|------|
-| `AgentEnginePipeline` | Public facade (`start`, `resume`) |
-| `composeReadOnlyAgentEngine` | Wire real Intake/Understand/Decide/Prompt/Planning (+ optional State/Context/Tools/Verification/CheckpointStore/Skills/Memory) |
-| `agentEngineStartInputSchema` / `AgentEngineStartInput` | Boundary input for `start` |
-| `agentEngineResumeInputSchema` / `AgentEngineResumeInput` | Boundary input for `resume` |
-| `agentRunResultSchema` / `AgentRunResult` | Terminal result |
-| `runEventSchema` / `RunEvent` | Safe event stream |
-| `AgentRunHandle` | Opaque run handle |
-| `InMemoryRunCheckpointStore` | Test/single-process checkpoint store for suspend/resume |
-| `PHASE8_SUPPORTED_ROUTES` / `DEFAULT_TOOL_DEFINITIONS` | Routing + default tool schemas (read-only + mutation) |
+- Validate `AgentEngineStartInput` and `AgentEngineResumeInput`.
+- Create an `AgentRunHandle` with `runId`, `events`, `result`, and `cancel()`.
+- Call intake, understanding, decision policy, repository context, planning, skills, memory, prompt construction, model gateway, tool runtime, task list, and verification.
+- Persist checkpoints for resumable approval/clarification/plan gates.
+- Avoid replaying completed tool calls after resume.
+- Enforce model/tool loop budgets.
+- Emit structured `RunEvent`s that hosts can render without exposing secrets.
 
-```ts
-const engine = composeReadOnlyAgentEngine({
-  understandingLlm,
-  runLlm,
-  repositoryState,
-  repositoryContext,
-  tools,
-  verification,
-  checkpointStore: new InMemoryRunCheckpointStore(),
-  skillsCatalog: new InMemorySkillsCatalog([...]),
-  memoryStore: new InMemoryMemoryStore([...]),
-});
-
-const handle = engine.start({
-  schemaVersion: 1,
-  request: {
-    sessionId: "s1",
-    mode: "agent",
-    userMessage: "Fix the null check in src/parse.ts",
-    workspace: { workspaceId: "ws" },
-  },
-  workspaceRoot: "/repo",
-  repositoryState: {
-    reference: { workspaceId: "ws", stateToken: "tok" },
-    readiness: "ready",
-  },
-});
-
-for await (const event of handle.events) {
-  // reconstruct UI without secrets
-}
-const result = await handle.result;
-
-if (result.status === "suspended" && result.suspension?.kind === "approval_required") {
-  const resumeHandle = engine.resume({
-    schemaVersion: 1,
-    runId: result.runId,
-    approval: {
-      approvalId: result.suspension.approval!.approvalId,
-      decision: "approved", // or "denied"
-    },
-  });
-  const resumed = await resumeHandle.result;
-}
-```
-
-## Flow (Phase 8/9)
+## Structure
 
 ```text
-Intake → Understand → Decide → pin Repository State
-  → select Skills (optional) → retrieve Memory (optional)
-  → retrieve Context → construct Prompt → invoke Model
-  → execute authorized Tools (read-only or mutating) as needed
-  → verify changes (when required) → produce Result
+agent-engine/
+  pipeline/                 AgentEnginePipeline
+  contracts/
+    input/                  AgentEngineStartInput, AgentEngineResumeInput
+    output/                 AgentRunHandle, AgentRunResult, RunEvent
+    ports/                  AgentEngineDependencies
+    errors/                 AgentEngineError
+  actions/                  Mapping, prompt slices, output recovery, gates
+  adapters/                 In-memory/file checkpoint stores, composition helpers
+  internal/                 Checkpoints, event bus, budgets, task-list runtime
+  tests/                    Unit and wired engine tests
 ```
 
-Supported routes: `direct_answer`, `repository_answer`, `clarify`, `diagnose`,
-`plan`, `execute`.
+## Main Types
 
-Mutation tool calls (e.g. `apply_patch`) that require approval suspend the
-run (`status: "suspended"`, `suspension.kind: "approval_required"`) with a
-persisted `AgentRunCheckpoint`. `resume()` continues from that checkpoint
-without replaying already-completed tool `callId`s:
+- `AgentEngineStartInput`: raw request, optional workspace root, repository-state summary, projects, conversation, instructions, approved plan, task list, tool definitions, budget, model options, approval mode, and dirty paths.
+- `AgentEngineResumeInput`: run id plus exactly one continuation: approval, clarification answer, or plan decision.
+- `AgentRunHandle`: opaque active-run handle with events and final result.
+- `AgentRunResult`: final status, route, planning depth, answer, optional plan, optional task list, optional suspension, pinned state, reason codes, warnings, usage, duration, and optional error.
+- `AgentEngineDependencies`: injected ports/pipelines used by the orchestrator.
+- `AgentRunCheckpoint`: persisted run state used by resume.
 
-- `approval.decision === "denied"` → terminal `status: "approval_denied"`,
-  checkpoint deleted, nothing applied.
-- `approval.decision === "approved"` → executes the pending tool once with
-  the approval token, then continues the model/tool loop from the restored
-  messages and budget.
+## Technical Details
 
-After a successful mutation loop, when `decision.verification.required` and
-files changed, the Engine gates completion on the `verification` port:
-verified success commits the mutation transaction(s); failure rolls them
-back via `tools.rollbackMutation` and the run finishes `failed`
-(`verification_failed`, `mutation_rolled_back`).
+- `start()` creates a new run and checkpoint.
+- `resume()` continues from a persisted checkpoint and does not replay completed `callId`s.
+- Runs can suspend for clarification, plan approval, or mutating tool approval.
+- Tool calls are passed to Tool Runtime with the exact grant from Decision Policy.
+- The engine may narrow authority after discovery but never expands the grant.
+- Task-list updates are validated through the Task List module.
+- Output truncation recovery can ask the model to continue safely within remaining budgets.
+- `composeReadOnlyAgentEngine` provides a useful read-only wiring helper.
 
-## Token strategy (large multi-file tasks)
+## Ownership Boundaries
 
-- Decision Policy attaches `toolGrant.mutationBudget` on write grants.
-- Engine injects a trusted `mitii.mutation_budget` project rule before prompt construction.
-- `apply_patch` tool description prefers small batches (catalog max 12).
-- When `finishReason === "length"` and tool-call JSON is incomplete, Engine **does not execute** those tools — it appends a smaller-batch recovery user message and continues the loop (`output_truncation_recovered`, capped by `AGENT_ENGINE_THRESHOLDS.maxTruncationRecoveries`).
-- Session budgets default higher (`maxModelCalls` 32) so multi-batch refactors can finish.
+Owns run orchestration, events, checkpoint lifecycle, suspend/resume, loop control, and verification handoff.
 
-## Policy highlights
-
-- Clarification and approval suspensions are `status: "suspended"` (not failed).
-- Active runs pin one repository `stateToken` for the whole suspend/resume
-  lifecycle and unpin only on terminal paths.
-- Model/tool loops honor budgets and abort signals deterministically;
-  budget usage is restored from the checkpoint on resume.
-  Wall-time budget measures **active** run time only — time spent
-  suspended waiting for user approval is excluded.
-- Tool calls use Decision Policy grants; model text cannot broaden authority.
-- Completed tool `callId`s are idempotent within a run (and across resume);
-  a call awaiting approval is deliberately left uncached so resume executes
-  it exactly once.
-- Events never include secrets, full prompts, or raw sensitive payloads.
-
-## Do not put here
-
-- Intent classifiers / task analyzers (`request-understanding`)
-- Route/grant authority (`decision-policy`)
-- Retrieval/indexing (`repository-context` / `repository-state`)
-- Skill selection / conflict resolution (`skills`)
-- Memory retrieval / retention (`memory`)
-- Prompt budgeting (`prompt-construction`)
-- Tool schema enforcement, mutation transactions, rollback (`tool-runtime`)
-- Verification algorithms (`verification`)
+Does not own intent classification, route authority, grant enforcement internals, provider-specific HTTP, repository indexing, filesystem semantics, or host UI.
 
 ## Tests
 
@@ -142,9 +62,61 @@ back via `tools.rollbackMutation` and the run finishes `failed`
 pnpm exec vitest run packages/v8/src/engine/agent-engine
 ```
 
-Includes contract/unit coverage, wired-facade e2e (direct answer, repository
-answer, clarification, diagnose, cancellation, budget exhaustion),
-mutation approval coverage (deny, approve + resume without replay,
-verification-triggered rollback) in `AgentEngineMutation.spec.ts`, and
-Phase 9 skills/memory evaluation in `AgentEnginePhase9Evaluation.spec.ts`
-(disable leaves core functional; enable improves grounding; budgets hold).
+## Example Flow
+
+This example uses a realistic coding-agent request and shows the kind of structure this module receives and returns. The output is representative: ids, timings, and scores are examples, but the shape matches how this module is meant to be understood.
+
+### Real Prompt
+
+```text
+I am in a React app. In src/LoginForm.tsx, when the user clicks the "Sign in" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.
+```
+
+### Real Input Structure
+
+AgentEngineStartInput -> events -> AgentRunResult:
+
+```json
+{
+  "prompt": "I am in a React app. In src/LoginForm.tsx, when the user clicks the \"Sign in\" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.",
+  "workspaceId": "workspace-1",
+  "stateToken": "state-abc",
+  "targetFile": "src/LoginForm.tsx"
+}
+```
+
+### Step-By-Step Flow
+
+1. A user sends the real prompt shown above from an editor or chat host.
+2. The host attaches workspace id `workspace-1` and the explicit target file `src/LoginForm.tsx`.
+3. The module receives the real structure shown in the input block.
+4. The module validates schema/version/limits before doing any work.
+5. The module extracts the important target: `src/LoginForm.tsx`.
+6. The module keeps the user constraint: existing validation and error handling must stay intact.
+7. The module performs only its own responsibility and does not cross into neighboring modules.
+8. Any budget, path, state, or provider constraint is applied before output is produced.
+9. The module records warnings/reason codes instead of hiding degraded behavior.
+10. The module returns the realistic output shape shown below.
+11. The next pipeline stage consumes that output without reinterpreting raw user text.
+
+### Realistic Output
+
+Agent Engine run returns a result like this:
+
+```json
+{
+  "status": "completed",
+  "route": "execute",
+  "answer": "Implemented the loading state and verified the LoginForm test.",
+  "taskList": {
+    "schemaVersion": 1,
+    "source": "agent",
+    "items": [
+      { "id": "inspect-login", "title": "Inspect src/LoginForm.tsx", "status": "done" },
+      { "id": "add-loading", "title": "Add pending button state", "status": "done" },
+      { "id": "verify-login", "title": "Verify LoginForm behavior", "status": "done" }
+    ]
+  },
+  "usage": { "modelCalls": 2, "toolCalls": 5, "loopIterations": 2 }
+}
+```

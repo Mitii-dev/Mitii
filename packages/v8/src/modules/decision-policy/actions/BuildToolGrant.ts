@@ -22,6 +22,7 @@ import {
   DEFAULT_VERIFICATION_COMMAND_PREFIXES,
 } from "./BuildVerificationGrant";
 import { resolveMutationBudget } from "./ResolveMutationBudget";
+import { shouldElevateSharedScopeRisk } from "./ClassifySharedScopeRepair";
 
 export interface ToolGrantResolution {
   toolGrant: ToolGrant;
@@ -111,7 +112,17 @@ export function buildToolGrant(params: {
   }
 
   // execute in agent mode
-  const risk = understanding.taskAnalysis.risk;
+  let risk = understanding.taskAnalysis.risk;
+  if (
+    shouldElevateSharedScopeRisk({
+      primaryTaskIntent: understanding.intent.classification.primaryTaskIntent,
+      taskAnalysis: understanding.taskAnalysis,
+      message: params.message ?? "",
+    })
+  ) {
+    risk = "medium";
+    reasonCodes.push("shared_scope_risk_elevated", "change_impact_recommended");
+  }
   const defaultApprovalMode =
     risk === "high" || risk === "critical" ? "every_mutation" : "when_required";
   const approvalMode = params.approvalMode ?? defaultApprovalMode;
