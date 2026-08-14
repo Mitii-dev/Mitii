@@ -704,14 +704,15 @@ export class AgentEnginePipeline {
       let selectedSkills: PromptInstructions["skills"];
       if (this.deps.skills) {
         this.emitStage(bus, runId, "skills_ready", "started");
-        const understandingSkillEvidence =
-          mapUnderstandingToSkillEvidence(understanding);
+        const understandingSkillEvidence = mapUnderstandingToSkillEvidence(
+          understanding,
+          {
+            projects: input.projects,
+            extraPaths: [...(input.dirtyPaths ?? []), ...contextPaths],
+          },
+        );
         const skillEvidencePaths = [
-          ...new Set([
-            ...understandingSkillEvidence.paths,
-            ...(input.dirtyPaths ?? []),
-            ...contextPaths,
-          ]),
+          ...new Set(understandingSkillEvidence.paths),
         ]
           .filter((path) => path.trim().length > 0)
           .slice(0, 50);
@@ -1022,6 +1023,10 @@ export class AgentEnginePipeline {
         runId,
         request: promptResult.request,
         decision,
+        understanding,
+        skillsQuery: extractPrimaryUserMessage(envelope.message),
+        mode: envelope.mode,
+        projects: input.projects,
         dirtyPaths: input.dirtyPaths,
         pinnedState,
         workspaceRoot: input.workspaceRoot,
@@ -1038,6 +1043,7 @@ export class AgentEnginePipeline {
           id: block.id,
           content: block.content,
         })),
+        selectedSkillIds: selectedSkills?.map((block) => block.id) ?? [],
       });
 
       return await this.finishAfterLoop({
@@ -2045,6 +2051,10 @@ export class AgentEnginePipeline {
     runId: string;
     request: ModelRequest;
     decision: ExecutionDecision;
+    understanding?: RequestUnderstandingResult;
+    skillsQuery?: string;
+    mode?: "ask" | "plan" | "agent";
+    projects?: readonly ProjectDescriptor[];
     dirtyPaths: readonly string[] | undefined;
     pinnedState: RepositoryStateReference | undefined;
     workspaceRoot: string | undefined;
@@ -2058,10 +2068,10 @@ export class AgentEnginePipeline {
     changedFiles: string[];
     mutationCheckpointIds: string[];
     memoryFacts?: readonly { id: string; content: string }[];
+    selectedSkillIds?: string[];
   }): Promise<ToolLoopOutcome> {
     const {
       runId,
-      decision,
       dirtyPaths,
       pinnedState,
       workspaceRoot,
@@ -2075,7 +2085,9 @@ export class AgentEnginePipeline {
       changedFiles,
       mutationCheckpointIds,
     } = params;
-    const grant = decision.toolGrant;
+    let decision = params.decision;
+    let grant = decision.toolGrant;
+    let selectedSkillIds = [...(params.selectedSkillIds ?? [])];
     let answer = "";
     let truncationRecoveries = 0;
     let incompleteAnswerRecoveries = 0;
@@ -2439,11 +2451,157 @@ export class AgentEnginePipeline {
         messages.push(outcome.message);
       }
 
+      await this.refreshAuthorityAfterTools({
+        runId,
+        bus,
+        reasonCodes,
+        warnings,
+        messages,
+        decisionRef: {
+          get: () => decision,
+          set: (next) => {
+            decision = next;
+            grant = next.toolGrant;
+          },
+        },
+        selectedSkillIdsRef: {
+          get: () => selectedSkillIds,
+          set: (next) => {
+            selectedSkillIds = next;
+          },
+        },
+        changedFiles,
+        dirtyPaths,
+        understanding: params.understanding,
+        skillsQuery: params.skillsQuery,
+        mode: params.mode,
+        projects: params.projects,
+        route: decision.route,
+      });
+
       reasonCodes.push("tools_executed");
       this.emitStage(bus, runId, "tool_running", "completed", [
         "tools_executed",
       ]);
     }
+  }
+
+  private async refreshAuthorityAfterTools(params: {
+    runId: string;
+    bus: EventBus;
+    reasonCodes: AgentReasonCode[];
+    warnings: string[];
+    messages: ModelMessage[];
+    decisionRef: {
+      get: () => ExecutionDecision;
+      set: (decision: ExecutionDecision) => void;
+    };
+    selectedSkillIdsRef: {
+      get: () => string[];
+      set: (ids: string[]) => void;
+    };
+    changedFiles: readonly string[];
+    dirtyPaths: readonly string[] | undefined;
+    understanding?: RequestUnderstandingResult;
+    skillsQuery?: string;
+    mode?: "ask" | "plan" | "agent";
+    projects?: readonly ProjectDescriptor[];
+    route: ExecutionDecision["route"];
+  }): Promise<void> {
+    const discoveredPaths = [
+      ...new Set([
+        ...(params.dirtyPaths ?? []),
+        ...params.changedFiles,
+      ]),
+    ]
+      .filter((path) => path.trim().length > 0)
+      .slice(0, 50);
+
+    if (this.deps.decision.narrow && discoveredPaths.length > 0) {
+      const previous = params.decisionRef.get();
+      const narrowed = this.deps.decision.narrow({
+        previous,
+        discoveredPaths,
+        residualRisk: params.understanding?.taskAnalysis.risk,
+      });
+      if (narrowed.reasonCodes.includes("grant_narrowed")) {
+        params.decisionRef.set(narrowed);
+        params.reasonCodes.push("grant_narrowed");
+        this.emit(params.bus, {
+          type: "grant_narrowed",
+          runId: params.runId,
+          maximumWorkspaceEffect: narrowed.toolGrant.maximumWorkspaceEffect,
+          approvalMode: narrowed.toolGrant.approvalMode,
+          pathScopes: narrowed.toolGrant.pathScopes.slice(0, 20),
+          reasonCodes: narrowed.reasonCodes.slice(-8),
+          at: this.isoNow(),
+        });
+      }
+    }
+
+    if (
+      !this.deps.skills ||
+      !params.understanding ||
+      !params.skillsQuery ||
+      !params.mode ||
+      discoveredPaths.length === 0
+    ) {
+      return;
+    }
+
+    const evidence = mapUnderstandingToSkillEvidence(params.understanding, {
+      projects: params.projects,
+      extraPaths: discoveredPaths,
+    });
+    const skillsResult = await this.deps.skills.select({
+      schemaVersion: SKILLS_SCHEMA_VERSION,
+      query: params.skillsQuery,
+      mode: params.mode,
+      route: params.route,
+      evidence,
+    });
+    const nextIds = skillsResult.instructions.map((block) => block.id);
+    const previousIds = params.selectedSkillIdsRef.get();
+    const changed =
+      nextIds.length !== previousIds.length ||
+      nextIds.some((id, index) => id !== previousIds[index]);
+    if (!changed || skillsResult.instructions.length === 0) {
+      return;
+    }
+
+    params.selectedSkillIdsRef.set(nextIds);
+    params.reasonCodes.push("skills_refreshed");
+    const refreshContent = skillsResult.instructions
+      .map((block) => {
+        const body = formatSkillPromptContent(block);
+        return `### ${block.title ?? block.id}\n${body}`;
+      })
+      .join("\n\n");
+    params.messages.push({
+      role: "user",
+      content: `Updated skill guidance after discovery (follow within current tool grant):\n\n${refreshContent}`,
+    });
+    this.emit(params.bus, {
+      type: "skills_ready",
+      runId: params.runId,
+      selectedCount: skillsResult.instructions.length,
+      omittedCount: skillsResult.omissions.length,
+      status: skillsResult.status,
+      selected: nextIds.slice(0, 20),
+      omitted: skillsResult.omissions
+        .map((omission) => omission.skillId)
+        .slice(0, 20),
+      omittedDetails: skillsResult.omissions
+        .map((omission) => ({
+          id: omission.skillId,
+          reason: omission.reason,
+          ...(typeof omission.tokens === "number"
+            ? { tokens: omission.tokens }
+            : {}),
+        }))
+        .slice(0, 20),
+      at: this.isoNow(),
+    });
   }
 
   private async executeOneTool(params: {

@@ -1,7 +1,32 @@
 import { describe, expect, it } from "vitest";
 
-import type { RequestUnderstandingResult } from "../../../../modules/request-understanding";
+import { deriveSkillRepoEvidence } from "../deriveSkillRepoEvidence";
 import { mapUnderstandingToSkillEvidence } from "../mapUnderstandingToSkillEvidence";
+import type { RequestUnderstandingResult } from "../../../../modules/request-understanding";
+
+describe("deriveSkillRepoEvidence", () => {
+  it("maps projects and path extensions into soft language/project tags", () => {
+    const evidence = deriveSkillRepoEvidence({
+      projects: [
+        {
+          projectId: "api",
+          rootPath: "apps/api",
+          primaryLanguageId: "python",
+          ecosystemId: "poetry",
+          manifestPaths: ["apps/api/pyproject.toml"],
+        },
+      ],
+      paths: ["src/main.go", "lib/util.ts"],
+    });
+
+    expect(evidence.languages).toEqual(
+      expect.arrayContaining(["python", "go", "typescript"]),
+    );
+    expect(evidence.projectKinds).toEqual(
+      expect.arrayContaining(["python", "poetry", "go", "typescript"]),
+    );
+  });
+});
 
 describe("mapUnderstandingToSkillEvidence", () => {
   it("forwards recommendedSkillTags from understanding taskHints", () => {
@@ -42,7 +67,9 @@ describe("mapUnderstandingToSkillEvidence", () => {
         complexity: "simple",
         risk: "low",
         clarity: "clear",
-        targets: [],
+        targets: [
+          { kind: "file", value: "parse.ts", explicit: true },
+        ],
         constraints: [],
         requestedOutcomes: [],
         recommendsRepositoryDiscovery: false,
@@ -54,10 +81,22 @@ describe("mapUnderstandingToSkillEvidence", () => {
       },
     } as RequestUnderstandingResult;
 
-    const evidence = mapUnderstandingToSkillEvidence(understanding);
+    const evidence = mapUnderstandingToSkillEvidence(understanding, {
+      projects: [
+        {
+          projectId: "root",
+          rootPath: ".",
+          primaryLanguageId: "typescript",
+          manifestPaths: [],
+        },
+      ],
+    });
 
     expect(evidence.primaryIntent).toBe("bugfix");
     expect(evidence.secondaryIntents).toEqual(["diagnose"]);
     expect(evidence.recommendedSkillTags).toEqual(["localize", "null-safety"]);
+    expect(evidence.paths).toContain("parse.ts");
+    expect(evidence.languages).toContain("typescript");
+    expect(evidence.projectKinds).toContain("typescript");
   });
 });

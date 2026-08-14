@@ -129,20 +129,40 @@ export async function loadDiskSkillBody(
     return undefined;
   }
   const roots = resolveSkillRoots(options);
+
+  for (const root of roots) {
+    const direct = join(root, normalizedId, SKILL_FILE_NAME);
+    if (await isFile(direct)) {
+      const raw = await readFile(direct, 'utf8');
+      const { manifest, body } = parseSkillFile(raw);
+      const index = buildSkillIndex(direct, manifest, body, 'metadata');
+      if (index?.id === normalizedId) {
+        const content =
+          body.trim() ||
+          index.content ||
+          compactSkillContent({
+            title: index.title,
+            description: index.description ?? index.title,
+            manifest: {},
+          });
+        return {
+          content,
+          resources: findSkillResources(direct),
+        };
+      }
+    }
+  }
+
+  // Fallback for skills whose folder name differs from frontmatter name.
   let selected: { filePath: string; index: SkillIndexEntry; body: string } | undefined;
   for (const root of roots) {
     const files = await findSkillFiles([root]);
-    const loaded = await Promise.all(
-      files.map(async (filePath) => {
-        const raw = await readFile(filePath, 'utf8');
-        const { manifest, body } = parseSkillFile(raw);
-        const index = buildSkillIndex(filePath, manifest, body, 'metadata');
-        return index ? { filePath, index, body } : undefined;
-      }),
-    );
-    for (const skill of loaded) {
-      if (skill?.index.id === normalizedId) {
-        selected = skill;
+    for (const filePath of files) {
+      const raw = await readFile(filePath, 'utf8');
+      const { manifest, body } = parseSkillFile(raw);
+      const index = buildSkillIndex(filePath, manifest, body, 'metadata');
+      if (index?.id === normalizedId) {
+        selected = { filePath, index, body };
       }
     }
   }

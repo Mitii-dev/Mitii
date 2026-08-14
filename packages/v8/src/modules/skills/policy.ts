@@ -23,6 +23,11 @@ export const SKILLS_THRESHOLDS = {
   recommendedTagWeight: 0.15,
   /** Small boost once a path-gated skill is eligible. */
   pathWeight: 0.1,
+  /**
+   * Soft boost from SkillSimilarityPort after applicability is earned.
+   * Never grants applicability alone.
+   */
+  similarityWeight: 0.2,
   /** Always-apply skills receive this base score before other signals. */
   alwaysApplyBaseScore: 1,
 } as const;

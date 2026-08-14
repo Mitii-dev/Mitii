@@ -205,6 +205,13 @@ export {
   createBuiltinToolRegistry,
   defineTool,
   BUILTIN_TOOLS,
+  StructuralShadowGrantAuthorizer,
+  compileToolGrantToCedar,
+} from "./engine/tool-runtime";
+export type {
+  ShadowAuthorizeDecision,
+  ShadowAuthorizeResult,
+  ShadowGrantAuthorizer,
 } from "./engine/tool-runtime";
 export type {
   ToolInvocationInput,
@@ -245,6 +252,7 @@ export {
   skillIndexEntrySchema,
   skillBodySchema,
   InMemorySkillsCatalog,
+  KeywordSkillSimilarity,
   SKILLS_SCHEMA_VERSION,
 } from "./modules/skills";
 export type {
@@ -254,6 +262,7 @@ export type {
   SkillDescriptor,
   SkillIndexEntry,
   SkillsCatalogPort,
+  SkillSimilarityPort,
 } from "./modules/skills";
 
 export { MemoryPipeline } from "./modules/memory";

@@ -411,7 +411,10 @@ Narrowing is monotonic: it can shrink path scopes, raise approval mode, or
 tighten mutation budget, but it cannot add tools, effects, network hosts, or
 broader paths. Tool Runtime remains the enforcement point for every tool call.
 Optional Cedar/OPA enforcement can sit beside the existing grant check, starting
-in shadow mode; deny-by-default and forbid-wins semantics are required.
+in shadow mode; deny-by-default and forbid-wins semantics are required. The
+runtime ships `StructuralShadowGrantAuthorizer` + `compileToolGrantToCedar` for
+audit/shadow comparison; hosts may later evaluate compiled Cedar with
+`@cedar-policy/cedar-wasm` through the same port.
 
 Planning policy:
 

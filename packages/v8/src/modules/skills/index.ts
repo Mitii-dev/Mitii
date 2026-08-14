@@ -45,3 +45,5 @@ export type {
 } from "./contracts";
 
 export { InMemorySkillsCatalog } from "./adapters";
+export { KeywordSkillSimilarity } from "./KeywordSkillSimilarity";
+export type { SkillSimilarityPort } from "./contracts";

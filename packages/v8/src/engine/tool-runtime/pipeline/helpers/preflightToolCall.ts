@@ -12,6 +12,10 @@ import { fingerprintToolCall } from "../../internal/mutation";
 import type { SessionBudget } from "../../internal/SessionBudget";
 import { SessionBudgetError } from "../../internal/SessionBudget";
 import type { RegisteredTool, ToolRegistry } from "../../internal/ToolRegistry";
+import {
+  StructuralShadowGrantAuthorizer,
+  type ShadowGrantAuthorizer,
+} from "../../internal/shadow/ShadowGrantAuthorizer";
 import { buildRejectedResult } from "./buildToolResult";
 import type { CallClock, ToolExecuteOptions } from "../types";
 
@@ -27,6 +31,8 @@ export type PreflightFailure = {
 };
 
 export type PreflightOutcome = PreflightSuccess | PreflightFailure;
+
+const DEFAULT_SHADOW_AUTHORIZER = new StructuralShadowGrantAuthorizer();
 
 /**
  * Budget, cancellation, registration, grant, approval, and argument checks.
@@ -83,6 +89,7 @@ export function preflightToolCall(params: {
     };
   }
 
+  let primaryAllowed = true;
   try {
     validateToolAgainstGrant({
       tool: registered.definition,
@@ -90,6 +97,15 @@ export function preflightToolCall(params: {
     });
   } catch (error) {
     if (error instanceof GrantValidationError) {
+      primaryAllowed = false;
+      runShadowAuthorize({
+        authorizer: options.shadowAuthorizer ?? DEFAULT_SHADOW_AUTHORIZER,
+        tool: registered.definition,
+        grant: parsed.grant,
+        arguments: parsed.arguments,
+        primaryAllowed,
+        onShadowAuthorize: options.onShadowAuthorize,
+      });
       return {
         ok: false,
         result: buildRejectedResult({
@@ -101,6 +117,33 @@ export function preflightToolCall(params: {
       };
     }
     throw error;
+  }
+
+  const shadow = runShadowAuthorize({
+    authorizer: options.shadowAuthorizer ?? DEFAULT_SHADOW_AUTHORIZER,
+    tool: registered.definition,
+    grant: parsed.grant,
+    arguments: parsed.arguments,
+    primaryAllowed: true,
+    onShadowAuthorize: options.onShadowAuthorize,
+  });
+
+  if (
+    options.enforceShadowAuthorization === true &&
+    shadow.decision === "Deny"
+  ) {
+    return {
+      ok: false,
+      result: buildRejectedResult({
+        parsed,
+        clock,
+        status: "rejected",
+        reasonCode: "tool_not_allowed",
+        warnings: [
+          `Shadow grant authorizer denied tool "${parsed.toolName}": ${shadow.reason}`,
+        ],
+      }),
+    };
   }
 
   try {
@@ -222,4 +265,29 @@ function extractMutationPaths(
   }
 
   return [];
+}
+
+function runShadowAuthorize(params: {
+  authorizer: ShadowGrantAuthorizer;
+  tool: RegisteredTool["definition"];
+  grant: ToolInvocationInput["grant"];
+  arguments: unknown;
+  primaryAllowed: boolean;
+  onShadowAuthorize?: ToolExecuteOptions["onShadowAuthorize"];
+}) {
+  const shadow = params.authorizer.authorize({
+    tool: params.tool,
+    grant: params.grant,
+    arguments: params.arguments,
+  });
+  const disagreed =
+    (params.primaryAllowed && shadow.decision === "Deny") ||
+    (!params.primaryAllowed && shadow.decision === "Allow");
+  params.onShadowAuthorize?.({
+    toolName: params.tool.name,
+    primaryAllowed: params.primaryAllowed,
+    shadow,
+    disagreed,
+  });
+  return shadow;
 }

@@ -3,6 +3,7 @@ import {
   matchSkills,
   resolveSkillConflicts,
 } from "../actions";
+import { KeywordSkillSimilarity } from "../KeywordSkillSimilarity";
 import { SKILLS_SCHEMA_VERSION } from "../constants";
 import {
   SkillsError,
@@ -21,10 +22,12 @@ import type {
   SkillsSelectResult,
   SkillReasonCode,
 } from "../contracts";
+import type { SkillSimilarityPort } from "../contracts/ports/SkillSimilarityPort";
 import type { z } from "zod";
 
 export interface SkillsPipelineDependencies {
   catalog: SkillsCatalogPort;
+  similarity?: SkillSimilarityPort;
 }
 
 /**
@@ -33,8 +36,9 @@ export interface SkillsPipelineDependencies {
  * Flow:
  *   validate input
  *   → load catalog
- *   → match by task evidence / route / keywords
+ *   → match by task evidence / route / keywords (+ optional similarity)
  *   → resolve conflict groups
+ *   → hydrate selected skill bodies
  *   → apply dedicated budget
  *   → return instruction blocks with provenance
  *
@@ -42,6 +46,7 @@ export interface SkillsPipelineDependencies {
  */
 export class SkillsPipeline {
   private readonly catalog: SkillsCatalogPort;
+  private readonly similarity: SkillSimilarityPort;
 
   constructor(dependencies: SkillsPipelineDependencies) {
     if (!dependencies.catalog) {
@@ -51,6 +56,8 @@ export class SkillsPipeline {
       );
     }
     this.catalog = dependencies.catalog;
+    this.similarity =
+      dependencies.similarity ?? new KeywordSkillSimilarity();
   }
 
   public async select(input: SkillsSelectInput): Promise<SkillsSelectResult> {
@@ -101,7 +108,11 @@ export class SkillsPipeline {
       });
     }
 
-    const matched = matchSkills({ catalog, input: parsed });
+    const matched = await matchSkills({
+      catalog,
+      input: parsed,
+      similarity: this.similarity,
+    });
     const conflicts = resolveSkillConflicts({ scored: matched });
     if (conflicts.conflictsResolved) {
       reasonCodes.push("conflicts_resolved");

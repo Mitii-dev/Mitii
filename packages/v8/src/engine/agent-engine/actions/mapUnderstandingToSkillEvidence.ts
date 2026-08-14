@@ -1,14 +1,37 @@
+import type { ProjectDescriptor } from "../../../modules/repository-state";
 import type { RequestUnderstandingResult } from "../../../modules/request-understanding";
 import type { SkillTaskEvidence } from "../../../modules/skills";
+
+import { deriveSkillRepoEvidence } from "./deriveSkillRepoEvidence";
 
 /**
  * Map Request Understanding into the slim Skills evidence slice.
  */
 export function mapUnderstandingToSkillEvidence(
   understanding: RequestUnderstandingResult,
+  options?: {
+    projects?: readonly ProjectDescriptor[];
+    extraPaths?: readonly string[];
+  },
 ): SkillTaskEvidence {
   const recommendedSkillTags =
     understanding.intent.classification.taskHints?.recommendedSkillTags ?? [];
+
+  const paths = understanding.taskAnalysis.targets
+    .filter((target) => target.kind === "file" || target.kind === "folder")
+    .map((target) => normalizeEvidencePath(target.value))
+    .filter((path): path is string => Boolean(path));
+
+  const mergedPaths = [
+    ...new Set([...(options?.extraPaths ?? []), ...paths]),
+  ]
+    .filter((path) => path.trim().length > 0)
+    .slice(0, 50);
+
+  const repoEvidence = deriveSkillRepoEvidence({
+    projects: options?.projects,
+    paths: mergedPaths,
+  });
 
   return {
     primaryIntent: understanding.intent.classification.primaryTaskIntent,
@@ -20,14 +43,10 @@ export function mapUnderstandingToSkillEvidence(
     risk: understanding.taskAnalysis.risk,
     recommendsPlanning: understanding.taskAnalysis.recommendsPlanning,
     recommendsVerification: understanding.taskAnalysis.recommendsVerification,
-    paths: understanding.taskAnalysis.targets
-      .filter((target) => target.kind === "file" || target.kind === "folder")
-      .map((target) => normalizeEvidencePath(target.value))
-      .filter((path): path is string => Boolean(path))
-      .slice(0, 50),
+    paths: mergedPaths,
     recommendedSkillTags: [...recommendedSkillTags],
-    languages: [],
-    projectKinds: [],
+    languages: repoEvidence.languages,
+    projectKinds: repoEvidence.projectKinds,
   };
 }
 

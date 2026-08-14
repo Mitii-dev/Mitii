@@ -85,8 +85,13 @@ prompt instructions and truncation recovery.
 - Injection clamping strips `mutationBudget` when write authority is removed.
 - `narrow()` may shrink path scopes, raise approval mode, or tighten mutation
   budget after discovery. It never adds tools, effects, hosts, or broader paths.
-- Optional Cedar/OPA enforcement should start in shadow mode beside Tool Runtime
-  grant checks; default remains deny unless both grant and policy allow.
+- Tool Runtime runs a **structural shadow authorizer** beside ValidateGrant
+  (forbid-wins, Cedar-shaped audit text via `compileToolGrantToCedar`). Shadow
+  disagreements can be observed; set `enforceShadowAuthorization` to deny on
+  shadow Deny. Full `@cedar-policy/cedar-wasm` evaluation can plug into the same
+  `ShadowGrantAuthorizer` port later.
+- Network: concrete hosts enable fetch tools; `web_search` requires both host
+  capability and an explicit search ask (URL alone is not enough).
 
 ## Do not put here
 

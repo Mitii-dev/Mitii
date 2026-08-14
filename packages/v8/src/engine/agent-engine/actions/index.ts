@@ -11,6 +11,8 @@ export { decideVerificationGate } from "./decideVerificationGate";
 export type { VerificationGateDecision } from "./decideVerificationGate";
 export { mapContextToPromptSlice } from "./mapContextToPromptSlice";
 export { mapUnderstandingToSkillEvidence } from "./mapUnderstandingToSkillEvidence";
+export { deriveSkillRepoEvidence } from "./deriveSkillRepoEvidence";
+export type { SkillRepoEvidence } from "./deriveSkillRepoEvidence";
 export { mapUnderstandingToPlanningEvidence } from "./mapUnderstandingToPlanningEvidence";
 export { mergePromptInstructions } from "./mergePromptInstructions";
 export { filterToolDefinitions } from "./filterToolDefinitions";

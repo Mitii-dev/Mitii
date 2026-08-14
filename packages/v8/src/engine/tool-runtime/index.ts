@@ -38,9 +38,14 @@ export type {
 export type { ToolApprovalToken } from "./pipeline/types";
 
 export {
-  validateMutationBatch,
-  MutationBatchValidationError,
-} from "./mutationBatch";
+  StructuralShadowGrantAuthorizer,
+  compileToolGrantToCedar,
+} from "./shadow";
+export type {
+  ShadowAuthorizeDecision,
+  ShadowAuthorizeResult,
+  ShadowGrantAuthorizer,
+} from "./shadow";
 
 export {
   ToolRegistry,

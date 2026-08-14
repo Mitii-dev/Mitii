@@ -99,6 +99,12 @@ importers:
       '@lancedb/lancedb':
         specifier: 0.33.0
         version: 0.33.0(apache-arrow@18.1.0)
+      tree-sitter-wasms:
+        specifier: ^0.1.13
+        version: 0.1.13
+      web-tree-sitter:
+        specifier: ^0.24.7
+        version: 0.24.7
 
   apps/vscode/webview-ui:
     dependencies:

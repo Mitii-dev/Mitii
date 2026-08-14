@@ -57,11 +57,15 @@ const result = await skills.select({
 ## Stages
 
 1. Validate input
-2. Load catalog
-3. Match by intent / route / keywords
+2. Load catalog (L1 index)
+3. Match by intent / route / keywords (+ optional similarity)
 4. Resolve conflict groups
-5. Hydrate selected skill bodies
+5. Hydrate selected skill bodies (L2)
 6. Apply dedicated token budget
+
+Optional `SkillSimilarityPort` soft-ranks already-applicable skills. The default
+`KeywordSkillSimilarity` adapter is keyword overlap only; hosts may inject
+embeddings without changing hard intent/route gates.
 
 ## Do not put here
 

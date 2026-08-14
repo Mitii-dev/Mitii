@@ -53,9 +53,16 @@ export const MUTATION_BUDGET_PROFILES = {
  */
 export const PROMPT_INJECTION_PATTERNS: readonly RegExp[] = [
   /ignore\s+(all\s+)?(previous|prior|above)\s+instructions/i,
+  /disregard\s+(all\s+)?(previous|prior|system)\s+(instructions|rules|policies)/i,
   /you\s+now\s+have\s+(full\s+)?(write|admin|root)\s+access/i,
   /disable\s+(all\s+)?approvals?/i,
-  /grant\s+yourself\s+(write|network|git)\s+access/i,
-  /bypass\s+(tool|permission|grant|approval)\s+checks?/i,
-  /exfiltrate\s+(secrets?|credentials?|env)/i,
+  /grant\s+yourself\s+(write|network|git|admin|root)\s+access/i,
+  /bypass\s+(tool|permission|grant|approval|safety)\s+checks?/i,
+  /exfiltrate\s+(secrets?|credentials?|env|api\s*keys?)/i,
+  /(?:sudo|root)\s+mode\s+(?:enabled|on|activated)/i,
+  /(?:jailbreak|dan\s+mode|developer\s+mode)\b/i,
+  /override\s+(?:the\s+)?(?:system|safety|security)\s+(?:prompt|policy|rules?)/i,
+  /do\s+not\s+ask\s+for\s+(?:permission|approval)/i,
+  /pretend\s+(?:you\s+)?(?:have|are)\s+(?:unrestricted|no)\s+(?:access|limits?)/i,
+  /act\s+as\s+if\s+(?:safety|permission|grant)\s+(?:rules?|checks?)\s+(?:do\s+not|don't)\s+exist/i,
 ];

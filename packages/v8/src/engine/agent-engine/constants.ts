@@ -55,6 +55,7 @@ export const AGENT_REASON_CODES = [
   "state_pinned",
   "skills_selected",
   "skills_skipped",
+  "skills_refreshed",
   "memory_retrieved",
   "memory_skipped",
   "context_retrieved",

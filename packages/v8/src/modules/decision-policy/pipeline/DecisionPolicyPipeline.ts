@@ -1,11 +1,4 @@
-import {
-  buildToolGrant,
-  resolvePlanGate,
-  resolvePlanningDepth,
-  resolveRoute,
-  resolveVerificationRequirement,
-  scanPromptInjection,
-} from "../actions";
+import { compileGrant, planRoute, scanPromptInjection } from "../actions";
 import { DECISION_POLICY_SCHEMA_VERSION } from "../constants";
 import {
   DecisionPolicyError,
@@ -44,26 +37,15 @@ export class DecisionPolicyPipeline {
     const understanding = parsed.understanding;
 
     const injection = scanPromptInjection(rawMessage);
-    const routeResult = resolveRoute({ mode, understanding, message });
-    const depthResult = resolvePlanningDepth({
+    const routePlan = planRoute({
       mode,
-      route: routeResult.route,
       understanding,
       message,
+      planApproval: parsed.planApproval,
     });
-    const resolvedPlanGateResult = resolvePlanGate({
+    const grantCompiled = compileGrant({
       mode,
-      route: routeResult.route,
-      planningDepth: depthResult.planningDepth,
-      understanding,
-    });
-    const planGateResult =
-      parsed.planApproval === "never"
-        ? { planGate: "none" as const, reasonCodes: ["plan_gate_none" as const] }
-        : resolvedPlanGateResult;
-    const grantResult = buildToolGrant({
-      mode,
-      route: routeResult.route,
+      route: routePlan.route,
       understanding,
       message,
       approvalMode: parsed.approvalMode,
@@ -73,32 +55,22 @@ export class DecisionPolicyPipeline {
     // Injection must never broaden the grant. Clamp write away if injection
     // tried to force mutation outside an authorized execute route.
     const clampResult = clampGrantAgainstInjection(
-      grantResult.toolGrant,
+      grantCompiled.toolGrant,
       injection.detected,
-      routeResult.route,
+      routePlan.route,
       mode,
     );
     const toolGrant = clampResult.toolGrant;
 
-    const verificationResult = resolveVerificationRequirement({
-      route: routeResult.route,
-      mode,
-      understanding,
-      maximumWorkspaceEffect: toolGrant.maximumWorkspaceEffect,
-    });
-
     const contextResult = resolveRepositoryContextNeed({
-      route: routeResult.route,
+      route: routePlan.route,
       understanding,
       repositoryState: parsed.repositoryState,
     });
 
     const reasonCodes = uniqueReasonCodes([
-      ...routeResult.reasonCodes,
-      ...depthResult.reasonCodes,
-      ...planGateResult.reasonCodes,
-      ...grantResult.reasonCodes,
-      ...verificationResult.reasonCodes,
+      ...routePlan.reasonCodes,
+      ...grantCompiled.reasonCodes,
       ...contextResult.reasonCodes,
       ...injection.reasonCodes,
     ]);
@@ -111,19 +83,19 @@ export class DecisionPolicyPipeline {
 
     const decision = executionDecisionSchema.parse({
       schemaVersion: DECISION_POLICY_SCHEMA_VERSION,
-      route: routeResult.route,
-      planningDepth: depthResult.planningDepth,
-      planGate: planGateResult.planGate,
-      runDisposition: routeResult.runDisposition,
+      route: routePlan.route,
+      planningDepth: routePlan.planningDepth,
+      planGate: routePlan.planGate,
+      runDisposition: routePlan.runDisposition,
       repositoryContextRequired: contextResult.repositoryContextRequired,
       pinnedState: contextResult.pinnedState,
       toolGrant,
-      verification: verificationResult.verification,
+      verification: grantCompiled.verification,
       reasonCodes,
       rationale: buildRationale({
-        route: routeResult.route,
-        planningDepth: depthResult.planningDepth,
-        planGate: planGateResult.planGate,
+        route: routePlan.route,
+        planningDepth: routePlan.planningDepth,
+        planGate: routePlan.planGate,
         mode,
         reasonCodes,
       }),

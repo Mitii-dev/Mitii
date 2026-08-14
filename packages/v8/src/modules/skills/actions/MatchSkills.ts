@@ -1,5 +1,6 @@
 import { DEFAULT_CHARACTERS_PER_TOKEN } from "../defaults";
 import type { SkillIndexEntry, SkillsSelectParsedInput } from "../contracts";
+import type { SkillSimilarityPort } from "../contracts/ports/SkillSimilarityPort";
 import { SKILLS_THRESHOLDS } from "../policy";
 
 export interface ScoredSkill {
@@ -11,11 +12,12 @@ export interface ScoredSkill {
 /**
  * Score catalog entries against task evidence, route, and query keywords.
  */
-export function matchSkills(params: {
+export async function matchSkills(params: {
   catalog: readonly SkillIndexEntry[];
   input: SkillsSelectParsedInput;
-}): ScoredSkill[] {
-  const { catalog, input } = params;
+  similarity?: SkillSimilarityPort;
+}): Promise<ScoredSkill[]> {
+  const { catalog, input, similarity } = params;
   const queryTokens = tokenize(input.query);
   const scored: ScoredSkill[] = [];
 
@@ -118,6 +120,22 @@ export function matchSkills(params: {
     if (projectKindBoost > 0) {
       score += SKILLS_THRESHOLDS.recommendedTagWeight * projectKindBoost;
       reasons.push("project_kind");
+    }
+
+    if (similarity) {
+      const similarityScore = await Promise.resolve(
+        similarity.score(input.query, {
+          id: skill.id,
+          title: skill.title,
+          description: skill.description,
+          tags: skill.tags,
+        }),
+      );
+      if (similarityScore > 0) {
+        score +=
+          SKILLS_THRESHOLDS.similarityWeight * Math.min(1, similarityScore);
+        reasons.push("similarity");
+      }
     }
 
     const normalized = Math.min(1, score);

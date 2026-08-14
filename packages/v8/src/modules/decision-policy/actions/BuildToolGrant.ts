@@ -293,10 +293,11 @@ function resolveNetworkAuthority(params: {
 
   const intent = params.understanding.intent.classification.primaryTaskIntent;
   const hosts = extractNetworkHosts(params.message ?? "");
-  const docsIntent = intent === "docs" || intent === "question";
+  // Docs/question intent alone is not enough — require concrete hosts or an
+  // explicit search ask. Hosts must also allow webSearch for search tools.
   const wantsSearch =
-    docsIntent &&
-    /\b(search|look up|google|docs?|documentation|reference)\b/i.test(
+    (intent === "docs" || intent === "question") &&
+    /\b(search\s+(?:the\s+)?(?:web|internet|docs?|documentation)|look\s+up|google)\b/i.test(
       params.message ?? "",
     );
 
@@ -313,7 +314,9 @@ function resolveNetworkAuthority(params: {
   if (hosts.length > 0) {
     allowedTools.push("fetch_url", "fetch_docs");
   }
-  if (params.allowWebSearch && (wantsSearch || hosts.length > 0)) {
+  // web_search only when host enabled it AND user explicitly asked to search.
+  // Presence of a URL alone does not open unrestricted search.
+  if (params.allowWebSearch && wantsSearch) {
     allowedTools.push("web_search");
   }
 
@@ -329,8 +332,9 @@ function resolveNetworkAuthority(params: {
   return {
     allowedTools,
     allowedEffects: ["network_access"],
+    // Search without hosts keeps an empty allowlist; fetch tools require hosts.
     networkHosts: hosts,
-    reasonCodes: [],
+    reasonCodes: hosts.length > 0 || wantsSearch ? [] : [],
   };
 }
 
