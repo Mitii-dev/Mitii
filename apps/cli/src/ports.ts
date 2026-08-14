@@ -16,6 +16,7 @@ import {
   createFileSystemSkillsCatalog,
   createHostCodeNavigationPort,
   createHostLlmPorts,
+  createHostRepositoryGraphPort,
   createOptionalSearchPort,
   createWorkspaceCheckpointStore,
   createWorkspaceMemoryStore,
@@ -163,6 +164,9 @@ export function createCliClient(options: {
     codeNavigation: createHostCodeNavigationPort({
       workspaceRoot: options.cwd,
     }),
+    repoGraphs: createHostRepositoryGraphPort({
+      workspaceRoot: options.cwd,
+    }),
     ...(search ? { search } : {}),
   });
   const verification = new VerificationPipeline({
@@ -197,6 +201,7 @@ export function createCliClient(options: {
     checkpointStore: createWorkspaceCheckpointStore(options.cwd),
     tools,
     verification,
+    taskListAutoAdvance: env.MITII_TASK_LIST_AUTO_ADVANCE !== '0',
     skillsCatalog: createFileSystemSkillsCatalog({
       workspaceRoot: workspaceSkillsEnabled ? options.cwd : undefined,
       contentMode: 'metadata',

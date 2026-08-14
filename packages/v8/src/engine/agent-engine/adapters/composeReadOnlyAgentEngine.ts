@@ -45,6 +45,11 @@ export interface ComposeReadOnlyAgentEngineOptions {
    */
   enablePlanning?: boolean;
   toolDefinitions?: readonly ModelToolDefinition[];
+  /**
+   * Opt-in checklist auto-advance after successful built-in mutating tools.
+   * Defaults to false for library-safe composition; hosts may enable by default.
+   */
+  taskListAutoAdvance?: boolean;
   intake?: Partial<RequestIntakePipelineDependencies>;
   clock?: AgentEngineClockPort;
   idGenerator?: AgentEngineIdGeneratorPort;
@@ -91,6 +96,7 @@ export function composeReadOnlyAgentEngine(
     verification: options.verification,
     checkpointStore: options.checkpointStore,
     toolDefinitions: options.toolDefinitions,
+    taskListAutoAdvance: options.taskListAutoAdvance,
     clock: options.clock,
     idGenerator: options.idGenerator,
   });

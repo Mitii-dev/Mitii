@@ -46,10 +46,11 @@ export function serializeTaskListForPrompt(taskList: TaskList): string {
   }
   const lines = [
     "<task_list trust=\"instruction\">",
-    "Live working list for this run. Check items off with update_todos as you finish them.",
-    "Titles must stay concrete (file, error, or behavior). Rewrite with replace if this list is still process steps.",
-    "Do not mark remaining items done just because the turn is ending.",
-    "Keep at most 8 items. Use replace to rewrite, patch to update status.",
+    "Live working list for this run. Use update_todos to keep it current as soon as the work is concrete.",
+    "If this is a multi-step run and the list is empty after the first read/diagnose tool turn, call update_todos type=replace with concrete titles naming a file, failure, or behavior.",
+    "Keep exactly one item active. Before finishing a slice, patch the active item to done and the next pending item to active.",
+    "Do not copy Discover/Change/Verify process labels into titles. If a plan-derived list is still process-shaped, replace it; otherwise prefer patch by id.",
+    "Do not mark remaining items done just because the turn is ending. Skip update_todos only for trivial single-step work.",
   ];
   for (const item of taskList.items) {
     lines.push(`- [${STATUS_MARK[item.status]}] ${item.id}: ${item.title}`);
@@ -67,10 +68,11 @@ export function serializeTaskListGuidance(taskList?: TaskList): string {
   }
   return [
     "<task_list trust=\"instruction\">",
-    "No live working list yet. After you know the concrete work, call update_todos with type=replace.",
-    "Each title must name a file, error, or user-visible behavior.",
-    "Do not copy Discover/Change/Verify process steps or skill playbook bullets.",
-    "Mark exactly one item active, then done when that slice is finished.",
+    "No live working list yet. If this is a multi-step run, after the first read/diagnose tool turn call update_todos with type=replace.",
+    "Each title must name a concrete file, failure, or user-visible behavior.",
+    "Do not copy Discover/Change/Verify process labels or skill playbook bullets into titles.",
+    "Keep exactly one item active. Before finishing a slice, patch the active item to done and the next pending item to active.",
+    "Skip update_todos only for trivial single-step work.",
     "</task_list>",
   ].join("\n");
 }

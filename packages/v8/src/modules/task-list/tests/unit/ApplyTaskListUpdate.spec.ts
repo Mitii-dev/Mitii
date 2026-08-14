@@ -94,4 +94,43 @@ describe("applyTaskListUpdate", () => {
     expect(result.taskList?.items).toEqual([]);
     expect(result.reasonCodes).toContain("task_list_cleared");
   });
+
+  it("preserves plan sourceRef through patches", () => {
+    const current = taskListSchema.parse({
+      schemaVersion: 1,
+      source: "plan",
+      items: [
+        {
+          id: "change-widget",
+          title: "Change widget behavior",
+          status: "active",
+          sourceRef: "plan-step-1",
+        },
+        {
+          id: "verify-widget",
+          title: "Verify widget behavior",
+          status: "pending",
+          sourceRef: "plan-step-2",
+        },
+      ],
+    });
+    const result = pipeline.apply(
+      taskListApplyInputSchema.parse({
+        schemaVersion: 1,
+        current,
+        source: "plan",
+        operation: {
+          type: "patch",
+          items: [
+            { id: "change-widget", status: "done" },
+            { id: "verify-widget", status: "active" },
+          ],
+        },
+      }),
+    );
+    expect(result.taskList?.items.map((item) => item.sourceRef)).toEqual([
+      "plan-step-1",
+      "plan-step-2",
+    ]);
+  });
 });

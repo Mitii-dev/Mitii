@@ -19,6 +19,7 @@ export default defineConfig({
       'src/modules/planning/**/*.spec.ts',
       'src/modules/task-list/**/*.spec.ts',
       'src/modules/code-navigation/**/*.spec.ts',
+      'src/modules/change-impact/**/*.spec.ts',
       'src/modules/repository-context/internal/hybrid-retrieval/IdentifierAwareRetrievalReranker.spec.ts',
       'src/modules/prompt-construction/**/*.spec.ts',
       'src/modules/repository-context/tests/**/*.spec.ts',

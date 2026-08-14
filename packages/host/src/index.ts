@@ -91,6 +91,13 @@ export type {
 } from './repository-context/createHostRepositoryContext.js';
 
 export { createHostCodeNavigationPort } from './code-navigation/createHostCodeNavigationPort.js';
+export {
+  createHostRepositoryGraphPort,
+  loadWorkspaceGraphs,
+  resolveExpectedCodeIndexChangeToken,
+  workspaceGraphLooksStale,
+  WORKSPACE_DIRTY_CHANGE_TOKEN_SUFFIX,
+} from './repository-graph/loadWorkspaceGraphs.js';
 
 // ---------------------------------------------------------------------------
 // Port adapters — satisfy V8/SDK injection points with FS / vendor code

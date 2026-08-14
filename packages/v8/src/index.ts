@@ -224,6 +224,7 @@ export type {
   ToolDefinition,
   NetworkPort,
   SearchPort,
+  RepositoryGraphPort,
 } from "./engine/tool-runtime";
 
 export { VerificationPipeline } from "./modules/verification";
@@ -294,6 +295,19 @@ export type {
   CodeNavigationQuery,
   CodeNavigationLocation,
 } from "./modules/code-navigation";
+
+export { ChangeImpactPipeline } from "./modules/change-impact";
+export {
+  changeImpactInputSchema,
+  changeImpactResultSchema,
+  CHANGE_IMPACT_SCHEMA_VERSION,
+  CHANGE_IMPACT_EDGE_TYPES,
+} from "./modules/change-impact";
+export type {
+  ChangeImpactInput,
+  ChangeImpactResult,
+  ChangeImpactSeed,
+} from "./modules/change-impact";
 
 export { PlanningPipeline } from "./modules/planning";
 export {

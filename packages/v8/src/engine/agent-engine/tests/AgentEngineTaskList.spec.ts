@@ -23,6 +23,14 @@ function agentStartInput() {
   };
 }
 
+function createWriteGrant() {
+  return createReadOnlyGrant({
+    maximumWorkspaceEffect: "write",
+    allowedTools: ["update_todos", "apply_patch", "read_file"],
+    allowedEffects: ["workspace_read", "workspace_write", "process_execute"],
+  });
+}
+
 describe("AgentEngine task list", () => {
   it("lets agent create and check tasks without stamping the rest done", async () => {
     const llm = new ScriptedLlmPort([
@@ -245,5 +253,206 @@ describe("AgentEngine task list", () => {
     await engine.start(agentStartInput()).result;
     const names = captured[0]?.tools?.map((tool) => tool.name) ?? [];
     expect(names).toContain("update_todos");
+  });
+
+  it("auto-advances the active task after a successful mutating tool when opted in", async () => {
+    const llm = new ScriptedLlmPort([
+      {
+        content: "",
+        toolCalls: [
+          {
+            id: "todo_1",
+            name: "update_todos",
+            arguments: JSON.stringify({
+              type: "replace",
+              items: [
+                { id: "change", title: "Update src/widget.ts", status: "active" },
+                { id: "verify", title: "Verify src/widget.ts behavior" },
+              ],
+            }),
+          },
+          {
+            id: "patch_1",
+            name: "apply_patch",
+            arguments: JSON.stringify({ patches: [] }),
+          },
+        ],
+      },
+      { content: "Changed the widget." },
+    ]);
+
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          planningDepth: "none",
+          repositoryContextRequired: false,
+          toolGrant: createWriteGrant(),
+          reasonCodes: ["mutation_execute"],
+        }),
+        llm,
+        taskListAutoAdvance: true,
+      }),
+    );
+
+    const result = await engine.start(agentStartInput()).result;
+    expect(result.status).toBe("completed");
+    expect(result.taskList?.items.map((item) => item.status)).toEqual([
+      "done",
+      "active",
+    ]);
+    expect(result.reasonCodes).toContain("task_list_auto_advanced");
+  });
+
+  it("leaves mutating-tool task status unchanged when auto-advance is not opted in", async () => {
+    const llm = new ScriptedLlmPort([
+      {
+        content: "",
+        toolCalls: [
+          {
+            id: "todo_1",
+            name: "update_todos",
+            arguments: JSON.stringify({
+              type: "replace",
+              items: [
+                { id: "change", title: "Update src/widget.ts", status: "active" },
+                { id: "verify", title: "Verify src/widget.ts behavior" },
+              ],
+            }),
+          },
+          {
+            id: "patch_1",
+            name: "apply_patch",
+            arguments: JSON.stringify({ patches: [] }),
+          },
+        ],
+      },
+      { content: "Changed the widget." },
+    ]);
+
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          planningDepth: "none",
+          repositoryContextRequired: false,
+          toolGrant: createWriteGrant(),
+          reasonCodes: ["mutation_execute"],
+        }),
+        llm,
+      }),
+    );
+
+    const result = await engine.start(agentStartInput()).result;
+    expect(result.taskList?.items.map((item) => item.status)).toEqual([
+      "active",
+      "pending",
+    ]);
+    expect(result.reasonCodes).not.toContain("task_list_auto_advanced");
+  });
+
+  it("does not auto-advance after successful read tools", async () => {
+    const llm = new ScriptedLlmPort([
+      {
+        content: "",
+        toolCalls: [
+          {
+            id: "todo_1",
+            name: "update_todos",
+            arguments: JSON.stringify({
+              type: "replace",
+              items: [
+                { id: "read", title: "Read src/widget.ts", status: "active" },
+                { id: "change", title: "Update src/widget.ts" },
+              ],
+            }),
+          },
+          {
+            id: "read_1",
+            name: "read_file",
+            arguments: JSON.stringify({ path: "src/widget.ts" }),
+          },
+        ],
+      },
+      { content: "Read the widget." },
+    ]);
+
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          planningDepth: "none",
+          repositoryContextRequired: false,
+          toolGrant: createWriteGrant(),
+          reasonCodes: ["mutation_execute"],
+        }),
+        llm,
+        taskListAutoAdvance: true,
+      }),
+    );
+
+    const result = await engine.start(agentStartInput()).result;
+    expect(result.taskList?.items.map((item) => item.status)).toEqual([
+      "active",
+      "pending",
+    ]);
+    expect(result.reasonCodes).not.toContain("task_list_auto_advanced");
+  });
+
+  it("auto-advances at most once per model turn even with multiple mutating tools", async () => {
+    const llm = new ScriptedLlmPort([
+      {
+        content: "",
+        toolCalls: [
+          {
+            id: "todo_1",
+            name: "update_todos",
+            arguments: JSON.stringify({
+              type: "replace",
+              items: [
+                { id: "a", title: "Update src/a.ts", status: "active" },
+                { id: "b", title: "Update src/b.ts" },
+                { id: "c", title: "Update src/c.ts" },
+              ],
+            }),
+          },
+          {
+            id: "patch_1",
+            name: "apply_patch",
+            arguments: JSON.stringify({ patches: [] }),
+          },
+          {
+            id: "patch_2",
+            name: "apply_patch",
+            arguments: JSON.stringify({ patches: [] }),
+          },
+        ],
+      },
+      { content: "Patched twice." },
+    ]);
+
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          planningDepth: "none",
+          repositoryContextRequired: false,
+          toolGrant: createWriteGrant(),
+          reasonCodes: ["mutation_execute"],
+        }),
+        llm,
+        taskListAutoAdvance: true,
+      }),
+    );
+
+    const result = await engine.start(agentStartInput()).result;
+    expect(result.taskList?.items.map((item) => item.status)).toEqual([
+      "done",
+      "active",
+      "pending",
+    ]);
+    expect(
+      result.reasonCodes.filter((code) => code === "task_list_auto_advanced"),
+    ).toHaveLength(1);
   });
 });

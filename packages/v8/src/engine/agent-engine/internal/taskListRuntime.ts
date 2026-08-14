@@ -1,6 +1,7 @@
 import type { ModelToolDefinition } from "../../../modules/model-gateway";
 import type { PlanArtifact } from "../../../modules/planning";
 import {
+  TASK_LIST_POLICY,
   TaskListPipeline,
   UPDATE_TODOS_TOOL_NAME,
   serializeTaskListGuidance,
@@ -19,10 +20,11 @@ export const UPDATE_TODOS_TOOL_DEFINITION: ModelToolDefinition = {
   name: UPDATE_TODOS_TOOL_NAME,
   description:
     "Create or update the live working checklist for this run (max 8 items). " +
-    "Call this early in Agent runs (first tool turn when possible) with concrete titles " +
-    "(file, error, or user-visible behavior). " +
-    "Do not copy Discover/Change/Verify process steps or skill playbook bullets. " +
-    "Use replace after you know the work. Use patch to mark one item active, then done. " +
+    "If this is a multi-step run and the list is empty after the first read/diagnose tool turn, " +
+    "call update_todos with type=replace and concrete titles naming a file, failure, or user-visible behavior. " +
+    "Keep exactly one item active. Before finishing a slice, patch the active item to done and the next pending item to active. " +
+    "Do not copy Discover/Change/Verify process labels or skill playbook bullets into titles. " +
+    "If a plan-derived list is still process-shaped, replace it; otherwise prefer patch by id (stable ids / sourceRef). " +
     "Use clear to drop the list. Do not mark remaining items done just because the turn is ending. " +
     "Skip this tool for trivial single-step work.",
   inputSchema: {
@@ -32,20 +34,33 @@ export const UPDATE_TODOS_TOOL_DEFINITION: ModelToolDefinition = {
       type: {
         type: "string",
         enum: ["replace", "patch", "clear"],
-        description: "replace creates the list, patch updates ids, clear removes it.",
+        description:
+          "replace creates/replaces the list, patch updates items by id (preferred for progress), clear removes it.",
       },
       items: {
         type: "array",
         maxItems: 8,
+        description:
+          "Checklist items. Prefer concrete Change/Verify work over vague process labels.",
         items: {
           type: "object",
           additionalProperties: false,
           properties: {
-            id: { type: "string" },
-            title: { type: "string" },
+            id: {
+              type: "string",
+              description:
+                "Stable id. Prefer plan step ids when the list came from a plan.",
+            },
+            title: {
+              type: "string",
+              description:
+                "Short concrete work title (file, failure, or user-visible behavior).",
+            },
             status: {
               type: "string",
               enum: ["pending", "active", "done", "skipped", "blocked"],
+              description:
+                "At most one item may be active. Use pending → active → done for progress.",
             },
             detail: { type: "string" },
           },
@@ -259,6 +274,64 @@ export function buildUpdateTodosToolResult(params: {
       redacted: false,
     },
   });
+}
+
+export function maybeAutoAdvanceTaskList(params: {
+  enabled?: boolean;
+  current?: TaskList;
+  preToolActiveId?: string;
+  toolStatus: ToolResult["status"];
+  isMutatingTool: boolean;
+  /** When false, skip (e.g. already advanced once this model turn). */
+  allowAdvance?: boolean;
+}): { advanced: boolean; taskList?: TaskList; warnings: string[] } {
+  if (!(params.enabled ?? TASK_LIST_POLICY.autoAdvanceOnMutationSuccess)) {
+    return { advanced: false, warnings: [] };
+  }
+  if (params.allowAdvance === false) {
+    return { advanced: false, warnings: [] };
+  }
+  if (!params.current || params.current.items.length === 0) {
+    return { advanced: false, warnings: [] };
+  }
+  if (params.toolStatus !== "succeeded" || !params.isMutatingTool) {
+    return { advanced: false, warnings: [] };
+  }
+
+  const activeItems = params.current.items.filter(
+    (item) => item.status === "active",
+  );
+  if (activeItems.length !== 1) {
+    return { advanced: false, warnings: [] };
+  }
+  const active = activeItems[0]!;
+  if (params.preToolActiveId && active.id !== params.preToolActiveId) {
+    return { advanced: false, warnings: [] };
+  }
+  const nextPending = params.current.items.find(
+    (item) => item.status === "pending" && item.id !== active.id,
+  );
+  const patchItems = [
+    { id: active.id, status: "done" as const },
+    ...(nextPending ? [{ id: nextPending.id, status: "active" as const }] : []),
+  ];
+  const result = pipeline.apply({
+    schemaVersion: 1,
+    current: params.current,
+    source: params.current.source,
+    operation: {
+      type: "patch",
+      items: patchItems,
+    },
+  });
+  if (result.status !== "applied" || !result.taskList) {
+    return { advanced: false, warnings: result.warnings };
+  }
+  return {
+    advanced: result.reasonCodes.includes("task_list_patched"),
+    taskList: result.taskList,
+    warnings: result.warnings,
+  };
 }
 
 export function appendTaskListToPlanText(

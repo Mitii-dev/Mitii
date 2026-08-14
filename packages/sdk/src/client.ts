@@ -60,6 +60,14 @@ export interface CreateMitiiClientOptions {
    * Repository State pipeline for optional publish helpers.
    */
   enableInMemoryRepositoryState?: boolean;
+  /**
+   * When true, Agent runs may auto-advance the live checklist after a
+   * successful built-in mutating tool (at most once per model turn).
+   *
+   * Library/engine default is false (opt-in). Host apps (VS Code/CLI) may
+   * enable this by default for product UX; see those compose sites.
+   */
+  taskListAutoAdvance?: boolean;
 }
 
 /**
@@ -109,6 +117,7 @@ export class MitiiClient {
       skillsCatalog: options.skillsCatalog,
       memoryStore: options.memoryStore,
       toolDefinitions: options.toolDefinitions,
+      taskListAutoAdvance: options.taskListAutoAdvance,
     });
 
     this.repositoryState = repositoryState;

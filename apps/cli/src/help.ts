@@ -32,6 +32,7 @@ Environment:
   MITII_PROVIDER                   echo | openai-compatible | anthropic | gemini
   MITII_MODEL / MITII_BASE_URL     Model id and API base URL
   MITII_API_KEY                    Generic key (any provider)
+  MITII_TASK_LIST_AUTO_ADVANCE     Product default on; set to 0 to disable Agent checklist auto-advance
   ANTHROPIC_API_KEY                Claude / Anthropic
   GEMINI_API_KEY / GOOGLE_API_KEY  Gemini
   OPENAI_API_KEY                   OpenAI-compatible (OpenAI, DeepSeek, …)

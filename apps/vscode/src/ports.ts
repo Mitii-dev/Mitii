@@ -23,6 +23,7 @@ import {
   createFileSystemSkillsCatalog,
   createHostCodeNavigationPort,
   createHostLlmPorts,
+  createHostRepositoryGraphPort,
   createOptionalSearchPort,
   createWorkspaceCheckpointStore,
   resolveProviderApiKey,
@@ -209,6 +210,7 @@ export async function createVscodeClient(
           diagnostics: new VscodeDiagnosticsPort(vs, workspaceRoot),
           ...(search ? { search } : {}),
           ...(codeNavigation ? { codeNavigation } : {}),
+          repoGraphs: createHostRepositoryGraphPort({ workspaceRoot }),
         },
         { registry: mcpManager.createRegistry() },
       )
@@ -259,6 +261,10 @@ export async function createVscodeClient(
     verification,
     toolDefinitions,
     enableInMemoryCheckpoints: false,
+    taskListAutoAdvance:
+      vs.workspace
+        .getConfiguration('mitii')
+        .get<boolean>('agent.taskListAutoAdvance') ?? true,
     ...(workspaceRoot
       ? { checkpointStore: createWorkspaceCheckpointStore(workspaceRoot) }
       : {}),

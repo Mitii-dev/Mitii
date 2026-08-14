@@ -3,6 +3,7 @@ import type { RegisteredTool } from "../../internal/ToolRegistry";
 import { listModelToolDefinitions } from "../../internal/modelToolDefinitions";
 import type { RuntimeModelToolDefinition } from "../../internal/modelToolDefinitions";
 
+import { analyzeChangeImpactTool } from "./analyzeChangeImpactTool";
 import { applyPatchTool } from "./applyPatchTool";
 import { deleteDirectoryTool } from "./deleteDirectoryTool";
 import { deleteFileTool } from "./deleteFileTool";
@@ -42,6 +43,7 @@ export const BUILTIN_TOOLS: readonly RegisteredTool[] = [
   readGitStatusTool,
   gotoDefinitionTool,
   findReferencesTool,
+  analyzeChangeImpactTool,
   runReadonlyCommandTool,
   readPackageScriptsTool,
   applyPatchTool,
@@ -93,6 +95,7 @@ export {
   readGitStatusTool,
   gotoDefinitionTool,
   findReferencesTool,
+  analyzeChangeImpactTool,
   runReadonlyCommandTool,
   readPackageScriptsTool,
   applyPatchTool,

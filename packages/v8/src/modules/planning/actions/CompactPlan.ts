@@ -107,17 +107,37 @@ export function serializePlanText(plan: PlanArtifact): string {
   lines.push("Plan:");
   for (const [phaseIndex, phase] of plan.phases.entries()) {
     lines.push(`${phaseIndex + 1}. ${phase.name} — ${phase.purpose}`);
+    if (phase.successCriteria.length > 0) {
+      lines.push("   Acceptance:");
+      for (const criterion of phase.successCriteria.slice(0, 4)) {
+        lines.push(`   - ${criterion}`);
+      }
+    }
     for (const [stepIndex, step] of phase.steps.entries()) {
       lines.push(
         `   ${phaseIndex + 1}.${stepIndex + 1}. ${step.intent}: ${step.actionSummary}`,
       );
+      if (step.expectedOutcome) {
+        lines.push(`       Done when: ${step.expectedOutcome}`);
+      }
+    }
+  }
+
+  if (plan.alternatives.length > 0) {
+    lines.push("Alternatives / tradeoffs:");
+    for (const alternative of plan.alternatives) {
+      lines.push(`- ${alternative.summary}`);
+      if (alternative.tradeoff) {
+        lines.push(`  But: ${alternative.tradeoff}`);
+      }
     }
   }
 
   if (plan.risks.length > 0) {
-    lines.push("Risks:");
+    lines.push("Risks / ifs:");
     for (const risk of plan.risks) {
-      lines.push(`- [${risk.severity}] ${risk.summary}`);
+      const mitigation = risk.mitigation ? ` If so: ${risk.mitigation}` : "";
+      lines.push(`- [${risk.severity}] ${risk.summary}${mitigation}`);
     }
   }
   if (plan.verification.checks.length > 0 || plan.verification.manualQa.length > 0) {

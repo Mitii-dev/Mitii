@@ -1118,11 +1118,8 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nav, skillManagement]);
 
-  const followingTasks =
-    Boolean(taskList?.items.length) &&
-    (mode === 'agent' || mode === 'plan');
-  const followingPlan =
-    !followingTasks && mode === 'plan' && Boolean(plan?.steps.length);
+  const followingPlan = mode === 'plan' && Boolean(plan?.steps.length);
+  const followingTasks = mode === 'agent' && Boolean(taskList?.items.length);
 
   if (onboardingRequired) {
     return (

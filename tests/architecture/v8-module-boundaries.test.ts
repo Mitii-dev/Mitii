@@ -22,6 +22,7 @@ const PUBLIC_MODULES = [
   'planning',
   'task-list',
   'code-navigation',
+  'change-impact',
 ] as const;
 
 const PUBLIC_ENGINE_COMPONENTS = [

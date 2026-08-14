@@ -50,6 +50,7 @@ export const AGENT_REASON_CODES = [
   "plan_edited",
   "task_list_seeded",
   "task_list_updated",
+  "task_list_auto_advanced",
   "approval_suspended",
   "approval_denied",
   "approval_granted",

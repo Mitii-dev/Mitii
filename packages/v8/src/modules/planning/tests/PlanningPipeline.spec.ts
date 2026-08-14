@@ -41,7 +41,7 @@ function baseInput(
 describe("PlanningPipeline", () => {
   const pipeline = new PlanningPipeline();
 
-  it("drafts a generic PlanArtifact from dimensions", () => {
+  it("drafts a request-specific PlanArtifact from dimensions", () => {
     const result = pipeline.plan(baseInput());
     expect(result.status === "validated" || result.status === "compacted").toBe(
       true,
@@ -56,6 +56,95 @@ describe("PlanningPipeline", () => {
     );
     expect(result.reasonCodes).toContain("plan_drafted");
     expect(result.reasonCodes).toContain("plan_process_hints_applied");
+
+    const intents =
+      result.plan!.phases.flatMap((phase) =>
+        phase.steps.map((step) => step.intent),
+      ) ?? [];
+    expect(intents.some((intent) => /src\/auth/i.test(intent))).toBe(true);
+    expect(intents.some((intent) => /@packages\//i.test(intent))).toBe(false);
+    expect(
+      result.plan!.objective.toLowerCase().includes("sso login"),
+    ).toBe(true);
+    expect(result.plan!.objective.includes("@")).toBe(false);
+    expect(
+      result.plan!.phases.some((phase) =>
+        phase.successCriteria.some((item) =>
+          /Keep password login working/i.test(item),
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      result.plan!.alternatives.some((item) => /constraint/i.test(item.id)),
+    ).toBe(true);
+  });
+
+  it("sanitizes @mentions and drafts repair-shaped steps from bugfix intent", () => {
+    const result = pipeline.plan(
+      baseInput({
+        query: "@packages/mui-builder\n@packages/mui-builder fix all the ts errors",
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+          interactionIntent: "plan",
+          scope: "package",
+          complexity: "simple",
+          risk: "low",
+          clarity: "clear",
+          targets: [
+            {
+              kind: "folder",
+              value: "packages/mui-builder",
+              explicit: true,
+            },
+          ],
+          constraints: [],
+          requestedOutcomes: [
+            "@packages/mui-builder fix all the ts errors",
+            "Resolve all TypeScript compilation/type errors in the target package",
+          ],
+          recommendsPlanning: true,
+          recommendsVerification: false,
+          changeImpact: ["code"],
+        },
+        processHints: [],
+      }),
+    );
+
+    expect(result.plan?.objective).toBe(
+      "Resolve all TypeScript compilation/type errors in the target package",
+    );
+    expect(result.plan?.objective.includes("@")).toBe(false);
+    expect(result.plan?.phases.map((phase) => phase.name)).toEqual([
+      "Discover",
+      "Change",
+      "Verify",
+    ]);
+    const intents =
+      result.plan?.phases.flatMap((phase) =>
+        phase.steps.map((step) => step.intent),
+      ) ?? [];
+    expect(intents).toContain("Inspect failure evidence in packages/mui-builder");
+    expect(intents).toContain(
+      "Bound failing surfaces and constraints in packages/mui-builder",
+    );
+    expect(intents).toContain(
+      "Resolve all TypeScript compilation/type errors in the target package",
+    );
+    expect(intents).toContain("Verify the fix in packages/mui-builder");
+    expect(
+      intents.some((intent) => /non-hardcoded approach/i.test(intent)),
+    ).toBe(false);
+    expect(intents.some((intent) => /typescript \/ type errors/i.test(intent))).toBe(
+      false,
+    );
+    expect(intents.some((intent) => /typecheck is clean/i.test(intent))).toBe(
+      false,
+    );
+    const doneWhen =
+      result.plan?.phases.flatMap((phase) => phase.successCriteria) ?? [];
+    expect(doneWhen.some((item) => item.includes("@packages/"))).toBe(false);
+    expect(doneWhen.some((item) => item.startsWith("Done when:"))).toBe(false);
   });
 
   it("returns blocked when planningDepth is none", () => {
@@ -116,11 +205,11 @@ describe("PlanningPipeline", () => {
       "Verify",
     ]);
     expect(result.plan?.phases[0]?.steps.map((step) => step.intent)).toEqual([
-      "Locate current behavior",
-      "Collect evidence",
+      "Locate current behavior in src/auth",
+      "Collect evidence in src/auth",
     ]);
     expect(result.plan?.phases[1]?.steps.map((step) => step.intent)).toContain(
-      "Implement smallest coherent change",
+      "Implement smallest coherent change in src/auth",
     );
     expect(result.plan?.phases[2]?.steps[0]?.verification).toContain(
       "typecheck",
@@ -128,7 +217,7 @@ describe("PlanningPipeline", () => {
     expect(result.reasonCodes).toContain("plan_skills_considered");
   });
 
-  it("does not ingest skill playbook or when-to-use bullets as plan steps", () => {
+  it("does not ingest skill playbook or task-breakdown methodology as plan steps", () => {
     const result = pipeline.plan(
       baseInput({
         skills: [
@@ -167,7 +256,12 @@ describe("PlanningPipeline", () => {
       result.plan?.phases.flatMap((phase) =>
         phase.steps.map((step) => step.intent),
       ) ?? [];
-    expect(intents).toContain("Restate the goal and constraints from the spec");
+    expect(intents.some((intent) => /restate the goal/i.test(intent))).toBe(
+      false,
+    );
+    expect(
+      intents.some((intent) => /produce ordered tasks/i.test(intent)),
+    ).toBe(false);
     expect(intents.some((intent) => /you have a spec/i.test(intent))).toBe(
       false,
     );
@@ -175,6 +269,20 @@ describe("PlanningPipeline", () => {
       false,
     );
     expect(intents.some((intent) => /parallelized/i.test(intent))).toBe(false);
+    // Falls back to dimension-driven request-specific steps.
+    expect(
+      intents.some((intent) => /Inspect current behavior in src\/auth/i.test(intent)),
+    ).toBe(true);
+    expect(
+      intents.some((intent) =>
+        /Add SSO login without breaking password login in src\/auth/i.test(
+          intent,
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      intents.some((intent) => /Verify changes in src\/auth/i.test(intent)),
+    ).toBe(true);
   });
 
   it("serializes plan for prompt and answer", () => {
@@ -182,7 +290,12 @@ describe("PlanningPipeline", () => {
     const text = serializePlanForPrompt(result.plan!);
     expect(text).toContain('trust="instruction"');
     expect(text).toContain("Objective:");
-    expect(formatPlanAsAnswer(result.plan!)).toContain("Plan:");
+    const answer = formatPlanAsAnswer(result.plan!);
+    expect(answer).toContain("Plan:");
+    expect(answer).toContain("Acceptance:");
+    expect(answer).toContain("Alternatives / tradeoffs:");
+    expect(answer).toContain("Risks / ifs:");
+    expect(answer).toContain("Keep password login working");
   });
 
   it("throws PlanningError on invalid input", () => {

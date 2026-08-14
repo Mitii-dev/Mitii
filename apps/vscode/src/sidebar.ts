@@ -1194,9 +1194,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
                 }
               }
               const view = taskViewFromList(event.taskList, { savedTaskPath });
-              if (view) {
-                this.post({ type: 'setTaskList', taskList: view });
-              }
+              this.post({ type: 'setTaskList', taskList: view ?? null });
             }
             const changeRoot = this.effectiveRoot();
             if (changeRoot && this.activeFileChangeSnapshot && event) {

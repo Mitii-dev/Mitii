@@ -138,6 +138,7 @@ describe("read efficiency tools", () => {
     expect(READ_ONLY_TOOL_IDS).toContain("glob_files");
     expect(READ_ONLY_TOOL_IDS).toContain("read_many_files");
     expect(READ_ONLY_TOOL_IDS).toContain("file_metadata");
+    expect(READ_ONLY_TOOL_IDS).toContain("analyze_change_impact");
   });
 });
 
@@ -159,6 +160,7 @@ describe("model tool definition single source", () => {
     expect(readOnly).toContain("glob_files");
     expect(readOnly).toContain("goto_definition");
     expect(readOnly).toContain("find_references");
+    expect(readOnly).toContain("analyze_change_impact");
     expect(readOnly).not.toContain("apply_patch");
     expect(readOnly).not.toContain("delete_file");
     expect(readOnly).not.toContain("move_file");

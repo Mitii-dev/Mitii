@@ -99,6 +99,7 @@ import {
   attachTaskListTool,
   buildUpdateTodosToolResult,
   isUpdateTodosTool,
+  maybeAutoAdvanceTaskList,
   progressOf,
   seedTaskListFromPlan,
   type TaskListRef,
@@ -106,6 +107,7 @@ import {
 import { ToolCallCache } from "../internal/ToolCallCache";
 import {
   AGENT_ENGINE_THRESHOLDS,
+  DEFAULT_MUTATION_TOOL_DEFINITIONS,
   DEFAULT_TOOL_DEFINITIONS,
   PHASE8_SUPPORTED_ROUTES,
 } from "../policy";
@@ -115,6 +117,10 @@ export type AgentEnginePipelineDependencies = AgentEngineDependencies;
 const AGENT_ENGINE_CONTEXT_WINDOW_POLICY = {
   loopInputBudgetSafetyRatio: 0.94,
 } as const;
+
+const DEFAULT_MUTATING_TOOL_NAMES = new Set(
+  DEFAULT_MUTATION_TOOL_DEFINITIONS.map((tool) => tool.name),
+);
 
 type ToolCallOutcome =
   | { kind: "message"; message: ModelMessage }
@@ -202,6 +208,7 @@ export class AgentEnginePipeline {
       | "verification"
       | "checkpointStore"
       | "toolDefinitions"
+      | "taskListAutoAdvance"
     >;
 
   constructor(dependencies: AgentEngineDependencies) {
@@ -233,6 +240,7 @@ export class AgentEnginePipeline {
       verification: dependencies.verification,
       checkpointStore: dependencies.checkpointStore,
       toolDefinitions: dependencies.toolDefinitions,
+      taskListAutoAdvance: dependencies.taskListAutoAdvance,
       clock: dependencies.clock ?? { now: () => new Date() },
       idGenerator: dependencies.idGenerator ?? {
         next: (prefix: string) =>
@@ -1424,6 +1432,11 @@ export class AgentEnginePipeline {
         mutationCheckpointIds,
         approvalToken,
         taskListRef,
+        taskListAutoAdvance: this.deps.taskListAutoAdvance === true,
+        taskListAutoAdvanceBudget: {
+          remaining: this.deps.taskListAutoAdvance === true ? 1 : 0,
+        },
+        mutatingToolNames: DEFAULT_MUTATING_TOOL_NAMES,
       });
 
       if (toolOutcome.kind === "approval_required") {
@@ -2455,6 +2468,11 @@ export class AgentEnginePipeline {
 
       this.emitStage(bus, runId, "tool_running", "started");
 
+      // Cap mutation auto-advance to one checklist step per model turn.
+      const taskListAutoAdvanceBudget = {
+        remaining: this.deps.taskListAutoAdvance === true ? 1 : 0,
+      };
+
       for (const toolCall of turn.toolCalls) {
         if (signal.aborted) {
           return { kind: "cancelled" };
@@ -2484,6 +2502,9 @@ export class AgentEnginePipeline {
           mutationCheckpointIds,
           approvalToken: undefined,
           taskListRef,
+          taskListAutoAdvance: this.deps.taskListAutoAdvance === true,
+          taskListAutoAdvanceBudget,
+          mutatingToolNames: DEFAULT_MUTATING_TOOL_NAMES,
         });
 
         if (outcome.kind === "approval_required") {
@@ -2533,6 +2554,10 @@ export class AgentEnginePipeline {
     mutationCheckpointIds: string[];
     approvalToken: ToolApprovalToken | undefined;
     taskListRef?: TaskListRef;
+    taskListAutoAdvance: boolean;
+    /** Shared remaining auto-advances for the current model turn (usually 0 or 1). */
+    taskListAutoAdvanceBudget: { remaining: number };
+    mutatingToolNames: ReadonlySet<string>;
   }): Promise<ToolCallOutcome> {
     const {
       runId,
@@ -2551,6 +2576,9 @@ export class AgentEnginePipeline {
       mutationCheckpointIds,
       approvalToken,
       taskListRef,
+      taskListAutoAdvance,
+      taskListAutoAdvanceBudget,
+      mutatingToolNames,
     } = params;
 
     let argumentsValue: unknown = {};
@@ -2597,6 +2625,9 @@ export class AgentEnginePipeline {
     }
 
     budget.recordToolCall();
+    const preToolActiveId = taskListRef?.current?.items.find(
+      (item) => item.status === "active",
+    )?.id;
 
     if (isUpdateTodosTool(toolCall.name)) {
       const applied = applyUpdateTodosArguments({
@@ -2620,12 +2651,17 @@ export class AgentEnginePipeline {
         if (taskListRef) {
           taskListRef.current = applied.taskList;
         }
-        if (applied.taskList) {
-          reasonCodes.push("task_list_updated");
-          this.emitTaskListUpdated(bus, runId, applied.taskList);
-        } else {
-          reasonCodes.push("task_list_updated");
-        }
+        reasonCodes.push("task_list_updated");
+        // Always emit, including clear/empty, so hosts can drop a stale checklist.
+        this.emitTaskListUpdated(
+          bus,
+          runId,
+          applied.taskList ?? {
+            schemaVersion: 1,
+            source: "agent",
+            items: [],
+          },
+        );
       }
       toolCache.set(toolCall.id, result);
       this.emit(bus, {
@@ -2706,6 +2742,26 @@ export class AgentEnginePipeline {
           }
         }
         reasonCodes.push("mutation_applied");
+      }
+      const autoAdvanced = maybeAutoAdvanceTaskList({
+        enabled: taskListAutoAdvance,
+        allowAdvance: taskListAutoAdvanceBudget.remaining > 0,
+        current: taskListRef?.current,
+        preToolActiveId,
+        toolStatus: result.status,
+        isMutatingTool: mutatingToolNames.has(toolCall.name),
+      });
+      if (autoAdvanced.warnings.length > 0) {
+        warnings.push(...autoAdvanced.warnings);
+      }
+      if (autoAdvanced.advanced && autoAdvanced.taskList && taskListRef) {
+        taskListRef.current = autoAdvanced.taskList;
+        taskListAutoAdvanceBudget.remaining = Math.max(
+          0,
+          taskListAutoAdvanceBudget.remaining - 1,
+        );
+        reasonCodes.push("task_list_auto_advanced", "task_list_updated");
+        this.emitTaskListUpdated(bus, runId, autoAdvanced.taskList);
       }
     }
 

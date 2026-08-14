@@ -597,16 +597,18 @@ export function activate(context: ExtensionContext): void {
         event.affectsConfiguration('mitii.mcp') ||
         event.affectsConfiguration('mitii.ui') ||
         event.affectsConfiguration('mitii.safety') ||
+        event.affectsConfiguration('mitii.agent') ||
         event.affectsConfiguration('mitii.onboarding')
       ) {
         if (
           event.affectsConfiguration('mitii.provider') ||
           event.affectsConfiguration('mitii.mcp') ||
-          event.affectsConfiguration('mitii.ui.contextToggles.memory')
+          event.affectsConfiguration('mitii.ui.contextToggles.memory') ||
+          event.affectsConfiguration('mitii.agent.taskListAutoAdvance')
         ) {
           invalidateClient();
           channel.appendLine(
-            '[mitii] provider/mcp/memory settings changed; client will recompose',
+            '[mitii] provider/mcp/memory/agent settings changed; client will recompose',
           );
         }
         void (async () => {

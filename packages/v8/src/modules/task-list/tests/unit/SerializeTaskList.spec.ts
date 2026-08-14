@@ -51,12 +51,18 @@ describe("serializeTaskList", () => {
     const prompt = serializeTaskListForPrompt(list);
     expect(prompt).toContain("update_todos");
     expect(prompt).toContain("a: Analyze project structure");
+    expect(prompt).toContain("Keep exactly one item active");
+    expect(prompt).toContain("prefer patch by id");
+    expect(prompt).toContain("Skip update_todos only for trivial single-step work");
   });
 
   it("asks agent to create concrete tasks when no list exists", () => {
     const guidance = serializeTaskListGuidance();
     expect(guidance).toContain("No live working list yet");
     expect(guidance).toContain("update_todos");
+    expect(guidance).toContain("after the first read/diagnose tool turn");
+    expect(guidance).toContain("concrete file, failure, or user-visible behavior");
+    expect(guidance).toContain("Keep exactly one item active");
     expect(guidance).not.toContain("Discover:");
   });
 });

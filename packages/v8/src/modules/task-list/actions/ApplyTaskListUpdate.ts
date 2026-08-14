@@ -203,7 +203,8 @@ function sameList(left: TaskList, right: TaskList): boolean {
       item.id === other.id &&
       item.title === other.title &&
       item.status === other.status &&
-      item.detail === other.detail
+      item.detail === other.detail &&
+      item.sourceRef === other.sourceRef
     );
   });
 }

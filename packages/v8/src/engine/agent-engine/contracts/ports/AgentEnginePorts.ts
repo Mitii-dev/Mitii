@@ -141,6 +141,14 @@ export interface AgentEngineDependencies {
   checkpointStore?: AgentEngineRunCheckpointStorePort;
   /** Defaults to policy DEFAULT_TOOL_DEFINITIONS when omitted. */
   toolDefinitions?: readonly ModelToolDefinition[];
+  /**
+   * Opt-in checklist auto-advance after successful built-in mutating tools
+   * (`DEFAULT_MUTATION_TOOL_DEFINITIONS`: apply_patch, write/delete/move, …).
+   * Defaults to false at the engine/SDK compose layer. Host apps may enable
+   * it by default; custom/MCP tools are not included unless added to the
+   * engine mutating-tool set later.
+   */
+  taskListAutoAdvance?: boolean;
   clock?: AgentEngineClockPort;
   idGenerator?: AgentEngineIdGeneratorPort;
 }
