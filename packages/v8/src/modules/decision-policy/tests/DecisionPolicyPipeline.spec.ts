@@ -783,6 +783,45 @@ describe("DecisionPolicyPipeline", () => {
     );
   });
 
+  it("keeps monorepo package roots in scope when narrowing discovered package files", () => {
+    const pipeline = new DecisionPolicyPipeline();
+    const decision = pipeline.decide(
+      createInput({
+        mode: "agent",
+        message: "@packages/mui-builder fix all the ts errors",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "bugfix",
+          interactionIntent: "act",
+          taskAnalysis: {
+            scope: "package",
+            targets: [
+              {
+                kind: "folder",
+                value: "packages/mui-builder",
+                explicit: true,
+              },
+            ],
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.toolGrant.pathScopes).toEqual(["."]);
+    const narrowed = pipeline.narrow({
+      previous: decision,
+      discoveredPaths: [
+        "packages/mui-builder/src/fields/field-autocomplete/field-autocomplete.tsx",
+        "packages/mui-builder/src/fields/field-select/field-select.tsx",
+        "packages/mui-builder/src/fields/field-text/field-text.tsx",
+        "packages/mui-builder/src/fields/field-radio/field-radio.tsx",
+      ],
+    });
+
+    expect(narrowed.reasonCodes).toContain("grant_narrowed");
+    expect(narrowed.toolGrant.pathScopes).toEqual(["packages/mui-builder"]);
+  });
+
   it("does not expand a scoped grant when discovery is outside scope", () => {
     const pipeline = new DecisionPolicyPipeline();
     const decision = pipeline.decide(

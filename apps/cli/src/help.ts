@@ -7,7 +7,7 @@ Usage:
   mitii ask <prompt> [options]
   mitii index [--cwd <path>] [--json]
   mitii status [--cwd <path>] [--json]
-  mitii session [--cwd <path>] [--echo]
+  mitii session [--cwd <path>] [--echo] [--mode <mode>]
   mitii export-session <prompt> --out <file> [--echo]
 
 Options:
@@ -17,21 +17,27 @@ Options:
   --clarify <text>   Non-interactive clarification resume
   --approve / --deny Non-interactive approval resume
   --out <file>       Session export path (export-session)
+  --mode <mode>      ask | plan | agent (overrides config defaultMode)
 
 Signals:
   SIGINT (Ctrl-C)    Cancel the active run via SDK run.cancel()
 
 Config (no secrets):
   .mitii/config.json or ~/.mitii/config.json
-  Fields: provider, model, baseUrl, workspaceId, defaultMode
-  API keys: MITII_API_KEY / OPENAI_API_KEY only (never in config files)
+  Fields: provider, providerPreset, model, baseUrl, workspaceId, defaultMode
+  provider: echo | openai-compatible | anthropic | gemini
+  API keys never go in config files
 
 Environment:
-  MITII_API_KEY / OPENAI_API_KEY   Provider API key (optional)
-  MITII_BASE_URL                   OpenAI-compatible base URL
-  MITII_MODEL                      Model id (default: gpt-4o-mini)
+  MITII_PROVIDER                   echo | openai-compatible | anthropic | gemini
+  MITII_MODEL / MITII_BASE_URL     Model id and API base URL
+  MITII_API_KEY                    Generic key (any provider)
+  MITII_TASK_LIST_AUTO_ADVANCE     Product default on; set to 0 to disable Agent checklist auto-advance
+  ANTHROPIC_API_KEY                Claude / Anthropic
+  GEMINI_API_KEY / GOOGLE_API_KEY  Gemini
+  OPENAI_API_KEY                   OpenAI-compatible (OpenAI, DeepSeek, …)
 
 Hosts stream events, cancel, clarify/approve, index/status,
-usage/context inspection, and secret-free session export.
+usage/context inspection, live task lists, and secret-free session export.
 Daemon/board/channels are out of scope for this CLI.
 `;

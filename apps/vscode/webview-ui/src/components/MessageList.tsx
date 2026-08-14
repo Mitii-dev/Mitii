@@ -13,6 +13,7 @@ import {
 import { ApprovalCards } from './ApprovalCards';
 import { FileChangesCard } from './FileChangesCard';
 import { MarkdownMessage } from './MarkdownMessage';
+import LOGO from '../../../media/Mitii.png';
 
 export interface ChatTurn {
   id: string;
@@ -83,6 +84,7 @@ export function MessageList({
         onScroll={onScroll}
       >
         <div className="empty-state">
+          <img src={LOGO} alt="Mitii Logo" />
           <h2>Ready when you are</h2>
           <p>Workspace context is ready. Start with the outcome you want.</p>
         </div>
@@ -99,7 +101,10 @@ export function MessageList({
       aria-live="polite"
     >
       {turns.map((turn) => (
-        <div key={turn.id} className={`turn turn--${turn.role}`}>
+        <div
+          key={turn.id}
+          className={`turn turn--${turn.role}${turn.suspension ? ' turn--suspended' : ''}`}
+        >
           {turn.role === 'user' ? (
             <>
               <div className="meta-row">
@@ -130,11 +135,16 @@ export function MessageList({
                   />
                 </div>
               ) : null}
-              <AgentActivityPanel
-                events={turn.activity}
-                open={activityOpen}
-                onToggle={onToggleActivity}
-              />
+              {turn.streaming || turn.suspension ? (
+                <>
+                  <AgentActivityPanel
+                    events={turn.activity}
+                    open={activityOpen}
+                    onToggle={onToggleActivity}
+                  />
+                  <AgentThinkingPanel events={turn.activity} />
+                </>
+              ) : null}
               {turn.fileChanges ? (
                 <FileChangesCard
                   changes={turn.fileChanges}
@@ -151,7 +161,6 @@ export function MessageList({
                   }
                 />
               ) : null}
-              <AgentThinkingPanel events={turn.activity} />
               {turn.suspension ? (
                 <ApprovalCards
                   suspension={turn.suspension}

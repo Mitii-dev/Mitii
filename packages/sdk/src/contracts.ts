@@ -8,6 +8,7 @@ import {
   createUserRequestInputSchema,
   planArtifactSchema,
   repositoryStateReferenceSchema,
+  taskListSchema,
 } from '@mitii/v8';
 import type {
   AgentEngineResumeInput,
@@ -16,6 +17,7 @@ import type {
   AgentRunBudget,
   PlanArtifact,
   RepositoryStateReference,
+  TaskList,
 } from '@mitii/v8';
 
 /**
@@ -68,6 +70,11 @@ export const mitiiStartInputSchema = z
      * Injected as an approved plan; skips the in-run plan gate.
      */
     approvedPlan: planArtifactSchema.optional(),
+    /**
+     * Live working checklist from a prior Agent/Plan turn.
+     * Engine does not stamp remaining items done on run completion.
+     */
+    taskList: taskListSchema.optional(),
     budget: agentRunBudgetSchema.optional(),
     model: z.string().min(1).optional(),
     temperature: z.number().min(0).max(2).optional(),
@@ -106,7 +113,7 @@ export const mitiiResumeInputSchema = agentEngineResumeInputSchema;
 export type MitiiResumeInput = AgentEngineResumeInput;
 
 export type { AgentMode, AgentRunBudget, RepositoryStateReference };
-export type { PlanArtifact };
+export type { PlanArtifact, TaskList };
 
 export interface MitiiStartDefaults {
   mode: AgentMode;
@@ -161,6 +168,7 @@ export function toAgentEngineStartInput(
       content: message.content,
     })),
     approvedPlan: parsed.approvedPlan,
+    taskList: parsed.taskList,
     budget: parsed.budget,
     model: parsed.model,
     temperature: parsed.temperature,

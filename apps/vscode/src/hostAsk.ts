@@ -9,6 +9,7 @@ import {
   type MitiiResumeInput,
   type PlanArtifact,
   type RunEvent,
+  type TaskList,
 } from '@mitii/sdk';
 import type * as vscode from 'vscode';
 
@@ -83,6 +84,8 @@ export function formatRunEventLine(event: RunEvent): string | undefined {
       return `[skills] selected=${event.selectedCount}${formatEventList(' ids', event.selected)} omitted=${event.omittedCount}${formatSkillOmissions(event)} status=${event.status}`;
     case 'memory_ready':
       return `[memory] selected=${event.selectedCount} omitted=${event.omittedCount} status=${event.status}`;
+    case 'task_list_updated':
+      return `[tasks] ${event.completedCount}/${event.totalCount} complete`;
     case 'stage_started':
       return `[stage] ${event.stage}…`;
     case 'stage_completed':
@@ -379,6 +382,14 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
           event.planningDepth,
           event.approvalRequired ? 'approval required' : undefined,
         ].filter(Boolean).join(' · '),
+      };
+    case 'task_list_updated':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: 'Tasks updated',
+        detail: `${event.completedCount}/${event.totalCount} complete`,
       };
     default:
       return undefined;
@@ -739,6 +750,7 @@ export async function runAskInOutputChannel(options: {
   channel: vscode.OutputChannel;
   mode?: 'ask' | 'plan' | 'agent';
   depth?: string;
+  approvalMode?: string;
   pinnedPaths?: string[];
   workspaceId?: string;
   /** Used to estimate memory tokens in the context meter (not prompt-stuffed). */
@@ -753,6 +765,8 @@ export async function runAskInOutputChannel(options: {
   conversation?: MitiiConversationMessage[];
   /** Structured plan handoff for agent execution. */
   approvedPlan?: PlanArtifact;
+  /** Live working checklist carried across Agent turns. */
+  taskList?: TaskList;
   handlers?: HostAskHandlers;
 }): Promise<HostAskOutcome> {
   const { vs, client, workspaceRoot, channel, handlers } = options;
@@ -837,7 +851,9 @@ export async function runAskInOutputChannel(options: {
 
   const cfg = vs.workspace.getConfiguration('mitii');
   const approvalPolicy = resolveApprovalPolicy(
-    cfg.get<string>('safety.approvalMode') ?? 'guided',
+    options.approvalMode ??
+      cfg.get<string>('safety.approvalMode') ??
+      'guided',
   );
   const model = cfg.get<string>('provider.model') ?? '';
   const contextWindow =
@@ -1008,6 +1024,7 @@ export async function runAskInOutputChannel(options: {
         ? { conversation: options.conversation }
         : {}),
       ...(options.approvedPlan ? { approvedPlan: options.approvedPlan } : {}),
+      ...(options.taskList ? { taskList: options.taskList } : {}),
     });
     const events: RunEvent[] = [];
 

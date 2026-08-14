@@ -1,5 +1,6 @@
 import type { ExecutionDecision } from "../../../modules/decision-policy";
 import type { PlanArtifact } from "../../../modules/planning";
+import type { TaskList } from "../../../modules/task-list";
 import type { ModelMessage } from "../../../modules/model-gateway";
 import type { RepositoryStateReference } from "../../../modules/repository-state";
 import type { ToolResult } from "../../tool-runtime";
@@ -38,6 +39,8 @@ export interface AgentRunCheckpoint {
   pendingApproval?: PendingApprovalState;
   /** Structured plan awaiting approval when suspensionKind is plan_approval_required. */
   plan?: PlanArtifact;
+  /** Live task list at suspension time. */
+  taskList?: TaskList;
   changedFiles: string[];
   mutationCheckpointIds: string[];
   reasonCodes: AgentReasonCode[];

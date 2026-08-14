@@ -50,7 +50,7 @@ src/
     ├── decision-policy/
     ├── planning/
     ├── prompt-construction/
-    ├── model-gateway/         Echo + OpenAI-compatible LlmPort
+    ├── model-gateway/         Echo, OpenAI-compatible, Anthropic, Gemini LlmPort
     ├── skills/
     ├── memory/
     └── verification/

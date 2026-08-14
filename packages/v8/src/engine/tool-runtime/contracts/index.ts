@@ -54,6 +54,7 @@ export type {
   NetworkFetchRequest,
   NetworkFetchResult,
   SearchPort,
+  RepositoryGraphPort,
   WebSearchRequest,
   WebSearchHit,
   WebSearchResult,

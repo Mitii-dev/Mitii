@@ -957,6 +957,12 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.reasonCodes).toContain("plan_drafted");
     expect(result.reasonCodes).toContain("plan_mode_completed");
     expect(result.reasonCodes).toContain("answer_produced");
+    expect(result.reasonCodes).toContain("task_list_seeded");
+    expect(result.taskList?.items.length).toBeGreaterThan(0);
+    expect(result.taskList?.items[0]?.status).toBe("active");
+    expect(
+      result.taskList?.items.slice(1).every((item) => item.status === "pending"),
+    ).toBe(true);
     expect(modelCalls).toBe(0);
   });
 
@@ -1106,8 +1112,11 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.reasonCodes).not.toContain("plan_approval_suspended");
     expect(planningCalls).toBe(0);
     expect(result.plan?.objective).toBe("Ship conversation carry");
+    expect(result.taskList?.items[0]?.status).toBe("active");
+    expect(result.reasonCodes).toContain("task_list_seeded");
     const system = captured[0]?.messages.find((m) => m.role === "system");
     expect(system?.content).toContain("<approved_plan");
     expect(system?.content).toContain("Ship conversation carry");
+    expect(system?.content).toContain("<task_list");
   });
 });

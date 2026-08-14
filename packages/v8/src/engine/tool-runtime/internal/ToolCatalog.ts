@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  CHANGE_IMPACT_EDGE_TYPES,
+  CHANGE_IMPACT_POLICY,
+  CHANGE_IMPACT_STATUSES,
+} from "../../../modules/change-impact";
 import type { ToolCapabilityDescriptor, ToolEffect } from "../contracts";
 import {
   DEFAULT_MAX_OUTPUT_BYTES,
@@ -143,6 +148,106 @@ export const gotoDefinitionOutputSchema = z
   .strict();
 
 export const findReferencesOutputSchema = gotoDefinitionOutputSchema;
+
+export const analyzeChangeImpactInputSchema = z
+  .object({
+    path: z.string().min(1),
+    line: z.number().int().positive().optional(),
+    column: z.number().int().positive().optional(),
+    symbolName: z.string().min(1).optional(),
+    maximumHops: z
+      .number()
+      .int()
+      .positive()
+      .max(CHANGE_IMPACT_POLICY.maximumHopsCap)
+      .optional(),
+    maximumAffectedNodes: z
+      .number()
+      .int()
+      .positive()
+      .max(CHANGE_IMPACT_POLICY.maximumAffectedNodesCap)
+      .optional(),
+    includePackages: z.boolean().optional(),
+    edgeTypes: z
+      .array(z.enum(CHANGE_IMPACT_EDGE_TYPES))
+      .min(1)
+      .max(CHANGE_IMPACT_EDGE_TYPES.length)
+      .optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.column !== undefined && value.line === undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "line is required when column is set",
+        path: ["line"],
+      });
+    }
+  });
+
+export const analyzeChangeImpactOutputSchema = z
+  .object({
+    path: z.string(),
+    provider: z.literal("repo_graph"),
+    status: z.enum(CHANGE_IMPACT_STATUSES),
+    resolvedSeeds: z.array(
+      z
+        .object({
+          kind: z.enum(["file", "symbol", "project"]),
+          path: z.string().optional(),
+          symbolName: z.string().optional(),
+          symbolKind: z.string().optional(),
+        })
+        .strict(),
+    ),
+    affected: z.array(
+      z
+        .object({
+          path: z.string(),
+          symbolName: z.string().optional(),
+          symbolKind: z.string().optional(),
+          hop: z.number().int().positive(),
+          viaEdgeType: z.enum(CHANGE_IMPACT_EDGE_TYPES),
+          score: z.number(),
+          evidence: z.array(z.string()).optional(),
+        })
+        .strict(),
+    ),
+    affectedFiles: z.array(
+      z
+        .object({
+          path: z.string(),
+          hop: z.number().int().positive(),
+          score: z.number(),
+          affectedNodeCount: z.number().int().positive(),
+          reason: z.string(),
+        })
+        .strict(),
+    ),
+    packagesAffected: z.array(
+      z
+        .object({
+          name: z.string(),
+          projectId: z.string(),
+          hop: z.number().int().nonnegative(),
+          viaEdgeType: z.enum(CHANGE_IMPACT_EDGE_TYPES).optional(),
+        })
+        .strict(),
+    ),
+    truncated: z.boolean(),
+    warnings: z.array(
+      z
+        .object({
+          code: z.string(),
+          message: z.string(),
+        })
+        .strict(),
+    ),
+    reasonCodes: z.array(z.string()).min(1),
+    graphRevision: z.string().optional(),
+    codeIndexChangeToken: z.string().optional(),
+  })
+  .strict();
 
 export const readGitStatusInputSchema = z
   .object({

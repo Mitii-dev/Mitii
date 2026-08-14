@@ -17,7 +17,9 @@ export default defineConfig({
       'src/modules/request-understanding/tests/**/*.spec.ts',
       'src/modules/memory/**/*.spec.ts',
       'src/modules/planning/**/*.spec.ts',
+      'src/modules/task-list/**/*.spec.ts',
       'src/modules/code-navigation/**/*.spec.ts',
+      'src/modules/change-impact/**/*.spec.ts',
       'src/modules/repository-context/internal/hybrid-retrieval/IdentifierAwareRetrievalReranker.spec.ts',
       'src/modules/prompt-construction/**/*.spec.ts',
       'src/modules/repository-context/tests/**/*.spec.ts',
@@ -28,6 +30,8 @@ export default defineConfig({
       'src/modules/repository-state/adapters/**/*.spec.ts',
       'src/modules/repository-state/*.spec.ts',
       'src/modules/model-gateway/tests/OpenAiCompatibleRetry.spec.ts',
+      'src/modules/model-gateway/tests/AnthropicLlmPort.spec.ts',
+      'src/modules/model-gateway/tests/GeminiLlmPort.spec.ts',
     ],
   },
 });

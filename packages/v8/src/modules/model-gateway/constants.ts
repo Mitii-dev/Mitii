@@ -11,6 +11,10 @@ export const MODEL_GATEWAY_IDS = {
     "echo",
   OPENAI_COMPATIBLE_PORT:
     "openai-compatible",
+  ANTHROPIC_PORT:
+    "anthropic",
+  GEMINI_PORT:
+    "gemini",
 } as const;
 
 /**
@@ -58,6 +62,16 @@ export const MODEL_PROVIDER_SUPPORT = {
     adapter: "OpenAiCompatibleLlmPort",
     notes:
       "OpenAiCompatibleLlmPort with authHeader api-key and Azure deployment path.",
+  },
+  anthropic: {
+    status: "supported",
+    adapter: "AnthropicLlmPort",
+    notes: "Native Anthropic Messages API (Claude).",
+  },
+  gemini: {
+    status: "supported",
+    adapter: "GeminiLlmPort",
+    notes: "Native Google Gemini generateContent API.",
   },
 } as const;
 
@@ -175,6 +189,45 @@ export const OPENAI_COMPATIBLE_DEFAULTS = {
     "authorization" as const,
   CONTEXT_WINDOW_TOKENS:
     32_768,
+  MAX_RETRIES: 2,
+  INITIAL_BACKOFF_MS: 250,
+  MAX_BACKOFF_MS: 8_000,
+} as const;
+
+export const ANTHROPIC_DEFAULTS = {
+  BASE_URL:
+    "https://api.anthropic.com",
+  MESSAGES_PATH:
+    "v1/messages",
+  VERSION:
+    "2023-06-01",
+  MODEL:
+    "claude-sonnet-4-5",
+  CONTEXT_WINDOW_TOKENS:
+    200_000,
+  MAXIMUM_OUTPUT_TOKENS:
+    16_384,
+  MAX_RETRIES: 2,
+  INITIAL_BACKOFF_MS: 250,
+  MAX_BACKOFF_MS: 8_000,
+  REASONING_BUDGET_TOKENS: {
+    low: 1_024,
+    medium: 4_096,
+    high: 10_240,
+  },
+} as const;
+
+export const GEMINI_DEFAULTS = {
+  BASE_URL:
+    "https://generativelanguage.googleapis.com",
+  API_VERSION:
+    "v1beta",
+  MODEL:
+    "gemini-2.5-flash",
+  CONTEXT_WINDOW_TOKENS:
+    1_048_576,
+  MAXIMUM_OUTPUT_TOKENS:
+    8_192,
   MAX_RETRIES: 2,
   INITIAL_BACKOFF_MS: 250,
   MAX_BACKOFF_MS: 8_000,

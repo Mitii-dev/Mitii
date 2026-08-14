@@ -12,6 +12,7 @@ const SUBDIRS = [
   'logs',
   'checkpoints',
   'plans',
+  'tasks',
   'skills',
   'rules',
   'diff-preview',
@@ -32,11 +33,13 @@ Local runtime data for this workspace. Safe to gitignore.
 | \`logs/\` | Session JSONL logs |
 | \`checkpoints/\` | Saved run checkpoints |
 | \`plans/\` | Timestamped plan artifacts (\`MM-DD-YYYY-HH-MM-id-slug.json\`) |
+| \`tasks/\` | Live Agent task lists (\`threadId.md\`) |
 | \`skills/\` | Workspace skill playbooks |
 | \`rules/\` | Project methodology rules |
 | \`diff-preview/\` | Temporary diff preview files |
 | \`audit/\` | Audit pack exports |
 | \`mcp.json\` | MCP install list (off by default; add from Settings store) |
+| \`profiles.json\` | Local model/provider profiles with secret fingerprints only |
 | \`last-repository-state.json\` | Last published index descriptor |
 | \`MITTII.local.md\` | Optional personal instructions (see \`.example\`) |
 `;
@@ -70,6 +73,10 @@ export function mitiiAuditDir(workspaceRoot: string): string {
 
 export function mitiiPlansDir(workspaceRoot: string): string {
   return join(mitiiDir(workspaceRoot), 'plans');
+}
+
+export function mitiiTasksDir(workspaceRoot: string): string {
+  return join(mitiiDir(workspaceRoot), 'tasks');
 }
 
 /**

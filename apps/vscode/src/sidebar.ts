@@ -7,7 +7,12 @@ import {
   type MitiiClient,
   type MitiiResumeInput,
 } from '@mitii/sdk';
-import { loadDiskSkills } from '@mitii/host';
+import {
+  getProviderPreset,
+  loadDiskSkills,
+  PROVIDER_PRESETS,
+  resolveProviderApiKey,
+} from '@mitii/host';
 import type { SkillDescriptor } from '@mitii/v8';
 
 import {
@@ -54,6 +59,13 @@ import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
 import { findLocalModelPreset, LOCAL_MODEL_PRESETS } from './modelPresets.js';
 import { searchWorkspacePaths } from './pathSearch.js';
+import {
+  hashSecret,
+  profileFromProvider,
+  readProfiles,
+  upsertProfile,
+  writeProfiles,
+} from './profiles.js';
 import type {
   HostToWebviewMessage,
   IndexStatusSnapshot,
@@ -61,6 +73,7 @@ import type {
   PlanView,
   ProviderSettingsSnapshot,
   RunBudgetSettingsSnapshot,
+  SettingsProfileView,
   SuspensionPayload,
   RunUsagePayload,
   TokenUsageSnapshot,
@@ -70,6 +83,8 @@ import type {
   WorkspaceSnapshotInfo,
 } from './protocol.js';
 import { planViewFromArtifact } from './planView.js';
+import { saveTaskListToWorkspace } from './taskStore.js';
+import { taskViewFromList } from './taskView.js';
 import {
   buildConversationCarry,
   compactActivityForHistory,
@@ -448,6 +463,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       case 'clearPendingPlan': {
         await clearPendingPlan(this.host.workspaceState, this.activeThreadId);
         this.post({ type: 'setPlan', plan: null });
+        this.post({ type: 'setTaskList', taskList: null });
         return;
       }
       case 'cancel':
@@ -483,6 +499,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           pendingPlan: null,
         });
         this.post({ type: 'setPlan', plan: null });
+        this.post({ type: 'setTaskList', taskList: null });
         this.post({ type: 'tokenUsage', usage: this.tokenUsage });
         return;
       }
@@ -499,13 +516,16 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
             emptyTokenUsage(resolveContextWindow(this.vs)),
         );
         const pendingPlan = planViewFromArtifact(thread.pendingPlan);
+        const pendingTaskList = taskViewFromList(thread.pendingTaskList);
         this.post({
           type: 'thread.loaded',
           threadId: thread.id,
           messages: thread.messages,
           pendingPlan: pendingPlan,
+          pendingTaskList,
         });
         this.post({ type: 'setPlan', plan: pendingPlan });
+        this.post({ type: 'setTaskList', taskList: pendingTaskList });
         this.post({
           type: 'history',
           threads: toThreadSummaries(store),
@@ -743,6 +763,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         return;
       case 'settings.set':
         await this.handleSettingsSet(message);
+        return;
+      case 'profile.switch':
+        await this.handleProfileSwitch(message.id);
         return;
       case 'settings.setApiKey':
         await this.vs.commands.executeCommand('mitii.setApiKey');
@@ -1115,6 +1138,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         mode: engineMode,
         pendingPlan: activeThread?.pendingPlan,
       });
+      const carriedTaskList =
+        engineMode === 'agent' ? activeThread?.pendingTaskList : undefined;
 
       const outcome = await runAskInOutputChannel({
         vs: this.vs,
@@ -1124,6 +1149,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         channel: this.channel,
         mode: engineMode,
         depth: message.depth,
+        approvalMode: message.approvalMode,
         pinnedPaths: message.pinnedPaths,
         workspaceId: this.getWorkspaceId(),
         workspaceState: this.host.workspaceState,
@@ -1132,6 +1158,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         conversationText,
         conversation,
         approvedPlan,
+        taskList: carriedTaskList,
         handlers: {
           cancelToken: this.runCancel.token,
           onContextBreakdown: (breakdown) => {
@@ -1150,6 +1177,24 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
               if (livePlan) {
                 this.post({ type: 'setPlan', plan: livePlan });
               }
+            }
+            if (event?.type === 'task_list_updated' && event.taskList) {
+              const root = this.effectiveRoot();
+              let savedTaskPath: string | undefined;
+              if (root) {
+                try {
+                  const saved = saveTaskListToWorkspace({
+                    workspaceRoot: root,
+                    taskList: event.taskList,
+                    threadId: this.activeThreadId,
+                  });
+                  savedTaskPath = saved.relativePath;
+                } catch {
+                  // Best-effort file mirror for debug.
+                }
+              }
+              const view = taskViewFromList(event.taskList, { savedTaskPath });
+              this.post({ type: 'setTaskList', taskList: view ?? null });
             }
             const changeRoot = this.effectiveRoot();
             if (changeRoot && this.activeFileChangeSnapshot && event) {
@@ -1300,18 +1345,34 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           : approvedPlan
             ? planViewFromArtifact(approvedPlan, {
                 savedPlanPath,
-                stepStatus:
-                  outcome.result.status === 'completed'
-                    ? 'done'
-                    : 'pending',
               })
             : resultPlan
               ? planViewFromArtifact(resultPlan, {
                   savedPlanPath,
-                  stepStatus:
-                    outcome.result.status === 'completed' ? 'done' : 'pending',
                 })
               : null;
+      let savedTaskPath: string | undefined;
+      if (outcome.result.taskList) {
+        const root = this.effectiveRoot();
+        if (root) {
+          try {
+            const saved = saveTaskListToWorkspace({
+              workspaceRoot: root,
+              taskList: outcome.result.taskList,
+              threadId: this.activeThreadId,
+            });
+            savedTaskPath = saved.relativePath;
+            this.channel.appendLine(`[tasks] saved ${saved.relativePath}`);
+          } catch (error) {
+            this.channel.appendLine(
+              `[tasks] save failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+      }
+      const resultTaskList = taskViewFromList(outcome.result.taskList, {
+        savedTaskPath,
+      });
 
       const changeRoot = this.effectiveRoot();
       const runId = outcome.result.runId;
@@ -1353,6 +1414,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         ...(pendingPlanForUi !== undefined
           ? { pendingPlan: pendingPlanForUi }
           : {}),
+        taskList: resultTaskList,
       });
 
       if (persistedFileChanges && runId && this.activeFileChangeSnapshot) {
@@ -1382,6 +1444,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         ...(usedPlanHandoff && outcome.result.status === 'completed'
           ? { clearPendingPlan: true }
           : {}),
+        pendingTaskList: outcome.result.taskList ?? null,
         tokenUsage: this.tokenUsage,
       });
       this.activeThreadId = store.activeThreadId;
@@ -1549,10 +1612,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       message: 'Testing…',
       testing: true,
     });
-    const apiKey =
-      (await this.secrets.get('mitii.provider.apiKey')) ??
-      process.env.MITII_API_KEY ??
-      process.env.OPENAI_API_KEY;
+    const apiKey = resolveProviderApiKey({
+      type: message.provider.type,
+      env: process.env,
+      secretKey:
+        (await this.secrets.get('mitii.provider.apiKey')) ?? undefined,
+    });
     const result = await testProviderConnection({
       type: message.provider.type,
       baseUrl: message.provider.baseUrl,
@@ -1745,59 +1810,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   ): Promise<void> {
     const cfg = this.vs.workspace.getConfiguration('mitii');
     if (message.provider) {
-      if (message.provider.type !== undefined) {
-        await cfg.update(
-          'provider.type',
-          message.provider.type,
-          this.vs.ConfigurationTarget.Workspace,
-        );
-      }
-      if (message.provider.preset !== undefined) {
-        await cfg.update(
-          'provider.preset',
-          message.provider.preset,
-          this.vs.ConfigurationTarget.Workspace,
-        );
-      }
-      if (message.provider.baseUrl !== undefined) {
-        await cfg.update(
-          'provider.baseUrl',
-          message.provider.baseUrl,
-          this.vs.ConfigurationTarget.Workspace,
-        );
-      }
-      if (message.provider.model !== undefined) {
-        await cfg.update(
-          'provider.model',
-          message.provider.model,
-          this.vs.ConfigurationTarget.Workspace,
-        );
-      }
-      if (message.provider.contextWindow !== undefined) {
-        const window = Math.max(
-          1024,
-          Math.floor(Number(message.provider.contextWindow) || 0),
-        );
-        await cfg.update(
-          'provider.contextWindow',
-          window,
-          this.vs.ConfigurationTarget.Workspace,
-        );
-      }
-      if (message.provider.maximumOutputTokens !== undefined) {
-        const maxOut = Math.max(
-          256,
-          Math.floor(Number(message.provider.maximumOutputTokens) || 0),
-        );
-        await cfg.update(
-          'provider.maximumOutputTokens',
-          maxOut,
-          this.vs.ConfigurationTarget.Workspace,
-        );
-      }
-      this.connectionOk = undefined;
-      this.connectionStatus = undefined;
-      this.invalidateClient();
+      await this.writeProviderSettings(message.provider);
     }
     if (message.ui) {
       if (message.ui.showReasoning !== undefined) {
@@ -1820,6 +1833,33 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           message.ui.depth,
           this.vs.ConfigurationTarget.Global,
         );
+      }
+      if (message.ui.modeDefaults) {
+        for (const mode of ['ask', 'plan', 'agent'] as const) {
+          const defaults = message.ui.modeDefaults[mode];
+          if (!defaults) continue;
+          if (defaults.depth !== undefined) {
+            await cfg.update(
+              `ui.modeDefaults.${mode}.depth`,
+              defaults.depth,
+              this.vs.ConfigurationTarget.Workspace,
+            );
+          }
+          if (defaults.approvalMode !== undefined) {
+            await cfg.update(
+              `ui.modeDefaults.${mode}.approvalMode`,
+              defaults.approvalMode,
+              this.vs.ConfigurationTarget.Workspace,
+            );
+          }
+          if (defaults.model !== undefined) {
+            await cfg.update(
+              `ui.modeDefaults.${mode}.model`,
+              defaults.model.trim(),
+              this.vs.ConfigurationTarget.Workspace,
+            );
+          }
+        }
       }
       if (message.ui.runBudget) {
         if (message.ui.runBudget.unlimited !== undefined) {
@@ -1869,13 +1909,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         }
       }
     }
-    if (message.approvalMode !== undefined) {
+    const approvalMode = message.approvalMode ?? message.ui?.approvalMode;
+    if (approvalMode !== undefined) {
       await cfg.update(
         'safety.approvalMode',
-        message.approvalMode,
+        approvalMode,
         this.vs.ConfigurationTarget.Workspace,
       );
-      this.autoApprovePendingToolApprovalIfAllowed(message.approvalMode);
+      this.autoApprovePendingToolApprovalIfAllowed(approvalMode);
     }
     if (message.workspaceRootOverride !== undefined) {
       await cfg.update(
@@ -1888,6 +1929,131 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       await writeMcpSettings(this.vs, this.effectiveRoot(), message.mcp);
       this.invalidateClient();
     }
+    if (message.profile) {
+      const root = this.effectiveRoot();
+      const secret = await this.secrets.get('mitii.provider.apiKey');
+      const currentProvider = await this.readProvider();
+      const profilesFile = readProfiles(root, currentProvider, hashSecret(secret));
+      const savedProfile: SettingsProfileView = {
+        ...message.profile,
+        provider: {
+          ...message.profile.provider,
+          type: message.provider?.type ?? message.profile.provider.type,
+          preset: message.provider?.preset ?? message.profile.provider.preset,
+          baseUrl: message.provider?.baseUrl ?? message.profile.provider.baseUrl,
+          model: message.provider?.model ?? message.profile.provider.model,
+          contextWindow:
+            message.provider?.contextWindow ??
+            message.profile.provider.contextWindow,
+          maximumOutputTokens:
+            message.provider?.maximumOutputTokens ??
+            message.profile.provider.maximumOutputTokens,
+        },
+        hasSecret: Boolean(secret),
+        secretHash: hashSecret(secret),
+      };
+      writeProfiles(root, upsertProfile(profilesFile, savedProfile));
+    }
+    await this.sendBootstrap();
+  }
+
+  private async writeProviderSettings(
+    provider: NonNullable<
+      Extract<WebviewToHostMessage, { type: 'settings.set' }>['provider']
+    >,
+  ): Promise<void> {
+    const cfg = this.vs.workspace.getConfiguration('mitii');
+    if (provider.type !== undefined) {
+      await cfg.update(
+        'provider.type',
+        provider.type,
+        this.vs.ConfigurationTarget.Workspace,
+      );
+    }
+    if (provider.preset !== undefined) {
+      await cfg.update(
+        'provider.preset',
+        provider.preset,
+        this.vs.ConfigurationTarget.Workspace,
+      );
+    }
+    if (provider.baseUrl !== undefined) {
+      await cfg.update(
+        'provider.baseUrl',
+        provider.baseUrl,
+        this.vs.ConfigurationTarget.Workspace,
+      );
+    }
+    if (provider.model !== undefined) {
+      await cfg.update(
+        'provider.model',
+        provider.model,
+        this.vs.ConfigurationTarget.Workspace,
+      );
+    }
+    if (provider.contextWindow !== undefined) {
+      const window = Math.max(
+        1024,
+        Math.floor(Number(provider.contextWindow) || 0),
+      );
+      await cfg.update(
+        'provider.contextWindow',
+        window,
+        this.vs.ConfigurationTarget.Workspace,
+      );
+    }
+    if (provider.maximumOutputTokens !== undefined) {
+      const maxOut = Math.max(
+        256,
+        Math.floor(Number(provider.maximumOutputTokens) || 0),
+      );
+      await cfg.update(
+        'provider.maximumOutputTokens',
+        maxOut,
+        this.vs.ConfigurationTarget.Workspace,
+      );
+    }
+    this.connectionOk = undefined;
+    this.connectionStatus = undefined;
+    this.invalidateClient();
+  }
+
+  private async handleProfileSwitch(id: string): Promise<void> {
+    const currentProvider = await this.readProvider();
+    const secret = await this.secrets.get('mitii.provider.apiKey');
+    const secretHash = hashSecret(secret);
+    let profilesFile = readProfiles(
+      this.effectiveRoot(),
+      currentProvider,
+      secretHash,
+    );
+    if (profilesFile.activeProfileId === id) {
+      await this.sendBootstrap();
+      return;
+    }
+    const profile = profilesFile.profiles.find((entry) => entry.id === id);
+    if (!profile) {
+      this.post({ type: 'error', message: `Profile not found: ${id}` });
+      return;
+    }
+    const outgoing = profilesFile.profiles.find(
+      (entry) => entry.id === profilesFile.activeProfileId,
+    );
+    if (outgoing) {
+      profilesFile = upsertProfile(
+        profilesFile,
+        profileFromProvider(currentProvider, {
+          id: outgoing.id,
+          name: outgoing.name,
+          secretHash,
+        }),
+      );
+    }
+    await this.writeProviderSettings(profile.provider);
+    writeProfiles(this.effectiveRoot(), {
+      activeProfileId: profile.id,
+      profiles: profilesFile.profiles,
+    });
     await this.sendBootstrap();
   }
 
@@ -1900,24 +2066,68 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     return this.getWorkspaceRoot();
   }
 
-  private buildAvailableModels(currentModel: string): string[] {
+  private buildAvailableModels(
+    currentModel: string,
+    type?: string,
+    presetId?: string,
+  ): string[] {
     const set = new Set<string>();
     if (currentModel.trim()) set.add(currentModel.trim());
-    for (const preset of LOCAL_MODEL_PRESETS) set.add(preset.model);
+    const providerPreset = getProviderPreset(presetId ?? type ?? '');
+    if (providerPreset?.type === 'openai-compatible' || !providerPreset) {
+      for (const preset of LOCAL_MODEL_PRESETS) set.add(preset.model);
+    }
+    for (const id of providerPreset?.models ?? []) {
+      if (id.trim()) set.add(id.trim());
+    }
     for (const id of this.discoveredModels) {
       if (id.trim()) set.add(id.trim());
     }
     return [...set];
   }
 
+  private inferProviderPreset(
+    type: string,
+    preset: string | undefined,
+    baseUrl: string,
+    model: string,
+  ): string | undefined {
+    if (preset && getProviderPreset(preset)) return preset;
+    if (type === 'echo') return 'echo';
+    const normalizedBase = baseUrl.trim().replace(/\/+$/, '').toLowerCase();
+    const exactBase = PROVIDER_PRESETS.find(
+      (entry) =>
+        entry.type === type &&
+        entry.baseUrl.trim().replace(/\/+$/, '').toLowerCase() === normalizedBase,
+    );
+    if (exactBase) return exactBase.id;
+    const exactModel = PROVIDER_PRESETS.find(
+      (entry) => entry.type === type && entry.model === model,
+    );
+    return exactModel?.id;
+  }
+
   private async readProvider(): Promise<ProviderSettingsSnapshot> {
     const cfg = this.vs.workspace.getConfiguration('mitii');
-    const hasApiKey = Boolean(
-      (await this.secrets.get('mitii.provider.apiKey')) ??
-        process.env.MITII_API_KEY ??
-        process.env.OPENAI_API_KEY,
-    );
+    const type = cfg.get<string>('provider.type') ?? 'echo';
+    const configuredPreset = cfg.get<string>('provider.preset') ?? undefined;
+    const baseUrl =
+      cfg.get<string>('provider.baseUrl') ?? 'http://localhost:11434/v1';
     const model = cfg.get<string>('provider.model') ?? 'qwen3-coder:30b';
+    const preset = this.inferProviderPreset(
+      type,
+      configuredPreset,
+      baseUrl,
+      model,
+    );
+    const hasApiKey = Boolean(
+      resolveProviderApiKey({
+        type,
+        env: process.env,
+        secretKey:
+          (await this.secrets.get('mitii.provider.apiKey')) ?? undefined,
+      }),
+    );
     const contextWindow = resolveContextWindow(this.vs);
     const fromMaxOut = cfg.get<number>('provider.maximumOutputTokens');
     const maximumOutputTokens =
@@ -1927,12 +2137,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         ? Math.floor(fromMaxOut)
         : Math.min(16_384, Math.max(1, contextWindow - 1));
     return {
-      type: cfg.get<string>('provider.type') ?? 'echo',
-      preset: cfg.get<string>('provider.preset') ?? undefined,
-      baseUrl: cfg.get<string>('provider.baseUrl') ?? 'http://localhost:11434/v1',
+      type,
+      preset,
+      baseUrl,
       model,
       hasApiKey,
-      availableModels: this.buildAvailableModels(model),
+      availableModels: this.buildAvailableModels(model, type, preset),
       contextWindow,
       maximumOutputTokens,
       connectionOk: this.connectionOk,
@@ -1942,13 +2152,55 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
 
   private readUi(): UiSettingsSnapshot {
     const cfg = this.vs.workspace.getConfiguration('mitii');
+    const legacyDepth =
+      (cfg.get<string>('ui.depth') as UiSettingsSnapshot['depth']) ?? 'auto';
+    const legacyApproval = cfg.get<string>('safety.approvalMode') ?? 'guided';
+    const defaultModeSettings: UiSettingsSnapshot['modeDefaults'] = {
+      ask: { depth: 'auto', approvalMode: 'guided', model: '' },
+      plan: { depth: 'deep', approvalMode: 'guided', model: '' },
+      agent: { depth: 'auto', approvalMode: 'safe', model: '' },
+    };
+    const readModeDepth = (
+      mode: 'ask' | 'plan' | 'agent',
+    ): UiSettingsSnapshot['depth'] =>
+      (cfg.get<string>(
+        `ui.modeDefaults.${mode}.depth`,
+      ) as UiSettingsSnapshot['depth']) ??
+      defaultModeSettings[mode].depth ??
+      legacyDepth;
+    const readModeApproval = (mode: 'ask' | 'plan' | 'agent'): string => {
+      const configured = cfg.get<string>(
+        `ui.modeDefaults.${mode}.approvalMode`,
+      );
+      if (configured === 'builder') return 'guided';
+      return configured ?? defaultModeSettings[mode].approvalMode;
+    };
+    const readModeModel = (mode: 'ask' | 'plan' | 'agent'): string =>
+      cfg.get<string>(`ui.modeDefaults.${mode}.model`)?.trim() ?? '';
     return {
       showReasoning: cfg.get<boolean>('ui.showReasoning') ?? true,
       reasoningPreviewMaxChars:
         cfg.get<number>('ui.reasoningPreviewMaxChars') ?? 8000,
-      depth: (cfg.get<string>('ui.depth') as UiSettingsSnapshot['depth']) ?? 'auto',
+      depth: legacyDepth,
+      modeDefaults: {
+        ask: {
+          depth: readModeDepth('ask'),
+          approvalMode: readModeApproval('ask'),
+          model: readModeModel('ask'),
+        },
+        plan: {
+          depth: readModeDepth('plan'),
+          approvalMode: readModeApproval('plan'),
+          model: readModeModel('plan'),
+        },
+        agent: {
+          depth: readModeDepth('agent'),
+          approvalMode: readModeApproval('agent'),
+          model: readModeModel('agent'),
+        },
+      },
       contextToggles: resolveContextToggles(cfg),
-      approvalMode: cfg.get<string>('safety.approvalMode') ?? 'guided',
+      approvalMode: legacyApproval,
       runBudget: readRunBudgetSettings(this.vs),
     };
   }
@@ -2223,10 +2475,15 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         emptyTokenUsage(resolveContextWindow(this.vs)),
       );
     }
+    const provider = await this.readProvider();
+    const secretHash = hashSecret(await this.secrets.get('mitii.provider.apiKey'));
+    const profilesFile = readProfiles(this.effectiveRoot(), provider, secretHash);
     this.post({
       type: 'bootstrap',
       workspace: this.readWorkspace(),
-      provider: await this.readProvider(),
+      provider,
+      profiles: profilesFile.profiles,
+      activeProfileId: profilesFile.activeProfileId,
       index: await this.readIndexStatus(),
       mcp: readMcpSettings(this.vs, this.effectiveRoot()),
       mcpRuntimeStatus: this.mcpRuntimeStatus(),
@@ -2243,6 +2500,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       activeThreadId: history.activeThreadId,
       activeThreadMessages: activeThread?.messages ?? [],
       pendingPlan: planViewFromArtifact(activeThread?.pendingPlan),
+      pendingTaskList: taskViewFromList(activeThread?.pendingTaskList),
       memories: await loadMemoriesForView(
         this.host.workspaceState,
         this.getWorkspaceId(),

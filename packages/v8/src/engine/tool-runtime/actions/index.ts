@@ -11,6 +11,7 @@ export { executeFileMetadata } from "./ExecuteFileMetadata";
 export { executeSearchFiles } from "./ExecuteSearchFiles";
 export { executeReadDiagnostics } from "./ExecuteReadDiagnostics";
 export { executeReadGitStatus } from "./ExecuteReadGitStatus";
+export { executeAnalyzeChangeImpact } from "./ExecuteAnalyzeChangeImpact";
 export { executeRunReadonlyCommand } from "./ExecuteRunReadonlyCommand";
 export { executeRunCommand } from "./ExecuteRunCommand";
 export { executeFetchUrl } from "./ExecuteFetchUrl";

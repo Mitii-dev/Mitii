@@ -64,6 +64,7 @@ export const READ_ONLY_TOOL_IDS = [
   "read_git_status",
   "goto_definition",
   "find_references",
+  "analyze_change_impact",
   "run_readonly_command",
   "read_package_scripts",
 ] as const;

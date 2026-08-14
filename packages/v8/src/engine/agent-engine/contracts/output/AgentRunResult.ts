@@ -5,6 +5,7 @@ import {
   planningDepthSchema,
 } from "../../../../modules/decision-policy";
 import { planArtifactSchema } from "../../../../modules/planning";
+import { taskListSchema } from "../../../../modules/task-list";
 import { repositoryStateReferenceSchema } from "../../../../modules/repository-state";
 
 import {
@@ -74,6 +75,8 @@ export const agentRunResultSchema = z
     answer: z.string().optional(),
     /** Structured plan when planningDepth produced an artifact. */
     plan: planArtifactSchema.optional(),
+    /** Compact live checklist. Absent in ask mode. Never auto-completed. */
+    taskList: taskListSchema.optional(),
     suspension: agentRunSuspensionSchema.optional(),
     pinnedState: repositoryStateReferenceSchema.optional(),
     reasonCodes: z.array(agentReasonCodeSchema).min(1),

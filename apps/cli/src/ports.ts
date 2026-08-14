@@ -1,11 +1,9 @@
 import {
-  EchoLlmPort,
   InMemoryRepositoryStateStore,
   NodeNetworkAdapter,
   NodeGitAdapter,
   NodeProcessAdapter,
   NodeWorkspaceFileSystemAdapter,
-  OpenAiCompatibleLlmPort,
   RepositoryStatePipeline,
   ToolRuntimePipeline,
   VerificationPipeline,
@@ -17,10 +15,15 @@ import {
 import {
   createFileSystemSkillsCatalog,
   createHostCodeNavigationPort,
+  createHostLlmPorts,
+  createHostRepositoryGraphPort,
   createOptionalSearchPort,
   createWorkspaceCheckpointStore,
   createWorkspaceMemoryStore,
   getProviderPreset,
+  inferHostProviderType,
+  isHostProviderType,
+  resolveProviderApiKey,
 } from '@mitii/host';
 import type { LlmPort, ModelCapabilities, ModelEvent, ModelRequest } from '@mitii/v8';
 
@@ -85,57 +88,54 @@ export function resolveCliPorts(
   const env = options.env ?? process.env;
   const config =
     options.config ?? loadMitiiHostConfig(options.cwd ?? process.cwd());
-  const apiKey = env.MITII_API_KEY ?? env.OPENAI_API_KEY;
+  const workspaceId = config.workspaceId ?? 'cli_workspace';
+  const defaultMode = config.defaultMode ?? 'ask';
   const forceEcho =
     options.forceEcho === true ||
     env.MITII_FORCE_ECHO === '1' ||
     config.provider === 'echo';
-  const workspaceId = config.workspaceId ?? 'cli_workspace';
-  const defaultMode = config.defaultMode ?? 'ask';
 
-  if (!forceEcho && (apiKey || config.provider === 'openai-compatible')) {
-    if (!apiKey) {
-      return {
-        understandingLlm: new LocalUnderstandingLlmPort(),
-        runLlm: new EchoLlmPort(),
-        providerLabel: 'echo (missing API key)',
-        workspaceId,
-        defaultMode,
-      };
-    }
-    const model = env.MITII_MODEL ?? config.model ?? 'gpt-4o-mini';
-    const baseUrl = env.MITII_BASE_URL ?? config.baseUrl;
-    const preset = getProviderPreset(config.providerPreset ?? 'openai-compatible');
-    const authHeader = preset?.authHeader;
-    const chatCompletionsPath = preset?.chatCompletionsPath;
-    const runLlm = new OpenAiCompatibleLlmPort({
-      model,
-      apiKey,
-      ...(baseUrl ? { baseUrl } : {}),
-      ...(authHeader ? { authHeader } : {}),
-      ...(chatCompletionsPath ? { chatCompletionsPath } : {}),
-    });
-    const understandingLlm = new OpenAiCompatibleLlmPort({
-      model,
-      apiKey,
-      ...(baseUrl ? { baseUrl } : {}),
-      ...(authHeader ? { authHeader } : {}),
-      ...(chatCompletionsPath ? { chatCompletionsPath } : {}),
-      capabilities: { supportsStructuredOutput: true },
-    });
+  const type =
+    (env.MITII_PROVIDER && isHostProviderType(env.MITII_PROVIDER)
+      ? env.MITII_PROVIDER
+      : undefined) ??
+    config.provider ??
+    inferHostProviderType(env) ??
+    'echo';
+  const presetId =
+    env.MITII_PROVIDER_PRESET ??
+    config.providerPreset ??
+    type;
+  const preset = getProviderPreset(presetId);
+  const model =
+    env.MITII_MODEL ??
+    config.model ??
+    preset?.model ??
+    'gpt-4o-mini';
+  const baseUrl = env.MITII_BASE_URL ?? config.baseUrl ?? preset?.baseUrl;
+  const apiKey = resolveProviderApiKey({ type, env });
+
+  if (forceEcho || type === 'echo') {
     return {
-      understandingLlm,
-      runLlm,
-      providerLabel: `openai-compatible:${model}`,
+      understandingLlm: new LocalUnderstandingLlmPort(),
+      runLlm: createHostLlmPorts({ type: 'echo', model: 'echo' }).runLlm,
+      providerLabel: 'echo',
       workspaceId,
       defaultMode,
     };
   }
 
+  const ports = createHostLlmPorts({
+    type,
+    preset: presetId,
+    model,
+    ...(baseUrl ? { baseUrl } : {}),
+    ...(apiKey ? { apiKey } : {}),
+  });
   return {
-    understandingLlm: new LocalUnderstandingLlmPort(),
-    runLlm: new EchoLlmPort(),
-    providerLabel: 'echo',
+    understandingLlm: ports.understandingLlm,
+    runLlm: ports.runLlm,
+    providerLabel: ports.providerLabel,
     workspaceId,
     defaultMode,
   };
@@ -162,6 +162,9 @@ export function createCliClient(options: {
     network: new NodeNetworkAdapter(),
     git,
     codeNavigation: createHostCodeNavigationPort({
+      workspaceRoot: options.cwd,
+    }),
+    repoGraphs: createHostRepositoryGraphPort({
       workspaceRoot: options.cwd,
     }),
     ...(search ? { search } : {}),
@@ -198,6 +201,7 @@ export function createCliClient(options: {
     checkpointStore: createWorkspaceCheckpointStore(options.cwd),
     tools,
     verification,
+    taskListAutoAdvance: env.MITII_TASK_LIST_AUTO_ADVANCE !== '0',
     skillsCatalog: createFileSystemSkillsCatalog({
       workspaceRoot: workspaceSkillsEnabled ? options.cwd : undefined,
       contentMode: 'metadata',

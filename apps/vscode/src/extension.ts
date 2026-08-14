@@ -124,7 +124,7 @@ export function activate(context: ExtensionContext): void {
     invalidateClient();
     channel.appendLine('[mitii] SecretStorage mitii.provider.apiKey updated');
     void vscode.window.showInformationMessage(
-      'Mitii API key saved. Use Provider → openai-compatible for cloud APIs; local Ollama does not need a key.',
+      'Mitii API key saved. Choose Anthropic, Gemini, DeepSeek, OpenAI, or a custom OpenAI-compatible endpoint in Settings. Local Ollama does not need a key.',
     );
   };
 
@@ -597,16 +597,18 @@ export function activate(context: ExtensionContext): void {
         event.affectsConfiguration('mitii.mcp') ||
         event.affectsConfiguration('mitii.ui') ||
         event.affectsConfiguration('mitii.safety') ||
+        event.affectsConfiguration('mitii.agent') ||
         event.affectsConfiguration('mitii.onboarding')
       ) {
         if (
           event.affectsConfiguration('mitii.provider') ||
           event.affectsConfiguration('mitii.mcp') ||
-          event.affectsConfiguration('mitii.ui.contextToggles.memory')
+          event.affectsConfiguration('mitii.ui.contextToggles.memory') ||
+          event.affectsConfiguration('mitii.agent.taskListAutoAdvance')
         ) {
           invalidateClient();
           channel.appendLine(
-            '[mitii] provider/mcp/memory settings changed; client will recompose',
+            '[mitii] provider/mcp/memory/agent settings changed; client will recompose',
           );
         }
         void (async () => {

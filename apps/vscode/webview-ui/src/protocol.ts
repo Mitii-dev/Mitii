@@ -93,6 +93,24 @@ export interface ProviderSettingsSnapshot {
   connectionStatus?: string;
 }
 
+export interface SettingsProfileView {
+  id: string;
+  name: string;
+  provider: Pick<
+    ProviderSettingsSnapshot,
+    | 'type'
+    | 'preset'
+    | 'baseUrl'
+    | 'model'
+    | 'contextWindow'
+    | 'maximumOutputTokens'
+  >;
+  hasSecret: boolean;
+  /** SHA-256 fingerprint only. Raw secrets stay out of settings and profiles. */
+  secretHash?: string;
+  updatedAt?: string;
+}
+
 export interface TokenUsageTurn {
   turnIndex: number;
   at: string;
@@ -158,9 +176,16 @@ export interface UiSettingsSnapshot {
   showReasoning: boolean;
   reasoningPreviewMaxChars: number;
   depth: AgentUiDepth;
+  modeDefaults: Record<'ask' | 'plan' | 'agent', ModeDefaultSettingsSnapshot>;
   contextToggles: ContextToggles;
   approvalMode: string;
   runBudget: RunBudgetSettingsSnapshot;
+}
+
+export interface ModeDefaultSettingsSnapshot {
+  depth: AgentUiDepth;
+  approvalMode: string;
+  model?: string;
 }
 
 export interface RunBudgetSettingsSnapshot {
@@ -172,9 +197,12 @@ export interface RunBudgetSettingsSnapshot {
 }
 
 export type UiSettingsPatch = Partial<
-  Omit<UiSettingsSnapshot, 'contextToggles' | 'runBudget'> & {
+  Omit<UiSettingsSnapshot, 'contextToggles' | 'runBudget' | 'modeDefaults'> & {
     contextToggles?: Partial<ContextToggles>;
     runBudget?: Partial<RunBudgetSettingsSnapshot>;
+    modeDefaults?: Partial<
+      Record<'ask' | 'plan' | 'agent', Partial<ModeDefaultSettingsSnapshot>>
+    >;
   }
 >;
 
@@ -304,6 +332,20 @@ export interface PlanView {
   savedPlanPath?: string;
 }
 
+export interface TaskItemView {
+  id: string;
+  title: string;
+  status: 'pending' | 'active' | 'done' | 'skipped' | 'blocked';
+  detail?: string;
+}
+
+export interface TaskListView {
+  source: 'plan' | 'agent' | 'user';
+  title?: string;
+  items: TaskItemView[];
+  savedTaskPath?: string;
+}
+
 export interface ReviewDiffView {
   summary: string;
   files: Array<{ path: string; status: string }>;
@@ -368,6 +410,7 @@ export type WebviewToHostMessage =
       prompt: string;
       mode: AgentUiMode;
       depth?: AgentUiDepth;
+      approvalMode?: string;
       pinnedPaths?: string[];
     }
   | { type: 'cancel' }
@@ -430,9 +473,11 @@ export type WebviewToHostMessage =
       workspaceRootOverride?: string | null;
       mcp?: McpSettings;
       approvalMode?: string;
+      profile?: SettingsProfileView;
     }
   | { type: 'settings.setApiKey' }
   | { type: 'settings.clearApiKey' }
+  | { type: 'profile.switch'; id: string }
   | {
       type: 'provider.testConnection';
       provider: { type: string; baseUrl: string; model: string };
@@ -454,6 +499,8 @@ export type HostToWebviewMessage =
       type: 'bootstrap';
       workspace: WorkspaceSnapshotInfo;
       provider: ProviderSettingsSnapshot;
+      profiles: SettingsProfileView[];
+      activeProfileId: string;
       index: IndexStatusSnapshot;
       mcp: McpSettings;
       mcpRuntimeStatus: McpRuntimeStatus;
@@ -469,12 +516,15 @@ export type HostToWebviewMessage =
       activeThreadMessages?: ChatMessageView[];
       /** Pending plan awaiting Agent-mode handoff for the active thread. */
       pendingPlan?: PlanView | null;
+      pendingTaskList?: TaskListView | null;
       memories: MemoryItemView[];
       checkpoints: CheckpointItemView[];
     }
   | {
       type: 'settings';
       provider: ProviderSettingsSnapshot;
+      profiles: SettingsProfileView[];
+      activeProfileId: string;
       ui: UiSettingsSnapshot;
       workspace: WorkspaceSnapshotInfo;
       mcp: McpSettings;
@@ -507,6 +557,7 @@ export type HostToWebviewMessage =
       plan?: PlanView | null;
       /** Explicit pending-plan handoff state for the active thread. */
       pendingPlan?: PlanView | null;
+      taskList?: TaskListView | null;
     }
   | { type: 'run.cancelled' }
   | { type: 'error'; message: string }
@@ -526,8 +577,10 @@ export type HostToWebviewMessage =
       messages: ChatMessageView[];
       /** Pending plan awaiting Agent-mode handoff for this thread. */
       pendingPlan?: PlanView | null;
+      pendingTaskList?: TaskListView | null;
     }
   | { type: 'setPlan'; plan: PlanView | null }
+  | { type: 'setTaskList'; taskList: TaskListView | null }
   | { type: 'setReviewDiff'; review: ReviewDiffView | null }
   | { type: 'setMemories'; memories: MemoryItemView[] }
   | { type: 'setCheckpoints'; checkpoints: CheckpointItemView[] }

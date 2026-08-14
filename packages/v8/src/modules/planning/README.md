@@ -32,5 +32,8 @@ validate PlanningInput
 
 1. One `PlanArtifact` shape for all task kinds.
 2. `skills` and `processHints` may bias sections/questions; they must not switch plan schemas.
+   Skill Discover/Change/Verify methodology bullets must not replace executable plan steps.
+   Dimension-driven steps should stay request-specific (targets, constraints, acceptance checks).
+   Repair vs feature step shape comes from intent taxonomy only — no language/tool keyword sniffing.
 3. `planningDepth === "none"` returns `status: "blocked"` without a plan.
 4. Planning never grants tools or mutates the workspace.

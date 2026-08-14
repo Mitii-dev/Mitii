@@ -4,12 +4,20 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
 
+import type {
+  AgentMode,
+  MitiiConversationMessage,
+  TaskList,
+} from '@mitii/sdk';
+import { loadProjectRules } from '@mitii/host';
+
 import { CLI_HELP } from './help.js';
 import { createCliClient } from './ports.js';
 import {
   buildSessionExport,
   formatContextInspection,
   formatDiffReview,
+  formatTaskList,
   formatUsageLine,
 } from './runReport.js';
 import {
@@ -17,6 +25,7 @@ import {
   driveRun,
   type SessionIo,
 } from './session.js';
+import { nextCliSessionCarry } from './sessionCarry.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { loadMitiiHostConfig } from './config.js';
@@ -25,7 +34,6 @@ import {
   loadPersistedRepositoryState,
   persistLatestRepositoryState,
 } from './stateCache.js';
-import { loadProjectRules } from '@mitii/host';
 
 export interface ParsedCliArgs {
   command:
@@ -44,6 +52,7 @@ export interface ParsedCliArgs {
   autoClarify?: string;
   autoApproval?: 'approved' | 'denied';
   exportPath?: string;
+  mode?: AgentMode;
   unknownCommand?: string;
   rest: string[];
 }
@@ -56,6 +65,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   let autoClarify: string | undefined;
   let autoApproval: 'approved' | 'denied' | undefined;
   let exportPath: string | undefined;
+  let mode: AgentMode | undefined;
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i]!;
@@ -90,6 +100,13 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       exportPath = args[++i];
       continue;
     }
+    if (arg === '--mode') {
+      const value = args[++i];
+      if (value === 'ask' || value === 'plan' || value === 'agent') {
+        mode = value;
+      }
+      continue;
+    }
     if (arg.startsWith('-')) {
       continue;
     }
@@ -105,6 +122,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       cwd,
       json: flags.has('json'),
       forceEcho: flags.has('echo'),
+      mode,
       rest,
     };
   }
@@ -116,6 +134,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       json: true,
       forceEcho: flags.has('echo'),
       exportPath,
+      mode,
       rest,
     };
   }
@@ -129,6 +148,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       forceEcho: flags.has('echo'),
       autoClarify,
       autoApproval,
+      mode,
       rest,
     };
   }
@@ -284,6 +304,11 @@ function reportOutcome(
   for (const line of formatDiffReview(outcome.result)) {
     io.writeStderr(`${line}\n`);
   }
+  if (outcome.result.taskList) {
+    for (const line of formatTaskList(outcome.result.taskList)) {
+      io.writeStderr(`${line}\n`);
+    }
+  }
   io.writeStderr(`${formatUsageLine(outcome.result)}\n`);
 }
 
@@ -294,15 +319,23 @@ async function runAsk(options: {
   forceEcho: boolean;
   autoClarify?: string;
   autoApproval?: 'approved' | 'denied';
+  mode?: AgentMode;
+  conversation?: MitiiConversationMessage[];
+  taskList?: TaskList;
   io?: SessionIo;
-}): Promise<{ code: number; outcome?: Awaited<ReturnType<typeof driveRun>> }> {
+}): Promise<{
+  code: number;
+  mode: AgentMode;
+  outcome?: Awaited<ReturnType<typeof driveRun>>;
+}> {
   const { client, ports } = createCliClient({
     cwd: options.cwd,
     forceEcho: options.forceEcho,
   });
   const io = options.io ?? createDefaultSessionIo();
+  const mode = options.mode ?? ports.defaultMode;
   if (!options.json) {
-    io.writeStderr(`[mitii] provider=${ports.providerLabel}\n`);
+    io.writeStderr(`[mitii] provider=${ports.providerLabel} mode=${mode}\n`);
   }
 
   const projectRules = await loadProjectRules({
@@ -312,9 +345,15 @@ async function runAsk(options: {
     client,
     start: {
       prompt: options.prompt,
-      mode: ports.defaultMode,
+      mode,
       workspaceRoot: options.cwd,
       ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
+      ...(options.conversation && options.conversation.length > 0
+        ? { conversation: options.conversation }
+        : {}),
+      ...(mode !== 'ask' && options.taskList
+        ? { taskList: options.taskList }
+        : {}),
     },
     json: options.json,
     autoClarify: options.autoClarify,
@@ -322,7 +361,7 @@ async function runAsk(options: {
     io,
   });
   reportOutcome(io, options.json, outcome);
-  return { code: outcome.exitCode, outcome };
+  return { code: outcome.exitCode, mode, outcome };
 }
 
 async function runIndex(options: {
@@ -498,6 +537,7 @@ async function runStatus(options: {
 async function runSession(options: {
   cwd: string;
   forceEcho: boolean;
+  mode?: AgentMode;
   io: SessionIo;
 }): Promise<number> {
   const rl = createInterface({
@@ -509,6 +549,8 @@ async function runSession(options: {
       rl.question(q, (answer) => resolve(answer));
     });
 
+  let conversation: MitiiConversationMessage[] = [];
+  let taskList: TaskList | undefined;
   options.io.writeStderr(
     '[mitii] interactive session — empty line or Ctrl-D to exit; Ctrl-C cancels a run\n',
   );
@@ -516,13 +558,27 @@ async function runSession(options: {
     for (;;) {
       const prompt = (await ask('mitii> ')).trim();
       if (!prompt) break;
-      const { code } = await runAsk({
+      const { code, mode, outcome } = await runAsk({
         prompt,
         cwd: options.cwd,
         json: false,
         forceEcho: options.forceEcho,
+        mode: options.mode,
+        conversation,
+        taskList,
         io: options.io,
       });
+      if (outcome) {
+        const next = nextCliSessionCarry({
+          mode,
+          conversation,
+          taskList,
+          prompt,
+          result: outcome.result,
+        });
+        conversation = next.conversation;
+        taskList = next.taskList;
+      }
       if (code === 130) {
         options.io.writeStderr('[mitii] run cancelled\n');
       }
@@ -561,6 +617,7 @@ export async function main(
         forceEcho: parsed.forceEcho === true,
         autoClarify: parsed.autoClarify,
         autoApproval: parsed.autoApproval,
+        mode: parsed.mode,
         io: sessionIo,
       });
       return code;
@@ -589,6 +646,7 @@ export async function main(
         cwd,
         json: true,
         forceEcho: parsed.forceEcho === true,
+        mode: parsed.mode,
         io: sessionIo,
       });
       if (outcome && parsed.exportPath) {
@@ -605,6 +663,7 @@ export async function main(
       return runSession({
         cwd,
         forceEcho: parsed.forceEcho === true,
+        mode: parsed.mode,
         io: sessionIo,
       });
     case 'unknown':

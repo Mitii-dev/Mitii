@@ -30,16 +30,18 @@ import type { ChatTurn } from './components/MessageList';
 import { MessageList } from './components/MessageList';
 import {
   ComposerControls,
+  normalizeApproval,
   type ApprovalUiMode,
 } from './components/ComposerControls';
 import { OnboardingPanel } from './components/OnboardingPanel';
 import { PendingPlanBanner } from './components/PendingPlanBanner';
 import { PlanFollowStrip } from './components/PlanPanel';
+import { TaskFollowStrip } from './components/TaskFollowStrip';
 import { ReviewPanel } from './components/ReviewPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { SkillManagementPanel } from './components/skills/SkillManagementPanel';
 import { WorkspaceBanner } from './components/WorkspaceBanner';
-import { getProviderPreset } from './providerOptions';
+import { getProviderPreset, modelsForProvider } from './providerOptions';
 import type {
   AgentUiDepth,
   AgentUiMode,
@@ -54,10 +56,12 @@ import type {
   MemoryItemView,
   PathSuggestion,
   PlanView,
+  TaskListView,
   ProviderSettingsSnapshot,
   ReviewDiffView,
   RunFileChangesView,
   SettingsTab,
+  SettingsProfileView,
   SkillCatalogItem,
   TokenUsageSnapshot,
   UiSettingsPatch,
@@ -112,10 +116,66 @@ const DEFAULT_UI: UiSettingsSnapshot = {
   showReasoning: true,
   reasoningPreviewMaxChars: 8000,
   depth: 'auto',
+  modeDefaults: {
+    ask: { depth: 'auto', approvalMode: 'guided', model: '' },
+    plan: { depth: 'deep', approvalMode: 'guided', model: '' },
+    agent: { depth: 'auto', approvalMode: 'safe', model: '' },
+  },
   contextToggles: DEFAULT_CONTEXT_TOGGLES,
   approvalMode: 'guided',
   runBudget: DEFAULT_RUN_BUDGET,
 };
+
+type SettingsMode = 'ask' | 'plan' | 'agent';
+
+function settingsModeFor(mode: AgentUiMode): SettingsMode {
+  return mode === 'plan' || mode === 'agent' ? mode : 'ask';
+}
+
+function modeDefaultsFromUi(ui: UiSettingsSnapshot, mode: AgentUiMode) {
+  const settingsMode = settingsModeFor(mode);
+  const fallback = DEFAULT_UI.modeDefaults[settingsMode];
+  const current = ui.modeDefaults?.[settingsMode];
+  return {
+    depth: current?.depth ?? ui.depth ?? fallback.depth,
+    approvalMode:
+      current?.approvalMode ?? ui.approvalMode ?? fallback.approvalMode,
+    model: current?.model ?? fallback.model,
+  };
+}
+
+function mergeUiPatch(
+  base: UiSettingsSnapshot,
+  patch: UiSettingsPatch,
+): UiSettingsSnapshot {
+  return {
+    ...base,
+    ...patch,
+    contextToggles: patch.contextToggles
+      ? { ...base.contextToggles, ...patch.contextToggles }
+      : base.contextToggles,
+    modeDefaults: patch.modeDefaults
+      ? {
+          ...base.modeDefaults,
+          ask: {
+            ...base.modeDefaults.ask,
+            ...patch.modeDefaults.ask,
+          },
+          plan: {
+            ...base.modeDefaults.plan,
+            ...patch.modeDefaults.plan,
+          },
+          agent: {
+            ...base.modeDefaults.agent,
+            ...patch.modeDefaults.agent,
+          },
+        }
+      : base.modeDefaults,
+    runBudget: patch.runBudget
+      ? { ...base.runBudget, ...patch.runBudget }
+      : base.runBudget,
+  };
+}
 
 function shouldReplaceActivity(
   existing: { kind: string; title: string; status?: string },
@@ -184,6 +244,7 @@ export function App() {
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('workspace');
   const [mode, setMode] = useState<AgentUiMode>('ask');
   const [depth, setDepth] = useState<AgentUiDepth>('auto');
+  const [approvalMode, setApprovalMode] = useState<ApprovalUiMode>('guided');
   const [prompt, setPrompt] = useState('');
   const [pinned, setPinned] = useState<ContextPin[]>([]);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
@@ -204,6 +265,9 @@ export function App() {
     contextWindow: 32768,
     maximumOutputTokens: 16384,
   });
+  const [profiles, setProfiles] = useState<SettingsProfileView[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState('default');
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const [tokenUsage, setTokenUsage] =
     useState<TokenUsageSnapshot>(EMPTY_TOKEN_USAGE);
   const [testingConnection, setTestingConnection] = useState(false);
@@ -212,6 +276,7 @@ export function App() {
   );
   const [customModel, setCustomModel] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [index, setIndex] = useState<IndexStatusSnapshot>({
     fileCount: 0,
     truncated: false,
@@ -234,6 +299,7 @@ export function App() {
   const [plan, setPlan] = useState<PlanView | null>(null);
   const [pendingPlan, setPendingPlan] = useState<PlanView | null>(null);
   const pendingPlanRef = useRef<PlanView | null>(null);
+  const [taskList, setTaskList] = useState<TaskListView | null>(null);
   const [review, setReview] = useState<ReviewDiffView | null>(null);
   const [skillItems, setSkillItems] = useState<SkillCatalogItem[]>([]);
   const [skillError, setSkillError] = useState<string | null>(null);
@@ -244,10 +310,14 @@ export function App() {
   const messagesRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const forceScrollToBottomRef = useRef(false);
   const lastTurnCountRef = useRef(0);
   const activeAssistantId = useRef<string | null>(null);
+  const modeRef = useRef<AgentUiMode>(mode);
+  const uiRef = useRef<UiSettingsSnapshot>(ui);
+  const hydratedModeDefaults = useRef(false);
 
   const applyTokenUsage = useCallback(
     (usage: TokenUsageSnapshot) => {
@@ -304,12 +374,18 @@ export function App() {
         contextWindow: msg.provider.contextWindow || 32768,
         maximumOutputTokens: msg.provider.maximumOutputTokens || 16384,
       });
+      setProfiles(msg.profiles ?? []);
+      setActiveProfileId(msg.activeProfileId ?? 'default');
       setMcp(msg.mcp);
       setMcpStore(msg.mcpStore ?? []);
       setMcpRuntimeStatus(msg.mcpRuntimeStatus);
-      setUi({
+      const nextUi = {
         ...DEFAULT_UI,
         ...msg.ui,
+        modeDefaults: {
+          ...DEFAULT_UI.modeDefaults,
+          ...msg.ui.modeDefaults,
+        },
         contextToggles: {
           ...DEFAULT_CONTEXT_TOGGLES,
           ...msg.ui.contextToggles,
@@ -318,8 +394,21 @@ export function App() {
           ...DEFAULT_RUN_BUDGET,
           ...msg.ui.runBudget,
         },
-      });
-      setDepth(msg.ui.depth);
+      };
+      const previousUi = uiRef.current;
+      uiRef.current = nextUi;
+      setUi(nextUi);
+      const modeDefaultsChanged =
+        JSON.stringify(previousUi.modeDefaults) !==
+          JSON.stringify(nextUi.modeDefaults) ||
+        previousUi.depth !== nextUi.depth ||
+        previousUi.approvalMode !== nextUi.approvalMode;
+      if (!hydratedModeDefaults.current || modeDefaultsChanged) {
+        hydratedModeDefaults.current = true;
+        const currentDefaults = modeDefaultsFromUi(nextUi, modeRef.current);
+        setDepth(currentDefaults.depth);
+        setApprovalMode(normalizeApproval(currentDefaults.approvalMode));
+      }
       setOverrideDraft(msg.workspace.rootOverride ?? '');
       applyTokenUsage(msg.tokenUsage);
       setNotice(msg.notice);
@@ -327,6 +416,7 @@ export function App() {
       if (msg.provider.connectionStatus) {
         setConnectionMessage(msg.provider.connectionStatus);
       }
+      setSettingsSaving(false);
       if (msg.type === 'bootstrap') {
         setIndex(msg.index);
         setOnboardingRequired(msg.onboardingRequired);
@@ -341,11 +431,20 @@ export function App() {
         const bootstrapPlan = msg.pendingPlan ?? null;
         setPendingPlan(bootstrapPlan);
         if (bootstrapPlan) setPlan(bootstrapPlan);
+        setTaskList(msg.pendingTaskList ?? null);
         setMemories(msg.memories);
         setCheckpoints(msg.checkpoints);
       }
     }
   }, [applyTokenUsage]);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    uiRef.current = ui;
+  }, [ui]);
 
   const markSuspensionResumed = useCallback((runId: string) => {
     setRunning(true);
@@ -377,6 +476,7 @@ export function App() {
           setError(null);
           // Keep a pending-plan handoff visible, but clear stale plans for new runs.
           if (msg.mode === 'plan' || !pendingPlanRef.current) setPlan(null);
+          if (msg.mode !== 'ask') setTaskList(null);
           stickToBottomRef.current = true;
           forceScrollToBottomRef.current = true;
           const userId = uid('user');
@@ -471,6 +571,7 @@ export function App() {
             setPendingPlan(msg.pendingPlan);
             if (msg.pendingPlan) setPlan(msg.pendingPlan);
           }
+          if (msg.taskList !== undefined) setTaskList(msg.taskList ?? null);
           setTurns((prev) =>
             prev.map((t) => {
               if (!id || t.id !== id) return t;
@@ -500,6 +601,7 @@ export function App() {
         case 'error':
           setError(msg.message);
           setRunning(false);
+          setSettingsSaving(false);
           break;
         case 'paths.results':
           if (msg.requestId === lastSearchId.current) {
@@ -597,11 +699,15 @@ export function App() {
           const loadedPlan = msg.pendingPlan ?? null;
           setPendingPlan(loadedPlan);
           setPlan(loadedPlan);
+          setTaskList(msg.pendingTaskList ?? null);
           setNav('chat');
           break;
         }
         case 'setPlan':
           setPlan(msg.plan);
+          break;
+        case 'setTaskList':
+          setTaskList(msg.taskList);
           break;
         case 'setReviewDiff':
           setReview(msg.review);
@@ -686,29 +792,36 @@ export function App() {
       prompt: text,
       mode,
       depth,
+      approvalMode,
       pinnedPaths: pinned.map((p) => p.path),
     });
     setPrompt('');
     setSuggestLoading(false);
     setSuggestOpen(false);
-  }, [prompt, running, mode, depth, pinned]);
+  }, [prompt, running, mode, depth, approvalMode, pinned]);
 
   const executePendingPlan = useCallback(() => {
     if (running) return;
     stickToBottomRef.current = true;
     forceScrollToBottomRef.current = true;
+    const agentDefaults = modeDefaultsFromUi(ui, 'agent');
     setMode('agent');
+    setDepth(agentDefaults.depth);
+    setApprovalMode(normalizeApproval(agentDefaults.approvalMode));
+    const nextModel = agentDefaults.model?.trim();
+    if (nextModel) saveModel(nextModel);
     postToHost({
       type: 'ask',
       prompt: 'Implement the pending plan.',
       mode: 'agent',
-      depth,
+      depth: agentDefaults.depth,
+      approvalMode: agentDefaults.approvalMode,
       pinnedPaths: pinned.map((p) => p.path),
     });
     setPrompt('');
     setSuggestLoading(false);
     setSuggestOpen(false);
-  }, [running, depth, pinned]);
+  }, [running, ui, pinned]);
 
   const onPromptChange = (value: string) => {
     setPrompt(value);
@@ -785,24 +898,6 @@ export function App() {
 
   const currentModeColor = modeColor(mode);
 
-  const saveProvider = () => {
-    postToHost({
-      type: 'settings.set',
-      provider: {
-        type: provider.type,
-        preset: provider.preset,
-        baseUrl: provider.baseUrl,
-        model: provider.model,
-        contextWindow: provider.contextWindow,
-        maximumOutputTokens: provider.maximumOutputTokens,
-      },
-    });
-    setTokenUsage((prev) => ({
-      ...prev,
-      contextWindow: provider.contextWindow || prev.contextWindow,
-    }));
-  };
-
   const testConnection = () => {
     setTestingConnection(true);
     setConnectionMessage('Testing…');
@@ -833,8 +928,15 @@ export function App() {
   };
 
   const modelOptions = useMemo(
-    () => mergeModelOptions(provider.availableModels, provider.model),
-    [provider.availableModels, provider.model],
+    () =>
+      mergeModelOptions(
+        [
+          ...modelsForProvider(provider.preset ?? provider.type),
+          ...(provider.availableModels ?? []),
+        ],
+        provider.model,
+      ),
+    [provider.availableModels, provider.model, provider.preset, provider.type],
   );
   const selectedModelIsCustom =
     customModel || !modelOptions.includes(provider.model);
@@ -868,33 +970,142 @@ export function App() {
     };
   }, [modelMenuOpen]);
 
-  const saveUi = (patch: UiSettingsPatch) => {
-    const next = {
-      ...ui,
-      ...patch,
-      contextToggles: patch.contextToggles
-        ? { ...ui.contextToggles, ...patch.contextToggles }
-        : ui.contextToggles,
-      runBudget: patch.runBudget
-        ? { ...ui.runBudget, ...patch.runBudget }
-        : ui.runBudget,
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) {
+        setProfileMenuOpen(false);
+      }
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setProfileMenuOpen(false);
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [profileMenuOpen]);
+
+  const changeApprovalMode = (next: ApprovalUiMode) => {
+    setApprovalMode(next);
+  };
+
+  const changeMode = (next: AgentUiMode) => {
+    setMode(next);
+    const defaults = modeDefaultsFromUi(ui, next);
+    setDepth(defaults.depth);
+    setApprovalMode(normalizeApproval(defaults.approvalMode));
+    const nextModel = defaults.model?.trim();
+    if (nextModel) saveModel(nextModel);
+  };
+
+  const changeDepth = (next: AgentUiDepth) => {
+    setDepth(next);
+  };
+
+  const updateUiDraft = (patch: UiSettingsPatch) => {
+    const next = mergeUiPatch(uiRef.current, patch);
+    uiRef.current = next;
     setUi(next);
     if (patch.depth) setDepth(patch.depth);
+    const activeModePatch = patch.modeDefaults?.[settingsModeFor(mode)];
+    const activeModeDepth = activeModePatch?.depth;
+    if (activeModeDepth) setDepth(activeModeDepth);
+    if (activeModePatch?.approvalMode) {
+      setApprovalMode(normalizeApproval(activeModePatch.approvalMode));
+    }
+    const activeModeModel = activeModePatch?.model?.trim();
+    if (activeModeModel) {
+      setProvider((prev) => ({
+        ...prev,
+        model: activeModeModel,
+      }));
+    }
+  };
+
+  const activeProfile = useMemo(
+    () =>
+      profiles.find((profile) => profile.id === activeProfileId) ??
+      profiles[0],
+    [activeProfileId, profiles],
+  );
+  const selectedProfileLabel = activeProfile?.name ?? 'Default';
+
+  const snapshotProvider = () => ({
+    type: provider.type,
+    preset: provider.preset,
+    baseUrl: provider.baseUrl,
+    model: provider.model,
+    contextWindow: provider.contextWindow,
+    maximumOutputTokens: provider.maximumOutputTokens,
+  });
+
+  const applyProfileLocally = (profile: SettingsProfileView) => {
+    setActiveProfileId(profile.id);
+    setProvider((prev) => ({
+      ...prev,
+      ...profile.provider,
+      hasApiKey: profile.hasSecret,
+      availableModels: prev.availableModels,
+    }));
+  };
+
+  const switchProfile = (id: string) => {
+    const profile = profiles.find((entry) => entry.id === id);
+    if (!profile || profile.id === activeProfileId) return;
+    applyProfileLocally(profile);
+    postToHost({ type: 'profile.switch', id: profile.id });
+  };
+
+  const createProfile = (name: string) => {
+    const id = `profile-${Date.now().toString(36)}`;
+    const trimmed = name.trim() || 'New profile';
+    const nextProfile: SettingsProfileView = {
+      id,
+      name: trimmed,
+      provider: snapshotProvider(),
+      hasSecret: provider.hasApiKey,
+    };
+    setProfiles((prev) => [...prev, nextProfile]);
+    applyProfileLocally(nextProfile);
+    setSettingsSaving(true);
     postToHost({
       type: 'settings.set',
-      ui: patch,
-      approvalMode: patch.approvalMode,
+      provider: snapshotProvider(),
+      profile: nextProfile,
     });
   };
 
-  const setApprovalMode = (approvalMode: ApprovalUiMode) => {
-    saveUi({ approvalMode });
-  };
-
-  const saveMcp = (next: McpSettings) => {
-    setMcp(next);
-    postToHost({ type: 'settings.set', mcp: next });
+  const saveAllSettings = () => {
+    const latestUi = uiRef.current;
+    const profile = activeProfile ?? {
+      id: activeProfileId || 'default',
+      name: 'Default',
+      provider: snapshotProvider(),
+      hasSecret: provider.hasApiKey,
+    };
+    setSettingsSaving(true);
+    postToHost({
+      type: 'settings.set',
+      provider: snapshotProvider(),
+      ui: {
+        ...latestUi,
+        approvalMode,
+      },
+      workspaceRootOverride: overrideDraft.trim() || null,
+      mcp,
+      approvalMode,
+      profile: {
+        ...profile,
+        provider: snapshotProvider(),
+      },
+    });
+    setTokenUsage((prev) => ({
+      ...prev,
+      contextWindow: provider.contextWindow || prev.contextWindow,
+    }));
   };
 
   const requestSkills = () => {
@@ -907,7 +1118,8 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nav, skillManagement]);
 
-  const followingPlan = Boolean(plan) && mode === 'agent';
+  const followingPlan = mode === 'plan' && Boolean(plan?.steps.length);
+  const followingTasks = mode === 'agent' && Boolean(taskList?.items.length);
 
   if (onboardingRequired) {
     return (
@@ -939,7 +1151,7 @@ export function App() {
       <header className="shell-header">
         <div className="brand">
           <div className="brand-mark">Mitii</div>
-          <div className="brand-sub">Enterprise workspace agent</div>
+          {/* <div className="brand-sub">Enterprise workspace agent</div> */}
         </div>
         <div className="shell-header__actions">
           <nav className="nav-pills" aria-label="Primary">
@@ -951,6 +1163,7 @@ export function App() {
                   setTurns([]);
                   setPlan(null);
                   setPendingPlan(null);
+                  setTaskList(null);
                   setActiveThreadId(undefined);
                   setTokenUsage(EMPTY_TOKEN_USAGE);
                 }}
@@ -1014,14 +1227,11 @@ export function App() {
             <div className="composer-dock">
               <ComposerControls
                 mode={mode}
-                approvalMode={ui.approvalMode}
+                approvalMode={approvalMode}
                 depth={depth}
-                onModeChange={setMode}
-                onApprovalModeChange={setApprovalMode}
-                onDepthChange={(next) => {
-                  setDepth(next);
-                  saveUi({ depth: next });
-                }}
+                onModeChange={changeMode}
+                onApprovalModeChange={changeApprovalMode}
+                onDepthChange={changeDepth}
               />
             </div>
           </div>
@@ -1101,10 +1311,17 @@ export function App() {
                 onDismiss={() => {
                   setPendingPlan(null);
                   setPlan(null);
+                  setTaskList(null);
                   postToHost({ type: 'clearPendingPlan' });
                 }}
               />
-              {followingPlan ? (
+              {followingTasks ? (
+                <TaskFollowStrip
+                  taskList={taskList}
+                  running={running}
+                  onOpenTaskFile={openFile}
+                />
+              ) : followingPlan ? (
                 <PlanFollowStrip
                   plan={plan}
                   running={running}
@@ -1192,14 +1409,11 @@ export function App() {
                   <div className="composer-dropdown-row--with-model">
                     <ComposerControls
                       mode={mode}
-                      approvalMode={ui.approvalMode}
+                      approvalMode={approvalMode}
                       depth={depth}
-                      onModeChange={setMode}
-                      onApprovalModeChange={setApprovalMode}
-                      onDepthChange={(next) => {
-                        setDepth(next);
-                        saveUi({ depth: next });
-                      }}
+                      onModeChange={changeMode}
+                      onApprovalModeChange={changeApprovalMode}
+                      onDepthChange={changeDepth}
                     />
                     <div
                       className="composer-dropdown composer-dropdown--model"
@@ -1357,6 +1571,150 @@ export function App() {
                   <div className="composer-utility-row">
                     <div className="composer-left">
                       <TokenMeter usage={tokenUsage} placement="above" />
+                      <select
+                        className="composer-link-select"
+                        aria-label="Profile"
+                        title={`Profile: ${selectedProfileLabel}`}
+                        value={activeProfileId}
+                        onChange={(e) => switchProfile(e.target.value)}
+                      >
+                        {profiles.map((profile) => (
+                          <option key={profile.id} value={profile.id}>
+                            {profile.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        className="composer-link-select composer-link-select--model"
+                        aria-label="Model"
+                        title={`Model: ${selectedModelLabel}`}
+                        value={
+                          selectedModelIsCustom ? '__custom__' : provider.model
+                        }
+                        onChange={(e) => {
+                          if (e.target.value === '__custom__') {
+                            setCustomModel(true);
+                            return;
+                          }
+                          setCustomModel(false);
+                          saveModel(e.target.value);
+                        }}
+                      >
+                        {modelOptions.map((id) => (
+                          <option key={id} value={id}>
+                            {id}
+                          </option>
+                        ))}
+                        <option value="__custom__">Custom…</option>
+                      </select>
+                      {selectedModelIsCustom ? (
+                        <input
+                          className="model-custom-input model-custom-input--inline"
+                          value={provider.model}
+                          placeholder="model id"
+                          onChange={(e) =>
+                            setProvider((p) => ({
+                              ...p,
+                              model: e.target.value,
+                            }))
+                          }
+                          onBlur={() => {
+                            if (provider.model.trim())
+                              saveModel(provider.model.trim());
+                          }}
+                          title="Custom model id"
+                        />
+                      ) : null}
+                      <div
+                        className="composer-dropdown composer-dropdown--profile"
+                        ref={profileMenuRef}
+                        style={
+                          {
+                            '--composer-control-color': '#22c55e',
+                          } as CSSProperties
+                        }
+                      >
+                        <button
+                          type="button"
+                          className="composer-dropdown__button composer-dropdown__button--link"
+                          aria-haspopup="listbox"
+                          aria-expanded={profileMenuOpen}
+                          aria-label="Profile"
+                          title={`Profile: ${selectedProfileLabel}`}
+                          onClick={() => setProfileMenuOpen((open) => !open)}
+                        >
+                          <span className="composer-dropdown__value">
+                            <span className="composer-dropdown__icon" aria-hidden>
+                              <IconSettings />
+                            </span>
+                            <span>{selectedProfileLabel}</span>
+                          </span>
+                          <span className="composer-dropdown__chevron" aria-hidden>
+                            ▾
+                          </span>
+                        </button>
+                        {profileMenuOpen ? (
+                          <div
+                            className="composer-dropdown__menu"
+                            role="listbox"
+                            aria-label="Profile"
+                          >
+                            {profiles.map((profile) => {
+                              const selectedOption =
+                                profile.id === activeProfileId;
+                              return (
+                                <button
+                                  key={profile.id}
+                                  type="button"
+                                  className={[
+                                    'composer-dropdown__option',
+                                    selectedOption
+                                      ? 'composer-dropdown__option--selected'
+                                      : '',
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' ')}
+                                  role="option"
+                                  aria-selected={selectedOption}
+                                  title={`Use ${profile.name}`}
+                                  onClick={() => {
+                                    setProfileMenuOpen(false);
+                                    switchProfile(profile.id);
+                                  }}
+                                >
+                                  <span
+                                    className="composer-dropdown__option-icon"
+                                    aria-hidden
+                                  >
+                                    <IconSettings />
+                                  </span>
+                                  <span className="composer-dropdown__option-text">
+                                    <span>{profile.name}</span>
+                                    <small>
+                                      {profile.provider.preset ??
+                                        profile.provider.type}{' '}
+                                      · {profile.provider.model}
+                                    </small>
+                                  </span>
+                                  {selectedOption ? (
+                                    <span
+                                      className="composer-dropdown__option-check"
+                                      aria-hidden
+                                    >
+                                      <IconCheck />
+                                    </span>
+                                  ) : (
+                                    <span
+                                      className="composer-dropdown__option-check"
+                                      aria-hidden
+                                    />
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                     <div className="composer-actions">
                       <IconButton
@@ -1419,21 +1777,17 @@ export function App() {
           workspace={workspace}
           overrideDraft={overrideDraft}
           onOverrideDraftChange={setOverrideDraft}
-          onSaveOverride={() =>
-            postToHost({
-              type: 'settings.set',
-              workspaceRootOverride: overrideDraft.trim() || null,
-            })
-          }
           onClearOverride={() => {
             setOverrideDraft('');
-            postToHost({ type: 'settings.set', workspaceRootOverride: null });
           }}
           onOpenFolder={() => postToHost({ type: 'openFolder' })}
+          profiles={profiles}
+          activeProfileId={activeProfileId}
+          onActiveProfileChange={switchProfile}
+          onCreateProfile={createProfile}
           provider={provider}
           onProviderChange={setProvider}
           onProviderTypeChange={onProviderTypeChange}
-          onSaveProvider={saveProvider}
           onSetApiKey={() => postToHost({ type: 'settings.setApiKey' })}
           onClearApiKey={() => postToHost({ type: 'settings.clearApiKey' })}
           onTestConnection={testConnection}
@@ -1443,12 +1797,11 @@ export function App() {
           onCustomModelChange={setCustomModel}
           modelOptions={modelOptions}
           ui={ui}
-          onSaveUi={saveUi}
+          onSaveUi={updateUiDraft}
           mcp={mcp}
           mcpStore={mcpStore}
           mcpRuntimeStatus={mcpRuntimeStatus}
           onMcpChange={setMcp}
-          onSaveMcp={saveMcp}
           index={index}
           onReindex={() => postToHost({ type: 'index.reindex' })}
           onRefreshIndex={() => postToHost({ type: 'index.refresh' })}
@@ -1467,12 +1820,10 @@ export function App() {
             postToHost({ type: 'clearCheckpoints' })
           }
           onToggleContext={(source, enabled) => {
-            setUi((prev) => ({
-              ...prev,
-              contextToggles: { ...prev.contextToggles, [source]: enabled },
-            }));
-            postToHost({ type: 'toggleContextSource', source, enabled });
+            updateUiDraft({ contextToggles: { [source]: enabled } });
           }}
+          onSaveAll={saveAllSettings}
+          saving={settingsSaving}
         />
       ) : null}
 

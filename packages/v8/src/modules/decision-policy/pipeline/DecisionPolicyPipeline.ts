@@ -362,11 +362,7 @@ function narrowPathScopes(
   previousScopes: readonly string[],
   discoveredPaths: readonly string[],
 ): string[] {
-  const discoveredScopes = uniqueStrings(
-    discoveredPaths
-      .map(parentScopeFromPath)
-      .filter((path): path is string => Boolean(path)),
-  );
+  const discoveredScopes = deriveDiscoveredScopes(discoveredPaths);
   if (discoveredScopes.length === 0) {
     return [...previousScopes];
   }
@@ -388,15 +384,36 @@ function narrowPathScopes(
     : [...previousScopes];
 }
 
+function deriveDiscoveredScopes(discoveredPaths: readonly string[]): string[] {
+  return uniqueStrings(
+    discoveredPaths
+      .map((path) => projectScopeFromPath(path) ?? parentScopeFromPath(path))
+      .filter((path): path is string => Boolean(path)),
+  );
+}
+
+function projectScopeFromPath(value: string): string | undefined {
+  const normalized = normalizeScope(value);
+  if (!isSafeRelativeScope(normalized)) {
+    return undefined;
+  }
+
+  const parts = normalized.split("/");
+  const workspaceContainer = parts[0];
+  const projectName = parts[1];
+  if (
+    projectName &&
+    (workspaceContainer === "packages" || workspaceContainer === "apps")
+  ) {
+    return `${workspaceContainer}/${projectName}`;
+  }
+
+  return undefined;
+}
+
 function parentScopeFromPath(value: string): string | undefined {
   const normalized = normalizeScope(value);
-  if (
-    !normalized ||
-    normalized.includes("..") ||
-    normalized.startsWith("/") ||
-    normalized.startsWith("~") ||
-    /^[A-Za-z]:\//.test(normalized)
-  ) {
+  if (!isSafeRelativeScope(normalized)) {
     return undefined;
   }
   const slash = normalized.lastIndexOf("/");
@@ -404,6 +421,16 @@ function parentScopeFromPath(value: string): string | undefined {
     return ".";
   }
   return normalized.slice(0, slash);
+}
+
+function isSafeRelativeScope(normalized: string): boolean {
+  return (
+    Boolean(normalized) &&
+    !normalized.includes("..") &&
+    !normalized.startsWith("/") &&
+    !normalized.startsWith("~") &&
+    !/^[A-Za-z]:\//.test(normalized)
+  );
 }
 
 function normalizeScope(value: string): string {

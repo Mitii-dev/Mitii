@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { getProviderPreset, PROVIDER_OPTIONS } from '../providerOptions';
 import type {
@@ -11,6 +11,7 @@ import type {
   MemoryItemView,
   ProviderSettingsSnapshot,
   SettingsTab,
+  SettingsProfileView,
   UiSettingsPatch,
   UiSettingsSnapshot,
   WorkspaceSnapshotInfo,
@@ -19,6 +20,16 @@ import { CheckpointPanel } from './CheckpointPanel';
 import { ContextTogglesPanel } from './ContextTogglesPanel';
 import { McpServersEditor } from './McpServersEditor';
 import { MemoryPanel } from './MemoryPanel';
+import {
+  IconAgent,
+  IconAsk,
+  IconCheck,
+  IconHistory,
+  IconIndex,
+  IconModel,
+  IconPlan,
+  IconSettings,
+} from './Icons';
 
 interface SettingsPanelProps {
   tab: SettingsTab;
@@ -26,13 +37,15 @@ interface SettingsPanelProps {
   workspace: WorkspaceSnapshotInfo;
   overrideDraft: string;
   onOverrideDraftChange: (value: string) => void;
-  onSaveOverride: () => void;
   onClearOverride: () => void;
   onOpenFolder: () => void;
+  profiles: SettingsProfileView[];
+  activeProfileId: string;
+  onActiveProfileChange: (id: string) => void;
+  onCreateProfile: (name: string) => void;
   provider: ProviderSettingsSnapshot;
   onProviderChange: (next: ProviderSettingsSnapshot) => void;
   onProviderTypeChange: (type: string) => void;
-  onSaveProvider: () => void;
   onSetApiKey: () => void;
   onClearApiKey: () => void;
   onTestConnection: () => void;
@@ -47,7 +60,6 @@ interface SettingsPanelProps {
   mcpStore: McpServerConfig[];
   mcpRuntimeStatus: McpRuntimeStatus;
   onMcpChange: (next: McpSettings) => void;
-  onSaveMcp: (next: McpSettings) => void;
   index: IndexStatusSnapshot;
   onReindex: () => void;
   onRefreshIndex: () => void;
@@ -60,15 +72,16 @@ interface SettingsPanelProps {
   onDeleteCheckpoint: (id: string) => void;
   onClearCheckpoints: () => void;
   onToggleContext: (source: keyof ContextToggles, enabled: boolean) => void;
+  onSaveAll: () => void;
+  saving: boolean;
 }
 
-const TABS: { id: SettingsTab; label: string }[] = [
-  { id: 'workspace', label: 'Workspace' },
-  { id: 'model', label: 'Model' },
-  { id: 'modes', label: 'Modes' },
-  { id: 'context', label: 'Context' },
-  { id: 'integrations', label: 'Integrations' },
-  { id: 'debug', label: 'Debug' },
+const TABS: { id: SettingsTab; label: string; icon: ReactNode }[] = [
+  { id: 'model', label: 'Workspace', icon: <IconModel /> },
+  { id: 'modes', label: 'Modes', icon: <IconPlan /> },
+  { id: 'context', label: 'Context', icon: <IconIndex /> },
+  { id: 'integrations', label: 'MCP', icon: <IconSettings /> },
+  { id: 'debug', label: 'Debug', icon: <IconHistory /> },
 ];
 
 function mergeModelOptions(
@@ -124,23 +137,95 @@ function capabilityDetails(index: IndexStatusSnapshot) {
 
 function SettingsSection({
   title,
+  icon,
   description,
   children,
 }: {
   title: string;
+  icon?: ReactNode;
   description?: string;
   children: ReactNode;
 }) {
   return (
     <section className="settings-section">
       <header className="settings-section__header">
-        <h3 className="settings-section__title">{title}</h3>
+        <h3 className="settings-section__title">
+          {icon ? <span className="settings-section__icon">{icon}</span> : null}
+          <span>{title}</span>
+        </h3>
         {description ? (
           <p className="settings-section__desc">{description}</p>
         ) : null}
       </header>
       <div className="settings-section__body">{children}</div>
     </section>
+  );
+}
+
+function NumberField({
+  id,
+  label,
+  value,
+  min,
+  max,
+  step,
+  disabled,
+  onCommit,
+}: {
+  id: string;
+  label: string;
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  disabled?: boolean;
+  onCommit: (value: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const commit = (nextDraft: string) => {
+    if (!nextDraft.trim()) {
+      setDraft(String(value));
+      return;
+    }
+    const parsed = Number(nextDraft);
+    if (!Number.isFinite(parsed)) {
+      setDraft(String(value));
+      return;
+    }
+    const bounded = Math.max(
+      min ?? Number.NEGATIVE_INFINITY,
+      Math.min(max ?? Number.POSITIVE_INFINITY, Math.floor(parsed)),
+    );
+    setDraft(String(bounded));
+    if (bounded !== value) onCommit(bounded);
+  };
+
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <input
+        id={id}
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        disabled={disabled}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => commit(draft)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit(draft);
+          }
+        }}
+      />
+    </div>
   );
 }
 
@@ -151,13 +236,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
     workspace,
     overrideDraft,
     onOverrideDraftChange,
-    onSaveOverride,
     onClearOverride,
     onOpenFolder,
+    profiles,
+    activeProfileId,
+    onActiveProfileChange,
+    onCreateProfile,
     provider,
     onProviderChange,
     onProviderTypeChange,
-    onSaveProvider,
     onSetApiKey,
     onClearApiKey,
     onTestConnection,
@@ -172,7 +259,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
     mcpStore,
     mcpRuntimeStatus,
     onMcpChange,
-    onSaveMcp,
     index,
     onReindex,
     onRefreshIndex,
@@ -185,98 +271,71 @@ export function SettingsPanel(props: SettingsPanelProps) {
     onDeleteCheckpoint,
     onClearCheckpoints,
     onToggleContext,
+    onSaveAll,
+    saving,
   } = props;
+  const [modeSettingsTab, setModeSettingsTab] =
+    useState<'ask' | 'plan' | 'agent'>('ask');
+  const [newProfileOpen, setNewProfileOpen] = useState(false);
+  const [newProfileName, setNewProfileName] = useState('');
 
   const options = useMemo(
-    () => mergeModelOptions(modelOptions, provider.model),
-    [modelOptions, provider.model],
+    () =>
+      mergeModelOptions(
+        [
+          ...modelOptions,
+          ...Object.values(ui.modeDefaults ?? {})
+            .map((entry) => entry.model ?? '')
+            .filter(Boolean),
+        ],
+        provider.model,
+      ),
+    [modelOptions, provider.model, ui.modeDefaults],
   );
 
-  const saveCurrentTab = () => {
-    if (tab === 'workspace') {
-      onSaveOverride();
-      return;
-    }
-    if (tab === 'model') {
-      onSaveProvider();
-      return;
-    }
-    if (tab === 'modes') {
-      onSaveUi({
-        depth: ui.depth,
-        approvalMode: ui.approvalMode,
-        showReasoning: ui.showReasoning,
-        reasoningPreviewMaxChars: ui.reasoningPreviewMaxChars,
-        runBudget: ui.runBudget,
-      });
-      return;
-    }
-    if (tab === 'context') {
-      onSaveUi({ contextToggles: ui.contextToggles });
-      return;
-    }
-    if (tab === 'integrations') {
-      onSaveMcp(mcp);
-    }
-  };
+  const effectiveTab = tab === 'workspace' ? 'model' : tab;
+  const activeProfile =
+    profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0];
+  const modeDefault =
+    ui.modeDefaults?.[modeSettingsTab] ?? {
+      depth: ui.depth,
+      approvalMode: ui.approvalMode,
+      model: provider.model,
+    };
 
   return (
     <div className="settings-view">
       <div className="settings-toolbar">
         <div className="settings-tabs" role="tablist" aria-label="Settings">
-          {TABS.map(({ id, label }) => (
+          {TABS.map(({ id, label, icon }) => (
             <button
               key={id}
               type="button"
               role="tab"
-              aria-selected={tab === id}
-              className={`settings-tab ${tab === id ? 'active' : ''}`}
+              aria-selected={effectiveTab === id}
+              className={`settings-tab ${effectiveTab === id ? 'active' : ''}`}
               onClick={() => onTabChange(id)}
               title={label}
             >
-              {label}
+              <span className="settings-tab__icon">{icon}</span>
+              <span>{label}</span>
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          className="btn settings-save-btn"
-          onClick={saveCurrentTab}
-        >
-          Save
-        </button>
       </div>
 
       <div className="settings-body">
-        {tab === 'workspace' ? (
+        {effectiveTab === 'model' ? (
           <div className="settings-panel">
             <SettingsSection
               title="Workspace root"
+              icon={<IconIndex />}
               description="Active folder used for indexing, context, and agent runs."
             >
               <div className="settings-path mono">
                 {workspace.displayRoot ?? 'No folder open'}
               </div>
-              <div className="field">
-                <label htmlFor="override">Root path override</label>
-                <input
-                  id="override"
-                  value={overrideDraft}
-                  placeholder={workspace.root ?? '/path/to/repo'}
-                  onChange={(e) => onOverrideDraftChange(e.target.value)}
-                />
-              </div>
               <div className="row">
-                <button type="button" className="btn" onClick={onSaveOverride}>
-                  Save override
-                </button>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={onClearOverride}
-                >
-                  Clear
-                </button>
                 <button
                   type="button"
                   className="btn ghost"
@@ -285,10 +344,30 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   Open folder
                 </button>
               </div>
+              <details className="settings-advanced">
+                <summary>Advanced workspace</summary>
+                <div className="field">
+                  <label htmlFor="override">Root path override</label>
+                  <input
+                    id="override"
+                    value={overrideDraft}
+                    placeholder={workspace.root ?? '/path/to/repo'}
+                    onChange={(e) => onOverrideDraftChange(e.target.value)}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={onClearOverride}
+                >
+                  Clear override
+                </button>
+              </details>
             </SettingsSection>
 
             <SettingsSection
               title="Repository index"
+              icon={<IconIndex />}
               description="Local file map used by Ask, Plan, Agent, and Review."
             >
               <div className="stat-grid">
@@ -385,14 +464,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 </button>
               </div>
             </SettingsSection>
-          </div>
-        ) : null}
 
-        {tab === 'model' ? (
-          <div className="settings-panel">
             <SettingsSection
               title="Provider"
-              description="Connect a local or cloud OpenAI-compatible endpoint."
+              icon={<IconModel />}
+              description="Connect Anthropic, Gemini, DeepSeek, OpenAI, OpenRouter, or any OpenAI-compatible /v1 API."
             >
               <div className="field">
                 <label htmlFor="ptype">Provider</label>
@@ -408,19 +484,27 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   ))}
                 </select>
               </div>
-              {provider.type === 'openai-compatible' ? (
+              {provider.type !== 'echo' ? (
                 <div className="field">
                   <label htmlFor="base">Base URL</label>
                   <input
                     id="base"
                     value={provider.baseUrl}
-                    placeholder="http://localhost:11434/v1"
+                    placeholder={
+                      provider.type === 'anthropic'
+                        ? 'https://api.anthropic.com'
+                        : provider.type === 'gemini'
+                          ? 'https://generativelanguage.googleapis.com'
+                          : 'http://localhost:11434/v1'
+                    }
                     onChange={(e) =>
                       onProviderChange({ ...provider, baseUrl: e.target.value })
                     }
                   />
                   <p className="field-hint">
-                    Local hosts (localhost, LAN, Docker) do not need an API key.
+                    {provider.type === 'anthropic' || provider.type === 'gemini'
+                      ? 'Override only if you use a corporate proxy or regional endpoint.'
+                      : 'Local hosts (localhost, LAN, Docker) do not need an API key.'}
                   </p>
                 </div>
               ) : null}
@@ -465,52 +549,49 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
             <SettingsSection
               title="Token limits"
+              icon={<IconIndex />}
               description="Tune context window and max output for budgeting and testing."
             >
               <div className="settings-field-grid">
-                <div className="field">
-                  <label htmlFor="contextWindow">Context window (tokens)</label>
-                  <input
-                    id="contextWindow"
-                    type="number"
-                    min={1024}
-                    step={1024}
-                    value={provider.contextWindow || 32768}
-                    onChange={(e) =>
-                      onProviderChange({
-                        ...provider,
-                        contextWindow: Number(e.target.value) || 32768,
-                      })
-                    }
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="maxOutput">Max output (tokens)</label>
-                  <input
-                    id="maxOutput"
-                    type="number"
-                    min={256}
-                    step={256}
-                    value={provider.maximumOutputTokens || 16384}
-                    onChange={(e) =>
-                      onProviderChange({
-                        ...provider,
-                        maximumOutputTokens: Number(e.target.value) || 16384,
-                      })
-                    }
-                  />
-                </div>
+                <NumberField
+                  id="contextWindow"
+                  label="Context window (tokens)"
+                  min={1024}
+                  step={1024}
+                  value={provider.contextWindow || 32768}
+                  onCommit={(value) =>
+                    onProviderChange({
+                      ...provider,
+                      contextWindow: value,
+                    })
+                  }
+                />
+                <NumberField
+                  id="maxOutput"
+                  label="Max output (tokens)"
+                  min={256}
+                  step={256}
+                  value={provider.maximumOutputTokens || 16384}
+                  onCommit={(value) =>
+                    onProviderChange({
+                      ...provider,
+                      maximumOutputTokens: value,
+                    })
+                  }
+                />
               </div>
               <p className="field-hint">
-                Applied on Save provider. Context window drives the token meter
-                and prompt reserve.
+                Applied on Save. Context window drives the token meter and prompt reserve.
               </p>
             </SettingsSection>
 
-            <SettingsSection title="Credentials & connection">
+            <SettingsSection title="Credentials & connection" icon={<IconCheck />}>
               <div className="row">
                 <span className="mono">
                   API key: {provider.hasApiKey ? 'configured' : 'not set'}
+                  {provider.type === 'anthropic' || provider.type === 'gemini'
+                    ? ' (required)'
+                    : ''}
                 </span>
                 <button
                   type="button"
@@ -553,29 +634,57 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   </span>
                 ) : null}
               </div>
-              <div className="row">
-                <button type="button" className="btn" onClick={onSaveProvider}>
-                  Save provider
-                </button>
-              </div>
             </SettingsSection>
           </div>
         ) : null}
 
-        {tab === 'modes' ? (
+        {effectiveTab === 'modes' ? (
           <div className="settings-panel">
             <SettingsSection
-              title="Defaults"
-              description="Applied to new turns unless overridden in the composer."
+              title="Mode defaults"
+              icon={<IconPlan />}
+              description="Compact defaults for each work mode."
             >
+              <div className="mode-settings-tabs" role="tablist" aria-label="Mode settings">
+                {[
+                  { id: 'ask' as const, label: 'ASK', icon: <IconAsk /> },
+                  { id: 'plan' as const, label: 'PLAN', icon: <IconPlan /> },
+                  { id: 'agent' as const, label: 'AGENT', icon: <IconAgent /> },
+                ].map((modeTab) => (
+                  <button
+                    key={modeTab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={modeSettingsTab === modeTab.id}
+                    className={`mode-settings-tab ${
+                      modeSettingsTab === modeTab.id ? 'active' : ''
+                    }`}
+                    onClick={() => setModeSettingsTab(modeTab.id)}
+                  >
+                    <span>{modeTab.icon}</span>
+                    <span>{modeTab.label}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="mode-settings-summary">
+                {modeSettingsTab === 'ask'
+                  ? 'Ask stays lightweight: read, explain, compare, and answer with minimal workspace impact.'
+                  : modeSettingsTab === 'plan'
+                    ? 'Plan focuses on structure: clarify scope, draft phases, and save handoff-ready plans.'
+                    : 'Agent is execution-focused: use tools, edit files, and stop at configured approval and budget limits.'}
+              </div>
               <div className="field">
                 <label htmlFor="depth">Default depth</label>
                 <select
                   id="depth"
-                  value={ui.depth}
+                  value={modeDefault.depth}
                   onChange={(e) =>
                     onSaveUi({
-                      depth: e.target.value as UiSettingsSnapshot['depth'],
+                      modeDefaults: {
+                        [modeSettingsTab]: {
+                          depth: e.target.value as UiSettingsSnapshot['depth'],
+                        },
+                      },
                     })
                   }
                 >
@@ -589,13 +698,42 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 <select
                   id="approval"
                   value={
-                    ui.approvalMode === 'builder' ? 'guided' : ui.approvalMode
+                    modeDefault.approvalMode === 'builder'
+                      ? 'guided'
+                      : modeDefault.approvalMode
                   }
-                  onChange={(e) => onSaveUi({ approvalMode: e.target.value })}
+                  onChange={(e) =>
+                    onSaveUi({
+                      modeDefaults: {
+                        [modeSettingsTab]: { approvalMode: e.target.value },
+                      },
+                    })
+                  }
                 >
                   <option value="safe">Ask for approval</option>
                   <option value="guided">Approve for me</option>
                   <option value="pilot">Full access</option>
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="modeModel">Default model</label>
+                <select
+                  id="modeModel"
+                  value={modeDefault.model ?? ''}
+                  onChange={(e) =>
+                    onSaveUi({
+                      modeDefaults: {
+                        [modeSettingsTab]: { model: e.target.value },
+                      },
+                    })
+                  }
+                >
+                  <option value="">Use active model</option>
+                  {options.map((id) => (
+                    <option key={id} value={id}>
+                      {id}
+                    </option>
+                  ))}
                 </select>
               </div>
               <label className="toggle">
@@ -606,24 +744,22 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 />
                 Show reasoning stream
               </label>
-              <div className="field">
-                <label htmlFor="preview">Reasoning preview chars</label>
-                <input
-                  id="preview"
-                  type="number"
-                  min={500}
-                  max={50000}
-                  value={ui.reasoningPreviewMaxChars}
-                  onChange={(e) =>
-                    onSaveUi({
-                      reasoningPreviewMaxChars: Number(e.target.value) || 8000,
-                    })
-                  }
-                />
-              </div>
+              <NumberField
+                id="preview"
+                label="Reasoning preview chars"
+                min={500}
+                max={50000}
+                value={ui.reasoningPreviewMaxChars}
+                onCommit={(value) =>
+                  onSaveUi({
+                    reasoningPreviewMaxChars: value,
+                  })
+                }
+              />
             </SettingsSection>
             <SettingsSection
               title="Run budget"
+              icon={<IconCheck />}
               description="Caps for a single Mitii turn before it stops."
             >
               <label className="toggle">
@@ -639,83 +775,64 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 Unlimited run budget
               </label>
               <div className="settings-field-grid">
-                <div className="field">
-                  <label htmlFor="maxModelCalls">Model calls</label>
-                  <input
-                    id="maxModelCalls"
-                    type="number"
-                    min={1}
-                    disabled={ui.runBudget.unlimited}
-                    value={ui.runBudget.maxModelCalls}
-                    onChange={(e) =>
-                      onSaveUi({
-                        runBudget: {
-                          maxModelCalls: Number(e.target.value) || 64,
-                        },
-                      })
-                    }
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="maxToolCalls">Tool calls</label>
-                  <input
-                    id="maxToolCalls"
-                    type="number"
-                    min={1}
-                    disabled={ui.runBudget.unlimited}
-                    value={ui.runBudget.maxToolCalls}
-                    onChange={(e) =>
-                      onSaveUi({
-                        runBudget: {
-                          maxToolCalls: Number(e.target.value) || 128,
-                        },
-                      })
-                    }
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="maxLoopIterations">Loop iterations</label>
-                  <input
-                    id="maxLoopIterations"
-                    type="number"
-                    min={1}
-                    disabled={ui.runBudget.unlimited}
-                    value={ui.runBudget.maxLoopIterations}
-                    onChange={(e) =>
-                      onSaveUi({
-                        runBudget: {
-                          maxLoopIterations: Number(e.target.value) || 96,
-                        },
-                      })
-                    }
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="maxWallTimeMinutes">Wall time (min)</label>
-                  <input
-                    id="maxWallTimeMinutes"
-                    type="number"
-                    min={1}
-                    disabled={ui.runBudget.unlimited}
-                    value={ui.runBudget.maxWallTimeMinutes}
-                    onChange={(e) =>
-                      onSaveUi({
-                        runBudget: {
-                          maxWallTimeMinutes: Number(e.target.value) || 30,
-                        },
-                      })
-                    }
-                  />
-                </div>
+                <NumberField
+                  id="maxModelCalls"
+                  label="Model calls"
+                  min={1}
+                  disabled={ui.runBudget.unlimited}
+                  value={ui.runBudget.maxModelCalls}
+                  onCommit={(value) =>
+                    onSaveUi({
+                      runBudget: { maxModelCalls: value },
+                    })
+                  }
+                />
+                <NumberField
+                  id="maxToolCalls"
+                  label="Tool calls"
+                  min={1}
+                  disabled={ui.runBudget.unlimited}
+                  value={ui.runBudget.maxToolCalls}
+                  onCommit={(value) =>
+                    onSaveUi({
+                      runBudget: { maxToolCalls: value },
+                    })
+                  }
+                />
+                <NumberField
+                  id="maxLoopIterations"
+                  label="Loop iterations"
+                  min={1}
+                  disabled={ui.runBudget.unlimited}
+                  value={ui.runBudget.maxLoopIterations}
+                  onCommit={(value) =>
+                    onSaveUi({
+                      runBudget: { maxLoopIterations: value },
+                    })
+                  }
+                />
+                <NumberField
+                  id="maxWallTimeMinutes"
+                  label="Wall time (min)"
+                  min={1}
+                  disabled={ui.runBudget.unlimited}
+                  value={ui.runBudget.maxWallTimeMinutes}
+                  onCommit={(value) =>
+                    onSaveUi({
+                      runBudget: { maxWallTimeMinutes: value },
+                    })
+                  }
+                />
               </div>
             </SettingsSection>
           </div>
         ) : null}
 
-        {tab === 'context' ? (
+        {effectiveTab === 'context' ? (
           <div className="settings-panel">
             <SettingsSection
               title="Context sources"
+              icon={<IconIndex />}
               description="Choose what evidence is attached to each turn."
             >
               <ContextTogglesPanel
@@ -738,10 +855,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
           </div>
         ) : null}
 
-        {tab === 'integrations' ? (
+        {effectiveTab === 'integrations' ? (
           <div className="settings-panel">
             <SettingsSection
-              title="MCP servers"
+              title="MCP integrations"
+              icon={<IconSettings />}
               description="Optional store. Off by default — install what you need, delete anytime."
             >
               <McpServersEditor
@@ -749,16 +867,16 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 storeCatalog={mcpStore}
                 runtimeStatus={mcpRuntimeStatus}
                 onChange={onMcpChange}
-                onSave={onSaveMcp}
               />
             </SettingsSection>
           </div>
         ) : null}
 
-        {tab === 'debug' ? (
+        {effectiveTab === 'debug' ? (
           <div className="settings-panel">
             <SettingsSection
               title="Runtime diagnostics"
+              icon={<IconSettings />}
               description="Use View → Output → Mitii for activation and run logs. Enable mitii.debug for verbose stacks."
             >
               <div className="stat">
@@ -804,6 +922,80 @@ export function SettingsPanel(props: SettingsPanelProps) {
           </div>
         ) : null}
       </div>
+      <div className="settings-footer">
+        <div className="settings-footer__profiles">
+          <select
+            aria-label="Switch profile"
+            value={activeProfile?.id ?? activeProfileId}
+            onChange={(e) => onActiveProfileChange(e.target.value)}
+          >
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => {
+              setNewProfileName('');
+              setNewProfileOpen(true);
+            }}
+          >
+            New Profile
+          </button>
+        </div>
+        <button
+          type="button"
+          className="btn settings-save-btn"
+          onClick={onSaveAll}
+          disabled={saving}
+        >
+          {saving ? 'Saving…' : 'Save settings'}
+        </button>
+      </div>
+      {newProfileOpen ? (
+        <div
+          className="settings-modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setNewProfileOpen(false)}
+        >
+          <form
+            className="settings-modal"
+            onMouseDown={(event) => event.stopPropagation()}
+            onSubmit={(event) => {
+              event.preventDefault();
+              onCreateProfile(newProfileName);
+              setNewProfileOpen(false);
+            }}
+          >
+            <h3>New profile</h3>
+            <div className="field">
+              <label htmlFor="newProfileName">Profile name</label>
+              <input
+                id="newProfileName"
+                autoFocus
+                value={newProfileName}
+                placeholder="Local Ollama"
+                onChange={(e) => setNewProfileName(e.target.value)}
+              />
+            </div>
+            <div className="row settings-modal__actions">
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => setNewProfileOpen(false)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn">
+                Create
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 }

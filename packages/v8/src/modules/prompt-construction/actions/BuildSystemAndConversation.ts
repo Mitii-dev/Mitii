@@ -178,10 +178,17 @@ function buildToolGuidance(decision: ExecutionDecision): string {
 
   if (
     grant.allowedTools.includes("goto_definition") ||
-    grant.allowedTools.includes("find_references")
+    grant.allowedTools.includes("find_references") ||
+    grant.allowedTools.includes("analyze_change_impact")
   ) {
     lines.push(
       "When you need a symbol definition or its call sites, use goto_definition and find_references instead of grepping the workspace.",
+    );
+  }
+
+  if (grant.allowedTools.includes("analyze_change_impact")) {
+    lines.push(
+      "For blast-radius questions like what breaks, affected callers, or dependents of a change, use analyze_change_impact before broad text search.",
     );
   }
 

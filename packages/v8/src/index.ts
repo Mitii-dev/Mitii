@@ -182,12 +182,16 @@ export {
   ModelCapabilityResolver,
   EchoLlmPort,
   OpenAiCompatibleLlmPort,
+  AnthropicLlmPort,
+  GeminiLlmPort,
   MODEL_PROVIDER_SUPPORT,
   modelEventSchema,
 } from "./modules/model-gateway";
 export type {
   OpenAiCompatibleLlmPortConfig,
   OpenAiCompatibleAuthHeader,
+  AnthropicLlmPortConfig,
+  GeminiLlmPortConfig,
 } from "./modules/model-gateway";
 
 export { ToolRuntimePipeline } from "./engine/tool-runtime";
@@ -227,6 +231,7 @@ export type {
   ToolDefinition,
   NetworkPort,
   SearchPort,
+  RepositoryGraphPort,
 } from "./engine/tool-runtime";
 
 export { VerificationPipeline } from "./modules/verification";
@@ -300,6 +305,19 @@ export type {
   CodeNavigationLocation,
 } from "./modules/code-navigation";
 
+export { ChangeImpactPipeline } from "./modules/change-impact";
+export {
+  changeImpactInputSchema,
+  changeImpactResultSchema,
+  CHANGE_IMPACT_SCHEMA_VERSION,
+  CHANGE_IMPACT_EDGE_TYPES,
+} from "./modules/change-impact";
+export type {
+  ChangeImpactInput,
+  ChangeImpactResult,
+  ChangeImpactSeed,
+} from "./modules/change-impact";
+
 export { PlanningPipeline } from "./modules/planning";
 export {
   planningInputSchema,
@@ -317,6 +335,28 @@ export type {
   PlanPhase,
   PlanStep,
 } from "./modules/planning";
+
+export { TaskListPipeline } from "./modules/task-list";
+export {
+  taskListSchema,
+  taskListApplyInputSchema,
+  taskListApplyResultSchema,
+  TASK_LIST_SCHEMA_VERSION,
+  UPDATE_TODOS_TOOL_NAME,
+  parseTaskListMarkdown,
+  serializeTaskListMarkdown,
+  serializeTaskListForPrompt,
+  serializeTaskListGuidance,
+  taskListProgress,
+} from "./modules/task-list";
+export type {
+  TaskList,
+  TaskItem,
+  TaskItemStatus,
+  TaskListApplyInput,
+  TaskListApplyResult,
+  TaskListSource,
+} from "./modules/task-list";
 
 export { AgentEnginePipeline } from "./engine/agent-engine";
 export {

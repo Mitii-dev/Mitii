@@ -1,0 +1,218 @@
+import { describe, expect, it } from "vitest";
+
+import { PLANNING_SCHEMA_VERSION, type PlanArtifact } from "../../../planning";
+import { DEFAULT_MAX_TASKS, TaskListPipeline } from "../../index";
+
+function planWithSteps(stepCount: number): PlanArtifact {
+  const phases = [];
+  let remaining = stepCount;
+  let phaseIndex = 0;
+  while (remaining > 0) {
+    const take = Math.min(remaining, 6);
+    phases.push({
+      id: `phase-${phaseIndex + 1}`,
+      name: `Phase ${phaseIndex + 1}`,
+      purpose: "Work",
+      steps: Array.from({ length: take }, (_, index) => ({
+        id: `step-${phaseIndex}-${index}`,
+        intent: `Do step ${phaseIndex}-${index}`,
+        targetRefs: [],
+        actionSummary: `Action ${phaseIndex}-${index}`,
+        expectedOutcome: "Done",
+        riskLevel: "low" as const,
+      })),
+      dependencies: [],
+      successCriteria: [],
+    });
+    remaining -= take;
+    phaseIndex += 1;
+  }
+  return {
+    schemaVersion: PLANNING_SCHEMA_VERSION,
+    objective: "Ship the feature safely",
+    assumptions: [],
+    openQuestions: [],
+    contextReviewed: [],
+    constraints: [],
+    dimensions: {
+      scope: "package",
+      risk: "medium",
+      clarity: "clear",
+      complexity: "complex",
+      changeImpact: ["code"],
+    },
+    phases,
+    risks: [],
+    alternatives: [],
+    verification: { checks: [], manualQa: [], commands: [] },
+    approvalRequired: false,
+    processHintsApplied: [],
+  };
+}
+
+describe("deriveTaskListFromPlan", () => {
+  const pipeline = new TaskListPipeline();
+
+  it("activates the first derived task and leaves the rest pending", () => {
+    const result = pipeline.deriveFromPlan(planWithSteps(24));
+    expect(result.status).toBe("applied");
+    expect(result.taskList?.items).toHaveLength(DEFAULT_MAX_TASKS);
+    expect(result.taskList?.items[0]?.status).toBe("active");
+    expect(
+      result.taskList?.items.slice(1).every((item) => item.status === "pending"),
+    ).toBe(true);
+    expect(result.taskList?.source).toBe("plan");
+    expect(result.reasonCodes).toContain("task_list_derived");
+  });
+
+  it("does not mark derived tasks done", () => {
+    const result = pipeline.deriveFromPlan(planWithSteps(2));
+    expect(result.taskList?.items.map((item) => item.status)).toEqual([
+      "active",
+      "pending",
+    ]);
+  });
+
+  it("skips skill playbook bullets that are not executable work", () => {
+    const plan = planWithSteps(1);
+    plan.phases[0] = {
+      ...plan.phases[0]!,
+      name: "Verify",
+      steps: [
+        {
+          id: "meta-1",
+          intent: "You have a spec and need to break it into implementable units",
+          targetRefs: [],
+          actionSummary: "When to use this skill",
+          expectedOutcome: "N/A",
+          riskLevel: "low",
+        },
+        {
+          id: "meta-2",
+          intent: "Restate the goal and constraints from the spec",
+          targetRefs: [],
+          actionSummary: "Task-breakdown methodology",
+          expectedOutcome: "N/A",
+          riskLevel: "low",
+        },
+        {
+          id: "meta-3",
+          intent: "Produce ordered tasks with acceptance criteria",
+          targetRefs: [],
+          actionSummary: "Task-breakdown methodology",
+          expectedOutcome: "N/A",
+          riskLevel: "low",
+        },
+        {
+          id: "real-1",
+          intent: "Run typecheck on the package",
+          targetRefs: ["packages/mui-builder"],
+          actionSummary: "pnpm --filter mui-builder typecheck",
+          expectedOutcome: "No TS errors",
+          riskLevel: "low",
+        },
+      ],
+    };
+    const result = pipeline.deriveFromPlan(plan);
+    expect(result.taskList?.items.map((item) => item.title)).toEqual([
+      "Verify: Run typecheck on the package",
+    ]);
+    expect(result.taskList?.items[0]?.status).toBe("active");
+  });
+
+  it("orders preferred work phases before deferred discovery phases", () => {
+    const plan = planWithSteps(1);
+    plan.phases = [
+      {
+        id: "phase-discover",
+        name: "Discover",
+        purpose: "Inspect",
+        steps: [
+          {
+            id: "discover-behavior",
+            intent: "Inspect current behavior",
+            targetRefs: ["src/widget.ts"],
+            actionSummary: "Read the current behavior",
+            expectedOutcome: "Behavior understood",
+            riskLevel: "low",
+          },
+        ],
+        dependencies: [],
+        successCriteria: [],
+      },
+      {
+        id: "phase-change",
+        name: "Change",
+        purpose: "Modify",
+        steps: [
+          {
+            id: "change-widget",
+            intent: "Update widget behavior",
+            targetRefs: ["src/widget.ts"],
+            actionSummary: "Change the widget implementation",
+            expectedOutcome: "Widget matches requested behavior",
+            riskLevel: "medium",
+          },
+        ],
+        dependencies: [],
+        successCriteria: [],
+      },
+      {
+        id: "phase-verify",
+        name: "Verify",
+        purpose: "Check",
+        steps: [
+          {
+            id: "verify-widget",
+            intent: "Verify widget behavior",
+            targetRefs: ["src/widget.test.ts"],
+            actionSummary: "Run the focused test",
+            expectedOutcome: "Widget behavior is covered",
+            riskLevel: "low",
+          },
+        ],
+        dependencies: [],
+        successCriteria: [],
+      },
+    ];
+
+    const result = pipeline.deriveFromPlan(plan);
+    expect(result.taskList?.items.map((item) => item.title)).toEqual([
+      "Change: Update widget behavior",
+      "Verify: Verify widget behavior",
+      "Discover: Inspect current behavior",
+    ]);
+    expect(result.taskList?.items.map((item) => item.status)).toEqual([
+      "active",
+      "pending",
+      "pending",
+    ]);
+    expect(result.taskList?.items[0]?.detail).toContain("Scope: src/widget.ts");
+    expect(result.taskList?.items[0]?.sourceRef).toBe("change-widget");
+  });
+
+  it("falls back to deferred discovery when no preferred work exists", () => {
+    const plan = planWithSteps(1);
+    plan.phases[0] = {
+      ...plan.phases[0]!,
+      name: "Discover",
+      steps: [
+        {
+          id: "discover-only",
+          intent: "Inspect failure evidence",
+          targetRefs: ["src/failure.log"],
+          actionSummary: "Read the failure evidence",
+          expectedOutcome: "Failure evidence is known",
+          riskLevel: "low",
+        },
+      ],
+    };
+
+    const result = pipeline.deriveFromPlan(plan);
+    expect(result.status).toBe("applied");
+    expect(result.taskList?.items.map((item) => item.title)).toEqual([
+      "Discover: Inspect failure evidence",
+    ]);
+    expect(result.taskList?.items[0]?.status).toBe("active");
+  });
+});

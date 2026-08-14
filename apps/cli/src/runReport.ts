@@ -1,4 +1,10 @@
-import type { AgentRunResult, RunEvent } from '@mitii/sdk';
+import type {
+  AgentRunResult,
+  RunEvent,
+  TaskItemStatus,
+  TaskList,
+} from '@mitii/sdk';
+import { taskListProgress } from '@mitii/sdk';
 
 /** Format run usage for TTY / OutputChannel (cost/budget view). */
 export function formatUsageLine(result: AgentRunResult): string {
@@ -39,6 +45,28 @@ export function formatContextInspection(events: RunEvent[]): string[] {
         `[decision] route=${event.route} disposition=${event.runDisposition}`,
       );
     }
+  }
+  return lines;
+}
+
+const TASK_MARK: Record<TaskItemStatus, string> = {
+  pending: '[ ]',
+  active: '[>]',
+  done: '[x]',
+  skipped: '[-]',
+  blocked: '[!]',
+};
+
+/** Render a live task list for TTY / OutputChannel. */
+export function formatTaskList(taskList: TaskList): string[] {
+  const progress = taskListProgress(taskList);
+  const lines = [
+    `[tasks] ${progress.completedCount}/${progress.totalCount} complete${
+      taskList.source ? ` source=${taskList.source}` : ''
+    }`,
+  ];
+  for (const item of taskList.items) {
+    lines.push(`  ${TASK_MARK[item.status]} ${item.title}`);
   }
   return lines;
 }

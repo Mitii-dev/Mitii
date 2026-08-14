@@ -15,7 +15,8 @@ Local-first AI coding agent for VS Code. Mitii indexes your repository, answers 
 4. Wait for indexing to finish (status in the sidebar / Settings → Index)
 5. In **Settings → Provider**, choose:
    - **echo** — local stub (no API key)
-   - **openai-compatible** — Ollama / LM Studio / OpenRouter / OpenAI / Azure / DeepSeek, etc.
+   - **Anthropic (Claude)** / **Gemini** / **DeepSeek** / **OpenAI** / **OpenRouter**
+   - **Custom OpenAI-compatible** — any `/v1/chat/completions` API
 
 For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code SecretStorage). Local Ollama/LM Studio usually need no key.
 
@@ -26,7 +27,7 @@ For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code Secr
 - **Repository-aware context** — SQLite FTS5, symbols, optional vectors, repo map, diagnostics, Git state, and `@` attachments
 - **Ask / Plan / Agent** — read-only Q&A, structured plans, controlled edits with cancel / clarify / approve
 - **Safety** — configurable approvals, path containment, command policy, pre-write checkpoints, workspace trust
-- **Providers** — Echo + OpenAI-compatible endpoints (native Anthropic / Gemini / Bedrock adapters not shipped yet)
+- **Providers** — Echo, Anthropic (Claude), Gemini, and OpenAI-compatible endpoints (DeepSeek, OpenRouter, Azure, Ollama, custom `/v1`)
 - **MCP** — optional stdio servers (`mitii.mcp` / `.mitii/mcp.json`); off by default
 - **Evidence** — session logs and audit-pack export (secrets redacted). Org SSO / RBAC / SIEM are not included
 
@@ -46,7 +47,7 @@ For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code Secr
 
 | Setting | Notes |
 |---|---|
-| `mitii.provider.type` | `echo` or `openai-compatible` |
+| `mitii.provider.type` | `echo`, `openai-compatible`, `anthropic`, or `gemini` |
 | `mitii.provider.baseUrl` | e.g. `http://localhost:11434/v1` for Ollama |
 | `mitii.provider.model` | Model id |
 | `mitii.workspace.rootPathOverride` | Only when no folder is open |

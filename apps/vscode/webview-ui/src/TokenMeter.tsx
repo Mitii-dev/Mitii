@@ -158,15 +158,15 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
           <span aria-hidden="true">↓</span>
           <span>{formatCompact(outputTotal)}</span>
         </span>
-        {usage.live ? (
+        {/* {usage.live ? (
           <>
             <span className="token-chip__sep">·</span>
             <span className="token-chip__live">
-              live {formatCompact(runTotal)}
+              {formatCompact(runTotal)}
             </span>
           </>
-        ) : null}
-        {windowLabel ? (
+        ) : null} */}
+        {/* {windowLabel ? (
           <>
             <span className="token-chip__sep">·</span>
             <span>
@@ -175,7 +175,7 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
                 : `${windowLabel} window`}
             </span>
           </>
-        ) : null}
+        ) : null} */}
       </button>
       {open ? (
         <div

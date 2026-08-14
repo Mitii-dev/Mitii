@@ -8,6 +8,7 @@ import type {
   PlanningTaskEvidence,
 } from "../contracts";
 import { PLANNING_SCHEMA_VERSION } from "../constants";
+import { PLANNING_PROCESS_META_STEP } from "../policy";
 
 /**
  * Draft a generic PlanArtifact from task dimensions and optional hints.
@@ -35,6 +36,7 @@ export function draftPlan(input: PlanningParsedInput): PlanArtifact {
   const skillPhaseHints = extractSkillPhaseHints(input.skills ?? []);
   const phases = buildPhases({
     evidence,
+    objective,
     targetRefs,
     changeImpact,
     processHints: input.processHints ?? [],
@@ -69,25 +71,24 @@ function buildObjective(
   query: string,
   evidence: PlanningTaskEvidence,
 ): string {
-  if (evidence.requestedOutcomes.length > 0) {
-    const outcome = evidence.requestedOutcomes[0]!.trim().replace(/\s+/g, " ");
-    if (outcome.length >= 24 && !isPronounOnlyFollowUp(outcome)) {
-      return outcome.slice(0, 1_000);
-    }
+  const targetRefs = evidence.targets.map((t) => t.value);
+  const candidates = [
+    ...evidence.requestedOutcomes,
+    query,
+  ]
+    .map((value) => sanitizeUserPhrase(value, targetRefs))
+    .filter((value) => value.length >= 8 && !isPronounOnlyFollowUp(value));
+
+  const preferred = pickPreferredPhrase(candidates);
+  if (preferred) {
+    return preferred.slice(0, 1_000);
   }
 
-  const trimmed = query.trim().replace(/\s+/g, " ");
   const targetSummary = evidence.targets
     .filter((target) => target.explicit)
     .map((target) => target.value)
     .slice(0, 4)
     .join(", ");
-
-  if (trimmed.length > 0 && !isPronounOnlyFollowUp(trimmed)) {
-    return targetSummary
-      ? `${trimmed.slice(0, 700)} (targets: ${targetSummary})`.slice(0, 1_000)
-      : trimmed.slice(0, 1_000);
-  }
 
   if (targetSummary) {
     return `Resolve ${evidence.primaryIntent} for ${targetSummary}`.slice(
@@ -96,15 +97,13 @@ function buildObjective(
     );
   }
 
-  return trimmed.length > 0
-    ? trimmed.slice(0, 1_000)
-    : `Complete ${evidence.primaryIntent} safely within the stated scope.`;
+  return `Complete ${evidence.primaryIntent} safely within the stated scope.`;
 }
 
 function isPronounOnlyFollowUp(text: string): boolean {
   return /^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:fix|update|change|check|do|handle|implement)\s+(?:it|this|that)\b/i.test(
     text,
-  ) || text.length < 24;
+  ) || text.length < 8;
 }
 
 function buildAssumptions(evidence: PlanningTaskEvidence): string[] {
@@ -128,9 +127,12 @@ function buildOpenQuestions(
   processHints: readonly string[] | undefined,
 ): string[] {
   const questions: string[] = [];
+  const scope = scopeLabel(evidence.targets.map((t) => t.value));
   if (evidence.clarity === "unclear" || evidence.clarity === "partially_clear") {
     questions.push(
-      "Which outcome is in scope for this turn, and what should remain unchanged?",
+      scope
+        ? `For work${scope}: which outcome is in scope this turn, and what must stay unchanged?`
+        : "Which outcome is in scope for this turn, and what should remain unchanged?",
     );
   }
   if (
@@ -140,6 +142,13 @@ function buildOpenQuestions(
   ) {
     questions.push(
       "Which modules or packages are in scope if the change should not span the whole workspace?",
+    );
+  }
+  if (evidence.constraints.length > 0) {
+    questions.push(
+      `If tradeoffs appear, which constraint wins first: ${evidence.constraints
+        .slice(0, 2)
+        .join("; ")}?`,
     );
   }
   const hints = processHints ?? [];
@@ -158,13 +167,20 @@ function buildOpenQuestions(
 
 function buildPhases(params: {
   evidence: PlanningTaskEvidence;
+  objective: string;
   targetRefs: readonly string[];
   changeImpact: readonly PlanChangeImpact[];
   processHints: readonly string[];
   skillPhaseHints: readonly SkillPhaseHint[];
 }): PlanPhase[] {
-  const { evidence, targetRefs, changeImpact, processHints, skillPhaseHints } =
-    params;
+  const {
+    evidence,
+    objective,
+    targetRefs,
+    changeImpact,
+    processHints,
+    skillPhaseHints,
+  } = params;
   const needsDiscovery =
     evidence.scope === "package" ||
     evidence.scope === "repository" ||
@@ -174,10 +190,12 @@ function buildPhases(params: {
     evidence.complexity === "very_complex" ||
     evidence.recommendsPlanning === true;
 
-  if (skillPhaseHints.length > 0) {
+  const executableSkillHints = filterExecutableSkillPhaseHints(skillPhaseHints);
+  if (executableSkillHints.length > 0) {
     return buildSkillHintPhases({
-      skillPhaseHints,
+      skillPhaseHints: executableSkillHints,
       evidence,
+      objective,
       targetRefs,
       changeImpact,
       processHints,
@@ -185,71 +203,53 @@ function buildPhases(params: {
   }
 
   const phases: PlanPhase[] = [];
+  const shortObjective = clipPhrase(objective, 80);
+  const includeVerify = shouldIncludeVerifyPhase(evidence);
 
   if (needsDiscovery) {
     phases.push({
       id: "phase-discover",
       name: "Discover",
-      purpose: "Inspect relevant context safely before changing anything.",
+      purpose: `Inspect current behavior for "${shortObjective}" before changing anything.`,
       dependencies: [],
-      successCriteria: [
+      successCriteria: acceptanceCriteria(evidence, objective, [
         "Relevant targets and constraints are identified.",
         "Blocking open questions are listed or resolved.",
-      ],
-      steps: [
-        step(
-          "step-locate",
-          "Locate current behavior and extension points",
-          targetRefs,
-          "Search and read the relevant modules, configs, and tests.",
-          "A bounded set of target refs and constraints is known.",
-          "low",
-        ),
-        step(
-          "step-evidence",
-          "Collect evidence for impact and verification",
-          targetRefs,
-          "Review diffs, tests, APIs, or docs needed to judge risk.",
-          "Enough evidence exists to draft a safe change sequence.",
-          "low",
-        ),
-      ],
+      ]),
+      steps: buildDiscoverySteps(evidence, objective, targetRefs),
     });
   }
 
   phases.push({
     id: "phase-change",
     name: "Change",
-    purpose: "Apply the smallest coherent set of changes for the objective.",
+    purpose: `Apply the smallest coherent change set for "${shortObjective}".`,
     dependencies: needsDiscovery ? ["phase-discover"] : [],
-    successCriteria: [
+    successCriteria: acceptanceCriteria(evidence, objective, [
       "Changes match the objective and constraints.",
       "No unrelated surfaces are modified.",
-    ],
-    steps: buildChangeSteps(evidence, targetRefs, changeImpact, processHints),
+    ]),
+    steps: buildChangeSteps(
+      evidence,
+      objective,
+      targetRefs,
+      changeImpact,
+      processHints,
+    ),
   });
 
-  if (evidence.recommendsVerification !== false) {
+  if (includeVerify) {
+    const verification = buildVerification(evidence);
     phases.push({
       id: "phase-verify",
       name: "Verify",
-      purpose: "Prove the change with automated and manual checks.",
+      purpose: `Prove "${shortObjective}" with automated and manual checks.`,
       dependencies: ["phase-change"],
-      successCriteria: [
+      successCriteria: acceptanceCriteria(evidence, objective, [
         "Applicable checks pass or failures are explained.",
         "Rollback notes remain valid.",
-      ],
-      steps: [
-        step(
-          "step-verify",
-          "Run verification",
-          targetRefs,
-          "Execute lint/typecheck/tests/build or manual QA as required by risk.",
-          "Verification evidence supports completion.",
-          evidence.risk === "low" ? "low" : "medium",
-          "tests, lint, typecheck, and/or manual QA",
-        ),
-      ],
+      ]),
+      steps: buildVerifySteps(evidence, objective, targetRefs, verification),
     });
   }
 
@@ -277,15 +277,23 @@ function extractSkillPhaseHints(
 
 function extractPlanningText(content: string): string | undefined {
   const marker = content.match(/^Planning:\s*$/im);
-  if (marker?.index !== undefined) {
-    return content.slice(marker.index + marker[0].length).trim();
-  }
   const heading = content.match(
     /^#{1,3}\s+(agent\s+discovery|planning|plan\s+template)\s*$/im,
   );
-  return heading?.index !== undefined
-    ? content.slice(heading.index + heading[0].length).trim()
-    : undefined;
+  const start = marker ?? heading;
+  if (start?.index === undefined) {
+    return undefined;
+  }
+  const after = content.slice(start.index + start[0].length);
+  /**
+   * Skills often follow the compact template with a Playbook / When-to-use
+   * essay. Ingesting that prose turns process advice into 30+ fake plan steps.
+   */
+  const stop = after.search(
+    /\n#{1,3}\s+(?:playbook|when\s+to\s+use|when\s+not|overview|step\s+\d)\b/i,
+  );
+  const bounded = (stop >= 0 ? after.slice(0, stop) : after).trim();
+  return bounded.length > 0 ? bounded.slice(0, 2_000) : undefined;
 }
 
 function parsePhaseHints(text: string): SkillPhaseHint[] {
@@ -297,6 +305,10 @@ function parsePhaseHints(text: string): SkillPhaseHint[] {
     if (!line) {
       continue;
     }
+    if (/^#{1,6}\s+/.test(line)) {
+      current = undefined;
+      continue;
+    }
     const phaseMatch = /^([A-Za-z][A-Za-z0-9 /_-]{1,80}):$/.exec(line);
     if (phaseMatch) {
       current = { name: phaseMatch[1]!.trim(), steps: [] };
@@ -304,7 +316,7 @@ function parsePhaseHints(text: string): SkillPhaseHint[] {
       continue;
     }
     const stepMatch = /^[-*]\s+(.+)$/.exec(line);
-    if (stepMatch && current) {
+    if (stepMatch && current && current.steps.length < 8) {
       current.steps.push(stepMatch[1]!.trim());
     }
   }
@@ -328,36 +340,64 @@ function mergePhaseHints(
   return [...byName.values()];
 }
 
+/**
+ * Drop task-breakdown / playbook methodology bullets.
+ * If nothing executable remains, callers fall back to dimension-driven phases.
+ */
+function filterExecutableSkillPhaseHints(
+  hints: readonly SkillPhaseHint[],
+): SkillPhaseHint[] {
+  return hints
+    .map((hint) => ({
+      name: hint.name,
+      steps: hint.steps.filter((step) => !PLANNING_PROCESS_META_STEP.test(step)),
+    }))
+    .filter((hint) => hint.steps.length > 0);
+}
+
 function buildSkillHintPhases(params: {
   skillPhaseHints: readonly SkillPhaseHint[];
   evidence: PlanningTaskEvidence;
+  objective: string;
   targetRefs: readonly string[];
   changeImpact: readonly PlanChangeImpact[];
   processHints: readonly string[];
 }): PlanPhase[] {
   const phases: PlanPhase[] = [];
+  const shortObjective = clipPhrase(params.objective, 80);
   for (const hint of params.skillPhaseHints) {
     phases.push({
       id: `phase-${slugify(hint.name)}`,
       name: toTitleCase(hint.name),
-      purpose: phasePurpose(hint.name),
+      purpose: phasePurpose(hint.name, shortObjective),
       dependencies:
         phases.length > 0 ? [phases[phases.length - 1]!.id] : [],
-      successCriteria: phaseSuccessCriteria(hint.name),
+      successCriteria: acceptanceCriteria(
+        params.evidence,
+        params.objective,
+        phaseSuccessCriteria(hint.name),
+      ),
       steps: hint.steps.slice(0, 8).map((summary, index) =>
         step(
           `step-${slugify(hint.name)}-${index + 1}`,
-          summary,
+          specializeIntent(summary, params.targetRefs),
           params.targetRefs,
           actionSummaryForSkillStep({
             phaseName: hint.name,
             stepSummary: summary,
+            objective: params.objective,
+            targetRefs: params.targetRefs,
             changeImpact: params.changeImpact,
             processHints: params.processHints,
           }),
-          expectedOutcomeForSkillStep(hint.name, summary),
+          expectedOutcomeForSkillStep(
+            hint.name,
+            summary,
+            params.objective,
+            params.evidence,
+          ),
           riskForPhase(hint.name, params.evidence.risk),
-          verificationForPhase(hint.name),
+          verificationForPhase(hint.name, params.evidence),
         ),
       ),
     });
@@ -367,15 +407,16 @@ function buildSkillHintPhases(params: {
     phases.push({
       id: "phase-change",
       name: "Change",
-      purpose: "Apply the smallest coherent set of changes for the objective.",
+      purpose: `Apply the smallest coherent change set for "${shortObjective}".`,
       dependencies:
         phases.length > 0 ? [phases[phases.length - 1]!.id] : [],
-      successCriteria: [
+      successCriteria: acceptanceCriteria(params.evidence, params.objective, [
         "Changes match the objective and constraints.",
         "No unrelated surfaces are modified.",
-      ],
+      ]),
       steps: buildChangeSteps(
         params.evidence,
+        params.objective,
         params.targetRefs,
         params.changeImpact,
         params.processHints,
@@ -384,30 +425,26 @@ function buildSkillHintPhases(params: {
   }
 
   if (
-    params.evidence.recommendsVerification !== false &&
+    shouldIncludeVerifyPhase(params.evidence) &&
     !hasPhase(phases, "verify")
   ) {
+    const verification = buildVerification(params.evidence);
     phases.push({
       id: "phase-verify",
       name: "Verify",
-      purpose: "Prove the change with automated and manual checks.",
+      purpose: `Prove "${shortObjective}" with automated and manual checks.`,
       dependencies:
         phases.length > 0 ? [phases[phases.length - 1]!.id] : [],
-      successCriteria: [
+      successCriteria: acceptanceCriteria(params.evidence, params.objective, [
         "Applicable checks pass or failures are explained.",
         "Rollback notes remain valid.",
-      ],
-      steps: [
-        step(
-          "step-verify",
-          "Run verification",
-          params.targetRefs,
-          "Execute lint/typecheck/tests/build or manual QA as required by risk.",
-          "Verification evidence supports completion.",
-          params.evidence.risk === "low" ? "low" : "medium",
-          "tests, lint, typecheck, and/or manual QA",
-        ),
-      ],
+      ]),
+      steps: buildVerifySteps(
+        params.evidence,
+        params.objective,
+        params.targetRefs,
+        verification,
+      ),
     });
   }
 
@@ -439,18 +476,18 @@ function toTitleCase(value: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function phasePurpose(name: string): string {
+function phasePurpose(name: string, shortObjective: string): string {
   const normalized = normalizePhaseName(name);
   if (normalized === "discover") {
-    return "Inspect relevant context safely before changing anything.";
+    return `Inspect current behavior for "${shortObjective}" before changing anything.`;
   }
   if (normalized === "change") {
-    return "Apply the smallest coherent set of changes for the objective.";
+    return `Apply the smallest coherent change set for "${shortObjective}".`;
   }
   if (normalized === "verify") {
-    return "Prove the change with automated and manual checks.";
+    return `Prove "${shortObjective}" with automated and manual checks.`;
   }
-  return `Complete the ${toTitleCase(name)} planning phase.`;
+  return `Complete the ${toTitleCase(name)} phase for "${shortObjective}".`;
 }
 
 function phaseSuccessCriteria(name: string): string[] {
@@ -479,12 +516,23 @@ function phaseSuccessCriteria(name: string): string[] {
 function actionSummaryForSkillStep(params: {
   phaseName: string;
   stepSummary: string;
+  objective: string;
+  targetRefs: readonly string[];
   changeImpact: readonly PlanChangeImpact[];
   processHints: readonly string[];
 }): string {
   const normalized = normalizePhaseName(params.phaseName);
   if (normalized === "change") {
-    return summarizeImplementAction(params.changeImpact, params.processHints);
+    return summarizeImplementAction(
+      params.objective,
+      params.targetRefs,
+      params.changeImpact,
+      params.processHints,
+    );
+  }
+  const scope = scopeLabel(params.targetRefs);
+  if (scope && !params.stepSummary.includes(params.targetRefs[0] ?? "")) {
+    return `${params.stepSummary}${scope}.`;
   }
   return params.stepSummary;
 }
@@ -492,16 +540,19 @@ function actionSummaryForSkillStep(params: {
 function expectedOutcomeForSkillStep(
   phaseName: string,
   stepSummary: string,
+  objective: string,
+  evidence: PlanningTaskEvidence,
 ): string {
   const normalized = normalizePhaseName(phaseName);
+  const shortObjective = clipPhrase(objective, 80);
   if (normalized === "discover") {
-    return "Current behavior and relevant evidence are known.";
+    return `Current behavior and evidence for "${shortObjective}" are known.`;
   }
   if (normalized === "change") {
-    return "The objective is met within constraints.";
+    return doneOutcome(evidence, shortObjective);
   }
   if (normalized === "verify") {
-    return "Verification evidence supports completion.";
+    return `Verification evidence supports completing "${shortObjective}".`;
   }
   return `${stepSummary} is complete.`;
 }
@@ -520,42 +571,124 @@ function riskForPhase(
   return taskRisk;
 }
 
-function verificationForPhase(phaseName: string): string | undefined {
-  return normalizePhaseName(phaseName) === "verify"
-    ? "tests, lint, typecheck, and/or manual QA"
-    : undefined;
+function verificationForPhase(
+  phaseName: string,
+  evidence: PlanningTaskEvidence,
+): string | undefined {
+  if (normalizePhaseName(phaseName) !== "verify") {
+    return undefined;
+  }
+  const verification = buildVerification(evidence);
+  const parts = [
+    ...verification.checks,
+    ...verification.manualQa,
+  ];
+  return parts.length > 0
+    ? parts.join(", ")
+    : "applicable automated and manual checks";
+}
+
+function buildDiscoverySteps(
+  evidence: PlanningTaskEvidence,
+  objective: string,
+  targetRefs: readonly string[],
+): PlanStep[] {
+  const scope = scopeLabel(targetRefs);
+  const shortObjective = clipPhrase(objective, 80);
+  const targetList =
+    targetRefs.length > 0
+      ? targetRefs.slice(0, 4).join(", ")
+      : "the relevant modules, configs, and tests";
+
+  if (isRepairIntent(evidence)) {
+    return [
+      step(
+        "step-locate",
+        clipPhrase(`Inspect failure evidence${scope}`, 200),
+        targetRefs,
+        `Collect current failure signals for ${targetList} related to "${shortObjective}".`,
+        `A concrete failure inventory for "${shortObjective}" is known.`,
+        "low",
+      ),
+      step(
+        "step-evidence",
+        clipPhrase(`Bound failing surfaces and constraints${scope}`, 200),
+        targetRefs,
+        `Identify the smallest change surface for "${shortObjective}" without unrelated edits.`,
+        "Enough evidence exists to apply a bounded fix.",
+        "low",
+      ),
+    ];
+  }
+
+  return [
+    step(
+      "step-locate",
+      clipPhrase(`Inspect current behavior${scope}`, 200),
+      targetRefs,
+      `Search and read ${targetList} related to "${shortObjective}".`,
+      `A bounded set of targets and constraints for "${shortObjective}" is known.`,
+      "low",
+    ),
+    step(
+      "step-evidence",
+      clipPhrase(`Collect impact and verification evidence${scope}`, 200),
+      targetRefs,
+      `Review existing tests, APIs, configs, and failure modes that affect "${shortObjective}".`,
+      "Enough evidence exists to choose a safe change sequence.",
+      "low",
+    ),
+  ];
 }
 
 function buildChangeSteps(
   evidence: PlanningTaskEvidence,
+  objective: string,
   targetRefs: readonly string[],
   changeImpact: readonly PlanChangeImpact[],
   processHints: readonly string[],
 ): PlanStep[] {
-  const steps: PlanStep[] = [
-    step(
-      "step-design",
-      "Choose a non-hardcoded extension approach",
-      targetRefs,
-      "Prefer existing seams and configurable boundaries over vendor- or type-specific hardcoding.",
-      "An approach that preserves existing behavior is selected.",
-      evidence.risk,
-    ),
+  const scope = scopeLabel(targetRefs);
+  const shortObjective = clipPhrase(objective, 80);
+  const verb = intentActionVerb(evidence.primaryIntent);
+  const implementIntent = actionAwareIntent(verb, shortObjective, scope);
+  const steps: PlanStep[] = [];
+
+  // Repair intents skip design-heavy approach selection.
+  if (!isRepairIntent(evidence)) {
+    steps.push(
+      step(
+        "step-design",
+        clipPhrase(`Choose a non-hardcoded approach${scope}`, 200),
+        targetRefs,
+        `Select an approach for "${shortObjective}" that prefers existing seams over hardcoding.`,
+        `An approach that preserves required behavior for "${shortObjective}" is selected.`,
+        evidence.risk,
+      ),
+    );
+  }
+
+  steps.push(
     step(
       "step-implement",
-      "Implement the change at identified targets",
+      implementIntent,
       targetRefs,
-      summarizeImplementAction(changeImpact, processHints),
-      "The objective is met within constraints.",
+      summarizeImplementAction(
+        objective,
+        targetRefs,
+        changeImpact,
+        processHints,
+      ),
+      doneOutcome(evidence, shortObjective),
       evidence.risk,
     ),
-  ];
+  );
 
   if (changeImpact.includes("security") || changeImpact.includes("data")) {
     steps.push(
       step(
         "step-safeguard",
-        "Apply safeguards for high-impact surfaces",
+        clipPhrase(`Apply safeguards for high-impact surfaces${scope}`, 200),
         targetRefs,
         "Account for auth, data integrity, and failure modes before finishing.",
         "High-impact failure modes have explicit handling.",
@@ -567,31 +700,83 @@ function buildChangeSteps(
   return steps;
 }
 
+function buildVerifySteps(
+  evidence: PlanningTaskEvidence,
+  objective: string,
+  targetRefs: readonly string[],
+  verification: PlanArtifact["verification"],
+): PlanStep[] {
+  const scope = scopeLabel(targetRefs);
+  const shortObjective = clipPhrase(objective, 80);
+  const checks = [
+    ...verification.checks,
+    ...verification.manualQa,
+  ];
+  const checkText =
+    checks.length > 0
+      ? checks.join(", ")
+      : "applicable automated and manual checks";
+  const intent = isRepairIntent(evidence)
+    ? `Verify the fix${scope}`
+    : `Verify changes${scope}`;
+
+  return [
+    step(
+      "step-verify",
+      clipPhrase(intent, 200),
+      targetRefs,
+      `Run ${checkText} for the changed surfaces and confirm "${shortObjective}" still holds.`,
+      doneOutcome(evidence, shortObjective),
+      evidence.risk === "low" ? "low" : "medium",
+      checkText,
+    ),
+  ];
+}
+
 function summarizeImplementAction(
+  objective: string,
+  targetRefs: readonly string[],
   changeImpact: readonly PlanChangeImpact[],
   processHints: readonly string[],
 ): string {
   const impact =
     changeImpact.length > 0 ? changeImpact.join(", ") : "code";
+  const targets =
+    targetRefs.length > 0
+      ? ` Focus on ${targetRefs.slice(0, 4).join(", ")}.`
+      : "";
   const hintNote =
     processHints.length > 0
       ? ` Consider process hints: ${processHints.join(", ")}.`
       : "";
-  return `Apply changes across impact surfaces (${impact}) without hard-coding a single plan type.${hintNote}`;
+  return `Apply "${clipPhrase(objective, 100)}" across impact surfaces (${impact}).${targets}${hintNote}`;
 }
 
 function buildRisks(
   evidence: PlanningTaskEvidence,
   changeImpact: readonly PlanChangeImpact[],
 ): PlanArtifact["risks"] {
+  const scope = scopeLabel(evidence.targets.map((t) => t.value));
   const risks: PlanArtifact["risks"] = [
     {
       id: "risk-scope-creep",
-      summary: "Changes may expand beyond the intended scope.",
+      summary: scope
+        ? `Changes may expand beyond intended targets${scope}.`
+        : "Changes may expand beyond the intended scope.",
       severity: evidence.risk === "low" ? "medium" : evidence.risk,
-      mitigation: "Keep steps tied to explicit targets and success criteria.",
+      mitigation: "Keep steps tied to explicit targets, constraints, and success criteria.",
     },
   ];
+  if (evidence.constraints.length > 0) {
+    risks.push({
+      id: "risk-constraint-break",
+      summary: `Required constraints may regress: ${evidence.constraints
+        .slice(0, 2)
+        .join("; ")}.`,
+      severity: evidence.risk === "low" ? "medium" : evidence.risk,
+      mitigation: "Treat each constraint as an acceptance check before completion.",
+    });
+  }
   if (changeImpact.includes("security")) {
     risks.push({
       id: "risk-security",
@@ -620,20 +805,31 @@ function buildAlternatives(
   ) {
     return [];
   }
-  return [
+  const alternatives: PlanArtifact["alternatives"] = [
     {
       id: "alt-minimal",
       summary: "Ship a narrower change limited to the highest-confidence targets first.",
       tradeoff: "Faster and safer, but may leave follow-up work.",
     },
   ];
+  if (evidence.constraints.length > 0) {
+    alternatives.push({
+      id: "alt-constraint-first",
+      summary: `Prioritize preserving constraints (${evidence.constraints
+        .slice(0, 2)
+        .join("; ")}) even if the feature slice is smaller.`,
+      tradeoff: "Safer rollout, but the full requested outcome may need a second pass.",
+    });
+  }
+  return alternatives.slice(0, 4);
 }
 
 function buildVerification(
   evidence: PlanningTaskEvidence,
 ): PlanArtifact["verification"] {
   const checks: string[] = [];
-  if (evidence.recommendsVerification !== false) {
+  // Generic check kinds (host/project adapters decide concrete commands).
+  if (evidence.recommendsVerification !== false || isRepairIntent(evidence)) {
     checks.push("lint", "typecheck");
   }
   if (
@@ -647,7 +843,7 @@ function buildVerification(
     checks.push("build");
   }
   return {
-    checks,
+    checks: uniqueStrings(checks),
     manualQa:
       evidence.risk === "high" || evidence.risk === "critical"
         ? ["Manually exercise the primary user-facing path."]
@@ -713,6 +909,193 @@ function step(
     verification,
     riskLevel,
   };
+}
+
+function acceptanceCriteria(
+  evidence: PlanningTaskEvidence,
+  objective: string,
+  base: readonly string[],
+): string[] {
+  const targetRefs = evidence.targets.map((t) => t.value);
+  const normalizedObjective = normalizePhraseKey(objective);
+  const extras: string[] = [];
+  const leftoverOutcomes: string[] = [];
+
+  for (const outcome of evidence.requestedOutcomes) {
+    const cleaned = sanitizeUserPhrase(outcome, targetRefs);
+    if (cleaned.length < 8) continue;
+    if (normalizePhraseKey(cleaned) === normalizedObjective) continue;
+    leftoverOutcomes.push(cleaned);
+  }
+
+  // Objective already encodes the primary outcome. Only add Done when when a
+  // leftover outcome is clearly preferred over the objective itself.
+  const preferredAmong = pickPreferredPhrase([objective, ...leftoverOutcomes]);
+  if (
+    preferredAmong &&
+    normalizePhraseKey(preferredAmong) !== normalizedObjective
+  ) {
+    extras.push(`Done when: ${clipPhrase(preferredAmong, 160)}`);
+  }
+  for (const constraint of evidence.constraints.slice(0, 2)) {
+    extras.push(`Must still hold: ${clipPhrase(constraint, 160)}`);
+  }
+  return uniqueStrings([...base, ...extras]).slice(0, 6);
+}
+
+function doneOutcome(
+  evidence: PlanningTaskEvidence,
+  shortObjective: string,
+): string {
+  const constraintNote =
+    evidence.constraints.length > 0
+      ? ` Constraints remain true: ${evidence.constraints
+          .slice(0, 2)
+          .join("; ")}.`
+      : "";
+  return `"${shortObjective}" is met within scope.${constraintNote}`;
+}
+
+function specializeIntent(
+  summary: string,
+  targetRefs: readonly string[],
+): string {
+  const trimmed = summary.trim();
+  if (targetRefs.length === 0) {
+    return clipPhrase(trimmed, 200);
+  }
+  const first = targetRefs[0]!;
+  if (trimmed.includes(first) || /\b(?:in|at|for|from)\s+\S+/i.test(trimmed)) {
+    return clipPhrase(trimmed, 200);
+  }
+  return clipPhrase(`${trimmed}${scopeLabel(targetRefs)}`, 200);
+}
+
+function scopeLabel(targetRefs: readonly string[]): string {
+  const refs = targetRefs
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+    .slice(0, 3);
+  if (refs.length === 0) return "";
+  if (refs.length === 1) return ` in ${refs[0]}`;
+  if (refs.length === 2) return ` in ${refs[0]} and ${refs[1]}`;
+  return ` in ${refs[0]} (+${refs.length - 1} more)`;
+}
+
+function intentActionVerb(primaryIntent: string): string {
+  const intent = primaryIntent.trim().toLowerCase();
+  if (intent.includes("bug") || intent.includes("fix")) return "Fix";
+  if (intent.includes("refactor")) return "Refactor";
+  if (intent.includes("migrat")) return "Migrate";
+  if (intent.includes("test")) return "Cover";
+  if (intent.includes("config") || intent.includes("depend")) return "Update";
+  if (intent.includes("docs")) return "Document";
+  if (intent.includes("secur")) return "Harden";
+  if (intent.includes("optim")) return "Optimize";
+  return "Implement";
+}
+
+function actionAwareIntent(
+  verb: string,
+  shortObjective: string,
+  scope: string,
+): string {
+  const scopedObjective = shortObjective.includes(scope.trim()) || !scope
+    ? shortObjective
+    : /\b(?:in|at|for|from)\s+\S+/i.test(shortObjective)
+      ? shortObjective
+      : `${shortObjective}${scope}`;
+  if (
+    new RegExp(`^${escapeRegExp(verb)}\\b`, "i").test(scopedObjective) ||
+    /^(?:fix|implement|add|update|resolve|refactor|migrate)\b/i.test(
+      scopedObjective,
+    )
+  ) {
+    return clipPhrase(scopedObjective, 200);
+  }
+  return clipPhrase(`${verb} ${scopedObjective}`, 200);
+}
+
+function shouldIncludeVerifyPhase(
+  evidence: PlanningTaskEvidence,
+): boolean {
+  // Dimension-driven: honor explicit false except for repair intents.
+  if (evidence.recommendsVerification === false) {
+    return isRepairIntent(evidence);
+  }
+  return true;
+}
+
+/**
+ * Repair-shaped work from request-understanding intent taxonomy only.
+ * No language/tool/provider keyword sniffing.
+ */
+function isRepairIntent(evidence: PlanningTaskEvidence): boolean {
+  const intents = [evidence.primaryIntent, ...evidence.secondaryIntents]
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  return intents.some(
+    (intent) =>
+      intent.includes("bug") ||
+      intent.includes("fix") ||
+      intent === "debug" ||
+      intent.includes("diagnos"),
+  );
+}
+
+/**
+ * Strip chat @-mentions and repeated path noise from user/outcome text.
+ */
+function sanitizeUserPhrase(
+  value: string,
+  targetRefs: readonly string[] = [],
+): string {
+  let text = value.replace(/\r\n/g, "\n").trim();
+  // Remove @path mentions used by hosts for attachments.
+  text = text.replace(/(^|\s)@[^\s]+/g, " ");
+  // Remove repeated absolute-ish path tokens when targets already carry them.
+  for (const ref of targetRefs) {
+    const escaped = escapeRegExp(ref.trim());
+    if (!escaped) continue;
+    text = text.replace(new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`, "gi"), " ");
+  }
+  text = text.replace(/\s+/g, " ").trim();
+  // Drop leftover punctuation-only crumbs.
+  text = text.replace(/^[,:;.\-_/]+/, "").replace(/[,:;.\-_/]+$/, "").trim();
+  return text;
+}
+
+function pickPreferredPhrase(candidates: readonly string[]): string | undefined {
+  if (candidates.length === 0) return undefined;
+  const scored = candidates.map((phrase, index) => ({
+    phrase,
+    score:
+      phrase.length +
+      (/^(?:fix|resolve|add|implement|update|remove|refactor)\b/i.test(phrase)
+        ? 40
+        : 0) -
+      (phrase.includes("@") ? 50 : 0) -
+      index,
+  }));
+  scored.sort((left, right) => right.score - left.score);
+  return scored[0]?.phrase;
+}
+
+function normalizePhraseKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function clipPhrase(value: string, max: number): string {
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, Math.max(0, max - 1))}…`;
 }
 
 function uniqueStrings(values: readonly string[]): string[] {

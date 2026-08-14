@@ -154,6 +154,26 @@ describe('MitiiClient contract (Phase 12)', () => {
     expect(engineInput.request.mode).toBe('agent');
   });
 
+  it('maps a carried taskList onto engine start input', () => {
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'Continue',
+        mode: 'agent',
+        taskList: {
+          schemaVersion: 1,
+          source: 'agent',
+          items: [
+            { id: 'one', title: 'Read module', status: 'done' },
+            { id: 'two', title: 'Write fix', status: 'pending' },
+          ],
+        },
+      },
+      { mode: 'ask', sessionId: 'sess_test' },
+    );
+    expect(engineInput.taskList?.items).toHaveLength(2);
+    expect(engineInput.taskList?.items[0]?.status).toBe('done');
+  });
+
   it('maps pinnedPaths to referencedArtifacts with robust kind inference', () => {
     const engineInput = toAgentEngineStartInput(
       {

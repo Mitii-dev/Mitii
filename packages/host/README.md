@@ -33,7 +33,7 @@ V8 is host-neutral. Apps still need:
 1. **SQLite** (Electron-native in VS Code, `better-sqlite3` in CLI)
 2. **On-disk workspace state** under `.mitii/` (indexes, checkpoints, memory, skills)
 3. **Wiring** of V8 pipelines that touch the filesystem / optional vendors (LanceDB, Brave)
-4. **Shared config UX** (OpenAI-compatible provider presets)
+4. **Shared config UX** (provider presets, LlmPort factory, connection probe)
 
 `@mitii/host` centralizes those so CLI and VS Code stay thin and do not drift.
 
@@ -70,7 +70,9 @@ Prefer importing from `@mitii/host`. Do not import `internal/`.
 | `createOptionalSearchPort` | V8 `SearchPort` | Brave when `MITII_SEARCH_API_KEY` / `BRAVE_API_KEY` set |
 | `createFileSystemSkillsCatalog` | V8 `SkillsCatalogPort` | `.mitii/skills` + SDK defaults |
 | `loadProjectRules` | SDK `projectRules` | `AGENTS.md`, `.mitii/rules`, `MITTII.local.md` |
-| `PROVIDER_PRESETS` / `getProviderPreset` | Host config only | Prefills base URL / model / auth style |
+| `PROVIDER_PRESETS` / `getProviderPreset` | Host config only | Prefills base URL / model / adapter |
+| `createHostLlmPorts` | Host composition | Echo, OpenAI-compatible, Anthropic, Gemini |
+| `testProviderConnection` | Host UX | Probe without starting a run |
 
 ## How hosts wire it
 
