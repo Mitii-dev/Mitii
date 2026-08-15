@@ -8,8 +8,10 @@ import {
   CONVERSATION_CARRY_LIMITS,
   enrichAssistantCarryText,
   parsePendingPlan,
+  parsePendingPlanStrategy,
   resolveDisplayedAssistantText,
   resolvePlanHandoff,
+  resolvePlanStrategyHandoff,
 } from '../../../apps/vscode/src/conversationCarry.ts';
 
 function samplePlan(objective = 'Carry plan') {
@@ -108,6 +110,30 @@ describe('conversationCarry (VS Code host)', () => {
   it('rejects invalid persisted plan shapes', () => {
     expect(parsePendingPlan({ objective: 'missing fields' })).toBeUndefined();
     expect(parsePendingPlan(samplePlan('Valid'))?.objective).toBe('Valid');
+  });
+
+  it('hands pending plan strategy only in agent mode', () => {
+    const strategy = {
+      schemaVersion: 1 as const,
+      strategy: 'follow_evidence' as const,
+      rationale: 'Repair from diagnostics.',
+      skipDiscover: true,
+      useBuildEvidence: true,
+    };
+    expect(
+      resolvePlanStrategyHandoff({
+        mode: 'plan',
+        pendingPlanStrategy: strategy,
+      }),
+    ).toBeUndefined();
+    expect(
+      resolvePlanStrategyHandoff({
+        mode: 'agent',
+        pendingPlanStrategy: strategy,
+      })?.strategy,
+    ).toBe('follow_evidence');
+    expect(parsePendingPlanStrategy({ strategy: 'follow_evidence' })).toBeUndefined();
+    expect(parsePendingPlanStrategy(strategy)?.skipDiscover).toBe(true);
   });
 
   it('enriches incomplete assistant answers with changed-file memory', () => {

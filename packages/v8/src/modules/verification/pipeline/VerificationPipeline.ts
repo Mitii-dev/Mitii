@@ -1,5 +1,7 @@
 import {
   discoverApplicableChecks,
+  captureRepoBuildState,
+  compareRepoBuildStates,
   executeChecks,
   inspectDiffAndStaleRisk,
   mapAffectedProjects,
@@ -16,6 +18,8 @@ import type {
   VerificationInput,
   VerificationManifestReaderPort,
   VerificationReasonCode,
+  RepoBuildState,
+  RepoBuildStateComparison,
   VerificationResult,
   VerificationToolExecutorPort,
 } from "../contracts";
@@ -145,9 +149,15 @@ export class VerificationPipeline {
       signal: options.signal,
     });
 
+    const allDiagnostics = normalizeDiagnostics({
+      checks: executed.checks,
+      toolOutputs: executed.toolOutputs,
+      projects: parsed.projects,
+    });
     const diagnostics = normalizeDiagnostics({
       checks: executed.checks,
       toolOutputs: executed.toolOutputs,
+      projects: parsed.projects,
       baselineDiagnostics: parsed.baselineDiagnostics,
     });
 
@@ -195,11 +205,46 @@ export class VerificationPipeline {
       affectedProjectIds: mapping.projects.map((project) => project.projectId),
       checks: executed.checks,
       diagnostics,
+      allDiagnostics,
       diff: inspection.diff,
       warnings,
       reasonCodes,
       durationMs: Date.now() - startedMs,
     });
+  }
+
+  public async captureBuildState(
+    input: VerificationInput,
+    params: { phase: "before" | "after"; capturedAt?: string },
+    options: VerificationPipelineOptions = {},
+  ): Promise<RepoBuildState> {
+    const result = await this.verify(input, options);
+    return captureRepoBuildState({
+      phase: params.phase,
+      input,
+      result,
+      capturedAt: params.capturedAt,
+    });
+  }
+
+  public buildStateFromResult(
+    input: VerificationInput,
+    result: VerificationResult,
+    params: { phase: "before" | "after"; capturedAt?: string },
+  ): RepoBuildState {
+    return captureRepoBuildState({
+      phase: params.phase,
+      input,
+      result,
+      capturedAt: params.capturedAt,
+    });
+  }
+
+  public compareBuildStates(params: {
+    before?: RepoBuildState;
+    after: RepoBuildState;
+  }): RepoBuildStateComparison {
+    return compareRepoBuildStates(params);
   }
 }
 

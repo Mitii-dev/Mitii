@@ -20,3 +20,6 @@ export type { InspectDiffAndStaleRiskResult } from "./InspectDiffAndStaleRisk";
 
 export { recommendCompletion } from "./RecommendCompletion";
 export type { CompletionRecommendation } from "./RecommendCompletion";
+
+export { captureRepoBuildState } from "./CaptureRepoBuildState";
+export { compareRepoBuildStates } from "./CompareRepoBuildStates";

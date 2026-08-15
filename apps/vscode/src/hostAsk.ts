@@ -8,6 +8,7 @@ import {
   type MitiiConversationMessage,
   type MitiiResumeInput,
   type PlanArtifact,
+  type PlanStrategyDecision,
   type RunEvent,
   type TaskList,
 } from '@mitii/sdk';
@@ -36,7 +37,7 @@ import {
   formatRunDiagnostics,
   formatUsageLine,
 } from './runReport.js';
-import { appendSessionLog } from './sessionLog.js';
+import { openSessionLog } from './sessionLog.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import { findLocalModelPreset } from './modelPresets.js';
 import { loadProjectRules } from '@mitii/host';
@@ -86,6 +87,14 @@ export function formatRunEventLine(event: RunEvent): string | undefined {
       return `[memory] selected=${event.selectedCount} omitted=${event.omittedCount} status=${event.status}`;
     case 'task_list_updated':
       return `[tasks] ${event.completedCount}/${event.totalCount} complete`;
+    case 'evidence_updated':
+      return `[evidence] issues=${event.evidence.issues.length} ledger=${event.evidence.ledger.length}${event.evidence.finalStopReason ? ` stop=${event.evidence.finalStopReason}` : ''}`;
+    case 'discovery_started':
+      return `[discovery] started`;
+    case 'discovery_progress':
+      return `[discovery] files=${event.filesRead} searches=${event.searches}`;
+    case 'discovery_completed':
+      return `[discovery] ${event.confidence} files=${event.fileCount} surfaces=${event.surfaceCount}`;
     case 'stage_started':
       return `[stage] ${event.stage}…`;
     case 'stage_completed':
@@ -130,6 +139,7 @@ const STAGE_LABELS: Record<string, string> = {
   skills_ready: 'Loading skills',
   memory_ready: 'Loading memory',
   plan_ready: 'Planning',
+  discovery: 'Investigating request',
   model_running: 'Running model',
   tool_running: 'Running tools',
   verifying: 'Verifying changes',
@@ -364,6 +374,30 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         title: 'Memory ready',
         detail: `${event.selectedCount} selected`,
       };
+    case 'discovery_started':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: 'Investigating request',
+        detail: event.objective,
+      };
+    case 'discovery_progress':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: 'Discovery progress',
+        detail: `${event.filesRead} files · ${event.searches} searches`,
+      };
+    case 'discovery_completed':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: 'Discovery complete',
+        detail: `${event.confidence} confidence · ${event.surfaceCount} surfaces`,
+      };
     case 'plan_ready':
       return {
         id,
@@ -390,6 +424,18 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         kind: 'info',
         title: 'Tasks updated',
         detail: `${event.completedCount}/${event.totalCount} complete`,
+      };
+    case 'evidence_updated':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: 'Evidence updated',
+        detail: [
+          `${event.evidence.issues.length} issue${event.evidence.issues.length === 1 ? '' : 's'}`,
+          `${event.evidence.ledger.length} ledger entr${event.evidence.ledger.length === 1 ? 'y' : 'ies'}`,
+          event.evidence.finalStopReason,
+        ].filter(Boolean).join(' · '),
       };
     default:
       return undefined;
@@ -615,7 +661,6 @@ export interface HostAskHandlers {
 
 function composePrompt(options: {
   prompt: string;
-  depth?: string;
   pinnedPaths?: string[];
   pinnedContents?: string;
   editorBlock?: string;
@@ -628,10 +673,9 @@ function composePrompt(options: {
   const HOST_MARKER = '<<<MITII_HOST_CONTEXT>>>';
 
   // Priority: pinned context first, then supplementary host evidence.
+  // Depth is a structured `explorationDepth` field on the start input, not a
+  // prompt tag — Engine strategy rules read it directly.
   const hostParts: string[] = [];
-  if (options.depth && options.depth !== 'auto') {
-    hostParts.push(`[depth:${options.depth}]`);
-  }
   if (options.pinnedContents) {
     hostParts.push(options.pinnedContents);
   } else if (options.pinnedPaths?.length) {
@@ -765,6 +809,8 @@ export async function runAskInOutputChannel(options: {
   conversation?: MitiiConversationMessage[];
   /** Structured plan handoff for agent execution. */
   approvedPlan?: PlanArtifact;
+  /** Strategy for a host-carried approved plan. */
+  approvedPlanStrategy?: PlanStrategyDecision;
   /** Live working checklist carried across Agent turns. */
   taskList?: TaskList;
   handlers?: HostAskHandlers;
@@ -840,7 +886,6 @@ export async function runAskInOutputChannel(options: {
 
   const prompt = composePrompt({
     prompt: options.prompt,
-    depth: options.depth,
     pinnedPaths,
     pinnedContents: pinnedContents || undefined,
     editorBlock: editor?.promptBlock,
@@ -1024,9 +1069,27 @@ export async function runAskInOutputChannel(options: {
         ? { conversation: options.conversation }
         : {}),
       ...(options.approvedPlan ? { approvedPlan: options.approvedPlan } : {}),
+      ...(options.approvedPlanStrategy
+        ? { approvedPlanStrategy: options.approvedPlanStrategy }
+        : {}),
       ...(options.taskList ? { taskList: options.taskList } : {}),
+      ...(options.depth ? { explorationDepth: options.depth } : {}),
     });
     const events: RunEvent[] = [];
+    const sessionLog = openSessionLog(workspaceRoot, {
+      at: runStartedAt,
+      prompt: options.prompt,
+      mode: options.mode,
+      conversationCount: options.conversation?.length ?? 0,
+      sessionId: options.sessionId,
+      runId: run.runId,
+      contextWindowTokens: contextWindow,
+      maximumOutputTokens,
+    });
+    const logPath = sessionLog?.path;
+    if (logPath) {
+      channel.appendLine(`[log] ${logPath}`);
+    }
 
     for (;;) {
       const cancelSub = token.onCancellationRequested(() => {
@@ -1037,6 +1100,7 @@ export async function runAskInOutputChannel(options: {
       try {
         for await (const event of run.events) {
           events.push(event);
+          sessionLog?.appendEvent(event);
           const activity = runEventToActivity(event);
           if (activity) {
             handlers?.onEvent?.(event, activity);
@@ -1058,6 +1122,7 @@ export async function runAskInOutputChannel(options: {
         }
         const result = await run.result;
         if (result.status !== 'suspended') {
+          sessionLog?.finish(result);
           channel.appendLine('');
           for (const line of formatContextInspection(events)) {
             channel.appendLine(line);
@@ -1104,22 +1169,6 @@ export async function runAskInOutputChannel(options: {
               status: 'failed',
             });
           }
-          const logPath = appendSessionLog(workspaceRoot, {
-            kind: 'run',
-            at: runStartedAt,
-            prompt: options.prompt,
-            mode: options.mode,
-            conversationCount: options.conversation?.length ?? 0,
-            result,
-            events,
-          }, {
-            sessionId: options.sessionId,
-            contextWindowTokens: contextWindow,
-            maximumOutputTokens,
-          });
-          if (logPath) {
-            channel.appendLine(`[log] ${logPath}`);
-          }
           return {
             result: {
               ...result,
@@ -1151,22 +1200,7 @@ export async function runAskInOutputChannel(options: {
           resume = await resolveSuspensionNative(vs, result);
         }
         if (resume === 'stop') {
-          const logPath = appendSessionLog(workspaceRoot, {
-            kind: 'run',
-            at: runStartedAt,
-            prompt: options.prompt,
-            mode: options.mode,
-            conversationCount: options.conversation?.length ?? 0,
-            result,
-            events,
-          }, {
-            sessionId: options.sessionId,
-            contextWindowTokens: contextWindow,
-            maximumOutputTokens,
-          });
-          if (logPath) {
-            channel.appendLine(`[log] ${logPath}`);
-          }
+          sessionLog?.finish(result);
           return {
             result,
             events,

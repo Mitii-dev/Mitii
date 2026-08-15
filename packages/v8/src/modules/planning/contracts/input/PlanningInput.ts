@@ -5,15 +5,18 @@ import {
   planningDepthSchema,
 } from "../../../decision-policy";
 import { agentModeSchema } from "../../../request-intake";
+import { verificationDiagnosticSchema } from "../../../verification";
 
 import { PLANNING_SCHEMA_VERSION } from "../../constants";
 import { DEFAULT_PLANNING_BUDGET_TOKENS } from "../../defaults";
+import { discoveryBriefSchema } from "./DiscoveryBrief";
 import {
   planArtifactSchema,
   planChangeImpactSchema,
   planContextRefSchema,
   planStepRiskLevelSchema,
 } from "../output/PlanArtifact";
+import { planStrategyDecisionSchema } from "../output/PlanStrategyDecision";
 
 /**
  * Slim task evidence for planning.
@@ -65,6 +68,37 @@ export const planningSkillHintSchema = z
 
 export type PlanningSkillHint = z.infer<typeof planningSkillHintSchema>;
 
+export const explorationDepthSchema = z.enum(["auto", "quick", "deep"]);
+
+export const planningScopedRepoMapSchema = z
+  .object({
+    entries: z
+      .array(
+        z
+          .object({
+            path: z.string().min(1).max(1_000),
+            kind: z.string().min(1).max(120).optional(),
+            note: z.string().min(1).max(500).optional(),
+          })
+          .strict(),
+      )
+      .max(80),
+  })
+  .strict();
+
+export const planningBuildEvidenceSchema = z
+  .object({
+    phase: z.literal("before"),
+    summary: z.string().min(1).max(4_000),
+    diagnostics: z.array(verificationDiagnosticSchema).max(200).optional(),
+    failedChecks: z.array(z.string().min(1).max(300)).max(32).optional(),
+  })
+  .strict();
+
+export type ExplorationDepth = z.infer<typeof explorationDepthSchema>;
+export type PlanningScopedRepoMap = z.infer<typeof planningScopedRepoMapSchema>;
+export type PlanningBuildEvidence = z.infer<typeof planningBuildEvidenceSchema>;
+
 /**
  * Boundary input for Planning.
  *
@@ -79,7 +113,11 @@ export const planningInputSchema = z
     mode: agentModeSchema,
     route: executionRouteSchema,
     planningDepth: planningDepthSchema,
+    /** How hard Engine should look before drafting. Orthogonal to planningDepth (visible-plan-or-not). */
+    explorationDepth: explorationDepthSchema.default("auto"),
     evidence: planningTaskEvidenceSchema,
+    scopedRepoMap: planningScopedRepoMapSchema.optional(),
+    buildEvidence: planningBuildEvidenceSchema.optional(),
     /**
      * Selected skill instruction blocks (from Skills module).
      * Optional — Planning must work when Skills is not wired.
@@ -92,8 +130,12 @@ export const planningInputSchema = z
     processHints: z.array(z.string().min(1).max(120)).max(16).optional(),
     /** Already-reviewed context refs from repository context / discovery. */
     contextReviewed: z.array(planContextRefSchema).max(40).optional(),
+    /** Structured evidence from a prior read-only discovery pass. */
+    discoveryBrief: discoveryBriefSchema.optional(),
     /** User-edited or previously approved plan to revise/validate. */
     priorPlan: planArtifactSchema.optional(),
+    /** Engine-owned strategy. Normal runs set this after resolvePlanStrategyRules. */
+    strategyOverride: planStrategyDecisionSchema.optional(),
     budgetTokens: z
       .number()
       .int()

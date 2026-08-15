@@ -84,7 +84,6 @@ import type {
 } from './protocol.js';
 import { planViewFromArtifact } from './planView.js';
 import { saveTaskListToWorkspace } from './taskStore.js';
-import { taskViewFromList } from './taskView.js';
 import {
   buildConversationCarry,
   compactActivityForHistory,
@@ -92,6 +91,7 @@ import {
   enrichAssistantCarryText,
   resolveDisplayedAssistantText,
   resolvePlanHandoff,
+  resolvePlanStrategyHandoff,
 } from './conversationCarry.js';
 import {
   resolveContextToggles,
@@ -463,7 +463,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       case 'clearPendingPlan': {
         await clearPendingPlan(this.host.workspaceState, this.activeThreadId);
         this.post({ type: 'setPlan', plan: null });
-        this.post({ type: 'setTaskList', taskList: null });
         return;
       }
       case 'cancel':
@@ -476,6 +475,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       case 'setTab':
         return;
       case 'newChat': {
+        this.runCancel?.cancel();
         this.activeThreadId = newThreadId();
         const store = loadHistory(this.host.workspaceState);
         store.activeThreadId = this.activeThreadId;
@@ -499,7 +499,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           pendingPlan: null,
         });
         this.post({ type: 'setPlan', plan: null });
-        this.post({ type: 'setTaskList', taskList: null });
         this.post({ type: 'tokenUsage', usage: this.tokenUsage });
         return;
       }
@@ -507,6 +506,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         const store = loadHistory(this.host.workspaceState);
         const thread = store.threads.find((t) => t.id === message.id);
         if (!thread) return;
+        this.runCancel?.cancel();
         this.activeThreadId = thread.id;
         store.activeThreadId = thread.id;
         await saveHistory(this.host.workspaceState, store);
@@ -516,16 +516,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
             emptyTokenUsage(resolveContextWindow(this.vs)),
         );
         const pendingPlan = planViewFromArtifact(thread.pendingPlan);
-        const pendingTaskList = taskViewFromList(thread.pendingTaskList);
         this.post({
           type: 'thread.loaded',
           threadId: thread.id,
           messages: thread.messages,
           pendingPlan: pendingPlan,
-          pendingTaskList,
         });
         this.post({ type: 'setPlan', plan: pendingPlan });
-        this.post({ type: 'setTaskList', taskList: pendingTaskList });
         this.post({
           type: 'history',
           threads: toThreadSummaries(store),
@@ -1060,6 +1057,11 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const conversationText = conversation
       .map((m) => `${m.role}: ${m.content}`)
       .join('\n');
+    // Cancel any still-running prior run before disposing its token source —
+    // otherwise the old run keeps executing in the background, orphaned and
+    // undetectable, concurrently with the new one (they'd race on the same
+    // workspace files and interleave in the same session log).
+    this.runCancel?.cancel();
     this.runCancel?.dispose();
     this.runCancel = new this.vs.CancellationTokenSource();
     const mode = message.mode === 'review' ? 'ask' : (message.mode ?? 'ask');
@@ -1138,6 +1140,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         mode: engineMode,
         pendingPlan: activeThread?.pendingPlan,
       });
+      const approvedPlanStrategy = resolvePlanStrategyHandoff({
+        mode: engineMode,
+        pendingPlanStrategy: activeThread?.pendingPlanStrategy,
+      });
       const carriedTaskList =
         engineMode === 'agent' ? activeThread?.pendingTaskList : undefined;
 
@@ -1158,6 +1164,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         conversationText,
         conversation,
         approvedPlan,
+        approvedPlanStrategy,
         taskList: carriedTaskList,
         handlers: {
           cancelToken: this.runCancel.token,
@@ -1180,21 +1187,20 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
             }
             if (event?.type === 'task_list_updated' && event.taskList) {
               const root = this.effectiveRoot();
-              let savedTaskPath: string | undefined;
-              if (root) {
+              const isDiscoveryTask =
+                event.taskList.purpose === 'discovery' ||
+                event.taskList.source === 'discovery';
+              if (root && !isDiscoveryTask) {
                 try {
-                  const saved = saveTaskListToWorkspace({
+                  saveTaskListToWorkspace({
                     workspaceRoot: root,
                     taskList: event.taskList,
                     threadId: this.activeThreadId,
                   });
-                  savedTaskPath = saved.relativePath;
                 } catch {
                   // Best-effort file mirror for debug.
                 }
               }
-              const view = taskViewFromList(event.taskList, { savedTaskPath });
-              this.post({ type: 'setTaskList', taskList: view ?? null });
             }
             const changeRoot = this.effectiveRoot();
             if (changeRoot && this.activeFileChangeSnapshot && event) {
@@ -1351,17 +1357,18 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
                   savedPlanPath,
                 })
               : null;
-      let savedTaskPath: string | undefined;
       if (outcome.result.taskList) {
         const root = this.effectiveRoot();
-        if (root) {
+        const isDiscoveryTask =
+          outcome.result.taskList.purpose === 'discovery' ||
+          outcome.result.taskList.source === 'discovery';
+        if (root && !isDiscoveryTask) {
           try {
             const saved = saveTaskListToWorkspace({
               workspaceRoot: root,
               taskList: outcome.result.taskList,
               threadId: this.activeThreadId,
             });
-            savedTaskPath = saved.relativePath;
             this.channel.appendLine(`[tasks] saved ${saved.relativePath}`);
           } catch (error) {
             this.channel.appendLine(
@@ -1370,9 +1377,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           }
         }
       }
-      const resultTaskList = taskViewFromList(outcome.result.taskList, {
-        savedTaskPath,
-      });
 
       const changeRoot = this.effectiveRoot();
       const runId = outcome.result.runId;
@@ -1414,7 +1418,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         ...(pendingPlanForUi !== undefined
           ? { pendingPlan: pendingPlanForUi }
           : {}),
-        taskList: resultTaskList,
       });
 
       if (persistedFileChanges && runId && this.activeFileChangeSnapshot) {
@@ -1439,7 +1442,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         status: outcome.result.status,
         route: outcome.result.route ?? null,
         ...(message.mode === 'plan' && resultPlan
-          ? { pendingPlan: resultPlan }
+          ? {
+              pendingPlan: resultPlan,
+              pendingPlanStrategy: outcome.result.planStrategy ?? null,
+            }
           : {}),
         ...(usedPlanHandoff && outcome.result.status === 'completed'
           ? { clearPendingPlan: true }
@@ -1817,6 +1823,20 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         await cfg.update(
           'ui.showReasoning',
           message.ui.showReasoning,
+          this.vs.ConfigurationTarget.Global,
+        );
+      }
+      if (message.ui.developerEnabled !== undefined) {
+        await cfg.update(
+          'developer.enabled',
+          message.ui.developerEnabled,
+          this.vs.ConfigurationTarget.Global,
+        );
+      }
+      if (message.ui.debugLogging !== undefined) {
+        await cfg.update(
+          'debug',
+          message.ui.debugLogging,
           this.vs.ConfigurationTarget.Global,
         );
       }
@@ -2202,6 +2222,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       contextToggles: resolveContextToggles(cfg),
       approvalMode: legacyApproval,
       runBudget: readRunBudgetSettings(this.vs),
+      developerEnabled: cfg.get<boolean>('developer.enabled') ?? false,
+      debugLogging: cfg.get<boolean>('debug') ?? false,
     };
   }
 
@@ -2500,7 +2522,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       activeThreadId: history.activeThreadId,
       activeThreadMessages: activeThread?.messages ?? [],
       pendingPlan: planViewFromArtifact(activeThread?.pendingPlan),
-      pendingTaskList: taskViewFromList(activeThread?.pendingTaskList),
       memories: await loadMemoriesForView(
         this.host.workspaceState,
         this.getWorkspaceId(),

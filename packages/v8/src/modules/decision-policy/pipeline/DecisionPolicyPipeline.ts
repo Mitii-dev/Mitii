@@ -1,4 +1,9 @@
-import { compileGrant, planRoute, scanPromptInjection } from "../actions";
+import {
+  compileGrant,
+  planRoute,
+  resolvePreflightBuild,
+  scanPromptInjection,
+} from "../actions";
 import { DECISION_POLICY_SCHEMA_VERSION } from "../constants";
 import {
   DecisionPolicyError,
@@ -67,11 +72,18 @@ export class DecisionPolicyPipeline {
       understanding,
       repositoryState: parsed.repositoryState,
     });
+    const preflightBuild = resolvePreflightBuild({
+      mode,
+      route: routePlan.route,
+      understanding,
+      grant: toolGrant,
+    });
 
     const reasonCodes = uniqueReasonCodes([
       ...routePlan.reasonCodes,
       ...grantCompiled.reasonCodes,
       ...contextResult.reasonCodes,
+      ...preflightBuild.reasonCodes,
       ...injection.reasonCodes,
     ]);
     const trace = buildDecisionTrace({

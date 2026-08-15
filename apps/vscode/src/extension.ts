@@ -598,7 +598,9 @@ export function activate(context: ExtensionContext): void {
         event.affectsConfiguration('mitii.ui') ||
         event.affectsConfiguration('mitii.safety') ||
         event.affectsConfiguration('mitii.agent') ||
-        event.affectsConfiguration('mitii.onboarding')
+        event.affectsConfiguration('mitii.onboarding') ||
+        event.affectsConfiguration('mitii.debug') ||
+        event.affectsConfiguration('mitii.developer')
       ) {
         if (
           event.affectsConfiguration('mitii.provider') ||

@@ -180,6 +180,10 @@ export interface UiSettingsSnapshot {
   contextToggles: ContextToggles;
   approvalMode: string;
   runBudget: RunBudgetSettingsSnapshot;
+  /** Master gate for Settings → Debug developer options. */
+  developerEnabled: boolean;
+  /** Maps to mitii.debug (verbose Output channel / stacks). */
+  debugLogging: boolean;
 }
 
 export interface ModeDefaultSettingsSnapshot {
@@ -330,20 +334,6 @@ export interface PlanView {
   verificationSummary?: string;
   /** Workspace-relative path to the saved markdown plan under `.mitii/plans/`. */
   savedPlanPath?: string;
-}
-
-export interface TaskItemView {
-  id: string;
-  title: string;
-  status: 'pending' | 'active' | 'done' | 'skipped' | 'blocked';
-  detail?: string;
-}
-
-export interface TaskListView {
-  source: 'plan' | 'agent' | 'user';
-  title?: string;
-  items: TaskItemView[];
-  savedTaskPath?: string;
 }
 
 export interface ReviewDiffView {
@@ -516,7 +506,6 @@ export type HostToWebviewMessage =
       activeThreadMessages?: ChatMessageView[];
       /** Pending plan awaiting Agent-mode handoff for the active thread. */
       pendingPlan?: PlanView | null;
-      pendingTaskList?: TaskListView | null;
       memories: MemoryItemView[];
       checkpoints: CheckpointItemView[];
     }
@@ -557,7 +546,6 @@ export type HostToWebviewMessage =
       plan?: PlanView | null;
       /** Explicit pending-plan handoff state for the active thread. */
       pendingPlan?: PlanView | null;
-      taskList?: TaskListView | null;
     }
   | { type: 'run.cancelled' }
   | { type: 'error'; message: string }
@@ -577,10 +565,8 @@ export type HostToWebviewMessage =
       messages: ChatMessageView[];
       /** Pending plan awaiting Agent-mode handoff for this thread. */
       pendingPlan?: PlanView | null;
-      pendingTaskList?: TaskListView | null;
     }
   | { type: 'setPlan'; plan: PlanView | null }
-  | { type: 'setTaskList'; taskList: TaskListView | null }
   | { type: 'setReviewDiff'; review: ReviewDiffView | null }
   | { type: 'setMemories'; memories: MemoryItemView[] }
   | { type: 'setCheckpoints'; checkpoints: CheckpointItemView[] }

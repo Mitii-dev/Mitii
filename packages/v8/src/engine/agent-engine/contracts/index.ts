@@ -27,6 +27,22 @@ export type {
 } from "./output/AgentRunResult";
 
 export {
+  runEvidenceSchema,
+  runEvidenceDiscoverySchema,
+  runEvidenceIssueSchema,
+  runEvidenceIssueStatusSchema,
+  runEvidenceLedgerEntrySchema,
+  runEvidencePlanSchema,
+  runEvidencePlanStepSchema,
+  runEvidenceVerificationSchema,
+} from "./output/RunEvidence";
+export type {
+  RunEvidence,
+  RunEvidenceIssue,
+  RunEvidenceIssueStatus,
+} from "./output/RunEvidence";
+
+export {
   runEventSchema,
   agentActiveStageSchema,
   agentEventTypeSchema,

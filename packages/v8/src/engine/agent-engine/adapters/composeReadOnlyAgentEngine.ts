@@ -26,6 +26,8 @@ import { AgentEnginePipeline } from "../pipeline/AgentEnginePipeline";
 export interface ComposeReadOnlyAgentEngineOptions {
   /** LLM used by Request Understanding (structured classification). */
   understandingLlm: LlmPort;
+  /** Optional cheaper LLM for strategy/enrichment planning calls. */
+  planningLlm?: LlmPort;
   /** LLM used by the Engine model/tool loop. */
   runLlm: LlmPort;
   repositoryState?: RepositoryStatePipeline;
@@ -89,7 +91,11 @@ export function composeReadOnlyAgentEngine(
       ? new MemoryPipeline({ store: options.memoryStore })
       : undefined,
     planning:
-      options.enablePlanning === false ? undefined : new PlanningPipeline(),
+      options.enablePlanning === false
+        ? undefined
+        : new PlanningPipeline({
+            llm: options.planningLlm ?? options.understandingLlm,
+          }),
     repositoryState: options.repositoryState,
     repositoryContext: options.repositoryContext,
     tools: options.tools,

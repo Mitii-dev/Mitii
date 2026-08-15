@@ -1,8 +1,12 @@
 import type { ExecutionDecision } from "../../../modules/decision-policy";
-import type { PlanArtifact } from "../../../modules/planning";
+import type {
+  PlanArtifact,
+  PlanStrategyDecision,
+} from "../../../modules/planning";
 import type { TaskList } from "../../../modules/task-list";
 import type { ModelMessage } from "../../../modules/model-gateway";
 import type { RepositoryStateReference } from "../../../modules/repository-state";
+import type { RepoBuildState } from "../../../modules/verification";
 import type { ToolResult } from "../../tool-runtime";
 
 import type { AgentEngineStartInput } from "../contracts/input/AgentEngineInput";
@@ -39,8 +43,12 @@ export interface AgentRunCheckpoint {
   pendingApproval?: PendingApprovalState;
   /** Structured plan awaiting approval when suspensionKind is plan_approval_required. */
   plan?: PlanArtifact;
+  /** Strategy that produced `plan`; restored on resume so the prompt contract survives. */
+  planStrategy?: PlanStrategyDecision;
   /** Live task list at suspension time. */
   taskList?: TaskList;
+  repoBuildStateBefore?: RepoBuildState;
+  repoBuildStateAfter?: RepoBuildState;
   changedFiles: string[];
   mutationCheckpointIds: string[];
   reasonCodes: AgentReasonCode[];

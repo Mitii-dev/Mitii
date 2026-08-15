@@ -32,10 +32,10 @@ agent-engine/
 
 ## Main Types
 
-- `AgentEngineStartInput`: raw request, optional workspace root, repository-state summary, projects, conversation, instructions, approved plan, task list, tool definitions, budget, model options, approval mode, and dirty paths.
+- `AgentEngineStartInput`: raw request, optional workspace root, repository-state summary, projects, conversation, instructions, approved plan, optional approved plan strategy, task list, tool definitions, budget, model options, approval mode, dirty paths, and `explorationDepth` (`auto` | `quick` | `deep` — how hard to look before drafting a plan; orthogonal to Decision Policy's `planningDepth`, which is whether a visible plan exists at all).
 - `AgentEngineResumeInput`: run id plus exactly one continuation: approval, clarification answer, or plan decision.
 - `AgentRunHandle`: opaque active-run handle with events and final result.
-- `AgentRunResult`: final status, route, planning depth, answer, optional plan, optional task list, optional suspension, pinned state, reason codes, warnings, usage, duration, and optional error.
+- `AgentRunResult`: final status, route, planning depth, answer, optional plan, optional plan strategy, optional task list, optional suspension, pinned state, reason codes, warnings, usage, duration, and optional error.
 - `AgentEngineDependencies`: injected ports/pipelines used by the orchestrator.
 - `AgentRunCheckpoint`: persisted run state used by resume.
 
@@ -49,6 +49,39 @@ agent-engine/
 - Task-list updates are validated through the Task List module.
 - Output truncation recovery can ask the model to continue safely within remaining budgets.
 - `composeReadOnlyAgentEngine` provides a useful read-only wiring helper.
+
+### Start order
+
+```text
+intake
+pin                          (whenever a workspace reference resolves — no longer waits on repositoryContextRequired)
+Agent execute only: capture repoBuildStateBefore  (unconditional; synthesized read-only grant, no Decision Policy yet)
+understand                   (sees a capped preflight-diagnostic hint when errors exist — LLM classifier only, not the rule classifier)
+decide
+[clarification / unsupported-route short-circuits]
+repository context           (if decision.repositoryContextRequired)
+narrow
+Plan mode only, repair-intent-gated: capture repoBuildStateBefore  (skipped if Agent mode already captured it)
+skills / memory (optional)
+planning:
+  engine calls resolvePlanStrategyRules directly (no strategy LLM, no port method)
+  discover_and_plan  -> bounded read-only discovery loop, then planning.plan({ discoveryBrief, strategyOverride })
+  else               -> planning.plan({ strategyOverride }) immediately
+prompt construction
+model/tool loop
+verification gate + repair queue (see below)
+```
+
+- Strategy is resolved by Engine, not Planning: `resolvePlanStrategyRules` (a pure function) runs before deciding whether to invoke discovery. Only `discover_and_plan` triggers Engine's bounded read-only discovery loop (max two model turns, file/search budget, no mutation tools) — it emits `discovery_started` / `discovery_progress` / `discovery_completed`, shows a temporary discovery task list, then calls Planning with `DiscoveryBrief` and `skipDiscover: true`. Planning either runs its own one-shot Change+Verify draft call or falls back to the deterministic discovery skeleton. The discovery list is replaced by the plan-derived execution checklist. There is exactly one understanding LLM call and, for `discover_and_plan`, at most one additional plan-drafting call — never a second strategy classifier.
+- The resulting `planStrategy` is stored on the run result and plan-approval checkpoint. Hosts that carry an approved plan SHOULD also carry `approvedPlanStrategy`; otherwise the engine infers a conservative strategy from the artifact.
+
+### Repair remaining-error queue
+
+After a mutation, `finishAfterLoop` gates completion on Verification and, when a saved before-state exists, on `compareBuildStates`:
+
+- **Regression** (`new_errors_introduced`): one repair pass, then roll back if it still fails — unchanged from before.
+- **Baseline carryover** (`errors_remaining` with nothing new — errors that existed before this run and still exist after): *not* a rollback condition. The engine injects the remaining diagnostics as a new user message and re-runs the model/tool loop, batch by batch, until 0 remain, the run budget stops the loop, or (for `explorationDepth: "quick"`) one batch has run. Reaching the Quick batch cap with errors still remaining completes the run (reporting what's left) rather than failing it.
+- Both paths only apply when `verification.compareBuildStates` and a `repoBuildStateBefore` exist; without them the engine falls back to the original one-shot-repair-then-rollback behavior driven solely by `VerificationResult.status`.
 
 ## Ownership Boundaries
 

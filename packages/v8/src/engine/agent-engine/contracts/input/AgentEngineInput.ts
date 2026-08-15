@@ -9,7 +9,11 @@ import {
   modelMessageSchema,
   modelToolDefinitionSchema,
 } from "../../../../modules/model-gateway";
-import { planArtifactSchema } from "../../../../modules/planning";
+import {
+  explorationDepthSchema,
+  planArtifactSchema,
+  planStrategyDecisionSchema,
+} from "../../../../modules/planning";
 import { taskListSchema } from "../../../../modules/task-list";
 import { promptInstructionsSchema } from "../../../../modules/prompt-construction";
 import { projectDescriptorSchema } from "../../../../modules/repository-state";
@@ -75,6 +79,11 @@ export const agentEngineStartInputSchema = z
      */
     approvedPlan: planArtifactSchema.optional(),
     /**
+     * Strategy for a host-carried approved plan. When omitted, Engine infers
+     * a conservative strategy from the artifact shape.
+     */
+    approvedPlanStrategy: planStrategyDecisionSchema.optional(),
+    /**
      * Host-carried live task list from a prior turn.
      * Engine does not stamp remaining items done when the run finishes.
      */
@@ -92,6 +101,12 @@ export const agentEngineStartInputSchema = z
      * Used for dirty-overlap rejection on mutation tools.
      */
     dirtyPaths: z.array(z.string().min(1)).optional(),
+    /**
+     * How hard Engine should look before drafting a plan. Orthogonal to
+     * Decision Policy's planningDepth (whether a visible plan exists at
+     * all) — this is the look-budget knob; "auto" defers to strategy rules.
+     */
+    explorationDepth: explorationDepthSchema.default("auto"),
   })
   .strict();
 

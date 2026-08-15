@@ -133,4 +133,18 @@ describe("applyTaskListUpdate", () => {
       "plan-step-2",
     ]);
   });
+
+  it("creates a temporary discovery list that is not an execution checklist", () => {
+    const list = pipeline.createDiscoveryList();
+    expect(taskListSchema.parse(list).source).toBe("discovery");
+    expect(list.purpose).toBe("discovery");
+    expect(list.title).toBe("Investigating request");
+    expect(list.items.map((item) => item.id)).toEqual([
+      "find-entrypoint",
+      "read-state",
+      "identify-checks",
+    ]);
+    expect(list.items[0]?.status).toBe("active");
+    expect(list.items.filter((item) => item.status === "done")).toHaveLength(0);
+  });
 });

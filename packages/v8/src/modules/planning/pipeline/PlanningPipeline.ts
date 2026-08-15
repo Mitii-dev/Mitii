@@ -1,4 +1,12 @@
-import { compactPlan, draftPlan, validatePlan } from "../actions";
+import {
+  applyDiscoveredPlanDraft,
+  compactPlan,
+  compileDiscoveryBrief,
+  draftPlan,
+  draftPlanFromDiscovery,
+  resolvePlanStrategy,
+  validatePlan,
+} from "../actions";
 import { PLANNING_SCHEMA_VERSION } from "../constants";
 import {
   PlanningError,
@@ -6,11 +14,21 @@ import {
   planningResultSchema,
 } from "../contracts";
 import type {
+  DiscoveryBrief,
+  DiscoveryObservation,
+  PlanStrategyDecision,
   PlanningInput,
+  PlanningLlmPort,
   PlanningReasonCode,
   PlanningResult,
 } from "../contracts";
 import type { z } from "zod";
+
+export interface PlanStrategyResolution {
+  decision: PlanStrategyDecision;
+  warnings: string[];
+  reasonCodes: PlanningReasonCode[];
+}
 
 /**
  * Planning facade.
@@ -18,7 +36,9 @@ import type { z } from "zod";
  * Flow:
  *   validate input
  *   → if planningDepth is none, return blocked/empty guidance
+ *   → resolve strategy (rules only; engine may supply strategyOverride)
  *   → draft generic PlanArtifact from dimensions (+ optional skills/hints)
+ *   → discover_and_plan only: one model draft call over discovery evidence
  *   → validate required sections
  *   → compact to budget
  *   → return planning result
@@ -27,21 +47,35 @@ import type { z } from "zod";
  * and whether to suspend for plan approval.
  */
 export class PlanningPipeline {
-  public plan(input: PlanningInput): PlanningResult {
-    const startedMs = Date.now();
+  constructor(private readonly deps: { llm?: PlanningLlmPort } = {}) {}
 
-    let parsed: z.infer<typeof planningInputSchema>;
-    try {
-      parsed = planningInputSchema.parse(input);
-    } catch (error) {
-      throw new PlanningError(
-        "invalid_input",
-        "Planning input failed schema validation.",
-        {
-          cause: error instanceof Error ? error.message : String(error),
-        },
-      );
-    }
+  /**
+   * Classify plan strategy without drafting. Test/host helper — normal runs
+   * let Engine call the same rules directly (see `resolvePlanStrategyRules`)
+   * before deciding whether to run discovery.
+   */
+  public async resolveStrategy(
+    input: PlanningInput,
+  ): Promise<PlanStrategyResolution> {
+    const parsed = this.parseInput(input);
+    const strategy = resolvePlanStrategy({ input: parsed });
+    return {
+      decision: strategy.decision,
+      warnings: strategy.warnings,
+      reasonCodes: strategy.reasonCodes,
+    };
+  }
+
+  /**
+   * Compile read-only discovery observations into a validated DiscoveryBrief.
+   */
+  public compileDiscovery(input: DiscoveryObservation): DiscoveryBrief {
+    return compileDiscoveryBrief(input);
+  }
+
+  public async plan(input: PlanningInput): Promise<PlanningResult> {
+    const startedMs = Date.now();
+    const parsed = this.parseInput(input);
 
     if (parsed.planningDepth === "none") {
       return planningResultSchema.parse({
@@ -55,17 +89,56 @@ export class PlanningPipeline {
       });
     }
 
-    const drafted = draftPlan(parsed);
-    const validated = validatePlan({ plan: drafted, input: parsed });
+    const strategy = resolvePlanStrategy({ input: parsed });
+    let drafted = draftPlan({
+      ...parsed,
+      strategy: strategy.decision,
+    });
+
+    const draftWarnings: string[] = [];
+    const draftReasonCodes: PlanningReasonCode[] = [];
+    if (
+      strategy.decision.strategy === "discover_and_plan" &&
+      parsed.discoveryBrief &&
+      this.deps.llm
+    ) {
+      const discovered = await draftPlanFromDiscovery({
+        input: parsed,
+        discoveryBrief: parsed.discoveryBrief,
+        llm: this.deps.llm,
+      });
+      if (discovered.ok) {
+        drafted = applyDiscoveredPlanDraft({
+          skeleton: drafted,
+          draft: discovered.draft,
+          input: parsed,
+        });
+        draftReasonCodes.push("plan_drafted_from_discovery");
+      } else {
+        draftWarnings.push(discovered.warning);
+        draftReasonCodes.push("plan_discovery_draft_failed_fallback");
+      }
+    }
+
+    const validated = validatePlan({
+      plan: drafted,
+      input: parsed,
+      strategy: strategy.decision,
+    });
     if (!validated.ok) {
       return planningResultSchema.parse({
         schemaVersion: PLANNING_SCHEMA_VERSION,
         status: "blocked",
-        warnings: validated.warnings,
-        reasonCodes: unique(validated.reasonCodes),
+        warnings: [...strategy.warnings, ...draftWarnings, ...validated.warnings],
+        reasonCodes: unique([
+          ...strategy.reasonCodes,
+          ...draftReasonCodes,
+          ...validated.reasonCodes,
+        ]),
         usedTokens: 0,
         budgetTokens: parsed.budgetTokens,
         durationMs: Date.now() - startedMs,
+        strategy: strategy.decision,
       });
     }
 
@@ -76,6 +149,8 @@ export class PlanningPipeline {
 
     const reasonCodes = unique([
       "plan_drafted",
+      ...strategy.reasonCodes,
+      ...draftReasonCodes,
       ...validated.reasonCodes,
       ...compacted.reasonCodes,
     ]);
@@ -86,17 +161,34 @@ export class PlanningPipeline {
       schemaVersion: PLANNING_SCHEMA_VERSION,
       status,
       plan: compacted.plan,
-      warnings: validated.warnings,
+      warnings: [...strategy.warnings, ...draftWarnings, ...validated.warnings],
       reasonCodes,
       usedTokens: compacted.usedTokens,
       budgetTokens: parsed.budgetTokens,
       durationMs: Date.now() - startedMs,
+      strategy: strategy.decision,
     });
+  }
+
+  private parseInput(input: PlanningInput): z.infer<typeof planningInputSchema> {
+    try {
+      return planningInputSchema.parse(input);
+    } catch (error) {
+      throw new PlanningError(
+        "invalid_input",
+        "Planning input failed schema validation.",
+        {
+          cause: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
   }
 }
 
 export {
+  compileDiscoveryBrief,
   formatPlanAsAnswer,
+  inferPlanStrategyFromArtifact,
   serializePlanForPrompt,
   serializePlanText,
 } from "../actions";

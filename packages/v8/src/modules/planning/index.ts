@@ -4,6 +4,7 @@ export {
   PLAN_STEP_RISK_LEVELS,
   PLAN_CHANGE_IMPACTS,
   PLAN_CONTEXT_KINDS,
+  PLAN_STRATEGIES,
   PLANNING_REASON_CODES,
   PLANNING_ERROR_CODES,
 } from "./constants";
@@ -18,15 +19,28 @@ export {
 
 export { PlanningPipeline } from "./pipeline/PlanningPipeline";
 export {
+  compileDiscoveryBrief,
   formatPlanAsAnswer,
+  inferPlanStrategyFromArtifact,
   serializePlanForPrompt,
   serializePlanText,
 } from "./pipeline/PlanningPipeline";
+export type { PlanStrategyResolution } from "./pipeline/PlanningPipeline";
+
+export {
+  resolvePlanStrategyRules,
+  isRepairIntent,
+} from "./actions/ResolvePlanStrategy";
 
 export {
   planningInputSchema,
   planningTaskEvidenceSchema,
   planningSkillHintSchema,
+  explorationDepthSchema,
+  planningScopedRepoMapSchema,
+  planningBuildEvidenceSchema,
+  discoveryBriefSchema,
+  discoveryObservationSchema,
   planArtifactSchema,
   planPhaseSchema,
   planStepSchema,
@@ -35,6 +49,10 @@ export {
   planVerificationSchema,
   planDimensionsSchema,
   planContextRefSchema,
+  planStrategySchema,
+  planStrategyDecisionSchema,
+  discoveredPlanStepSchema,
+  discoveredPlanDraftSchema,
   planningResultSchema,
   PlanningError,
   planningErrorCodeSchema,
@@ -44,6 +62,15 @@ export type {
   PlanningParsedInput,
   PlanningTaskEvidence,
   PlanningSkillHint,
+  ExplorationDepth,
+  PlanningScopedRepoMap,
+  PlanningBuildEvidence,
+  DiscoveryBrief,
+  DiscoveryObservation,
+  DiscoveryFileRef,
+  DiscoveryTarget,
+  DiscoveryChangeSurface,
+  DiscoveryVerificationHint,
   PlanArtifact,
   PlanChangeImpact,
   PlanPhase,
@@ -54,6 +81,10 @@ export type {
   PlanDimensions,
   PlanContextRef,
   PlanContextKind,
+  PlanStrategy,
+  PlanStrategyDecision,
+  DiscoveredPlanStep,
+  DiscoveredPlanDraft,
   PlanningResult,
   PlanningStatus,
   PlanningReasonCode,

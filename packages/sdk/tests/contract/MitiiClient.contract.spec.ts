@@ -140,6 +140,13 @@ describe('MitiiClient contract (Phase 12)', () => {
           { role: 'assistant', content: 'Phases…' },
         ],
         approvedPlan: plan,
+        approvedPlanStrategy: {
+          schemaVersion: 1,
+          strategy: 'follow_evidence',
+          rationale: 'Host-carried repair plan.',
+          skipDiscover: true,
+          useBuildEvidence: true,
+        },
       },
       { mode: 'ask', sessionId: 'sess_test' },
     );
@@ -150,6 +157,8 @@ describe('MitiiClient contract (Phase 12)', () => {
       content: 'Plan auth',
     });
     expect(engineInput.approvedPlan?.objective).toBe('Handoff plan');
+    expect(engineInput.approvedPlanStrategy?.strategy).toBe('follow_evidence');
+    expect(engineInput.approvedPlanStrategy?.skipDiscover).toBe(true);
     expect(engineInput.request.userMessage).toBe('Execute it');
     expect(engineInput.request.mode).toBe('agent');
   });

@@ -1,4 +1,8 @@
-import type { PlanArtifact, PlanningReasonCode } from "../contracts";
+import type {
+  PlanArtifact,
+  PlanStrategyDecision,
+  PlanningReasonCode,
+} from "../contracts";
 import {
   DEFAULT_MAX_PLAN_PHASES,
   DEFAULT_MAX_STEPS_PER_PHASE,
@@ -155,18 +159,94 @@ export function serializePlanText(plan: PlanArtifact): string {
   return lines.join("\n");
 }
 
-export function serializePlanForPrompt(plan: PlanArtifact): string {
+export function serializePlanForPrompt(
+  plan: PlanArtifact,
+  strategy?: PlanStrategyDecision,
+): string {
   return [
     '<approved_plan trust="instruction">',
     serializePlanText(plan),
     "</approved_plan>",
-    "Execution contract: follow the approved plan phase by phase. Start with the first unfinished step, complete each step before moving on, and do not expand scope unless the user revises the plan.",
+    executionContract(strategy),
     "When reporting progress, reference the current plan step and verification from this plan.",
   ].join("\n");
 }
 
 export function formatPlanAsAnswer(plan: PlanArtifact): string {
   return serializePlanText(plan);
+}
+
+/**
+ * Recover a conservative strategy when a host-carried or resumed plan has
+ * no persisted PlanStrategyDecision. Prefers follow_evidence only when
+ * Discover is absent and Change steps look file-scoped.
+ */
+export function inferPlanStrategyFromArtifact(
+  plan: PlanArtifact,
+): PlanStrategyDecision {
+  const phaseNames = plan.phases.map((phase) => phase.name.toLowerCase());
+  const hasDiscover = phaseNames.some((name) =>
+    /discover|inspect|explore|investigate/.test(name),
+  );
+  const changeSteps = plan.phases
+    .filter((phase) => /change|implement|fix|build|apply/.test(phase.name.toLowerCase()))
+    .flatMap((phase) => phase.steps);
+  const hasConcreteChange = changeSteps.some((step) =>
+    /\.\w{1,16}\b|:\d{1,6}\b/.test(
+      `${step.intent} ${step.targetRefs.join(" ")}`,
+    ),
+  );
+  const looksLikeDiagnosticRepair = changeSteps.some((step) =>
+    /\bTS\d+\b|:\d{1,6}\b/.test(`${step.intent} ${step.actionSummary}`),
+  );
+  const reviewedFiles = plan.contextReviewed.some(
+    (ref) => ref.kind === "file" && /\.\w{1,16}$/.test(ref.ref),
+  );
+
+  if (hasDiscover) {
+    return {
+      schemaVersion: 1,
+      strategy: "discover_and_plan",
+      rationale: "Inferred from a Discover phase on the carried plan.",
+      skipDiscover: false,
+      useBuildEvidence: false,
+    };
+  }
+  if (looksLikeDiagnosticRepair) {
+    return {
+      schemaVersion: 1,
+      strategy: "follow_evidence",
+      rationale: "Inferred from Change steps that cite diagnostic locations.",
+      skipDiscover: true,
+      useBuildEvidence: true,
+    };
+  }
+  if (hasConcreteChange && reviewedFiles) {
+    return {
+      schemaVersion: 1,
+      strategy: "discover_and_plan",
+      rationale:
+        "Inferred from a Change-only plan whose reviewed files show discovery already ran.",
+      skipDiscover: true,
+      useBuildEvidence: false,
+    };
+  }
+  if (hasConcreteChange) {
+    return {
+      schemaVersion: 1,
+      strategy: "plan_from_ask",
+      rationale: "Inferred from file-scoped Change steps without diagnostic evidence.",
+      skipDiscover: true,
+      useBuildEvidence: false,
+    };
+  }
+  return {
+    schemaVersion: 1,
+    strategy: "plan_from_ask",
+    rationale: "Inferred from a plan without discovery or concrete diagnostic steps.",
+    skipDiscover: true,
+    useBuildEvidence: false,
+  };
 }
 
 function estimateTokens(text: string, charactersPerToken: number): number {
@@ -176,4 +256,25 @@ function estimateTokens(text: string, charactersPerToken: number): number {
 function truncate(value: string, max: number): string {
   if (value.length <= max) return value;
   return `${value.slice(0, Math.max(0, max - 1))}…`;
+}
+
+function executionContract(strategy?: PlanStrategyDecision): string {
+  if (strategy?.strategy === "follow_evidence") {
+    return [
+      "Execution contract: preflight evidence already enumerates failures.",
+      "Skip rediscovery. Start at the first Change step or active checklist item.",
+      "Load only files for the active todo; mark it done before moving on.",
+      "Do not expand scope unless the user revises the plan.",
+    ].join(" ");
+  }
+  if (strategy?.strategy === "discover_and_plan") {
+    return "Execution contract: discovery already ran. Start at the first Change step — do not rediscover. Complete each step before moving on, and do not expand scope unless the user revises the plan.";
+  }
+  if (strategy?.strategy === "plan_from_ask") {
+    return "Execution contract: plan from the approved objective and listed targets. Start with the first unfinished step, complete each step before moving on, and do not expand scope unless the user revises the plan.";
+  }
+  if (strategy?.strategy === "clarify") {
+    return "Execution contract: resolve the plan open questions before mutating files. Do not expand scope unless the user revises the plan.";
+  }
+  return "Execution contract: follow the approved plan phase by phase. Start with the first unfinished step, complete each step before moving on, and do not expand scope unless the user revises the plan.";
 }

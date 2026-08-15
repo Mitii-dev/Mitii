@@ -875,9 +875,47 @@ export function SettingsPanel(props: SettingsPanelProps) {
         {effectiveTab === 'debug' ? (
           <div className="settings-panel">
             <SettingsSection
+              title="Developer"
+              icon={<IconSettings />}
+              description="Unlock developer options first. Nested debug switches appear after this is enabled — more will be added here later."
+            >
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={ui.developerEnabled}
+                  onChange={(e) =>
+                    onSaveUi({ developerEnabled: e.target.checked })
+                  }
+                />
+                Enable developer settings
+              </label>
+              <div
+                className={`developer-options${
+                  ui.developerEnabled ? '' : ' developer-options--locked'
+                }`}
+              >
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={ui.debugLogging}
+                    disabled={!ui.developerEnabled}
+                    onChange={(e) =>
+                      onSaveUi({ debugLogging: e.target.checked })
+                    }
+                  />
+                  Debug logging
+                </label>
+                <p className="field-hint">
+                  When on, Mitii auto-shows the Output channel and prints
+                  verbose stacks on failures (
+                  <span className="mono">mitii.debug</span>).
+                </p>
+              </div>
+            </SettingsSection>
+            <SettingsSection
               title="Runtime diagnostics"
               icon={<IconSettings />}
-              description="Use View → Output → Mitii for activation and run logs. Enable mitii.debug for verbose stacks."
+              description="Use View → Output → Mitii for activation and run logs."
             >
               <div className="stat">
                 <div className="stat-label">Provider connection</div>
@@ -915,8 +953,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
               </p>
               <p className="field-hint">
                 Startup logs appear in the Mitii Output channel on activate.
-                Toggle <span className="mono">mitii.debug</span> in VS Code
-                settings to auto-show the channel and print stack traces.
               </p>
             </SettingsSection>
           </div>

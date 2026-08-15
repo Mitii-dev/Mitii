@@ -117,3 +117,8 @@ export {
   InMemoryNetworkAdapter,
 } from "./adapters";
 export type { ProcessHandler } from "./adapters";
+
+export {
+  validateMutationBatch,
+  MutationBatchValidationError,
+} from "./mutationBatch";

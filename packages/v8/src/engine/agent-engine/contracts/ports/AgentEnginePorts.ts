@@ -28,7 +28,10 @@ import type {
   UnpinRepositoryStateResult,
 } from "../../../../modules/repository-state";
 import type { CreateUserRequestInput, UserRequestEnvelope } from "../../../../modules/request-intake";
-import type { RequestUnderstandingResult } from "../../../../modules/request-understanding";
+import type {
+  DiagnosticSummary,
+  RequestUnderstandingResult,
+} from "../../../../modules/request-understanding";
 import type {
   SkillsSelectInput,
   SkillsSelectResult,
@@ -40,7 +43,10 @@ import type {
   ToolResult,
 } from "../../../tool-runtime";
 import type {
+  RepoBuildState,
+  RepoBuildStateComparison,
   VerificationInput,
+  VerificationPipelineOptions,
   VerificationResult,
 } from "../../../../modules/verification";
 
@@ -61,6 +67,7 @@ export interface AgentEngineIntakePort {
 export interface AgentEngineUnderstandingPort {
   understand(
     input: UserRequestEnvelope,
+    diagnosticSummary?: DiagnosticSummary,
   ): Promise<RequestUnderstandingResult>;
 }
 
@@ -86,7 +93,7 @@ export interface AgentEngineMemoryPort {
 }
 
 export interface AgentEnginePlanningPort {
-  plan(input: PlanningInput): PlanningResult;
+  plan(input: PlanningInput): Promise<PlanningResult>;
 }
 
 export interface AgentEngineRepositoryStatePort {
@@ -118,6 +125,20 @@ export interface AgentEngineToolRuntimePort {
 
 export interface AgentEngineVerificationPort {
   verify(input: VerificationInput): Promise<VerificationResult>;
+  captureBuildState?(
+    input: VerificationInput,
+    params: { phase: "before" | "after"; capturedAt?: string },
+    options?: VerificationPipelineOptions,
+  ): Promise<RepoBuildState>;
+  buildStateFromResult?(
+    input: VerificationInput,
+    result: VerificationResult,
+    params: { phase: "before" | "after"; capturedAt?: string },
+  ): RepoBuildState;
+  compareBuildStates?(params: {
+    before?: RepoBuildState;
+    after: RepoBuildState;
+  }): RepoBuildStateComparison;
 }
 
 /**

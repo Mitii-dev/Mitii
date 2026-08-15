@@ -94,6 +94,8 @@ export const DECISION_REASON_CODES = [
   "broad_repair_visible_plan",
   /** Prompt/engine should prefer analyze_change_impact before shared-surface mutations. */
   "change_impact_recommended",
+  /** Execute route should capture scoped build/typecheck evidence before planning. */
+  "preflight_build_recommended",
   /** Understanding risk was low but shared-scope repair elevated effective grant risk. */
   "shared_scope_risk_elevated",
   "explicit_plan_request",

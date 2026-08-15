@@ -4,6 +4,7 @@ import {
   requestUnderstandingResultSchema,
 } from "../contracts";
 import type {
+  DiagnosticSummary,
   RequestUnderstandingPipelineInput,
   RequestUnderstandingResult,
 } from "../contracts";
@@ -38,6 +39,7 @@ export class RequestUnderstandingPipeline {
 
   public async understand(
     input: RequestUnderstandingPipelineInput,
+    diagnosticSummary?: DiagnosticSummary,
   ): Promise<RequestUnderstandingResult> {
     const envelope =
       requestUnderstandingPipelineInputSchema.parse(input);
@@ -53,6 +55,7 @@ export class RequestUnderstandingPipeline {
       mode: envelope.mode,
       userMessage,
       referencedArtifacts: envelope.referencedArtifacts,
+      diagnosticSummary,
     });
 
     const taskAnalysis = this.taskAnalyzer.analyze({

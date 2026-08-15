@@ -5,6 +5,7 @@ import type {
 } from "../../../modules/decision-policy";
 import {
   DECISION_POLICY_SCHEMA_VERSION,
+  READ_ONLY_TOOL_IDS,
   buildVerificationGrant,
 } from "../../../modules/decision-policy";
 import type {
@@ -18,10 +19,20 @@ import type {
 import { MEMORY_SCHEMA_VERSION } from "../../../modules/memory";
 import {
   PLANNING_SCHEMA_VERSION,
+  compileDiscoveryBrief,
   formatPlanAsAnswer,
+  inferPlanStrategyFromArtifact,
+  planningInputSchema,
+  resolvePlanStrategyRules,
   serializePlanForPrompt,
 } from "../../../modules/planning";
-import type { PlanArtifact } from "../../../modules/planning";
+import type {
+  DiscoveryBrief,
+  DiscoveryTarget,
+  PlanArtifact,
+  PlanStrategyDecision,
+  PlanningInput,
+} from "../../../modules/planning";
 import type { TaskList } from "../../../modules/task-list";
 import {
   CharacterTokenEstimator,
@@ -38,7 +49,10 @@ import type {
 } from "../../../modules/repository-state";
 import { deriveContextSelectionBudget } from "../../../modules/repository-context";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
-import type { RequestUnderstandingResult } from "../../../modules/request-understanding";
+import type {
+  DiagnosticSummary,
+  RequestUnderstandingResult,
+} from "../../../modules/request-understanding";
 import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
 import { SKILLS_SCHEMA_VERSION } from "../../../modules/skills";
 import {
@@ -46,9 +60,14 @@ import {
   fingerprintToolCall,
   toolResultSchema,
 } from "../../tool-runtime";
-import type { ToolApprovalToken } from "../../tool-runtime";
+import type { ToolApprovalToken, ToolResult } from "../../tool-runtime";
 import { VERIFICATION_SCHEMA_VERSION } from "../../../modules/verification";
-import type { VerificationResult } from "../../../modules/verification";
+import type {
+  RepoBuildState,
+  RepoBuildStateComparison,
+  VerificationInput,
+  VerificationResult,
+} from "../../../modules/verification";
 
 import {
   amendMessageWithClarification,
@@ -89,8 +108,20 @@ import type {
   AgentRunHandle,
   AgentRunResult,
   AgentRunStatus,
+  RunEvidence,
   RunEvent,
 } from "../contracts";
+import {
+  DISCOVERY_PASS_POLICY,
+  buildDiscoveryPrompt,
+  createDiscoveryGrant,
+  createDiscoveryObservationCollector,
+  createDiscoveryTaskList,
+  discoveryBudgetRemaining,
+  isDiscoveryToolAllowed,
+  recordDiscoveryToolUse,
+  toDiscoveryObservation,
+} from "../internal/discoveryPass";
 import { EventBus } from "../internal/EventBus";
 import { RunBudgetTracker } from "../internal/RunBudget";
 import type { PendingApprovalState } from "../internal/RunCheckpoint";
@@ -169,6 +200,8 @@ type VerificationGateOutcome =
       repairable: boolean;
       error: { code: string; message: string };
       verification?: VerificationResult;
+      /** Before/after diagnostic diff, when a saved before-state exists. */
+      comparison?: RepoBuildStateComparison;
     };
 
 /**
@@ -278,6 +311,7 @@ export class AgentEnginePipeline {
         signal,
         getCancelReason,
         approvedPlan: carriedPlan,
+        approvedPlanStrategy: parsed.approvedPlanStrategy,
         skipPlanGate: Boolean(carriedPlan),
         planSource: carriedPlan ? "host_carry" : undefined,
       }),
@@ -345,6 +379,8 @@ export class AgentEnginePipeline {
     getCancelReason: () => string | undefined;
     /** Previously approved/edited plan (plan-approval resume or host carry). */
     approvedPlan?: PlanArtifact;
+    /** Strategy for an approved/carried plan; inferred from the artifact when omitted. */
+    approvedPlanStrategy?: PlanStrategyDecision;
     /** Skip plan-gate suspension (after user approved/edited the plan). */
     skipPlanGate?: boolean;
     /** How an approved plan entered this run (affects reason codes). */
@@ -357,6 +393,7 @@ export class AgentEnginePipeline {
       signal,
       getCancelReason,
       approvedPlan,
+      approvedPlanStrategy,
       skipPlanGate = false,
       planSource,
     } = params;
@@ -370,6 +407,10 @@ export class AgentEnginePipeline {
     let route: AgentRunResult["route"];
     let planningDepth: AgentRunResult["planningDepth"];
     let runPlan: PlanArtifact | undefined;
+    let runPlanStrategy: PlanStrategyDecision | undefined;
+    let repoBuildStateBefore: RepoBuildState | undefined;
+    let repoBuildStateAfter: RepoBuildState | undefined;
+    const runEvidence = createInitialRunEvidence(input.request.userMessage);
     const taskListRef: TaskListRef = {
       current:
         input.request.mode === "ask" || planSource === "resume_approval"
@@ -378,7 +419,10 @@ export class AgentEnginePipeline {
     };
     let taskListSynced = false;
     const syncTaskListOnce = () => {
-      if (taskListSynced) return;
+      const replacingDiscovery =
+        taskListRef.current?.purpose === "discovery" ||
+        taskListRef.current?.source === "discovery";
+      if (taskListSynced && !replacingDiscovery) return;
       taskListSynced = true;
       this.syncTaskList({
         mode: input.request.mode,
@@ -389,7 +433,7 @@ export class AgentEnginePipeline {
         runId,
         bus,
         reasonCodes,
-        resetExisting: planSource === "resume_approval",
+        resetExisting: planSource === "resume_approval" || replacingDiscovery,
       });
     };
 
@@ -418,10 +462,20 @@ export class AgentEnginePipeline {
         planningDepth: partial.planningDepth ?? planningDepth,
         answer: partial.answer,
         plan: partial.plan ?? runPlan,
+        ...(partial.planStrategy ?? runPlanStrategy
+          ? { planStrategy: partial.planStrategy ?? runPlanStrategy }
+          : {}),
         ...(input.request.mode !== "ask" &&
         (partial.taskList ?? taskListRef.current)
           ? { taskList: partial.taskList ?? taskListRef.current }
           : {}),
+        repoBuildStateBefore,
+        repoBuildStateAfter,
+        evidence: finalizeRunEvidence({
+          evidence: runEvidence,
+          status: partial.status,
+          reasonCodes: partial.reasonCodes ?? reasonCodes,
+        }),
         suspension: partial.suspension,
         pinnedState: partial.pinnedState ?? pinnedState,
         reasonCodes: partial.reasonCodes ?? reasonCodes,
@@ -474,6 +528,51 @@ export class AgentEnginePipeline {
         return cancelledResult();
       }
 
+      // --- Pin ---
+      // Ahead of Decide/Understand now: pin whenever a workspace is
+      // resolvable so an Agent-execute preflight snapshot (below) can run
+      // before understanding, and so errors can inform classification.
+      pinnedState = await this.resolveAndPinState({
+        runId,
+        envelope,
+        input,
+        bus,
+        reasonCodes,
+        warnings,
+      });
+
+      if (signal.aborted) {
+        await this.safeUnpin(runId, pinnedState);
+        return cancelledResult();
+      }
+
+      // --- Agent-execute preflight snapshot (before Understand) ---
+      // Unconditional for Agent mode: no repair-intent gate, no Decision
+      // Policy grant yet (uses a conservative synthesized read-only grant).
+      // Plan mode keeps its repair-intent-gated capture further down, once
+      // understanding/decision exist.
+      if (envelope.mode === "agent") {
+        repoBuildStateBefore = await this.capturePreflightBuildState({
+          runId,
+          input,
+          pinnedState,
+          contextPaths: [],
+          bus,
+          signal,
+          reasonCodes,
+          warnings,
+          unconditional: true,
+          mentionedPaths: extractMentionedPaths(
+            extractPrimaryUserMessage(envelope.message),
+          ),
+        });
+      }
+
+      if (signal.aborted) {
+        await this.safeUnpin(runId, pinnedState);
+        return cancelledResult();
+      }
+
       // --- Understand ---
       // Module facade re-validates: message may be conversation-amended here.
       this.emitStage(bus, runId, "understood", "started");
@@ -488,14 +587,23 @@ export class AgentEnginePipeline {
               ),
             }
           : envelope;
-      const understanding =
-        await this.deps.understanding.understand(understandingEnvelope);
+      const diagnosticSummary = repoBuildStateBefore
+        ? buildDiagnosticSummary(
+            repoBuildStateBefore,
+            extractPrimaryUserMessage(understandingEnvelope.message),
+          )
+        : undefined;
+      const understanding = await this.deps.understanding.understand(
+        understandingEnvelope,
+        diagnosticSummary,
+      );
       reasonCodes.push("understanding_complete");
       this.emitStage(bus, runId, "understood", "completed", [
         "understanding_complete",
       ]);
 
       if (signal.aborted) {
+        await this.safeUnpin(runId, pinnedState);
         return cancelledResult();
       }
 
@@ -565,6 +673,8 @@ export class AgentEnginePipeline {
             warnings,
             usage: budget.snapshot(),
             startedAtMs: startedMs,
+            repoBuildStateBefore,
+            repoBuildStateAfter,
             ...(taskListRef.current ? { taskList: taskListRef.current } : {}),
           });
         }
@@ -575,6 +685,10 @@ export class AgentEnginePipeline {
           rationale,
           at: this.isoNow(),
         });
+        // Clarification doesn't need repository context; release the pin
+        // taken above rather than leak it (checkpoint intentionally omits
+        // pinnedState — a clarification resume re-pins on its own path).
+        await this.safeUnpin(runId, pinnedState);
         return finish({
           status: "suspended",
           route: decision.route,
@@ -598,6 +712,7 @@ export class AgentEnginePipeline {
         !(PHASE8_SUPPORTED_ROUTES as readonly string[]).includes(decision.route)
       ) {
         reasonCodes.push("misconfigured");
+        await this.safeUnpin(runId, pinnedState);
         return finish({
           status: "failed",
           route: decision.route,
@@ -610,23 +725,10 @@ export class AgentEnginePipeline {
         });
       }
 
-      // --- Pin + Context ---
+      // --- Context ---
+      // Pin already resolved above; only repository-context retrieval left.
       let repositoryContext: PromptRepositoryContext | undefined;
       let contextPaths: string[] = [];
-      pinnedState = await this.resolveAndPinState({
-        runId,
-        decision,
-        envelope,
-        input,
-        bus,
-        reasonCodes,
-        warnings,
-      });
-
-      if (signal.aborted) {
-        await this.safeUnpin(runId, pinnedState);
-        return cancelledResult();
-      }
 
       if (decision.repositoryContextRequired) {
         if (!this.deps.repositoryContext || !pinnedState) {
@@ -746,6 +848,26 @@ export class AgentEnginePipeline {
             at: this.isoNow(),
           });
         }
+      }
+
+      // Agent mode already captured this unconditionally before Understand.
+      // Only Plan mode (repair-intent-gated) reaches this.
+      if (!repoBuildStateBefore) {
+        repoBuildStateBefore = await this.capturePreflightBuildState({
+          runId,
+          decision,
+          understanding,
+          input,
+          pinnedState,
+          contextPaths,
+          bus,
+          signal,
+          reasonCodes,
+          warnings,
+          mentionedPaths: extractMentionedPaths(
+            extractPrimaryUserMessage(envelope.message),
+          ),
+        });
       }
 
       // --- Skills (optional) ---
@@ -872,7 +994,11 @@ export class AgentEnginePipeline {
       let planText: string | undefined;
       if (approvedPlan) {
         runPlan = approvedPlan;
-        planText = serializePlanForPrompt(approvedPlan);
+        runPlanStrategy =
+          approvedPlanStrategy ?? inferPlanStrategyFromArtifact(approvedPlan);
+        planText = serializePlanForPrompt(approvedPlan, runPlanStrategy);
+        recordPlanEvidence(runEvidence, approvedPlan);
+        this.emitEvidenceUpdated(bus, runId, runEvidence);
         if (planSource === "host_carry") {
           reasonCodes.push("plan_drafted", "plan_carried");
         } else {
@@ -886,7 +1012,7 @@ export class AgentEnginePipeline {
             kind: "file" as const,
             ref: block.relativePath,
           }));
-        const planningResult = this.deps.planning.plan({
+        const planningInputCandidate: PlanningInput = {
           schemaVersion: PLANNING_SCHEMA_VERSION,
           query: buildPlanningQuery(
             extractPrimaryUserMessage(envelope.message),
@@ -895,7 +1021,12 @@ export class AgentEnginePipeline {
           mode: envelope.mode,
           route: decision.route,
           planningDepth: decision.planningDepth,
+          explorationDepth: input.explorationDepth,
           evidence: mapUnderstandingToPlanningEvidence(understanding),
+          scopedRepoMap: buildScopedRepoMapForPlanning(contextPaths),
+          buildEvidence: repoBuildStateBefore
+            ? toPlanningBuildEvidence(repoBuildStateBefore)
+            : undefined,
           skills: selectedSkills?.map((block) => ({
             id: block.id,
             title: block.title,
@@ -906,11 +1037,58 @@ export class AgentEnginePipeline {
           processHints: [],
           contextReviewed:
             contextReviewed.length > 0 ? contextReviewed : undefined,
+        };
+        const planningInput = planningInputSchema.parse(planningInputCandidate);
+
+        // Engine owns strategy — rules only, no strategy LLM. Planning just
+        // drafts against whatever strategyOverride Engine hands it.
+        const strategyDecision = resolvePlanStrategyRules(planningInput);
+        let strategyOverride: PlanStrategyDecision = strategyDecision;
+        let discoveryBrief = planningInput.discoveryBrief;
+        if (strategyDecision.strategy === "discover_and_plan") {
+          const discovery = await this.runDiscoveryPass({
+            runId,
+            query: planningInput.query,
+            objective:
+              planningInput.evidence.requestedOutcomes?.[0] ??
+              planningInput.query,
+            evidence: planningInput.evidence,
+            decision,
+            pinnedState,
+            workspaceRoot: input.workspaceRoot,
+            bus,
+            signal,
+            budget,
+            reasonCodes,
+            warnings,
+            taskListRef,
+          });
+          discoveryBrief = discovery.brief;
+          recordDiscoveryEvidence(runEvidence, {
+            brief: discovery.brief,
+            collector: discovery.collector,
+            failed: discovery.failed,
+          });
+          this.emitEvidenceUpdated(bus, runId, runEvidence);
+          // Discovery already looked; Planning must not run a second
+          // Discover phase. Keep the rules' own rationale/confidence.
+          strategyOverride = { ...strategyDecision, skipDiscover: true };
+        }
+
+        const planningResult = await this.deps.planning.plan({
+          ...planningInput,
+          discoveryBrief,
+          strategyOverride,
         });
 
         if (planningResult.plan) {
           runPlan = planningResult.plan;
-          planText = serializePlanForPrompt(planningResult.plan);
+          runPlanStrategy = planningResult.strategy;
+          recordPlanEvidence(runEvidence, planningResult.plan);
+          planText = serializePlanForPrompt(
+            planningResult.plan,
+            planningResult.strategy,
+          );
           reasonCodes.push("plan_drafted");
           this.emit(bus, {
             type: "plan_ready",
@@ -921,6 +1099,7 @@ export class AgentEnginePipeline {
             plan: planningResult.plan,
             at: this.isoNow(),
           });
+          this.emitEvidenceUpdated(bus, runId, runEvidence);
           this.emitStage(bus, runId, "plan_ready", "completed", [
             "plan_drafted",
           ]);
@@ -945,12 +1124,17 @@ export class AgentEnginePipeline {
                 toolCacheEntries: [],
                 pendingApproval: undefined,
                 plan: planningResult.plan,
+                ...(planningResult.strategy
+                  ? { planStrategy: planningResult.strategy }
+                  : {}),
                 changedFiles: [],
                 mutationCheckpointIds: [],
                 reasonCodes,
                 warnings,
                 usage: budget.snapshot(),
                 startedAtMs: startedMs,
+                repoBuildStateBefore,
+                repoBuildStateAfter,
                 ...(taskListRef.current ? { taskList: taskListRef.current } : {}),
               });
             }
@@ -1102,6 +1286,7 @@ export class AgentEnginePipeline {
           content: block.content,
         })),
         selectedSkillIds: selectedSkills?.map((block) => block.id) ?? [],
+        evidence: runEvidence,
       });
 
       return await this.finishAfterLoop({
@@ -1122,6 +1307,12 @@ export class AgentEnginePipeline {
         finish,
         cancelledResult,
         taskListRef,
+        repoBuildStateBefore,
+        repoBuildStateAfter,
+        evidence: runEvidence,
+        onRepoBuildStateAfter: (state) => {
+          repoBuildStateAfter = state;
+        },
       });
     } catch (error) {
       await this.safeUnpin(runId, pinnedState);
@@ -1181,6 +1372,7 @@ export class AgentEnginePipeline {
     const pinnedState = checkpoint.pinnedState;
     const reasonCodes: AgentReasonCode[] = [...checkpoint.reasonCodes];
     const warnings: string[] = [...checkpoint.warnings];
+    let repoBuildStateAfter = checkpoint.repoBuildStateAfter;
     const resumedAtMs = Date.now();
     const suspensionWaitMs =
       checkpoint.suspendedAtMs !== undefined
@@ -1220,10 +1412,17 @@ export class AgentEnginePipeline {
         planningDepth: partial.planningDepth ?? decision.planningDepth,
         answer: partial.answer,
         plan: partial.plan ?? checkpoint.plan,
+        ...(partial.planStrategy ?? checkpoint.planStrategy
+          ? {
+              planStrategy: partial.planStrategy ?? checkpoint.planStrategy,
+            }
+          : {}),
         ...(startInput.request.mode !== "ask" &&
         (partial.taskList ?? taskListRef.current)
           ? { taskList: partial.taskList ?? taskListRef.current }
           : {}),
+        repoBuildStateBefore: checkpoint.repoBuildStateBefore,
+        repoBuildStateAfter,
         suspension: partial.suspension,
         pinnedState: partial.pinnedState ?? pinnedState,
         reasonCodes: partial.reasonCodes ?? reasonCodes,
@@ -1348,6 +1547,10 @@ export class AgentEnginePipeline {
           signal,
           getCancelReason,
           approvedPlan: nextPlan,
+          approvedPlanStrategy:
+            input.planDecision.decision === "edited"
+              ? inferPlanStrategyFromArtifact(nextPlan)
+              : checkpoint.planStrategy ?? inferPlanStrategyFromArtifact(nextPlan),
           skipPlanGate: true,
           planSource: "resume_approval",
         });
@@ -1527,6 +1730,11 @@ export class AgentEnginePipeline {
         finish,
         cancelledResult,
         taskListRef,
+        repoBuildStateBefore: checkpoint.repoBuildStateBefore,
+        repoBuildStateAfter,
+        onRepoBuildStateAfter: (state) => {
+          repoBuildStateAfter = state;
+        },
       });
     } catch (error) {
       if (error instanceof AgentEngineError) {
@@ -1580,6 +1788,10 @@ export class AgentEnginePipeline {
     }) => AgentRunResult;
     cancelledResult: () => AgentRunResult;
     taskListRef: TaskListRef;
+    repoBuildStateBefore?: RepoBuildState;
+    repoBuildStateAfter?: RepoBuildState;
+    evidence?: RunEvidence;
+    onRepoBuildStateAfter?: (state: RepoBuildState) => void;
   }): Promise<AgentRunResult> {
     const {
       runId,
@@ -1599,11 +1811,23 @@ export class AgentEnginePipeline {
       finish,
       cancelledResult,
       taskListRef,
+      repoBuildStateBefore,
+      evidence,
     } = params;
 
     let currentOutcome = loopOutcome;
+    // Regressions (new errors this run introduced): one repair pass, then
+    // roll back if still failing.
     let repairAttempts = 0;
     const maxRepairAttempts = 1;
+    // Baseline errors that were already failing before this run and remain
+    // after it, with nothing new: not a rollback condition. Keep batching
+    // through the remaining diagnostics. Quick exploration depth caps at one
+    // batch; Deep/auto continue until 0 remaining or the run budget stops
+    // the loop (RunBudgetTracker inside runModelToolLoop).
+    let remainingErrorBatches = 0;
+    const maxRemainingErrorBatches =
+      input.explorationDepth === "quick" ? 1 : Number.POSITIVE_INFINITY;
 
     while (true) {
       if (currentOutcome.kind === "approval_required") {
@@ -1639,6 +1863,8 @@ export class AgentEnginePipeline {
           startedAtMs,
           excludedWaitMs: budget.getExcludedWaitMs(),
           suspendedAtMs: Date.now(),
+          repoBuildStateBefore,
+          repoBuildStateAfter: params.repoBuildStateAfter,
           ...(taskListRef.current ? { taskList: taskListRef.current } : {}),
         });
 
@@ -1712,19 +1938,87 @@ export class AgentEnginePipeline {
         mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
         reasonCodes,
         warnings,
+        repoBuildStateBefore,
+        onRepoBuildStateAfter: params.onRepoBuildStateAfter,
+        evidence,
       });
 
       if (verificationOutcome.kind === "ok") {
         await this.safeUnpin(runId, pinnedState);
         reasonCodes.push(
-          repairAttempts > 0 ? "verification_repair_succeeded" : "answer_produced",
+          repairAttempts > 0 || remainingErrorBatches > 0
+            ? "verification_repair_succeeded"
+            : "answer_produced",
         );
-        if (repairAttempts > 0) {
+        if (repairAttempts > 0 || remainingErrorBatches > 0) {
           reasonCodes.push("answer_produced");
         }
         return finish({
           status: "completed",
           answer: currentOutcome.answer,
+          reasonCodes,
+        });
+      }
+
+      // Errors already present before this run, still present after, and
+      // nothing new — not a regression. Keep going with the remaining
+      // diagnostics as evidence instead of rolling back a partial fix.
+      const comparisonReasons = verificationOutcome.comparison?.reasonCodes ?? [];
+      const isRegression = comparisonReasons.includes("new_errors_introduced");
+      const hasRemainingBaselineErrors =
+        !isRegression && comparisonReasons.includes("errors_remaining");
+
+      if (
+        hasRemainingBaselineErrors &&
+        verificationOutcome.repairable &&
+        remainingErrorBatches < maxRemainingErrorBatches
+      ) {
+        remainingErrorBatches += 1;
+        reasonCodes.push("repo_build_state_remaining_error_batch");
+        currentOutcome.messages.push({
+          role: "user",
+          content: this.formatRemainingErrorsPrompt({
+            verification: verificationOutcome.verification,
+            batchNumber: remainingErrorBatches,
+          }),
+        });
+        currentOutcome = await this.runModelToolLoop({
+          runId,
+          request,
+          decision,
+          dirtyPaths,
+          pinnedState,
+          workspaceRoot: input.workspaceRoot,
+          bus,
+          signal,
+          budget,
+          reasonCodes,
+          taskListRef,
+          warnings,
+          messages: currentOutcome.messages,
+          toolCache: currentOutcome.toolCache,
+          changedFiles: currentOutcome.changedFiles,
+          mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
+          evidence,
+        });
+        continue;
+      }
+
+      // Batch cap reached (Quick exploration depth) with baseline errors
+      // still remaining and nothing new introduced. This is not a failure —
+      // report what's left instead of rolling back a partial, honest fix.
+      if (hasRemainingBaselineErrors) {
+        this.commitMutations(currentOutcome.mutationCheckpointIds);
+        await this.safeUnpin(runId, pinnedState);
+        reasonCodes.push("answer_produced");
+        return finish({
+          status: "completed",
+          answer:
+            currentOutcome.answer ||
+            this.formatRemainingErrorsPrompt({
+              verification: verificationOutcome.verification,
+              batchNumber: remainingErrorBatches,
+            }),
           reasonCodes,
         });
       }
@@ -1737,7 +2031,9 @@ export class AgentEnginePipeline {
         repairAttempts += 1;
         reasonCodes.push("verification_repair_attempted");
         warnings.push(
-          "Verification failed; attempting one repair pass before rollback.",
+          isRegression
+            ? "Verification found new errors introduced by this change; attempting one repair pass before rollback."
+            : "Verification failed; attempting one repair pass before rollback.",
         );
         currentOutcome.messages.push({
           role: "user",
@@ -1764,6 +2060,7 @@ export class AgentEnginePipeline {
           toolCache: currentOutcome.toolCache,
           changedFiles: currentOutcome.changedFiles,
           mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
+          evidence,
         });
         continue;
       }
@@ -1788,24 +2085,23 @@ export class AgentEnginePipeline {
     }
   }
 
+  /**
+   * Resolve + pin whenever a workspace reference exists — no longer gated
+   * on `decision.repositoryContextRequired`, since pin now runs before
+   * Decision Policy so an Agent-execute preflight snapshot can happen
+   * before `understand()`.
+   */
   private async resolveAndPinState(params: {
     runId: string;
-    decision: ExecutionDecision;
     envelope: UserRequestEnvelope;
     input: AgentEngineStartInput;
     bus: EventBus;
     reasonCodes: AgentReasonCode[];
     warnings: string[];
   }): Promise<RepositoryStateReference | undefined> {
-    const { runId, decision, envelope, input, bus, reasonCodes, warnings } =
-      params;
+    const { runId, envelope, input, bus, reasonCodes, warnings } = params;
 
-    if (!decision.repositoryContextRequired) {
-      return decision.pinnedState ?? input.repositoryState?.reference;
-    }
-
-    let reference =
-      decision.pinnedState ?? input.repositoryState?.reference;
+    let reference = input.repositoryState?.reference;
 
     if (!reference && this.deps.repositoryState && envelope.workspace) {
       const latest = await this.deps.repositoryState.getLatest(
@@ -1846,6 +2142,151 @@ export class AgentEnginePipeline {
   }
 
   /**
+   * Capture a before-state build snapshot.
+   *
+   * Two callers:
+   *  - Agent execute, `unconditional: true`, called before Decision Policy
+   *    has run (no `decision`/`understanding` yet) — uses a conservative
+   *    synthesized read-only grant so errors can inform classification.
+   *  - Plan mode (repair intent), gated on `decision.reasonCodes` as before,
+   *    using the real decision-derived grant. Skipped entirely when the
+   *    unconditional Agent-mode capture already ran.
+   */
+  private async capturePreflightBuildState(params: {
+    runId: string;
+    decision?: ExecutionDecision;
+    understanding?: RequestUnderstandingResult;
+    input: AgentEngineStartInput;
+    pinnedState: RepositoryStateReference | undefined;
+    contextPaths: readonly string[];
+    bus: EventBus;
+    signal: AbortSignal;
+    reasonCodes: AgentReasonCode[];
+    warnings: string[];
+    unconditional?: boolean;
+    mentionedPaths?: readonly string[];
+  }): Promise<RepoBuildState | undefined> {
+    const {
+      runId,
+      decision,
+      understanding,
+      input,
+      pinnedState,
+      contextPaths,
+      bus,
+      signal,
+      reasonCodes,
+      warnings,
+      unconditional = false,
+      mentionedPaths = [],
+    } = params;
+
+    if (
+      !unconditional &&
+      !decision?.reasonCodes.includes("preflight_build_recommended")
+    ) {
+      return undefined;
+    }
+    if (
+      !this.deps.verification?.captureBuildState ||
+      !pinnedState ||
+      !input.workspaceRoot
+    ) {
+      if (!unconditional) {
+        warnings.push(
+          "Preflight build snapshot was recommended but verification infrastructure is unavailable.",
+        );
+      }
+      return undefined;
+    }
+
+    this.emitStage(bus, runId, "verifying", "started");
+    try {
+      if (signal.aborted) {
+        warnings.push("Preflight build snapshot was cancelled.");
+        this.emitStage(bus, runId, "verifying", "completed", []);
+        return undefined;
+      }
+      const verificationGrant = decision
+        ? buildVerificationGrant(decision.toolGrant)
+        : buildVerificationGrant(
+            buildSyntheticPreflightGrant(input.workspaceRoot),
+          );
+      const buildState = await this.deps.verification.captureBuildState(
+        buildPreflightVerificationInput({
+          decision,
+          understanding,
+          input,
+          pinnedState,
+          verificationGrant,
+          contextPaths,
+          pathScopes: decision?.toolGrant.pathScopes ?? ["."],
+          mentionedPaths,
+        }),
+        { phase: "before", capturedAt: this.isoNow() },
+        { signal },
+      );
+      if (signal.aborted) {
+        warnings.push("Preflight build snapshot was cancelled.");
+        this.emitStage(bus, runId, "verifying", "completed", []);
+        return undefined;
+      }
+      reasonCodes.push("repo_build_state_before_captured");
+      this.emitStage(bus, runId, "verifying", "completed", [
+        "repo_build_state_before_captured",
+      ]);
+      return buildState;
+    } catch (error) {
+      warnings.push(
+        `Preflight build snapshot failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      this.emitStage(bus, runId, "verifying", "completed", []);
+      return undefined;
+    }
+  }
+
+  private captureBuildStateFromVerificationResult(params: {
+    input: VerificationInput;
+    result: VerificationResult;
+    phase: "before" | "after";
+  }): RepoBuildState | undefined {
+    return this.deps.verification?.buildStateFromResult?.(
+      params.input,
+      params.result,
+      {
+        phase: params.phase,
+        capturedAt: this.isoNow(),
+      },
+    );
+  }
+
+  private applyRepoBuildStateComparisonReasonCodes(params: {
+    before?: RepoBuildState;
+    after: RepoBuildState;
+    reasonCodes: AgentReasonCode[];
+  }): RepoBuildStateComparison | undefined {
+    const comparison = this.deps.verification?.compareBuildStates?.({
+      before: params.before,
+      after: params.after,
+    });
+    if (!comparison) {
+      return undefined;
+    }
+    if (comparison.reasonCodes.includes("errors_cleared")) {
+      params.reasonCodes.push("repo_build_state_errors_cleared");
+    }
+    if (comparison.reasonCodes.includes("errors_remaining")) {
+      params.reasonCodes.push("repo_build_state_errors_remaining");
+    }
+    if (comparison.reasonCodes.includes("new_errors_introduced")) {
+      params.reasonCodes.push("repo_build_state_new_errors");
+    }
+    return comparison;
+  }
+
+  /**
    * Gate completion on Verification when the decision requires it and a
    * mutation changed files. Commits on accept; leaves rollback to the caller
    * on reject (after an optional repair pass for verification_failed only).
@@ -1860,6 +2301,9 @@ export class AgentEnginePipeline {
     mutationCheckpointIds: string[];
     reasonCodes: AgentReasonCode[];
     warnings: string[];
+    repoBuildStateBefore?: RepoBuildState;
+    onRepoBuildStateAfter?: (state: RepoBuildState) => void;
+    evidence?: RunEvidence;
   }): Promise<VerificationGateOutcome> {
     const {
       runId,
@@ -1871,6 +2315,9 @@ export class AgentEnginePipeline {
       mutationCheckpointIds,
       reasonCodes,
       warnings,
+      repoBuildStateBefore,
+      onRepoBuildStateAfter,
+      evidence,
     } = params;
 
     const missingInfrastructure: string[] = [];
@@ -1886,11 +2333,12 @@ export class AgentEnginePipeline {
     const canVerify = missingInfrastructure.length === 0;
 
     let verificationResult: VerificationResult | undefined;
-    if (
-      decision.verification.required &&
+    let comparison: RepoBuildStateComparison | undefined;
+    const shouldRunVerificationChecks =
       changedFiles.length > 0 &&
-      canVerify
-    ) {
+      canVerify &&
+      (decision.verification.required || Boolean(repoBuildStateBefore));
+    if (shouldRunVerificationChecks) {
       this.emitStage(bus, runId, "verifying", "started");
       const verificationGrant = buildVerificationGrant(decision.toolGrant);
       const projects = resolveVerificationProjects(input);
@@ -1900,12 +2348,53 @@ export class AgentEnginePipeline {
         pinnedState: pinnedState!,
         changedFiles,
         projects,
-        verification: decision.verification,
+        verification: decision.verification.required
+          ? decision.verification
+          : {
+              ...decision.verification,
+              required: true,
+              allowUnavailable: true,
+            },
         grant: verificationGrant,
         changeScope: "localized",
+        baselineDiagnostics: repoBuildStateBefore?.diagnostics,
         stateReadiness: input.repositoryState?.readiness ?? "ready",
       });
+      const afterState = this.captureBuildStateFromVerificationResult({
+        input: {
+          schemaVersion: VERIFICATION_SCHEMA_VERSION,
+          workspaceRoot: input.workspaceRoot!,
+          pinnedState: pinnedState!,
+          changedFiles,
+          projects,
+          verification: decision.verification,
+          grant: verificationGrant,
+          changeScope: "localized",
+          stateReadiness: input.repositoryState?.readiness ?? "ready",
+          baselineDiagnostics: repoBuildStateBefore?.diagnostics,
+        },
+        result: verificationResult,
+        phase: "after",
+      });
+      if (afterState) {
+        onRepoBuildStateAfter?.(afterState);
+        recordBuildStateDeltaEvidence(evidence, {
+          before: repoBuildStateBefore,
+          after: afterState,
+        });
+        reasonCodes.push("repo_build_state_after_captured");
+        comparison = this.applyRepoBuildStateComparisonReasonCodes({
+          before: repoBuildStateBefore,
+          after: afterState,
+          reasonCodes,
+        });
+      }
+      recordVerificationEvidence(evidence, {
+        verification: verificationResult,
+        before: repoBuildStateBefore,
+      });
       this.emitVerificationCompleted(bus, runId, verificationResult);
+      this.emitEvidenceUpdated(bus, runId, evidence);
     }
 
     const decisionOutcome = decideVerificationGate({
@@ -1927,6 +2416,8 @@ export class AgentEnginePipeline {
         warnings,
       });
       this.commitMutations(mutationCheckpointIds);
+      recordStopEvidence(evidence, decisionOutcome.acceptKind);
+      this.emitEvidenceUpdated(bus, runId, evidence);
       return { kind: "ok", acceptKind: decisionOutcome.acceptKind };
     }
 
@@ -1938,6 +2429,7 @@ export class AgentEnginePipeline {
       repairable: decisionOutcome.repairable,
       error: decisionOutcome.error,
       verification: decisionOutcome.verification,
+      comparison,
     };
   }
 
@@ -2074,6 +2566,32 @@ export class AgentEnginePipeline {
       .join("\n");
   }
 
+  /**
+   * Remaining-error batch prompt: baseline diagnostics, not a regression.
+   * Deliberately smaller/calmer than the repair prompt — no rollback threat,
+   * just the next slice of pre-existing errors to work through.
+   */
+  private formatRemainingErrorsPrompt(params: {
+    verification: VerificationResult | undefined;
+    batchNumber: number;
+  }): string {
+    const diagnostics = (params.verification?.diagnostics ?? [])
+      .filter((diagnostic) => diagnostic.severity === "error")
+      .slice(0, 20)
+      .map((diagnostic) => {
+        const line = diagnostic.startLine ? `:${diagnostic.startLine}` : "";
+        const code = diagnostic.code ? ` ${diagnostic.code}` : "";
+        return `${diagnostic.path}${line}${code} ${this.truncateForEvent(diagnostic.message, 200)}`;
+      });
+    return [
+      `${diagnostics.length} error(s) remain from before this run started; none are new, so no rollback is needed. Continue fixing (batch ${params.batchNumber}), then stop after this batch.`,
+      "",
+      ...diagnostics,
+    ]
+      .filter((part) => part.length > 0)
+      .join("\n");
+  }
+
   private formatVerificationFailureAnswer(params: {
     error: { code: string; message: string };
     verification?: VerificationResult;
@@ -2151,6 +2669,7 @@ export class AgentEnginePipeline {
     memoryFacts?: readonly { id: string; content: string }[];
     selectedSkillIds?: string[];
     taskListRef: TaskListRef;
+    evidence?: RunEvidence;
   }): Promise<ToolLoopOutcome> {
     const {
       runId,
@@ -2167,6 +2686,7 @@ export class AgentEnginePipeline {
       changedFiles,
       mutationCheckpointIds,
       taskListRef,
+      evidence,
     } = params;
     let decision = params.decision;
     let grant = decision.toolGrant;
@@ -2177,6 +2697,7 @@ export class AgentEnginePipeline {
     let pendingTextContinuation = "";
     let emittedLoopPressureWarning = false;
     let emittedLoopCompactionWarning = false;
+    let successfulVerificationAfterMutation = false;
     const changeImpactGate = {
       required:
         decision.reasonCodes.includes("change_impact_recommended") &&
@@ -2382,12 +2903,33 @@ export class AgentEnginePipeline {
       ]);
 
       if (turn.toolCalls.length === 0) {
+        const incompleteAssistantTurn = shouldRecoverIncompleteAssistantTurn({
+          content: turn.content,
+          toolCallCount: 0,
+          changedFileCount: changedFiles.length,
+        });
         if (
-          shouldRecoverIncompleteAssistantTurn({
-            content: turn.content,
-            toolCallCount: 0,
-            changedFileCount: changedFiles.length,
-          }) &&
+          incompleteAssistantTurn &&
+          successfulVerificationAfterMutation &&
+          changedFiles.length > 0
+        ) {
+          answer = synthesizeFallbackAnswer({
+            priorAnswer: answer || turn.content,
+            changedFiles,
+          });
+          reasonCodes.push("incomplete_answer_fallback");
+          return {
+            kind: "completed",
+            answer,
+            changedFiles,
+            mutationCheckpointIds,
+            messages,
+            toolCache,
+          };
+        }
+
+        if (
+          incompleteAssistantTurn &&
           incompleteAnswerRecoveries <
             AGENT_ENGINE_THRESHOLDS.maxIncompleteAnswerRecoveries &&
           budget.canStartModelCall()
@@ -2528,6 +3070,7 @@ export class AgentEnginePipeline {
           taskListAutoAdvanceBudget,
           mutatingToolNames: DEFAULT_MUTATING_TOOL_NAMES,
           changeImpactGate,
+          evidence,
         });
 
         if (outcome.kind === "approval_required") {
@@ -2551,6 +3094,14 @@ export class AgentEnginePipeline {
         }
 
         messages.push(outcome.message);
+        const result = toolCache.get(toolCall.id);
+        if (
+          changedFiles.length > 0 &&
+          result &&
+          isSuccessfulVerificationToolResult(toolCall.name, result)
+        ) {
+          successfulVerificationAfterMutation = true;
+        }
       }
 
       await this.refreshAuthorityAfterTools({
@@ -2729,6 +3280,7 @@ export class AgentEnginePipeline {
     mutatingToolNames: ReadonlySet<string>;
     /** Soft gate: require analyze_change_impact before first mutation when recommended. */
     changeImpactGate?: { required: boolean; satisfied: boolean };
+    evidence?: RunEvidence;
   }): Promise<ToolCallOutcome> {
     const {
       runId,
@@ -2751,6 +3303,7 @@ export class AgentEnginePipeline {
       taskListAutoAdvanceBudget,
       mutatingToolNames,
       changeImpactGate,
+      evidence,
     } = params;
 
     const toolCall: ModelToolCall = {
@@ -2906,6 +3459,13 @@ export class AgentEnginePipeline {
         ...(result.reasonCode ? { reasonCode: result.reasonCode } : {}),
         at: this.isoNow(),
       });
+      recordToolEvidence(evidence, {
+        toolName: toolCall.name,
+        status: result.status,
+        summary,
+        output: result.output,
+        at: this.isoNow(),
+      });
       return {
         kind: "message",
         message: {
@@ -3017,6 +3577,13 @@ export class AgentEnginePipeline {
       status: result.status,
       ...(summary ? { summary } : {}),
       ...(result.reasonCode ? { reasonCode: result.reasonCode } : {}),
+      at: this.isoNow(),
+    });
+    recordToolEvidence(evidence, {
+      toolName: toolCall.name,
+      status: result.status,
+      summary,
+      output: result.output,
       at: this.isoNow(),
     });
 
@@ -3426,6 +3993,228 @@ export class AgentEnginePipeline {
     });
   }
 
+  private async runDiscoveryPass(params: {
+    runId: string;
+    query: string;
+    objective: string;
+    evidence: PlanningInput["evidence"];
+    decision: ExecutionDecision;
+    pinnedState: RepositoryStateReference | undefined;
+    workspaceRoot: string | undefined;
+    bus: EventBus;
+    signal: AbortSignal;
+    budget: RunBudgetTracker;
+    reasonCodes: AgentReasonCode[];
+    warnings: string[];
+    taskListRef: TaskListRef;
+  }): Promise<{
+    brief: DiscoveryBrief;
+    failed: boolean;
+    collector: ReturnType<typeof createDiscoveryObservationCollector>;
+  }> {
+    const {
+      runId,
+      query,
+      objective,
+      evidence,
+      decision,
+      pinnedState,
+      workspaceRoot,
+      bus,
+      signal,
+      budget,
+      reasonCodes,
+      warnings,
+      taskListRef,
+    } = params;
+
+    this.emitStage(bus, runId, "discovery", "started");
+    this.emit(bus, {
+      type: "discovery_started",
+      runId,
+      objective: objective.slice(0, 500),
+      at: this.isoNow(),
+    });
+    reasonCodes.push("discovery_started");
+
+    const discoveryList = createDiscoveryTaskList();
+    taskListRef.current = discoveryList;
+    this.emitTaskListUpdated(bus, runId, discoveryList);
+
+    const collector = createDiscoveryObservationCollector();
+    const explicitTargets: DiscoveryTarget[] = (evidence.targets ?? []).map(
+      (target) => ({
+        kind: inferDiscoveryTargetKind(target.kind),
+        value: target.value,
+        reason: target.explicit ? "Explicit request target" : "Inferred target",
+        explicit: target.explicit,
+      }),
+    );
+
+    const canLoop =
+      Boolean(this.deps.tools) &&
+      Boolean(workspaceRoot) &&
+      this.deps.llm.capabilities.supportsTools &&
+      !signal.aborted;
+
+    if (canLoop) {
+      const grant = createDiscoveryGrant(decision.toolGrant);
+      const tools = filterToolDefinitions({
+        grant,
+        definitions:
+          this.deps.toolDefinitions ?? DEFAULT_TOOL_DEFINITIONS,
+        supportsTools: true,
+      }).filter((tool) => isDiscoveryToolAllowed(tool.name));
+      const prompt = buildDiscoveryPrompt({ query, objective });
+      const messages: ModelMessage[] = [
+        { role: "system", content: prompt.system },
+        { role: "user", content: prompt.user },
+      ];
+
+      for (
+        let turn = 0;
+        turn < DISCOVERY_PASS_POLICY.maxModelTurns;
+        turn += 1
+      ) {
+        if (signal.aborted || !discoveryBudgetRemaining(collector)) {
+          break;
+        }
+        if (!budget.canStartModelCall()) {
+          break;
+        }
+        budget.recordModelCall();
+        const turnResult = await this.consumeModelTurn({
+          llm: this.deps.llm,
+          request: {
+            messages: [...messages],
+            tools,
+            temperature: 0,
+            maximumOutputTokens: 800,
+            stream: false,
+            toolChoice: tools.length > 0 ? "auto" : "none",
+          },
+          runId,
+          signal,
+          bus,
+        });
+        if (turnResult.kind !== "completed") {
+          break;
+        }
+        const toolCalls = turnResult.toolCalls.filter((call) =>
+          isDiscoveryToolAllowed(call.name),
+        );
+        if (toolCalls.length === 0) {
+          break;
+        }
+        messages.push({
+          role: "assistant",
+          content: turnResult.content,
+          toolCalls,
+        });
+        for (const toolCall of toolCalls) {
+          if (!discoveryBudgetRemaining(collector) || signal.aborted) {
+            break;
+          }
+          let argumentsValue: unknown = {};
+          try {
+            argumentsValue =
+              toolCall.arguments.trim().length === 0
+                ? {}
+                : JSON.parse(toolCall.arguments);
+          } catch {
+            argumentsValue = {};
+          }
+          const summary = this.summarizeToolCall(toolCall.name, argumentsValue);
+          this.emit(bus, {
+            type: "tool_started",
+            runId,
+            callId: toolCall.id,
+            toolName: toolCall.name,
+            ...(summary ? { summary } : {}),
+            at: this.isoNow(),
+          });
+          budget.recordToolCall();
+          const result = this.deps.tools
+            ? await this.deps.tools.execute({
+                schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+                callId: toolCall.id,
+                toolName: toolCall.name,
+                arguments: argumentsValue,
+                grant,
+                workspaceRoot: workspaceRoot!,
+                pinnedState,
+              })
+            : undefined;
+          const status = result?.status ?? "failed";
+          recordDiscoveryToolUse({
+            collector,
+            toolName: toolCall.name,
+            argumentsValue,
+            resultOutput: result?.output,
+            status,
+          });
+          this.emit(bus, {
+            type: "tool_completed",
+            runId,
+            callId: toolCall.id,
+            toolName: toolCall.name,
+            status,
+            ...(summary ? { summary } : {}),
+            at: this.isoNow(),
+          });
+          this.emit(bus, {
+            type: "discovery_progress",
+            runId,
+            filesRead: collector.fileReads,
+            searches: collector.searches,
+            ...(summary ? { summary } : {}),
+            at: this.isoNow(),
+          });
+          messages.push({
+            role: "tool",
+            toolCallId: toolCall.id,
+            content: result
+              ? serializeToolResultForModel(result)
+              : "Tool runtime unavailable.",
+          });
+        }
+      }
+    } else {
+      reasonCodes.push("discovery_skipped");
+    }
+
+    const brief = compileDiscoveryBrief(
+      toDiscoveryObservation({
+        objective,
+        collector,
+        explicitTargets,
+        constraints: evidence.constraints ?? [],
+      }),
+    );
+    const failed =
+      brief.confidence === "low" && brief.proposedChangeSurfaces.length === 0;
+    reasonCodes.push(failed ? "discovery_failed" : "discovery_completed");
+    this.emit(bus, {
+      type: "discovery_completed",
+      runId,
+      confidence: brief.confidence,
+      fileCount: brief.filesRead.length,
+      surfaceCount: brief.proposedChangeSurfaces.length,
+      openQuestionCount: brief.openQuestions.length,
+      brief,
+      at: this.isoNow(),
+    });
+    this.emitStage(bus, runId, "discovery", "completed", [
+      failed ? "discovery_failed" : "discovery_completed",
+    ]);
+    if (failed) {
+      warnings.push(
+        "Discovery did not identify a concrete change surface. The plan lists open questions instead of invented file tasks.",
+      );
+    }
+    return { brief, failed, collector };
+  }
+
   private syncTaskList(params: {
     mode: string;
     plan?: PlanArtifact;
@@ -3477,6 +4266,22 @@ export class AgentEnginePipeline {
     });
   }
 
+  private emitEvidenceUpdated(
+    bus: EventBus,
+    runId: string,
+    evidence: RunEvidence | undefined,
+  ): void {
+    if (!evidence) {
+      return;
+    }
+    this.emit(bus, {
+      type: "evidence_updated",
+      runId,
+      evidence,
+      at: this.isoNow(),
+    });
+  }
+
   private emit(bus: EventBus, event: RunEvent): void {
     bus.push(event);
   }
@@ -3504,6 +4309,241 @@ function resolveVerificationProjects(
       manifestPaths: [],
     },
   ];
+}
+
+/**
+ * Read-only-command grant used only to capture a preflight snapshot before
+ * Decision Policy has run (Agent execute, always-on). `pathScopes` covers
+ * the whole workspace deliberately — no target narrowing exists yet.
+ */
+function buildSyntheticPreflightGrant(_workspaceRoot: string): ToolGrant {
+  return {
+    maximumWorkspaceEffect: "read",
+    allowedTools: [...READ_ONLY_TOOL_IDS],
+    allowedEffects: ["workspace_read", "process_execute"],
+    // Repo-root relative, matching how a real decision.toolGrant scopes
+    // pathScopes (e.g. "."), not an absolute workspaceRoot path.
+    pathScopes: ["."],
+    approvalMode: "never",
+    limits: { maxToolCalls: 0, maxWallTimeMs: 0, maxOutputBytes: 0 },
+  };
+}
+
+function buildPreflightVerificationInput(params: {
+  decision?: ExecutionDecision;
+  understanding?: RequestUnderstandingResult;
+  input: AgentEngineStartInput;
+  pinnedState: RepositoryStateReference;
+  verificationGrant: ToolGrant;
+  contextPaths: readonly string[];
+  pathScopes: readonly string[];
+  mentionedPaths: readonly string[];
+}): VerificationInput {
+  const changedFiles = derivePreflightTargets({
+    understanding: params.understanding,
+    dirtyPaths: params.input.dirtyPaths ?? [],
+    contextPaths: params.contextPaths,
+    pathScopes: params.pathScopes,
+    mentionedPaths: params.mentionedPaths,
+  });
+  return {
+    schemaVersion: VERIFICATION_SCHEMA_VERSION,
+    workspaceRoot: params.input.workspaceRoot!,
+    pinnedState: params.pinnedState,
+    changedFiles,
+    projects: resolveVerificationProjects(params.input),
+    verification: {
+      required: true,
+      minimumEvidence: uniqueVerificationEvidence([
+        ...(params.decision?.verification.minimumEvidence ?? []),
+        "diagnostics",
+        "typecheck",
+        "build",
+      ]),
+      allowUnavailable: true,
+    },
+    grant: params.verificationGrant,
+    changeScope: params.understanding
+      ? resolvePreflightChangeScope(params.understanding)
+      : params.mentionedPaths.length > 0
+        ? "module"
+        : "cross_cutting",
+    stateReadiness: params.input.repositoryState?.readiness ?? "ready",
+  };
+}
+
+function derivePreflightTargets(params: {
+  understanding?: RequestUnderstandingResult;
+  dirtyPaths: readonly string[];
+  contextPaths: readonly string[];
+  pathScopes: readonly string[];
+  mentionedPaths: readonly string[];
+}): string[] {
+  const explicitTargets = (params.understanding?.taskAnalysis.targets ?? [])
+    .filter((target) => target.explicit)
+    .map((target) => target.value);
+  const scopedCandidates = [
+    ...explicitTargets,
+    ...params.mentionedPaths,
+    ...params.dirtyPaths,
+    ...params.contextPaths,
+  ];
+  const normalized = scopedCandidates
+    .map(normalizePlanningPath)
+    .filter((path) => isSafeRelativePlanningPath(path));
+  const specific = uniqueStrings(normalized).slice(0, 32);
+  if (specific.length > 0) {
+    return specific;
+  }
+  return uniqueStrings(
+    params.pathScopes
+      .map(normalizePlanningPath)
+      .filter((path) => isSafeRelativePlanningPath(path)),
+  ).slice(0, 32);
+}
+
+/**
+ * Explicit "@path" mentions in the raw user query. Used only to scope the
+ * preflight build-state capture that runs before Request Understanding
+ * exists (so it has no `taskAnalysis.targets` yet) — without this, that
+ * capture's `changedFiles` falls back to the repo root and never discovers
+ * a real per-package build/typecheck check via nearby-manifest expansion.
+ */
+function extractMentionedPaths(query: string): string[] {
+  const matches = query.matchAll(/@([^\s,;:)]+)/g);
+  return [...matches].map((match) => match[1] ?? "").filter(Boolean);
+}
+
+function resolvePreflightChangeScope(
+  understanding: RequestUnderstandingResult,
+): VerificationInput["changeScope"] {
+  const scope = understanding.taskAnalysis.scope;
+  if (scope === "repository" || scope === "workspace") {
+    return "cross_cutting";
+  }
+  if (scope === "package" || scope === "multi_file") {
+    return "module";
+  }
+  return "localized";
+}
+
+function inferDiscoveryTargetKind(
+  kind: string,
+): DiscoveryTarget["kind"] {
+  if (
+    kind === "file" ||
+    kind === "folder" ||
+    kind === "symbol" ||
+    kind === "test" ||
+    kind === "config"
+  ) {
+    return kind;
+  }
+  return "unknown";
+}
+
+function buildScopedRepoMapForPlanning(
+  contextPaths: readonly string[],
+): { entries: Array<{ path: string; kind?: string; note?: string }> } | undefined {
+  const entries = uniqueStrings(contextPaths.map(normalizePlanningPath))
+    .filter((path) => isSafeRelativePlanningPath(path))
+    .slice(0, 80)
+    .map((path) => ({
+      path,
+      kind: path.includes(".") ? "file" : "folder",
+    }));
+  return entries.length > 0 ? { entries } : undefined;
+}
+
+function toPlanningBuildEvidence(state: RepoBuildState): {
+  phase: "before";
+  summary: string;
+  diagnostics?: RepoBuildState["diagnostics"];
+  failedChecks?: string[];
+} {
+  const failedChecks = state.checks
+    .filter((check) => state.summary.failedCheckIds.includes(check.checkId))
+    .map((check) => check.label || check.checkId)
+    .slice(0, 32);
+  const topDiagnostics = state.diagnostics.slice(0, 200);
+  const summaryParts = [
+    `${state.summary.errorCount} error(s)`,
+    `${state.summary.warningCount} warning(s)`,
+    state.scope.projectIds.length > 0
+      ? `projects: ${state.scope.projectIds.slice(0, 8).join(", ")}`
+      : undefined,
+    failedChecks.length > 0
+      ? `failed checks: ${failedChecks.slice(0, 8).join(", ")}`
+      : undefined,
+  ].filter((part): part is string => Boolean(part));
+
+  return {
+    phase: "before",
+    summary: summaryParts.join("; ").slice(0, 4_000),
+    diagnostics: topDiagnostics.length > 0 ? topDiagnostics : undefined,
+    failedChecks: failedChecks.length > 0 ? failedChecks : undefined,
+  };
+}
+
+function uniqueVerificationEvidence(
+  values: readonly VerificationInput["verification"]["minimumEvidence"][number][],
+): VerificationInput["verification"]["minimumEvidence"] {
+  return [...new Set(values)];
+}
+
+/**
+ * Capped preflight-diagnostic hint for the understanding LLM. Best-effort
+ * scope match against the raw query text only — understanding hasn't run
+ * yet, so there is no targets list to match against. The authoritative
+ * in-scope count for strategy rules is computed later, post-understanding,
+ * against full evidence.targets (see evidenceScope.ts).
+ */
+function buildDiagnosticSummary(
+  state: RepoBuildState,
+  query: string,
+): DiagnosticSummary | undefined {
+  const errors = state.diagnostics.filter(
+    (diagnostic) => diagnostic.severity === "error",
+  );
+  if (errors.length === 0) {
+    return undefined;
+  }
+  const normalizedQuery = query.toLowerCase();
+  const inScopeErrorCount = errors.filter((diagnostic) =>
+    normalizedQuery.includes(diagnostic.path.toLowerCase()),
+  ).length;
+  return {
+    errorCount: errors.length,
+    inScopeErrorCount,
+    diagnostics: errors.slice(0, 12).map((diagnostic) => ({
+      path: diagnostic.path,
+      ...(diagnostic.code ? { code: diagnostic.code } : {}),
+      message: diagnostic.message.slice(0, 300),
+    })),
+  };
+}
+
+function normalizePlanningPath(value: string): string {
+  return value
+    .trim()
+    .replace(/^@+/, "")
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/\/+$/, "") || ".";
+}
+
+function isSafeRelativePlanningPath(path: string): boolean {
+  return (
+    path.length > 0 &&
+    !path.startsWith("/") &&
+    !path.startsWith("~") &&
+    !path.includes("..") &&
+    !/^[A-Za-z]:\//.test(path)
+  );
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
 function inferLanguageFromPaths(paths: readonly string[]): ProjectDescriptor["primaryLanguageId"] {
@@ -3636,6 +4676,433 @@ function appendTextContinuation(prefix: string, continuation: string): string {
   if (!first) return continuation;
   if (!second) return first;
   return `${first}\n${second}`;
+}
+
+function createInitialRunEvidence(objective: string): RunEvidence {
+  return {
+    issues: [],
+    ledger: [
+      {
+        id: "run-start",
+        kind: "tool",
+        summary: `Run objective: ${objective.slice(0, 780)}`,
+        paths: [],
+        issueIds: [],
+      },
+    ],
+  };
+}
+
+function finalizeRunEvidence(params: {
+  evidence: RunEvidence;
+  status: AgentRunStatus;
+  reasonCodes: readonly AgentReasonCode[];
+}): RunEvidence {
+  const evidence = params.evidence;
+  if (!evidence.finalStopReason) {
+    if (params.status === "completed") {
+      if (params.reasonCodes.includes("verification_passed")) {
+        evidence.finalStopReason =
+          "Completed because required verification passed after edits.";
+      } else if (params.reasonCodes.includes("plan_mode_completed")) {
+        evidence.finalStopReason =
+          "Completed because Plan mode produced a structured plan.";
+      } else {
+        evidence.finalStopReason =
+          "Completed because the agent produced an answer within the approved scope.";
+      }
+    } else if (params.status === "budget_exhausted") {
+      evidence.finalStopReason = "Stopped because the run budget was exhausted.";
+    } else if (params.status === "failed") {
+      evidence.finalStopReason =
+        "Stopped because execution or required verification failed.";
+    } else if (params.status === "suspended") {
+      evidence.finalStopReason =
+        "Suspended because user approval or clarification is required.";
+    } else if (params.status === "cancelled") {
+      evidence.finalStopReason = "Stopped because the run was cancelled.";
+    }
+  }
+  if (evidence.finalStopReason) {
+    upsertLedgerEntry(evidence, {
+      id: "final-stop",
+      kind: "stop",
+      summary: evidence.finalStopReason,
+      status: params.status,
+      paths: [],
+      issueIds: [],
+    });
+  }
+  return evidence;
+}
+
+function recordDiscoveryEvidence(
+  evidence: RunEvidence,
+  params: {
+    brief: DiscoveryBrief;
+    collector: ReturnType<typeof createDiscoveryObservationCollector>;
+    failed: boolean;
+  },
+): void {
+  evidence.discovery = {
+    target: params.brief.objective,
+    filesRead: uniqueStrings(params.brief.filesRead.map((file) => file.path)),
+    searches: uniqueStrings(params.collector.searchHits.map((hit) => hit.path)),
+    commands: uniqueStrings(
+      params.brief.verificationHints
+        .map((hint) => hint.command)
+        .filter((value): value is string => Boolean(value)),
+    ),
+    skipped:
+      params.collector.toolCalls >= DISCOVERY_PASS_POLICY.maxToolCalls
+        ? ["Discovery stopped at the tool-call budget."]
+        : [],
+    capacity: {
+      fileBudget: DISCOVERY_PASS_POLICY.maxFileReads,
+      searchBudget: DISCOVERY_PASS_POLICY.maxSearches,
+      toolCallBudget: DISCOVERY_PASS_POLICY.maxToolCalls,
+      filesRead: params.collector.fileReads,
+      searchesRun: params.collector.searches,
+      toolCallsUsed: params.collector.toolCalls,
+    },
+    stopReason: params.failed
+      ? "Discovery stopped with low confidence and no concrete change surface."
+      : "Discovery stopped after identifying enough evidence for planning.",
+    confidence: params.brief.confidence,
+    surfaceCount: params.brief.proposedChangeSurfaces.length,
+  };
+  upsertLedgerEntry(evidence, {
+    id: "discovery",
+    kind: "discovery",
+    summary: `${params.brief.confidence} confidence; ${params.brief.filesRead.length} files; ${params.brief.proposedChangeSurfaces.length} change surfaces.`,
+    paths: evidence.discovery.filesRead.slice(0, 40),
+    issueIds: [],
+  });
+}
+
+function recordPlanEvidence(evidence: RunEvidence, plan: PlanArtifact): void {
+  const reviewedRefs = plan.contextReviewed.map((ref) => ref.ref);
+  const steps = plan.phases.flatMap((phase) =>
+    phase.steps.map((step) => {
+      const evidenceRefs = uniqueStrings([
+        ...step.targetRefs,
+        ...reviewedRefs.filter((ref) =>
+          step.targetRefs.some(
+            (target) => ref.includes(target) || target.includes(ref),
+          ),
+        ),
+      ]).slice(0, 32);
+      return {
+        id: step.id,
+        title: step.intent || step.actionSummary,
+        targetRefs: step.targetRefs,
+        evidenceRefs,
+        ...(step.verification ? { verification: step.verification } : {}),
+        status: "pending" as const,
+      };
+    }),
+  );
+  evidence.plan = {
+    objective: plan.objective,
+    stepCount: steps.length,
+    steps,
+    evidenceLinkedStepCount: steps.filter(
+      (step) => step.evidenceRefs.length > 0 || step.verification,
+    ).length,
+  };
+  upsertLedgerEntry(evidence, {
+    id: "plan",
+    kind: "plan",
+    summary: `Plan has ${plan.phases.length} phases and ${steps.length} executable steps.`,
+    paths: uniqueStrings(steps.flatMap((step) => step.targetRefs)).slice(0, 40),
+    issueIds: [],
+  });
+}
+
+function recordToolEvidence(
+  evidence: RunEvidence | undefined,
+  params: {
+    toolName: string;
+    status: string;
+    summary?: string;
+    output?: unknown;
+    at?: string;
+  },
+): void {
+  if (!evidence) return;
+  const paths = extractEvidencePaths(params.output);
+  const kind =
+    hasCheckpointOutput(params.output)
+      ? "edit"
+      : params.toolName === "run_readonly_command" &&
+          isVerificationCommandOutput(params.output)
+        ? "verification"
+        : "tool";
+  evidence.ledger.push({
+    id: `tool-${evidence.ledger.length + 1}`,
+    kind,
+    summary: params.summary || params.toolName,
+    status: params.status,
+    toolName: params.toolName,
+    paths,
+    issueIds: [],
+    ...(params.at ? { at: params.at } : {}),
+  });
+  trimEvidence(evidence);
+}
+
+function recordBuildStateDeltaEvidence(
+  evidence: RunEvidence | undefined,
+  params: { before?: RepoBuildState; after: RepoBuildState },
+): void {
+  if (!evidence) return;
+  const beforeDiagnostics = params.before?.diagnostics ?? [];
+  const afterDiagnostics = params.after.diagnostics;
+  const afterKeys = new Set(afterDiagnostics.map(diagnosticKey));
+  const beforeKeys = new Set(beforeDiagnostics.map(diagnosticKey));
+  const issues = [
+    ...beforeDiagnostics.map((diagnostic, index) =>
+      diagnosticToIssue(diagnostic, {
+        idPrefix: "before",
+        index,
+        status: afterKeys.has(diagnosticKey(diagnostic)) ? "remaining" : "fixed",
+      }),
+    ),
+    ...afterDiagnostics
+      .filter((diagnostic) => !beforeKeys.has(diagnosticKey(diagnostic)))
+      .map((diagnostic, index) =>
+        diagnosticToIssue(diagnostic, {
+          idPrefix: "after",
+          index,
+          status: "remaining",
+        }),
+      ),
+  ];
+  evidence.issues = mergeIssues(evidence.issues, issues);
+  evidence.verification = {
+    status: params.after.summary.errorCount === 0 ? "passed" : "remaining",
+    beforeErrorCount: params.before?.summary.errorCount,
+    afterErrorCount: params.after.summary.errorCount,
+    clearedErrorCount: Math.max(
+      0,
+      (params.before?.summary.errorCount ?? 0) - params.after.summary.errorCount,
+    ),
+    remainingIssueCount: params.after.summary.errorCount,
+    checks: params.after.checks.slice(0, 32).map((check) => ({
+      checkId: check.checkId,
+      kind: check.kind,
+      outcome: check.outcome,
+      summary: check.summary,
+    })),
+    stopReason:
+      params.after.summary.errorCount === 0
+        ? "Build diagnostics show no remaining errors."
+        : "Build diagnostics still show remaining errors.",
+  };
+}
+
+function recordVerificationEvidence(
+  evidence: RunEvidence | undefined,
+  params: { verification: VerificationResult; before?: RepoBuildState },
+): void {
+  if (!evidence) return;
+  const diagnostics = params.verification.allDiagnostics ??
+    params.verification.diagnostics;
+  const issues = diagnostics.map((diagnostic, index) =>
+    diagnosticToIssue(diagnostic, {
+      idPrefix: "verify",
+      index,
+      status:
+        diagnostic.severity === "error" || diagnostic.severity === "warning"
+          ? "remaining"
+          : "found",
+    }),
+  );
+  evidence.issues = mergeIssues(evidence.issues, issues);
+  evidence.verification = {
+    status: params.verification.status,
+    beforeErrorCount: params.before?.summary.errorCount,
+    afterErrorCount: diagnostics.filter((diag) => diag.severity === "error")
+      .length,
+    clearedErrorCount:
+      params.before?.summary.errorCount !== undefined
+        ? Math.max(
+            0,
+            params.before.summary.errorCount -
+              diagnostics.filter((diag) => diag.severity === "error").length,
+          )
+        : undefined,
+    remainingIssueCount: diagnostics.filter(
+      (diag) => diag.severity === "error" || diag.severity === "warning",
+    ).length,
+    checks: params.verification.checks.slice(0, 32).map((check) => ({
+      checkId: check.checkId,
+      kind: check.kind,
+      outcome: check.outcome,
+      summary: check.summary,
+    })),
+    stopReason:
+      params.verification.status === "verified_success"
+        ? "Verification checks passed."
+        : "Verification did not fully pass.",
+  };
+}
+
+function recordStopEvidence(
+  evidence: RunEvidence | undefined,
+  acceptKind: Extract<VerificationGateDecision, { action: "accept" }>["acceptKind"],
+): void {
+  if (!evidence) return;
+  const reason =
+    acceptKind === "verified_success"
+      ? "Completed because verification passed."
+      : acceptKind === "skipped_not_required"
+        ? "Completed because verification was not required."
+        : acceptKind === "implemented_unverified"
+          ? "Completed with implementation kept unverified by policy."
+          : "Completed because verification was unavailable but allowed.";
+  evidence.finalStopReason = reason;
+  upsertLedgerEntry(evidence, {
+    id: "verification-stop",
+    kind: "stop",
+    summary: reason,
+    status: acceptKind,
+    paths: [],
+    issueIds: [],
+  });
+}
+
+function isSuccessfulVerificationToolResult(
+  toolName: string,
+  result: ToolResult,
+): boolean {
+  if (toolName !== "run_readonly_command" || result.status !== "succeeded") {
+    return false;
+  }
+  const output = result.output;
+  if (!output || typeof output !== "object") {
+    return false;
+  }
+  const record = output as { argv?: unknown; exitCode?: unknown };
+  if (record.exitCode !== 0 || !Array.isArray(record.argv)) {
+    return false;
+  }
+  const argv = record.argv.filter(
+    (part): part is string => typeof part === "string",
+  );
+  if (argv.length === 0) {
+    return false;
+  }
+  const command = argv.join(" ").toLowerCase();
+  return /\b(?:build|check|compile|lint|test|typecheck|tsc|vitest|jest|pytest|ctest)\b/.test(
+    command,
+  );
+}
+
+function diagnosticToIssue(
+  diagnostic: VerificationResult["diagnostics"][number],
+  params: {
+    idPrefix: string;
+    index: number;
+    status: RunEvidence["issues"][number]["status"];
+  },
+): RunEvidence["issues"][number] {
+  return {
+    id: `${params.idPrefix}-${params.index + 1}`,
+    source: diagnostic.source ?? "diagnostic",
+    path: diagnostic.path,
+    message: diagnostic.message,
+    ...(diagnostic.code ? { code: diagnostic.code } : {}),
+    status: params.status,
+    ...(diagnostic.checkId
+      ? { verificationEvidence: `check:${diagnostic.checkId}` }
+      : {}),
+  };
+}
+
+function diagnosticKey(diagnostic: VerificationResult["diagnostics"][number]): string {
+  return [
+    diagnostic.path,
+    diagnostic.startLine ?? "",
+    diagnostic.source ?? "",
+    diagnostic.code ?? "",
+    diagnostic.message,
+  ].join("|");
+}
+
+function mergeIssues(
+  current: RunEvidence["issues"],
+  next: RunEvidence["issues"],
+): RunEvidence["issues"] {
+  const byKey = new Map<string, RunEvidence["issues"][number]>();
+  for (const issue of current) {
+    byKey.set(issueKey(issue), issue);
+  }
+  for (const issue of next) {
+    byKey.set(issueKey(issue), issue);
+  }
+  return [...byKey.values()].slice(0, 500);
+}
+
+function issueKey(issue: RunEvidence["issues"][number]): string {
+  return [issue.path ?? "", issue.code ?? "", issue.message].join("|");
+}
+
+function upsertLedgerEntry(
+  evidence: RunEvidence,
+  entry: RunEvidence["ledger"][number],
+): void {
+  const index = evidence.ledger.findIndex((item) => item.id === entry.id);
+  if (index >= 0) {
+    evidence.ledger[index] = entry;
+  } else {
+    evidence.ledger.push(entry);
+  }
+  trimEvidence(evidence);
+}
+
+function trimEvidence(evidence: RunEvidence): void {
+  evidence.ledger = evidence.ledger.slice(-500);
+  evidence.issues = evidence.issues.slice(0, 500);
+}
+
+function extractEvidencePaths(output: unknown): string[] {
+  if (!output || typeof output !== "object") return [];
+  const record = output as {
+    changedFiles?: unknown;
+    path?: unknown;
+    argv?: unknown;
+  };
+  const paths: string[] = [];
+  if (typeof record.path === "string") paths.push(record.path);
+  if (Array.isArray(record.changedFiles)) {
+    for (const item of record.changedFiles) {
+      if (typeof item === "string") paths.push(item);
+    }
+  }
+  return uniqueStrings(paths).slice(0, 40);
+}
+
+function hasCheckpointOutput(output: unknown): boolean {
+  return Boolean(
+    output &&
+      typeof output === "object" &&
+      "checkpointId" in output &&
+      typeof (output as { checkpointId?: unknown }).checkpointId === "string",
+  );
+}
+
+function isVerificationCommandOutput(output: unknown): boolean {
+  if (!output || typeof output !== "object") return false;
+  const argv = (output as { argv?: unknown }).argv;
+  if (!Array.isArray(argv)) return false;
+  const command = argv
+    .filter((part): part is string => typeof part === "string")
+    .join(" ")
+    .toLowerCase();
+  return /\b(?:build|check|compile|lint|test|typecheck|tsc|vitest|jest|pytest|ctest)\b/.test(
+    command,
+  );
 }
 
 function formatSkillPromptContent(block: {

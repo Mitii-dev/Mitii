@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.8.27",
+  "version": "2.8.28",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -218,10 +218,15 @@
     "configuration": {
       "title": "Mitii AI Agent",
       "properties": {
+        "mitii.developer.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Unlock developer options in the Mitii Settings → Debug tab (nested debug switches appear after this is enabled)"
+        },
         "mitii.debug": {
           "type": "boolean",
           "default": false,
-          "description": "Enable debug logging in the Mitii Output channel (auto-shows the channel; includes stack traces on failures)"
+          "description": "Enable debug logging in the Mitii Output channel (auto-shows the channel; includes stack traces on failures). Requires mitii.developer.enabled in the Mitii Debug tab."
         },
         "mitii.provider.type": {
           "type": "string",
@@ -276,7 +281,7 @@
         "mitii.semanticIndex.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable semantic workspace indexing when the provider is OpenAI-compatible. Local endpoints use the Ollama nomic-embed-text embedding preset by default and fail closed to lexical indexing if the embedding probe fails."
+          "description": "Enable semantic workspace indexing when the provider is OpenAI-compatible. Local endpoints require an explicitly configured embedding model and fail closed to lexical indexing if the embedding probe fails."
         },
         "mitii.semanticIndex.backend": {
           "type": "string",
@@ -287,7 +292,7 @@
             "disabled"
           ],
           "default": "auto",
-          "description": "Embedding backend for semantic indexing. Auto uses Ollama/nomic-embed-text for local endpoints and OpenAI-compatible text-embedding-3-small for cloud endpoints."
+          "description": "Embedding backend for semantic indexing. Auto selects the matching local or OpenAI-compatible backend after semantic indexing is enabled."
         },
         "mitii.semanticIndex.model": {
           "type": "string",

@@ -6,7 +6,9 @@ import {
   agentModeSchema,
   agentRunBudgetSchema,
   createUserRequestInputSchema,
+  explorationDepthSchema,
   planArtifactSchema,
+  planStrategyDecisionSchema,
   repositoryStateReferenceSchema,
   taskListSchema,
 } from '@mitii/v8';
@@ -15,7 +17,9 @@ import type {
   AgentEngineStartInput,
   AgentMode,
   AgentRunBudget,
+  ExplorationDepth,
   PlanArtifact,
+  PlanStrategyDecision,
   RepositoryStateReference,
   TaskList,
 } from '@mitii/v8';
@@ -70,6 +74,8 @@ export const mitiiStartInputSchema = z
      * Injected as an approved plan; skips the in-run plan gate.
      */
     approvedPlan: planArtifactSchema.optional(),
+    /** Strategy for a host-carried approved plan. */
+    approvedPlanStrategy: planStrategyDecisionSchema.optional(),
     /**
      * Live working checklist from a prior Agent/Plan turn.
      * Engine does not stamp remaining items done on run completion.
@@ -82,6 +88,11 @@ export const mitiiStartInputSchema = z
     approvalMode: mitiiApprovalModeSchema.optional(),
     planApproval: z.enum(['policy', 'never']).optional(),
     dirtyPaths: z.array(z.string().min(1)).optional(),
+    /**
+     * How hard Engine should look before drafting a plan. "auto" defers to
+     * strategy rules; "quick" skips discovery even for wide-scope asks.
+     */
+    explorationDepth: explorationDepthSchema.optional(),
     /**
      * Host-pinned workspace paths (@mentions). Mapped to intake
      * referencedArtifacts so understanding/context can prefer them.
@@ -113,7 +124,7 @@ export const mitiiResumeInputSchema = agentEngineResumeInputSchema;
 export type MitiiResumeInput = AgentEngineResumeInput;
 
 export type { AgentMode, AgentRunBudget, RepositoryStateReference };
-export type { PlanArtifact, TaskList };
+export type { PlanArtifact, PlanStrategyDecision, TaskList, ExplorationDepth };
 
 export interface MitiiStartDefaults {
   mode: AgentMode;
@@ -168,6 +179,7 @@ export function toAgentEngineStartInput(
       content: message.content,
     })),
     approvedPlan: parsed.approvedPlan,
+    approvedPlanStrategy: parsed.approvedPlanStrategy,
     taskList: parsed.taskList,
     budget: parsed.budget,
     model: parsed.model,
@@ -176,6 +188,7 @@ export function toAgentEngineStartInput(
     approvalMode: parsed.approvalMode,
     planApproval: parsed.planApproval,
     dirtyPaths: parsed.dirtyPaths,
+    explorationDepth: parsed.explorationDepth,
     instructions:
       parsed.projectRules && parsed.projectRules.length > 0
         ? {

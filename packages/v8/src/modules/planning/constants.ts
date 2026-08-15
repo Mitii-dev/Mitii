@@ -38,6 +38,13 @@ export const PLAN_CONTEXT_KINDS = [
   "other",
 ] as const;
 
+export const PLAN_STRATEGIES = [
+  "follow_evidence",
+  "discover_and_plan",
+  "plan_from_ask",
+  "clarify",
+] as const;
+
 export const PLANNING_REASON_CODES = [
   "plan_drafted",
   "plan_validated",
@@ -46,8 +53,20 @@ export const PLANNING_REASON_CODES = [
   "plan_open_questions",
   "plan_process_hints_applied",
   "plan_skills_considered",
+  "plan_diagnostics_considered",
   "plan_sections_required",
   "plan_blocked_invalid",
+  "plan_strategy_follow_evidence",
+  "plan_strategy_discover_and_plan",
+  "plan_strategy_plan_from_ask",
+  "plan_strategy_clarify",
+  "plan_strategy_rules",
+  "plan_strategy_override",
+  "plan_build_evidence_out_of_scope",
+  "plan_discovery_applied",
+  "plan_discovery_insufficient",
+  "plan_drafted_from_discovery",
+  "plan_discovery_draft_failed_fallback",
 ] as const;
 
 export const PLANNING_ERROR_CODES = [

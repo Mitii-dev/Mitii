@@ -9,9 +9,11 @@ import {
 } from "..";
 import { assembleToolCalls } from "../actions";
 import type { ModelRequest } from "../../../../modules/model-gateway";
+import type { PlanningInput } from "../../../../modules/planning";
 import type {
   RepositoryContextPipelineInput,
 } from "../../../../modules/repository-context";
+import type { VerificationInput } from "../../../../modules/verification";
 import {
   createDecision,
   createReadOnlyGrant,
@@ -454,6 +456,156 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     );
   });
 
+  it("does not continue transitional narration after a successful verification command", async () => {
+    const llm = new ScriptedLlmPort(
+      [
+        {
+          toolCalls: [
+            {
+              id: "patch_1",
+              name: "apply_patch",
+              arguments: JSON.stringify({
+                patches: [
+                  {
+                    path: "src/field.ts",
+                    oldText: "type Broken = string",
+                    newText: "type Fixed = string",
+                  },
+                ],
+              }),
+            },
+          ],
+        },
+        {
+          toolCalls: [
+            {
+              id: "build_1",
+              name: "run_readonly_command",
+              arguments: JSON.stringify({
+                argv: [
+                  "npm",
+                  "run",
+                  "build",
+                  "--workspace",
+                  "packages/mui-builder",
+                ],
+              }),
+            },
+          ],
+        },
+        {
+          content:
+            "Build passes now. Let me inspect the remaining field files before I summarize:",
+        },
+        {
+          toolCalls: [
+            {
+              id: "wander_1",
+              name: "read_file",
+              arguments: JSON.stringify({ path: "src/unrelated.ts" }),
+            },
+          ],
+        },
+      ],
+    );
+
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          planningDepth: "visible",
+          repositoryContextRequired: false,
+          toolGrant: createReadOnlyGrant({
+            maximumWorkspaceEffect: "write",
+            allowedTools: ["apply_patch", "run_readonly_command", "read_file"],
+            allowedEffects: [
+              "workspace_read",
+              "workspace_write",
+              "process_execute",
+            ],
+          }),
+          reasonCodes: ["mutation_execute"],
+        }),
+        llm,
+        toolResults: {
+          apply_patch: {
+            output: {
+              checkpointId: "chk_1",
+              changedFiles: ["src/field.ts"],
+            },
+          },
+          run_readonly_command: {
+            output: {
+              argv: [
+                "npm",
+                "run",
+                "build",
+                "--workspace",
+                "packages/mui-builder",
+              ],
+              exitCode: 0,
+              stdout: "",
+              stderr: "",
+              truncated: false,
+            },
+          },
+        },
+      }),
+    );
+
+    const handle = engine.start(
+      baseStartInput({
+        workspaceRoot: "/repo",
+        request: {
+          sessionId: "sess_1",
+          mode: "agent",
+          userMessage: "Fix all TypeScript issues in packages/mui-builder",
+          workspace: { workspaceId: "ws_1" },
+        },
+      }),
+    );
+    const [result, events] = await Promise.all([
+      handle.result,
+      collectEvents(handle.events),
+    ]);
+
+    expect(result.status).toBe("completed");
+    expect(result.answer).toContain("Completed workspace edits");
+    expect(result.answer).toContain("src/field.ts");
+    expect(result.reasonCodes).toContain("incomplete_answer_fallback");
+    expect(result.evidence?.finalStopReason).toContain("Completed");
+    expect(result.evidence?.ledger.some((entry) => entry.kind === "edit")).toBe(
+      true,
+    );
+    expect(
+      result.evidence?.ledger.some((entry) => entry.kind === "verification"),
+    ).toBe(true);
+    expect(result.evidence?.ledger.at(-1)?.kind).toBe("stop");
+    expect(
+      events.some(
+        (event) =>
+          typeof event === "object" &&
+          event !== null &&
+          "type" in event &&
+          event.type === "tool_started" &&
+          "toolName" in event &&
+          event.toolName === "read_file",
+      ),
+    ).toBe(false);
+    expect(
+      events.some(
+        (event) =>
+          typeof event === "object" &&
+          event !== null &&
+          "type" in event &&
+          event.type === "evidence_updated",
+      ),
+    ).toBe(true);
+    for (const event of events) {
+      expect(() => runEventSchema.parse(event)).not.toThrow();
+    }
+  });
+
   it("runs diagnose read-only without mutation", async () => {
     const engine = new AgentEnginePipeline(
       createStubDependencies({
@@ -776,7 +928,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
         }),
         llm,
         planning: {
-          plan: () => ({
+          plan: async () => ({
             schemaVersion: PLANNING_SCHEMA_VERSION,
             status: "validated",
             plan: mockPlan,
@@ -785,6 +937,13 @@ describe("AgentEnginePipeline (Phase 7)", () => {
             usedTokens: 40,
             budgetTokens: 1_200,
             durationMs: 1,
+            strategy: {
+              schemaVersion: 1 as const,
+              strategy: "discover_and_plan" as const,
+              rationale: "Migration needs discovery first.",
+              skipDiscover: false,
+              useBuildEvidence: false,
+            },
           }),
         },
         checkpointStore,
@@ -807,10 +966,19 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.status).toBe("suspended");
     expect(result.suspension?.kind).toBe("plan_approval_required");
     expect(result.plan?.objective).toBe("Migrate auth safely");
+    expect(result.planStrategy?.strategy).toBe("discover_and_plan");
+    expect(result.evidence?.plan?.stepCount).toBe(1);
+    expect(result.evidence?.plan?.evidenceLinkedStepCount).toBe(1);
     expect(modelCalls).toBe(0);
     expect(result.reasonCodes).toContain("plan_approval_suspended");
 
     const resumedLlm = new ScriptedLlmPort([{ content: "Executed after plan." }]);
+    const resumedRequests: ModelRequest[] = [];
+    const originalResume = resumedLlm.complete.bind(resumedLlm);
+    resumedLlm.complete = async function* (request: ModelRequest) {
+      resumedRequests.push(request);
+      yield* originalResume(request);
+    };
     const resumeEngine = new AgentEnginePipeline(
       createStubDependencies({
         decision: createDecision({
@@ -823,7 +991,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
         }),
         llm: resumedLlm,
         planning: {
-          plan: () => ({
+          plan: async () => ({
             schemaVersion: PLANNING_SCHEMA_VERSION,
             status: "validated",
             plan: mockPlan,
@@ -847,6 +1015,228 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(resumed.status).toBe("completed");
     expect(resumed.reasonCodes).toContain("plan_approved");
     expect(resumed.answer).toBe("Executed after plan.");
+    expect(resumed.planStrategy?.strategy).toBe("discover_and_plan");
+    const resumedSystem = resumedRequests[0]?.messages.find(
+      (message) => message.role === "system",
+    );
+    expect(resumedSystem?.content).toContain(
+      "discovery already ran",
+    );
+  });
+
+  it("captures preflight build state before planning and passes evidence into Planning", async () => {
+    let capturedVerificationInput: VerificationInput | undefined;
+    let capturedPlanningInput: PlanningInput | undefined;
+    const repoBuildStateBefore = {
+      schemaVersion: 1 as const,
+      capturedAt: "2026-08-14T12:00:00.000Z",
+      phase: "before" as const,
+      scope: {
+        workspaceRoot: "/repo",
+        folderPrefixes: ["packages/mui-builder"],
+        projectIds: ["mui-builder"],
+        changeScope: "module" as const,
+      },
+      checks: [
+        {
+          checkId: "mui-builder:typecheck",
+          kind: "typecheck" as const,
+          projectId: "mui-builder",
+          label: "typecheck",
+          evidenceSource: "package.json",
+          outcome: "failed" as const,
+          exitCode: 2,
+          summary: "Typecheck failed.",
+        },
+      ],
+      diagnostics: [
+        {
+          path: "packages/mui-builder/src/Button.tsx",
+          severity: "error" as const,
+          message: "Type mismatch",
+          startLine: 12,
+          source: "tsc",
+          code: "TS2322",
+          checkId: "mui-builder:typecheck",
+        },
+      ],
+      summary: {
+        errorCount: 1,
+        warningCount: 0,
+        failedCheckIds: ["mui-builder:typecheck"],
+      },
+      reasonCodes: ["checks_failed" as const],
+    };
+
+    const plan = {
+      schemaVersion: 1 as const,
+      objective: "Fix mui-builder type errors",
+      assumptions: [],
+      openQuestions: [],
+      contextReviewed: [],
+      constraints: [],
+      dimensions: {
+        scope: "package",
+        risk: "low" as const,
+        clarity: "clear",
+        complexity: "moderate",
+        changeImpact: ["code" as const],
+      },
+      phases: [
+        {
+          id: "phase-change",
+          name: "Change",
+          purpose: "Fix diagnostics",
+          steps: [
+            {
+              id: "step-1",
+              intent: "Fix packages/mui-builder/src/Button.tsx",
+              targetRefs: ["packages/mui-builder/src/Button.tsx"],
+              actionSummary: "Resolve the reported type mismatch.",
+              expectedOutcome: "Typecheck is clean.",
+              riskLevel: "low" as const,
+            },
+          ],
+          dependencies: [],
+          successCriteria: ["Diagnostics are resolved."],
+        },
+      ],
+      risks: [],
+      alternatives: [],
+      verification: { checks: ["typecheck"], manualQa: [], commands: [] },
+      rollback: "Revert the type-error fixes.",
+      approvalRequired: false,
+      processHintsApplied: [],
+    };
+
+    const baseUnderstanding = createUnderstanding();
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          planningDepth: "visible",
+          planGate: "required_before_execute",
+          repositoryContextRequired: false,
+          pinnedState: { workspaceId: "ws_1", stateToken: "tok_1" },
+          toolGrant: createReadOnlyGrant({
+            maximumWorkspaceEffect: "write",
+            allowedTools: ["run_readonly_command", "read_diagnostics"],
+            allowedEffects: ["workspace_read", "process_execute"],
+          }),
+          verification: {
+            required: true,
+            minimumEvidence: ["diagnostics", "typecheck"],
+            allowUnavailable: false,
+          },
+          reasonCodes: [
+            "mutation_execute",
+            "broad_repair_visible_plan",
+            "preflight_build_recommended",
+            "plan_gate_required",
+          ],
+        }),
+        understanding: createUnderstanding({
+          intent: {
+            ...baseUnderstanding.intent,
+            classification: {
+              ...baseUnderstanding.intent.classification,
+              interactionIntent: "act",
+              primaryTaskIntent: "bugfix",
+            },
+          },
+          taskAnalysis: {
+            ...baseUnderstanding.taskAnalysis,
+            scope: "package",
+            complexity: "moderate",
+            targets: [
+              {
+                kind: "folder",
+                value: "packages/mui-builder",
+                explicit: true,
+              },
+            ],
+            recommendsPlanning: true,
+            recommendsVerification: true,
+          },
+        }),
+        verification: {
+          verify: async () => {
+            throw new Error("post-mutation verification should not run");
+          },
+          captureBuildState: async (input) => {
+            capturedVerificationInput = input;
+            return repoBuildStateBefore;
+          },
+          buildStateFromResult: () => repoBuildStateBefore,
+          compareBuildStates: () => ({
+            beforeErrorCount: 1,
+            afterErrorCount: 0,
+            clearedErrorCount: 1,
+            newErrorCount: 0,
+            remainingErrorCount: 0,
+            failedCheckIdsBefore: ["mui-builder:typecheck"],
+            failedCheckIdsAfter: [],
+            reasonCodes: ["errors_cleared"],
+          }),
+        },
+        planning: {
+          plan: async (input) => {
+            capturedPlanningInput = input;
+            return {
+              schemaVersion: 1,
+              status: "validated",
+              plan,
+              warnings: [],
+              reasonCodes: ["plan_drafted", "plan_validated"],
+              usedTokens: 20,
+              budgetTokens: 1_200,
+              durationMs: 1,
+            };
+          },
+        },
+      }),
+    );
+
+    const result = await engine.start(
+      baseStartInput({
+        request: {
+          sessionId: "sess_1",
+          mode: "agent",
+          userMessage: "@packages/mui-builder fix all the ts errors",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/repo",
+        repositoryState: {
+          reference: { workspaceId: "ws_1", stateToken: "tok_1" },
+          readiness: "ready",
+        },
+        projects: [
+          {
+            projectId: "mui-builder",
+            rootPath: "packages/mui-builder",
+            primaryLanguageId: "typescript",
+            manifestPaths: ["packages/mui-builder/package.json"],
+          },
+        ],
+      }),
+    ).result;
+
+    expect(result.status).toBe("suspended");
+    expect(result.repoBuildStateBefore?.summary.errorCount).toBe(1);
+    expect(result.reasonCodes).toContain("repo_build_state_before_captured");
+    // Agent-mode preflight capture runs before Understand, so it has no
+    // taskAnalysis targets yet — but it scopes itself from an explicit
+    // "@packages/mui-builder" mention in the raw query, so it still checks
+    // the right project instead of falling back to a repo-root snapshot
+    // that would never discover the package's build/typecheck scripts.
+    expect(capturedVerificationInput?.changedFiles).toEqual([
+      "packages/mui-builder",
+    ]);
+    expect(capturedVerificationInput?.changeScope).toBe("module");
+    expect(capturedPlanningInput?.explorationDepth).toBe("auto");
+    expect(capturedPlanningInput?.buildEvidence?.diagnostics?.[0]?.path).toBe(
+      "packages/mui-builder/src/Button.tsx",
+    );
   });
 
   it("completes plan mode with the structured plan as the answer", async () => {
@@ -925,7 +1315,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
         }),
         llm,
         planning: {
-          plan: () => ({
+          plan: async () => ({
             schemaVersion: PLANNING_SCHEMA_VERSION,
             status: "validated",
             plan: mockPlan,
@@ -1070,7 +1460,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
         }),
         llm,
         planning: {
-          plan: () => {
+          plan: async () => {
             planningCalls += 1;
             return {
               schemaVersion: PLANNING_SCHEMA_VERSION,
@@ -1118,5 +1508,184 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(system?.content).toContain("<approved_plan");
     expect(system?.content).toContain("Ship conversation carry");
     expect(system?.content).toContain("<task_list");
+  });
+
+  it("keeps a follow_evidence contract on a host-carried concrete repair plan", async () => {
+    const { PLANNING_SCHEMA_VERSION } = await import(
+      "../../../modules/planning"
+    );
+    const carriedPlan = {
+      schemaVersion: PLANNING_SCHEMA_VERSION,
+      objective: "Fix mui-builder type errors",
+      assumptions: [],
+      openQuestions: [],
+      contextReviewed: [],
+      constraints: [],
+      dimensions: {
+        scope: "package",
+        risk: "low" as const,
+        clarity: "clear",
+        complexity: "moderate",
+        changeImpact: ["code" as const],
+      },
+      phases: [
+        {
+          id: "phase-change",
+          name: "Change",
+          purpose: "Fix diagnostics",
+          steps: [
+            {
+              id: "step-1",
+              intent: "Fix packages/mui-builder/src/Button.tsx:12 TS2322",
+              targetRefs: ["packages/mui-builder/src/Button.tsx"],
+              actionSummary: "Resolve the reported type mismatch.",
+              expectedOutcome: "Typecheck is clean.",
+              riskLevel: "low" as const,
+            },
+          ],
+          dependencies: [],
+          successCriteria: ["Diagnostics are resolved."],
+        },
+      ],
+      risks: [],
+      alternatives: [],
+      verification: { checks: ["typecheck"], manualQa: [], commands: [] },
+      rollback: "Revert the type-error fixes.",
+      approvalRequired: false,
+      processHintsApplied: [],
+    };
+    const llm = new ScriptedLlmPort(
+      [{ content: "Fixing the active diagnostic." }],
+      createCapabilities({ supportsTools: false }),
+    );
+    const captured: ModelRequest[] = [];
+    const original = llm.complete.bind(llm);
+    llm.complete = async function* (request: ModelRequest) {
+      captured.push(request);
+      yield* original(request);
+    };
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          planningDepth: "visible",
+          planGate: "none",
+          repositoryContextRequired: false,
+          toolGrant: createReadOnlyGrant(),
+          reasonCodes: ["mutation_execute"],
+        }),
+        llm,
+      }),
+    );
+
+    const result = await engine.start(
+      baseStartInput({
+        approvedPlan: carriedPlan,
+        request: {
+          sessionId: "sess_1",
+          mode: "agent",
+          userMessage: "Continue the repair",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/repo",
+      }),
+    ).result;
+
+    expect(result.planStrategy?.strategy).toBe("follow_evidence");
+    const system = captured[0]?.messages.find((message) => message.role === "system");
+    expect(system?.content).toContain("Skip rediscovery");
+  });
+
+  it("prefers a host-carried approvedPlanStrategy over artifact inference", async () => {
+    const { PLANNING_SCHEMA_VERSION } = await import(
+      "../../../modules/planning"
+    );
+    const carriedPlan = {
+      schemaVersion: PLANNING_SCHEMA_VERSION,
+      objective: "Fix mui-builder type errors",
+      assumptions: [],
+      openQuestions: [],
+      contextReviewed: [],
+      constraints: [],
+      dimensions: {
+        scope: "package",
+        risk: "low" as const,
+        clarity: "clear",
+        complexity: "moderate",
+        changeImpact: ["code" as const],
+      },
+      phases: [
+        {
+          id: "phase-change",
+          name: "Change",
+          purpose: "Fix diagnostics",
+          steps: [
+            {
+              id: "step-1",
+              intent: "Fix packages/mui-builder/src/Button.tsx:12 TS2322",
+              targetRefs: ["packages/mui-builder/src/Button.tsx"],
+              actionSummary: "Resolve the reported type mismatch.",
+              expectedOutcome: "Typecheck is clean.",
+              riskLevel: "low" as const,
+            },
+          ],
+          dependencies: [],
+          successCriteria: ["Diagnostics are resolved."],
+        },
+      ],
+      risks: [],
+      alternatives: [],
+      verification: { checks: ["typecheck"], manualQa: [], commands: [] },
+      approvalRequired: false,
+      processHintsApplied: [],
+    };
+    const llm = new ScriptedLlmPort(
+      [{ content: "Following the carried strategy." }],
+      createCapabilities({ supportsTools: false }),
+    );
+    const captured: ModelRequest[] = [];
+    const original = llm.complete.bind(llm);
+    llm.complete = async function* (request: ModelRequest) {
+      captured.push(request);
+      yield* original(request);
+    };
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          planningDepth: "visible",
+          planGate: "none",
+          repositoryContextRequired: false,
+          toolGrant: createReadOnlyGrant(),
+          reasonCodes: ["mutation_execute"],
+        }),
+        llm,
+      }),
+    );
+
+    const result = await engine.start(
+      baseStartInput({
+        approvedPlan: carriedPlan,
+        approvedPlanStrategy: {
+          schemaVersion: 1,
+          strategy: "plan_from_ask",
+          rationale: "Host persisted the original ask-led strategy.",
+          skipDiscover: true,
+          useBuildEvidence: false,
+        },
+        request: {
+          sessionId: "sess_1",
+          mode: "agent",
+          userMessage: "Continue the approved plan",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/repo",
+      }),
+    ).result;
+
+    expect(result.planStrategy?.strategy).toBe("plan_from_ask");
+    const system = captured[0]?.messages.find((message) => message.role === "system");
+    expect(system?.content).toContain("plan from the approved objective");
+    expect(system?.content).not.toContain("Skip rediscovery");
   });
 });

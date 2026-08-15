@@ -38,5 +38,8 @@ export type {
 export { resolveVerificationRequirement } from "./ResolveVerificationRequirement";
 export type { VerificationResolution } from "./ResolveVerificationRequirement";
 
+export { resolvePreflightBuild } from "./ResolvePreflightBuild";
+export type { PreflightBuildResolution } from "./ResolvePreflightBuild";
+
 export { scanPromptInjection } from "./ScanPromptInjection";
 export type { InjectionScanResult } from "./ScanPromptInjection";

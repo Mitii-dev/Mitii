@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type * as vscode from 'vscode';
-import type { PlanArtifact, TaskList } from '@mitii/sdk';
+import type { PlanArtifact, PlanStrategyDecision, TaskList } from '@mitii/sdk';
 
 import type {
   ActivityEventPayload,
@@ -9,7 +9,11 @@ import type {
   RunFileChangesView,
   TokenUsageSnapshot,
 } from './protocol.js';
-import { parsePendingPlan, parsePendingTaskList } from './conversationCarry.js';
+import {
+  parsePendingPlan,
+  parsePendingPlanStrategy,
+  parsePendingTaskList,
+} from './conversationCarry.js';
 
 const HISTORY_KEY = 'mitii.chatHistory.v1';
 const CHECKPOINT_KEY = 'mitii.checkpoints.v1';
@@ -24,6 +28,8 @@ export interface StoredThread {
    * Cleared after a successful agent run that consumed it, or when replaced.
    */
   pendingPlan?: PlanArtifact;
+  /** Strategy for the pending plan, used on Agent handoff. */
+  pendingPlanStrategy?: PlanStrategyDecision;
   /** Live working task list for this thread. */
   pendingTaskList?: TaskList;
   /** Cumulative token usage for this chat thread. */
@@ -63,6 +69,7 @@ function normalizeMessage(raw: ChatMessageView): ChatMessageView {
 
 function normalizeThread(raw: StoredThread): StoredThread {
   const pendingPlan = parsePendingPlan(raw.pendingPlan);
+  const pendingPlanStrategy = parsePendingPlanStrategy(raw.pendingPlanStrategy);
   const pendingTaskList = parsePendingTaskList(raw.pendingTaskList);
   const tokenUsage = normalizeTokenUsage(raw.tokenUsage);
   return {
@@ -73,6 +80,7 @@ function normalizeThread(raw: StoredThread): StoredThread {
       ? raw.messages.map((message) => normalizeMessage(message))
       : [],
     ...(pendingPlan ? { pendingPlan } : {}),
+    ...(pendingPlanStrategy ? { pendingPlanStrategy } : {}),
     ...(pendingTaskList ? { pendingTaskList } : {}),
     ...(tokenUsage ? { tokenUsage } : {}),
   };
@@ -176,6 +184,8 @@ export async function appendTurn(
     route?: string | null;
     /** When set, replaces the thread pending plan (plan-mode completion). */
     pendingPlan?: PlanArtifact | null;
+    /** Strategy for the pending plan, stored with the artifact. */
+    pendingPlanStrategy?: PlanStrategyDecision | null;
     /** Drop pending plan after a successful agent handoff. */
     clearPendingPlan?: boolean;
     pendingTaskList?: TaskList | null;
@@ -220,11 +230,24 @@ export async function appendTurn(
 
   if (options.clearPendingPlan) {
     delete thread.pendingPlan;
+    delete thread.pendingPlanStrategy;
   } else if (options.pendingPlan !== undefined) {
     if (options.pendingPlan === null) {
       delete thread.pendingPlan;
+      delete thread.pendingPlanStrategy;
     } else {
       thread.pendingPlan = options.pendingPlan;
+      if (options.pendingPlanStrategy) {
+        thread.pendingPlanStrategy = options.pendingPlanStrategy;
+      } else {
+        delete thread.pendingPlanStrategy;
+      }
+    }
+  } else if (options.pendingPlanStrategy !== undefined) {
+    if (options.pendingPlanStrategy === null) {
+      delete thread.pendingPlanStrategy;
+    } else {
+      thread.pendingPlanStrategy = options.pendingPlanStrategy;
     }
   }
 
@@ -260,8 +283,9 @@ export async function clearPendingPlan(
   const thread = threadId
     ? store.threads.find((t) => t.id === threadId)
     : store.threads.find((t) => t.id === store.activeThreadId);
-  if (thread?.pendingPlan || thread?.pendingTaskList) {
+  if (thread?.pendingPlan || thread?.pendingPlanStrategy || thread?.pendingTaskList) {
     delete thread.pendingPlan;
+    delete thread.pendingPlanStrategy;
     delete thread.pendingTaskList;
     await saveHistory(state, store);
   }

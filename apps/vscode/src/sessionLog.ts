@@ -202,6 +202,26 @@ function compactEvent(
         totalCount: event.totalCount,
         activeId: event.activeId,
       };
+    case 'discovery_started':
+      return {
+        ...base,
+        objective: event.objective,
+      };
+    case 'discovery_progress':
+      return {
+        ...base,
+        filesRead: event.filesRead,
+        searches: event.searches,
+        summary: event.summary,
+      };
+    case 'discovery_completed':
+      return {
+        ...base,
+        confidence: event.confidence,
+        fileCount: event.fileCount,
+        surfaceCount: event.surfaceCount,
+        openQuestionCount: event.openQuestionCount,
+      };
     case 'plan_ready':
       return {
         ...base,
@@ -273,9 +293,101 @@ export interface SessionLogAppend {
   events: RunEvent[];
 }
 
+export interface SessionLogOpenOptions {
+  at: string;
+  prompt: string;
+  mode?: string;
+  conversationCount?: number;
+  sessionId?: string;
+  runId: string;
+  requestId?: string;
+  contextWindowTokens?: number;
+  maximumOutputTokens?: number;
+}
+
 /**
- * Append-only JSONL session log under `.mitii/logs/`.
- * One timestamped line per event (not a single nested blob).
+ * Live append-only JSONL writer under `.mitii/logs/`.
+ * Call {@link SessionLogWriter.appendEvent} during the run and
+ * {@link SessionLogWriter.finish} once when the run terminates.
+ */
+export interface SessionLogWriter {
+  readonly path: string;
+  appendEvent(event: RunEvent): void;
+  finish(result: AgentRunResult): void;
+}
+
+function shouldPersistEvent(event: RunEvent): boolean {
+  // Skip per-token text/reasoning previews that duplicate the final answer
+  // and make logs unreadable; keep tool-call deltas and structured events.
+  return !(event.type === 'model_delta' && event.kind !== 'tool_call');
+}
+
+/**
+ * Open a session log immediately so the file exists and grows while the run
+ * is in progress (not only after terminal).
+ */
+export function openSessionLog(
+  workspaceRoot: string | undefined,
+  options: SessionLogOpenOptions,
+): SessionLogWriter | undefined {
+  if (!workspaceRoot) return undefined;
+
+  const textLimits = resolveSessionLogTextLimits(options);
+  const dir = mitiiLogsDir(workspaceRoot);
+  mkdirSync(dir, { recursive: true });
+  const sessionId = safeLogId(options.sessionId ?? options.runId);
+  const file =
+    findExistingLogFile(dir, sessionId) ??
+    join(dir, `${logStamp()}-${sessionId}.jsonl`);
+
+  writeLine(file, {
+    kind: 'run_start',
+    at: options.at,
+    sessionId,
+    prompt: options.prompt,
+    mode: options.mode,
+    conversationCount: options.conversationCount ?? 0,
+    runId: options.runId,
+    ...(options.requestId ? { requestId: options.requestId } : {}),
+  });
+
+  let finished = false;
+
+  return {
+    path: file,
+    appendEvent(event: RunEvent): void {
+      if (finished || !shouldPersistEvent(event)) return;
+      writeLine(file, compactEvent(event, textLimits));
+    },
+    finish(result: AgentRunResult): void {
+      if (finished) return;
+      finished = true;
+      const answer = compactText(
+        result.answer,
+        textLimits.runEndAnswerMaxChars,
+      );
+      writeLine(file, {
+        kind: 'run_end',
+        at: new Date().toISOString(),
+        runId: result.runId,
+        ...(result.requestId ? { requestId: result.requestId } : {}),
+        status: result.status,
+        route: result.route,
+        usage: result.usage,
+        durationMs: result.durationMs,
+        answerChars: answer.chars,
+        answerTruncated: answer.truncated,
+        ...(answer.text ? { answer: answer.text } : {}),
+        error: result.error,
+        reasonCodes: result.reasonCodes,
+      });
+    },
+  };
+}
+
+/**
+ * Batch helper for tests / one-shot callers.
+ * Prefer {@link openSessionLog} during live runs so events stream to disk.
  */
 export function appendSessionLog(
   workspaceRoot: string | undefined,
@@ -286,55 +398,24 @@ export function appendSessionLog(
     maximumOutputTokens?: number;
   } = {},
 ): string | undefined {
-  if (!workspaceRoot) return undefined;
-  const textLimits = resolveSessionLogTextLimits(options);
-  const dir = mitiiLogsDir(workspaceRoot);
-  mkdirSync(dir, { recursive: true });
-  const sessionId = safeLogId(options.sessionId ?? entry.result.runId ?? 'session');
-  const file =
-    findExistingLogFile(dir, sessionId) ??
-    join(dir, `${logStamp()}-${sessionId}.jsonl`);
-
-  writeLine(file, {
-    kind: 'run_start',
+  const writer = openSessionLog(workspaceRoot, {
     at: entry.at,
-    sessionId,
     prompt: entry.prompt,
     mode: entry.mode,
-    conversationCount: entry.conversationCount ?? 0,
+    conversationCount: entry.conversationCount,
+    sessionId: options.sessionId,
     runId: entry.result.runId,
     requestId: entry.result.requestId,
+    contextWindowTokens: options.contextWindowTokens,
+    maximumOutputTokens: options.maximumOutputTokens,
   });
+  if (!writer) return undefined;
 
   for (const event of entry.events) {
-    // Skip per-token text/reasoning previews that duplicate the final answer
-    // and make logs unreadable; keep tool-call deltas and structured events.
-    if (event.type === 'model_delta' && event.kind !== 'tool_call') {
-      continue;
-    }
-    writeLine(file, compactEvent(event, textLimits));
+    writer.appendEvent(event);
   }
-
-  const answer = compactText(
-    entry.result.answer,
-    textLimits.runEndAnswerMaxChars,
-  );
-  writeLine(file, {
-    kind: 'run_end',
-    at: new Date().toISOString(),
-    runId: entry.result.runId,
-    status: entry.result.status,
-    route: entry.result.route,
-    usage: entry.result.usage,
-    durationMs: entry.result.durationMs,
-    answerChars: answer.chars,
-    answerTruncated: answer.truncated,
-    ...(answer.text ? { answer: answer.text } : {}),
-    error: entry.result.error,
-    reasonCodes: entry.result.reasonCodes,
-  });
-
-  return file;
+  writer.finish(entry.result);
+  return writer.path;
 }
 
 /** Write a one-shot session export JSON under `.mitii/logs/`. */

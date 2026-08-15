@@ -1994,6 +1994,25 @@ select.depth-select {
   accent-color: var(--mitii-accent);
 }
 
+.toggle input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.developer-options {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 80%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mitii-text) 2%, transparent);
+}
+
+.developer-options--locked {
+  opacity: 0.55;
+}
+
 .mono {
   font-family: var(--mitii-font-mono);
   font-size: 11px;
@@ -3261,72 +3280,6 @@ select.depth-select {
 
 .plan-follow__steps-item--blocked {
   border-color: color-mix(in srgb, var(--mitii-danger, #c45c5c) 32%, transparent);
-}
-
-.task-follow .plan-follow__steps-item {
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-}
-
-.task-follow__status {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--mitii-muted) 12%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--mitii-border) 80%, transparent) inset;
-}
-
-.task-follow__status::before {
-  content: '';
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--mitii-muted);
-}
-
-.task-follow__status--active {
-  background: color-mix(in srgb, var(--plan-follow-accent) 18%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--plan-follow-accent) 42%, transparent) inset;
-}
-
-.task-follow__status--active::before {
-  background: color-mix(in srgb, var(--plan-follow-accent) 86%, var(--mitii-text));
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--plan-follow-accent) 16%, transparent);
-}
-
-.task-follow__status--done {
-  background: color-mix(in srgb, var(--mitii-ok) 16%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--mitii-ok) 38%, transparent) inset;
-}
-
-.task-follow__status--done::before {
-  width: 8px;
-  height: 4px;
-  border-radius: 0;
-  border-left: 2px solid color-mix(in srgb, var(--mitii-ok) 82%, var(--mitii-text));
-  border-bottom: 2px solid color-mix(in srgb, var(--mitii-ok) 82%, var(--mitii-text));
-  background: transparent;
-  transform: rotate(-45deg) translate(1px, -1px);
-}
-
-.task-follow__status--blocked {
-  background: color-mix(in srgb, var(--mitii-danger, #c45c5c) 14%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--mitii-danger, #c45c5c) 38%, transparent) inset;
-}
-
-.task-follow__status--blocked::before {
-  width: 8px;
-  height: 2px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--mitii-danger, #c45c5c) 82%, var(--mitii-text));
-}
-
-.task-follow__status--skipped {
-  opacity: 0.72;
 }
 
 @keyframes mitii-loader-spin {

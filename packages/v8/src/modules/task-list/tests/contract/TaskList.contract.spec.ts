@@ -32,6 +32,7 @@ describe("TaskList contract", () => {
     expect(result.taskList?.items).toHaveLength(2);
     expect(result.taskList?.items[1]?.status).toBe("active");
     expect(result.reasonCodes).toContain("task_list_replaced");
+    expect(result.taskList?.source).toBe("agent");
     const completed = result.taskList!.items.filter(
       (item) => item.status === "done",
     ).length;

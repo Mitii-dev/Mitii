@@ -238,6 +238,8 @@ export { VerificationPipeline } from "./modules/verification";
 export {
   verificationInputSchema,
   verificationResultSchema,
+  repoBuildStateSchema,
+  repoBuildStateComparisonSchema,
   InMemoryManifestReader,
   WorkspaceFileSystemManifestReader,
 } from "./modules/verification";
@@ -245,6 +247,8 @@ export type {
   VerificationInput,
   VerificationResult,
   VerificationStatus,
+  RepoBuildState,
+  RepoBuildStateComparison,
   VerificationToolExecutorPort,
   VerificationManifestReaderPort,
 } from "./modules/verification";
@@ -322,18 +326,33 @@ export { PlanningPipeline } from "./modules/planning";
 export {
   planningInputSchema,
   planningResultSchema,
+  planningBuildEvidenceSchema,
+  planningScopedRepoMapSchema,
+  discoveryBriefSchema,
+  discoveryObservationSchema,
   planArtifactSchema,
+  planStrategyDecisionSchema,
+  explorationDepthSchema,
   PLANNING_SCHEMA_VERSION,
+  compileDiscoveryBrief,
   formatPlanAsAnswer,
+  inferPlanStrategyFromArtifact,
   serializePlanForPrompt,
   serializePlanText,
 } from "./modules/planning";
 export type {
   PlanningInput,
   PlanningResult,
+  PlanningBuildEvidence,
+  PlanningScopedRepoMap,
+  DiscoveryBrief,
+  DiscoveryObservation,
   PlanArtifact,
+  PlanStrategyDecision,
+  PlanStrategyResolution,
   PlanPhase,
   PlanStep,
+  ExplorationDepth,
 } from "./modules/planning";
 
 export { TaskListPipeline } from "./modules/task-list";
@@ -356,6 +375,7 @@ export type {
   TaskListApplyInput,
   TaskListApplyResult,
   TaskListSource,
+  TaskListPurpose,
 } from "./modules/task-list";
 
 export { AgentEnginePipeline } from "./engine/agent-engine";
@@ -364,6 +384,7 @@ export {
   agentEngineResumeInputSchema,
   agentRunResultSchema,
   agentRunBudgetSchema,
+  runEvidenceSchema,
   runEventSchema,
   AGENT_ENGINE_SCHEMA_VERSION,
   composeReadOnlyAgentEngine,
@@ -378,6 +399,8 @@ export type {
   AgentRunResult,
   AgentRunBudget,
   AgentRunHandle,
+  RunEvidence,
+  RunEvidenceIssue,
   RunEvent,
   AgentEngineDependencies,
   ComposeReadOnlyAgentEngineOptions,

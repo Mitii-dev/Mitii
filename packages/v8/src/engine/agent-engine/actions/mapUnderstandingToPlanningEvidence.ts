@@ -43,7 +43,11 @@ export function mapUnderstandingToPlanningEvidence(
     })),
     constraints: [...taskAnalysis.constraints],
     requestedOutcomes: [...taskAnalysis.requestedOutcomes],
-    recommendsPlanning: taskAnalysis.recommendsPlanning,
+    // Either signal means "look before drafting" — strategy rules only see
+    // one wide-scope flag, so fold recommendsRepositoryDiscovery into it.
+    recommendsPlanning:
+      taskAnalysis.recommendsPlanning ||
+      taskAnalysis.recommendsRepositoryDiscovery,
     recommendsVerification: taskAnalysis.recommendsVerification,
     changeImpact: inferChangeImpact(
       taskAnalysis,

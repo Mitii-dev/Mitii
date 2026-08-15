@@ -1,3 +1,4 @@
+import type { ProjectDescriptor } from "../../repository-state";
 import type {
   VerificationCheckResult,
   VerificationDiagnostic,
@@ -11,17 +12,27 @@ import { DEFAULT_MAX_DIAGNOSTICS } from "../defaults";
 export function normalizeDiagnostics(params: {
   checks: readonly VerificationCheckResult[];
   toolOutputs: ReadonlyMap<string, unknown>;
+  projects?: readonly ProjectDescriptor[];
   baselineDiagnostics?: readonly VerificationDiagnostic[];
 }): VerificationDiagnostic[] {
   const diagnostics: VerificationDiagnostic[] = [];
+  const projectRoots = buildProjectRootLookup(params.projects ?? []);
 
   for (const check of params.checks) {
     if (!check.toolCallId) continue;
     const output = params.toolOutputs.get(check.toolCallId);
     if (!output) continue;
 
+    const projectRoot = check.projectId
+      ? projectRoots.get(check.projectId)
+      : undefined;
+
     if (check.kind === "diagnostics") {
-      diagnostics.push(...fromDiagnosticsTool(check.checkId, output));
+      diagnostics.push(
+        ...fromDiagnosticsTool(check.checkId, output).map((diagnostic) =>
+          resolveDiagnosticPath(diagnostic, projectRoot),
+        ),
+      );
       continue;
     }
 
@@ -30,7 +41,9 @@ export function normalizeDiagnostics(params: {
     }
 
     diagnostics.push(
-      ...fromCompilerText(check.checkId, extractCombinedText(output)),
+      ...fromCompilerText(check.checkId, extractCombinedText(output)).map(
+        (diagnostic) => resolveDiagnosticPath(diagnostic, projectRoot),
+      ),
     );
   }
 
@@ -38,6 +51,41 @@ export function normalizeDiagnostics(params: {
     diagnostics,
     baselineDiagnostics: params.baselineDiagnostics,
   }).slice(0, DEFAULT_MAX_DIAGNOSTICS);
+}
+
+function buildProjectRootLookup(
+  projects: readonly ProjectDescriptor[],
+): Map<string, string> {
+  return new Map(
+    projects.map((project) => [
+      project.projectId,
+      normalizeSlashes(project.rootPath).replace(/\/$/, ""),
+    ]),
+  );
+}
+
+/**
+ * Diagnostic paths from compilers/linters are reported relative to the
+ * directory the check ran in (the project root), not the workspace root.
+ * Join them with the check's project root so downstream scope matching
+ * (e.g. planning's ask-scope filter) compares like with like.
+ */
+function resolveDiagnosticPath(
+  diagnostic: VerificationDiagnostic,
+  projectRoot: string | undefined,
+): VerificationDiagnostic {
+  if (!projectRoot || diagnostic.path === "<test>") {
+    return diagnostic;
+  }
+  const path = normalizeSlashes(diagnostic.path);
+  if (path === projectRoot || path.startsWith(`${projectRoot}/`)) {
+    return diagnostic;
+  }
+  return { ...diagnostic, path: `${projectRoot}/${path}` };
+}
+
+function normalizeSlashes(path: string): string {
+  return path.replace(/\\/g, "/").replace(/^\.\//, "");
 }
 
 export function filterBaselineDiagnostics(params: {

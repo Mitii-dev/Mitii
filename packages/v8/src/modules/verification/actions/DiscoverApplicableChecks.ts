@@ -133,10 +133,21 @@ async function expandWithNearbyManifestProjects(params: {
   return projects;
 }
 
+const CANDIDATE_FILE_LIKE = /\.\w{1,16}$/;
+
 function candidatePackageRoots(filePath: string): string[] {
   const normalized = normalizePath(filePath);
   const parts = normalized.split("/").filter(Boolean);
-  parts.pop();
+  // Only strip the last segment when it looks like a file (has an
+  // extension). A folder-shaped path — e.g. an explicit "packages/x"
+  // target with no file component — is itself a valid candidate root and
+  // must not be discarded before the walk-up.
+  if (
+    parts.length > 0 &&
+    CANDIDATE_FILE_LIKE.test(parts[parts.length - 1]!)
+  ) {
+    parts.pop();
+  }
 
   const roots: string[] = [];
   while (parts.length > 0) {

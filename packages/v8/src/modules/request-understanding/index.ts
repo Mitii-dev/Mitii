@@ -4,10 +4,14 @@ export type { RequestUnderstandingPipelineDependencies } from "./pipeline/Reques
 export {
   requestUnderstandingPipelineInputSchema,
   requestUnderstandingResultSchema,
+  diagnosticSummarySchema,
+  diagnosticSummaryEntrySchema,
 } from "./contracts";
 export type {
   RequestUnderstandingPipelineInput,
   RequestUnderstandingResult,
+  DiagnosticSummary,
+  DiagnosticSummaryEntry,
 } from "./contracts";
 
 export { TaskAnalysisSchema } from "./task-analyzer/contracts/output/TaskAnalysis";

@@ -9,7 +9,10 @@ import {
   type RunEvent,
 } from '@mitii/sdk';
 
-import { appendSessionLog } from '../../../apps/vscode/src/sessionLog.ts';
+import {
+  appendSessionLog,
+  openSessionLog,
+} from '../../../apps/vscode/src/sessionLog.ts';
 
 describe('sessionLog', () => {
   const dirs: string[] = [];
@@ -18,6 +21,85 @@ describe('sessionLog', () => {
     for (const dir of dirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it('writes run_start and events incrementally before finish', () => {
+    const root = mkdtempSync(join(tmpdir(), 'mitii-session-log-'));
+    dirs.push(root);
+
+    const writer = openSessionLog(root, {
+      at: '2026-07-28T00:00:00.000Z',
+      prompt: 'fix while running',
+      mode: 'agent',
+      runId: 'run_live',
+      sessionId: 'thread_live',
+    });
+    expect(writer).toBeTruthy();
+
+    const early = readFileSync(writer!.path, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(early).toHaveLength(1);
+    expect(early[0]).toMatchObject({
+      kind: 'run_start',
+      runId: 'run_live',
+      prompt: 'fix while running',
+    });
+
+    writer!.appendEvent({
+      type: 'stage_started',
+      runId: 'run_live',
+      stage: 'understood',
+      at: '2026-07-28T00:00:01.000Z',
+    } as RunEvent);
+    writer!.appendEvent({
+      type: 'model_delta',
+      runId: 'run_live',
+      kind: 'content',
+      preview: 'skip me',
+      at: '2026-07-28T00:00:02.000Z',
+    } as RunEvent);
+    writer!.appendEvent({
+      type: 'tool_started',
+      runId: 'run_live',
+      toolName: 'read_file',
+      summary: 'src/a.ts',
+      at: '2026-07-28T00:00:03.000Z',
+    } as RunEvent);
+
+    const mid = readFileSync(writer!.path, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(mid).toHaveLength(3);
+    expect(mid[1]).toMatchObject({ type: 'stage_started', stage: 'understood' });
+    expect(mid[2]).toMatchObject({ type: 'tool_started', toolName: 'read_file' });
+    expect(mid.some((line) => line.type === 'model_delta')).toBe(false);
+
+    writer!.finish({
+      schemaVersion: 1,
+      runId: 'run_live',
+      requestId: 'req_live',
+      status: 'completed',
+      route: 'execute',
+      planningDepth: 'none',
+      answer: 'done',
+      reasonCodes: ['answer_produced'],
+      warnings: [],
+      usage: { modelCalls: 1, toolCalls: 1, loopIterations: 1 },
+      durationMs: 10,
+    } as AgentRunResult);
+
+    const final = readFileSync(writer!.path, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(final.at(-1)).toMatchObject({
+      kind: 'run_end',
+      status: 'completed',
+      runId: 'run_live',
+    });
   });
 
   it('persists compact verification evidence events', () => {

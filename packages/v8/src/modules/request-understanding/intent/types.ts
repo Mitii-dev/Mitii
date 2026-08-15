@@ -7,6 +7,8 @@ import type {
   RequestArtifactReference,
 } from "../../request-intake";
 
+import type { DiagnosticSummary } from "../contracts";
+
 import {
   INTENT_CONSTANTS,
 } from "./constants";
@@ -39,6 +41,8 @@ export interface IntentClassificationInput {
   mode: AgentMode;
   userMessage: string;
   referencedArtifacts?: readonly ReferencedArtifact[];
+  /** Capped preflight-diagnostic hint. LLM classifier only — rule classifier ignores it. */
+  diagnosticSummary?: DiagnosticSummary;
 }
 
 export interface IntentRouterDependencies {

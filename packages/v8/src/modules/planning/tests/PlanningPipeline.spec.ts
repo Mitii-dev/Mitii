@@ -5,9 +5,38 @@ import {
   PlanningError,
   PlanningPipeline,
   formatPlanAsAnswer,
+  inferPlanStrategyFromArtifact,
   planningInputSchema,
   serializePlanForPrompt,
 } from "../index";
+import type { LlmPort, ModelCapabilities } from "../../model-gateway";
+
+const FAKE_CAPABILITIES: ModelCapabilities = {
+  modelId: "fake-planning-model",
+  contextWindowTokens: 16_000,
+  maximumOutputTokens: 4_000,
+  supportsStreaming: true,
+  supportsTools: false,
+  supportsParallelToolCalls: false,
+  supportsStructuredOutput: true,
+  supportsVision: false,
+  supportsReasoning: false,
+  supportsPromptCaching: false,
+  supportsEmbeddings: false,
+};
+
+function fakeLlm(responses: readonly string[]): LlmPort {
+  let index = 0;
+  return {
+    id: "fake-planning-llm",
+    capabilities: FAKE_CAPABILITIES,
+    async *complete() {
+      const content = responses[index++] ?? "";
+      yield { type: "content_delta" as const, content };
+      yield { type: "completed" as const, finishReason: "stop" as const };
+    },
+  };
+}
 
 function baseInput(
   overrides: Record<string, unknown> = {},
@@ -41,8 +70,8 @@ function baseInput(
 describe("PlanningPipeline", () => {
   const pipeline = new PlanningPipeline();
 
-  it("drafts a request-specific PlanArtifact from dimensions", () => {
-    const result = pipeline.plan(baseInput());
+  it("drafts a request-specific PlanArtifact from dimensions", async () => {
+    const result = await pipeline.plan(baseInput());
     expect(result.status === "validated" || result.status === "compacted").toBe(
       true,
     );
@@ -79,8 +108,8 @@ describe("PlanningPipeline", () => {
     ).toBe(true);
   });
 
-  it("sanitizes @mentions and drafts repair-shaped steps from bugfix intent", () => {
-    const result = pipeline.plan(
+  it("sanitizes @mentions and drafts repair-shaped steps from bugfix intent", async () => {
+    const result = await pipeline.plan(
       baseInput({
         query: "@packages/mui-builder\n@packages/mui-builder fix all the ts errors",
         evidence: {
@@ -115,8 +144,9 @@ describe("PlanningPipeline", () => {
       "Resolve all TypeScript compilation/type errors in the target package",
     );
     expect(result.plan?.objective.includes("@")).toBe(false);
+    expect(result.strategy?.strategy).toBe("follow_evidence");
+    expect(result.strategy?.skipDiscover).toBe(true);
     expect(result.plan?.phases.map((phase) => phase.name)).toEqual([
-      "Discover",
       "Change",
       "Verify",
     ]);
@@ -124,8 +154,10 @@ describe("PlanningPipeline", () => {
       result.plan?.phases.flatMap((phase) =>
         phase.steps.map((step) => step.intent),
       ) ?? [];
-    expect(intents).toContain("Inspect failure evidence in packages/mui-builder");
-    expect(intents).toContain(
+    expect(intents).not.toContain(
+      "Inspect failure evidence in packages/mui-builder",
+    );
+    expect(intents).not.toContain(
       "Bound failing surfaces and constraints in packages/mui-builder",
     );
     expect(intents).toContain(
@@ -147,15 +179,15 @@ describe("PlanningPipeline", () => {
     expect(doneWhen.some((item) => item.startsWith("Done when:"))).toBe(false);
   });
 
-  it("returns blocked when planningDepth is none", () => {
-    const result = pipeline.plan(baseInput({ planningDepth: "none" }));
+  it("returns blocked when planningDepth is none", async () => {
+    const result = await pipeline.plan(baseInput({ planningDepth: "none" }));
     expect(result.status).toBe("blocked");
     expect(result.plan).toBeUndefined();
     expect(result.reasonCodes).toContain("plan_depth_none");
   });
 
-  it("accepts skills slot without requiring Skills module", () => {
-    const result = pipeline.plan(
+  it("accepts skills slot without requiring Skills module", async () => {
+    const result = await pipeline.plan(
       baseInput({
         skills: [
           {
@@ -171,8 +203,8 @@ describe("PlanningPipeline", () => {
     expect(result.reasonCodes).toContain("plan_skills_considered");
   });
 
-  it("uses selected skill planning phases when available", () => {
-    const result = pipeline.plan(
+  it("uses selected skill planning phases when available", async () => {
+    const result = await pipeline.plan(
       baseInput({
         skills: [
           {
@@ -217,8 +249,8 @@ describe("PlanningPipeline", () => {
     expect(result.reasonCodes).toContain("plan_skills_considered");
   });
 
-  it("does not ingest skill playbook or task-breakdown methodology as plan steps", () => {
-    const result = pipeline.plan(
+  it("does not ingest skill playbook or task-breakdown methodology as plan steps", async () => {
+    const result = await pipeline.plan(
       baseInput({
         skills: [
           {
@@ -285,8 +317,199 @@ describe("PlanningPipeline", () => {
     ).toBe(true);
   });
 
-  it("serializes plan for prompt and answer", () => {
-    const result = pipeline.plan(baseInput());
+  it("drafts concrete diagnostic repair steps from preflight build evidence", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        query: "@packages/mui-builder fix all the ts errors",
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+          interactionIntent: "act",
+          scope: "package",
+          complexity: "moderate",
+          risk: "low",
+          clarity: "clear",
+          targets: [
+            {
+              kind: "folder",
+              value: "packages/mui-builder",
+              explicit: true,
+            },
+          ],
+          constraints: [],
+          requestedOutcomes: ["Fix all TypeScript errors"],
+          recommendsPlanning: true,
+          recommendsVerification: true,
+          changeImpact: ["code"],
+        },
+        buildEvidence: {
+          phase: "before",
+          summary: "2 error(s); failed checks: typecheck",
+          failedChecks: ["typecheck"],
+          diagnostics: [
+            {
+              path: "packages/mui-builder/src/Button.tsx",
+              severity: "error",
+              message: "Type 'number' is not assignable to type 'string'.",
+              startLine: 42,
+              source: "tsc",
+              code: "TS2322",
+            },
+            {
+              path: "packages/mui-builder/src/theme.ts",
+              severity: "error",
+              message: "Property 'palette' does not exist.",
+              startLine: 7,
+              source: "tsc",
+              code: "TS2339",
+            },
+          ],
+        },
+      }),
+    );
+
+    const changeSteps =
+      result.plan?.phases.find((phase) => phase.name === "Change")?.steps ?? [];
+
+    expect(result.strategy?.strategy).toBe("follow_evidence");
+    expect(result.reasonCodes).toContain("plan_strategy_follow_evidence");
+    expect(result.reasonCodes).toContain("plan_diagnostics_considered");
+    expect(result.plan?.phases.map((phase) => phase.name)).toEqual([
+      "Change",
+      "Verify",
+    ]);
+    expect(changeSteps.map((step) => step.intent)).toEqual(
+      expect.arrayContaining([
+        "Fix packages/mui-builder/src/Button.tsx:42 TS2322",
+        "Fix packages/mui-builder/src/theme.ts:7 TS2339",
+      ]),
+    );
+    expect(changeSteps.map((step) => step.id)).not.toContain("step-implement");
+    expect(changeSteps[0]?.targetRefs).toEqual([
+      "packages/mui-builder/src/Button.tsx",
+    ]);
+    expect(serializePlanForPrompt(result.plan!, result.strategy)).toContain(
+      "Skip rediscovery",
+    );
+  });
+
+  it("does not let out-of-scope build diagnostics hijack a feature plan", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        query: "Add SSO login in src/auth",
+        buildEvidence: {
+          phase: "before",
+          summary: "1 error(s); failed checks: typecheck",
+          failedChecks: ["typecheck"],
+          diagnostics: [
+            {
+              path: "packages/other/src/Broken.ts",
+              severity: "error",
+              message: "Unrelated failure",
+              source: "tsc",
+              code: "TS2322",
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(result.strategy?.strategy).not.toBe("follow_evidence");
+    expect(result.strategy?.useBuildEvidence).toBe(false);
+    expect(result.reasonCodes).toContain("plan_build_evidence_out_of_scope");
+    expect(result.reasonCodes).not.toContain("plan_diagnostics_considered");
+    const intents =
+      result.plan?.phases.flatMap((phase) =>
+        phase.steps.map((step) => step.intent),
+      ) ?? [];
+    expect(intents.some((intent) => /packages\/other/.test(intent))).toBe(
+      false,
+    );
+  });
+
+  it("uses clarify strategy for unclear asks", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        query: "clean this up",
+        evidence: {
+          primaryIntent: "maintenance",
+          secondaryIntents: [],
+          interactionIntent: "plan",
+          scope: "unknown",
+          complexity: "moderate",
+          risk: "medium",
+          clarity: "unclear",
+          targets: [],
+          constraints: [],
+          requestedOutcomes: [],
+          recommendsPlanning: true,
+          recommendsVerification: false,
+          changeImpact: ["code"],
+        },
+      }),
+    );
+
+    expect(result.strategy?.strategy).toBe("clarify");
+    expect(result.reasonCodes).toContain("plan_strategy_clarify");
+  });
+
+  it("resolves deterministically via rules — no strategy LLM call, ever", async () => {
+    const result = await pipeline.plan(baseInput());
+    expect(result.reasonCodes).toContain("plan_strategy_rules");
+  });
+
+  it("keeps a host-supplied follow_evidence override and only drops useBuildEvidence when no errors exist", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        strategyOverride: {
+          schemaVersion: 1,
+          strategy: "follow_evidence",
+          rationale: "test override",
+          skipDiscover: true,
+          useBuildEvidence: true,
+        },
+      }),
+    );
+
+    expect(result.strategy?.strategy).toBe("follow_evidence");
+    expect(result.strategy?.skipDiscover).toBe(true);
+    expect(result.strategy?.useBuildEvidence).toBe(false);
+    expect(result.reasonCodes).toContain("plan_strategy_override");
+    expect(result.plan?.phases.map((phase) => phase.name)).not.toContain(
+      "Discover",
+    );
+  });
+
+  it("does not treat the word error in a feature ask as repair evidence", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        query: "Add SSO login without error handling regressions",
+        buildEvidence: {
+          phase: "before",
+          summary: "1 error(s); failed checks: typecheck",
+          failedChecks: ["typecheck"],
+          diagnostics: [
+            {
+              path: "src/auth/Login.tsx",
+              severity: "error",
+              message: "Type mismatch",
+              source: "tsc",
+              code: "TS2322",
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(result.strategy?.strategy).not.toBe("follow_evidence");
+    expect(result.reasonCodes).toContain("plan_strategy_rules");
+    expect(result.plan?.phases.map((phase) => phase.name)).toContain(
+      "Discover",
+    );
+  });
+
+  it("serializes plan for prompt and answer", async () => {
+    const result = await pipeline.plan(baseInput());
     const text = serializePlanForPrompt(result.plan!);
     expect(text).toContain('trust="instruction"');
     expect(text).toContain("Objective:");
@@ -298,8 +521,462 @@ describe("PlanningPipeline", () => {
     expect(answer).toContain("Keep password login working");
   });
 
-  it("throws PlanningError on invalid input", () => {
-    expect(() =>
+  it("infers follow_evidence from a Change-only concrete plan", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        query: "@packages/mui-builder fix all the ts errors",
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+          interactionIntent: "act",
+          scope: "package",
+          complexity: "moderate",
+          risk: "low",
+          clarity: "clear",
+          targets: [
+            {
+              kind: "folder",
+              value: "packages/mui-builder",
+              explicit: true,
+            },
+          ],
+          constraints: [],
+          requestedOutcomes: ["Fix all TypeScript errors"],
+          recommendsPlanning: true,
+          recommendsVerification: true,
+          changeImpact: ["code"],
+        },
+        buildEvidence: {
+          phase: "before",
+          summary: "1 error(s)",
+          diagnostics: [
+            {
+              path: "packages/mui-builder/src/Button.tsx",
+              severity: "error",
+              message: "Type mismatch",
+              startLine: 12,
+              code: "TS2322",
+            },
+          ],
+        },
+      }),
+    );
+    const inferred = inferPlanStrategyFromArtifact(result.plan!);
+    expect(inferred.strategy).toBe("follow_evidence");
+    expect(serializePlanForPrompt(result.plan!, inferred)).toContain(
+      "Skip rediscovery",
+    );
+  });
+
+  it("infers discover_and_plan when a Discover phase is present", async () => {
+    const result = await pipeline.plan(baseInput());
+    const inferred = inferPlanStrategyFromArtifact(result.plan!);
+    expect(inferred.strategy).toBe("discover_and_plan");
+    expect(inferred.skipDiscover).toBe(false);
+    expect(serializePlanForPrompt(result.plan!, inferred)).toContain(
+      "discovery already ran",
+    );
+  });
+
+  it("infers plan_from_ask from a Change-only plan without file-scoped steps", () => {
+    const plan = {
+      schemaVersion: PLANNING_SCHEMA_VERSION,
+      objective: "Add a feature flag for SSO",
+      assumptions: [],
+      openQuestions: [],
+      contextReviewed: [],
+      constraints: [],
+      dimensions: {
+        scope: "module",
+        risk: "low" as const,
+        clarity: "clear",
+        complexity: "simple",
+        changeImpact: ["code" as const],
+      },
+      phases: [
+        {
+          id: "phase-change",
+          name: "Change",
+          purpose: "Implement the flag",
+          steps: [
+            {
+              id: "step-flag",
+              intent: "Add the SSO feature flag",
+              targetRefs: ["src/auth"],
+              actionSummary: "Introduce the flag behind existing login.",
+              expectedOutcome: "SSO can be enabled without a new login path.",
+              riskLevel: "low" as const,
+            },
+          ],
+          dependencies: [],
+          successCriteria: ["Flag exists"],
+        },
+      ],
+      risks: [],
+      alternatives: [],
+      verification: { checks: [], manualQa: [], commands: [] },
+      approvalRequired: false,
+      processHintsApplied: [],
+    };
+    const inferred = inferPlanStrategyFromArtifact(plan);
+    expect(inferred.strategy).toBe("plan_from_ask");
+    expect(serializePlanForPrompt(plan, inferred)).toContain(
+      "plan from the approved objective",
+    );
+  });
+
+  it("maps a discovery brief into concrete change surfaces and skips Discover", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        discoveryBrief: {
+          schemaVersion: 1,
+          objective: "Add retry around the payment client",
+          filesRead: [
+            {
+              path: "src/payments/client.ts",
+              reason: "Outbound payment entrypoint",
+            },
+            {
+              path: "src/payments/client.test.ts",
+              reason: "Nearby unit test",
+            },
+          ],
+          targets: [
+            {
+              kind: "file",
+              value: "src/payments/client.ts",
+              reason: "Observed call site",
+              explicit: false,
+            },
+          ],
+          proposedChangeSurfaces: [
+            {
+              path: "src/payments/client.ts",
+              actionHint: "Change",
+              riskLevel: "medium",
+              evidence: "Retries are missing around createCharge",
+            },
+          ],
+          discoveredConstraints: ["Keep existing error mapping"],
+          verificationHints: [
+            { kind: "test", reason: "Update the nearby client test" },
+          ],
+          openQuestions: [],
+          confidence: "high",
+        },
+        strategyOverride: {
+          schemaVersion: 1,
+          strategy: "discover_and_plan",
+          rationale: "Read-only discovery already identified concrete targets.",
+          skipDiscover: true,
+          useBuildEvidence: false,
+        },
+      }),
+    );
+
+    expect(result.strategy?.skipDiscover).toBe(true);
+    expect(result.plan?.phases.map((phase) => phase.name)).not.toContain(
+      "Discover",
+    );
+    expect(result.plan?.contextReviewed.map((item) => item.ref)).toEqual(
+      expect.arrayContaining(["src/payments/client.ts"]),
+    );
+    expect(result.plan?.constraints).toContain("Keep existing error mapping");
+    const change = result.plan?.phases.find((phase) => phase.name === "Change");
+    expect(change?.steps[0]?.targetRefs).toEqual(["src/payments/client.ts"]);
+    expect(change?.steps[0]?.intent).toContain("src/payments/client.ts");
+    expect(result.reasonCodes).toContain("plan_discovery_applied");
+    expect(result.reasonCodes).toContain("plan_strategy_override");
+    const inferred = inferPlanStrategyFromArtifact(result.plan!);
+    expect(inferred.strategy).toBe("discover_and_plan");
+    expect(inferred.skipDiscover).toBe(true);
+  });
+
+  it("drafts Change+Verify steps from the one-shot discover_and_plan model call, filtered to the discovery allowlist", async () => {
+    const llmPipeline = new PlanningPipeline({
+      llm: fakeLlm([
+        JSON.stringify({
+          objective: "Add retry around the payment client",
+          steps: [
+            {
+              phaseHint: "change",
+              intent: "Add retry handling to the payment client",
+              actionSummary: "Use the existing payment client seam.",
+              targetRefs: ["outside/payments.ts", "src/payments/client.ts"],
+              expectedOutcome: "Payment requests retry safely.",
+            },
+            {
+              phaseHint: "change",
+              intent: "Keep the existing error mapping",
+              actionSummary: "Do not rewrite payment error types.",
+              targetRefs: ["src/payments/client.ts"],
+              expectedOutcome: "Existing error mapping stays intact.",
+            },
+          ],
+        }),
+      ]),
+    });
+    const result = await llmPipeline.plan(
+      baseInput({
+        discoveryBrief: {
+          schemaVersion: 1,
+          objective: "Add retry around the payment client",
+          filesRead: [
+            {
+              path: "src/payments/client.ts",
+              reason: "Outbound payment entrypoint",
+            },
+          ],
+          targets: [
+            {
+              kind: "file",
+              value: "src/payments/client.ts",
+              reason: "Observed call site",
+              explicit: false,
+            },
+          ],
+          proposedChangeSurfaces: [
+            {
+              path: "src/payments/client.ts",
+              actionHint: "Change",
+              riskLevel: "medium",
+              evidence: "Retries are missing around createCharge",
+            },
+          ],
+          discoveredConstraints: [],
+          verificationHints: [],
+          openQuestions: [],
+          confidence: "high",
+        },
+        strategyOverride: {
+          schemaVersion: 1,
+          strategy: "discover_and_plan",
+          rationale: "Read-only discovery already identified concrete targets.",
+          skipDiscover: true,
+          useBuildEvidence: false,
+        },
+      }),
+    );
+
+    const change = result.plan?.phases.find((phase) => phase.name === "Change");
+    expect(result.plan?.phases.map((phase) => phase.name)).not.toContain(
+      "Discover",
+    );
+    expect(result.reasonCodes).toContain("plan_drafted_from_discovery");
+    expect(change?.steps[0]?.targetRefs).toEqual(["src/payments/client.ts"]);
+    expect(change?.steps[0]?.targetRefs).not.toContain("outside/payments.ts");
+    expect(change?.steps).toHaveLength(2);
+    expect(change?.steps[1]?.intent).toContain("error mapping");
+  });
+
+  it("falls back to the deterministic discovery skeleton when the one-shot model draft is invalid", async () => {
+    const llmPipeline = new PlanningPipeline({ llm: fakeLlm(["not json"]) });
+    const result = await llmPipeline.plan(
+      baseInput({
+        discoveryBrief: {
+          schemaVersion: 1,
+          objective: "Add retry around the payment client",
+          filesRead: [
+            {
+              path: "src/payments/client.ts",
+              reason: "Outbound payment entrypoint",
+            },
+          ],
+          targets: [],
+          proposedChangeSurfaces: [
+            {
+              path: "src/payments/client.ts",
+              actionHint: "Change",
+              riskLevel: "medium",
+              evidence: "Retries are missing around createCharge",
+            },
+          ],
+          discoveredConstraints: [],
+          verificationHints: [],
+          openQuestions: [],
+          confidence: "high",
+        },
+        strategyOverride: {
+          schemaVersion: 1,
+          strategy: "discover_and_plan",
+          rationale: "Read-only discovery already identified concrete targets.",
+          skipDiscover: true,
+          useBuildEvidence: false,
+        },
+      }),
+    );
+
+    expect(result.reasonCodes).toContain("plan_discovery_draft_failed_fallback");
+    expect(result.plan?.phases.map((phase) => phase.name)).not.toContain(
+      "Discover",
+    );
+    const change = result.plan?.phases.find((phase) => phase.name === "Change");
+    expect(change?.steps[0]?.targetRefs).toEqual(["src/payments/client.ts"]);
+  });
+
+  it("keeps preflight diagnostic steps when skill phase hints are present", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        query: "@packages/mui-builder fix all the ts errors",
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+          interactionIntent: "act",
+          scope: "package",
+          complexity: "moderate",
+          risk: "low",
+          clarity: "clear",
+          targets: [
+            {
+              kind: "folder",
+              value: "packages/mui-builder",
+              explicit: true,
+            },
+          ],
+          constraints: [],
+          requestedOutcomes: ["Fix all TypeScript errors"],
+          recommendsPlanning: true,
+          recommendsVerification: true,
+          changeImpact: ["code"],
+        },
+        skills: [
+          {
+            id: "skill-typescript-repair",
+            title: "TypeScript repair",
+            priority: 10,
+            content: [
+              "Planning:",
+              "Discover:",
+              "- Read failing typecheck output",
+              "Change:",
+              "- Apply focused type fixes",
+              "Verify:",
+              "- Re-run typecheck",
+            ].join("\n"),
+          },
+        ],
+        buildEvidence: {
+          phase: "before",
+          summary: "1 error(s); failed checks: typecheck",
+          failedChecks: ["typecheck"],
+          diagnostics: [
+            {
+              path: "packages/mui-builder/src/Button.tsx",
+              severity: "error",
+              message: "Type mismatch",
+              startLine: 12,
+              source: "tsc",
+              code: "TS2322",
+            },
+          ],
+        },
+        scopedRepoMap: {
+          entries: [
+            { path: "packages/mui-builder/src/Button.tsx", kind: "file" },
+            { path: "packages/mui-builder", kind: "folder" },
+          ],
+        },
+      }),
+    );
+
+    const changePhase = result.plan?.phases.find((phase) =>
+      /change/i.test(phase.name),
+    );
+    expect(changePhase?.steps.some((step) =>
+      step.id.startsWith("step-fix-diagnostic-"),
+    )).toBe(true);
+    expect(changePhase?.steps[0]?.targetRefs).toEqual([
+      "packages/mui-builder/src/Button.tsx",
+    ]);
+    expect(result.plan?.contextReviewed.map((item) => item.ref)).toEqual(
+      expect.arrayContaining([
+        "packages/mui-builder/src/Button.tsx",
+        "packages/mui-builder",
+      ]),
+    );
+  });
+
+  it("keeps open questions and does not invent file tasks when discovery is insufficient", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        discoveryBrief: {
+          schemaVersion: 1,
+          objective: "Investigate the request",
+          filesRead: [],
+          targets: [],
+          proposedChangeSurfaces: [],
+          discoveredConstraints: [],
+          verificationHints: [],
+          openQuestions: [
+            "Which concrete files or symbols should change for this request?",
+          ],
+          confidence: "low",
+        },
+        strategyOverride: {
+          schemaVersion: 1,
+          strategy: "discover_and_plan",
+          rationale: "Discovery did not find a concrete surface.",
+          skipDiscover: true,
+          useBuildEvidence: false,
+        },
+      }),
+    );
+
+    expect(result.plan?.openQuestions[0]).toMatch(/concrete files/i);
+    expect(
+      result.plan?.phases
+        .flatMap((phase) => phase.steps)
+        .some((step) => step.targetRefs.some((ref) => /\.\w+$/.test(ref))),
+    ).toBe(false);
+    expect(result.reasonCodes).toContain("plan_discovery_insufficient");
+  });
+
+  it("classifies strategy without drafting a plan", async () => {
+    const classified = await pipeline.resolveStrategy(
+      baseInput({
+        query: "@packages/mui-builder fix all the ts errors",
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+          interactionIntent: "act",
+          scope: "package",
+          complexity: "moderate",
+          risk: "low",
+          clarity: "clear",
+          targets: [
+            {
+              kind: "folder",
+              value: "packages/mui-builder",
+              explicit: true,
+            },
+          ],
+          constraints: [],
+          requestedOutcomes: ["Fix all TypeScript errors"],
+          recommendsPlanning: true,
+          recommendsVerification: true,
+          changeImpact: ["code"],
+        },
+        buildEvidence: {
+          phase: "before",
+          summary: "1 error(s)",
+          diagnostics: [
+            {
+              path: "packages/mui-builder/src/Button.tsx",
+              severity: "error",
+              message: "Type mismatch",
+              startLine: 12,
+              code: "TS2322",
+            },
+          ],
+        },
+      }),
+    );
+    expect(classified.decision.strategy).toBe("follow_evidence");
+    expect(classified.decision.skipDiscover).toBe(true);
+  });
+
+  it("throws PlanningError on invalid input", async () => {
+    await expect(
       pipeline.plan({
         schemaVersion: 999,
         query: "x",
@@ -314,6 +991,6 @@ describe("PlanningPipeline", () => {
           clarity: "clear",
         },
       } as never),
-    ).toThrow(PlanningError);
+    ).rejects.toThrow(PlanningError);
   });
 });

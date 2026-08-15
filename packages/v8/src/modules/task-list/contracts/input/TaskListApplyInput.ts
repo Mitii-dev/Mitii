@@ -8,6 +8,7 @@ import {
 } from "../../defaults";
 import {
   taskItemStatusSchema,
+  taskListPurposeSchema,
   taskListSchema,
   taskListSourceSchema,
 } from "../output/TaskList";
@@ -70,6 +71,8 @@ export const taskListApplyInputSchema = z
     schemaVersion: z.literal(TASK_LIST_SCHEMA_VERSION),
     current: taskListSchema.optional(),
     source: taskListSourceSchema,
+    purpose: taskListPurposeSchema.optional(),
+    title: z.string().min(1).max(DEFAULT_MAX_TASK_TITLE_CHARS).optional(),
     operation: taskListOperationSchema,
   })
   .strict();

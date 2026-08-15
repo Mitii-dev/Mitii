@@ -1,6 +1,11 @@
 import type { PlanArtifact } from "../../planning";
 
-import { applyTaskListUpdate, deriveTaskListFromPlan } from "../actions";
+import {
+  applyTaskListUpdate,
+  createDiscoveryTaskList,
+  deriveTaskListFromPlan,
+} from "../actions";
+import type { TaskList } from "../contracts";
 import { TASK_LIST_SCHEMA_VERSION } from "../constants";
 import {
   TaskListError,
@@ -33,6 +38,10 @@ export class TaskListPipeline {
       );
     }
     return applyTaskListUpdate(parsed);
+  }
+
+  public createDiscoveryList(title?: string): TaskList {
+    return createDiscoveryTaskList(title);
   }
 
   public deriveFromPlan(plan: PlanArtifact): TaskListApplyResult {

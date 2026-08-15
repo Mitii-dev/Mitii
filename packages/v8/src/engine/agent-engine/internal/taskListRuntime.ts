@@ -157,6 +157,12 @@ export function seedTaskListFromPlan(params: {
   if (params.resetExisting) {
     params.taskListRef.current = undefined;
   }
+  const current = params.taskListRef.current;
+  const currentIsDiscovery =
+    current?.purpose === "discovery" || current?.source === "discovery";
+  if (currentIsDiscovery) {
+    params.taskListRef.current = undefined;
+  }
   if (params.taskListRef.current && params.taskListRef.current.items.length > 0) {
     return { seeded: false, source: params.taskListRef.current.source };
   }

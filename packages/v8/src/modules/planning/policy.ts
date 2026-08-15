@@ -17,3 +17,13 @@ export const PLANNING_THRESHOLDS = {
  */
 export const PLANNING_PROCESS_META_STEP =
   /restate the goal|constraints from the spec|identify dependencies and risky areas|produce ordered tasks|with acceptance criteria|small enough to verify independently|clear done check|order respects dependencies|you have a spec|task feels too large|when not to use|do not write code during planning|operate in read-only mode|need to be parallelized|communicate scope to a human|implementable units|break (?:it|the (?:task|work)|this) (?:down|into)/i;
+
+/**
+ * discover_and_plan's single model draft call. Not a generic
+ * light/full enrichment mode — strategy-specific, runs at most once.
+ */
+export const DISCOVERED_PLAN_POLICY = {
+  maxSteps: 10,
+  maxRepoEntries: 40,
+  maxDiagnostics: 16,
+} as const;

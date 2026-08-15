@@ -4,7 +4,7 @@ const INTENT_PATTERNS: IntentRule[] = [
   {
     intent: "bugfix",
     pattern:
-      /\b(?:fix|resolve|repair|patch|correct)\b.*\b(?:bug|issue|error|defect|crash|exception|failing tests?|regression|broken behavior)\b|\b(?:SyntaxError|TypeError|ReferenceError|RangeError|NameError|AttributeError|ImportError|ModuleNotFoundError|[A-Z][A-Za-z0-9]*(?:Error|Exception))\b|\b(?:has already been declared|is not defined|cannot read propert(?:y|ies) of undefined|undefined reference|unresolved import|traceback|panic:)\b/i,
+      /\b(?:fix|resolve|repair|patch|correct)\b.*\b(?:bugs?|issues?|errors?|erros|defect|crash|exception|failing tests?|regression|broken behavior|ts(?:cript)?\s+err(?:ors?|os)|diagnostics?)\b|\b(?:SyntaxError|TypeError|ReferenceError|RangeError|NameError|AttributeError|ImportError|ModuleNotFoundError|[A-Z][A-Za-z0-9]*(?:Error|Exception))\b|\b(?:has already been declared|is not defined|cannot read propert(?:y|ies) of undefined|undefined reference|unresolved import|traceback|panic:)\b/i,
     confidence: 0.88,
   },
   {

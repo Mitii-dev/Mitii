@@ -1,0 +1,291 @@
+import { READ_ONLY_TOOL_IDS } from "../../../modules/decision-policy";
+import type { ToolGrant } from "../../../modules/decision-policy";
+import type {
+  DiscoveryFileRef,
+  DiscoveryObservation,
+  DiscoveryTarget,
+  DiscoveryVerificationHint,
+} from "../../../modules/planning";
+import type { TaskList } from "../../../modules/task-list";
+import { TaskListPipeline } from "../../../modules/task-list";
+
+export const DISCOVERY_PASS_POLICY = {
+  maxModelTurns: 2,
+  maxFileReads: 8,
+  maxSearches: 4,
+  maxToolCalls: 10,
+} as const;
+
+const DISCOVERY_TOOL_IDS = new Set<string>([
+  "list_directory",
+  "read_file",
+  "read_many_files",
+  "glob_files",
+  "file_metadata",
+  "search_files",
+  "read_diagnostics",
+  "read_git_status",
+  "goto_definition",
+  "find_references",
+  "read_package_scripts",
+]);
+
+const FILE_READ_TOOLS = new Set(["read_file", "read_many_files"]);
+const SEARCH_TOOLS = new Set(["search_files", "glob_files"]);
+
+export function createDiscoveryGrant(base: ToolGrant): ToolGrant {
+  const allowed = base.allowedTools.filter(
+    (name) =>
+      DISCOVERY_TOOL_IDS.has(name) &&
+      (READ_ONLY_TOOL_IDS as readonly string[]).includes(name),
+  );
+  return {
+    ...base,
+    maximumWorkspaceEffect: "read",
+    allowedTools: allowed,
+    allowedEffects: ["workspace_read"],
+    approvalMode: "never",
+    limits: {
+      ...base.limits,
+      maxToolCalls: Math.min(
+        base.limits.maxToolCalls,
+        DISCOVERY_PASS_POLICY.maxToolCalls,
+      ),
+    },
+  };
+}
+
+export function isDiscoveryToolAllowed(name: string): boolean {
+  return DISCOVERY_TOOL_IDS.has(name);
+}
+
+export function createDiscoveryTaskList(): TaskList {
+  return new TaskListPipeline().createDiscoveryList();
+}
+
+export function isDiscoveryTaskList(taskList: TaskList | undefined): boolean {
+  if (!taskList) {
+    return false;
+  }
+  return taskList.purpose === "discovery" || taskList.source === "discovery";
+}
+
+export interface DiscoveryObservationCollector {
+  filesRead: DiscoveryFileRef[];
+  searchHits: Array<{ path: string; reason: string }>;
+  verificationHints: DiscoveryVerificationHint[];
+  fileReads: number;
+  searches: number;
+  toolCalls: number;
+}
+
+export function createDiscoveryObservationCollector(): DiscoveryObservationCollector {
+  return {
+    filesRead: [],
+    searchHits: [],
+    verificationHints: [],
+    fileReads: 0,
+    searches: 0,
+    toolCalls: 0,
+  };
+}
+
+export function recordDiscoveryToolUse(params: {
+  collector: DiscoveryObservationCollector;
+  toolName: string;
+  argumentsValue: unknown;
+  resultOutput?: unknown;
+  status: string;
+}): void {
+  const { collector, toolName, status } = params;
+  collector.toolCalls += 1;
+  if (status !== "succeeded") {
+    return;
+  }
+  const args = asRecord(params.argumentsValue);
+  const argumentPaths = collectPaths(args);
+  const outputPaths = collectPathsFromUnknown(params.resultOutput);
+  const paths = unique([...argumentPaths, ...outputPaths]);
+  const reason = inferReason(toolName, args);
+
+  if (FILE_READ_TOOLS.has(toolName)) {
+    collector.fileReads += paths.length || 1;
+    for (const path of paths) {
+      collector.filesRead.push({ path, reason });
+    }
+    return;
+  }
+  if (SEARCH_TOOLS.has(toolName)) {
+    collector.searches += 1;
+    for (const path of paths) {
+      collector.searchHits.push({ path, reason });
+    }
+    return;
+  }
+  if (toolName === "read_diagnostics") {
+    collector.verificationHints.push({
+      kind: "typecheck",
+      reason: "Read current diagnostics during discovery.",
+    });
+    for (const path of paths) {
+      collector.searchHits.push({ path, reason: "Diagnostic path" });
+    }
+    return;
+  }
+  if (toolName === "read_package_scripts") {
+    collector.verificationHints.push({
+      kind: "unknown",
+      reason: "Inspected package scripts for verification commands.",
+    });
+    return;
+  }
+  for (const path of paths) {
+    collector.searchHits.push({ path, reason });
+  }
+}
+
+export function discoveryBudgetRemaining(
+  collector: DiscoveryObservationCollector,
+): boolean {
+  return (
+    collector.toolCalls < DISCOVERY_PASS_POLICY.maxToolCalls &&
+    collector.fileReads < DISCOVERY_PASS_POLICY.maxFileReads &&
+    collector.searches < DISCOVERY_PASS_POLICY.maxSearches
+  );
+}
+
+export function toDiscoveryObservation(params: {
+  objective: string;
+  collector: DiscoveryObservationCollector;
+  explicitTargets: DiscoveryTarget[];
+  constraints: string[];
+}): DiscoveryObservation {
+  return {
+    schemaVersion: 1,
+    objective: params.objective,
+    filesRead: params.collector.filesRead,
+    searchHits: params.collector.searchHits,
+    explicitTargets: params.explicitTargets,
+    constraints: params.constraints,
+    verificationHints: params.collector.verificationHints,
+  };
+}
+
+export function buildDiscoveryPrompt(params: {
+  query: string;
+  objective: string;
+}): { system: string; user: string } {
+  return {
+    system: [
+      "You are doing a bounded read-only discovery pass.",
+      "Find the concrete files, symbols, and verification checks for the request.",
+      "Use only read/search tools. Do not mutate files, run writes, or draft a plan.",
+      "Stop after you have identified the smallest change surfaces.",
+    ].join(" "),
+    user: [
+      `Request: ${params.query}`,
+      `Objective: ${params.objective}`,
+      "Read the most relevant entrypoints and nearby tests, then stop.",
+    ].join("\n"),
+  };
+}
+
+function collectPaths(args: Record<string, unknown>): string[] {
+  const values: string[] = [];
+  const single = asString(args.path) ?? asString(args.relativePath);
+  if (single) values.push(single);
+  const list = args.paths ?? args.files;
+  if (Array.isArray(list)) {
+    for (const item of list) {
+      if (typeof item === "string") {
+        values.push(item);
+        continue;
+      }
+      const record = asRecord(item);
+      const path = asString(record.path) ?? asString(record.relativePath);
+      if (path) values.push(path);
+    }
+  }
+  return unique(values);
+}
+
+function collectPathsFromUnknown(value: unknown): string[] {
+  const values: string[] = [];
+  collectPathLikeValues(value, values, 0);
+  return unique(values);
+}
+
+function collectPathLikeValues(
+  value: unknown,
+  values: string[],
+  depth: number,
+  keyHint = "",
+): void {
+  if (depth > 6) {
+    return;
+  }
+  if (typeof value === "string") {
+    if (isPathKey(keyHint) && looksLikeRelativePath(value)) {
+      values.push(value);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectPathLikeValues(item, values, depth + 1, keyHint);
+    }
+    return;
+  }
+  const record = asRecord(value);
+  for (const [key, child] of Object.entries(record)) {
+    collectPathLikeValues(child, values, depth + 1, key);
+  }
+}
+
+function isPathKey(key: string): boolean {
+  return /^(?:path|relativePath|file|filePath|uri|target|ref)$/i.test(key);
+}
+
+function looksLikeRelativePath(value: string): boolean {
+  const path = value.trim().replace(/\\/g, "/");
+  return (
+    path.length > 0 &&
+    path.length <= 1_000 &&
+    !path.startsWith("/") &&
+    !path.startsWith("~") &&
+    !path.includes("..") &&
+    !/^[A-Za-z]:\//.test(path) &&
+    (path.includes("/") || /\.\w{1,16}$/.test(path))
+  );
+}
+
+function inferReason(
+  toolName: string,
+  args: Record<string, unknown>,
+): string {
+  const query = asString(args.query) ?? asString(args.pattern);
+  if (query) {
+    return `${toolName}: ${query}`.slice(0, 500);
+  }
+  const path = asString(args.path);
+  if (path) {
+    return `${toolName} ${path}`.slice(0, 500);
+  }
+  return `Observed via ${toolName}`;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function unique(values: readonly string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}

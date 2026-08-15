@@ -148,8 +148,64 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.planningDepth).toBe("visible");
     expect(decision.reasonCodes).toContain("broad_repair_visible_plan");
     expect(decision.reasonCodes).toContain("change_impact_recommended");
+    expect(decision.reasonCodes).toContain("preflight_build_recommended");
     expect(decision.reasonCodes).toContain("shared_scope_risk_elevated");
     expect(decision.toolGrant.allowedTools).toContain("analyze_change_impact");
+  });
+
+  it("recommends preflight build for package-scoped refactor repairs", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "Refactor packages/mui-builder to clear remaining compile errors",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "refactor",
+          interactionIntent: "act",
+          taskAnalysis: {
+            scope: "package",
+            complexity: "moderate",
+            risk: "low",
+            recommendsPlanning: true,
+            recommendsVerification: true,
+            estimatedFilesAffected: { minimum: 4, maximum: 12 },
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.reasonCodes).toContain("preflight_build_recommended");
+  });
+
+  it("recommends preflight build for plan-mode repair plans", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "plan",
+        message: "Plan how to fix the TypeScript errors in packages/mui-builder",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "bugfix",
+          interactionIntent: "plan",
+          taskAnalysis: {
+            scope: "package",
+            complexity: "moderate",
+            risk: "low",
+            recommendsPlanning: true,
+            recommendsVerification: true,
+            targets: [
+              {
+                kind: "folder",
+                value: "packages/mui-builder",
+                explicit: true,
+              },
+            ],
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("plan");
+    expect(decision.reasonCodes).toContain("preflight_build_recommended");
+    expect(decision.toolGrant.allowedTools).toContain("run_readonly_command");
   });
 
   it("treats clarification as a suspended disposition", () => {

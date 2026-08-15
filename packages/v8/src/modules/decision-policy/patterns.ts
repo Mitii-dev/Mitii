@@ -131,6 +131,30 @@ export const DECISION_POLICY_PATTERNS = {
   broadRepairRequest: BROAD_REPAIR_REQUEST,
 } as const;
 
+/**
+ * Repair-shaped intent taxonomy, shared by Decision Policy (preflight build
+ * gating) and Planning (strategy rules, discovery gating). Single source of
+ * truth so the three call sites cannot drift out of sync.
+ */
+export function isRepairIntentTaxonomy(intents: readonly string[]): boolean {
+  return intents
+    .map((intent) => intent.trim().toLowerCase())
+    .filter(Boolean)
+    .some(
+      (intent) =>
+        intent.includes("bug") ||
+        intent.includes("fix") ||
+        intent === "debug" ||
+        intent.includes("diagnos") ||
+        intent.includes("refactor") ||
+        intent.includes("migrat") ||
+        intent.includes("lint") ||
+        intent.includes("typeerror") ||
+        intent.includes("type_error") ||
+        intent.includes("compile"),
+    );
+}
+
 /** Max Levenshtein distance when treating a token as a mistyped "not". */
 export const WORKSPACE_BUG_NOT_TYPO_MAX_DISTANCE = 1;
 

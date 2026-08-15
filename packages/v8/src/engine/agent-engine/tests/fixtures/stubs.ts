@@ -271,6 +271,7 @@ export function createStubDependencies(options: {
   pinFails?: boolean;
   checkpointStore?: AgentEngineDependencies["checkpointStore"];
   planning?: AgentEngineDependencies["planning"];
+  verification?: AgentEngineDependencies["verification"];
   taskListAutoAdvance?: boolean;
 }): AgentEngineDependencies {
   const decision = options.decision ?? createDecision();
@@ -467,6 +468,7 @@ export function createStubDependencies(options: {
         };
       },
     },
+    verification: options.verification,
     checkpointStore: options.checkpointStore ?? new InMemoryRunCheckpointStore(),
     taskListAutoAdvance: options.taskListAutoAdvance,
     clock: {

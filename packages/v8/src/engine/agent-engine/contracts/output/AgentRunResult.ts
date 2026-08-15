@@ -4,9 +4,14 @@ import {
   executionRouteSchema,
   planningDepthSchema,
 } from "../../../../modules/decision-policy";
-import { planArtifactSchema } from "../../../../modules/planning";
+import {
+  planArtifactSchema,
+  planStrategyDecisionSchema,
+} from "../../../../modules/planning";
 import { taskListSchema } from "../../../../modules/task-list";
 import { repositoryStateReferenceSchema } from "../../../../modules/repository-state";
+import { repoBuildStateSchema } from "../../../../modules/verification";
+import { runEvidenceSchema } from "./RunEvidence";
 
 import {
   AGENT_ENGINE_SCHEMA_VERSION,
@@ -75,8 +80,13 @@ export const agentRunResultSchema = z
     answer: z.string().optional(),
     /** Structured plan when planningDepth produced an artifact. */
     plan: planArtifactSchema.optional(),
+    /** How the plan should be followed after draft, approval, or host carry. */
+    planStrategy: planStrategyDecisionSchema.optional(),
     /** Compact live checklist. Absent in ask mode. Never auto-completed. */
     taskList: taskListSchema.optional(),
+    repoBuildStateBefore: repoBuildStateSchema.optional(),
+    repoBuildStateAfter: repoBuildStateSchema.optional(),
+    evidence: runEvidenceSchema.optional(),
     suspension: agentRunSuspensionSchema.optional(),
     pinnedState: repositoryStateReferenceSchema.optional(),
     reasonCodes: z.array(agentReasonCodeSchema).min(1),

@@ -27,7 +27,8 @@ task-list/
 
 - `TaskListApplyInput`: current list, source, and operation.
 - `TaskListOperation`: `replace`, `patch`, or `clear`.
-- `TaskList`: schema version, source, optional title, and items.
+- `TaskList`: schema version, source (`plan` | `agent` | `user` | `discovery`), optional purpose (`discovery` | `execution`), optional title, and items.
+- Discovery lists are temporary UI progress. Execution lists are derived from `PlanArtifact` and must stay file-scoped.
 - `TaskItem`: id, title, status, optional detail, optional plan `sourceRef`.
 - `TaskItemStatus`: `pending`, `active`, `done`, `skipped`, or `blocked`.
 - `TaskListApplyResult`: applied/rejected status, optional task list, warnings, and reason codes.
@@ -37,7 +38,8 @@ task-list/
 - Lists are capped at eight items by default.
 - Empty replacement lists are rejected.
 - Patch operations require existing ids.
-- Derivation prefers concrete file-scoped implementation/verification steps over process-only discovery rows.
+- Derivation prefers concrete file-scoped implementation/verification steps over process-only discovery rows and stamps `purpose: "execution"`.
+- `createDiscoveryList` builds a temporary investigating checklist. Engine replaces it when the final plan arrives. Do not persist a discovery list as the approved execution checklist.
 - Agent Engine may auto-advance concrete rows after successful built-in mutations, but this module only applies validated changes.
 
 ## Ownership Boundaries

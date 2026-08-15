@@ -62,6 +62,7 @@ describe("deriveTaskListFromPlan", () => {
       result.taskList?.items.slice(1).every((item) => item.status === "pending"),
     ).toBe(true);
     expect(result.taskList?.source).toBe("plan");
+    expect(result.taskList?.purpose).toBe("execution");
     expect(result.reasonCodes).toContain("task_list_derived");
   });
 

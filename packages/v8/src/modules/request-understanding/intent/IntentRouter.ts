@@ -11,6 +11,7 @@ import {
   IntentClassifierResult,
   IntentRouterDependencies,
   LlmIntentClassifierPort,
+  ReferencedArtifact,
   RuleIntentClassifierPort,
   SuperIntentResult,
 } from "./types";
@@ -95,13 +96,17 @@ export class IntentRouter {
     return result;
   }
 
-  private normalizeInput(
-    input: IntentClassificationInput,
-  ): Required<IntentClassificationInput> {
+  private normalizeInput(input: IntentClassificationInput): {
+    mode: IntentClassificationInput["mode"];
+    userMessage: string;
+    referencedArtifacts: readonly ReferencedArtifact[];
+    diagnosticSummary: IntentClassificationInput["diagnosticSummary"];
+  } {
     return {
       mode: input.mode,
       userMessage: extractPrimaryUserMessage(input.userMessage),
       referencedArtifacts: input.referencedArtifacts ?? [],
+      diagnosticSummary: input.diagnosticSummary,
     };
   }
 

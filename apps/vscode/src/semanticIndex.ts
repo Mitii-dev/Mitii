@@ -7,6 +7,8 @@ import {
 } from '@mitii/host';
 import type * as vscode from 'vscode';
 
+import { isLocalBaseUrl } from './providerPresets.js';
+
 export type { SemanticIndexSettings };
 export {
   OpenAiCompatibleEmbeddingProvider,
@@ -38,6 +40,10 @@ export async function resolveVsCodeSemanticIndexSettings(
   const embeddingModelConfigured = hasConfiguredValue(
     cfg.inspect<string>('semanticIndex.model'),
   );
+  const autoLocalWithoutEmbeddingModel =
+    requestedBackend === 'auto' &&
+    isLocalBaseUrl(baseUrl) &&
+    !embeddingModelConfigured;
   const apiKey =
     (await secrets.get('mitii.provider.apiKey')) ??
     process.env.MITII_API_KEY ??
@@ -45,7 +51,7 @@ export async function resolveVsCodeSemanticIndexSettings(
 
   return {
     enabled: shouldEnableSemanticIndex({
-      requested,
+      requested: requested && !autoLocalWithoutEmbeddingModel,
       providerType,
       baseUrl,
       embeddingModelConfigured,

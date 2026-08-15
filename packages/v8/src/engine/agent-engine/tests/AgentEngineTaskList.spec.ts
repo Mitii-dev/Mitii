@@ -201,7 +201,7 @@ describe("AgentEngine task list", () => {
         }),
         llm,
         planning: {
-          plan: () => ({
+          plan: async () => ({
             schemaVersion: PLANNING_SCHEMA_VERSION,
             status: "validated",
             plan: internalPlan,
@@ -210,6 +210,13 @@ describe("AgentEngine task list", () => {
             usedTokens: 10,
             budgetTokens: 1_200,
             durationMs: 1,
+            strategy: {
+              schemaVersion: 1 as const,
+              strategy: "follow_evidence" as const,
+              rationale: "In-scope preflight diagnostics match a repair ask.",
+              skipDiscover: true,
+              useBuildEvidence: true,
+            },
           }),
         },
       }),
@@ -223,6 +230,7 @@ describe("AgentEngine task list", () => {
     );
     expect(system?.content).toContain("No live working list yet");
     expect(system?.content).toContain("update_todos");
+    expect(system?.content).toContain("Skip rediscovery");
     expect(system?.content).not.toMatch(/Diagnose the problem/i);
     expect(system?.content).not.toMatch(/\[ \] .*: Restate the goal/);
   });

@@ -71,6 +71,7 @@ export function deriveTaskListFromPlan(plan: PlanArtifact): TaskListApplyResult 
   const taskList = taskListSchema.parse({
     schemaVersion: TASK_LIST_SCHEMA_VERSION,
     source: "plan",
+    purpose: "execution",
     title: plan.objective.slice(0, DEFAULT_MAX_TASK_TITLE_CHARS),
     items,
   });

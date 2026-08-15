@@ -11,7 +11,9 @@ export const TASK_ITEM_STATUSES = [
   "blocked",
 ] as const;
 
-export const TASK_LIST_SOURCES = ["plan", "agent", "user"] as const;
+export const TASK_LIST_SOURCES = ["plan", "agent", "user", "discovery"] as const;
+
+export const TASK_LIST_PURPOSES = ["discovery", "execution"] as const;
 
 export const TASK_LIST_APPLY_STATUSES = ["applied", "rejected"] as const;
 

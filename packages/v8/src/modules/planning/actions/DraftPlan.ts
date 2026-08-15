@@ -1,20 +1,31 @@
 import type {
+  DiscoveryBrief,
+  DiscoveryChangeSurface,
   PlanArtifact,
   PlanChangeImpact,
+  PlanContextRef,
   PlanPhase,
   PlanStep,
+  PlanningBuildEvidence,
+  PlanningScopedRepoMap,
   PlanningSkillHint,
   PlanningParsedInput,
   PlanningTaskEvidence,
+  PlanStrategyDecision,
 } from "../contracts";
+import { isRepairIntentTaxonomy } from "../../decision-policy";
 import { PLANNING_SCHEMA_VERSION } from "../constants";
+import { DEFAULT_MAX_STEPS_PER_PHASE } from "../defaults";
 import { PLANNING_PROCESS_META_STEP } from "../policy";
+import { filterBuildEvidenceToAskScope } from "../internal/evidenceScope";
 
 /**
  * Draft a generic PlanArtifact from task dimensions and optional hints.
  * Not plan-type-driven — phases come from scope/risk/clarity/impact signals.
  */
-export function draftPlan(input: PlanningParsedInput): PlanArtifact {
+export function draftPlan(
+  input: PlanningParsedInput & { strategy?: PlanStrategyDecision },
+): PlanArtifact {
   if (input.priorPlan) {
     return {
       ...input.priorPlan,
@@ -30,10 +41,21 @@ export function draftPlan(input: PlanningParsedInput): PlanArtifact {
   const approvalRequired =
     evidence.risk === "high" ||
     evidence.risk === "critical";
-  const targetRefs = evidence.targets.map((t) => t.value).slice(0, 12);
+  const targetRefs = resolveTargetRefs(evidence, input.discoveryBrief);
   const objective = buildObjective(input.query, evidence);
-  const openQuestions = buildOpenQuestions(evidence, input.processHints);
+  const openQuestions = buildOpenQuestions(
+    evidence,
+    input.processHints,
+    input.discoveryBrief,
+  );
   const skillPhaseHints = extractSkillPhaseHints(input.skills ?? []);
+  const scopedBuildEvidence = input.strategy?.useBuildEvidence
+    ? filterBuildEvidenceToAskScope({
+        buildEvidence: input.buildEvidence,
+        targets: evidence.targets,
+        query: input.query,
+      })
+    : undefined;
   const phases = buildPhases({
     evidence,
     objective,
@@ -41,6 +63,9 @@ export function draftPlan(input: PlanningParsedInput): PlanArtifact {
     changeImpact,
     processHints: input.processHints ?? [],
     skillPhaseHints,
+    buildEvidence: scopedBuildEvidence,
+    skipDiscover: input.strategy?.skipDiscover ?? false,
+    discoveryBrief: input.discoveryBrief,
   });
 
   return {
@@ -48,8 +73,19 @@ export function draftPlan(input: PlanningParsedInput): PlanArtifact {
     objective,
     assumptions: buildAssumptions(evidence),
     openQuestions,
-    contextReviewed: input.contextReviewed ?? [],
-    constraints: [...evidence.constraints],
+    contextReviewed: mergeContextReviewed(
+      input.contextReviewed,
+      input.scopedRepoMap,
+      input.discoveryBrief?.filesRead.map((file) => ({
+        kind: "file" as const,
+        ref: file.path,
+        note: file.reason,
+      })),
+    ),
+    constraints: uniqueStrings([
+      ...evidence.constraints,
+      ...(input.discoveryBrief?.discoveredConstraints ?? []),
+    ]),
     dimensions: {
       scope: evidence.scope,
       risk: evidence.risk,
@@ -122,11 +158,32 @@ function buildAssumptions(evidence: PlanningTaskEvidence): string[] {
   return assumptions.slice(0, 8);
 }
 
+function resolveTargetRefs(
+  evidence: PlanningTaskEvidence,
+  discoveryBrief: DiscoveryBrief | undefined,
+): string[] {
+  const fromDiscovery = [
+    ...(discoveryBrief?.proposedChangeSurfaces.map((surface) => surface.path) ??
+      []),
+    ...(discoveryBrief?.targets
+      .filter((target) => target.kind === "file" || target.kind === "test")
+      .map((target) => target.value) ?? []),
+  ];
+  if (fromDiscovery.length > 0) {
+    return uniqueStrings(fromDiscovery).slice(0, 12);
+  }
+  return evidence.targets.map((target) => target.value).slice(0, 12);
+}
+
 function buildOpenQuestions(
   evidence: PlanningTaskEvidence,
   processHints: readonly string[] | undefined,
+  discoveryBrief?: DiscoveryBrief,
 ): string[] {
-  const questions: string[] = [];
+  if (discoveryBrief && discoveryBrief.confidence === "low") {
+    return uniqueStrings(discoveryBrief.openQuestions).slice(0, 5);
+  }
+  const questions: string[] = [...(discoveryBrief?.openQuestions ?? [])];
   const scope = scopeLabel(evidence.targets.map((t) => t.value));
   if (evidence.clarity === "unclear" || evidence.clarity === "partially_clear") {
     questions.push(
@@ -172,6 +229,9 @@ function buildPhases(params: {
   changeImpact: readonly PlanChangeImpact[];
   processHints: readonly string[];
   skillPhaseHints: readonly SkillPhaseHint[];
+  buildEvidence?: PlanningBuildEvidence;
+  skipDiscover?: boolean;
+  discoveryBrief?: DiscoveryBrief;
 }): PlanPhase[] {
   const {
     evidence,
@@ -180,26 +240,42 @@ function buildPhases(params: {
     changeImpact,
     processHints,
     skillPhaseHints,
+    buildEvidence,
+    discoveryBrief,
   } = params;
   const needsDiscovery =
-    evidence.scope === "package" ||
-    evidence.scope === "repository" ||
-    evidence.scope === "workspace" ||
-    evidence.scope === "multi_file" ||
-    evidence.complexity === "complex" ||
-    evidence.complexity === "very_complex" ||
-    evidence.recommendsPlanning === true;
+    !params.skipDiscover &&
+    (evidence.scope === "package" ||
+      evidence.scope === "repository" ||
+      evidence.scope === "workspace" ||
+      evidence.scope === "multi_file" ||
+      evidence.complexity === "complex" ||
+      evidence.complexity === "very_complex" ||
+      evidence.recommendsPlanning === true);
 
-  const executableSkillHints = filterExecutableSkillPhaseHints(skillPhaseHints);
+  const executableSkillHints = filterExecutableSkillPhaseHints(
+    skillPhaseHints,
+    params.skipDiscover === true,
+  );
   if (executableSkillHints.length > 0) {
-    return buildSkillHintPhases({
-      skillPhaseHints: executableSkillHints,
-      evidence,
-      objective,
-      targetRefs,
-      changeImpact,
-      processHints,
-    });
+    return injectDiscoveryStepsIntoChangePhase(
+      injectDiagnosticStepsIntoChangePhase(
+        buildSkillHintPhases({
+          skillPhaseHints: executableSkillHints,
+          evidence,
+          objective,
+          targetRefs,
+          changeImpact,
+          processHints,
+          buildEvidence,
+          discoveryBrief,
+        }),
+        buildEvidence,
+        evidence.risk,
+      ),
+      discoveryBrief,
+      evidence.risk,
+    );
   }
 
   const phases: PlanPhase[] = [];
@@ -235,11 +311,13 @@ function buildPhases(params: {
       targetRefs,
       changeImpact,
       processHints,
+      buildEvidence,
+      discoveryBrief,
     ),
   });
 
   if (includeVerify) {
-    const verification = buildVerification(evidence);
+    const verification = buildVerification(evidence, discoveryBrief);
     phases.push({
       id: "phase-verify",
       name: "Verify",
@@ -346,8 +424,13 @@ function mergePhaseHints(
  */
 function filterExecutableSkillPhaseHints(
   hints: readonly SkillPhaseHint[],
+  skipDiscover = false,
 ): SkillPhaseHint[] {
   return hints
+    .filter(
+      (hint) =>
+        !skipDiscover || normalizePhaseName(hint.name) !== "discover",
+    )
     .map((hint) => ({
       name: hint.name,
       steps: hint.steps.filter((step) => !PLANNING_PROCESS_META_STEP.test(step)),
@@ -362,6 +445,8 @@ function buildSkillHintPhases(params: {
   targetRefs: readonly string[];
   changeImpact: readonly PlanChangeImpact[];
   processHints: readonly string[];
+  buildEvidence?: PlanningBuildEvidence;
+  discoveryBrief?: DiscoveryBrief;
 }): PlanPhase[] {
   const phases: PlanPhase[] = [];
   const shortObjective = clipPhrase(params.objective, 80);
@@ -420,6 +505,8 @@ function buildSkillHintPhases(params: {
         params.targetRefs,
         params.changeImpact,
         params.processHints,
+        params.buildEvidence,
+        params.discoveryBrief,
       ),
     });
   }
@@ -428,7 +515,10 @@ function buildSkillHintPhases(params: {
     shouldIncludeVerifyPhase(params.evidence) &&
     !hasPhase(phases, "verify")
   ) {
-    const verification = buildVerification(params.evidence);
+    const verification = buildVerification(
+      params.evidence,
+      params.discoveryBrief,
+    );
     phases.push({
       id: "phase-verify",
       name: "Verify",
@@ -449,6 +539,143 @@ function buildSkillHintPhases(params: {
   }
 
   return phases.slice(0, 6);
+}
+
+/**
+ * Preflight diagnostics must survive skill-driven phase templates. Prefer a
+ * Change-like phase; otherwise insert a dedicated Change phase.
+ */
+function injectDiscoveryStepsIntoChangePhase(
+  phases: PlanPhase[],
+  discoveryBrief: DiscoveryBrief | undefined,
+  risk: PlanStep["riskLevel"],
+): PlanPhase[] {
+  const discoverySteps = buildDiscoveryChangeSteps(discoveryBrief, risk);
+  if (discoverySteps.length === 0) {
+    return phases;
+  }
+  const changeIdx = phases.findIndex((phase) => isChangeLikePhase(phase.name));
+  if (changeIdx < 0) {
+    return phases;
+  }
+  return phases.map((phase, index) => {
+    if (index !== changeIdx) {
+      return phase;
+    }
+    const retained = phase.steps.filter(
+      (item) => !item.id.startsWith("step-change-surface-"),
+    );
+    return {
+      ...phase,
+      steps: [...discoverySteps, ...retained].slice(
+        0,
+        DEFAULT_MAX_STEPS_PER_PHASE,
+      ),
+    };
+  });
+}
+
+function injectDiagnosticStepsIntoChangePhase(
+  phases: PlanPhase[],
+  buildEvidence: PlanningBuildEvidence | undefined,
+  risk: PlanStep["riskLevel"],
+): PlanPhase[] {
+  const diagnosticSteps = buildDiagnosticChangeSteps(buildEvidence, risk);
+  if (diagnosticSteps.length === 0) {
+    return phases;
+  }
+
+  const changeIdx = phases.findIndex((phase) => isChangeLikePhase(phase.name));
+  if (changeIdx >= 0) {
+    return phases.map((phase, index) => {
+      if (index !== changeIdx) {
+        return phase;
+      }
+      const retained = phase.steps.filter(
+        (item) => !item.id.startsWith("step-fix-diagnostic-"),
+      );
+      return {
+        ...phase,
+        steps: [...diagnosticSteps, ...retained].slice(
+          0,
+          DEFAULT_MAX_STEPS_PER_PHASE,
+        ),
+      };
+    });
+  }
+
+  const verifyIdx = phases.findIndex(
+    (phase) => normalizePhaseName(phase.name) === "verify",
+  );
+  const insertAt = verifyIdx >= 0 ? verifyIdx : phases.length;
+  const previousId =
+    insertAt > 0 ? phases[insertAt - 1]?.id : undefined;
+  const changePhase: PlanPhase = {
+    id: "phase-change",
+    name: "Change",
+    purpose:
+      "Apply concrete diagnostic fixes from preflight build evidence.",
+    dependencies: previousId ? [previousId] : [],
+    successCriteria: [
+      "Reported diagnostics are resolved without unrelated edits.",
+    ],
+    steps: diagnosticSteps.slice(0, DEFAULT_MAX_STEPS_PER_PHASE),
+  };
+
+  const next = [...phases];
+  next.splice(insertAt, 0, changePhase);
+  if (verifyIdx >= 0) {
+    const shiftedVerifyIdx = insertAt + 1;
+    next[shiftedVerifyIdx] = {
+      ...next[shiftedVerifyIdx]!,
+      dependencies: [changePhase.id],
+    };
+  }
+  return next.slice(0, 6);
+}
+
+function isChangeLikePhase(name: string): boolean {
+  const normalized = normalizePhaseName(name);
+  return (
+    normalized === "change" ||
+    /^(change|implement|fix|build|apply)/.test(normalized)
+  );
+}
+
+function mergeContextReviewed(
+  existing: readonly PlanContextRef[] | undefined,
+  scopedRepoMap: PlanningScopedRepoMap | undefined,
+  discoveryFiles?: readonly PlanContextRef[],
+): PlanContextRef[] {
+  const merged: PlanContextRef[] = [...(existing ?? [])];
+  const seen = new Set(merged.map((item) => item.ref));
+  for (const file of discoveryFiles ?? []) {
+    const path = file.ref.trim();
+    if (!path || seen.has(path)) {
+      continue;
+    }
+    seen.add(path);
+    merged.push(file);
+    if (merged.length >= 40) {
+      return merged;
+    }
+  }
+  for (const entry of scopedRepoMap?.entries ?? []) {
+    const path = entry.path.trim();
+    if (!path || seen.has(path)) {
+      continue;
+    }
+    seen.add(path);
+    merged.push({
+      kind: entry.kind === "folder" ? "folder" : "file",
+      ref: path,
+      ...(entry.note ? { note: entry.note } : {}),
+    });
+    if (merged.length >= 40) {
+      break;
+    }
+  }
+  return merged;
 }
 
 function hasPhase(phases: readonly PlanPhase[], name: string): boolean {
@@ -647,6 +874,8 @@ function buildChangeSteps(
   targetRefs: readonly string[],
   changeImpact: readonly PlanChangeImpact[],
   processHints: readonly string[],
+  buildEvidence?: PlanningBuildEvidence,
+  discoveryBrief?: DiscoveryBrief,
 ): PlanStep[] {
   const scope = scopeLabel(targetRefs);
   const shortObjective = clipPhrase(objective, 80);
@@ -654,8 +883,22 @@ function buildChangeSteps(
   const implementIntent = actionAwareIntent(verb, shortObjective, scope);
   const steps: PlanStep[] = [];
 
+  const discoverySteps = buildDiscoveryChangeSteps(
+    discoveryBrief,
+    evidence.risk,
+  );
+  const diagnosticSteps = buildDiagnosticChangeSteps(
+    buildEvidence,
+    evidence.risk,
+  );
+  const discoveryFailed =
+    discoveryBrief !== undefined &&
+    discoveryBrief.confidence === "low" &&
+    discoverySteps.length === 0 &&
+    diagnosticSteps.length === 0;
+
   // Repair intents skip design-heavy approach selection.
-  if (!isRepairIntent(evidence)) {
+  if (!isRepairIntent(evidence) && !discoveryFailed && discoverySteps.length === 0) {
     steps.push(
       step(
         "step-design",
@@ -668,21 +911,40 @@ function buildChangeSteps(
     );
   }
 
-  steps.push(
-    step(
-      "step-implement",
-      implementIntent,
-      targetRefs,
-      summarizeImplementAction(
-        objective,
+  steps.push(...discoverySteps);
+  steps.push(...diagnosticSteps);
+
+  // Prefer concrete diagnostic/discovery rows over a package-wide mega-objective.
+  if (diagnosticSteps.length === 0 && discoverySteps.length === 0) {
+    if (discoveryFailed) {
+      steps.push(
+        step(
+          "step-open-questions",
+          "Resolve remaining open questions before changing files",
+          [],
+          "Discovery did not identify a concrete change surface. Answer the open questions instead of inventing file work.",
+          "Open questions are resolved or the user confirms the change surface.",
+          "low",
+        ),
+      );
+      return steps;
+    }
+    steps.push(
+      step(
+        "step-implement",
+        implementIntent,
         targetRefs,
-        changeImpact,
-        processHints,
+        summarizeImplementAction(
+          objective,
+          targetRefs,
+          changeImpact,
+          processHints,
+        ),
+        doneOutcome(evidence, shortObjective),
+        evidence.risk,
       ),
-      doneOutcome(evidence, shortObjective),
-      evidence.risk,
-    ),
-  );
+    );
+  }
 
   if (changeImpact.includes("security") || changeImpact.includes("data")) {
     steps.push(
@@ -698,6 +960,98 @@ function buildChangeSteps(
   }
 
   return steps;
+}
+
+function buildDiscoveryChangeSteps(
+  discoveryBrief: DiscoveryBrief | undefined,
+  risk: PlanStep["riskLevel"],
+): PlanStep[] {
+  const surfaces = discoveryBrief?.proposedChangeSurfaces ?? [];
+  if (surfaces.length === 0) {
+    return [];
+  }
+  return surfaces.slice(0, DEFAULT_MAX_STEPS_PER_PHASE).map((surface, index) =>
+    discoverySurfaceStep(surface, index, risk),
+  );
+}
+
+function discoverySurfaceStep(
+  surface: DiscoveryChangeSurface,
+  index: number,
+  risk: PlanStep["riskLevel"],
+): PlanStep {
+  return step(
+    `step-change-surface-${index + 1}`,
+    clipPhrase(`${surface.actionHint} ${surface.path}`, 200),
+    [surface.path],
+    clipPhrase(surface.evidence, 1_000),
+    `The requested change on ${surface.path} is applied without unrelated edits.`,
+    surface.riskLevel === "low" ? risk : surface.riskLevel,
+  );
+}
+
+function buildDiagnosticChangeSteps(
+  buildEvidence: PlanningBuildEvidence | undefined,
+  risk: PlanStep["riskLevel"],
+): PlanStep[] {
+  const diagnostics = (buildEvidence?.diagnostics ?? []).filter(
+    (diag) => diag.severity === "error",
+  );
+  if (diagnostics.length === 0) {
+    return [];
+  }
+
+  return groupDiagnosticsByPath(diagnostics)
+    .slice(0, 8)
+    .map(({ path, diagnostics: fileDiagnostics }, index) => {
+      const primary = fileDiagnostics[0]!;
+      const code = primary.code ? ` ${primary.code}` : "";
+      const line = primary.startLine ? `:${primary.startLine}` : "";
+      const countNote =
+        fileDiagnostics.length === 1
+          ? `the reported diagnostic${code}`
+          : `${fileDiagnostics.length} reported diagnostics`;
+      return step(
+        `step-fix-diagnostic-${index + 1}`,
+        clipPhrase(`Fix ${path}${line}${code}`, 200),
+        [path],
+        clipPhrase(
+          `Address ${countNote} in ${path} without broad unrelated rewrites. ${primary.message}`,
+          1_000,
+        ),
+        `Diagnostics for ${path} are resolved or reduced without introducing new errors.`,
+        risk,
+        buildEvidence?.failedChecks?.join(", "),
+      );
+    });
+}
+
+function groupDiagnosticsByPath(
+  diagnostics: readonly NonNullable<PlanningBuildEvidence["diagnostics"]>[number][],
+): Array<{
+  path: string;
+  diagnostics: NonNullable<PlanningBuildEvidence["diagnostics"]>;
+}> {
+  const byPath = new Map<
+    string,
+    NonNullable<PlanningBuildEvidence["diagnostics"]>
+  >();
+  for (const diagnostic of diagnostics) {
+    const path = diagnostic.path.trim();
+    if (!path || byPath.get(path)?.length === 12) {
+      continue;
+    }
+    const existing = byPath.get(path);
+    if (existing) {
+      existing.push(diagnostic);
+    } else {
+      byPath.set(path, [diagnostic]);
+    }
+  }
+  return [...byPath.entries()].map(([path, grouped]) => ({
+    path,
+    diagnostics: grouped,
+  }));
 }
 
 function buildVerifySteps(
@@ -826,8 +1180,21 @@ function buildAlternatives(
 
 function buildVerification(
   evidence: PlanningTaskEvidence,
+  discoveryBrief?: DiscoveryBrief,
 ): PlanArtifact["verification"] {
   const checks: string[] = [];
+  const commands: string[] = [];
+  const manualQa: string[] = [];
+  for (const hint of discoveryBrief?.verificationHints ?? []) {
+    if (hint.kind === "manual") {
+      manualQa.push(hint.reason);
+    } else if (hint.kind !== "unknown") {
+      checks.push(hint.kind === "test" ? "tests" : hint.kind);
+    }
+    if (hint.command) {
+      commands.push(hint.command);
+    }
+  }
   // Generic check kinds (host/project adapters decide concrete commands).
   if (evidence.recommendsVerification !== false || isRepairIntent(evidence)) {
     checks.push("lint", "typecheck");
@@ -842,13 +1209,13 @@ function buildVerification(
   if (evidence.risk === "critical") {
     checks.push("build");
   }
+  if (evidence.risk === "high" || evidence.risk === "critical") {
+    manualQa.push("Manually exercise the primary user-facing path.");
+  }
   return {
     checks: uniqueStrings(checks),
-    manualQa:
-      evidence.risk === "high" || evidence.risk === "critical"
-        ? ["Manually exercise the primary user-facing path."]
-        : [],
-    commands: [],
+    manualQa: uniqueStrings(manualQa),
+    commands: uniqueStrings(commands),
   };
 }
 
@@ -1028,19 +1395,15 @@ function shouldIncludeVerifyPhase(
 
 /**
  * Repair-shaped work from request-understanding intent taxonomy only.
- * No language/tool/provider keyword sniffing.
+ * No language/tool/provider keyword sniffing. Shared predicate — see
+ * decision-policy's `isRepairIntentTaxonomy` (also used by Decision Policy's
+ * preflight gate and Planning's strategy rules).
  */
 function isRepairIntent(evidence: PlanningTaskEvidence): boolean {
-  const intents = [evidence.primaryIntent, ...evidence.secondaryIntents]
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean);
-  return intents.some(
-    (intent) =>
-      intent.includes("bug") ||
-      intent.includes("fix") ||
-      intent === "debug" ||
-      intent.includes("diagnos"),
-  );
+  return isRepairIntentTaxonomy([
+    evidence.primaryIntent,
+    ...evidence.secondaryIntents,
+  ]);
 }
 
 /**

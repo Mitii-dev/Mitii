@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   TASK_ITEM_STATUSES,
+  TASK_LIST_PURPOSES,
   TASK_LIST_SCHEMA_VERSION,
   TASK_LIST_SOURCES,
 } from "../../constants";
@@ -14,6 +15,7 @@ import {
 
 export const taskItemStatusSchema = z.enum(TASK_ITEM_STATUSES);
 export const taskListSourceSchema = z.enum(TASK_LIST_SOURCES);
+export const taskListPurposeSchema = z.enum(TASK_LIST_PURPOSES);
 
 export type TaskItemStatus =
   | "pending"
@@ -21,7 +23,8 @@ export type TaskItemStatus =
   | "done"
   | "skipped"
   | "blocked";
-export type TaskListSource = "plan" | "agent" | "user";
+export type TaskListSource = "plan" | "agent" | "user" | "discovery";
+export type TaskListPurpose = "discovery" | "execution";
 
 export const taskItemSchema = z
   .object({
@@ -51,6 +54,7 @@ export const taskListObjectSchema = z
   .object({
     schemaVersion: z.literal(TASK_LIST_SCHEMA_VERSION),
     source: taskListSourceSchema,
+    purpose: taskListPurposeSchema.optional(),
     title: z.string().min(1).max(DEFAULT_MAX_TASK_TITLE_CHARS).optional(),
     items: z.array(taskItemSchema).max(DEFAULT_MAX_TASKS),
   })
@@ -84,6 +88,7 @@ export const taskListSchema = taskListObjectSchema.superRefine((value, ctx) => {
 export interface TaskList {
   schemaVersion: 1;
   source: TaskListSource;
+  purpose?: TaskListPurpose;
   title?: string;
   items: TaskItem[];
 }

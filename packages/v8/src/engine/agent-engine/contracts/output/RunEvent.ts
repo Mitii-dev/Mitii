@@ -6,7 +6,10 @@ import {
   executionRouteSchema,
   workspaceEffectSchema,
 } from "../../../../modules/decision-policy";
-import { planArtifactSchema } from "../../../../modules/planning";
+import {
+  discoveryBriefSchema,
+  planArtifactSchema,
+} from "../../../../modules/planning";
 import { taskListSchema } from "../../../../modules/task-list";
 import { repositoryStateReferenceSchema } from "../../../../modules/repository-state";
 import {
@@ -25,6 +28,7 @@ import {
   AGENT_SUSPENSION_KINDS,
 } from "../../constants";
 import { agentRunResultSchema } from "./AgentRunResult";
+import { runEvidenceSchema } from "./RunEvidence";
 
 export const agentActiveStageSchema = z.enum(AGENT_ACTIVE_STAGES);
 export const agentEventTypeSchema = z.enum(AGENT_EVENT_TYPES);
@@ -130,9 +134,39 @@ export const runEventSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      type: z.literal("discovery_started"),
+      runId: z.string().min(1),
+      objective: z.string().min(1).max(500),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("discovery_progress"),
+      runId: z.string().min(1),
+      filesRead: z.number().int().nonnegative(),
+      searches: z.number().int().nonnegative(),
+      summary: z.string().min(1).max(500).optional(),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("discovery_completed"),
+      runId: z.string().min(1),
+      confidence: z.enum(["low", "medium", "high"]),
+      fileCount: z.number().int().nonnegative(),
+      surfaceCount: z.number().int().nonnegative(),
+      openQuestionCount: z.number().int().nonnegative(),
+      brief: discoveryBriefSchema.optional(),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("task_list_updated"),
       runId: z.string().min(1),
-      source: z.enum(["plan", "agent", "user"]),
+      source: z.enum(["plan", "agent", "user", "discovery"]),
       completedCount: z.number().int().nonnegative(),
       totalCount: z.number().int().nonnegative(),
       activeId: z.string().min(1).optional(),
@@ -193,6 +227,14 @@ export const runEventSchema = z.discriminatedUnion("type", [
       status: z.string().min(1),
       summary: z.string().min(1).max(500).optional(),
       reasonCode: z.string().min(1).max(80).optional(),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("evidence_updated"),
+      runId: z.string().min(1),
+      evidence: runEvidenceSchema,
       at: z.string().datetime(),
     })
     .strict(),

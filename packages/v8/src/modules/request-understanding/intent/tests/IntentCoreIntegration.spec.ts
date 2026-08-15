@@ -11,6 +11,7 @@ import type {
 import {
   IntentRouter,
 } from "../IntentRouter";
+import { RuleIntentClassifier } from "../classifiers/rule/RuleIntentClassifier";
 
 class StaticLlmPort
   implements LlmPort {
@@ -230,3 +231,16 @@ test(
     );
   },
 );
+
+test("rule classifier matches plural and package TS-repair phrasing", () => {
+  const classifier = new RuleIntentClassifier();
+  for (const message of [
+    "fix all ts issues in this package",
+    "Please fix all the ts errors in this package",
+    "Please fix all the ts erros in this package",
+  ]) {
+    const result = classifier.classifyMessage(message);
+    assert.equal(result?.primaryTaskIntent, "bugfix", message);
+    assert.equal(result?.interactionIntent, "act", message);
+  }
+});

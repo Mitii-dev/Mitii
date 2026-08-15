@@ -28,6 +28,8 @@ export function applyTaskListUpdate(
       taskList: {
         schemaVersion: TASK_LIST_SCHEMA_VERSION,
         source: input.source,
+        ...(input.purpose ? { purpose: input.purpose } : {}),
+        ...(input.title ? { title: input.title } : {}),
         items: [],
       },
       warnings: [],
@@ -36,7 +38,12 @@ export function applyTaskListUpdate(
   }
 
   if (input.operation.type === "replace") {
-    const built = buildItems(input.operation.items, input.source);
+    const built = buildItems(
+      input.operation.items,
+      input.source,
+      input.purpose,
+      input.title,
+    );
     if (!built.ok) {
       return parsedResult({
         status: "rejected",
@@ -90,7 +97,8 @@ export function applyTaskListUpdate(
   const next: TaskList = {
     schemaVersion: TASK_LIST_SCHEMA_VERSION,
     source: input.source,
-    title: current.title,
+    purpose: input.purpose ?? current.purpose,
+    title: input.title ?? current.title,
     items,
   };
 
@@ -119,6 +127,8 @@ export function applyTaskListUpdate(
 function buildItems(
   drafts: readonly TaskListDraftItem[],
   source: TaskList["source"],
+  purpose?: TaskList["purpose"],
+  title?: string,
 ):
   | { ok: true; taskList: TaskList; warnings: string[] }
   | { ok: false; warnings: string[] } {
@@ -156,6 +166,8 @@ function buildItems(
   const taskList: TaskList = {
     schemaVersion: TASK_LIST_SCHEMA_VERSION,
     source,
+    ...(purpose ? { purpose } : {}),
+    ...(title ? { title } : {}),
     items: items.slice(0, DEFAULT_MAX_TASKS),
   };
   const validated = taskListSchema.safeParse(taskList);

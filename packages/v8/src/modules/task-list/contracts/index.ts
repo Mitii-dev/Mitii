@@ -17,12 +17,14 @@ export {
   taskListObjectSchema,
   taskListSchema,
   taskListSourceSchema,
+  taskListPurposeSchema,
 } from "./output/TaskList";
 export type {
   TaskItem,
   TaskItemStatus,
   TaskList,
   TaskListSource,
+  TaskListPurpose,
 } from "./output/TaskList";
 
 export {

@@ -1,5 +1,14 @@
-import type { MitiiConversationMessage, PlanArtifact, TaskList } from '@mitii/sdk';
-import { planArtifactSchema, taskListSchema } from '@mitii/sdk';
+import type {
+  MitiiConversationMessage,
+  PlanArtifact,
+  PlanStrategyDecision,
+  TaskList,
+} from '@mitii/sdk';
+import {
+  planArtifactSchema,
+  planStrategyDecisionSchema,
+  taskListSchema,
+} from '@mitii/sdk';
 
 /**
  * Host-side conversation / plan carry policy.
@@ -83,11 +92,31 @@ export function resolvePlanHandoff(options: {
 }
 
 /**
+ * Companion strategy for a host-carried approved plan.
+ * Agent mode only; ignored when the persisted shape is stale.
+ */
+export function resolvePlanStrategyHandoff(options: {
+  mode: AgentCarryMode;
+  pendingPlanStrategy: unknown;
+}): PlanStrategyDecision | undefined {
+  if (options.mode !== 'agent') return undefined;
+  return parsePendingPlanStrategy(options.pendingPlanStrategy);
+}
+
+/**
  * Validate a persisted pending plan (memento may hold stale shapes).
  */
 export function parsePendingPlan(value: unknown): PlanArtifact | undefined {
   if (value == null) return undefined;
   const parsed = planArtifactSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+export function parsePendingPlanStrategy(
+  value: unknown,
+): PlanStrategyDecision | undefined {
+  if (value == null) return undefined;
+  const parsed = planStrategyDecisionSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
 
