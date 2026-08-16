@@ -1,4 +1,5 @@
 import type { RequestUnderstandingResult } from "../../request-understanding";
+import type { WindowPolicy } from "../../window-budget";
 
 import type {
   DecisionReasonCode,
@@ -17,6 +18,7 @@ export function resolvePlanningDepth(params: {
   route: ExecutionRoute;
   understanding: RequestUnderstandingResult;
   message: string;
+  windowPolicy?: WindowPolicy;
 }): PlanningDepthResolution {
   const { mode, route, understanding, message } = params;
   const { taskAnalysis, intent } = understanding;
@@ -51,13 +53,23 @@ export function resolvePlanningDepth(params: {
 
   if (isArchitectureScale(taskAnalysis, primary, message)) {
     reasonCodes.push("architecture_visible_plan");
-    if (mode === "agent" && route === "execute") {
+    if (
+      mode === "agent" &&
+      route === "execute" &&
+      isChangeImpactAffordable(params.windowPolicy)
+    ) {
       reasonCodes.push("change_impact_recommended");
     }
-    return { planningDepth: "visible", reasonCodes };
+    return {
+      planningDepth: isVisiblePlanAffordable(params.windowPolicy)
+        ? "visible"
+        : "internal",
+      reasonCodes,
+    };
   }
 
-  // Agent execute on shared-scope repair: visible plan + checklist seed.
+  // Agent execute on shared-scope repair: visible plan + checklist seed
+  // when the window can afford the extra prompt and turn.
   if (
     mode === "agent" &&
     route === "execute" &&
@@ -67,8 +79,15 @@ export function resolvePlanningDepth(params: {
       message,
     })
   ) {
-    reasonCodes.push("broad_repair_visible_plan", "change_impact_recommended");
-    return { planningDepth: "visible", reasonCodes };
+    if (isChangeImpactAffordable(params.windowPolicy)) {
+      reasonCodes.push("change_impact_recommended");
+    }
+    if (isVisiblePlanAffordable(params.windowPolicy)) {
+      reasonCodes.push("broad_repair_visible_plan");
+      return { planningDepth: "visible", reasonCodes };
+    }
+    reasonCodes.push("multi_file_internal_plan");
+    return { planningDepth: "internal", reasonCodes };
   }
 
   if (isSimpleLocalized(taskAnalysis)) {
@@ -135,4 +154,12 @@ function isArchitectureScale(
     return true;
   }
   return false;
+}
+
+function isVisiblePlanAffordable(windowPolicy?: WindowPolicy): boolean {
+  return windowPolicy?.planning.visiblePlanAffordable !== false;
+}
+
+function isChangeImpactAffordable(windowPolicy?: WindowPolicy): boolean {
+  return windowPolicy?.planning.changeImpactAffordable !== false;
 }

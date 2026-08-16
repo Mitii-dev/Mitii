@@ -128,7 +128,9 @@ export function createInput(
     DecisionCaseFixture,
     "mode" | "message" | "understanding" | "repositoryState"
   > &
-    Partial<Pick<DecisionPolicyInput, "approvalMode" | "planApproval">>,
+    Partial<
+      Pick<DecisionPolicyInput, "approvalMode" | "planApproval" | "windowPolicy">
+    >,
 ): DecisionPolicyInput {
   return {
     schemaVersion: 1,
@@ -137,6 +139,7 @@ export function createInput(
     repositoryState: fixture.repositoryState,
     approvalMode: fixture.approvalMode,
     planApproval: fixture.planApproval,
+    windowPolicy: fixture.windowPolicy,
   };
 }
 

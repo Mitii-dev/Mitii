@@ -17,6 +17,7 @@ import {
 import { taskListSchema } from "../../../../modules/task-list";
 import { promptInstructionsSchema } from "../../../../modules/prompt-construction";
 import { projectDescriptorSchema } from "../../../../modules/repository-state";
+import { windowBudgetPolicyOverridesSchema } from "../../../../modules/window-budget";
 
 import { AGENT_ENGINE_SCHEMA_VERSION } from "../../constants";
 import {
@@ -30,6 +31,11 @@ const agentApprovalModeSchema = z.enum(APPROVAL_MODES);
 
 export const agentRunBudgetSchema = z
   .object({
+    /**
+     * When true, host run-budget numbers are used as-is.
+     * Window-derived ceilings do not clamp an explicit unlimited request.
+     */
+    unlimited: z.boolean().default(false),
     maxModelCalls: z
       .number()
       .int()
@@ -107,6 +113,16 @@ export const agentEngineStartInputSchema = z
      * all) — this is the look-budget knob; "auto" defers to strategy rules.
      */
     explorationDepth: explorationDepthSchema.default("auto"),
+    /**
+     * Optional host overrides for window-proportional token allocation.
+     * When omitted, Window Budget defaults apply.
+     */
+    windowBudget: z
+      .object({
+        policy: windowBudgetPolicyOverridesSchema.optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

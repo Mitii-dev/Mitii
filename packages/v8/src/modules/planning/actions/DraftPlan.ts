@@ -66,6 +66,7 @@ export function draftPlan(
     buildEvidence: scopedBuildEvidence,
     skipDiscover: input.strategy?.skipDiscover ?? false,
     discoveryBrief: input.discoveryBrief,
+    maxDiagnosticSteps: input.maxDiagnosticSteps,
   });
 
   return {
@@ -232,6 +233,7 @@ function buildPhases(params: {
   buildEvidence?: PlanningBuildEvidence;
   skipDiscover?: boolean;
   discoveryBrief?: DiscoveryBrief;
+  maxDiagnosticSteps?: number;
 }): PlanPhase[] {
   const {
     evidence,
@@ -269,9 +271,11 @@ function buildPhases(params: {
           processHints,
           buildEvidence,
           discoveryBrief,
+          maxDiagnosticSteps: params.maxDiagnosticSteps,
         }),
         buildEvidence,
         evidence.risk,
+        params.maxDiagnosticSteps,
       ),
       discoveryBrief,
       evidence.risk,
@@ -313,6 +317,7 @@ function buildPhases(params: {
       processHints,
       buildEvidence,
       discoveryBrief,
+      params.maxDiagnosticSteps,
     ),
   });
 
@@ -447,6 +452,7 @@ function buildSkillHintPhases(params: {
   processHints: readonly string[];
   buildEvidence?: PlanningBuildEvidence;
   discoveryBrief?: DiscoveryBrief;
+  maxDiagnosticSteps?: number;
 }): PlanPhase[] {
   const phases: PlanPhase[] = [];
   const shortObjective = clipPhrase(params.objective, 80);
@@ -507,6 +513,7 @@ function buildSkillHintPhases(params: {
         params.processHints,
         params.buildEvidence,
         params.discoveryBrief,
+        params.maxDiagnosticSteps,
       ),
     });
   }
@@ -579,8 +586,13 @@ function injectDiagnosticStepsIntoChangePhase(
   phases: PlanPhase[],
   buildEvidence: PlanningBuildEvidence | undefined,
   risk: PlanStep["riskLevel"],
+  maxDiagnosticSteps?: number,
 ): PlanPhase[] {
-  const diagnosticSteps = buildDiagnosticChangeSteps(buildEvidence, risk);
+  const diagnosticSteps = buildDiagnosticChangeSteps(
+    buildEvidence,
+    risk,
+    maxDiagnosticSteps,
+  );
   if (diagnosticSteps.length === 0) {
     return phases;
   }
@@ -598,7 +610,7 @@ function injectDiagnosticStepsIntoChangePhase(
         ...phase,
         steps: [...diagnosticSteps, ...retained].slice(
           0,
-          DEFAULT_MAX_STEPS_PER_PHASE,
+          maxDiagnosticSteps ?? DEFAULT_MAX_STEPS_PER_PHASE,
         ),
       };
     });
@@ -619,7 +631,10 @@ function injectDiagnosticStepsIntoChangePhase(
     successCriteria: [
       "Reported diagnostics are resolved without unrelated edits.",
     ],
-    steps: diagnosticSteps.slice(0, DEFAULT_MAX_STEPS_PER_PHASE),
+    steps: diagnosticSteps.slice(
+      0,
+      maxDiagnosticSteps ?? DEFAULT_MAX_STEPS_PER_PHASE,
+    ),
   };
 
   const next = [...phases];
@@ -876,6 +891,7 @@ function buildChangeSteps(
   processHints: readonly string[],
   buildEvidence?: PlanningBuildEvidence,
   discoveryBrief?: DiscoveryBrief,
+  maxDiagnosticSteps?: number,
 ): PlanStep[] {
   const scope = scopeLabel(targetRefs);
   const shortObjective = clipPhrase(objective, 80);
@@ -890,6 +906,7 @@ function buildChangeSteps(
   const diagnosticSteps = buildDiagnosticChangeSteps(
     buildEvidence,
     evidence.risk,
+    maxDiagnosticSteps,
   );
   const discoveryFailed =
     discoveryBrief !== undefined &&
@@ -993,6 +1010,7 @@ function discoverySurfaceStep(
 function buildDiagnosticChangeSteps(
   buildEvidence: PlanningBuildEvidence | undefined,
   risk: PlanStep["riskLevel"],
+  maxDiagnosticSteps?: number,
 ): PlanStep[] {
   const diagnostics = (buildEvidence?.diagnostics ?? []).filter(
     (diag) => diag.severity === "error",
@@ -1002,7 +1020,7 @@ function buildDiagnosticChangeSteps(
   }
 
   return groupDiagnosticsByPath(diagnostics)
-    .slice(0, 8)
+    .slice(0, maxDiagnosticSteps ?? DEFAULT_MAX_STEPS_PER_PHASE)
     .map(({ path, diagnostics: fileDiagnostics }, index) => {
       const primary = fileDiagnostics[0]!;
       const code = primary.code ? ` ${primary.code}` : "";

@@ -48,6 +48,11 @@ import type {
   RepositoryStateReference,
 } from "../../../modules/repository-state";
 import { deriveContextSelectionBudget } from "../../../modules/repository-context";
+import {
+  WINDOW_BUDGET_SCHEMA_VERSION,
+  deriveWindowPolicy,
+} from "../../../modules/window-budget";
+import type { WindowPolicy } from "../../../modules/window-budget";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
 import type {
   DiagnosticSummary,
@@ -146,10 +151,6 @@ import {
 } from "../policy";
 
 export type AgentEnginePipelineDependencies = AgentEngineDependencies;
-
-const AGENT_ENGINE_CONTEXT_WINDOW_POLICY = {
-  loopInputBudgetSafetyRatio: 0.94,
-} as const;
 
 const DEFAULT_MUTATING_TOOL_NAMES = new Set(
   DEFAULT_MUTATION_TOOL_DEFINITIONS.map((tool) => tool.name),
@@ -398,7 +399,11 @@ export class AgentEnginePipeline {
       planSource,
     } = params;
     const startedMs = Date.now();
-    const budgetLimits = agentRunBudgetSchema.parse(input.budget ?? {});
+    const windowPolicy = this.resolveWindowPolicy(input);
+    const budgetLimits = this.clampRunBudget(
+      agentRunBudgetSchema.parse(input.budget ?? {}),
+      windowPolicy,
+    );
     const budget = new RunBudgetTracker(budgetLimits, startedMs);
     const reasonCodes: AgentReasonCode[] = ["run_started"];
     const warnings: string[] = [];
@@ -622,6 +627,7 @@ export class AgentEnginePipeline {
         hostCapabilities: {
           webSearch: this.deps.tools?.hasSearchPort?.() === true,
         },
+        windowPolicy,
       });
       route = decision.route;
       planningDepth = decision.planningDepth;
@@ -754,6 +760,7 @@ export class AgentEnginePipeline {
           mode: envelope.mode,
           selectionBudget: deriveContextSelectionBudget(
             this.deps.llm.capabilities.contextWindowTokens,
+            { maximumTokens: windowPolicy.sections.repositoryTokens },
           ),
           ...(contextFocus.folderPrefix
             ? { folderPrefix: contextFocus.folderPrefix }
@@ -891,6 +898,8 @@ export class AgentEnginePipeline {
           query: extractPrimaryUserMessage(envelope.message),
           mode: envelope.mode,
           route: decision.route,
+          budgetTokens: windowPolicy.skills.budgetTokens,
+          maxSkills: windowPolicy.skills.maxSkills,
           evidence: {
             ...understandingSkillEvidence,
             paths: skillEvidencePaths,
@@ -1037,6 +1046,8 @@ export class AgentEnginePipeline {
           processHints: [],
           contextReviewed:
             contextReviewed.length > 0 ? contextReviewed : undefined,
+          budgetTokens: windowPolicy.planning.budgetTokens,
+          maxDiagnosticSteps: windowPolicy.planning.maxDiagnosticSteps,
         };
         const planningInput = planningInputSchema.parse(planningInputCandidate);
 
@@ -1236,6 +1247,7 @@ export class AgentEnginePipeline {
         model: input.model,
         temperature: input.temperature,
         stream: input.stream,
+        outputReserveTokens: windowPolicy.maximumOutputTokens,
       });
 
       if (promptResult.status === "blocked") {
@@ -1287,6 +1299,7 @@ export class AgentEnginePipeline {
         })),
         selectedSkillIds: selectedSkills?.map((block) => block.id) ?? [],
         evidence: runEvidence,
+        windowPolicy,
       });
 
       return await this.finishAfterLoop({
@@ -1313,6 +1326,7 @@ export class AgentEnginePipeline {
         onRepoBuildStateAfter: (state) => {
           repoBuildStateAfter = state;
         },
+        windowPolicy,
       });
     } catch (error) {
       await this.safeUnpin(runId, pinnedState);
@@ -1380,8 +1394,12 @@ export class AgentEnginePipeline {
         : 0;
     const excludedWaitMs =
       (checkpoint.excludedWaitMs ?? 0) + suspensionWaitMs;
+    const windowPolicy = this.resolveWindowPolicy(startInput);
     const budget = new RunBudgetTracker(
-      agentRunBudgetSchema.parse(startInput.budget ?? {}),
+      this.clampRunBudget(
+        agentRunBudgetSchema.parse(startInput.budget ?? {}),
+        windowPolicy,
+      ),
       checkpoint.startedAtMs,
       checkpoint.usage,
       excludedWaitMs,
@@ -1704,6 +1722,7 @@ export class AgentEnginePipeline {
         changedFiles,
         mutationCheckpointIds,
         taskListRef,
+        windowPolicy,
       });
 
       return await this.finishAfterLoop({
@@ -1735,6 +1754,7 @@ export class AgentEnginePipeline {
         onRepoBuildStateAfter: (state) => {
           repoBuildStateAfter = state;
         },
+        windowPolicy,
       });
     } catch (error) {
       if (error instanceof AgentEngineError) {
@@ -1792,6 +1812,7 @@ export class AgentEnginePipeline {
     repoBuildStateAfter?: RepoBuildState;
     evidence?: RunEvidence;
     onRepoBuildStateAfter?: (state: RepoBuildState) => void;
+    windowPolicy: WindowPolicy;
   }): Promise<AgentRunResult> {
     const {
       runId,
@@ -1813,6 +1834,7 @@ export class AgentEnginePipeline {
       taskListRef,
       repoBuildStateBefore,
       evidence,
+      windowPolicy,
     } = params;
 
     let currentOutcome = loopOutcome;
@@ -1941,6 +1963,7 @@ export class AgentEnginePipeline {
         repoBuildStateBefore,
         onRepoBuildStateAfter: params.onRepoBuildStateAfter,
         evidence,
+        windowPolicy,
       });
 
       if (verificationOutcome.kind === "ok") {
@@ -2000,6 +2023,7 @@ export class AgentEnginePipeline {
           changedFiles: currentOutcome.changedFiles,
           mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
           evidence,
+          windowPolicy,
         });
         continue;
       }
@@ -2061,6 +2085,7 @@ export class AgentEnginePipeline {
           changedFiles: currentOutcome.changedFiles,
           mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
           evidence,
+          windowPolicy,
         });
         continue;
       }
@@ -2304,6 +2329,7 @@ export class AgentEnginePipeline {
     repoBuildStateBefore?: RepoBuildState;
     onRepoBuildStateAfter?: (state: RepoBuildState) => void;
     evidence?: RunEvidence;
+    windowPolicy: WindowPolicy;
   }): Promise<VerificationGateOutcome> {
     const {
       runId,
@@ -2318,6 +2344,7 @@ export class AgentEnginePipeline {
       repoBuildStateBefore,
       onRepoBuildStateAfter,
       evidence,
+      windowPolicy,
     } = params;
 
     const missingInfrastructure: string[] = [];
@@ -2359,6 +2386,7 @@ export class AgentEnginePipeline {
         changeScope: "localized",
         baselineDiagnostics: repoBuildStateBefore?.diagnostics,
         stateReadiness: input.repositoryState?.readiness ?? "ready",
+        maxChecks: windowPolicy.maxVerificationChecks,
       });
       const afterState = this.captureBuildStateFromVerificationResult({
         input: {
@@ -2670,6 +2698,7 @@ export class AgentEnginePipeline {
     selectedSkillIds?: string[];
     taskListRef: TaskListRef;
     evidence?: RunEvidence;
+    windowPolicy: WindowPolicy;
   }): Promise<ToolLoopOutcome> {
     const {
       runId,
@@ -2733,12 +2762,20 @@ export class AgentEnginePipeline {
 
       const loopInputBudgetTokens = this.calculateLoopInputBudgetTokens(
         params.request,
+        params.windowPolicy,
       );
       const compaction = compactModelLoopMessages({
         messages,
         estimator: this.tokenEstimator,
         budgetTokens: loopInputBudgetTokens,
         memoryFacts: params.memoryFacts,
+        recentToolMessagesToKeepFull:
+          params.windowPolicy.compaction.keepRecentToolResults,
+        compactedToolResultChars:
+          params.windowPolicy.compaction.compactedToolResultChars,
+        warnRatio: params.windowPolicy.compaction.warnRatio,
+        autoRatio: params.windowPolicy.compaction.autoRatio,
+        hardRatio: params.windowPolicy.compaction.hardRatio,
       });
       if (
         compaction.pressure === "warn" &&
@@ -3788,26 +3825,67 @@ export class AgentEnginePipeline {
     return `"${this.safeText(preview, 220) ?? ""}${more}"`;
   }
 
-  private calculateLoopInputBudgetTokens(request: ModelRequest): number {
-    const outputReserve =
-      request.maximumOutputTokens ??
-      this.deps.llm.capabilities.maximumOutputTokens;
+  private calculateLoopInputBudgetTokens(
+    request: ModelRequest,
+    windowPolicy: WindowPolicy,
+  ): number {
+    if (request.maximumOutputTokens === undefined) {
+      return windowPolicy.loopInputBudgetTokens;
+    }
     const toolDefinitionTokens =
       request.tools && request.tools.length > 0
         ? this.tokenEstimator.estimate(JSON.stringify(request.tools))
-        : 0;
+        : windowPolicy.toolSchemaTokens;
     const rawBudget =
-      this.deps.llm.capabilities.contextWindowTokens -
-      Math.max(0, outputReserve) -
+      windowPolicy.contextWindowTokens -
+      Math.max(0, request.maximumOutputTokens) -
       toolDefinitionTokens;
-
     return Math.max(
       1,
       Math.floor(
-        Math.max(0, rawBudget) *
-          AGENT_ENGINE_CONTEXT_WINDOW_POLICY.loopInputBudgetSafetyRatio,
+        Math.max(0, rawBudget) * windowPolicy.resolvedPolicy.loopSafetyRatio,
       ),
     );
+  }
+
+  private resolveWindowPolicy(input: AgentEngineStartInput): WindowPolicy {
+    const tools =
+      input.tools ?? this.deps.toolDefinitions ?? DEFAULT_TOOL_DEFINITIONS;
+    const toolSchemaTokens =
+      tools.length > 0
+        ? this.tokenEstimator.estimate(JSON.stringify(tools))
+        : 0;
+    return deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: this.deps.llm.capabilities.contextWindowTokens,
+      maximumOutputTokens: this.deps.llm.capabilities.maximumOutputTokens,
+      toolSchemaTokens,
+      policy: input.windowBudget?.policy,
+    });
+  }
+
+  private clampRunBudget(
+    parsed: ReturnType<typeof agentRunBudgetSchema.parse>,
+    windowPolicy: WindowPolicy,
+  ): ReturnType<typeof agentRunBudgetSchema.parse> {
+    if (parsed.unlimited) {
+      return parsed;
+    }
+    return {
+      ...parsed,
+      maxModelCalls: Math.min(
+        parsed.maxModelCalls,
+        windowPolicy.run.maxModelCalls,
+      ),
+      maxToolCalls: Math.min(
+        parsed.maxToolCalls,
+        windowPolicy.run.maxToolCalls,
+      ),
+      maxLoopIterations: Math.min(
+        parsed.maxLoopIterations,
+        windowPolicy.run.maxModelCalls,
+      ),
+    };
   }
 
   private async consumeModelTurn(params: {

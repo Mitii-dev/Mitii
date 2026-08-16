@@ -31,7 +31,7 @@ decision-policy/
 
 ## Types And Contracts
 
-- `DecisionPolicyInput`: envelope, understanding, optional repository-state summary, approval mode, plan approval mode, and host capability flags.
+- `DecisionPolicyInput`: envelope, understanding, optional repository-state summary, approval mode, plan approval mode, host capability flags, and optional `windowPolicy` from Window Budget. When `windowPolicy` is omitted, visible-plan and change-impact affordances stay on (large-window behavior). When present, planning depth and mutation batch size follow the derived usable-input / output reserves.
 - `ExecutionDecision`: route, planning depth, plan gate, run disposition, repository-context requirement, optional pinned state, tool grant, verification requirement, reason codes, warnings, rationale, and optional trace.
 - `ToolGrant`: maximum workspace effect, allowed tools/effects, path scopes, command rules, network hosts, approval mode, limits, and optional mutation budget.
 - `MutationBudget`: per-call patch limits and preferred batching hints.

@@ -90,10 +90,16 @@ function normalizeProfile(
       model: String(provider.model ?? fallback.model),
       contextWindow:
         Number(provider.contextWindow) || fallback.contextWindow || 32768,
-      maximumOutputTokens:
-        Number(provider.maximumOutputTokens) ||
-        fallback.maximumOutputTokens ||
-        16384,
+      maximumOutputTokens: (() => {
+        const raw = Number(provider.maximumOutputTokens);
+        if (Number.isFinite(raw) && raw >= 0) {
+          return raw;
+        }
+        const fallbackRaw = Number(fallback.maximumOutputTokens);
+        return Number.isFinite(fallbackRaw) && fallbackRaw >= 0
+          ? fallbackRaw
+          : 0;
+      })(),
     },
     hasSecret: Boolean(obj.hasSecret),
     secretHash: typeof obj.secretHash === 'string' ? obj.secretHash : undefined,

@@ -141,6 +141,8 @@ export const planningInputSchema = z
       .int()
       .positive()
       .default(DEFAULT_PLANNING_BUDGET_TOKENS),
+    /** Window-derived cap for diagnostic change steps. */
+    maxDiagnosticSteps: z.number().int().positive().optional(),
   })
   .strict();
 

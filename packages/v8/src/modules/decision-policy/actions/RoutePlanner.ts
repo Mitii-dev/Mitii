@@ -1,4 +1,5 @@
 import type { RequestUnderstandingResult } from "../../request-understanding";
+import type { WindowPolicy } from "../../window-budget";
 
 import type {
   DecisionReasonCode,
@@ -27,6 +28,7 @@ export function planRoute(params: {
   understanding: RequestUnderstandingResult;
   message: string;
   planApproval?: "policy" | "never";
+  windowPolicy?: WindowPolicy;
 }): RoutePlanResult {
   const routeResult = resolveRoute({
     mode: params.mode,
@@ -38,6 +40,7 @@ export function planRoute(params: {
     route: routeResult.route,
     understanding: params.understanding,
     message: params.message,
+    windowPolicy: params.windowPolicy,
   });
   const resolvedPlanGate = resolvePlanGate({
     mode: params.mode,

@@ -1,4 +1,9 @@
-import { getProviderPreset, isLocalBaseUrl } from './providerPresets.js';
+import {
+  getProviderPreset,
+  isLocalBaseUrl,
+  isOllamaBaseUrl,
+  PROVIDER_PRESETS,
+} from './providerPresets.js';
 
 export interface ProviderConnectionResult {
   ok: boolean;
@@ -10,6 +15,13 @@ export interface TestProviderConnectionInput {
   type: string;
   baseUrl?: string;
   model: string;
+  apiKey?: string;
+  fetchImpl?: typeof fetch;
+}
+
+export interface ListProviderModelsInput {
+  type: string;
+  baseUrl?: string;
   apiKey?: string;
   fetchImpl?: typeof fetch;
 }
@@ -77,6 +89,186 @@ export async function testProviderConnection(
   return result;
 }
 
+/**
+ * List models from the configured provider. Used to populate the settings
+ * dropdown without requiring a manual Test connection click.
+ */
+export async function listProviderModels(
+  input: ListProviderModelsInput,
+): Promise<string[]> {
+  const { type, apiKey } = input;
+  const preset = getProviderPreset(type);
+  const baseUrl = input.baseUrl?.trim() || preset?.baseUrl || '';
+  const fetchImpl = input.fetchImpl ?? fetch;
+
+  if (type === 'echo' || !baseUrl) {
+    return [];
+  }
+
+  try {
+    if (type === 'anthropic') {
+      if (!apiKey?.trim()) return [];
+      const root = baseUrl.replace(/\/$/, '');
+      const modelsRes = await fetchImpl(`${root}/v1/models`, {
+        headers: {
+          'x-api-key': apiKey.trim(),
+          'anthropic-version': '2023-06-01',
+        },
+      });
+      if (!modelsRes.ok) return [];
+      const data = (await modelsRes.json()) as { data?: Array<{ id: string }> };
+      return uniqueModelIds(data.data?.map((item) => item.id) ?? []);
+    }
+
+    if (type === 'gemini') {
+      if (!apiKey?.trim()) return [];
+      const root = baseUrl.replace(/\/$/, '');
+      const modelsRes = await fetchImpl(`${root}/v1beta/models`, {
+        headers: { 'x-goog-api-key': apiKey.trim() },
+      });
+      if (!modelsRes.ok) return [];
+      const data = (await modelsRes.json()) as {
+        models?: Array<{ name?: string }>;
+      };
+      return uniqueModelIds(
+        data.models
+          ?.map((item) => item.name?.replace(/^models\//, ''))
+          .filter((id): id is string => Boolean(id)) ?? [],
+      );
+    }
+
+    if (type !== 'openai-compatible') {
+      return [];
+    }
+
+    const root = baseUrl.replace(/\/$/, '');
+    const headers = openAiCompatibleAuthHeaders(root, apiKey);
+    return listOpenAiCompatibleModels(root, headers, fetchImpl);
+  } catch {
+    return [];
+  }
+}
+
+async function listOpenAiCompatibleModels(
+  root: string,
+  headers: Record<string, string>,
+  fetchImpl: typeof fetch,
+): Promise<string[]> {
+  const catalogUrls = openAiCompatibleCatalogUrls(root);
+  for (const url of catalogUrls) {
+    const modelsRes = await fetchImpl(url, { headers }).catch(() => undefined);
+    if (!modelsRes?.ok) {
+      continue;
+    }
+    const data = (await modelsRes.json()) as {
+      data?: Array<{ id?: string }>;
+    };
+    const models = uniqueModelIds(
+      data.data?.map((item) => item.id).filter((id): id is string => Boolean(id)) ??
+        [],
+    );
+    if (models.length > 0) {
+      return models;
+    }
+  }
+
+  if (!isOllamaBaseUrl(root) && !isLocalBaseUrl(root)) {
+    return [];
+  }
+
+  const tagsUrl = ollamaTagsUrl(root);
+  const tagsRes = await fetchImpl(tagsUrl).catch(() => undefined);
+  if (!tagsRes?.ok) {
+    return [];
+  }
+  const tags = (await tagsRes.json()) as {
+    models?: Array<{ name?: string; model?: string }>;
+  };
+  return uniqueModelIds(
+    (tags.models ?? [])
+      .map((item) => item.name || item.model)
+      .filter((id): id is string => Boolean(id)),
+  );
+}
+
+function openAiCompatibleAuthHeaders(
+  baseUrl: string,
+  apiKey?: string,
+): Record<string, string> {
+  if (!apiKey?.trim()) {
+    return {};
+  }
+  const key = apiKey.trim();
+  const authHeader =
+    matchPresetForBaseUrl(baseUrl)?.authHeader ??
+    (isAzureOpenAiUrl(baseUrl) ? 'api-key' : 'authorization');
+  if (authHeader === 'api-key') {
+    return { 'api-key': key };
+  }
+  if (authHeader === 'x-api-key') {
+    return { 'x-api-key': key };
+  }
+  return { Authorization: `Bearer ${key}` };
+}
+
+function openAiCompatibleCatalogUrls(root: string): string[] {
+  const azure = azureModelsUrl(root);
+  if (azure) {
+    return [azure];
+  }
+  return [`${root.replace(/\/$/, '')}/models`];
+}
+
+function azureModelsUrl(baseUrl: string): string | undefined {
+  try {
+    const url = new URL(baseUrl);
+    if (!isAzureOpenAiUrl(baseUrl)) {
+      return undefined;
+    }
+    const version =
+      url.searchParams.get('api-version') ??
+      /[?&]api-version=([^&]+)/.exec(baseUrl)?.[1] ??
+      '2024-06-01';
+    return `${url.origin}/openai/models?api-version=${encodeURIComponent(version)}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function isAzureOpenAiUrl(baseUrl: string): boolean {
+  try {
+    return new URL(baseUrl).hostname.toLowerCase().endsWith('.openai.azure.com');
+  } catch {
+    return /openai\.azure\.com/i.test(baseUrl);
+  }
+}
+
+function matchPresetForBaseUrl(baseUrl: string) {
+  const normalized = baseUrl.replace(/\/+$/, '').toLowerCase();
+  return PROVIDER_PRESETS.find(
+    (preset) =>
+      preset.baseUrl &&
+      preset.baseUrl.replace(/\/+$/, '').toLowerCase() === normalized,
+  );
+}
+
+function ollamaTagsUrl(openAiRoot: string): string {
+  const origin = openAiRoot.replace(/\/$/, '').replace(/\/v1$/i, '');
+  return `${origin}/api/tags`;
+}
+
+function uniqueModelIds(ids: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const models: string[] = [];
+  for (const id of ids) {
+    const trimmed = id.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    models.push(trimmed);
+  }
+  return models;
+}
+
 async function testOpenAiCompatibleConnection(
   baseUrl: string,
   model: string,
@@ -84,16 +276,11 @@ async function testOpenAiCompatibleConnection(
   fetchImpl: typeof fetch = fetch,
 ): Promise<ProviderConnectionResult> {
   const root = baseUrl.replace(/\/$/, '');
-  const headers: Record<string, string> = {};
-  if (apiKey?.trim()) {
-    headers.Authorization = `Bearer ${apiKey.trim()}`;
-  }
+  const headers = openAiCompatibleAuthHeaders(root, apiKey);
 
   try {
-    const modelsRes = await fetchImpl(`${root}/models`, { headers });
-    if (modelsRes.ok) {
-      const data = (await modelsRes.json()) as { data?: Array<{ id: string }> };
-      const models = data.data?.map((m) => m.id) ?? [];
+    const models = await listOpenAiCompatibleModels(root, headers, fetchImpl);
+    if (models.length > 0) {
       const hasModel =
         models.length === 0 ||
         models.some((m) => m === model || m.startsWith(`${model}:`) || model.startsWith(m));

@@ -1,4 +1,5 @@
 import type { RequestUnderstandingResult } from "../../request-understanding";
+import type { WindowPolicy } from "../../window-budget";
 
 import type {
   DecisionReasonCode,
@@ -24,13 +25,17 @@ export interface MutationBudgetResolution {
  */
 export function resolveMutationBudget(params: {
   understanding: RequestUnderstandingResult;
+  windowPolicy?: WindowPolicy;
 }): MutationBudgetResolution {
-  const { understanding } = params;
+  const { understanding, windowPolicy } = params;
   const profile = selectProfile(understanding.taskAnalysis);
   const reasonCode = profileToReasonCode(profile);
+  const mutationBudget = windowPolicy
+    ? { ...windowPolicy.mutation }
+    : { ...MUTATION_BUDGET_PROFILES[profile] };
 
   return {
-    mutationBudget: { ...MUTATION_BUDGET_PROFILES[profile] },
+    mutationBudget,
     profile,
     reasonCodes: [reasonCode],
   };

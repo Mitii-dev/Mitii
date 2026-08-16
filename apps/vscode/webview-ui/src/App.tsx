@@ -61,6 +61,7 @@ import type {
   SettingsTab,
   SettingsProfileView,
   SkillCatalogItem,
+  TokenBudgetSettingsSnapshot,
   TokenUsageSnapshot,
   UiSettingsPatch,
   UiNav,
@@ -110,6 +111,31 @@ const DEFAULT_RUN_BUDGET = {
   maxWallTimeMinutes: 30,
 };
 
+const DEFAULT_TOKEN_BUDGET: TokenBudgetSettingsSnapshot = {
+  enabled: false,
+  policy: {},
+  fields: [],
+  preview: {
+    contextWindowTokens: 32768,
+    maximumOutputTokens: 3277,
+    toolSchemaTokens: 6554,
+    usableInputTokens: 22937,
+    repositoryTokens: 6422,
+    conversationTokens: 9174,
+    planTokens: 1376,
+    skillsTokens: 917,
+    systemTokens: 5048,
+    maxModelCalls: 16,
+    maxToolCalls: 32,
+    maxUniqueFilesPerCall: 4,
+    visiblePlanAffordable: false,
+    changeImpactAffordable: false,
+    runBudgetUnlimited: false,
+    runBudgetMaxModelCalls: 64,
+    runBudgetMaxToolCalls: 128,
+  },
+};
+
 const DEFAULT_UI: UiSettingsSnapshot = {
   showReasoning: true,
   reasoningPreviewMaxChars: 8000,
@@ -124,6 +150,7 @@ const DEFAULT_UI: UiSettingsSnapshot = {
   runBudget: DEFAULT_RUN_BUDGET,
   developerEnabled: false,
   debugLogging: false,
+  tokenBudget: DEFAULT_TOKEN_BUDGET,
 };
 
 type SettingsMode = 'ask' | 'plan' | 'agent';
@@ -174,6 +201,18 @@ function mergeUiPatch(
     runBudget: patch.runBudget
       ? { ...base.runBudget, ...patch.runBudget }
       : base.runBudget,
+    tokenBudget: patch.tokenBudget
+      ? {
+          ...base.tokenBudget,
+          ...patch.tokenBudget,
+          policy: {
+            ...base.tokenBudget.policy,
+            ...(patch.tokenBudget.policy ?? {}),
+          },
+          fields: base.tokenBudget.fields,
+          preview: base.tokenBudget.preview,
+        }
+      : base.tokenBudget,
   };
 }
 
@@ -263,7 +302,7 @@ export function App() {
     hasApiKey: false,
     availableModels: [],
     contextWindow: 32768,
-    maximumOutputTokens: 16384,
+    maximumOutputTokens: 0,
   });
   const [profiles, setProfiles] = useState<SettingsProfileView[]>([]);
   const [activeProfileId, setActiveProfileId] = useState('default');
@@ -317,18 +356,34 @@ export function App() {
   const activeAssistantId = useRef<string | null>(null);
   const modeRef = useRef<AgentUiMode>(mode);
   const uiRef = useRef<UiSettingsSnapshot>(ui);
+  const providerRef = useRef<ProviderSettingsSnapshot>(provider);
+  const listModelsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hydratedModeDefaults = useRef(false);
+
+  const updateProvider = (
+    next:
+      | ProviderSettingsSnapshot
+      | ((prev: ProviderSettingsSnapshot) => ProviderSettingsSnapshot),
+  ) => {
+    setProvider((prev) => {
+      const resolved = typeof next === 'function' ? next(prev) : next;
+      providerRef.current = resolved;
+      return resolved;
+    });
+  };
 
   const applyTokenUsage = useCallback(
     (usage: TokenUsageSnapshot) => {
       setTokenUsage((prev) => {
         const shouldKeepLiveBreakdown =
           usage.contextBreakdown === undefined && usage.live && prev.live;
+        const providerContextWindow =
+          providerRef.current.contextWindow || provider.contextWindow;
         return {
           ...usage,
           contextWindow:
             usage.contextWindow ||
-            provider.contextWindow ||
+            providerContextWindow ||
             prev.contextWindow ||
             32768,
           contextBreakdown:
@@ -369,10 +424,14 @@ export function App() {
   const applyBootstrap = useCallback((msg: HostToWebviewMessage) => {
     if (msg.type === 'bootstrap' || msg.type === 'settings') {
       setWorkspace(msg.workspace);
-      setProvider({
+      updateProvider({
         ...msg.provider,
-        contextWindow: msg.provider.contextWindow || 32768,
-        maximumOutputTokens: msg.provider.maximumOutputTokens || 16384,
+        contextWindow: Number.isFinite(msg.provider.contextWindow)
+          ? msg.provider.contextWindow
+          : 32768,
+        maximumOutputTokens: Number.isFinite(msg.provider.maximumOutputTokens)
+          ? msg.provider.maximumOutputTokens
+          : 0,
       });
       setProfiles(msg.profiles ?? []);
       setActiveProfileId(msg.activeProfileId ?? 'default');
@@ -394,6 +453,19 @@ export function App() {
           ...DEFAULT_RUN_BUDGET,
           ...msg.ui.runBudget,
         },
+        tokenBudget: {
+          ...DEFAULT_TOKEN_BUDGET,
+          ...msg.ui.tokenBudget,
+          policy: {
+            ...DEFAULT_TOKEN_BUDGET.policy,
+            ...(msg.ui.tokenBudget?.policy ?? {}),
+          },
+          fields:
+            msg.ui.tokenBudget?.fields?.length
+              ? msg.ui.tokenBudget.fields
+              : DEFAULT_TOKEN_BUDGET.fields,
+          preview: msg.ui.tokenBudget?.preview ?? DEFAULT_TOKEN_BUDGET.preview,
+        },
       };
       const previousUi = uiRef.current;
       uiRef.current = nextUi;
@@ -412,7 +484,14 @@ export function App() {
       setOverrideDraft(msg.workspace.rootOverride ?? '');
       applyTokenUsage(msg.tokenUsage);
       setNotice(msg.notice);
-      setCustomModel(false);
+      setCustomModel((wasCustom) => {
+        const nextModel = msg.provider.model?.trim() ?? '';
+        const catalog = new Set([
+          ...(msg.provider.availableModels ?? []),
+          ...modelsForProvider(msg.provider.preset ?? msg.provider.type),
+        ]);
+        return Boolean(nextModel) && (wasCustom || !catalog.has(nextModel));
+      });
       if (msg.provider.connectionStatus) {
         setConnectionMessage(msg.provider.connectionStatus);
       }
@@ -690,7 +769,8 @@ export function App() {
           forceScrollToBottomRef.current = true;
           setTokenUsage({
             ...EMPTY_TOKEN_USAGE,
-            contextWindow: provider.contextWindow || 32768,
+            contextWindow:
+              providerRef.current.contextWindow || provider.contextWindow || 32768,
           });
           setTurns(msg.messages.map((m) => toChatTurn(m)));
           const loadedPlan = msg.pendingPlan ?? null;
@@ -723,19 +803,25 @@ export function App() {
           setTestingConnection(Boolean(msg.testing));
           setConnectionMessage(msg.message);
           if (msg.models?.length) {
-            setProvider((p) => ({
+            updateProvider((p) => ({
               ...p,
               availableModels: mergeModelOptions(msg.models, p.model),
               connectionOk: msg.ok,
               connectionStatus: msg.message,
             }));
           } else if (!msg.testing) {
-            setProvider((p) => ({
+            updateProvider((p) => ({
               ...p,
               connectionOk: msg.ok,
               connectionStatus: msg.message,
             }));
           }
+          break;
+        case 'provider.models':
+          updateProvider((p) => ({
+            ...p,
+            availableModels: mergeModelOptions(msg.models, p.model),
+          }));
           break;
         case 'tokenUsage':
           applyTokenUsage(msg.usage);
@@ -894,20 +980,59 @@ export function App() {
   const testConnection = () => {
     setTestingConnection(true);
     setConnectionMessage('Testing…');
+    const current = providerRef.current;
     postToHost({
       type: 'provider.testConnection',
       provider: {
-        type: provider.type,
-        baseUrl: provider.baseUrl,
-        model: provider.model,
+        type: current.type,
+        baseUrl: current.baseUrl,
+        model: current.model,
       },
     });
+  };
+
+  const requestListedModels = (
+    type: string,
+    baseUrl: string,
+    immediate = false,
+  ) => {
+    if (listModelsTimerRef.current) {
+      clearTimeout(listModelsTimerRef.current);
+      listModelsTimerRef.current = null;
+    }
+    const send = () => {
+      if (type === 'echo') return;
+      postToHost({
+        type: 'provider.listModels',
+        provider: { type, baseUrl },
+      });
+    };
+    if (immediate) {
+      send();
+      return;
+    }
+    listModelsTimerRef.current = setTimeout(send, 400);
+  };
+
+  const handleProviderChange = (
+    next:
+      | ProviderSettingsSnapshot
+      | ((prev: ProviderSettingsSnapshot) => ProviderSettingsSnapshot),
+  ) => {
+    const before = providerRef.current;
+    updateProvider(next);
+    const after = providerRef.current;
+    if (after.type !== before.type) {
+      requestListedModels(after.type, after.baseUrl, true);
+    } else if (after.baseUrl !== before.baseUrl) {
+      requestListedModels(after.type, after.baseUrl);
+    }
   };
 
   const onProviderTypeChange = (presetId: string) => {
     const preset = getProviderPreset(presetId);
     const type = preset?.type ?? presetId;
-    setProvider((p) => ({
+    updateProvider((p) => ({
       ...p,
       type,
       preset: preset?.preset ?? presetId,
@@ -918,6 +1043,8 @@ export function App() {
     }));
     setConnectionMessage(null);
     setCustomModel(false);
+    const current = providerRef.current;
+    requestListedModels(current.type, current.baseUrl, true);
   };
 
   const modelOptions = useMemo(
@@ -938,7 +1065,7 @@ export function App() {
     : provider.model || 'Select model';
 
   const saveModel = (model: string) => {
-    setProvider((p) => ({ ...p, model }));
+    updateProvider((p) => ({ ...p, model }));
     postToHost({
       type: 'settings.set',
       provider: { model },
@@ -1011,7 +1138,7 @@ export function App() {
     }
     const activeModeModel = activeModePatch?.model?.trim();
     if (activeModeModel) {
-      setProvider((prev) => ({
+      updateProvider((prev) => ({
         ...prev,
         model: activeModeModel,
       }));
@@ -1026,18 +1153,21 @@ export function App() {
   );
   const selectedProfileLabel = activeProfile?.name ?? 'Default';
 
-  const snapshotProvider = () => ({
-    type: provider.type,
-    preset: provider.preset,
-    baseUrl: provider.baseUrl,
-    model: provider.model,
-    contextWindow: provider.contextWindow,
-    maximumOutputTokens: provider.maximumOutputTokens,
-  });
+  const snapshotProvider = () => {
+    const current = providerRef.current;
+    return {
+      type: current.type,
+      preset: current.preset,
+      baseUrl: current.baseUrl,
+      model: current.model,
+      contextWindow: current.contextWindow,
+      maximumOutputTokens: current.maximumOutputTokens,
+    };
+  };
 
   const applyProfileLocally = (profile: SettingsProfileView) => {
     setActiveProfileId(profile.id);
-    setProvider((prev) => ({
+    updateProvider((prev) => ({
       ...prev,
       ...profile.provider,
       hasApiKey: profile.hasSecret,
@@ -1072,6 +1202,7 @@ export function App() {
   };
 
   const saveAllSettings = () => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
     const latestUi = uiRef.current;
     const profile = activeProfile ?? {
       id: activeProfileId || 'default',
@@ -1097,7 +1228,8 @@ export function App() {
     });
     setTokenUsage((prev) => ({
       ...prev,
-      contextWindow: provider.contextWindow || prev.contextWindow,
+      contextWindow:
+        providerRef.current.contextWindow || prev.contextWindow,
     }));
   };
 
@@ -1539,14 +1671,14 @@ export function App() {
                         value={provider.model}
                         placeholder="model id"
                         onChange={(e) =>
-                          setProvider((p) => ({
+                          updateProvider((p) => ({
                             ...p,
                             model: e.target.value,
                           }))
                         }
                         onBlur={() => {
-                          if (provider.model.trim())
-                            saveModel(provider.model.trim());
+                          const model = providerRef.current.model.trim();
+                          if (model) saveModel(model);
                         }}
                         title="Custom model id"
                       />
@@ -1597,14 +1729,14 @@ export function App() {
                           value={provider.model}
                           placeholder="model id"
                           onChange={(e) =>
-                            setProvider((p) => ({
+                            updateProvider((p) => ({
                               ...p,
                               model: e.target.value,
                             }))
                           }
                           onBlur={() => {
-                            if (provider.model.trim())
-                              saveModel(provider.model.trim());
+                            const model = providerRef.current.model.trim();
+                            if (model) saveModel(model);
                           }}
                           title="Custom model id"
                         />
@@ -1770,7 +1902,7 @@ export function App() {
           onActiveProfileChange={switchProfile}
           onCreateProfile={createProfile}
           provider={provider}
-          onProviderChange={setProvider}
+          onProviderChange={handleProviderChange}
           onProviderTypeChange={onProviderTypeChange}
           onSetApiKey={() => postToHost({ type: 'settings.setApiKey' })}
           onClearApiKey={() => postToHost({ type: 'settings.clearApiKey' })}

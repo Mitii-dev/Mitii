@@ -80,6 +80,15 @@ export {
   createBuiltinToolRegistry,
   defineTool,
   DEFAULT_TOOL_DEFINITIONS,
+  deriveWindowPolicy,
+  mergeWindowBudgetPolicy,
+  DEFAULT_WINDOW_BUDGET_POLICY,
+  WINDOW_BUDGET_POLICY,
+  WINDOW_BUDGET_SCHEMA_VERSION,
+  windowBudgetInputSchema,
+  windowBudgetPolicySchema,
+  windowBudgetPolicyOverridesSchema,
+  windowPolicySchema,
 } from '@mitii/v8';
 export type {
   LlmPort,
@@ -123,4 +132,8 @@ export type {
   OpenAiCompatibleAuthHeader,
   AnthropicLlmPortConfig,
   GeminiLlmPortConfig,
+  WindowBudgetInput,
+  WindowBudgetPolicy,
+  WindowBudgetPolicyOverrides,
+  WindowPolicy,
 } from '@mitii/v8';

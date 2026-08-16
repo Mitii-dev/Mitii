@@ -38,6 +38,7 @@ import {
   formatUsageLine,
 } from './runReport.js';
 import { openSessionLog } from './sessionLog.js';
+import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import { findLocalModelPreset } from './modelPresets.js';
 import { loadProjectRules } from '@mitii/host';
@@ -761,6 +762,7 @@ function resolveRunBudget(vs: typeof vscode): AgentRunBudget {
   const cfg = vs.workspace.getConfiguration('mitii');
   if (cfg.get<boolean>('runBudget.unlimited') ?? false) {
     return {
+      unlimited: true,
       maxModelCalls: 1_000_000,
       maxToolCalls: 1_000_000,
       maxLoopIterations: 1_000_000,
@@ -1055,6 +1057,7 @@ export async function runAskInOutputChannel(options: {
       ? await loadProjectRules({ workspaceRoot })
       : [];
     const runStartedAt = new Date().toISOString();
+    const windowBudgetPolicy = readTokenBudgetPolicyOverrides(cfg);
     let run = client.start({
       prompt,
       mode: options.mode ?? 'ask',
@@ -1063,6 +1066,9 @@ export async function runAskInOutputChannel(options: {
       approvalMode: approvalPolicy.approvalMode,
       planApproval: approvalPolicy.planApproval,
       budget: resolveRunBudget(vs),
+      ...(windowBudgetPolicy
+        ? { windowBudget: { policy: windowBudgetPolicy } }
+        : {}),
       ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
       ...(pinnedPaths.length > 0 ? { pinnedPaths } : {}),
       ...(options.conversation && options.conversation.length > 0

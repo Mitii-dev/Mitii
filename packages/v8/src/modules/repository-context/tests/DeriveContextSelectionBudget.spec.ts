@@ -1,24 +1,37 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  WINDOW_BUDGET_SCHEMA_VERSION,
+  deriveWindowPolicy,
+} from "../../window-budget";
+import {
   collectRepositoryContextGraphAnchors,
   deriveContextSelectionBudget,
   REPOSITORY_CONTEXT_RETRIEVAL_POLICY,
 } from "../policy";
 
 describe("deriveContextSelectionBudget", () => {
-  it("floors at default selection limits for small windows", () => {
+  it("uses the window-derived repository slice instead of a 12k floor", () => {
+    const derived = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 8_192,
+    });
     const budget = deriveContextSelectionBudget(8_192);
-    expect(budget.maximumTokens).toBe(12_000);
-    expect(budget.maximumItems).toBe(24);
-    expect(budget.maximumFiles).toBe(16);
+    expect(budget.maximumTokens).toBe(derived.sections.repositoryTokens);
+    expect(budget.maximumTokens).toBeLessThan(8_192);
+    expect(budget.maximumTokens).toBeLessThan(12_000);
+    expect(budget.maximumItems).toBeGreaterThan(0);
+    expect(budget.maximumFiles).toBeGreaterThan(0);
   });
 
   it("scales selection budget with large context windows", () => {
+    const derived = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 252_000,
+    });
     const budget = deriveContextSelectionBudget(252_000);
-    expect(budget.maximumTokens).toBe(63_000);
-    expect(budget.maximumItems).toBe(126);
-    expect(budget.maximumFiles).toBe(84);
+    expect(budget.maximumTokens).toBe(derived.sections.repositoryTokens);
+    expect(budget.maximumTokens).toBeGreaterThan(8_192);
   });
 });
 

@@ -1,0 +1,1 @@
+export { deriveWindowPolicy } from "./DeriveWindowPolicy";

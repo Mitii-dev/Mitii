@@ -22,6 +22,7 @@ export function selectProportionalChecks(params: {
   candidates: readonly DiscoveredCheckCandidate[];
   verification: VerificationRequirement;
   changeScope: VerificationChangeScope;
+  maxChecks?: number;
 }): SelectProportionalChecksResult {
   const requiredKinds = new Set<VerificationCheckKind>();
   for (const evidence of params.verification.minimumEvidence) {
@@ -45,7 +46,7 @@ export function selectProportionalChecks(params: {
   const omitted: DiscoveredCheckCandidate[] = [];
 
   for (const candidate of byPriority) {
-    if (selected.length >= DEFAULT_MAX_CHECKS) {
+    if (selected.length >= (params.maxChecks ?? DEFAULT_MAX_CHECKS)) {
       omitted.push(candidate);
       continue;
     }

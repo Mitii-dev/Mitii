@@ -8,12 +8,23 @@ import {
   runEventSchema,
 } from "..";
 import { assembleToolCalls } from "../actions";
-import type { ModelRequest } from "../../../../modules/model-gateway";
-import type { PlanningInput } from "../../../../modules/planning";
-import type {
-  RepositoryContextPipelineInput,
-} from "../../../../modules/repository-context";
-import type { VerificationInput } from "../../../../modules/verification";
+import type { DecisionPolicyInput } from "../../../modules/decision-policy";
+import type { ModelRequest } from "../../../modules/model-gateway";
+import type { PlanningInput } from "../../../modules/planning";
+import {
+  CharacterTokenEstimator,
+  type PromptConstructionInput,
+} from "../../../modules/prompt-construction";
+import {
+  deriveContextSelectionBudget,
+  type RepositoryContextPipelineInput,
+} from "../../../modules/repository-context";
+import type { VerificationInput } from "../../../modules/verification";
+import {
+  WINDOW_BUDGET_SCHEMA_VERSION,
+  deriveWindowPolicy,
+} from "../../../modules/window-budget";
+import { DEFAULT_TOOL_DEFINITIONS } from "../policy";
 import {
   createDecision,
   createReadOnlyGrant,
@@ -377,9 +388,17 @@ describe("AgentEnginePipeline (Phase 7)", () => {
       .result;
 
     expect(result.status).toBe("completed");
-    expect(capturedContextInput?.selectionBudget?.maximumTokens).toBe(63_000);
-    expect(capturedContextInput?.selectionBudget?.maximumItems).toBe(126);
-    expect(capturedContextInput?.selectionBudget?.maximumFiles).toBe(84);
+    const expectedBudget = deriveContextSelectionBudget(252_000, {
+      maximumTokens: deriveWindowPolicy({
+        schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+        contextWindowTokens: 252_000,
+        maximumOutputTokens: 64_000,
+        toolSchemaTokens: new CharacterTokenEstimator().estimate(
+          JSON.stringify(DEFAULT_TOOL_DEFINITIONS),
+        ),
+      }).sections.repositoryTokens,
+    });
+    expect(capturedContextInput?.selectionBudget).toEqual(expectedBudget);
   });
 
   it("compacts completed tool call history before later model calls", async () => {
@@ -796,6 +815,20 @@ describe("AgentEnginePipeline (Phase 7)", () => {
 
     expect(result.status).toBe("budget_exhausted");
     expect(result.usage.modelCalls).toBeLessThanOrEqual(2);
+  });
+
+  it("preserves an explicit unlimited run budget on the start contract", () => {
+    const parsed = baseStartInput({
+      budget: {
+        unlimited: true,
+        maxModelCalls: 1_000_000,
+        maxToolCalls: 1_000_000,
+        maxLoopIterations: 1_000_000,
+        maxWallTimeMs: 60_000,
+      },
+    });
+    expect(parsed.budget?.unlimited).toBe(true);
+    expect(parsed.budget?.maxModelCalls).toBe(1_000_000);
   });
 
   it("reuses idempotent tool call ids within a run", async () => {
@@ -1687,5 +1720,51 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     const system = captured[0]?.messages.find((message) => message.role === "system");
     expect(system?.content).toContain("plan from the approved objective");
     expect(system?.content).not.toContain("Skip rediscovery");
+  });
+
+  it("derives window policy once and threads it into decision and prompt", async () => {
+    const capturedDecisions: DecisionPolicyInput[] = [];
+    const capturedPrompts: PromptConstructionInput[] = [];
+    const deps = createStubDependencies({
+      decision: createDecision({ route: "direct_answer" }),
+      llm: new ScriptedLlmPort(
+        [{ content: "Four." }],
+        createCapabilities({
+          supportsTools: false,
+          contextWindowTokens: 30_000,
+          maximumOutputTokens: 3_000,
+        }),
+      ),
+    });
+    const originalDecide = deps.decision.decide;
+    deps.decision.decide = (input) => {
+      capturedDecisions.push(input);
+      return originalDecide(input);
+    };
+    const originalConstruct = deps.prompt.construct;
+    deps.prompt.construct = (input) => {
+      capturedPrompts.push(input);
+      return originalConstruct(input);
+    };
+
+    const engine = new AgentEnginePipeline(deps);
+    const result = await engine.start(baseStartInput()).result;
+    expect(result.status).toBe("completed");
+
+    const expected = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 30_000,
+      maximumOutputTokens: 3_000,
+      toolSchemaTokens: capturedDecisions[0]?.windowPolicy?.toolSchemaTokens,
+    });
+    expect(capturedDecisions[0]?.windowPolicy?.usableInputTokens).toBe(
+      expected.usableInputTokens,
+    );
+    expect(capturedDecisions[0]?.windowPolicy?.planning.visiblePlanAffordable).toBe(
+      false,
+    );
+    expect(capturedPrompts[0]?.outputReserveTokens).toBe(
+      expected.maximumOutputTokens,
+    );
   });
 });

@@ -99,6 +99,7 @@ belongs to the tool-runtime engine package path. Business facades remain under
 | `task-list` | Plan artifact or apply input → live `TaskList` | Compact working checklist (max 8), derive pending tasks from a plan, markdown serialize/parse | Plan drafting, tool execution, host UI, stamping remaining items done when a run ends |
 | `code-navigation` | Path + caret -> definitions / references / hover | Language-server and repo-graph navigation | Indexing, retrieval budgets, spawning servers |
 | `change-impact` | Change seed + published `RepoGraph` → bounded impact report | Reverse-dependent blast radius (callers, importers, package dependents), truncation/staleness reason codes | Indexing, retrieval ranking, tool grants, planning dimensions |
+| `window-budget` | Advertised context window + optional overrides → `WindowPolicy` | Proportional output reserve, usable-input split, mutation/planning/skills/run/compaction numbers | Prompt text, retrieval, grants, model calls |
 
 Adding a top-level module requires all of:
 

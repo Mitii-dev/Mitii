@@ -1,4 +1,5 @@
 import type { RequestUnderstandingResult } from "../../request-understanding";
+import type { WindowPolicy } from "../../window-budget";
 
 import type {
   ApprovalMode,
@@ -28,6 +29,7 @@ export function compileGrant(params: {
   message?: string;
   approvalMode?: ApprovalMode;
   allowWebSearch?: boolean;
+  windowPolicy?: WindowPolicy;
 }): CompiledGrantResult {
   const grantResult = buildToolGrant({
     mode: params.mode,
@@ -36,6 +38,7 @@ export function compileGrant(params: {
     message: params.message,
     approvalMode: params.approvalMode,
     allowWebSearch: params.allowWebSearch === true,
+    windowPolicy: params.windowPolicy,
   });
   const verificationResult = resolveVerificationRequirement({
     route: params.route,

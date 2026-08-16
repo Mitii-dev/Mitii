@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.8.28",
+  "version": "2.8.29",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -228,6 +228,287 @@
           "default": false,
           "description": "Enable debug logging in the Mitii Output channel (auto-shows the channel; includes stack traces on failures). Requires mitii.developer.enabled in the Mitii Debug tab."
         },
+        "mitii.tokenBudget.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use custom Window Budget ratios from mitii.tokenBudget.* instead of built-in defaults. Requires developer settings in the Mitii Debug tab."
+        },
+        "mitii.tokenBudget.outputRatio": {
+          "type": "number",
+          "default": 0.1,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of the context window reserved for model output when max output is 0."
+        },
+        "mitii.tokenBudget.outputMinTokens": {
+          "type": "number",
+          "default": 1024,
+          "minimum": 1,
+          "description": "Floor for the derived output reserve."
+        },
+        "mitii.tokenBudget.outputMaxTokens": {
+          "type": "number",
+          "default": 8192,
+          "minimum": 1,
+          "description": "Ceiling for the derived output reserve."
+        },
+        "mitii.tokenBudget.outputWindowCapRatio": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Output cannot exceed this fraction of the advertised window."
+        },
+        "mitii.tokenBudget.toolSchemaFallbackTokens": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 0,
+          "description": "Fallback tool-JSON tokens when tool schemas have not been measured."
+        },
+        "mitii.tokenBudget.toolSchemaFallbackWindowRatio": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fallback tool cost cannot exceed this fraction of the window."
+        },
+        "mitii.tokenBudget.minimumUsableInputTokens": {
+          "type": "number",
+          "default": 2048,
+          "minimum": 1,
+          "description": "Keep at least this many tokens for prompt and history after output and tools."
+        },
+        "mitii.tokenBudget.loopSafetyRatio": {
+          "type": "number",
+          "default": 0.94,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of usable input allowed in the live model-loop budget."
+        },
+        "mitii.tokenBudget.repositoryShare": {
+          "type": "number",
+          "default": 0.28,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Share of usable input for repository context."
+        },
+        "mitii.tokenBudget.conversationShare": {
+          "type": "number",
+          "default": 0.4,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Share of usable input for conversation and tool history."
+        },
+        "mitii.tokenBudget.planShare": {
+          "type": "number",
+          "default": 0.06,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Share of usable input for plan text."
+        },
+        "mitii.tokenBudget.skillsShare": {
+          "type": "number",
+          "default": 0.04,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Share of usable input for selected skill bodies."
+        },
+        "mitii.tokenBudget.planTokensCap": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 1,
+          "description": "Hard cap on plan tokens regardless of share."
+        },
+        "mitii.tokenBudget.skillsTokensCap": {
+          "type": "number",
+          "default": 2400,
+          "minimum": 1,
+          "description": "Hard cap on skill-body tokens regardless of share."
+        },
+        "mitii.tokenBudget.repositoryTokensCap": {
+          "type": "number",
+          "default": 64000,
+          "minimum": 1,
+          "description": "Hard cap on repository-context tokens regardless of share."
+        },
+        "mitii.tokenBudget.compactionWarnRatio": {
+          "type": "number",
+          "default": 0.7,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Loop pressure warning fires at this fraction of the loop budget."
+        },
+        "mitii.tokenBudget.compactionAutoRatio": {
+          "type": "number",
+          "default": 0.8,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Automatic history compaction starts at this fraction of the loop budget."
+        },
+        "mitii.tokenBudget.compactionHardRatio": {
+          "type": "number",
+          "default": 0.92,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Aggressive compaction and memory reinject at this fraction of the loop budget."
+        },
+        "mitii.tokenBudget.keepRecentToolResultsBase": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "description": "Minimum number of recent tool results kept in full."
+        },
+        "mitii.tokenBudget.keepRecentToolResultsPerUsable": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 1,
+          "description": "Add one kept tool result per this many usable-input tokens."
+        },
+        "mitii.tokenBudget.keepRecentToolResultsMax": {
+          "type": "number",
+          "default": 16,
+          "minimum": 1,
+          "description": "Maximum number of recent tool results kept in full."
+        },
+        "mitii.tokenBudget.compactedToolResultCharsBase": {
+          "type": "number",
+          "default": 400,
+          "minimum": 1,
+          "description": "Minimum characters retained for compacted tool results."
+        },
+        "mitii.tokenBudget.compactedToolResultCharsPerUsable": {
+          "type": "number",
+          "default": 40,
+          "minimum": 1,
+          "description": "Add one retained character per this many usable-input tokens."
+        },
+        "mitii.tokenBudget.compactedToolResultCharsMax": {
+          "type": "number",
+          "default": 4000,
+          "minimum": 1,
+          "description": "Maximum characters retained for compacted tool results."
+        },
+        "mitii.tokenBudget.filesPerOutputTokens": {
+          "type": "number",
+          "default": 800,
+          "minimum": 1,
+          "description": "Unique files per mutation call scale as output / this value."
+        },
+        "mitii.tokenBudget.minUniqueFilesPerCall": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "description": "Floor for files allowed in one mutation call."
+        },
+        "mitii.tokenBudget.maxUniqueFilesPerCallCap": {
+          "type": "number",
+          "default": 8,
+          "minimum": 1,
+          "description": "Ceiling for files allowed in one mutation call."
+        },
+        "mitii.tokenBudget.patchPayloadOutputRatio": {
+          "type": "number",
+          "default": 0.6,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of output tokens treated as patch payload capacity."
+        },
+        "mitii.tokenBudget.charsPerOutputToken": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "description": "Approximate characters produced per output token for payload sizing."
+        },
+        "mitii.tokenBudget.requireBatchedBelowOutputTokens": {
+          "type": "number",
+          "default": 4096,
+          "minimum": 0,
+          "description": "Force batched mutation when derived output is below this many tokens."
+        },
+        "mitii.tokenBudget.visiblePlanMinUsableTokens": {
+          "type": "number",
+          "default": 40000,
+          "minimum": 0,
+          "description": "Visible plans are skipped when usable input is below this."
+        },
+        "mitii.tokenBudget.changeImpactMinUsableTokens": {
+          "type": "number",
+          "default": 40000,
+          "minimum": 0,
+          "description": "Change-impact analysis is skipped when usable input is below this."
+        },
+        "mitii.tokenBudget.diagnosticStepsBase": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "description": "Minimum diagnostic change steps in a drafted plan."
+        },
+        "mitii.tokenBudget.diagnosticStepsPerUsable": {
+          "type": "number",
+          "default": 20000,
+          "minimum": 1,
+          "description": "Add one diagnostic step per this many usable-input tokens."
+        },
+        "mitii.tokenBudget.diagnosticStepsMax": {
+          "type": "number",
+          "default": 8,
+          "minimum": 1,
+          "description": "Ceiling for diagnostic change steps."
+        },
+        "mitii.tokenBudget.maxModelCallsPerUsable": {
+          "type": "number",
+          "default": 2500,
+          "minimum": 1,
+          "description": "Suggested model-call cap scales as usable input / this value."
+        },
+        "mitii.tokenBudget.maxModelCallsMin": {
+          "type": "number",
+          "default": 16,
+          "minimum": 1,
+          "description": "Floor for the window-derived model-call cap."
+        },
+        "mitii.tokenBudget.maxModelCallsMax": {
+          "type": "number",
+          "default": 48,
+          "minimum": 1,
+          "description": "Ceiling for the window-derived model-call cap when Modes run budget is limited."
+        },
+        "mitii.tokenBudget.maxSkillsBase": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "description": "Minimum number of skills that may be selected."
+        },
+        "mitii.tokenBudget.maxSkillsPerUsable": {
+          "type": "number",
+          "default": 30000,
+          "minimum": 1,
+          "description": "Add one selectable skill per this many usable-input tokens."
+        },
+        "mitii.tokenBudget.maxSkillsCap": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "description": "Ceiling for selected skills."
+        },
+        "mitii.tokenBudget.verificationChecksBase": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "description": "Minimum verification checks after mutations."
+        },
+        "mitii.tokenBudget.verificationChecksPerUsable": {
+          "type": "number",
+          "default": 40000,
+          "minimum": 1,
+          "description": "Add one verification check per this many usable-input tokens."
+        },
+        "mitii.tokenBudget.verificationChecksMax": {
+          "type": "number",
+          "default": 8,
+          "minimum": 1,
+          "description": "Ceiling for verification checks."
+        },
         "mitii.provider.type": {
           "type": "string",
           "enum": [
@@ -274,9 +555,9 @@
         },
         "mitii.provider.maximumOutputTokens": {
           "type": "number",
-          "default": 16384,
-          "minimum": 256,
-          "description": "Maximum tokens the model may generate per call. Higher defaults help multi-file apply_patch batches; still pair with mutation batching for 30+ file tasks."
+          "default": 0,
+          "minimum": 0,
+          "description": "Maximum tokens the model may generate per call. Set 0 to derive the reserve from the context window via Window Budget (mitii.tokenBudget.*). A positive value is a hard host override."
         },
         "mitii.semanticIndex.enabled": {
           "type": "boolean",

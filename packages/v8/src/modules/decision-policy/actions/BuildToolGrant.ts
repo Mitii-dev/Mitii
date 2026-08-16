@@ -1,4 +1,5 @@
 import type { RequestUnderstandingResult } from "../../request-understanding";
+import type { WindowPolicy } from "../../window-budget";
 
 import {
   MUTATION_TASK_INTENTS,
@@ -38,9 +39,15 @@ export function buildToolGrant(params: {
   approvalMode?: ApprovalMode;
   /** When false/undefined, never grant web_search (honest hide until SearchPort). */
   allowWebSearch?: boolean;
+  windowPolicy?: WindowPolicy;
 }): ToolGrantResolution {
   const { mode, route, understanding } = params;
   const reasonCodes: DecisionReasonCode[] = [];
+  const changeImpactAffordable =
+    params.windowPolicy?.planning.changeImpactAffordable !== false;
+  const readOnlyTools = READ_ONLY_TOOL_IDS.filter(
+    (toolId) => toolId !== "analyze_change_impact" || changeImpactAffordable,
+  );
   const pathScopes = resolvePathScopes(understanding);
   const commandRules = [
     {
@@ -91,7 +98,7 @@ export function buildToolGrant(params: {
       toolGrant: {
         maximumWorkspaceEffect: "read",
         allowedTools: [
-          ...READ_ONLY_TOOL_IDS,
+          ...readOnlyTools,
           ...network.allowedTools,
         ],
         // process_execute is required so Tool Runtime can run argv-only
@@ -121,7 +128,10 @@ export function buildToolGrant(params: {
     })
   ) {
     risk = "medium";
-    reasonCodes.push("shared_scope_risk_elevated", "change_impact_recommended");
+    reasonCodes.push("shared_scope_risk_elevated");
+    if (changeImpactAffordable) {
+      reasonCodes.push("change_impact_recommended");
+    }
   }
   const defaultApprovalMode =
     risk === "high" || risk === "critical" ? "every_mutation" : "when_required";
@@ -132,7 +142,10 @@ export function buildToolGrant(params: {
   }
   reasonCodes.push("mutation_execute");
 
-  const mutation = resolveMutationBudget({ understanding });
+  const mutation = resolveMutationBudget({
+    understanding,
+    windowPolicy: params.windowPolicy,
+  });
   reasonCodes.push(...mutation.reasonCodes);
   const processExecution = resolveProcessExecutionAuthority({
     understanding,
@@ -152,7 +165,7 @@ export function buildToolGrant(params: {
     toolGrant: {
       maximumWorkspaceEffect: "write",
       allowedTools: [
-        ...READ_ONLY_TOOL_IDS,
+        ...readOnlyTools,
         ...MUTATION_TOOL_IDS,
         ...processExecution.allowedTools,
         ...network.allowedTools,

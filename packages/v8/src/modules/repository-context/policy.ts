@@ -1,4 +1,8 @@
 import {
+  WINDOW_BUDGET_SCHEMA_VERSION,
+  deriveWindowPolicy,
+} from "../window-budget";
+import {
   CONTEXT_SELECTION_DEFAULTS,
   CONTEXT_SELECTION_LIMITS,
 } from "./internal/context-selection/constants";
@@ -67,15 +71,18 @@ export function collectRepositoryContextGraphAnchors(
  */
 export function deriveContextSelectionBudget(
   contextWindowTokens: number,
+  options?: { maximumTokens?: number },
 ): ContextSelectionBudget {
   const safeWindow = Math.max(0, Math.floor(contextWindowTokens));
-  const proportionalTokens = Math.floor(
-    safeWindow *
-      REPOSITORY_CONTEXT_BUDGET_POLICY.selectionBudgetContextWindowRatio,
-  );
+  const derivedTokens =
+    options?.maximumTokens ??
+    deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: Math.max(1, safeWindow),
+    }).sections.repositoryTokens;
   const maximumTokens = Math.min(
     CONTEXT_SELECTION_LIMITS.MAXIMUM_TOKENS,
-    Math.max(CONTEXT_SELECTION_DEFAULTS.MAXIMUM_TOKENS, proportionalTokens),
+    Math.max(0, derivedTokens),
   );
   const budgetScale =
     maximumTokens / CONTEXT_SELECTION_DEFAULTS.MAXIMUM_TOKENS;

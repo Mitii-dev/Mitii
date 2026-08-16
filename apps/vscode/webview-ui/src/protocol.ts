@@ -184,6 +184,8 @@ export interface UiSettingsSnapshot {
   developerEnabled: boolean;
   /** Maps to mitii.debug (verbose Output channel / stacks). */
   debugLogging: boolean;
+  /** Window-proportional token budget tunables (Debug → developer). */
+  tokenBudget: TokenBudgetSettingsSnapshot;
 }
 
 export interface ModeDefaultSettingsSnapshot {
@@ -200,13 +202,60 @@ export interface RunBudgetSettingsSnapshot {
   maxWallTimeMinutes: number;
 }
 
+export interface TokenBudgetFieldDescriptor {
+  key: string;
+  group: string;
+  label: string;
+  description: string;
+  kind: 'ratio' | 'int' | 'number';
+  min: number;
+  max?: number;
+  step: number;
+  /** Hide fields owned by Modes → Run budget. */
+  hiddenFromDebug?: boolean;
+}
+
+export interface TokenBudgetPreview {
+  contextWindowTokens: number;
+  maximumOutputTokens: number;
+  toolSchemaTokens: number;
+  usableInputTokens: number;
+  repositoryTokens: number;
+  conversationTokens: number;
+  planTokens: number;
+  skillsTokens: number;
+  systemTokens: number;
+  maxModelCalls: number;
+  maxToolCalls: number;
+  maxUniqueFilesPerCall: number;
+  visiblePlanAffordable: boolean;
+  changeImpactAffordable: boolean;
+  runBudgetUnlimited: boolean;
+  runBudgetMaxModelCalls: number;
+  runBudgetMaxToolCalls: number;
+}
+
+export interface TokenBudgetSettingsSnapshot {
+  enabled: boolean;
+  policy: Record<string, number>;
+  fields: TokenBudgetFieldDescriptor[];
+  preview: TokenBudgetPreview;
+}
+
 export type UiSettingsPatch = Partial<
-  Omit<UiSettingsSnapshot, 'contextToggles' | 'runBudget' | 'modeDefaults'> & {
+  Omit<
+    UiSettingsSnapshot,
+    'contextToggles' | 'runBudget' | 'modeDefaults' | 'tokenBudget'
+  > & {
     contextToggles?: Partial<ContextToggles>;
     runBudget?: Partial<RunBudgetSettingsSnapshot>;
     modeDefaults?: Partial<
       Record<'ask' | 'plan' | 'agent', Partial<ModeDefaultSettingsSnapshot>>
     >;
+    tokenBudget?: {
+      enabled?: boolean;
+      policy?: Record<string, number>;
+    };
   }
 >;
 
@@ -472,6 +521,10 @@ export type WebviewToHostMessage =
       type: 'provider.testConnection';
       provider: { type: string; baseUrl: string; model: string };
     }
+  | {
+      type: 'provider.listModels';
+      provider: { type: string; baseUrl: string };
+    }
   | { type: 'index.refresh' }
   | { type: 'index.reindex' }
   | { type: 'paths.search'; query: string; requestId: string }
@@ -530,6 +583,7 @@ export type HostToWebviewMessage =
       models?: string[];
       testing?: boolean;
     }
+  | { type: 'provider.models'; models: string[] }
   | { type: 'tokenUsage'; usage: TokenUsageSnapshot }
   | { type: 'run.started'; mode: AgentUiMode; prompt: string }
   | { type: 'run.event'; event: ActivityEventPayload }

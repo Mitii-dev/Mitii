@@ -11,6 +11,7 @@ import {
   planStrategyDecisionSchema,
   repositoryStateReferenceSchema,
   taskListSchema,
+  windowBudgetPolicyOverridesSchema,
 } from '@mitii/v8';
 import type {
   AgentEngineResumeInput,
@@ -93,6 +94,16 @@ export const mitiiStartInputSchema = z
      * strategy rules; "quick" skips discovery even for wide-scope asks.
      */
     explorationDepth: explorationDepthSchema.optional(),
+    /**
+     * Optional host overrides for window-proportional token allocation.
+     * When omitted, Window Budget defaults apply.
+     */
+    windowBudget: z
+      .object({
+        policy: windowBudgetPolicyOverridesSchema.optional(),
+      })
+      .strict()
+      .optional(),
     /**
      * Host-pinned workspace paths (@mentions). Mapped to intake
      * referencedArtifacts so understanding/context can prefer them.
@@ -189,6 +200,7 @@ export function toAgentEngineStartInput(
     planApproval: parsed.planApproval,
     dirtyPaths: parsed.dirtyPaths,
     explorationDepth: parsed.explorationDepth,
+    windowBudget: parsed.windowBudget,
     instructions:
       parsed.projectRules && parsed.projectRules.length > 0
         ? {

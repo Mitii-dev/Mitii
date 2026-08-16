@@ -9,6 +9,7 @@ import {
 } from '@mitii/sdk';
 import {
   getProviderPreset,
+  listProviderModels,
   loadDiskSkills,
   PROVIDER_PRESETS,
   resolveProviderApiKey,
@@ -102,6 +103,10 @@ import { buildReviewDiff } from './reviewDiff.js';
 import { testProviderConnection } from './testConnection.js';
 import { getWorkspaceTrustSnapshot } from './workspace/trust.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
+import {
+  TOKEN_BUDGET_FIELDS,
+  readTokenBudgetSettings,
+} from './tokenBudgetSettings.js';
 import {
   clearMemoriesForWorkspace,
   commitMemoryForWorkspace,
@@ -199,6 +204,25 @@ function emptyTokenUsage(contextWindow = DEFAULT_CONTEXT_WINDOW): TokenUsageSnap
     estimated: true,
     turns: [],
     live: false,
+  };
+}
+
+function withResolvedUsageWindow(
+  usage: TokenUsageSnapshot,
+  contextWindow: number,
+): TokenUsageSnapshot {
+  const window = Math.max(1, contextWindow);
+  const contextBreakdown = usage.contextBreakdown
+    ? {
+        ...usage.contextBreakdown,
+        contextWindow: window,
+        fillRatio: Math.min(1, usage.contextBreakdown.totalTokens / window),
+      }
+    : undefined;
+  return {
+    ...usage,
+    contextWindow: window,
+    ...(contextBreakdown ? { contextBreakdown } : {}),
   };
 }
 
@@ -454,6 +478,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       case 'ready': {
         // Post a quick bootstrap first, then continue index work in the background.
         await this.sendBootstrap();
+        void this.refreshDiscoveredModels({ notify: true });
         this.startBackgroundIndex('initial load');
         return;
       }
@@ -774,6 +799,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         return;
       case 'provider.testConnection':
         await this.handleTestConnection(message);
+        return;
+      case 'provider.listModels':
+        await this.refreshDiscoveredModels({
+          notify: true,
+          type: message.provider.type,
+          baseUrl: message.provider.baseUrl,
+        });
         return;
       case 'index.refresh':
         this.post({ type: 'index.status', index: await this.readIndexStatus() });
@@ -1634,12 +1666,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     this.connectionStatus = result.message;
     if (result.models?.length) {
       this.discoveredModels = result.models;
+    } else {
+      await this.refreshDiscoveredModels({ notify: false });
     }
     this.post({
       type: 'provider.connectionResult',
       ok: result.ok,
       message: result.message,
-      models: result.models,
+      models: this.discoveredModels,
       testing: false,
     });
     await this.sendBootstrap();
@@ -1741,12 +1775,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     }
 
     const turnTotal = input + output;
-    const preset = findLocalModelPreset(
-      this.vs.workspace.getConfiguration('mitii').get<string>('provider.model') ??
-        '',
-    );
-    const contextWindow =
-      preset?.contextWindow ?? resolveContextWindow(this.vs);
+    const contextWindow = resolveContextWindow(this.vs);
 
     const committedTurns =
       pending.length > 0
@@ -1915,6 +1944,32 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           1,
         );
       }
+      if (message.ui.tokenBudget) {
+        if (message.ui.tokenBudget.enabled !== undefined) {
+          await cfg.update(
+            'tokenBudget.enabled',
+            message.ui.tokenBudget.enabled,
+            this.vs.ConfigurationTarget.Workspace,
+          );
+        }
+        if (message.ui.tokenBudget.policy) {
+          for (const field of TOKEN_BUDGET_FIELDS) {
+            const value = message.ui.tokenBudget.policy[field.key];
+            if (typeof value !== 'number' || !Number.isFinite(value)) {
+              continue;
+            }
+            const bounded = Math.max(
+              field.min,
+              Math.min(field.max ?? Number.POSITIVE_INFINITY, value),
+            );
+            await cfg.update(
+              `tokenBudget.${field.key}`,
+              field.kind === 'int' ? Math.floor(bounded) : bounded,
+              this.vs.ConfigurationTarget.Workspace,
+            );
+          }
+        }
+      }
       if (message.ui.contextToggles) {
         for (const [key, value] of Object.entries(message.ui.contextToggles)) {
           if (value === undefined) continue;
@@ -1974,6 +2029,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       };
       writeProfiles(root, upsertProfile(profilesFile, savedProfile));
     }
+    await this.refreshDiscoveredModels({ notify: false });
     await this.sendBootstrap();
   }
 
@@ -2012,10 +2068,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       );
     }
     if (provider.contextWindow !== undefined) {
-      const window = Math.max(
-        1024,
-        Math.floor(Number(provider.contextWindow) || 0),
-      );
+      const raw = Number(provider.contextWindow);
+      const window =
+        Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 0;
       await cfg.update(
         'provider.contextWindow',
         window,
@@ -2023,10 +2078,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       );
     }
     if (provider.maximumOutputTokens !== undefined) {
-      const maxOut = Math.max(
-        256,
-        Math.floor(Number(provider.maximumOutputTokens) || 0),
-      );
+      const raw = Number(provider.maximumOutputTokens);
+      const maxOut =
+        Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 0;
       await cfg.update(
         'provider.maximumOutputTokens',
         maxOut,
@@ -2036,6 +2090,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     this.connectionOk = undefined;
     this.connectionStatus = undefined;
     this.invalidateClient();
+    await this.refreshDiscoveredModels({ notify: false });
   }
 
   private async handleProfileSwitch(id: string): Promise<void> {
@@ -2086,6 +2141,41 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     return this.getWorkspaceRoot();
   }
 
+  private async refreshDiscoveredModels(options: {
+    notify: boolean;
+    type?: string;
+    baseUrl?: string;
+  }): Promise<void> {
+    const cfg = this.vs.workspace.getConfiguration('mitii');
+    const type = options.type ?? cfg.get<string>('provider.type') ?? 'echo';
+    if (type === 'echo') {
+      this.discoveredModels = [];
+      if (options.notify) {
+        this.post({ type: 'provider.models', models: [] });
+      }
+      return;
+    }
+    const baseUrl =
+      options.baseUrl?.trim() ??
+      cfg.get<string>('provider.baseUrl')?.trim() ??
+      '';
+    const apiKey = resolveProviderApiKey({
+      type,
+      env: process.env,
+      secretKey:
+        (await this.secrets.get('mitii.provider.apiKey')) ?? undefined,
+    });
+    const models = await listProviderModels({
+      type,
+      baseUrl,
+      ...(apiKey ? { apiKey } : {}),
+    });
+    this.discoveredModels = models;
+    if (options.notify) {
+      this.post({ type: 'provider.models', models });
+    }
+  }
+
   private buildAvailableModels(
     currentModel: string,
     type?: string,
@@ -2094,7 +2184,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const set = new Set<string>();
     if (currentModel.trim()) set.add(currentModel.trim());
     const providerPreset = getProviderPreset(presetId ?? type ?? '');
-    if (providerPreset?.type === 'openai-compatible' || !providerPreset) {
+    const catalogId = providerPreset?.id ?? presetId ?? type ?? '';
+    if (
+      catalogId === 'ollama' ||
+      catalogId === 'lm-studio' ||
+      catalogId === 'openai-compatible' ||
+      catalogId === 'echo' ||
+      !providerPreset
+    ) {
       for (const preset of LOCAL_MODEL_PRESETS) set.add(preset.model);
     }
     for (const id of providerPreset?.models ?? []) {
@@ -2153,9 +2250,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const maximumOutputTokens =
       typeof fromMaxOut === 'number' &&
       Number.isFinite(fromMaxOut) &&
-      fromMaxOut > 0
+      fromMaxOut >= 0
         ? Math.floor(fromMaxOut)
-        : Math.min(16_384, Math.max(1, contextWindow - 1));
+        : 0;
     return {
       type,
       preset,
@@ -2224,6 +2321,11 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       runBudget: readRunBudgetSettings(this.vs),
       developerEnabled: cfg.get<boolean>('developer.enabled') ?? false,
       debugLogging: cfg.get<boolean>('debug') ?? false,
+      tokenBudget: readTokenBudgetSettings(
+        cfg,
+        resolveContextWindow(this.vs),
+        cfg.get<number>('provider.maximumOutputTokens'),
+      ),
     };
   }
 
@@ -2460,11 +2562,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private setActiveThreadUsage(usage: TokenUsageSnapshot): void {
-    this.tokenUsage = {
-      ...usage,
-      contextWindow: resolveContextWindow(this.vs),
-      live: false,
-    };
+    this.tokenUsage = withResolvedUsageWindow(
+      {
+        ...usage,
+        live: false,
+      },
+      resolveContextWindow(this.vs),
+    );
     this.persistThreadUsage();
   }
 

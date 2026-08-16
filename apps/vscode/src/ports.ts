@@ -12,6 +12,8 @@ import {
   NodeNetworkAdapter,
   NodeWorkspaceFileSystemAdapter,
   NodeGitAdapter,
+  WINDOW_BUDGET_SCHEMA_VERSION,
+  deriveWindowPolicy,
   type LlmPort,
   type MitiiClient,
   type ModelCapabilities,
@@ -39,9 +41,9 @@ import { readContextToggles } from './contextToggles.js';
 import { createVsCodeMemoryStore } from './memoryStore.js';
 import { createVsCodeCodeNavigationPort } from './codeNavigation.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
+import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
 
 const DEFAULT_CONTEXT_WINDOW = 32_768;
-const DEFAULT_MAXIMUM_OUTPUT = 16_384;
 
 export class LocalUnderstandingLlmPort implements LlmPort {
   readonly id = 'vscode-local-understanding';
@@ -109,7 +111,12 @@ function resolveMaximumOutput(
   ) {
     return Math.min(Math.floor(fromSetting), Math.max(1, contextWindowTokens - 1));
   }
-  return Math.min(DEFAULT_MAXIMUM_OUTPUT, Math.max(1, contextWindowTokens - 1));
+  return deriveWindowPolicy({
+    schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+    contextWindowTokens: Math.max(1, contextWindowTokens),
+    maximumOutputTokens: 0,
+    policy: readTokenBudgetPolicyOverrides(cfg),
+  }).maximumOutputTokens;
 }
 
 /**

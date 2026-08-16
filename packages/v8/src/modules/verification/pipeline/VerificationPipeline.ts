@@ -138,6 +138,7 @@ export class VerificationPipeline {
       candidates: discovered.candidates,
       verification: parsed.verification,
       changeScope: parsed.changeScope,
+      maxChecks: parsed.maxChecks,
     });
 
     const executed = await executeChecks({

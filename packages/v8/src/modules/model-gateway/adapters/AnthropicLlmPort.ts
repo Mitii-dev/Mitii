@@ -147,8 +147,12 @@ export class AnthropicLlmPort implements LlmPort {
         config.capabilities?.supportsStructuredOutput ?? false,
       supportsVision: config.capabilities?.supportsVision ?? true,
       supportsReasoning: config.capabilities?.supportsReasoning ?? true,
+      // Native Anthropic Messages API supports `cache_control` breakpoints
+      // unconditionally (GA on the stable "2023-06-01" version header, no
+      // beta flag needed) — unlike the module-wide default, this adapter
+      // can safely default to on. Hosts can still opt out per config.
       supportsPromptCaching:
-        config.capabilities?.supportsPromptCaching ?? false,
+        config.capabilities?.supportsPromptCaching ?? true,
       supportsEmbeddings: config.capabilities?.supportsEmbeddings ?? false,
       ...(config.capabilities?.agenticTier
         ? { agenticTier: config.capabilities.agenticTier }
@@ -219,18 +223,31 @@ export class AnthropicLlmPort implements LlmPort {
     const maxTokens =
       request.maximumOutputTokens ??
       this.capabilities.maximumOutputTokens;
+    const caching = this.capabilities.supportsPromptCaching;
 
     const body: Record<string, unknown> = {
       model: request.model ?? this.config.model,
       max_tokens: maxTokens,
-      messages,
+      messages: caching ? this.markMessageCacheBreakpoint(messages) : messages,
       stream,
       temperature:
         request.temperature ?? MODEL_GATEWAY_DEFAULTS.TEMPERATURE,
     };
 
     if (system) {
-      body.system = system;
+      // The system prompt and tool definitions are identical on every turn
+      // of a run — caching them (plus the message-history breakpoint below)
+      // is what turns a long tool-calling loop from N full-price prompt
+      // reprocessings into 1 cache write + N-1 cheap cache reads.
+      body.system = caching
+        ? [
+            {
+              type: "text",
+              text: system,
+              cache_control: { type: "ephemeral" },
+            },
+          ]
+        : system;
     }
 
     if (
@@ -238,11 +255,12 @@ export class AnthropicLlmPort implements LlmPort {
       request.tools &&
       request.tools.length > 0
     ) {
-      body.tools = request.tools.map((tool) => ({
+      const tools = request.tools.map((tool) => ({
         name: tool.name,
         description: tool.description,
         input_schema: tool.inputSchema,
       }));
+      body.tools = caching ? this.markLastCacheBreakpoint(tools) : tools;
       body.tool_choice = this.mapToolChoice(request.toolChoice);
     }
 
@@ -257,6 +275,50 @@ export class AnthropicLlmPort implements LlmPort {
     }
 
     return body;
+  }
+
+  /**
+   * Returns a copy of `items` with `cache_control: {type:"ephemeral"}`
+   * added to the last entry. Anthropic caches everything up to and
+   * including a marked entry, so one trailing breakpoint per array is
+   * enough — used for both the tool-definition list and, via
+   * {@link markMessageCacheBreakpoint}, a message's content blocks.
+   */
+  private markLastCacheBreakpoint<T extends Record<string, unknown>>(
+    items: readonly T[],
+  ): T[] {
+    if (items.length === 0) return [...items];
+    const copy = [...items];
+    const lastIndex = copy.length - 1;
+    copy[lastIndex] = {
+      ...copy[lastIndex],
+      cache_control: { type: "ephemeral" },
+    };
+    return copy;
+  }
+
+  /**
+   * Marks the last content block of the last message as a cache
+   * breakpoint. Anthropic matches the longest previously-cached prefix,
+   * so re-marking the tail on every turn lets a growing agentic
+   * conversation's stable history stay cached across turns without any
+   * bespoke "what changed since last turn" tracking here.
+   */
+  private markMessageCacheBreakpoint(
+    messages: Array<Record<string, unknown>>,
+  ): Array<Record<string, unknown>> {
+    if (messages.length === 0) return messages;
+    const lastIndex = messages.length - 1;
+    const last = messages[lastIndex] as { content: unknown };
+    if (!Array.isArray(last.content) || last.content.length === 0) {
+      return messages;
+    }
+    const updatedContent = this.markLastCacheBreakpoint(
+      last.content as Array<Record<string, unknown>>,
+    );
+    const updatedMessages = [...messages];
+    updatedMessages[lastIndex] = { ...last, content: updatedContent };
+    return updatedMessages;
   }
 
   private mapToolChoice(

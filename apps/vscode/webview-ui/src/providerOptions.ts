@@ -104,8 +104,17 @@ export function modelsForProvider(typeOrPreset: string): string[] {
     preset && 'models' in preset && preset.models
       ? [...preset.models]
       : [];
-  if (preset?.type === 'openai-compatible' || !preset || preset.type === 'echo') {
+  if (includesLocalModelCatalog(preset?.preset ?? typeOrPreset)) {
     return [...fromPreset, ...LOCAL_MODEL_OPTIONS];
   }
   return fromPreset;
+}
+
+function includesLocalModelCatalog(presetOrType: string): boolean {
+  return (
+    presetOrType === 'ollama' ||
+    presetOrType === 'lm-studio' ||
+    presetOrType === 'openai-compatible' ||
+    presetOrType === 'echo'
+  );
 }

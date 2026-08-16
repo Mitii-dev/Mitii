@@ -7,6 +7,10 @@ import {
   executionDecisionSchema,
   toolGrantSchema,
 } from "../index";
+import {
+  WINDOW_BUDGET_SCHEMA_VERSION,
+  deriveWindowPolicy,
+} from "../../window-budget";
 import { createInput, createUnderstanding } from "./fixtures/decisionCases";
 
 describe("DecisionPolicyPipeline", () => {
@@ -151,6 +155,44 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.reasonCodes).toContain("preflight_build_recommended");
     expect(decision.reasonCodes).toContain("shared_scope_risk_elevated");
     expect(decision.toolGrant.allowedTools).toContain("analyze_change_impact");
+  });
+
+  it("downgrades package-scoped repair planning when the window cannot afford a visible plan", () => {
+    const windowPolicy = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 30_000,
+    });
+    expect(windowPolicy.planning.visiblePlanAffordable).toBe(false);
+    expect(windowPolicy.planning.changeImpactAffordable).toBe(false);
+
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message:
+          "Resolve all TypeScript compilation/type errors in packages/mui-builder",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "bugfix",
+          interactionIntent: "act",
+          taskAnalysis: {
+            scope: "package",
+            complexity: "moderate",
+            risk: "low",
+            recommendsPlanning: true,
+            estimatedFilesAffected: { minimum: 8, maximum: 20 },
+          },
+        }),
+        windowPolicy,
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.planningDepth).toBe("internal");
+    expect(decision.reasonCodes).toContain("multi_file_internal_plan");
+    expect(decision.reasonCodes).not.toContain("broad_repair_visible_plan");
+    expect(decision.reasonCodes).not.toContain("change_impact_recommended");
+    expect(decision.toolGrant.allowedTools).not.toContain(
+      "analyze_change_impact",
+    );
   });
 
   it("recommends preflight build for package-scoped refactor repairs", () => {

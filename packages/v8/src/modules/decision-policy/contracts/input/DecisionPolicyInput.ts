@@ -6,6 +6,7 @@ import {
   repositoryStateReadinessSchema,
   repositoryStateReferenceSchema,
 } from "../../../repository-state";
+import { windowPolicySchema } from "../../../window-budget";
 
 import { DECISION_POLICY_SCHEMA_VERSION } from "../../constants";
 import { approvalModeSchema } from "../output/ToolGrant";
@@ -39,6 +40,11 @@ export const decisionPolicyInputSchema = z
     approvalMode: approvalModeSchema.optional(),
     planApproval: z.enum(["policy", "never"]).optional(),
     hostCapabilities: hostCapabilityFlagsSchema.optional(),
+    /**
+     * Derived window allocation. When omitted, Decision Policy keeps
+     * historical large-window affordances (visible plan + change-impact).
+     */
+    windowPolicy: windowPolicySchema.optional(),
   })
   .strict();
 

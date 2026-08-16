@@ -74,12 +74,21 @@ describe('AnthropicLlmPort', () => {
     expect(headers.get('x-api-key')).toBe('sk-ant-test');
     expect(headers.get('anthropic-version')).toBe('2023-06-01');
     const body = JSON.parse(captured.body ?? '{}') as {
-      system?: string;
-      tools?: Array<{ name: string }>;
+      system?: Array<{ type: string; text: string; cache_control?: unknown }>;
+      tools?: Array<{ name: string; cache_control?: unknown }>;
       max_tokens?: number;
     };
-    expect(body.system).toBe('Be brief.');
+    // Prompt caching defaults to on for this adapter: the system prompt and
+    // the last tool definition each carry a cache breakpoint.
+    expect(body.system).toEqual([
+      {
+        type: 'text',
+        text: 'Be brief.',
+        cache_control: { type: 'ephemeral' },
+      },
+    ]);
     expect(body.tools?.[0]?.name).toBe('lookup');
+    expect(body.tools?.[0]?.cache_control).toEqual({ type: 'ephemeral' });
     expect(body.max_tokens).toBeGreaterThan(0);
 
     expect(events[0]).toEqual({ type: 'content_delta', content: 'pong' });
@@ -188,5 +197,136 @@ describe('AnthropicLlmPort', () => {
       ),
     );
     expect(events[0]?.type).toBe('cancelled');
+  });
+
+  it('adds a cache breakpoint to the last content block of the last message', async () => {
+    let captured: { body?: string } = {};
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      captured = {
+        body: typeof init?.body === 'string' ? init.body : undefined,
+      };
+      return new Response(
+        JSON.stringify({
+          content: [{ type: 'text', text: 'ok' }],
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 1, output_tokens: 1 },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
+
+    const port = new AnthropicLlmPort({
+      model: 'claude-sonnet-4-5',
+      fetchImpl,
+    });
+
+    await collectEvents(
+      port.complete({
+        messages: [
+          { role: 'user', content: 'first turn' },
+          { role: 'assistant', content: 'first reply' },
+          { role: 'user', content: 'second turn' },
+        ],
+        stream: false,
+      }),
+    );
+
+    const body = JSON.parse(captured.body ?? '{}') as {
+      messages: Array<{
+        role: string;
+        content: Array<{ type: string; text?: string; cache_control?: unknown }>;
+      }>;
+    };
+    // Only the last block of the last message carries the breakpoint —
+    // Anthropic matches the longest previously-cached prefix, so marking
+    // the tail each turn is sufficient without tracking what changed.
+    expect(body.messages).toHaveLength(3);
+    for (const message of body.messages.slice(0, -1)) {
+      for (const block of message.content) {
+        expect(block.cache_control).toBeUndefined();
+      }
+    }
+    const lastMessage = body.messages.at(-1)!;
+    expect(lastMessage.content.at(-1)?.cache_control).toEqual({
+      type: 'ephemeral',
+    });
+  });
+
+  it('marks only the last tool definition when multiple tools are provided', async () => {
+    let captured: { body?: string } = {};
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      captured = {
+        body: typeof init?.body === 'string' ? init.body : undefined,
+      };
+      return new Response(
+        JSON.stringify({
+          content: [{ type: 'text', text: 'ok' }],
+          stop_reason: 'end_turn',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
+
+    const port = new AnthropicLlmPort({
+      model: 'claude-sonnet-4-5',
+      fetchImpl,
+    });
+
+    await collectEvents(
+      port.complete({
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: false,
+        tools: [
+          { name: 'read_file', description: 'Read a file', inputSchema: {} },
+          { name: 'lookup', description: 'Lookup a value', inputSchema: {} },
+        ],
+      }),
+    );
+
+    const body = JSON.parse(captured.body ?? '{}') as {
+      tools: Array<{ name: string; cache_control?: unknown }>;
+    };
+    expect(body.tools[0]?.cache_control).toBeUndefined();
+    expect(body.tools[1]?.cache_control).toEqual({ type: 'ephemeral' });
+  });
+
+  it('omits cache_control entirely when prompt caching is disabled', async () => {
+    let captured: { body?: string } = {};
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      captured = {
+        body: typeof init?.body === 'string' ? init.body : undefined,
+      };
+      return new Response(
+        JSON.stringify({
+          content: [{ type: 'text', text: 'ok' }],
+          stop_reason: 'end_turn',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
+
+    const port = new AnthropicLlmPort({
+      model: 'claude-sonnet-4-5',
+      fetchImpl,
+      capabilities: { supportsPromptCaching: false },
+    });
+
+    await collectEvents(
+      port.complete({
+        messages: [
+          { role: 'system', content: 'Be brief.' },
+          { role: 'user', content: 'hi' },
+        ],
+        stream: false,
+        tools: [
+          { name: 'lookup', description: 'Lookup a value', inputSchema: {} },
+        ],
+      }),
+    );
+
+    const bodyText = captured.body ?? '';
+    expect(bodyText).not.toContain('cache_control');
+    const body = JSON.parse(bodyText) as { system?: unknown };
+    expect(body.system).toBe('Be brief.');
   });
 });

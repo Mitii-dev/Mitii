@@ -69,6 +69,18 @@ describe('MitiiClient contract (Phase 12)', () => {
     expect(
       mitiiStartInputSchema.safeParse({
         prompt: 'ok',
+        budget: {
+          unlimited: true,
+          maxModelCalls: 1_000_000,
+          maxToolCalls: 1_000_000,
+          maxLoopIterations: 1_000_000,
+          maxWallTimeMs: 60_000,
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      mitiiStartInputSchema.safeParse({
+        prompt: 'ok',
         approvalMode: 'never',
         planApproval: 'never',
       }).success,
@@ -212,6 +224,23 @@ describe('MitiiClient contract (Phase 12)', () => {
         expect.objectContaining({ path: 'packages.legacy', kind: 'folder' }),
       ]),
     );
+  });
+
+  it('maps windowBudget policy overrides onto engine start input', () => {
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'Tune the window',
+        windowBudget: {
+          policy: {
+            outputRatio: 0.12,
+            repositoryShare: 0.3,
+          },
+        },
+      },
+      { mode: 'ask', sessionId: 'sess_test' },
+    );
+    expect(engineInput.windowBudget?.policy?.outputRatio).toBe(0.12);
+    expect(engineInput.windowBudget?.policy?.repositoryShare).toBe(0.3);
   });
 
   it('rejects resume without approval or clarificationAnswer', () => {

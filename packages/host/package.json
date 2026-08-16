@@ -1,6 +1,6 @@
 {
   "name": "@mitii/host",
-  "version": "2.8.28",
+  "version": "2.8.29",
   "description": "Shared host kit for Mitii apps: SQLite injection, workspace indexing, repository context, durable ports (checkpoints/memory/skills/search), project rules, provider presets.",
   "license": "AGPL-3.0-or-later",
   "type": "module",

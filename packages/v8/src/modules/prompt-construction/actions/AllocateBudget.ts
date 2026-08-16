@@ -1,8 +1,11 @@
 import type { ModelCapabilities } from "../../model-gateway";
+import {
+  WINDOW_BUDGET_SCHEMA_VERSION,
+  deriveWindowPolicy,
+} from "../../window-budget";
 
 import { PROMPT_SECTIONS } from "../constants";
 import { DEFAULT_SECTION_WEIGHTS } from "../defaults";
-import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../policy";
 import type { PromptSection, PromptSectionBudget } from "../contracts";
 
 export interface BudgetAllocation {
@@ -18,24 +21,14 @@ export function allocateBudget(params: {
 }): BudgetAllocation {
   const { capabilities, outputReserveTokens } = params;
   const contextWindowTokens = capabilities.contextWindowTokens;
-
-  const ratioReserve = Math.floor(
-    contextWindowTokens * PROMPT_CONSTRUCTION_THRESHOLDS.outputReserveRatio,
-  );
-  const derivedReserve = clamp(
-    Math.max(
-      ratioReserve,
-      PROMPT_CONSTRUCTION_THRESHOLDS.minimumOutputReserveTokens,
-    ),
-    PROMPT_CONSTRUCTION_THRESHOLDS.minimumOutputReserveTokens,
-    Math.min(
-      capabilities.maximumOutputTokens,
-      Math.max(1, contextWindowTokens - 1),
-    ),
-  );
+  const derived = deriveWindowPolicy({
+    schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+    contextWindowTokens,
+    maximumOutputTokens: capabilities.maximumOutputTokens,
+  });
 
   const outputReservedTokens = clamp(
-    outputReserveTokens ?? derivedReserve,
+    outputReserveTokens ?? derived.maximumOutputTokens,
     1,
     Math.min(capabilities.maximumOutputTokens, contextWindowTokens - 1),
   );

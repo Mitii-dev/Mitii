@@ -169,8 +169,12 @@ export {
   resolveProviderApiKey,
 } from './config/resolveProviderApiKey.js';
 
-export { testProviderConnection } from './config/testProviderConnection.js';
+export {
+  testProviderConnection,
+  listProviderModels,
+} from './config/testProviderConnection.js';
 export type {
   ProviderConnectionResult,
   TestProviderConnectionInput,
+  ListProviderModelsInput,
 } from './config/testProviderConnection.js';

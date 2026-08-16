@@ -378,6 +378,24 @@ export type {
   TaskListPurpose,
 } from "./modules/task-list";
 
+export { deriveWindowPolicy, mergeWindowBudgetPolicy } from "./modules/window-budget";
+export {
+  WINDOW_BUDGET_SCHEMA_VERSION,
+  DEFAULT_WINDOW_BUDGET_POLICY,
+  WINDOW_BUDGET_POLICY,
+  windowBudgetInputSchema,
+  windowBudgetPolicySchema,
+  windowBudgetPolicyOverridesSchema,
+  windowPolicySchema,
+  WindowBudgetError,
+} from "./modules/window-budget";
+export type {
+  WindowBudgetInput,
+  WindowBudgetPolicy,
+  WindowBudgetPolicyOverrides,
+  WindowPolicy,
+} from "./modules/window-budget";
+
 export { AgentEnginePipeline } from "./engine/agent-engine";
 export {
   agentEngineStartInputSchema,
