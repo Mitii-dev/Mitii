@@ -6,32 +6,62 @@ import type {
   RunFileChangesView,
   SuspensionPayload,
 } from '../protocol';
-import {
-  AgentActivityPanel,
-  AgentThinkingPanel,
-} from './AgentActivityPanel';
+import { AgentTimeline } from './AgentTimeline';
 import { ApprovalCards } from './ApprovalCards';
 import { FileChangesCard } from './FileChangesCard';
+import { derivePhase, LiveStatus } from './LiveStatus';
 import { MarkdownMessage } from './MarkdownMessage';
 import LOGO from '../../../media/Mitii.png';
+
+export type TurnSegment =
+  | { id: string; kind: 'text'; text: string; at: number }
+  | { id: string; kind: 'activity'; event: ActivityEventPayload };
 
 export interface ChatTurn {
   id: string;
   role: 'user' | 'assistant';
   text: string;
+  segments: TurnSegment[];
   mode?: AgentUiMode;
   streaming?: boolean;
-  activity: ActivityEventPayload[];
   status?: string;
   route?: string | null;
   suspension?: SuspensionPayload;
   fileChanges?: RunFileChangesView;
 }
 
+type SegmentGroup =
+  | { type: 'text'; id: string; text: string }
+  | {
+      type: 'activity';
+      id: string;
+      events: ActivityEventPayload[];
+      endAt?: number;
+    };
+
+function groupSegments(segments: TurnSegment[]): SegmentGroup[] {
+  const groups: SegmentGroup[] = [];
+  for (const seg of segments) {
+    if (seg.kind === 'text') {
+      const last = groups[groups.length - 1];
+      if (last?.type === 'activity' && last.endAt === undefined) {
+        last.endAt = seg.at;
+      }
+      groups.push({ type: 'text', id: seg.id, text: seg.text });
+      continue;
+    }
+    const last = groups[groups.length - 1];
+    if (last?.type === 'activity') {
+      last.events.push(seg.event);
+    } else {
+      groups.push({ type: 'activity', id: seg.id, events: [seg.event] });
+    }
+  }
+  return groups;
+}
+
 interface MessageListProps {
   turns: ChatTurn[];
-  activityOpen: boolean;
-  onToggleActivity: () => void;
   clarifyText: string;
   onClarifyChange: (value: string) => void;
   onResumeClarify: (runId: string, answer: string) => void;
@@ -58,8 +88,6 @@ const MODE_LABELS: Record<AgentUiMode, string> = {
 
 export function MessageList({
   turns,
-  activityOpen,
-  onToggleActivity,
   clarifyText,
   onClarifyChange,
   onResumeClarify,
@@ -107,44 +135,70 @@ export function MessageList({
         >
           {turn.role === 'user' ? (
             <>
-              <div className="meta-row">
-                <span>Request</span>
-                {turn.mode ? (
+              {turn.mode ? (
+                <div className="meta-row">
                   <span className="meta-pill">{MODE_LABELS[turn.mode]}</span>
-                ) : null}
-              </div>
+                </div>
+              ) : null}
               <div className="bubble user">{turn.text}</div>
             </>
           ) : (
             <>
-              <div className="meta-row">
-                <span>Mitii</span>
-                {turn.status ? (
-                  <span className="meta-pill">{turn.status}</span>
-                ) : null}
-                {turn.route ? <span className="meta-pill">{turn.route}</span> : null}
-              </div>
-              {turn.text || turn.streaming ? (
-                <div
-                  className={`bubble assistant ${turn.streaming ? 'streaming' : ''}`}
-                >
-                  <MarkdownMessage
-                    content={turn.text || (turn.streaming ? '' : '')}
-                    streaming={turn.streaming}
-                    onOpenFile={onOpenFile}
-                  />
+              {turn.status || turn.route ? (
+                <div className="meta-row">
+                  {turn.status ? (
+                    <span className="meta-pill">{turn.status}</span>
+                  ) : null}
+                  {turn.route ? (
+                    <span className="meta-pill">{turn.route}</span>
+                  ) : null}
                 </div>
               ) : null}
-              {turn.streaming || turn.suspension ? (
-                <>
-                  <AgentActivityPanel
-                    events={turn.activity}
-                    open={activityOpen}
-                    onToggle={onToggleActivity}
-                  />
-                  <AgentThinkingPanel events={turn.activity} />
-                </>
-              ) : null}
+              {(() => {
+                const groups = groupSegments(turn.segments);
+                const lastIndex = groups.length - 1;
+                const lastGroup = groups[lastIndex];
+                const showLiveStatus =
+                  Boolean(turn.streaming) &&
+                  (!lastGroup ||
+                    (lastGroup.type === 'activity' &&
+                      lastGroup.events[lastGroup.events.length - 1]?.kind !==
+                        'thinking'));
+                const lastEvent =
+                  lastGroup?.type === 'activity'
+                    ? lastGroup.events[lastGroup.events.length - 1]
+                    : undefined;
+                return (
+                  <>
+                    {groups.map((group, i) => {
+                      const isLastGroup = i === lastIndex;
+                      const groupStreaming = isLastGroup && Boolean(turn.streaming);
+                      return group.type === 'text' ? (
+                        <div
+                          key={group.id}
+                          className={`bubble assistant${groupStreaming ? ' streaming' : ''}`}
+                        >
+                          <MarkdownMessage
+                            content={group.text}
+                            streaming={groupStreaming}
+                            onOpenFile={onOpenFile}
+                          />
+                        </div>
+                      ) : (
+                        <AgentTimeline
+                          key={group.id}
+                          events={group.events}
+                          streaming={groupStreaming}
+                          endAt={group.endAt}
+                        />
+                      );
+                    })}
+                    {showLiveStatus ? (
+                      <LiveStatus phase={derivePhase(lastEvent)} />
+                    ) : null}
+                  </>
+                );
+              })()}
               {turn.fileChanges ? (
                 <FileChangesCard
                   changes={turn.fileChanges}

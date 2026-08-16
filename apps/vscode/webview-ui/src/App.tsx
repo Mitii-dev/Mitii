@@ -26,7 +26,7 @@ import {
   IconStop,
 } from './components/Icons';
 import { IndexingStatusBar } from './components/IndexingStatusBar';
-import type { ChatTurn } from './components/MessageList';
+import type { ChatTurn, TurnSegment } from './components/MessageList';
 import { MessageList } from './components/MessageList';
 import {
   ComposerControls,
@@ -42,6 +42,7 @@ import { SkillManagementPanel } from './components/skills/SkillManagementPanel';
 import { WorkspaceBanner } from './components/WorkspaceBanner';
 import { getProviderPreset, modelsForProvider } from './providerOptions';
 import type {
+  ActivityEventPayload,
   AgentUiDepth,
   AgentUiMode,
   ChatThreadSummary,
@@ -216,37 +217,102 @@ function mergeUiPatch(
   };
 }
 
+/** Tool titles switch from "Running X" (started) to plain "X" (completed) — normalize so both merge into one row. */
+function activityMergeKey(event: { kind: string; title: string }): string {
+  if (event.kind === 'tool') {
+    return `tool:${event.title.replace(/^Running\s+/, '')}`;
+  }
+  return `${event.kind}:${event.title}`;
+}
+
 function shouldReplaceActivity(
   existing: { kind: string; title: string; status?: string },
   incoming: { kind: string; title: string; status?: string },
 ): boolean {
-  if (existing.kind !== incoming.kind || existing.title !== incoming.title) {
-    return false;
-  }
+  if (activityMergeKey(existing) !== activityMergeKey(incoming)) return false;
   return Boolean(existing.status || incoming.status);
 }
 
-function mergeActivityEvent(
-  events: ChatTurn['activity'],
-  incoming: ChatTurn['activity'][number],
-): ChatTurn['activity'] {
-  let replacementIndex = -1;
-  for (let i = events.length - 1; i >= 0; i -= 1) {
-    if (shouldReplaceActivity(events[i]!, incoming)) {
-      replacementIndex = i;
-      break;
-    }
-  }
-  if (replacementIndex >= 0) {
-    const next = [...events];
-    next[replacementIndex] = {
-      ...next[replacementIndex],
-      ...incoming,
-      detail: incoming.detail ?? next[replacementIndex]?.detail,
+const MAX_SEGMENTS = 160;
+
+/**
+ * Appends an activity event to the trailing run of activity segments.
+ * Thinking deltas have no `status`, so they merge purely on contiguity with
+ * the immediately preceding thinking entry (one growing "Thought" per
+ * uninterrupted reasoning phase). Other kinds merge into a matching in-flight
+ * entry further back (e.g. a tool's running→done transition) via
+ * shouldReplaceActivity, so status updates don't spawn duplicate rows. Either
+ * way the search never crosses a text segment boundary — once the model
+ * resumes writing prose, a later event starts a fresh step.
+ */
+function appendActivitySegment(
+  segments: TurnSegment[],
+  incoming: ActivityEventPayload,
+  reasoningPreviewMaxChars: number,
+): TurnSegment[] {
+  const last = segments[segments.length - 1];
+
+  if (
+    incoming.kind === 'thinking' &&
+    last?.kind === 'activity' &&
+    last.event.kind === 'thinking'
+  ) {
+    const detail = `${last.event.detail ?? ''}${incoming.detail ?? ''}`.slice(
+      -reasoningPreviewMaxChars,
+    );
+    const next = [...segments];
+    next[next.length - 1] = {
+      ...last,
+      // Keep the original start time so the eventual "Thought for Xs" reflects
+      // the whole reasoning phase, not just the gap since the last delta.
+      event: { ...last.event, ...incoming, detail, at: last.event.at },
     };
     return next;
   }
-  return [...events, incoming];
+
+  if (incoming.kind !== 'thinking') {
+    let start = segments.length;
+    while (start > 0 && segments[start - 1]!.kind === 'activity') start -= 1;
+
+    for (let i = segments.length - 1; i >= start; i -= 1) {
+      const seg = segments[i]!;
+      if (
+        seg.kind !== 'activity' ||
+        seg.event.kind === 'thinking' ||
+        !shouldReplaceActivity(seg.event, incoming)
+      ) {
+        continue;
+      }
+      const next = [...segments];
+      next[i] = {
+        ...seg,
+        event: {
+          ...seg.event,
+          ...incoming,
+          detail: incoming.detail ?? seg.event.detail,
+          at: seg.event.at,
+        },
+      };
+      return next;
+    }
+  }
+
+  const next: TurnSegment[] = [
+    ...segments,
+    { id: uid('seg'), kind: 'activity', event: incoming },
+  ];
+  return next.length > MAX_SEGMENTS ? next.slice(-MAX_SEGMENTS) : next;
+}
+
+/** Appends a text delta, continuing the trailing text segment or starting a new one after an activity phase. */
+function appendTextSegment(segments: TurnSegment[], text: string): TurnSegment[] {
+  const last = segments[segments.length - 1];
+  if (last?.kind === 'text') {
+    const next = [...segments];
+    next[next.length - 1] = { ...last, text: `${last.text}${text}` };
+    return next;
+  }
+  return [...segments, { id: uid('seg'), kind: 'text', text, at: Date.now() }];
 }
 
 function uid(prefix: string): string {
@@ -254,12 +320,25 @@ function uid(prefix: string): string {
 }
 
 function toChatTurn(message: ChatMessageView): ChatTurn {
+  const segments: TurnSegment[] = (message.activity ?? []).map((event) => ({
+    id: uid('seg'),
+    kind: 'activity' as const,
+    event,
+  }));
+  if (message.text.trim()) {
+    segments.push({
+      id: uid('seg'),
+      kind: 'text',
+      text: message.text,
+      at: Date.now(),
+    });
+  }
   return {
     id: message.id,
     role: message.role,
     text: message.text,
+    segments,
     mode: message.mode,
-    activity: message.activity ?? [],
     ...(message.fileChanges ? { fileChanges: message.fileChanges } : {}),
     ...(message.status ? { status: message.status } : {}),
     ...(message.route !== undefined ? { route: message.route } : {}),
@@ -326,7 +405,6 @@ export function App() {
     useState<McpRuntimeStatus>('disabled');
   const [ui, setUi] = useState<UiSettingsSnapshot>(DEFAULT_UI);
   const [clarifyText, setClarifyText] = useState('');
-  const [activityOpen, setActivityOpen] = useState(true);
   const [overrideDraft, setOverrideDraft] = useState('');
   const [notice, setNotice] = useState<WorkspaceNoticeView | null>(null);
   const [onboardingRequired, setOnboardingRequired] = useState(false);
@@ -566,7 +644,7 @@ export function App() {
               role: 'user',
               text: msg.prompt,
               mode: msg.mode,
-              activity: [],
+              segments: [],
             },
             {
               id: asstId,
@@ -574,7 +652,7 @@ export function App() {
               text: '',
               mode: msg.mode,
               streaming: true,
-              activity: [],
+              segments: [],
             },
           ]);
           break;
@@ -582,34 +660,26 @@ export function App() {
         case 'run.event': {
           const id = activeAssistantId.current;
           if (!id) break;
+          if (msg.event.kind === 'delta') break;
+          if (msg.event.kind === 'thinking' && !ui.showReasoning) break;
+          // "Preparing tool" is a transient placeholder immediately superseded
+          // by "Running <tool>" a moment later — drop it, it adds noise without signal.
+          if (msg.event.kind === 'tool' && msg.event.title === 'Preparing tool') {
+            break;
+          }
           setTurns((prev) =>
-            prev.map((t) => {
-              if (t.id !== id) return t;
-              const nextActivity = [...t.activity];
-              if (msg.event.kind === 'thinking' && ui.showReasoning) {
-                const last = nextActivity[nextActivity.length - 1];
-                if (last?.kind === 'thinking') {
-                  const merged = {
-                    ...last,
-                    detail: `${last.detail ?? ''}${msg.event.detail ?? ''}`.slice(
-                      -ui.reasoningPreviewMaxChars,
+            prev.map((t) =>
+              t.id === id
+                ? {
+                    ...t,
+                    segments: appendActivitySegment(
+                      t.segments,
+                      msg.event,
+                      ui.reasoningPreviewMaxChars,
                     ),
-                  };
-                  nextActivity[nextActivity.length - 1] = merged;
-                  return { ...t, activity: nextActivity };
-                }
-              }
-              if (msg.event.kind === 'thinking' && !ui.showReasoning) {
-                return t;
-              }
-              if (msg.event.kind === 'delta') {
-                return t;
-              }
-              return {
-                ...t,
-                activity: mergeActivityEvent(nextActivity, msg.event).slice(-60),
-              };
-            }),
+                  }
+                : t,
+            ),
           );
           break;
         }
@@ -618,7 +688,13 @@ export function App() {
           if (!id) break;
           setTurns((prev) =>
             prev.map((t) =>
-              t.id === id ? { ...t, text: `${t.text}${msg.text}` } : t,
+              t.id === id
+                ? {
+                    ...t,
+                    text: `${t.text}${msg.text}`,
+                    segments: appendTextSegment(t.segments, msg.text),
+                  }
+                : t,
             ),
           );
           break;
@@ -659,12 +735,28 @@ export function App() {
                     ? `Error: ${msg.error}`
                     : `(${msg.status})`,
               });
+              // Streamed segments already display correctly; only when the
+              // final answer overrides them do we collapse the streamed text
+              // into one trailing segment, keeping prior activity groups intact.
+              const segments =
+                nextText === t.text
+                  ? t.segments
+                  : [
+                      ...t.segments.filter((seg) => seg.kind === 'activity'),
+                      {
+                        id: uid('seg'),
+                        kind: 'text' as const,
+                        text: nextText,
+                        at: Date.now(),
+                      },
+                    ];
               return {
                 ...t,
                 streaming: false,
                 status: msg.status,
                 route: msg.route,
                 text: nextText,
+                segments,
                 suspension: undefined,
               };
             }),
@@ -1362,8 +1454,6 @@ export function App() {
           <div className={`chat-view${running ? ' chat-view--running' : ''}`}>
             <MessageList
               turns={turns}
-              activityOpen={activityOpen}
-              onToggleActivity={() => setActivityOpen((v) => !v)}
               clarifyText={clarifyText}
               onClarifyChange={setClarifyText}
               onResumeClarify={(runId, answer) => {
