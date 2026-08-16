@@ -4,6 +4,7 @@ import {
   allocateBudget,
   buildSystemInstructions,
   compactConversation,
+  resolveDynamicOutputTokens,
   serializeRepositoryContext,
   serializeTools,
   updateSectionBudget,
@@ -344,22 +345,26 @@ export class PromptConstructionPipeline {
       { role: "user", content: userContent },
     ];
 
+    const recomputedUsed = sections
+      .filter((entry) => entry.section !== "output_reserve")
+      .reduce((sum, entry) => sum + entry.usedTokens, 0);
+    const dynamicOutput = resolveDynamicOutputTokens({
+      contextWindowTokens: allocation.contextWindowTokens,
+      providerMaximumOutputTokens: parsed.capabilities.maximumOutputTokens,
+      outputReservedTokens: allocation.outputReservedTokens,
+      usedInputTokens: recomputedUsed,
+    });
+    reasonCodes.push(...dynamicOutput.reasonCodes);
+
     const request: ModelRequest = {
       messages,
       model: parsed.model ?? parsed.capabilities.modelId,
       temperature: parsed.temperature,
-      maximumOutputTokens: Math.min(
-        parsed.capabilities.maximumOutputTokens,
-        allocation.outputReservedTokens,
-      ),
+      maximumOutputTokens: dynamicOutput.maximumOutputTokens,
       stream: parsed.stream,
       tools: toolsResult.tools,
       toolChoice: toolsResult.toolChoice,
     };
-
-    const recomputedUsed = sections
-      .filter((entry) => entry.section !== "output_reserve")
-      .reduce((sum, entry) => sum + entry.usedTokens, 0);
 
     const withinLimits = recomputedUsed <= allocation.inputBudgetTokens;
     if (withinLimits) {

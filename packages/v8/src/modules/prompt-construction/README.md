@@ -6,6 +6,8 @@ Prompt Construction builds the provider-neutral `ModelRequest` that is sent thro
 
 - Validates `PromptConstructionInput`.
 - Reserves output tokens before allocating input budget.
+- Dynamically expands the final output limit into unused context window after
+  prompt assembly.
 - Builds system/developer/user/tool conversation messages.
 - Serializes repository context into bounded prompt blocks.
 - Injects selected skill and memory instruction blocks.
@@ -41,7 +43,15 @@ prompt-construction/
 - The public facade method is `PromptConstructionPipeline.construct`.
 - Repository retrieval internals never enter the prompt path directly.
 - Trust/provenance metadata distinguishes system, repository, skills, memory, plan, user, and tool content.
-- Output reserve is calculated before context allocation.
+- Output reserve is calculated before context allocation, then the final
+  `ModelRequest.maximumOutputTokens` is resolved after concrete prompt usage is
+  known.
+- The final output limit is `min(providerMaximumOutputTokens, remaining context
+  window after prompt usage and safety margin)`, but it preserves the reserved
+  output floor whenever the assembled prompt stayed inside the input budget.
+- A provider max output setting is a hard cap. For example, a 30k context window
+  with a 10k prompt can allow far more than 5k output only when the provider
+  capability/configuration advertises more than 5k output.
 - Sections can be omitted or truncated with explicit reason codes.
 - Tool definitions are supplied after Agent Engine filters them by grant.
 
@@ -101,10 +111,10 @@ Prompt Construction result returns a result like this:
 ```json
 {
   "schemaVersion": 1,
-  "status": "constructed",
+  "status": "complete",
   "request": {
     "model": "gpt-5-codex",
-    "maximumOutputTokens": 4096,
+    "maximumOutputTokens": 12000,
     "toolChoice": "auto",
     "messages": [
       { "role": "system", "content": "You are Mitii Agent..." },
@@ -113,9 +123,9 @@ Prompt Construction result returns a result like this:
     "tools": [{ "name": "read_file", "description": "Read a workspace file", "inputSchema": { "type": "object" } }]
   },
   "budget": { "contextWindowTokens": 128000, "outputReservedTokens": 4096, "inputBudgetTokens": 123904, "withinLimits": true },
-  "provenance": [{ "blockId": "repo:src/LoginForm.tsx", "section": "repository_context", "source": "repository-context", "trust": "repository" }],
+  "provenance": [{ "blockId": "repo:src/LoginForm.tsx", "section": "repository", "source": "repository-context", "trust": "untrusted_repository_content" }],
   "omissions": [],
   "warnings": [],
-  "reasonCodes": ["output_reserved_first"]
+  "reasonCodes": ["output_reserved_first", "dynamic_output_expanded", "within_provider_limits"]
 }
 ```

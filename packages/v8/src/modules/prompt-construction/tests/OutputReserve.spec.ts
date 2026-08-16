@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { PromptConstructionPipeline, estimateTurnOutputHeadroom } from "../index";
+import { resolveDynamicOutputTokens } from "../actions";
 import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../policy";
 import {
   createCapabilities,
@@ -52,6 +53,53 @@ describe("prompt construction output reserve", () => {
 
     expect(result.budget.outputReservedTokens).toBe(64_000);
     expect(result.request.maximumOutputTokens).toBe(64_000);
+  });
+
+  it("expands the final output limit into unused input window", () => {
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        capabilities: createCapabilities({
+          contextWindowTokens: 30_000,
+          maximumOutputTokens: 20_000,
+        }),
+        outputReserveTokens: 5_000,
+      }),
+    );
+
+    expect(result.budget.outputReservedTokens).toBe(5_000);
+    expect(result.request.maximumOutputTokens).toBeGreaterThan(5_000);
+    expect(result.request.maximumOutputTokens).toBe(20_000);
+    expect(result.reasonCodes).toContain("dynamic_output_expanded");
+    expect(result.reasonCodes).toContain("dynamic_output_capped_by_provider");
+  });
+
+  it("respects provider max output when unused context is larger", () => {
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        capabilities: createCapabilities({
+          contextWindowTokens: 30_000,
+          maximumOutputTokens: 5_000,
+        }),
+      }),
+    );
+
+    expect(result.request.maximumOutputTokens).toBe(5_000);
+    expect(result.budget.outputReservedTokens).toBe(5_000);
+    expect(result.reasonCodes).toContain("dynamic_output_capped_by_provider");
+  });
+
+  it("keeps output inside the remaining context when input exceeds reserve budget", () => {
+    const result = resolveDynamicOutputTokens({
+      contextWindowTokens: 30_000,
+      providerMaximumOutputTokens: 20_000,
+      outputReservedTokens: 10_000,
+      usedInputTokens: 25_500,
+      safetyMarginTokens: 250,
+    });
+
+    expect(result.maximumOutputTokens).toBe(4_250);
+    expect(result.availableOutputTokens).toBe(4_500);
+    expect(result.reasonCodes).toContain("dynamic_output_limited_by_context");
   });
 });
 

@@ -38,6 +38,9 @@ export const PROMPT_CONSTRUCTION_STATUSES = [
 
 export const PROMPT_REASON_CODES = [
   "output_reserved_first",
+  "dynamic_output_expanded",
+  "dynamic_output_capped_by_provider",
+  "dynamic_output_limited_by_context",
   "within_provider_limits",
   "partial_context_omitted",
   "tools_omitted_unsupported",
