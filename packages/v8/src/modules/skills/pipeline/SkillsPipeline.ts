@@ -129,6 +129,18 @@ export class SkillsPipeline {
     if (budgeted.budgetOmitted) {
       reasonCodes.push("budget_omitted_skills");
     }
+    if (budgeted.compacted) {
+      reasonCodes.push("skills_compacted");
+      warnings.push(
+        "One or more selected skills used compact metadata because the full playbook exceeded the skills budget.",
+      );
+    }
+    if (budgeted.truncated) {
+      reasonCodes.push("skills_truncated_to_budget");
+      warnings.push(
+        "One or more selected skills were truncated to fit the remaining skills budget.",
+      );
+    }
 
     const omissions = [
       ...conflicts.omissions,
@@ -176,7 +188,9 @@ export class SkillsPipeline {
 
     for (const entry of selected) {
       const loadedBody = await this.loadBody(entry.skill);
-      const content = loadedBody?.content.trim() ?? entry.skill.content?.trim();
+      const compactContent = entry.skill.content?.trim();
+      const fullContent = loadedBody?.content.trim();
+      const content = fullContent || compactContent;
       if (!content) {
         omissions.push({ skillId: entry.skill.id, reason: "empty_content" });
         continue;
@@ -186,7 +200,14 @@ export class SkillsPipeline {
         content,
         resources: loadedBody?.resources ?? entry.skill.resources,
       });
-      hydrated.push({ ...entry, skill: descriptor });
+      hydrated.push({
+        ...entry,
+        skill: descriptor,
+        compactContent:
+          compactContent && compactContent !== content
+            ? compactContent
+            : undefined,
+      });
     }
 
     return { selected: hydrated, omissions };

@@ -198,6 +198,44 @@ describe("SkillsPipeline", () => {
     expect(ids).not.toContain("bugfix-verbose");
   });
 
+  it("injects compact metadata when the hydrated playbook exceeds the budget", async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: {
+        list: () => [
+          {
+            id: "debugging-and-error-recovery",
+            title: "Debugging",
+            content:
+              "Skill: Debugging\nInstruction: Reproduce, localize, then fix the root cause.",
+            intents: ["bugfix"],
+            routes: ["execute"],
+            tags: ["debug"],
+            paths: [],
+            priority: 175,
+            alwaysApply: false,
+          },
+        ],
+        loadBody: () => ({
+          content: "FULL PLAYBOOK\n".repeat(400),
+        }),
+      },
+    });
+
+    const result = await pipeline.select(
+      baseInput({
+        budgetTokens: 80,
+        maxSkills: 2,
+      }),
+    );
+
+    expect(result.status).toBe("selected");
+    expect(result.reasonCodes).toContain("skills_compacted");
+    expect(result.instructions[0]?.id).toBe("debugging-and-error-recovery");
+    expect(result.instructions[0]?.content).toContain("Reproduce, localize");
+    expect(result.instructions[0]?.content).not.toContain("FULL PLAYBOOK");
+    expect(result.usedTokens).toBeLessThanOrEqual(80);
+  });
+
   it("omits skills that exceed the dedicated budget", async () => {
     const pipeline = new SkillsPipeline({
       catalog: new InMemorySkillsCatalog(catalog),

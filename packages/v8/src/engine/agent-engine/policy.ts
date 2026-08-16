@@ -19,6 +19,12 @@ export const AGENT_ENGINE_THRESHOLDS = {
   defaultPreferredBatchSize: 3,
   /** Fallback hard patch cap when grant omits mutationBudget. */
   defaultMaxPatchesPerCall: 8,
+  /**
+   * Flag context-loss re-reads when file-read calls exceed unique paths
+   * by this ratio and at least `explorationRereadMinCalls` reads occurred.
+   */
+  explorationRereadRatio: 2,
+  explorationRereadMinCalls: 8,
 } as const;
 
 /**

@@ -48,6 +48,8 @@ tool-runtime/
 - Process execution always goes through `ProcessPort`.
 - Network access always goes through `NetworkPort` and host allow-lists.
 - Output is bounded by the minimum of tool, grant, and session limits.
+- `search_files.path` may be a file or a directory. Adapters MUST stat the
+  root before `readdir`; a file root returns that single file.
 
 ## Ownership Boundaries
 

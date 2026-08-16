@@ -9,7 +9,8 @@ Skills selects relevant instruction blocks from a skill catalog. It helps the mo
 - Applies keyword/similarity scoring.
 - Resolves conflict groups.
 - Hydrates selected skill bodies.
-- Enforces a dedicated token budget.
+- Enforces a dedicated token budget with rank-preserving packing.
+- Prefers a compact L1 body when the full playbook does not fit.
 - Returns prompt-ready instruction blocks with provenance.
 
 ## Structure
@@ -42,6 +43,13 @@ skills/
 - `KeywordSkillSimilarity` is the default similarity implementation.
 - Skills can provide resource references/scripts as metadata, but selection does not execute them.
 - Repository paths/languages only gate or boost; Skills never scans files.
+- Budget packing walks the ranked list in order. A higher-ranked skill is never
+  dropped solely so a smaller later skill can take its slot. When the hydrated
+  playbook exceeds the remaining budget, Skills injects the distinct compact
+  catalog body (and may truncate that compact body) before omitting.
+- Hosts that list skills in `metadata` mode still hydrate full playbooks through
+  `loadBody`. Compact fallback is what keeps oversized playbooks from evicting
+  the skill the ranker selected.
 
 ## Ownership Boundaries
 

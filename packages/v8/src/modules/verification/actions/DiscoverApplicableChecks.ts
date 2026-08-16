@@ -96,7 +96,62 @@ export async function discoverApplicableChecks(params: {
     return ai - bi;
   });
 
-  return { candidates, warnings };
+  return {
+    candidates,
+    warnings: suppressCoveredRootDiscoveryWarnings({
+      warnings,
+      candidates,
+      projects: discoveryProjects,
+    }),
+  };
+}
+
+const ROOT_NO_SCRIPT_WARNING =
+  /has no discoverable typecheck\/lint\/test\/build scripts/;
+
+function suppressCoveredRootDiscoveryWarnings(params: {
+  warnings: readonly string[];
+  candidates: readonly DiscoveredCheckCandidate[];
+  projects: readonly ProjectDescriptor[];
+}): string[] {
+  const descendantCovered = params.candidates.some(
+    (candidate) =>
+      candidate.projectId &&
+      !isWorkspaceRootProject(candidate.projectId, params.projects),
+  );
+  if (!descendantCovered) {
+    return [...params.warnings];
+  }
+
+  const rootProjectIds = new Set(
+    params.projects
+      .filter((project) => isWorkspaceRootPath(project.rootPath))
+      .map((project) => project.projectId),
+  );
+  if (rootProjectIds.size === 0) {
+    return [...params.warnings];
+  }
+
+  return params.warnings.filter((warning) => {
+    if (!ROOT_NO_SCRIPT_WARNING.test(warning)) {
+      return true;
+    }
+    return ![...rootProjectIds].some((projectId) =>
+      warning.includes(`project "${projectId}"`),
+    );
+  });
+}
+
+function isWorkspaceRootProject(
+  projectId: string,
+  projects: readonly ProjectDescriptor[],
+): boolean {
+  const project = projects.find((entry) => entry.projectId === projectId);
+  return project ? isWorkspaceRootPath(project.rootPath) : false;
+}
+
+function isWorkspaceRootPath(rootPath: string): boolean {
+  return normalizePath(rootPath) === ".";
 }
 
 async function expandWithNearbyManifestProjects(params: {

@@ -50,6 +50,8 @@ verification/
 - `buildRecord` / `persistRecord` / `loadLatestRecord` own the durable artifact. They are not prompt construction.
 - Verification does not run arbitrary commands directly.
 - Checks come from project descriptors and trusted manifests.
+- Node discovery warnings include `projectId`. A workspace-root "no scripts"
+  warning is suppressed when a descendant package already produced checks.
 - Baseline diagnostics let the result focus on newly introduced issues.
 - Unavailable repository state blocks verification unless policy allows unavailable evidence.
 - Diff inspection reports changed paths and stale-state risk.

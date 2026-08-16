@@ -7,7 +7,9 @@ export {
 export { DEFAULT_WINDOW_BUDGET_POLICY } from "./defaults";
 export { WINDOW_BUDGET_POLICY, mergeWindowBudgetPolicy } from "./policy";
 
-export { deriveWindowPolicy } from "./actions";
+export {
+  deriveWindowPolicy,
+} from "./actions";
 
 export {
   windowBudgetInputSchema,

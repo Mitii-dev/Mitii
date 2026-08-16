@@ -100,7 +100,7 @@ export async function discoverNodeChecks(params: {
 
   if (candidates.length === 0) {
     warnings.push(
-      `package.json at "${pkgPath}" has no discoverable typecheck/lint/test/build scripts.`,
+      `package.json at "${pkgPath}" for project "${params.project.projectId}" has no discoverable typecheck/lint/test/build scripts.`,
     );
   }
 

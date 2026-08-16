@@ -34,6 +34,8 @@ export const agentRunUsageSchema = z
     loopIterations: z.number().int().nonnegative(),
     inputTokens: z.number().int().nonnegative().optional(),
     outputTokens: z.number().int().nonnegative().optional(),
+    fileReadCalls: z.number().int().nonnegative().optional(),
+    uniqueFilePathsTouched: z.number().int().nonnegative().optional(),
   })
   .strict();
 

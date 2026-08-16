@@ -1,3 +1,5 @@
+export { toolGrantsEquivalent } from "./CompareToolGrants";
+
 export { resolveRoute, isMutationIntent, isDiagnosisIntent } from "./ResolveRoute";
 export type { RouteResolution } from "./ResolveRoute";
 

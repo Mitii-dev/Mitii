@@ -21,6 +21,8 @@ export const SKILL_REASON_CODES = [
   "skills_selected",
   "no_matching_skills",
   "budget_omitted_skills",
+  "skills_compacted",
+  "skills_truncated_to_budget",
   "conflicts_resolved",
   "catalog_empty",
 ] as const;

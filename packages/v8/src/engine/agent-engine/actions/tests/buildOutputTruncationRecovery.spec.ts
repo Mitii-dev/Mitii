@@ -137,5 +137,7 @@ describe("buildMutationBudgetInstruction", () => {
     expect(block?.content).toContain("batched execution");
     expect(block?.content).toContain("≤5 patches");
     expect(block?.content).toContain("≤3 unique files");
+    expect(block?.content).toContain("re-read or typecheck");
+    expect(block?.content).toContain("patch_conflict");
   });
 });

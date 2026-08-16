@@ -190,4 +190,23 @@ describe("model tool definition single source", () => {
         .properties,
     ).not.toHaveProperty("cwd");
   });
+
+  it("search_files succeeds when path points at a single file", async () => {
+    const runtime = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "s-file",
+      toolName: "search_files",
+      arguments: { query: "export const n", path: "src/util.ts" },
+      grant: createReadOnlyGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("succeeded");
+    const output = result.output as {
+      matches: Array<{ path: string; line: number; text: string }>;
+    };
+    expect(output.matches.length).toBeGreaterThan(0);
+    expect(output.matches[0]?.path).toBe("src/util.ts");
+    expect(output.matches[0]?.text).toContain("export const n");
+  });
 });

@@ -42,6 +42,8 @@ decision-policy/
 - Ask and plan modes cannot receive write grants.
 - Injection scanning never broadens authority.
 - `narrow()` may reduce scope or tighten approval/budgets after discovery; it cannot add authority.
+- `narrow()` returns the previous decision when the grant is unchanged.
+  Callers MUST emit `grant_narrowed` only when `toolGrantsEquivalent` is false.
 - Mutation profiles are `relaxed`, `standard`, and `tight`.
 - Verification requirements specify required evidence and whether unavailable evidence is acceptable.
 - Host capability flags currently include web search availability.

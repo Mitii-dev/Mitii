@@ -28,6 +28,11 @@ export interface WorkspaceFileSystemPort {
     bytesRead: number;
   }>;
   listDirectory(absolutePath: string): Promise<WorkspaceDirectoryEntry[]>;
+  /**
+   * Read text files under a workspace path. The path MAY be a file or a
+   * directory. File roots MUST return that single file (or [] if over
+   * `maxFileBytes`); they MUST NOT throw ENOTDIR.
+   */
   readTextFilesUnder?(
     absoluteDirectory: string,
     options: {

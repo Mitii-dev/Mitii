@@ -25,6 +25,8 @@ export function buildMutationBudgetInstruction(
       `Hard limits per apply_patch call: ≤${budget.maxPatchesPerCall} patches, ≤${budget.maxUniqueFilesPerCall} unique files, ≤${budget.maxPatchPayloadCharacters} characters of oldText+newText.`,
       "Use minimal diffs (small oldText anchors). Never emit 30+ file rewrites in one response — split across turns.",
       "If a prior turn was truncated, immediately retry with a smaller batch.",
+      "After a multi-file apply_patch, re-read or typecheck the touched files before the next mutation. Do not batch files whose contents may be stale.",
+      "If apply_patch returns patch_conflict, re-read that file and retry it alone — do not resubmit the whole batch.",
     ].join("\n"),
   };
 }

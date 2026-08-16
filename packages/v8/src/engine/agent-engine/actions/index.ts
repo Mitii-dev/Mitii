@@ -7,6 +7,7 @@ export type {
   ClarificationOptionPayload,
   ClarificationPayload,
 } from "./buildClarificationPayload";
+export { extractFileReadPaths } from "./extractFileReadPaths";
 export { decideVerificationGate } from "./decideVerificationGate";
 export type { VerificationGateDecision } from "./decideVerificationGate";
 export { mapContextToPromptSlice } from "./mapContextToPromptSlice";

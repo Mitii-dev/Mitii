@@ -46,6 +46,11 @@ agent-engine/
 - Runs can suspend for clarification, plan approval, or mutating tool approval.
 - Tool calls are passed to Tool Runtime with the exact grant from Decision Policy.
 - The engine may narrow authority after discovery but never expands the grant.
+  `grant_narrowed` is emitted only when the grant actually changed.
+- `usage` reports `fileReadCalls` vs `uniqueFilePathsTouched`. Repeated
+  re-reads of the same files emit `exploration_reread_heavy`.
+- Empty memory retrieval is `memory_empty` (store wired, no facts). Missing
+  memory port or workspace id remains `memory_skipped`.
 - Task-list updates are validated through the Task List module.
 - Output truncation recovery can ask the model to continue safely within remaining budgets.
 - `composeReadOnlyAgentEngine` provides a useful read-only wiring helper.
@@ -153,6 +158,6 @@ Agent Engine run returns a result like this:
       { "id": "verify-login", "title": "Verify LoginForm behavior", "status": "done" }
     ]
   },
-  "usage": { "modelCalls": 2, "toolCalls": 5, "loopIterations": 2 }
+  "usage": { "modelCalls": 2, "toolCalls": 5, "loopIterations": 2, "fileReadCalls": 3, "uniqueFilePathsTouched": 2 }
 }
 ```

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { InMemoryManifestReader } from "../adapters/InMemoryManifestReader";
+import { InMemoryManifestReader } from "..";
 import { discoverApplicableChecks } from "../actions/DiscoverApplicableChecks";
 
 const PACKAGE_JSON = JSON.stringify({
@@ -48,6 +48,54 @@ describe("discoverApplicableChecks — nearby-manifest project expansion", () =>
     );
     expect(typecheckCandidate).toBeDefined();
     expect(typecheckCandidate?.projectId).toBe("inferred:packages/mui-builder");
+  });
+
+  it("attributes and suppresses a root no-script warning when a package check already covers the change", async () => {
+    const manifests = new InMemoryManifestReader({
+      "package.json": JSON.stringify({ name: "workspace" }),
+      "packages/mui-builder/package.json": PACKAGE_JSON,
+    });
+
+    const result = await discoverApplicableChecks({
+      projects: [],
+      changeScope: "module",
+      changedFiles: ["packages/mui-builder/src/Button.tsx"],
+      manifests,
+    });
+
+    expect(
+      result.candidates.some(
+        (candidate) =>
+          candidate.kind === "typecheck" &&
+          candidate.projectId === "inferred:packages/mui-builder",
+      ),
+    ).toBe(true);
+    expect(
+      result.warnings.some((warning) =>
+        warning.includes("has no discoverable typecheck/lint/test/build scripts"),
+      ),
+    ).toBe(false);
+  });
+
+  it("includes projectId when a package.json has no discoverable scripts", async () => {
+    const manifests = new InMemoryManifestReader({
+      "packages/empty/package.json": JSON.stringify({ name: "empty" }),
+    });
+
+    const result = await discoverApplicableChecks({
+      projects: [],
+      changeScope: "module",
+      changedFiles: ["packages/empty/src/index.ts"],
+      manifests,
+    });
+
+    expect(
+      result.warnings.some(
+        (warning) =>
+          warning.includes('project "inferred:packages/empty"') &&
+          warning.includes("has no discoverable typecheck/lint/test/build scripts"),
+      ),
+    ).toBe(true);
   });
 
   it("finds nothing project-specific when no manifest exists anywhere on the path", async () => {

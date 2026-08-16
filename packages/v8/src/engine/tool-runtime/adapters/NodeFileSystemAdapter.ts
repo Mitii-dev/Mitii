@@ -94,6 +94,25 @@ export class NodeWorkspaceFileSystemAdapter implements WorkspaceFileSystemPort {
   ): Promise<Array<{ relativePath: string; content: string }>> {
     const results: Array<{ relativePath: string; content: string }> = [];
     const workspaceRoot = path.resolve(options.workspaceRoot);
+    const root = path.resolve(absoluteDirectory);
+    const rootStat = await this.lstat(root);
+    if (rootStat.kind === "file") {
+      return this.readSingleTextFile(root, options);
+    }
+    if (rootStat.kind === "symlink") {
+      const real = await this.realpath(root);
+      const realStat = await this.lstat(real);
+      if (realStat.kind === "file") {
+        return this.readSingleTextFile(real, options);
+      }
+      if (realStat.kind !== "directory") {
+        return [];
+      }
+      return this.readTextFilesUnder(real, options);
+    }
+    if (rootStat.kind !== "directory") {
+      return [];
+    }
 
     const walk = async (dir: string): Promise<void> => {
       if (results.length >= options.maxFiles) {
@@ -132,8 +151,32 @@ export class NodeWorkspaceFileSystemAdapter implements WorkspaceFileSystemPort {
       }
     };
 
-    await walk(absoluteDirectory);
+    await walk(root);
     return results;
+  }
+
+  private async readSingleTextFile(
+    absolutePath: string,
+    options: {
+      workspaceRoot: string;
+      maxFileBytes: number;
+    },
+  ): Promise<Array<{ relativePath: string; content: string }>> {
+    const stats = await this.lstat(absolutePath);
+    if (stats.kind !== "file" || stats.sizeBytes > options.maxFileBytes) {
+      return [];
+    }
+    const read = await this.readFile(absolutePath, {
+      maxBytes: options.maxFileBytes,
+    });
+    return [
+      {
+        relativePath: path
+          .relative(path.resolve(options.workspaceRoot), absolutePath)
+          .replace(/\\/g, "/"),
+        content: read.content,
+      },
+    ];
   }
 
   public async writeFile(absolutePath: string, content: string): Promise<void> {

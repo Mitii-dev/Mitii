@@ -11,6 +11,7 @@ export {
   DEFAULT_MAX_SKILLS,
   DEFAULT_CHARACTERS_PER_TOKEN,
   DEFAULT_MIN_SKILL_SCORE,
+  DEFAULT_MIN_USEFUL_SKILL_TOKENS,
 } from "./defaults";
 
 export { SkillsPipeline } from "./pipeline/SkillsPipeline";

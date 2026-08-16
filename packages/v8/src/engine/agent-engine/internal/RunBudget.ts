@@ -6,6 +6,8 @@ export class RunBudgetTracker {
   private loopIterations = 0;
   private inputTokens = 0;
   private outputTokens = 0;
+  private fileReadCalls = 0;
+  private readonly touchedFilePaths = new Set<string>();
   private readonly startedMs: number;
   /** Wall-clock time spent waiting on user (approval/clarification) — not billed. */
   private excludedWaitMs: number;
@@ -41,6 +43,16 @@ export class RunBudgetTracker {
 
   public recordLoopIteration(): void {
     this.loopIterations += 1;
+  }
+
+  public recordFileRead(paths: readonly string[]): void {
+    this.fileReadCalls += 1;
+    for (const path of paths) {
+      const normalized = path.trim().replace(/\\/g, "/");
+      if (normalized.length > 0) {
+        this.touchedFilePaths.add(normalized);
+      }
+    }
   }
 
   public addUsage(usage?: {
@@ -113,6 +125,8 @@ export class RunBudgetTracker {
     loopIterations: number;
     inputTokens: number;
     outputTokens: number;
+    fileReadCalls: number;
+    uniqueFilePathsTouched: number;
   } {
     return {
       modelCalls: this.modelCalls,
@@ -120,6 +134,8 @@ export class RunBudgetTracker {
       loopIterations: this.loopIterations,
       inputTokens: this.inputTokens,
       outputTokens: this.outputTokens,
+      fileReadCalls: this.fileReadCalls,
+      uniqueFilePathsTouched: this.touchedFilePaths.size,
     };
   }
 }

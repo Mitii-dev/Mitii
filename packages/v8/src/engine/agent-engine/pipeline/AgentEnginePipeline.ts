@@ -7,6 +7,7 @@ import {
   DECISION_POLICY_SCHEMA_VERSION,
   READ_ONLY_TOOL_IDS,
   buildVerificationGrant,
+  toolGrantsEquivalent,
 } from "../../../modules/decision-policy";
 import type {
   LlmPort,
@@ -90,6 +91,7 @@ import {
   buildOutputTruncationRecovery,
   compactModelLoopMessages,
   decideVerificationGate,
+  extractFileReadPaths,
   filterToolDefinitions,
   isEmptyAssistantTurn,
   isTransitionalAssistantAnswer,
@@ -474,6 +476,9 @@ export class AgentEnginePipeline {
       },
     ): AgentRunResult => {
       const usageSnap = budget.snapshot();
+      const finalReasonCodes = [...(partial.reasonCodes ?? reasonCodes)];
+      const finalWarnings = [...warnings, ...(partial.warnings ?? [])];
+      this.applyExplorationSignal(usageSnap, finalReasonCodes, finalWarnings);
       const result = agentRunResultSchema.parse({
         schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
         runId,
@@ -496,19 +501,13 @@ export class AgentEnginePipeline {
         evidence: finalizeRunEvidence({
           evidence: runEvidence,
           status: partial.status,
-          reasonCodes: partial.reasonCodes ?? reasonCodes,
+          reasonCodes: finalReasonCodes,
         }),
         suspension: partial.suspension,
         pinnedState: partial.pinnedState ?? pinnedState,
-        reasonCodes: partial.reasonCodes ?? reasonCodes,
-        warnings: [...warnings, ...(partial.warnings ?? [])],
-        usage: {
-          modelCalls: usageSnap.modelCalls,
-          toolCalls: usageSnap.toolCalls,
-          loopIterations: usageSnap.loopIterations,
-          inputTokens: usageSnap.inputTokens,
-          outputTokens: usageSnap.outputTokens,
-        },
+        reasonCodes: finalReasonCodes,
+        warnings: finalWarnings,
+        usage: this.toRunUsage(usageSnap),
         durationMs: Date.now() - startedMs,
         error: partial.error,
       });
@@ -901,7 +900,9 @@ export class AgentEnginePipeline {
           discoveredPaths: contextPaths,
           residualRisk: understanding.taskAnalysis.risk,
         });
-        if (narrowed.reasonCodes.includes("grant_narrowed")) {
+        if (
+          !toolGrantsEquivalent(decision.toolGrant, narrowed.toolGrant)
+        ) {
           decision = narrowed;
           reasonCodes.push("grant_narrowed");
           this.emit(bus, {
@@ -1049,7 +1050,9 @@ export class AgentEnginePipeline {
         reasonCodes.push(
           memoryResult.instructions.length > 0
             ? "memory_retrieved"
-            : "memory_skipped",
+            : memoryResult.status === "empty"
+              ? "memory_empty"
+              : "memory_skipped",
         );
         this.emit(bus, {
           type: "memory_ready",
@@ -1062,7 +1065,9 @@ export class AgentEnginePipeline {
         this.emitStage(bus, runId, "memory_ready", "completed", [
           memoryResult.instructions.length > 0
             ? "memory_retrieved"
-            : "memory_skipped",
+            : memoryResult.status === "empty"
+              ? "memory_empty"
+              : "memory_skipped",
         ]);
       } else {
         reasonCodes.push("memory_skipped");
@@ -1499,6 +1504,9 @@ export class AgentEnginePipeline {
       },
     ): AgentRunResult => {
       const usageSnap = budget.snapshot();
+      const finalReasonCodes = [...(partial.reasonCodes ?? reasonCodes)];
+      const finalWarnings = [...warnings, ...(partial.warnings ?? [])];
+      this.applyExplorationSignal(usageSnap, finalReasonCodes, finalWarnings);
       const result = agentRunResultSchema.parse({
         schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
         runId,
@@ -1522,15 +1530,9 @@ export class AgentEnginePipeline {
         ...(verificationRecord ? { verificationRecord } : {}),
         suspension: partial.suspension,
         pinnedState: partial.pinnedState ?? pinnedState,
-        reasonCodes: partial.reasonCodes ?? reasonCodes,
-        warnings: [...warnings, ...(partial.warnings ?? [])],
-        usage: {
-          modelCalls: usageSnap.modelCalls,
-          toolCalls: usageSnap.toolCalls,
-          loopIterations: usageSnap.loopIterations,
-          inputTokens: usageSnap.inputTokens,
-          outputTokens: usageSnap.outputTokens,
-        },
+        reasonCodes: finalReasonCodes,
+        warnings: finalWarnings,
+        usage: this.toRunUsage(usageSnap),
         durationMs: Date.now() - checkpoint.startedAtMs,
         error: partial.error,
       });
@@ -3396,6 +3398,7 @@ export class AgentEnginePipeline {
         mode: params.mode,
         projects: params.projects,
         route: decision.route,
+        windowPolicy: params.windowPolicy,
       });
 
       reasonCodes.push("tools_executed");
@@ -3426,6 +3429,7 @@ export class AgentEnginePipeline {
     mode?: "ask" | "plan" | "agent";
     projects?: readonly ProjectDescriptor[];
     route: ExecutionDecision["route"];
+    windowPolicy: WindowPolicy;
   }): Promise<void> {
     const discoveredPaths = [
       ...new Set([
@@ -3443,7 +3447,7 @@ export class AgentEnginePipeline {
         discoveredPaths,
         residualRisk: params.understanding?.taskAnalysis.risk,
       });
-      if (narrowed.reasonCodes.includes("grant_narrowed")) {
+      if (!toolGrantsEquivalent(previous.toolGrant, narrowed.toolGrant)) {
         params.decisionRef.set(narrowed);
         params.reasonCodes.push("grant_narrowed");
         this.emit(params.bus, {
@@ -3477,6 +3481,8 @@ export class AgentEnginePipeline {
       query: params.skillsQuery,
       mode: params.mode,
       route: params.route,
+      budgetTokens: params.windowPolicy.skills.budgetTokens,
+      maxSkills: params.windowPolicy.skills.maxSkills,
       evidence,
     });
     const nextIds = skillsResult.instructions.map((block) => block.id);
@@ -3588,6 +3594,10 @@ export class AgentEnginePipeline {
       argumentsValue = { _raw: toolCall.arguments };
     }
     const summary = this.summarizeToolCall(toolCall.name, argumentsValue);
+    const fileReadPaths = extractFileReadPaths(toolCall.name, argumentsValue);
+    if (fileReadPaths) {
+      budget.recordFileRead(fileReadPaths);
+    }
 
     this.emit(bus, {
       type: "tool_started",
@@ -4074,6 +4084,55 @@ export class AgentEnginePipeline {
       Math.floor(
         Math.max(0, rawBudget) * windowPolicy.resolvedPolicy.loopSafetyRatio,
       ),
+    );
+  }
+
+  private toRunUsage(snapshot: {
+    modelCalls: number;
+    toolCalls: number;
+    loopIterations: number;
+    inputTokens: number;
+    outputTokens: number;
+    fileReadCalls: number;
+    uniqueFilePathsTouched: number;
+  }) {
+    return {
+      modelCalls: snapshot.modelCalls,
+      toolCalls: snapshot.toolCalls,
+      loopIterations: snapshot.loopIterations,
+      inputTokens: snapshot.inputTokens,
+      outputTokens: snapshot.outputTokens,
+      fileReadCalls: snapshot.fileReadCalls,
+      uniqueFilePathsTouched: snapshot.uniqueFilePathsTouched,
+    };
+  }
+
+  private applyExplorationSignal(
+    snapshot: {
+      fileReadCalls: number;
+      uniqueFilePathsTouched: number;
+    },
+    reasonCodes: AgentReasonCode[],
+    warnings: string[],
+  ): void {
+    if (
+      snapshot.fileReadCalls < AGENT_ENGINE_THRESHOLDS.explorationRereadMinCalls ||
+      snapshot.uniqueFilePathsTouched <= 0
+    ) {
+      return;
+    }
+    if (
+      snapshot.fileReadCalls <
+      snapshot.uniqueFilePathsTouched *
+        AGENT_ENGINE_THRESHOLDS.explorationRereadRatio
+    ) {
+      return;
+    }
+    if (!reasonCodes.includes("exploration_reread_heavy")) {
+      reasonCodes.push("exploration_reread_heavy");
+    }
+    warnings.push(
+      `File reads (${snapshot.fileReadCalls}) substantially exceeded unique paths (${snapshot.uniqueFilePathsTouched}).`,
     );
   }
 

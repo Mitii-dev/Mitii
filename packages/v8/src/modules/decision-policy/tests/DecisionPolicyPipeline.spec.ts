@@ -945,6 +945,17 @@ describe("DecisionPolicyPipeline", () => {
 
     expect(narrowed.reasonCodes).toContain("grant_narrowed");
     expect(narrowed.toolGrant.pathScopes).toEqual(["packages/mui-builder"]);
+
+    const again = pipeline.narrow({
+      previous: narrowed,
+      discoveredPaths: [
+        "packages/mui-builder/src/fields/field-radio/field-radio.tsx",
+      ],
+    });
+    expect(again.toolGrant.pathScopes).toEqual(["packages/mui-builder"]);
+    expect(again.reasonCodes.filter((code) => code === "grant_narrowed")).toEqual(
+      ["grant_narrowed"],
+    );
   });
 
   it("does not expand a scoped grant when discovery is outside scope", () => {

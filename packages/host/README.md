@@ -123,6 +123,10 @@ await client.start({ /* … */, projectRules });
 
 **Indexing:** prefer `runFullWorkspaceIndex` → publish repository state. If that has not run, fall back to `buildWorkspaceSnapshot` (honest fingerprint: indexes unavailable).
 
+**Semantic retrieval** is off unless the host passes `semanticIndex.enabled` (and a ready embedding profile). When disabled, repository context logs `semantic_index_disabled` and falls back to path-based discovery.
+
+**Memory** persists under `.mitii/memory/facts.json` when `createWorkspaceMemoryStore` is injected. An empty store is a cold start (`memory_empty`), not a missing adapter. Reusable package facts are only available after a prior run committed them.
+
 ## Naming note: `WorkspaceSnapshot`
 
 `buildWorkspaceSnapshot` returns a **host fingerprint result**. That is **not** the V8 `WorkspaceSnapshot` type used inside indexing/retrieval.

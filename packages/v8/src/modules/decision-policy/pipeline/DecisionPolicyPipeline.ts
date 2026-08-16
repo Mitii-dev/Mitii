@@ -3,6 +3,7 @@ import {
   planRoute,
   resolvePreflightBuild,
   scanPromptInjection,
+  toolGrantsEquivalent,
 } from "../actions";
 import { DECISION_POLICY_SCHEMA_VERSION } from "../constants";
 import {
@@ -131,7 +132,7 @@ export class DecisionPolicyPipeline {
       discoveredPaths: input.discoveredPaths ?? [],
       residualRisk: input.residualRisk,
     });
-    const changed = !sameGrant(previous.toolGrant, narrowedGrant);
+    const changed = !toolGrantsEquivalent(previous.toolGrant, narrowedGrant);
     if (!changed) {
       return previous;
     }
@@ -479,21 +480,6 @@ function tightenMutationBudget(budget: MutationBudget): MutationBudget {
     ),
     preferredBatchSize: Math.max(1, Math.min(budget.preferredBatchSize, 1)),
     requireBatchedExecution: true,
-  };
-}
-
-function sameGrant(a: ToolGrant, b: ToolGrant): boolean {
-  return JSON.stringify(normalizeGrantForCompare(a)) ===
-    JSON.stringify(normalizeGrantForCompare(b));
-}
-
-function normalizeGrantForCompare(grant: ToolGrant): ToolGrant {
-  return {
-    ...grant,
-    allowedTools: [...grant.allowedTools].sort(),
-    allowedEffects: [...grant.allowedEffects].sort(),
-    pathScopes: [...grant.pathScopes].sort(),
-    networkHosts: grant.networkHosts ? [...grant.networkHosts].sort() : undefined,
   };
 }
 

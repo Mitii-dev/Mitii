@@ -9,3 +9,9 @@ export const DEFAULT_CHARACTERS_PER_TOKEN = 4;
 
 /** Minimum match score required to load a non-always-apply skill. */
 export const DEFAULT_MIN_SKILL_SCORE = 0.35;
+
+/**
+ * Smallest compact skill body still worth injecting when the full playbook
+ * does not fit. Below this, omit rather than emit a stub.
+ */
+export const DEFAULT_MIN_USEFUL_SKILL_TOKENS = 32;

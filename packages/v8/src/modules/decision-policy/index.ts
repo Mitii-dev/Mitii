@@ -22,6 +22,7 @@ export {
   extractNetworkHosts,
   planRoute,
   compileGrant,
+  toolGrantsEquivalent,
 } from "./actions";
 
 export { DecisionPolicyPipeline } from "./pipeline/DecisionPolicyPipeline";
