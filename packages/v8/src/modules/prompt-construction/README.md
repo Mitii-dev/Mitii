@@ -46,12 +46,14 @@ prompt-construction/
 - Output reserve is calculated before context allocation, then the final
   `ModelRequest.maximumOutputTokens` is resolved after concrete prompt usage is
   known.
-- The final output limit is `min(providerMaximumOutputTokens, remaining context
-  window after prompt usage and safety margin)`, but it preserves the reserved
-  output floor whenever the assembled prompt stayed inside the input budget.
-- A provider max output setting is a hard cap. For example, a 30k context window
-  with a 10k prompt can allow far more than 5k output only when the provider
-  capability/configuration advertises more than 5k output.
+- The final output limit is recomputed every turn from the remaining context
+  window. By default it offers 95% of the unused window to model output.
+- The configured max output value acts as the reserved baseline used for input
+  budgeting, not as the final per-turn ceiling. For example, a 30k context
+  window with a 12k prompt and a 5k configured output reserve resolves to
+  `floor((30k - 12k) * 0.95) = 17.1k` output tokens for that turn.
+- If the assembled prompt consumes more than the planned input budget, output is
+  reduced to fit the remaining context window instead of forcing a truncation.
 - Sections can be omitted or truncated with explicit reason codes.
 - Tool definitions are supplied after Agent Engine filters them by grant.
 

@@ -9,7 +9,7 @@ import {
 } from "./fixtures/promptCases";
 
 describe("prompt construction output reserve", () => {
-  it("reserves at least the minimum output floor when the window allows", () => {
+  it("reserves at least the minimum output floor before dynamic scaling", () => {
     const result = new PromptConstructionPipeline().construct(
       createPromptInput({
         capabilities: createCapabilities({
@@ -22,12 +22,12 @@ describe("prompt construction output reserve", () => {
     expect(result.budget.outputReservedTokens).toBeGreaterThanOrEqual(
       PROMPT_CONSTRUCTION_THRESHOLDS.minimumOutputReserveTokens,
     );
-    expect(result.request.maximumOutputTokens).toBe(
+    expect(result.request.maximumOutputTokens).toBeGreaterThanOrEqual(
       result.budget.outputReservedTokens,
     );
   });
 
-  it("caps output reserve by provider maximumOutputTokens", () => {
+  it("uses configured max output as a reserve baseline, not the per-turn ceiling", () => {
     const result = new PromptConstructionPipeline().construct(
       createPromptInput({
         capabilities: createCapabilities({
@@ -38,10 +38,11 @@ describe("prompt construction output reserve", () => {
     );
 
     expect(result.budget.outputReservedTokens).toBeLessThanOrEqual(2_048);
-    expect(result.request.maximumOutputTokens).toBeLessThanOrEqual(2_048);
+    expect(result.request.maximumOutputTokens).toBeGreaterThan(2_048);
+    expect(result.reasonCodes).toContain("dynamic_output_expanded");
   });
 
-  it("does not apply a fixed output ceiling to large context windows", () => {
+  it("scales output from the remaining per-turn context on large windows", () => {
     const result = new PromptConstructionPipeline().construct(
       createPromptInput({
         capabilities: createCapabilities({
@@ -52,7 +53,8 @@ describe("prompt construction output reserve", () => {
     );
 
     expect(result.budget.outputReservedTokens).toBe(64_000);
-    expect(result.request.maximumOutputTokens).toBe(64_000);
+    expect(result.request.maximumOutputTokens).toBeGreaterThan(64_000);
+    expect(result.reasonCodes).toContain("dynamic_output_expanded");
   });
 
   it("expands the final output limit into unused input window", () => {
@@ -68,12 +70,10 @@ describe("prompt construction output reserve", () => {
 
     expect(result.budget.outputReservedTokens).toBe(5_000);
     expect(result.request.maximumOutputTokens).toBeGreaterThan(5_000);
-    expect(result.request.maximumOutputTokens).toBe(20_000);
     expect(result.reasonCodes).toContain("dynamic_output_expanded");
-    expect(result.reasonCodes).toContain("dynamic_output_capped_by_provider");
   });
 
-  it("respects provider max output when unused context is larger", () => {
+  it("scales beyond a 5k configured output limit when the turn has free window", () => {
     const result = new PromptConstructionPipeline().construct(
       createPromptInput({
         capabilities: createCapabilities({
@@ -83,21 +83,35 @@ describe("prompt construction output reserve", () => {
       }),
     );
 
-    expect(result.request.maximumOutputTokens).toBe(5_000);
     expect(result.budget.outputReservedTokens).toBe(5_000);
-    expect(result.reasonCodes).toContain("dynamic_output_capped_by_provider");
+    expect(result.request.maximumOutputTokens).toBeGreaterThan(5_000);
+    expect(result.reasonCodes).toContain("dynamic_output_expanded");
+  });
+
+  it("uses 95 percent of the remaining context window for output each turn", () => {
+    const result = resolveDynamicOutputTokens({
+      contextWindowTokens: 30_000,
+      configuredOutputTokens: 5_000,
+      outputReservedTokens: 5_000,
+      usedInputTokens: 12_000,
+    });
+
+    expect(result.availableOutputTokens).toBe(18_000);
+    expect(result.dynamicOutputRatio).toBe(0.95);
+    expect(result.maximumOutputTokens).toBe(17_100);
+    expect(result.reasonCodes).toContain("dynamic_output_expanded");
   });
 
   it("keeps output inside the remaining context when input exceeds reserve budget", () => {
     const result = resolveDynamicOutputTokens({
       contextWindowTokens: 30_000,
-      providerMaximumOutputTokens: 20_000,
+      configuredOutputTokens: 20_000,
       outputReservedTokens: 10_000,
       usedInputTokens: 25_500,
-      safetyMarginTokens: 250,
+      dynamicOutputRatio: 0.95,
     });
 
-    expect(result.maximumOutputTokens).toBe(4_250);
+    expect(result.maximumOutputTokens).toBe(4_275);
     expect(result.availableOutputTokens).toBe(4_500);
     expect(result.reasonCodes).toContain("dynamic_output_limited_by_context");
   });

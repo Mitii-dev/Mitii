@@ -9,6 +9,12 @@ export const PROMPT_CONSTRUCTION_THRESHOLDS = {
    */
   outputReserveRatio: 0.3,
 
+  /**
+   * Fraction of the remaining per-turn context window offered to output after
+   * the concrete prompt has been assembled.
+   */
+  dynamicOutputWindowRatio: 0.95,
+
   /** Absolute floor for output reserve tokens when the window is large enough. */
   minimumOutputReserveTokens: 4_096,
 

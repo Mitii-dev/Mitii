@@ -1,11 +1,10 @@
 import type { PromptReasonCode } from "../contracts";
-
-const DEFAULT_OUTPUT_SAFETY_MARGIN_TOKENS = 256;
+import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../policy";
 
 export interface DynamicOutputTokenResolution {
   maximumOutputTokens: number;
   availableOutputTokens: number;
-  safetyMarginTokens: number;
+  dynamicOutputRatio: number;
   reasonCodes: PromptReasonCode[];
 }
 
@@ -14,25 +13,28 @@ export interface DynamicOutputTokenResolution {
  *
  * The early output reserve protects room for an answer while optional context is
  * selected. Once the concrete prompt is known, any unused input room can be
- * offered back to the model, bounded by the provider's advertised output cap.
+ * offered back to the model. The configured output value is treated as the
+ * reserved baseline, not as a hard ceiling, because several local and
+ * OpenAI-compatible providers can use more output when the prompt is smaller
+ * than expected.
  */
 export function resolveDynamicOutputTokens(params: {
   contextWindowTokens: number;
-  providerMaximumOutputTokens: number;
+  configuredOutputTokens: number;
   outputReservedTokens: number;
   usedInputTokens: number;
-  safetyMarginTokens?: number;
+  dynamicOutputRatio?: number;
 }): DynamicOutputTokenResolution {
   const contextWindowTokens = positiveInt(params.contextWindowTokens);
-  const providerMaximumOutputTokens = clampInt(
-    positiveInt(params.providerMaximumOutputTokens),
+  const configuredOutputTokens = clampInt(
+    positiveInt(params.configuredOutputTokens),
     1,
     Math.max(1, contextWindowTokens - 1),
   );
   const outputReservedTokens = clampInt(
     positiveInt(params.outputReservedTokens),
     1,
-    providerMaximumOutputTokens,
+    Math.max(1, contextWindowTokens - 1),
   );
   const usedInputTokens = Math.max(0, Math.floor(params.usedInputTokens));
   const availableOutputTokens = clampInt(
@@ -40,23 +42,27 @@ export function resolveDynamicOutputTokens(params: {
     1,
     Math.max(1, contextWindowTokens - 1),
   );
-  const safetyMarginTokens = clampInt(
-    params.safetyMarginTokens ?? DEFAULT_OUTPUT_SAFETY_MARGIN_TOKENS,
-    0,
-    Math.max(0, availableOutputTokens - 1),
+  const dynamicOutputRatio = clampRatio(
+    params.dynamicOutputRatio ??
+      PROMPT_CONSTRUCTION_THRESHOLDS.dynamicOutputWindowRatio,
+  );
+  const scaledAvailableOutputTokens = Math.max(
+    1,
+    Math.floor(availableOutputTokens * dynamicOutputRatio),
   );
 
-  const availableWithSafety = Math.max(
-    1,
-    availableOutputTokens - safetyMarginTokens,
-  );
   const targetOutputTokens =
     availableOutputTokens >= outputReservedTokens
-      ? Math.max(outputReservedTokens, availableWithSafety)
-      : availableWithSafety;
-  const maximumOutputTokens = Math.min(
-    providerMaximumOutputTokens,
+      ? Math.max(
+          configuredOutputTokens,
+          outputReservedTokens,
+          scaledAvailableOutputTokens,
+        )
+      : scaledAvailableOutputTokens;
+  const maximumOutputTokens = clampInt(
     targetOutputTokens,
+    1,
+    Math.max(1, availableOutputTokens),
   );
 
   const reasonCodes: PromptReasonCode[] = [];
@@ -66,14 +72,11 @@ export function resolveDynamicOutputTokens(params: {
   if (maximumOutputTokens < outputReservedTokens) {
     reasonCodes.push("dynamic_output_limited_by_context");
   }
-  if (providerMaximumOutputTokens < targetOutputTokens) {
-    reasonCodes.push("dynamic_output_capped_by_provider");
-  }
 
   return {
     maximumOutputTokens,
     availableOutputTokens,
-    safetyMarginTokens,
+    dynamicOutputRatio,
     reasonCodes,
   };
 }
@@ -87,4 +90,11 @@ function clampInt(value: number, min: number, max: number): number {
     return min;
   }
   return Math.min(max, Math.max(min, Math.floor(value)));
+}
+
+function clampRatio(value: number): number {
+  if (!Number.isFinite(value)) {
+    return PROMPT_CONSTRUCTION_THRESHOLDS.dynamicOutputWindowRatio;
+  }
+  return Math.min(1, Math.max(0.01, value));
 }

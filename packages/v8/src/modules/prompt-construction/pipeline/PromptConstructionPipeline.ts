@@ -350,7 +350,7 @@ export class PromptConstructionPipeline {
       .reduce((sum, entry) => sum + entry.usedTokens, 0);
     const dynamicOutput = resolveDynamicOutputTokens({
       contextWindowTokens: allocation.contextWindowTokens,
-      providerMaximumOutputTokens: parsed.capabilities.maximumOutputTokens,
+      configuredOutputTokens: parsed.capabilities.maximumOutputTokens,
       outputReservedTokens: allocation.outputReservedTokens,
       usedInputTokens: recomputedUsed,
     });
