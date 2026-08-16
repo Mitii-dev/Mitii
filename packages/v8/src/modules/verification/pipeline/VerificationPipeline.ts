@@ -1,5 +1,7 @@
 import {
   discoverApplicableChecks,
+  buildVerificationRecord,
+  buildVerificationUserSummary,
   captureRepoBuildState,
   compareRepoBuildStates,
   executeChecks,
@@ -9,9 +11,11 @@ import {
   recommendCompletion,
   selectProportionalChecks,
 } from "../actions";
+import type { BuildVerificationRecordParams } from "../actions";
 import {
   VerificationError,
   verificationInputSchema,
+  verificationRecordSchema,
   verificationResultSchema,
 } from "../contracts";
 import type {
@@ -20,6 +24,8 @@ import type {
   VerificationReasonCode,
   RepoBuildState,
   RepoBuildStateComparison,
+  VerificationRecord,
+  VerificationRecordStorePort,
   VerificationResult,
   VerificationToolExecutorPort,
 } from "../contracts";
@@ -32,6 +38,8 @@ export interface VerificationPipelineOptions {
 export interface VerificationPipelineDependencies {
   tools: VerificationToolExecutorPort;
   manifests: VerificationManifestReaderPort;
+  /** Optional durable store. Omit in tests that only exercise check execution. */
+  records?: VerificationRecordStorePort;
 }
 
 /**
@@ -50,6 +58,7 @@ export interface VerificationPipelineDependencies {
 export class VerificationPipeline {
   private readonly tools: VerificationToolExecutorPort;
   private readonly manifests: VerificationManifestReaderPort;
+  private readonly records?: VerificationRecordStorePort;
 
   constructor(dependencies: VerificationPipelineDependencies) {
     if (!dependencies.tools || !dependencies.manifests) {
@@ -60,6 +69,7 @@ export class VerificationPipeline {
     }
     this.tools = dependencies.tools;
     this.manifests = dependencies.manifests;
+    this.records = dependencies.records;
   }
 
   public async verify(
@@ -246,6 +256,52 @@ export class VerificationPipeline {
     after: RepoBuildState;
   }): RepoBuildStateComparison {
     return compareRepoBuildStates(params);
+  }
+
+  public buildRecord(
+    params: BuildVerificationRecordParams,
+  ): VerificationRecord {
+    return buildVerificationRecord(params);
+  }
+
+  public buildUserSummary(record: VerificationRecord): string {
+    return buildVerificationUserSummary(record);
+  }
+
+  public async persistRecord(record: VerificationRecord): Promise<void> {
+    if (!this.records) {
+      return;
+    }
+    const parsed = verificationRecordSchema.parse(record);
+    try {
+      await this.records.save(parsed);
+    } catch (error) {
+      throw new VerificationError(
+        "store_failed",
+        "Failed to persist the verification record.",
+        {
+          cause: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
+  }
+
+  public async loadRecord(
+    recordId: string,
+  ): Promise<VerificationRecord | undefined> {
+    if (!this.records) {
+      return undefined;
+    }
+    return this.records.load(recordId);
+  }
+
+  public async loadLatestRecord(
+    workspaceId: string,
+  ): Promise<VerificationRecord | undefined> {
+    if (!this.records || workspaceId.trim().length === 0) {
+      return undefined;
+    }
+    return this.records.loadLatest(workspaceId);
   }
 }
 

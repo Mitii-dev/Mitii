@@ -11,6 +11,7 @@ const MITII_DIR = '.mitii';
 const SUBDIRS = [
   'logs',
   'checkpoints',
+  'verification',
   'plans',
   'tasks',
   'skills',
@@ -32,6 +33,7 @@ Local runtime data for this workspace. Safe to gitignore.
 |------|---------|
 | \`logs/\` | Session JSONL logs |
 | \`checkpoints/\` | Saved run checkpoints |
+| \`verification/\` | Durable before/after verification records for retry |
 | \`plans/\` | Timestamped plan artifacts (\`MM-DD-YYYY-HH-MM-id-slug.json\`) |
 | \`tasks/\` | Live Agent task lists (\`threadId.md\`) |
 | \`skills/\` | Workspace skill playbooks |

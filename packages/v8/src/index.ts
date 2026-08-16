@@ -240,8 +240,13 @@ export {
   verificationResultSchema,
   repoBuildStateSchema,
   repoBuildStateComparisonSchema,
+  verificationRecordSchema,
+  buildVerificationRecord,
+  buildVerificationUserSummary,
   InMemoryManifestReader,
   WorkspaceFileSystemManifestReader,
+  InMemoryVerificationRecordStore,
+  FileVerificationRecordStore,
 } from "./modules/verification";
 export type {
   VerificationInput,
@@ -249,6 +254,8 @@ export type {
   VerificationStatus,
   RepoBuildState,
   RepoBuildStateComparison,
+  VerificationRecord,
+  VerificationRecordStorePort,
   VerificationToolExecutorPort,
   VerificationManifestReaderPort,
 } from "./modules/verification";

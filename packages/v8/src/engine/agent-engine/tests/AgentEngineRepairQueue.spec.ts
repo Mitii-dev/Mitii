@@ -248,15 +248,17 @@ describe("AgentEnginePipeline repair remaining-error queue (Phase 4)", () => {
     ).result;
 
     expect(result.status).toBe("completed");
-    expect(result.reasonCodes).toContain("repo_build_state_remaining_error_batch");
+    expect(result.reasonCodes).toContain("verification_kept_changes");
+    expect(result.reasonCodes).toContain("verification_incomplete");
     expect(result.reasonCodes).not.toContain("mutation_rolled_back");
     expect(result.reasonCodes).not.toContain("verification_repair_attempted");
-    expect(verifyCalls).toBe(2);
+    expect(result.reasonCodes).not.toContain("repo_build_state_remaining_error_batch");
+    expect(verifyCalls).toBe(1);
 
     const a = await fs.readFile(`${WORKSPACE}/src/a.ts`);
     const b = await fs.readFile(`${WORKSPACE}/src/b.ts`);
     expect(a.content).toContain("number");
-    expect(b.content).toContain("number");
+    expect(b.content).toBe("const b = 1;\n");
   });
 
   it("treats a genuine regression (new errors) as repairable-once, distinct from baseline carryover", async () => {
@@ -324,10 +326,12 @@ describe("AgentEnginePipeline repair remaining-error queue (Phase 4)", () => {
     ).result;
 
     expect(result.status).toBe("completed");
-    expect(result.reasonCodes).toContain("verification_repair_attempted");
-    expect(result.reasonCodes).toContain("verification_repair_succeeded");
+    expect(result.reasonCodes).toContain("verification_kept_changes");
+    expect(result.reasonCodes).toContain("verification_incomplete");
+    expect(result.reasonCodes).not.toContain("verification_repair_attempted");
     expect(result.reasonCodes).not.toContain("repo_build_state_remaining_error_batch");
     expect(result.reasonCodes).not.toContain("mutation_rolled_back");
+    expect(verifyCalls).toBe(1);
   });
 
   it("Quick exploration depth stops after one remaining-error batch instead of looping to zero", async () => {
@@ -382,15 +386,13 @@ describe("AgentEnginePipeline repair remaining-error queue (Phase 4)", () => {
       }),
     ).result;
 
-    // Quick allows one remaining-error batch beyond the initial attempt:
-    // initial verify (fails) -> one batch -> verify again (still failing) ->
-    // stop. Completed, not failed, no rollback — remaining errors are
-    // reported rather than treated as a regression.
     expect(result.status).toBe("completed");
-    expect(result.reasonCodes).toContain("repo_build_state_remaining_error_batch");
+    expect(result.reasonCodes).toContain("verification_kept_changes");
+    expect(result.reasonCodes).toContain("verification_incomplete");
+    expect(result.reasonCodes).not.toContain("repo_build_state_remaining_error_batch");
     expect(result.reasonCodes).not.toContain("mutation_rolled_back");
     expect(result.reasonCodes).not.toContain("verification_repair_attempted");
-    expect(verifyCalls).toBe(2);
+    expect(verifyCalls).toBe(1);
   });
 
   it("only verifies changed files, so an unrelated pre-existing error never enters the repair queue", async () => {

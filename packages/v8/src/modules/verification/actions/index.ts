@@ -23,3 +23,6 @@ export type { CompletionRecommendation } from "./RecommendCompletion";
 
 export { captureRepoBuildState } from "./CaptureRepoBuildState";
 export { compareRepoBuildStates } from "./CompareRepoBuildStates";
+export { buildVerificationRecord } from "./BuildVerificationRecord";
+export type { BuildVerificationRecordParams } from "./BuildVerificationRecord";
+export { buildVerificationUserSummary } from "./BuildVerificationUserSummary";

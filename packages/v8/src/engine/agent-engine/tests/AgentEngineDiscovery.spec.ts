@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { AgentEnginePipeline } from "..";
 import {
+  DISCOVERY_OBSERVATION_LIMITS,
   PLANNING_SCHEMA_VERSION,
   type PlanArtifact,
   type PlanningInput,
+  discoveryObservationSchema,
 } from "../../../modules/planning";
 import type { RepoBuildState } from "../../../modules/verification";
 import {
@@ -18,6 +20,7 @@ import {
 import {
   createDiscoveryObservationCollector,
   recordDiscoveryToolUse,
+  toDiscoveryObservation,
 } from "../internal/discoveryPass";
 
 function planStartInput(userMessage: string) {
@@ -138,6 +141,43 @@ describe("AgentEngine discovery (discover_and_plan)", () => {
     expect(collector.searchHits.map((hit) => hit.path)).toContain(
       "src/payments/client.ts",
     );
+  });
+
+  it("caps broad search hits before compiling discovery observations", () => {
+    const collector = createDiscoveryObservationCollector();
+
+    recordDiscoveryToolUse({
+      collector,
+      toolName: "glob_files",
+      argumentsValue: {
+        pattern: "packages/mui-builder/src/**/*",
+        maxResults: 80,
+      },
+      resultOutput: {
+        matches: Array.from({ length: 80 }, (_, index) => ({
+          path: `packages/mui-builder/src/file-${index}.tsx`,
+        })),
+      },
+      status: "succeeded",
+    });
+
+    expect(collector.searchHits).toHaveLength(
+      DISCOVERY_OBSERVATION_LIMITS.maxSearchHits,
+    );
+    expect(collector.omittedSearchHits).toBe(40);
+
+    const observation = toDiscoveryObservation({
+      objective: "Add code preview docs",
+      collector,
+      explicitTargets: [],
+      constraints: [],
+    });
+
+    const parsed = discoveryObservationSchema.parse(observation);
+    expect(parsed.searchHits).toHaveLength(
+      DISCOVERY_OBSERVATION_LIMITS.maxSearchHits,
+    );
+    expect(parsed.notes[0]).toContain("omitted 40 search hit");
   });
 
   it("skips discovery for a small one-file plan_from_ask task (engine rules resolve strategy — no strategy LLM)", async () => {

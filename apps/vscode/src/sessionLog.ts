@@ -258,6 +258,46 @@ function compactEvent(
         diagnostics: event.diagnostics,
         warnings: event.warnings,
       };
+    case 'repo_build_state_captured':
+      return {
+        ...base,
+        phase: event.phase,
+        errorCount: event.errorCount,
+        warningCount: event.warningCount,
+        failedCheckIds: event.failedCheckIds,
+        projectIds: event.projectIds,
+      };
+    case 'verification_comparison':
+      return {
+        ...base,
+        beforeErrorCount: event.beforeErrorCount,
+        afterErrorCount: event.afterErrorCount,
+        clearedErrorCount: event.clearedErrorCount,
+        newErrorCount: event.newErrorCount,
+        remainingErrorCount: event.remainingErrorCount,
+        failedCheckIdsAfter: event.failedCheckIdsAfter,
+        reasonCodes: event.reasonCodes,
+      };
+    case 'verification_record_saved':
+      return {
+        ...base,
+        recordId: event.recordId,
+        status: event.status,
+        retryAvailable: event.retryAvailable,
+      };
+    case 'verification_summary_ready':
+      return {
+        ...base,
+        summaryChars: event.summaryChars,
+        newErrorCount: event.newErrorCount,
+        remainingErrorCount: event.remainingErrorCount,
+        clearedErrorCount: event.clearedErrorCount,
+      };
+    case 'verification_retry_available':
+      return {
+        ...base,
+        recordId: event.recordId,
+      };
     case 'terminal':
       const answer = compactText(
         event.result.answer,

@@ -66,6 +66,7 @@ Prefer importing from `@mitii/host`. Do not import `internal/`.
 | `buildWorkspaceSnapshot` | Builds `PublishRepositoryStateInput` | Fingerprint-only; indexes marked unavailable |
 | `createHostRepositoryContext` | V8 `RepositoryContextPipeline` | Hybrid retrieve + file-map fallback |
 | `createWorkspaceCheckpointStore` | SDK checkpoint store | `.mitii/checkpoints/` |
+| `createWorkspaceVerificationStore` | Verification record store | `.mitii/verification/` |
 | `createWorkspaceMemoryStore` | V8 `MemoryStorePort` | `.mitii/memory/facts.json` |
 | `createOptionalSearchPort` | V8 `SearchPort` | Brave when `MITII_SEARCH_API_KEY` / `BRAVE_API_KEY` set |
 | `createFileSystemSkillsCatalog` | V8 `SkillsCatalogPort` | `.mitii/skills` + SDK defaults |

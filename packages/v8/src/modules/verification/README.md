@@ -13,18 +13,20 @@ Verification gathers evidence after a change. It maps changed files to projects,
 - Normalizes diagnostics and compares against optional baseline diagnostics.
 - Inspects diff/stale-state risk.
 - Returns final verification status and evidence.
+- Builds a durable `VerificationRecord` (before / after / comparison) that is stored outside the model transcript.
+- Produces a deterministic user summary from that record. An optional engine LLM narrative may wrap it; it must not replace the counts.
 
 ## Structure
 
 ```text
 verification/
   pipeline/                 VerificationPipeline
-  actions/                  Check discovery, execution, diagnostics, diff inspection
-  adapters/                 In-memory and workspace manifest readers
+  actions/                  Check discovery, execution, diagnostics, records
+  adapters/                 Manifest readers and verification-record stores
   contracts/
     input/                  VerificationInput
-    output/                 VerificationResult
-    ports/                  VerificationToolExecutorPort, ManifestReaderPort
+    output/                 VerificationResult, RepoBuildState, VerificationRecord
+    ports/                  Tool, manifest, and record-store ports
     errors/                 VerificationErrors
   internal/
   tests/
@@ -36,23 +38,28 @@ verification/
 - `VerificationResult`: status, state token, affected project ids, checks, diagnostics, diff inspection, warnings, reason codes, and duration.
 - `VerificationCheckResult`: command/check evidence with kind, project id, label, argv, source, outcome, exit code, duration, and summary.
 - `VerificationDiagnostic`: path, severity, message, range, source/code/check id.
+- `RepoBuildState` / `RepoBuildStateComparison`: before/after snapshots and the new / remaining / cleared delta.
+- `VerificationRecord`: durable retry handle. Statuses: `captured_before`, `compared`, `passed`, `incomplete`, `cancelled`.
 - `VerificationManifestReaderPort`: trusted manifest read contract.
 - `VerificationToolExecutorPort`: command/check execution contract.
+- `VerificationRecordStorePort`: save / load / loadLatest. Hosts persist under `.mitii/verification/`.
 
 ## Technical Details
 
 - The public facade method is `VerificationPipeline.verify`.
+- `buildRecord` / `persistRecord` / `loadLatestRecord` own the durable artifact. They are not prompt construction.
 - Verification does not run arbitrary commands directly.
 - Checks come from project descriptors and trusted manifests.
 - Baseline diagnostics let the result focus on newly introduced issues.
 - Unavailable repository state blocks verification unless policy allows unavailable evidence.
 - Diff inspection reports changed paths and stale-state risk.
+- A later "fix the remaining verification errors" turn reloads `loadLatest(workspaceId)` instead of scraping chat history.
 
 ## Ownership Boundaries
 
-Owns verification planning, check execution, diagnostics, and result evidence.
+Owns verification planning, check execution, diagnostics, result evidence, and the durable verification record.
 
-Does not own mutation, general tool authorization, repository indexing, prompt construction, or route policy.
+Does not own mutation, general tool authorization, repository indexing, prompt construction, or route policy. The Agent Engine decides when to persist, whether to keep edits, and when to ask the model for a short narrative.
 
 ## Tests
 

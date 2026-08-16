@@ -293,6 +293,62 @@ export const runEventSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      type: z.literal("repo_build_state_captured"),
+      runId: z.string().min(1),
+      phase: z.enum(["before", "after"]),
+      errorCount: z.number().int().nonnegative(),
+      warningCount: z.number().int().nonnegative(),
+      failedCheckIds: z.array(z.string().min(1).max(160)).max(16),
+      projectIds: z.array(z.string().min(1).max(160)).max(16),
+      durationMs: z.number().int().nonnegative().optional(),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("verification_comparison"),
+      runId: z.string().min(1),
+      beforeErrorCount: z.number().int().nonnegative(),
+      afterErrorCount: z.number().int().nonnegative(),
+      clearedErrorCount: z.number().int().nonnegative(),
+      newErrorCount: z.number().int().nonnegative(),
+      remainingErrorCount: z.number().int().nonnegative(),
+      failedCheckIdsAfter: z.array(z.string().min(1).max(160)).max(16),
+      reasonCodes: z.array(z.string().min(1).max(80)).max(16),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("verification_record_saved"),
+      runId: z.string().min(1),
+      recordId: z.string().min(1),
+      status: z.string().min(1).max(80),
+      retryAvailable: z.boolean(),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("verification_summary_ready"),
+      runId: z.string().min(1),
+      summaryChars: z.number().int().nonnegative(),
+      newErrorCount: z.number().int().nonnegative().optional(),
+      remainingErrorCount: z.number().int().nonnegative().optional(),
+      clearedErrorCount: z.number().int().nonnegative().optional(),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("verification_retry_available"),
+      runId: z.string().min(1),
+      recordId: z.string().min(1),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("terminal"),
       runId: z.string().min(1),
       status: z.enum(AGENT_RUN_STATUSES),

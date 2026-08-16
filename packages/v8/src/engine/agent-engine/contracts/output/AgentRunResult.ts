@@ -10,7 +10,10 @@ import {
 } from "../../../../modules/planning";
 import { taskListSchema } from "../../../../modules/task-list";
 import { repositoryStateReferenceSchema } from "../../../../modules/repository-state";
-import { repoBuildStateSchema } from "../../../../modules/verification";
+import {
+  repoBuildStateSchema,
+  verificationRecordSchema,
+} from "../../../../modules/verification";
 import { runEvidenceSchema } from "./RunEvidence";
 
 import {
@@ -86,6 +89,7 @@ export const agentRunResultSchema = z
     taskList: taskListSchema.optional(),
     repoBuildStateBefore: repoBuildStateSchema.optional(),
     repoBuildStateAfter: repoBuildStateSchema.optional(),
+    verificationRecord: verificationRecordSchema.optional(),
     evidence: runEvidenceSchema.optional(),
     suspension: agentRunSuspensionSchema.optional(),
     pinnedState: repositoryStateReferenceSchema.optional(),

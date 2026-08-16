@@ -25,6 +25,15 @@ export const DISCOVERY_VERIFICATION_KINDS = [
   "unknown",
 ] as const;
 
+export const DISCOVERY_OBSERVATION_LIMITS = {
+  maxFilesRead: 40,
+  maxSearchHits: 40,
+  maxExplicitTargets: 32,
+  maxConstraints: 20,
+  maxVerificationHints: 16,
+  maxNotes: 16,
+} as const;
+
 export const discoveryConfidenceSchema = z.enum(DISCOVERY_CONFIDENCE_LEVELS);
 export const discoveryTargetKindSchema = z.enum(DISCOVERY_TARGET_KINDS);
 export const discoveryRiskLevelSchema = z.enum(DISCOVERY_RISK_LEVELS);
@@ -93,7 +102,10 @@ export const discoveryObservationSchema = z
   .object({
     schemaVersion: z.literal(PLANNING_SCHEMA_VERSION),
     objective: z.string().min(1).max(1_000),
-    filesRead: z.array(discoveryFileRefSchema).max(40).default([]),
+    filesRead: z
+      .array(discoveryFileRefSchema)
+      .max(DISCOVERY_OBSERVATION_LIMITS.maxFilesRead)
+      .default([]),
     searchHits: z
       .array(
         z
@@ -103,15 +115,24 @@ export const discoveryObservationSchema = z
           })
           .strict(),
       )
-      .max(40)
+      .max(DISCOVERY_OBSERVATION_LIMITS.maxSearchHits)
       .default([]),
-    explicitTargets: z.array(discoveryTargetSchema).max(32).default([]),
-    constraints: z.array(z.string().min(1).max(500)).max(20).default([]),
+    explicitTargets: z
+      .array(discoveryTargetSchema)
+      .max(DISCOVERY_OBSERVATION_LIMITS.maxExplicitTargets)
+      .default([]),
+    constraints: z
+      .array(z.string().min(1).max(500))
+      .max(DISCOVERY_OBSERVATION_LIMITS.maxConstraints)
+      .default([]),
     verificationHints: z
       .array(discoveryVerificationHintSchema)
-      .max(16)
+      .max(DISCOVERY_OBSERVATION_LIMITS.maxVerificationHints)
       .default([]),
-    notes: z.array(z.string().min(1).max(500)).max(16).default([]),
+    notes: z
+      .array(z.string().min(1).max(500))
+      .max(DISCOVERY_OBSERVATION_LIMITS.maxNotes)
+      .default([]),
   })
   .strict();
 

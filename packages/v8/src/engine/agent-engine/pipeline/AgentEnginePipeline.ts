@@ -17,6 +17,7 @@ import type {
   ModelToolCallDelta,
 } from "../../../modules/model-gateway";
 import { MEMORY_SCHEMA_VERSION } from "../../../modules/memory";
+import type { MemoryCommitInput } from "../../../modules/memory";
 import {
   PLANNING_SCHEMA_VERSION,
   compileDiscoveryBrief,
@@ -66,11 +67,17 @@ import {
   toolResultSchema,
 } from "../../tool-runtime";
 import type { ToolApprovalToken, ToolResult } from "../../tool-runtime";
-import { VERIFICATION_SCHEMA_VERSION } from "../../../modules/verification";
+import {
+  VERIFICATION_SCHEMA_VERSION,
+  buildVerificationRecord,
+  buildVerificationUserSummary,
+} from "../../../modules/verification";
 import type {
   RepoBuildState,
   RepoBuildStateComparison,
   VerificationInput,
+  VerificationRecord,
+  VerificationRecordStatus,
   VerificationResult,
 } from "../../../modules/verification";
 
@@ -195,7 +202,15 @@ type ToolLoopOutcome =
     };
 
 type VerificationGateOutcome =
-  | { kind: "ok"; acceptKind: Extract<VerificationGateDecision, { action: "accept" }>["acceptKind"] }
+  | {
+      kind: "ok";
+      acceptKind: Extract<
+        VerificationGateDecision,
+        { action: "accept" }
+      >["acceptKind"];
+      verification?: VerificationResult;
+      comparison?: RepoBuildStateComparison;
+    }
   | {
       kind: "failed";
       repairable: boolean;
@@ -415,6 +430,7 @@ export class AgentEnginePipeline {
     let runPlanStrategy: PlanStrategyDecision | undefined;
     let repoBuildStateBefore: RepoBuildState | undefined;
     let repoBuildStateAfter: RepoBuildState | undefined;
+    let verificationRecord: VerificationRecord | undefined;
     const runEvidence = createInitialRunEvidence(input.request.userMessage);
     const taskListRef: TaskListRef = {
       current:
@@ -476,6 +492,7 @@ export class AgentEnginePipeline {
           : {}),
         repoBuildStateBefore,
         repoBuildStateAfter,
+        ...(verificationRecord ? { verificationRecord } : {}),
         evidence: finalizeRunEvidence({
           evidence: runEvidence,
           status: partial.status,
@@ -507,8 +524,21 @@ export class AgentEnginePipeline {
       return result;
     };
 
-    const cancelledResult = (): AgentRunResult =>
-      finish({
+    const cancelledResult = async (): Promise<AgentRunResult> => {
+      verificationRecord =
+        (await this.persistVerificationArtifact({
+          runId,
+          requestId,
+          workspaceId: resolveWorkspaceId(input),
+          bus,
+          reasonCodes,
+          warnings,
+          status: "cancelled",
+          before: repoBuildStateBefore,
+          after: repoBuildStateAfter,
+          previous: verificationRecord,
+        })) ?? verificationRecord;
+      return finish({
         status: "cancelled",
         reasonCodes: [...reasonCodes, "cancelled"],
         error: {
@@ -516,10 +546,11 @@ export class AgentEnginePipeline {
           message: getCancelReason() ?? "Run cancelled.",
         },
       });
+    };
 
     try {
       if (signal.aborted) {
-        return cancelledResult();
+        return await cancelledResult();
       }
 
       // --- Intake ---
@@ -530,7 +561,7 @@ export class AgentEnginePipeline {
       this.emitStage(bus, runId, "received", "completed", ["intake_complete"]);
 
       if (signal.aborted) {
-        return cancelledResult();
+        return await cancelledResult();
       }
 
       // --- Pin ---
@@ -548,7 +579,7 @@ export class AgentEnginePipeline {
 
       if (signal.aborted) {
         await this.safeUnpin(runId, pinnedState);
-        return cancelledResult();
+        return await cancelledResult();
       }
 
       // --- Agent-execute preflight snapshot (before Understand) ---
@@ -557,25 +588,53 @@ export class AgentEnginePipeline {
       // Plan mode keeps its repair-intent-gated capture further down, once
       // understanding/decision exist.
       if (envelope.mode === "agent") {
-        repoBuildStateBefore = await this.capturePreflightBuildState({
-          runId,
-          input,
-          pinnedState,
-          contextPaths: [],
-          bus,
-          signal,
-          reasonCodes,
-          warnings,
-          unconditional: true,
-          mentionedPaths: extractMentionedPaths(
-            extractPrimaryUserMessage(envelope.message),
-          ),
+        const retryRecord = await this.tryLoadVerificationRetry({
+          workspaceId: resolveWorkspaceId(input),
+          userMessage: extractPrimaryUserMessage(envelope.message),
         });
+        if (retryRecord) {
+          repoBuildStateBefore = retryRecord.after ?? retryRecord.before;
+          verificationRecord = retryRecord;
+          reasonCodes.push("verification_retry_loaded");
+          if (repoBuildStateBefore) {
+            this.emitRepoBuildStateCaptured(bus, runId, repoBuildStateBefore);
+          }
+        } else {
+          repoBuildStateBefore = await this.capturePreflightBuildState({
+            runId,
+            input,
+            pinnedState,
+            contextPaths: [],
+            bus,
+            signal,
+            reasonCodes,
+            warnings,
+            unconditional: true,
+            mentionedPaths: extractMentionedPaths(
+              extractPrimaryUserMessage(envelope.message),
+            ),
+          });
+          if (repoBuildStateBefore) {
+            this.emitRepoBuildStateCaptured(bus, runId, repoBuildStateBefore);
+            verificationRecord =
+              (await this.persistVerificationArtifact({
+                runId,
+                requestId,
+                workspaceId: resolveWorkspaceId(input),
+                bus,
+                reasonCodes,
+                warnings,
+                status: "captured_before",
+                before: repoBuildStateBefore,
+                previous: verificationRecord,
+              })) ?? verificationRecord;
+          }
+        }
       }
 
       if (signal.aborted) {
         await this.safeUnpin(runId, pinnedState);
-        return cancelledResult();
+        return await cancelledResult();
       }
 
       // --- Understand ---
@@ -609,7 +668,7 @@ export class AgentEnginePipeline {
 
       if (signal.aborted) {
         await this.safeUnpin(runId, pinnedState);
-        return cancelledResult();
+        return await cancelledResult();
       }
 
       // --- Decide ---
@@ -646,7 +705,7 @@ export class AgentEnginePipeline {
       this.emitStage(bus, runId, "decided", "completed", ["decision_complete"]);
 
       if (signal.aborted) {
-        return cancelledResult();
+        return await cancelledResult();
       }
 
       // Clarification suspends without model/tools.
@@ -779,7 +838,7 @@ export class AgentEnginePipeline {
 
         if (signal.aborted || contextResult.status === "cancelled") {
           await this.safeUnpin(runId, pinnedState);
-          return cancelledResult();
+          return await cancelledResult();
         }
 
         if (contextResult.status === "failed") {
@@ -833,7 +892,7 @@ export class AgentEnginePipeline {
 
       if (signal.aborted) {
         await this.safeUnpin(runId, pinnedState);
-        return cancelledResult();
+        return await cancelledResult();
       }
 
       if (this.deps.decision.narrow) {
@@ -875,6 +934,21 @@ export class AgentEnginePipeline {
             extractPrimaryUserMessage(envelope.message),
           ),
         });
+        if (repoBuildStateBefore) {
+          this.emitRepoBuildStateCaptured(bus, runId, repoBuildStateBefore);
+          verificationRecord =
+            (await this.persistVerificationArtifact({
+              runId,
+              requestId,
+              workspaceId: resolveWorkspaceId(input),
+              bus,
+              reasonCodes,
+              warnings,
+              status: "captured_before",
+              before: repoBuildStateBefore,
+              previous: verificationRecord,
+            })) ?? verificationRecord;
+        }
       }
 
       // --- Skills (optional) ---
@@ -952,7 +1026,7 @@ export class AgentEnginePipeline {
 
       if (signal.aborted) {
         await this.safeUnpin(runId, pinnedState);
-        return cancelledResult();
+        return await cancelledResult();
       }
 
       // --- Memory (optional) ---
@@ -996,7 +1070,7 @@ export class AgentEnginePipeline {
 
       if (signal.aborted) {
         await this.safeUnpin(runId, pinnedState);
-        return cancelledResult();
+        return await cancelledResult();
       }
 
       // --- Planning (optional) ---
@@ -1199,7 +1273,7 @@ export class AgentEnginePipeline {
 
       if (signal.aborted) {
         await this.safeUnpin(runId, pinnedState);
-        return cancelledResult();
+        return await cancelledResult();
       }
 
       // --- Prompt ---
@@ -1326,12 +1400,15 @@ export class AgentEnginePipeline {
         onRepoBuildStateAfter: (state) => {
           repoBuildStateAfter = state;
         },
+        onVerificationRecord: (record) => {
+          verificationRecord = record;
+        },
         windowPolicy,
       });
     } catch (error) {
       await this.safeUnpin(runId, pinnedState);
       if (signal.aborted) {
-        return cancelledResult();
+        return await cancelledResult();
       }
       return finish({
         status: "failed",
@@ -1387,6 +1464,7 @@ export class AgentEnginePipeline {
     const reasonCodes: AgentReasonCode[] = [...checkpoint.reasonCodes];
     const warnings: string[] = [...checkpoint.warnings];
     let repoBuildStateAfter = checkpoint.repoBuildStateAfter;
+    let verificationRecord: VerificationRecord | undefined;
     const resumedAtMs = Date.now();
     const suspensionWaitMs =
       checkpoint.suspendedAtMs !== undefined
@@ -1441,6 +1519,7 @@ export class AgentEnginePipeline {
           : {}),
         repoBuildStateBefore: checkpoint.repoBuildStateBefore,
         repoBuildStateAfter,
+        ...(verificationRecord ? { verificationRecord } : {}),
         suspension: partial.suspension,
         pinnedState: partial.pinnedState ?? pinnedState,
         reasonCodes: partial.reasonCodes ?? reasonCodes,
@@ -1467,8 +1546,21 @@ export class AgentEnginePipeline {
       return result;
     };
 
-    const cancelledResult = (): AgentRunResult =>
-      finish({
+    const cancelledResult = async (): Promise<AgentRunResult> => {
+      verificationRecord =
+        (await this.persistVerificationArtifact({
+          runId,
+          requestId,
+          workspaceId: resolveWorkspaceId(startInput),
+          bus,
+          reasonCodes,
+          warnings,
+          status: "cancelled",
+          before: checkpoint.repoBuildStateBefore,
+          after: repoBuildStateAfter,
+          previous: verificationRecord,
+        })) ?? verificationRecord;
+      return finish({
         status: "cancelled",
         reasonCodes: [...reasonCodes, "cancelled"],
         error: {
@@ -1476,10 +1568,11 @@ export class AgentEnginePipeline {
           message: getCancelReason() ?? "Run cancelled.",
         },
       });
+    };
 
     try {
       if (signal.aborted) {
-        return cancelledResult();
+        return await cancelledResult();
       }
 
       if (checkpoint.suspensionKind === "clarification_required") {
@@ -1754,6 +1847,9 @@ export class AgentEnginePipeline {
         onRepoBuildStateAfter: (state) => {
           repoBuildStateAfter = state;
         },
+        onVerificationRecord: (record) => {
+          verificationRecord = record;
+        },
         windowPolicy,
       });
     } catch (error) {
@@ -1762,7 +1858,7 @@ export class AgentEnginePipeline {
       }
       await this.safeUnpin(runId, pinnedState);
       if (signal.aborted) {
-        return cancelledResult();
+        return await cancelledResult();
       }
       return finish({
         status: "failed",
@@ -1806,24 +1902,23 @@ export class AgentEnginePipeline {
       warnings?: string[];
       error?: { code: string; message: string };
     }) => AgentRunResult;
-    cancelledResult: () => AgentRunResult;
+    cancelledResult: () => Promise<AgentRunResult>;
     taskListRef: TaskListRef;
     repoBuildStateBefore?: RepoBuildState;
     repoBuildStateAfter?: RepoBuildState;
     evidence?: RunEvidence;
     onRepoBuildStateAfter?: (state: RepoBuildState) => void;
+    onVerificationRecord?: (record: VerificationRecord) => void;
     windowPolicy: WindowPolicy;
   }): Promise<AgentRunResult> {
     const {
       runId,
       requestId,
       input,
-      request,
       decision,
       bus,
       signal,
       pinnedState,
-      dirtyPaths,
       loopOutcome,
       reasonCodes,
       warnings,
@@ -1838,18 +1933,7 @@ export class AgentEnginePipeline {
     } = params;
 
     let currentOutcome = loopOutcome;
-    // Regressions (new errors this run introduced): one repair pass, then
-    // roll back if still failing.
-    let repairAttempts = 0;
-    const maxRepairAttempts = 1;
-    // Baseline errors that were already failing before this run and remain
-    // after it, with nothing new: not a rollback condition. Keep batching
-    // through the remaining diagnostics. Quick exploration depth caps at one
-    // batch; Deep/auto continue until 0 remaining or the run budget stops
-    // the loop (RunBudgetTracker inside runModelToolLoop).
-    let remainingErrorBatches = 0;
-    const maxRemainingErrorBatches =
-      input.explorationDepth === "quick" ? 1 : Number.POSITIVE_INFINITY;
+    let afterState = params.repoBuildStateAfter;
 
     while (true) {
       if (currentOutcome.kind === "approval_required") {
@@ -1923,7 +2007,7 @@ export class AgentEnginePipeline {
 
       if (currentOutcome.kind === "cancelled") {
         await this.safeUnpin(runId, pinnedState);
-        return cancelledResult();
+        return await cancelledResult();
       }
 
       if (currentOutcome.kind === "budget_exhausted") {
@@ -1961,21 +2045,42 @@ export class AgentEnginePipeline {
         reasonCodes,
         warnings,
         repoBuildStateBefore,
-        onRepoBuildStateAfter: params.onRepoBuildStateAfter,
+        onRepoBuildStateAfter: (state) => {
+          afterState = state;
+          params.onRepoBuildStateAfter?.(state);
+        },
         evidence,
         windowPolicy,
       });
 
+      const recordStatus: VerificationRecordStatus =
+        verificationOutcome.kind === "ok" &&
+        verificationOutcome.acceptKind === "verified_success"
+          ? "passed"
+          : verificationOutcome.kind === "ok"
+            ? "compared"
+            : "incomplete";
+      const record = await this.persistVerificationArtifact({
+        runId,
+        requestId,
+        workspaceId: resolveWorkspaceId(input),
+        bus,
+        reasonCodes,
+        warnings,
+        status: recordStatus,
+        before: repoBuildStateBefore,
+        after: afterState,
+        comparison: verificationOutcome.comparison,
+        verification: verificationOutcome.verification,
+        changedFiles: currentOutcome.changedFiles,
+      });
+      if (record) {
+        params.onVerificationRecord?.(record);
+      }
+
       if (verificationOutcome.kind === "ok") {
         await this.safeUnpin(runId, pinnedState);
-        reasonCodes.push(
-          repairAttempts > 0 || remainingErrorBatches > 0
-            ? "verification_repair_succeeded"
-            : "answer_produced",
-        );
-        if (repairAttempts > 0 || remainingErrorBatches > 0) {
-          reasonCodes.push("answer_produced");
-        }
+        reasonCodes.push("answer_produced");
         return finish({
           status: "completed",
           answer: currentOutcome.answer,
@@ -1983,129 +2088,69 @@ export class AgentEnginePipeline {
         });
       }
 
-      // Errors already present before this run, still present after, and
-      // nothing new — not a regression. Keep going with the remaining
-      // diagnostics as evidence instead of rolling back a partial fix.
-      const comparisonReasons = verificationOutcome.comparison?.reasonCodes ?? [];
-      const isRegression = comparisonReasons.includes("new_errors_introduced");
-      const hasRemainingBaselineErrors =
-        !isRegression && comparisonReasons.includes("errors_remaining");
-
-      if (
-        hasRemainingBaselineErrors &&
-        verificationOutcome.repairable &&
-        remainingErrorBatches < maxRemainingErrorBatches
-      ) {
-        remainingErrorBatches += 1;
-        reasonCodes.push("repo_build_state_remaining_error_batch");
-        currentOutcome.messages.push({
-          role: "user",
-          content: this.formatRemainingErrorsPrompt({
-            verification: verificationOutcome.verification,
-            batchNumber: remainingErrorBatches,
-          }),
-        });
-        currentOutcome = await this.runModelToolLoop({
-          runId,
-          request,
-          decision,
-          dirtyPaths,
-          pinnedState,
-          workspaceRoot: input.workspaceRoot,
-          bus,
-          signal,
-          budget,
-          reasonCodes,
-          taskListRef,
-          warnings,
-          messages: currentOutcome.messages,
-          toolCache: currentOutcome.toolCache,
-          changedFiles: currentOutcome.changedFiles,
-          mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
-          evidence,
-          windowPolicy,
-        });
-        continue;
-      }
-
-      // Batch cap reached (Quick exploration depth) with baseline errors
-      // still remaining and nothing new introduced. This is not a failure —
-      // report what's left instead of rolling back a partial, honest fix.
-      if (hasRemainingBaselineErrors) {
-        this.commitMutations(currentOutcome.mutationCheckpointIds);
-        await this.safeUnpin(runId, pinnedState);
-        reasonCodes.push("answer_produced");
-        return finish({
-          status: "completed",
-          answer:
-            currentOutcome.answer ||
-            this.formatRemainingErrorsPrompt({
-              verification: verificationOutcome.verification,
-              batchNumber: remainingErrorBatches,
-            }),
-          reasonCodes,
-        });
-      }
-
-      if (
-        repairAttempts < maxRepairAttempts &&
-        verificationOutcome.kind === "failed" &&
-        verificationOutcome.repairable
-      ) {
-        repairAttempts += 1;
-        reasonCodes.push("verification_repair_attempted");
-        warnings.push(
-          isRegression
-            ? "Verification found new errors introduced by this change; attempting one repair pass before rollback."
-            : "Verification failed; attempting one repair pass before rollback.",
-        );
-        currentOutcome.messages.push({
-          role: "user",
-          content: this.formatVerificationRepairPrompt({
-            verification: verificationOutcome.verification,
-            error: verificationOutcome.error,
-            changedFiles: currentOutcome.changedFiles,
-          }),
-        });
-        currentOutcome = await this.runModelToolLoop({
-          runId,
-          request,
-          decision,
-          dirtyPaths,
-          pinnedState,
-          workspaceRoot: input.workspaceRoot,
-          bus,
-          signal,
-          budget,
-          reasonCodes,
-          taskListRef,
-          warnings,
-          messages: currentOutcome.messages,
-          toolCache: currentOutcome.toolCache,
-          changedFiles: currentOutcome.changedFiles,
-          mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
-          evidence,
-          windowPolicy,
-        });
-        continue;
-      }
-
-      await this.rollbackMutations(
-        currentOutcome.mutationCheckpointIds,
-        warnings,
+      // Verification did not pass. Keep the edits, summarize the delta, and
+      // end the task. A later "fix those" turn reloads the persisted record.
+      this.commitMutations(currentOutcome.mutationCheckpointIds);
+      reasonCodes.push(
+        "verification_kept_changes",
+        "verification_incomplete",
+        "verification_failed",
       );
-      await this.safeUnpin(runId, pinnedState);
-      reasonCodes.push("mutation_rolled_back", "verification_failed");
-      return finish({
-        status: "failed",
-        answer: this.formatVerificationFailureAnswer({
-          error: verificationOutcome.error,
+      const summary = await this.summarizeVerificationForUser({
+        bus,
+        runId,
+        record,
+        verification: verificationOutcome.verification,
+        error: verificationOutcome.error,
+        before: repoBuildStateBefore,
+        after: afterState,
+        comparison: verificationOutcome.comparison,
+        changedFiles: currentOutcome.changedFiles,
+        signal,
+      });
+      reasonCodes.push("verification_summary_produced");
+      const summarized =
+        (await this.persistVerificationArtifact({
+          runId,
+          requestId,
+          workspaceId: resolveWorkspaceId(input),
+          bus,
+          reasonCodes,
+          warnings,
+          status: recordStatus,
+          before: repoBuildStateBefore,
+          after: afterState,
+          comparison: verificationOutcome.comparison,
           verification: verificationOutcome.verification,
           changedFiles: currentOutcome.changedFiles,
-          rolledBack: currentOutcome.mutationCheckpointIds.length > 0,
-        }),
+          userSummary: summary,
+          previous: record,
+        })) ?? record;
+      if (summarized) {
+        params.onVerificationRecord?.(summarized);
+      }
+      await this.commitVerificationMemory({
+        record: summarized,
+        summary,
+        workspaceId: resolveWorkspaceId(input),
         reasonCodes,
-        error: verificationOutcome.error,
+        warnings,
+      });
+      if (record?.retry) {
+        reasonCodes.push("verification_retry_available");
+        this.emit(bus, {
+          type: "verification_retry_available",
+          runId,
+          recordId: record.recordId,
+          at: this.isoNow(),
+        });
+      }
+      await this.safeUnpin(runId, pinnedState);
+      reasonCodes.push("answer_produced");
+      return finish({
+        status: "completed",
+        answer: joinNonEmptyAnswers(currentOutcome.answer, summary),
+        reasonCodes,
       });
     }
   }
@@ -2423,6 +2468,23 @@ export class AgentEnginePipeline {
       });
       this.emitVerificationCompleted(bus, runId, verificationResult);
       this.emitEvidenceUpdated(bus, runId, evidence);
+      if (afterState) {
+        this.emitRepoBuildStateCaptured(bus, runId, afterState);
+      }
+      if (comparison) {
+        this.emit(bus, {
+          type: "verification_comparison",
+          runId,
+          beforeErrorCount: comparison.beforeErrorCount,
+          afterErrorCount: comparison.afterErrorCount,
+          clearedErrorCount: comparison.clearedErrorCount,
+          newErrorCount: comparison.newErrorCount,
+          remainingErrorCount: comparison.remainingErrorCount,
+          failedCheckIdsAfter: comparison.failedCheckIdsAfter.slice(0, 16),
+          reasonCodes: comparison.reasonCodes.slice(0, 16),
+          at: this.isoNow(),
+        });
+      }
     }
 
     const decisionOutcome = decideVerificationGate({
@@ -2446,7 +2508,12 @@ export class AgentEnginePipeline {
       this.commitMutations(mutationCheckpointIds);
       recordStopEvidence(evidence, decisionOutcome.acceptKind);
       this.emitEvidenceUpdated(bus, runId, evidence);
-      return { kind: "ok", acceptKind: decisionOutcome.acceptKind };
+      return {
+        kind: "ok",
+        acceptKind: decisionOutcome.acceptKind,
+        verification: verificationResult,
+        comparison,
+      };
     }
 
     this.emitStage(bus, runId, "verifying", "completed", [
@@ -2513,32 +2580,6 @@ export class AgentEnginePipeline {
     }
   }
 
-  private async rollbackMutations(
-    mutationCheckpointIds: readonly string[],
-    warnings: string[],
-  ): Promise<void> {
-    if (mutationCheckpointIds.length === 0) {
-      return;
-    }
-    if (!this.deps.tools?.rollbackMutation) {
-      warnings.push(
-        "Mutation rollback was required but no rollback port is configured.",
-      );
-      return;
-    }
-    for (const checkpointId of mutationCheckpointIds) {
-      try {
-        await this.deps.tools.rollbackMutation({ checkpointId });
-      } catch (error) {
-        warnings.push(
-          `Failed to roll back checkpoint "${checkpointId}": ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-    }
-  }
-
   private emitVerificationCompleted(
     bus: EventBus,
     runId: string,
@@ -2572,52 +2613,240 @@ export class AgentEnginePipeline {
     });
   }
 
-  private formatVerificationRepairPrompt(params: {
-    verification: VerificationResult | undefined;
-    error: { code: string; message: string };
-    changedFiles: readonly string[];
-  }): string {
-    const evidence = params.verification
-      ? this.formatVerificationEvidence(params.verification)
-      : params.error.message;
-    const changed =
-      params.changedFiles.length > 0
-        ? `\nChanged files so far: ${params.changedFiles.join(", ")}`
-        : "";
-    return [
-      "Required verification did not pass. Use the evidence below to repair the implementation, then stop after making the smallest necessary change.",
-      changed,
-      "",
-      evidence,
-    ]
-      .filter((part) => part.length > 0)
-      .join("\n");
+  private emitRepoBuildStateCaptured(
+    bus: EventBus,
+    runId: string,
+    state: RepoBuildState,
+  ): void {
+    this.emit(bus, {
+      type: "repo_build_state_captured",
+      runId,
+      phase: state.phase,
+      errorCount: state.summary.errorCount,
+      warningCount: state.summary.warningCount,
+      failedCheckIds: state.summary.failedCheckIds.slice(0, 16),
+      projectIds: state.scope.projectIds.slice(0, 16),
+      at: this.isoNow(),
+    });
   }
 
-  /**
-   * Remaining-error batch prompt: baseline diagnostics, not a regression.
-   * Deliberately smaller/calmer than the repair prompt — no rollback threat,
-   * just the next slice of pre-existing errors to work through.
-   */
-  private formatRemainingErrorsPrompt(params: {
-    verification: VerificationResult | undefined;
-    batchNumber: number;
-  }): string {
-    const diagnostics = (params.verification?.diagnostics ?? [])
-      .filter((diagnostic) => diagnostic.severity === "error")
-      .slice(0, 20)
-      .map((diagnostic) => {
-        const line = diagnostic.startLine ? `:${diagnostic.startLine}` : "";
-        const code = diagnostic.code ? ` ${diagnostic.code}` : "";
-        return `${diagnostic.path}${line}${code} ${this.truncateForEvent(diagnostic.message, 200)}`;
+  private async persistVerificationArtifact(params: {
+    runId: string;
+    requestId: string;
+    workspaceId?: string;
+    bus: EventBus;
+    reasonCodes: AgentReasonCode[];
+    warnings: string[];
+    status: VerificationRecordStatus;
+    before?: RepoBuildState;
+    after?: RepoBuildState;
+    comparison?: RepoBuildStateComparison;
+    verification?: VerificationResult;
+    changedFiles?: readonly string[];
+    userSummary?: string;
+    previous?: VerificationRecord;
+  }): Promise<VerificationRecord | undefined> {
+    if (!params.before && !params.after && !params.verification) {
+      return params.previous;
+    }
+    let record: VerificationRecord;
+    try {
+      record = buildVerificationRecord({
+        runId: params.runId,
+        requestId: params.requestId,
+        workspaceId: params.workspaceId,
+        recordId: params.previous?.recordId ?? params.runId,
+        capturedAt: params.previous?.capturedAt,
+        status: params.status,
+        before: params.before ?? params.previous?.before,
+        after: params.after ?? params.previous?.after,
+        comparison: params.comparison ?? params.previous?.comparison,
+        verification: params.verification ?? params.previous?.verification,
+        changedFiles: params.changedFiles ?? params.previous?.changedFiles,
+        userSummary: params.userSummary ?? params.previous?.userSummary,
       });
-    return [
-      `${diagnostics.length} error(s) remain from before this run started; none are new, so no rollback is needed. Continue fixing (batch ${params.batchNumber}), then stop after this batch.`,
-      "",
-      ...diagnostics,
-    ]
-      .filter((part) => part.length > 0)
-      .join("\n");
+    } catch (error) {
+      params.warnings.push(
+        `Verification record could not be built: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return params.previous;
+    }
+
+    if (this.deps.verification?.persistRecord) {
+      try {
+        await this.deps.verification.persistRecord(record);
+        params.reasonCodes.push("verification_record_saved");
+        this.emit(params.bus, {
+          type: "verification_record_saved",
+          runId: params.runId,
+          recordId: record.recordId,
+          status: record.status,
+          retryAvailable: Boolean(record.retry),
+          at: this.isoNow(),
+        });
+      } catch (error) {
+        params.warnings.push(
+          `Verification record persist failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+
+    return record;
+  }
+
+  private async summarizeVerificationForUser(params: {
+    bus: EventBus;
+    runId: string;
+    record?: VerificationRecord;
+    verification?: VerificationResult;
+    error: { code: string; message: string };
+    before?: RepoBuildState;
+    after?: RepoBuildState;
+    comparison?: RepoBuildStateComparison;
+    changedFiles: readonly string[];
+    signal: AbortSignal;
+  }): Promise<string> {
+    const fallback = params.record
+      ? buildVerificationUserSummary(params.record)
+      : this.formatVerificationFailureAnswer({
+          error: params.error,
+          verification: params.verification,
+          changedFiles: params.changedFiles,
+          rolledBack: false,
+        });
+    const narrative = await this.tryNarrateVerificationSummary({
+      record: params.record,
+      fallback,
+      signal: params.signal,
+    });
+    const summary = narrative ?? fallback;
+    this.emit(params.bus, {
+      type: "verification_summary_ready",
+      runId: params.runId,
+      summaryChars: summary.length,
+      newErrorCount: params.comparison?.newErrorCount ??
+        params.record?.comparison?.newErrorCount,
+      remainingErrorCount:
+        params.comparison?.remainingErrorCount ??
+        params.record?.comparison?.remainingErrorCount,
+      clearedErrorCount:
+        params.comparison?.clearedErrorCount ??
+        params.record?.comparison?.clearedErrorCount,
+      at: this.isoNow(),
+    });
+    return summary;
+  }
+
+  private async tryNarrateVerificationSummary(params: {
+    record?: VerificationRecord;
+    fallback: string;
+    signal: AbortSignal;
+  }): Promise<string | undefined> {
+    if (!params.record || params.signal.aborted) {
+      return undefined;
+    }
+    try {
+      const request: ModelRequest = {
+        messages: [
+          {
+            role: "system",
+            content:
+              "Write a short user-facing summary of a verification delta. Do not invent errors. Do not call tools. Keep the numeric counts from the evidence. Four to eight sentences.",
+          },
+          {
+            role: "user",
+            content: params.fallback,
+          },
+        ],
+      };
+      let text = "";
+      let sawToolCall = false;
+      for await (const event of this.deps.llm.complete(request, {
+        abortSignal: params.signal,
+      })) {
+        if (event.type === "content_delta" && event.content) {
+          text += event.content;
+        }
+        if (event.type === "tool_call_delta") {
+          sawToolCall = true;
+        }
+        if (event.type === "failed" || event.type === "cancelled") {
+          return undefined;
+        }
+      }
+      const trimmed = text.trim();
+      if (
+        sawToolCall ||
+        trimmed.length < 20 ||
+        !/\b(error|verification|cleared|remaining|kept the edits)\b/i.test(
+          trimmed,
+        )
+      ) {
+        return undefined;
+      }
+      return trimmed.slice(0, 4_000);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async commitVerificationMemory(params: {
+    record?: VerificationRecord;
+    summary: string;
+    workspaceId?: string;
+    reasonCodes: AgentReasonCode[];
+    warnings: string[];
+  }): Promise<void> {
+    if (!this.deps.memory?.commit || !params.workspaceId || !params.record) {
+      return;
+    }
+    const input: MemoryCommitInput = {
+      schemaVersion: MEMORY_SCHEMA_VERSION,
+      content: [
+        `Verification leftover from run ${params.record.runId}.`,
+        params.summary.slice(0, 1_200),
+        `Retry handle: verification/${params.record.recordId}.`,
+        `Say "fix the remaining verification errors" to continue.`,
+      ].join(" "),
+      scope: { kind: "workspace", workspaceId: params.workspaceId },
+      tags: ["verification", "retry"],
+      privacy: "private",
+      source: "verification",
+    };
+    try {
+      const result = await this.deps.memory.commit(input);
+      if (result.status === "committed") {
+        params.reasonCodes.push("memory_committed");
+      }
+    } catch (error) {
+      params.warnings.push(
+        `Verification memory commit failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  private async tryLoadVerificationRetry(params: {
+    workspaceId?: string;
+    userMessage: string;
+  }): Promise<VerificationRecord | undefined> {
+    if (
+      !params.workspaceId ||
+      !this.deps.verification?.loadLatestRecord ||
+      !isVerificationRetryAsk(params.userMessage)
+    ) {
+      return undefined;
+    }
+    try {
+      return await this.deps.verification.loadLatestRecord(params.workspaceId);
+    } catch {
+      return undefined;
+    }
   }
 
   private formatVerificationFailureAnswer(params: {
@@ -5203,6 +5432,29 @@ function formatSkillPromptContent(block: {
     lines.push(`scripts: ${scripts.slice(0, 12).join(", ")}`);
   }
   return `${block.content.trim()}\n\n${lines.join("\n")}`;
+}
+
+function resolveWorkspaceId(input: AgentEngineStartInput): string | undefined {
+  return (
+    input.request.workspace?.workspaceId ??
+    input.repositoryState?.reference?.workspaceId
+  );
+}
+
+function isVerificationRetryAsk(message: string): boolean {
+  return /\b(fix (those|them|the remaining(?: ones)?|remaining (?:errors|issues|diagnostics)|the (?:verification )?errors)|retry verification|continue (?:the )?verification)\b/i.test(
+    message,
+  );
+}
+
+function joinNonEmptyAnswers(
+  ...parts: Array<string | undefined>
+): string | undefined {
+  const joined = parts
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part))
+    .join("\n\n");
+  return joined.length > 0 ? joined : undefined;
 }
 
 export type { AgentRunStatus };

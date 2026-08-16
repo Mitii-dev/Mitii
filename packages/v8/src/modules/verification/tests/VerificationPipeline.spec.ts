@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ToolInvocationInput, ToolResult } from "../../../engine/tool-runtime";
 import { TOOL_RUNTIME_SCHEMA_VERSION } from "../../../engine/tool-runtime";
 
-import { InMemoryManifestReader } from "..";
+import { InMemoryManifestReader, InMemoryVerificationRecordStore } from "..";
 import type { VerificationToolExecutorPort } from "../contracts";
 import { VerificationError } from "../contracts";
 import { VerificationPipeline } from "../pipeline/VerificationPipeline";
@@ -840,5 +840,27 @@ describe("VerificationPipeline", () => {
     expect(result.status).toBe("implemented_unverified");
     expect(result.status).not.toBe("verified_success");
     expect(result.reasonCodes).toContain("checks_unavailable");
+  });
+
+  it("persists and reloads a durable verification record", async () => {
+    const store = new InMemoryVerificationRecordStore();
+    const pipeline = new VerificationPipeline({
+      tools: createTools(() => {
+        throw new Error("should not run");
+      }),
+      manifests: new InMemoryManifestReader(),
+      records: store,
+    });
+    const record = pipeline.buildRecord({
+      runId: "run_pipe",
+      requestId: "req_pipe",
+      workspaceId: "ws_pipe",
+      status: "incomplete",
+    });
+    await pipeline.persistRecord(record);
+    const loaded = await pipeline.loadLatestRecord("ws_pipe");
+    expect(loaded?.recordId).toBe("run_pipe");
+    expect(loaded?.retry?.kind).toBe("fix_remaining");
+    expect(pipeline.buildUserSummary(record)).toContain("kept the edits");
   });
 });

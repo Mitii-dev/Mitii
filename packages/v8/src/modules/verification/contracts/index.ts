@@ -52,3 +52,16 @@ export type {
   VerificationToolExecutorPort,
   VerificationManifestReaderPort,
 } from "./ports/VerificationPorts";
+
+export {
+  verificationRecordSchema,
+  verificationRecordStatusSchema,
+  verificationRecordReasonCodeSchema,
+} from "./output/VerificationRecord";
+export type {
+  VerificationRecord,
+  VerificationRecordStatus,
+  VerificationRecordReasonCode,
+} from "./output/VerificationRecord";
+
+export type { VerificationRecordStorePort } from "./ports/VerificationRecordStorePort";

@@ -75,13 +75,16 @@ verification gate + repair queue (see below)
 - Strategy is resolved by Engine, not Planning: `resolvePlanStrategyRules` (a pure function) runs before deciding whether to invoke discovery. Only `discover_and_plan` triggers Engine's bounded read-only discovery loop (max two model turns, file/search budget, no mutation tools) — it emits `discovery_started` / `discovery_progress` / `discovery_completed`, shows a temporary discovery task list, then calls Planning with `DiscoveryBrief` and `skipDiscover: true`. Planning either runs its own one-shot Change+Verify draft call or falls back to the deterministic discovery skeleton. The discovery list is replaced by the plan-derived execution checklist. There is exactly one understanding LLM call and, for `discover_and_plan`, at most one additional plan-drafting call — never a second strategy classifier.
 - The resulting `planStrategy` is stored on the run result and plan-approval checkpoint. Hosts that carry an approved plan SHOULD also carry `approvedPlanStrategy`; otherwise the engine infers a conservative strategy from the artifact.
 
-### Repair remaining-error queue
+### Verification gate (no rollback)
 
-After a mutation, `finishAfterLoop` gates completion on Verification and, when a saved before-state exists, on `compareBuildStates`:
+After a mutation, `finishAfterLoop` runs Verification once, compares before/after when a snapshot exists, and **keeps the edits**.
 
-- **Regression** (`new_errors_introduced`): one repair pass, then roll back if it still fails — unchanged from before.
-- **Baseline carryover** (`errors_remaining` with nothing new — errors that existed before this run and still exist after): *not* a rollback condition. The engine injects the remaining diagnostics as a new user message and re-runs the model/tool loop, batch by batch, until 0 remain, the run budget stops the loop, or (for `explorationDepth: "quick"`) one batch has run. Reaching the Quick batch cap with errors still remaining completes the run (reporting what's left) rather than failing it.
-- Both paths only apply when `verification.compareBuildStates` and a `repoBuildStateBefore` exist; without them the engine falls back to the original one-shot-repair-then-rollback behavior driven solely by `VerificationResult.status`.
+- **Passed**: commit mutations and complete as today.
+- **Did not pass**: do not roll back and do not inject diagnostics into the model loop. Persist a `VerificationRecord`, write a short user summary (deterministic counts, optional LLM narrative), commit a memory pointer, and complete with `verification_incomplete` / `verification_kept_changes`.
+- **Cancel / interrupt**: persist whatever before/after snapshot exists so the next turn can reload it.
+- **Retry**: a later user ask matching “fix the remaining verification errors” loads `loadLatest(workspaceId)` instead of scraping chat history.
+
+Records live in `.mitii/verification/` (host store). They are not prompt-construction input.
 
 ## Ownership Boundaries
 

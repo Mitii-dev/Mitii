@@ -39,6 +39,7 @@ export {
   explorationDepthSchema,
   planningScopedRepoMapSchema,
   planningBuildEvidenceSchema,
+  DISCOVERY_OBSERVATION_LIMITS,
   discoveryBriefSchema,
   discoveryObservationSchema,
   planArtifactSchema,

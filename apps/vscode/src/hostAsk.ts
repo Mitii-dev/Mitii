@@ -90,6 +90,16 @@ export function formatRunEventLine(event: RunEvent): string | undefined {
       return `[tasks] ${event.completedCount}/${event.totalCount} complete`;
     case 'evidence_updated':
       return `[evidence] issues=${event.evidence.issues.length} ledger=${event.evidence.ledger.length}${event.evidence.finalStopReason ? ` stop=${event.evidence.finalStopReason}` : ''}`;
+    case 'repo_build_state_captured':
+      return `[verify] ${event.phase} errors=${event.errorCount} warnings=${event.warningCount}`;
+    case 'verification_comparison':
+      return `[verify] delta new=${event.newErrorCount} remaining=${event.remainingErrorCount} cleared=${event.clearedErrorCount}`;
+    case 'verification_record_saved':
+      return `[verify] record ${event.recordId} status=${event.status}${event.retryAvailable ? ' retry=yes' : ''}`;
+    case 'verification_summary_ready':
+      return `[verify] summary chars=${event.summaryChars}`;
+    case 'verification_retry_available':
+      return `[verify] retry available record=${event.recordId}`;
     case 'discovery_started':
       return `[discovery] started`;
     case 'discovery_progress':
@@ -437,6 +447,46 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
           `${event.evidence.ledger.length} ledger entr${event.evidence.ledger.length === 1 ? 'y' : 'ies'}`,
           event.evidence.finalStopReason,
         ].filter(Boolean).join(' · '),
+      };
+    case 'repo_build_state_captured':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: `Build state ${event.phase}`,
+        detail: `${event.errorCount} error(s) · ${event.warningCount} warning(s)`,
+      };
+    case 'verification_comparison':
+      return {
+        id,
+        at,
+        kind: event.newErrorCount > 0 ? 'warn' : 'info',
+        title: 'Verification comparison',
+        detail: `new ${event.newErrorCount} · remaining ${event.remainingErrorCount} · cleared ${event.clearedErrorCount}`,
+      };
+    case 'verification_record_saved':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: 'Verification record saved',
+        detail: `${event.status}${event.retryAvailable ? ' · retry available' : ''}`,
+      };
+    case 'verification_summary_ready':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: 'Verification summary',
+        detail: `${event.summaryChars} chars`,
+      };
+    case 'verification_retry_available':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: 'Verification retry available',
+        detail: event.recordId,
       };
     default:
       return undefined;

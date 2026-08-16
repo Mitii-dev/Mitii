@@ -299,7 +299,7 @@ describe("AgentEnginePipeline mutation approvals (Phase 8)", () => {
     expect(patched.content).toBe("const x = 3;\n");
   });
 
-  it("rolls back the mutation when verification fails after an approved resume", async () => {
+  it("keeps the mutation and summarizes when verification fails after an approved resume", async () => {
     const { fs, realTools } = createWorkspace();
     const tools = wrapTools(realTools);
     const checkpointStore = new InMemoryRunCheckpointStore();
@@ -369,17 +369,17 @@ describe("AgentEnginePipeline mutation approvals (Phase 8)", () => {
       approval: { approvalId: approvalId!, decision: "approved" },
     }).result;
 
-    expect(resumed.status).toBe("failed");
-    expect(resumed.error?.code).toBe("verification_failed");
-    expect(resumed.answer).toContain("required verification failed");
-    expect(resumed.answer).toContain("rolled back");
-    expect(resumed.answer).not.toContain("Updated src/a.ts");
-    expect(resumed.reasonCodes).toContain("mutation_rolled_back");
+    expect(resumed.status).toBe("completed");
+    expect(resumed.answer).toContain("Updated src/a.ts");
+    expect(resumed.answer).toMatch(/kept the edits|Verification did not/i);
+    expect(resumed.reasonCodes).toContain("verification_kept_changes");
+    expect(resumed.reasonCodes).toContain("verification_incomplete");
     expect(resumed.reasonCodes).toContain("verification_failed");
-    expect(resumed.reasonCodes).not.toContain("answer_produced");
+    expect(resumed.reasonCodes).toContain("answer_produced");
+    expect(resumed.reasonCodes).not.toContain("mutation_rolled_back");
 
-    const rolledBack = await fs.readFile(`${WORKSPACE}/src/a.ts`);
-    expect(rolledBack.content).toBe("const x = 1;\n");
+    const kept = await fs.readFile(`${WORKSPACE}/src/a.ts`);
+    expect(kept.content).toBe("const x = 2;\n");
   });
 
   it("keeps mutations when verification returns implemented_unverified", async () => {
@@ -526,22 +526,20 @@ describe("AgentEnginePipeline mutation approvals (Phase 8)", () => {
       approval: { approvalId: approvalId!, decision: "approved" },
     }).result;
 
-    expect(resumed.status).toBe("failed");
-    expect(resumed.error?.message).toContain(
-      "Verification is required but unavailable",
-    );
+    expect(resumed.status).toBe("completed");
+    expect(resumed.answer).toContain("Updated src/a.ts");
     expect(resumed.answer).toContain("Verification is required but unavailable");
-    expect(resumed.answer).toContain("rolled back");
-    expect(resumed.answer).not.toContain("Updated src/a.ts");
-    expect(resumed.reasonCodes).toContain("mutation_rolled_back");
-    expect(resumed.reasonCodes).toContain("verification_failed");
-    expect(resumed.reasonCodes).not.toContain("answer_produced");
+    expect(resumed.answer).not.toContain("rolled back");
+    expect(resumed.reasonCodes).toContain("verification_kept_changes");
+    expect(resumed.reasonCodes).toContain("verification_incomplete");
+    expect(resumed.reasonCodes).toContain("answer_produced");
+    expect(resumed.reasonCodes).not.toContain("mutation_rolled_back");
 
-    const rolledBack = await fs.readFile(`${WORKSPACE}/src/a.ts`);
-    expect(rolledBack.content).toBe("const x = 1;\n");
+    const kept = await fs.readFile(`${WORKSPACE}/src/a.ts`);
+    expect(kept.content).toBe("const x = 2;\n");
   });
 
-  it("feeds verification failure evidence back to the model once and commits after repair", async () => {
+  it("keeps the first edit and ends with a verification summary instead of repairing in-loop", async () => {
     const { fs, realTools } = createWorkspace();
     const tools = wrapTools(realTools);
     const pinnedState = { workspaceId: "ws_1", stateToken: "tok_1" };
@@ -655,13 +653,13 @@ describe("AgentEnginePipeline mutation approvals (Phase 8)", () => {
     const result = await handle.result;
 
     expect(result.status).toBe("completed");
-    expect(result.reasonCodes).toContain("verification_repair_attempted");
-    expect(result.reasonCodes).toContain("verification_repair_succeeded");
-    expect(result.reasonCodes).toContain("verification_passed");
+    expect(result.reasonCodes).toContain("verification_kept_changes");
+    expect(result.reasonCodes).toContain("verification_incomplete");
+    expect(result.reasonCodes).not.toContain("verification_repair_attempted");
     expect(result.reasonCodes).not.toContain("mutation_rolled_back");
-    expect(verificationCalls).toBe(2);
-    const repaired = await fs.readFile(`${WORKSPACE}/src/a.ts`);
-    expect(repaired.content).toBe("const x = 3;\n");
+    expect(verificationCalls).toBe(1);
+    const kept = await fs.readFile(`${WORKSPACE}/src/a.ts`);
+    expect(kept.content).toBe("const x = 2;\n");
     const verificationEvents = events.filter(
       (event) =>
         typeof event === "object" &&
@@ -669,7 +667,7 @@ describe("AgentEnginePipeline mutation approvals (Phase 8)", () => {
         "type" in event &&
         event.type === "verification_completed",
     );
-    expect(verificationEvents).toHaveLength(2);
+    expect(verificationEvents).toHaveLength(1);
     expect(verificationEvents[0]).toMatchObject({
       status: "verification_failed",
       checks: [{ kind: "typecheck", outcome: "failed" }],

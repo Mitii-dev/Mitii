@@ -103,6 +103,7 @@ export {
 // Port adapters — satisfy V8/SDK injection points with FS / vendor code
 // ---------------------------------------------------------------------------
 export { createWorkspaceCheckpointStore } from './ports/checkpoints.js';
+export { createWorkspaceVerificationStore } from './ports/verificationRecords.js';
 
 export {
   createWorkspaceMemoryStore,

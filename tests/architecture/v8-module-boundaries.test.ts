@@ -122,6 +122,7 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(index).toContain('VerificationPipeline');
     expect(index).toContain('verificationInputSchema');
     expect(index).toContain('verificationResultSchema');
+    expect(index).toContain('verificationRecordSchema');
     expect(index).toContain('AgentEnginePipeline');
     expect(index).toContain('agentEngineStartInputSchema');
     expect(index).toContain('agentRunResultSchema');
@@ -161,6 +162,7 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     );
     expect(index).toContain('VerificationPipeline');
     expect(index).toContain('verificationResultSchema');
+    expect(index).toContain('verificationRecordSchema');
     expect(index).not.toContain('export * from "./actions"');
     expect(index).not.toContain('mapAffectedProjects');
     expect(index).not.toContain('discoverApplicableChecks');

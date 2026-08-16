@@ -6,6 +6,7 @@ import type {
   DiscoveryTarget,
   DiscoveryVerificationHint,
 } from "../../../modules/planning";
+import { DISCOVERY_OBSERVATION_LIMITS } from "../../../modules/planning";
 import type { TaskList } from "../../../modules/task-list";
 import { TaskListPipeline } from "../../../modules/task-list";
 
@@ -77,6 +78,9 @@ export interface DiscoveryObservationCollector {
   fileReads: number;
   searches: number;
   toolCalls: number;
+  omittedFilesRead: number;
+  omittedSearchHits: number;
+  omittedVerificationHints: number;
 }
 
 export function createDiscoveryObservationCollector(): DiscoveryObservationCollector {
@@ -87,6 +91,9 @@ export function createDiscoveryObservationCollector(): DiscoveryObservationColle
     fileReads: 0,
     searches: 0,
     toolCalls: 0,
+    omittedFilesRead: 0,
+    omittedSearchHits: 0,
+    omittedVerificationHints: 0,
   };
 }
 
@@ -111,36 +118,78 @@ export function recordDiscoveryToolUse(params: {
   if (FILE_READ_TOOLS.has(toolName)) {
     collector.fileReads += paths.length || 1;
     for (const path of paths) {
-      collector.filesRead.push({ path, reason });
+      pushCappedUniqueByPath(
+        collector.filesRead,
+        { path, reason },
+        DISCOVERY_OBSERVATION_LIMITS.maxFilesRead,
+        () => {
+          collector.omittedFilesRead += 1;
+        },
+      );
     }
     return;
   }
   if (SEARCH_TOOLS.has(toolName)) {
     collector.searches += 1;
     for (const path of paths) {
-      collector.searchHits.push({ path, reason });
+      pushCappedUniqueByPath(
+        collector.searchHits,
+        { path, reason },
+        DISCOVERY_OBSERVATION_LIMITS.maxSearchHits,
+        () => {
+          collector.omittedSearchHits += 1;
+        },
+      );
     }
     return;
   }
   if (toolName === "read_diagnostics") {
-    collector.verificationHints.push({
-      kind: "typecheck",
-      reason: "Read current diagnostics during discovery.",
-    });
+    pushCapped(
+      collector.verificationHints,
+      {
+        kind: "typecheck",
+        reason: "Read current diagnostics during discovery.",
+      },
+      DISCOVERY_OBSERVATION_LIMITS.maxVerificationHints,
+      () => {
+        collector.omittedVerificationHints += 1;
+      },
+    );
     for (const path of paths) {
-      collector.searchHits.push({ path, reason: "Diagnostic path" });
+      pushCappedUniqueByPath(
+        collector.searchHits,
+        { path, reason: "Diagnostic path" },
+        DISCOVERY_OBSERVATION_LIMITS.maxSearchHits,
+        () => {
+          collector.omittedSearchHits += 1;
+        },
+      );
     }
     return;
   }
   if (toolName === "read_package_scripts") {
-    collector.verificationHints.push({
-      kind: "unknown",
-      reason: "Inspected package scripts for verification commands.",
-    });
+    pushCapped(
+      collector.verificationHints,
+      {
+        kind: "unknown",
+        reason: "Inspected package scripts for verification commands.",
+      },
+      DISCOVERY_OBSERVATION_LIMITS.maxVerificationHints,
+      () => {
+        collector.omittedVerificationHints += 1;
+      },
+    );
     return;
   }
   for (const path of paths) {
-    collector.searchHits.push({ path, reason });
+    pushCappedUniqueByPath(
+      collector.searchHits,
+      { path, reason },
+      DISCOVERY_OBSERVATION_LIMITS.maxSearchHits,
+      () => {
+        collector.omittedSearchHits += 1;
+      },
+    );
   }
 }
 
@@ -160,14 +209,22 @@ export function toDiscoveryObservation(params: {
   explicitTargets: DiscoveryTarget[];
   constraints: string[];
 }): DiscoveryObservation {
+  const notes = discoveryOverflowNotes(params.collector);
   return {
     schemaVersion: 1,
     objective: params.objective,
     filesRead: params.collector.filesRead,
     searchHits: params.collector.searchHits,
-    explicitTargets: params.explicitTargets,
-    constraints: params.constraints,
+    explicitTargets: params.explicitTargets.slice(
+      0,
+      DISCOVERY_OBSERVATION_LIMITS.maxExplicitTargets,
+    ),
+    constraints: params.constraints.slice(
+      0,
+      DISCOVERY_OBSERVATION_LIMITS.maxConstraints,
+    ),
     verificationHints: params.collector.verificationHints,
+    ...(notes.length > 0 ? { notes } : {}),
   };
 }
 
@@ -284,6 +341,53 @@ function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined;
+}
+
+function pushCapped<T>(
+  values: T[],
+  value: T,
+  max: number,
+  onOmitted: () => void,
+): void {
+  if (values.length >= max) {
+    onOmitted();
+    return;
+  }
+  values.push(value);
+}
+
+function pushCappedUniqueByPath<T extends { path: string }>(
+  values: T[],
+  value: T,
+  max: number,
+  onOmitted: () => void,
+): void {
+  if (values.some((item) => item.path === value.path)) {
+    return;
+  }
+  pushCapped(values, value, max, onOmitted);
+}
+
+function discoveryOverflowNotes(
+  collector: DiscoveryObservationCollector,
+): string[] {
+  const notes: string[] = [];
+  if (collector.omittedFilesRead > 0) {
+    notes.push(
+      `Discovery omitted ${collector.omittedFilesRead} file read observation(s) after reaching the ${DISCOVERY_OBSERVATION_LIMITS.maxFilesRead} item evidence limit.`,
+    );
+  }
+  if (collector.omittedSearchHits > 0) {
+    notes.push(
+      `Discovery omitted ${collector.omittedSearchHits} search hit(s) after reaching the ${DISCOVERY_OBSERVATION_LIMITS.maxSearchHits} item evidence limit.`,
+    );
+  }
+  if (collector.omittedVerificationHints > 0) {
+    notes.push(
+      `Discovery omitted ${collector.omittedVerificationHints} verification hint(s) after reaching the ${DISCOVERY_OBSERVATION_LIMITS.maxVerificationHints} item evidence limit.`,
+    );
+  }
+  return notes.slice(0, DISCOVERY_OBSERVATION_LIMITS.maxNotes);
 }
 
 function unique(values: readonly string[]): string[] {

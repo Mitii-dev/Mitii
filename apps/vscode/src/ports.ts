@@ -28,6 +28,7 @@ import {
   createHostRepositoryGraphPort,
   createOptionalSearchPort,
   createWorkspaceCheckpointStore,
+  createWorkspaceVerificationStore,
   resolveProviderApiKey,
 } from '@mitii/host';
 import type * as vscode from 'vscode';
@@ -231,6 +232,7 @@ export async function createVscodeClient(
             fileSystem,
             workspaceRoot,
           }),
+          records: createWorkspaceVerificationStore(workspaceRoot),
         })
       : undefined;
 

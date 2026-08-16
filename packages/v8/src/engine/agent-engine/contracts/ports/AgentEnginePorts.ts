@@ -9,6 +9,8 @@ import type {
   PromptConstructionResult,
 } from "../../../../modules/prompt-construction";
 import type {
+  MemoryCommitInput,
+  MemoryCommitResult,
   MemoryRetrieveInput,
   MemoryRetrieveResult,
 } from "../../../../modules/memory";
@@ -47,6 +49,7 @@ import type {
   RepoBuildStateComparison,
   VerificationInput,
   VerificationPipelineOptions,
+  VerificationRecord,
   VerificationResult,
 } from "../../../../modules/verification";
 
@@ -90,6 +93,7 @@ export interface AgentEngineSkillsPort {
 
 export interface AgentEngineMemoryPort {
   retrieve(input: MemoryRetrieveInput): Promise<MemoryRetrieveResult>;
+  commit?(input: MemoryCommitInput): Promise<MemoryCommitResult>;
 }
 
 export interface AgentEnginePlanningPort {
@@ -139,6 +143,11 @@ export interface AgentEngineVerificationPort {
     before?: RepoBuildState;
     after: RepoBuildState;
   }): RepoBuildStateComparison;
+  persistRecord?(record: VerificationRecord): Promise<void>;
+  loadRecord?(recordId: string): Promise<VerificationRecord | undefined>;
+  loadLatestRecord?(
+    workspaceId: string,
+  ): Promise<VerificationRecord | undefined>;
 }
 
 /**

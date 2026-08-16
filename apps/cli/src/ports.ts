@@ -19,6 +19,7 @@ import {
   createHostRepositoryGraphPort,
   createOptionalSearchPort,
   createWorkspaceCheckpointStore,
+  createWorkspaceVerificationStore,
   createWorkspaceMemoryStore,
   getProviderPreset,
   inferHostProviderType,
@@ -175,6 +176,7 @@ export function createCliClient(options: {
       fileSystem,
       workspaceRoot: options.cwd,
     }),
+    records: createWorkspaceVerificationStore(options.cwd),
   });
   const repositoryState = new RepositoryStatePipeline({
     store: new InMemoryRepositoryStateStore(),

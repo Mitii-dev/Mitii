@@ -21,6 +21,7 @@ export {
   DISCOVERY_TARGET_KINDS,
   DISCOVERY_RISK_LEVELS,
   DISCOVERY_VERIFICATION_KINDS,
+  DISCOVERY_OBSERVATION_LIMITS,
   discoveryBriefSchema,
   discoveryObservationSchema,
   discoveryFileRefSchema,
