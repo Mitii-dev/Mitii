@@ -28,6 +28,7 @@ export interface ModelLoopCompactionResult {
   thresholds: ModelLoopCompactionThresholds;
   summarizedDroppedTurns: boolean;
   reinjectedMemory: boolean;
+  reinjectedEstablishedFacts: boolean;
 }
 
 export function compactModelLoopMessages(params: {
@@ -44,6 +45,9 @@ export function compactModelLoopMessages(params: {
   /** Budgeted memory facts to reinject after hard compaction. */
   memoryFacts?: readonly { id: string; content: string }[];
   maxMemoryReinjectChars?: number;
+  /** Mid-run observations that must survive dropped turns. */
+  establishedFacts?: readonly { id: string; content: string }[];
+  maxEstablishedFactReinjectChars?: number;
 }): ModelLoopCompactionResult {
   const recentToolMessagesToKeepFull =
     params.recentToolMessagesToKeepFull ??
@@ -66,6 +70,7 @@ export function compactModelLoopMessages(params: {
   let truncatedTokens = 0;
   let summarizedDroppedTurns = false;
   let reinjectedMemory = false;
+  let reinjectedEstablishedFacts = false;
   const droppedForSummary: ModelMessage[] = [];
 
   const estimateAll = (messages: readonly ModelMessage[]): number =>
@@ -87,6 +92,7 @@ export function compactModelLoopMessages(params: {
       thresholds,
       summarizedDroppedTurns: false,
       reinjectedMemory: false,
+      reinjectedEstablishedFacts: false,
     };
   }
 
@@ -197,21 +203,33 @@ export function compactModelLoopMessages(params: {
     usedTokens = estimateAll(working);
   }
 
-  if (
-    initialPressure === "hard" &&
-    params.memoryFacts &&
-    params.memoryFacts.length > 0
-  ) {
-    const reinjected = reinjectMemoryFacts({
-      messages: working,
-      memoryFacts: params.memoryFacts,
-      maxChars: params.maxMemoryReinjectChars ?? 800,
-      estimator: params.estimator,
-      budgetTokens: params.budgetTokens,
-    });
-    working = reinjected.messages;
-    reinjectedMemory = reinjected.reinjected;
-    usedTokens = estimateAll(working);
+  if (initialPressure === "hard") {
+    if (params.establishedFacts && params.establishedFacts.length > 0) {
+      const reinjected = reinjectPinnedFacts({
+        messages: working,
+        facts: params.establishedFacts,
+        marker: ESTABLISHED_FACTS_MARKER,
+        maxChars: params.maxEstablishedFactReinjectChars ?? 1_600,
+        estimator: params.estimator,
+        budgetTokens: params.budgetTokens,
+      });
+      working = reinjected.messages;
+      reinjectedEstablishedFacts = reinjected.reinjected;
+      usedTokens = estimateAll(working);
+    }
+    if (params.memoryFacts && params.memoryFacts.length > 0) {
+      const reinjected = reinjectPinnedFacts({
+        messages: working,
+        facts: params.memoryFacts,
+        marker: MEMORY_REINJECT_MARKER,
+        maxChars: params.maxMemoryReinjectChars ?? 800,
+        estimator: params.estimator,
+        budgetTokens: params.budgetTokens,
+      });
+      working = reinjected.messages;
+      reinjectedMemory = reinjected.reinjected;
+      usedTokens = estimateAll(working);
+    }
   }
 
   return {
@@ -224,6 +242,7 @@ export function compactModelLoopMessages(params: {
     thresholds,
     summarizedDroppedTurns,
     reinjectedMemory,
+    reinjectedEstablishedFacts,
   };
 }
 
@@ -416,21 +435,25 @@ function insertAfterSystemMessages(
   ];
 }
 
-function reinjectMemoryFacts(params: {
+const MEMORY_REINJECT_MARKER = "[memory reinjected after hard compaction]";
+const ESTABLISHED_FACTS_MARKER =
+  "[established observations after compaction]";
+
+function reinjectPinnedFacts(params: {
   messages: ModelMessage[];
-  memoryFacts: readonly { id: string; content: string }[];
+  facts: readonly { id: string; content: string }[];
+  marker: string;
   maxChars: number;
   estimator: TokenEstimatorPort;
   budgetTokens: number;
 }): { messages: ModelMessage[]; reinjected: boolean } {
-  const marker = "[memory reinjected after hard compaction]";
-  if (params.messages.some((message) => message.content.includes(marker))) {
+  if (params.messages.some((message) => message.content.includes(params.marker))) {
     return { messages: params.messages, reinjected: false };
   }
 
-  const lines: string[] = [marker];
-  let chars = marker.length;
-  for (const fact of params.memoryFacts) {
+  const lines: string[] = [params.marker];
+  let chars = params.marker.length;
+  for (const fact of params.facts) {
     const line = `- (${fact.id}) ${fact.content.replace(/\s+/g, " ").trim()}`;
     if (chars + line.length + 1 > params.maxChars) {
       break;

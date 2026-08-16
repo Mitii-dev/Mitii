@@ -56,4 +56,30 @@ describe("RunBudgetTracker", () => {
       Date.now = realNow;
     }
   });
+
+  it("detects an exploration stall from file-read vs unique-path ratio", () => {
+    const budget = new RunBudgetTracker({
+      maxModelCalls: 50,
+      maxToolCalls: 50,
+      maxLoopIterations: 50,
+      maxWallTimeMs: 60_000,
+    });
+
+    expect(
+      budget.isExplorationStalled({ minCalls: 8, ratio: 2 }),
+    ).toBe(false);
+
+    for (let index = 0; index < 8; index += 1) {
+      budget.recordFileRead(["src/form.ts"]);
+    }
+
+    expect(budget.isExhausted()).toBe(false);
+    expect(
+      budget.isExplorationStalled({ minCalls: 8, ratio: 2 }),
+    ).toBe(true);
+    expect(budget.snapshot()).toMatchObject({
+      fileReadCalls: 8,
+      uniqueFilePathsTouched: 1,
+    });
+  });
 });

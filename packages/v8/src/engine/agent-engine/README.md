@@ -48,7 +48,11 @@ agent-engine/
 - The engine may narrow authority after discovery but never expands the grant.
   `grant_narrowed` is emitted only when the grant actually changed.
 - `usage` reports `fileReadCalls` vs `uniqueFilePathsTouched`. Repeated
-  re-reads of the same files emit `exploration_reread_heavy`.
+  re-reads of the same files emit `exploration_reread_heavy` mid-loop and
+  after one nudge stop the spin with `exploration_stall_broken`.
+- Identical read-only tool+args reuse the prior result (`tool_result_deduped`).
+  Mutations invalidate that content cache.
+- Hard compaction reinjects mid-run observations as well as pre-run memory.
 - Empty memory retrieval is `memory_empty` (store wired, no facts). Missing
   memory port or workspace id remains `memory_skipped`.
 - Task-list updates are validated through the Task List module.
@@ -80,12 +84,13 @@ verification gate + repair queue (see below)
 - Strategy is resolved by Engine, not Planning: `resolvePlanStrategyRules` (a pure function) runs before deciding whether to invoke discovery. Only `discover_and_plan` triggers Engine's bounded read-only discovery loop (max two model turns, file/search budget, no mutation tools) — it emits `discovery_started` / `discovery_progress` / `discovery_completed`, shows a temporary discovery task list, then calls Planning with `DiscoveryBrief` and `skipDiscover: true`. Planning either runs its own one-shot Change+Verify draft call or falls back to the deterministic discovery skeleton. The discovery list is replaced by the plan-derived execution checklist. There is exactly one understanding LLM call and, for `discover_and_plan`, at most one additional plan-drafting call — never a second strategy classifier.
 - The resulting `planStrategy` is stored on the run result and plan-approval checkpoint. Hosts that carry an approved plan SHOULD also carry `approvedPlanStrategy`; otherwise the engine infers a conservative strategy from the artifact.
 
-### Verification gate (no rollback)
+### Verification gate (one repair, then keep)
 
-After a mutation, `finishAfterLoop` runs Verification once, compares before/after when a snapshot exists, and **keeps the edits**.
+After a mutation, `finishAfterLoop` runs Verification, compares before/after when a snapshot exists, and **does not roll back**.
 
 - **Passed**: commit mutations and complete as today.
-- **Did not pass**: do not roll back and do not inject diagnostics into the model loop. Persist a `VerificationRecord`, write a short user summary (deterministic counts, optional LLM narrative), commit a memory pointer, and complete with `verification_incomplete` / `verification_kept_changes`.
+- **Repairable failure** (`verification_failed`): persist the record, inject a compact remaining-error prompt (not the full dump), and run **one** more model/tool loop. Re-verify. `verification_repair_attempted` / `verification_repair_succeeded` mark that path.
+- **Still failing, or not repairable** (blocked / cancelled / infra-missing): keep the edits, write a short user summary, commit a memory pointer, and complete with `verification_incomplete` / `verification_kept_changes`.
 - **Cancel / interrupt**: persist whatever before/after snapshot exists so the next turn can reload it.
 - **Retry**: a later user ask matching “fix the remaining verification errors” loads `loadLatest(workspaceId)` instead of scraping chat history.
 

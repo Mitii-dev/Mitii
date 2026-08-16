@@ -25,6 +25,14 @@ export const AGENT_ENGINE_THRESHOLDS = {
    */
   explorationRereadRatio: 2,
   explorationRereadMinCalls: 8,
+  /** One mid-loop nudge, then stop the spin. */
+  maxExplorationStallNudges: 1,
+  /** One in-run repair after a repairable verification failure. */
+  maxVerificationRepairAttempts: 1,
+  /** Per-fact clip when pinning mid-run observations across compaction. */
+  establishedFactChars: 220,
+  maxEstablishedFacts: 12,
+  maxEstablishedFactReinjectChars: 1_600,
 } as const;
 
 /**

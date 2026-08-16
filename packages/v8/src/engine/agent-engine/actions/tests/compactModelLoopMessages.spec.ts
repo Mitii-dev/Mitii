@@ -105,6 +105,42 @@ describe("compactModelLoopMessages", () => {
     ).toBe(true);
   });
 
+  it("reinjects mid-run established facts on hard compaction", () => {
+    const messages: ModelMessage[] = [
+      { role: "system", content: "system" },
+      { role: "user", content: "old context ".repeat(200) },
+      { role: "assistant", content: "old answer ".repeat(200) },
+      { role: "user", content: "recent ask" },
+      { role: "assistant", content: "recent answer" },
+    ];
+
+    const result = compactModelLoopMessages({
+      messages,
+      estimator,
+      budgetTokens: 400,
+      minMessagesToKeep: 2,
+      establishedFacts: [
+        {
+          id: "read_file:src/formik.ts",
+          content: "src/formik.ts: useFormik returns [values, helpers] not [helpers, values]",
+        },
+      ],
+    });
+
+    expect(result.pressure).toBe("hard");
+    expect(result.reinjectedEstablishedFacts).toBe(true);
+    expect(
+      result.messages.some((message) =>
+        message.content.includes("established observations after compaction"),
+      ),
+    ).toBe(true);
+    expect(
+      result.messages.some((message) =>
+        message.content.includes("useFormik returns [values, helpers]"),
+      ),
+    ).toBe(true);
+  });
+
   it("resolves sorted compaction thresholds and pressure", () => {
     const thresholds = resolveCompactionThresholds({
       budgetTokens: 10_000,

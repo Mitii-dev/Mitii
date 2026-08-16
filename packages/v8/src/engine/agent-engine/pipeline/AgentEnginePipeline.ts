@@ -86,13 +86,19 @@ import {
   amendMessageWithClarification,
   assembleToolCalls,
   buildClarificationPayload,
+  buildExplorationStallNudge,
   buildIncompleteAnswerRecoveryMessage,
   buildMutationBudgetInstruction,
   buildOutputTruncationRecovery,
+  buildVerificationRepairPrompt,
   compactModelLoopMessages,
   decideVerificationGate,
+  dropEstablishedFactsForPaths,
+  extractEstablishedFact,
   extractFileReadPaths,
   filterToolDefinitions,
+  isExplorationRereadHeavy,
+  upsertEstablishedFact,
   isEmptyAssistantTurn,
   isTransitionalAssistantAnswer,
   mapContextToPromptSlice,
@@ -104,7 +110,8 @@ import {
   synthesizeFallbackAnswer,
   amendMessageWithPriorConversation,
 } from "../actions";
-import type { VerificationGateDecision } from "../actions";
+import type { EstablishedFact, VerificationGateDecision } from "../actions";
+import { ToolCallCache, rebaseToolResult } from "../internal/ToolCallCache";
 import { AGENT_ENGINE_SCHEMA_VERSION } from "../constants";
 import {
   agentEngineResumeInputSchema,
@@ -151,7 +158,6 @@ import {
   seedTaskListFromPlan,
   type TaskListRef,
 } from "../internal/taskListRuntime";
-import { ToolCallCache } from "../internal/ToolCallCache";
 import {
   AGENT_ENGINE_THRESHOLDS,
   DEFAULT_MUTATION_TOOL_DEFINITIONS,
@@ -1350,6 +1356,11 @@ export class AgentEnginePipeline {
       const toolCache = new ToolCallCache();
       const changedFiles: string[] = [];
       const mutationCheckpointIds: string[] = [];
+      const establishedFacts: EstablishedFact[] = [];
+      const memoryFacts = selectedMemory?.map((block) => ({
+        id: block.id,
+        content: block.content,
+      }));
 
       const loopOutcome = await this.runModelToolLoop({
         runId,
@@ -1372,10 +1383,8 @@ export class AgentEnginePipeline {
         changedFiles,
         mutationCheckpointIds,
         taskListRef,
-        memoryFacts: selectedMemory?.map((block) => ({
-          id: block.id,
-          content: block.content,
-        })),
+        memoryFacts,
+        establishedFacts,
         selectedSkillIds: selectedSkills?.map((block) => block.id) ?? [],
         evidence: runEvidence,
         windowPolicy,
@@ -1409,6 +1418,15 @@ export class AgentEnginePipeline {
           verificationRecord = record;
         },
         windowPolicy,
+        loopContext: {
+          understanding,
+          skillsQuery: extractPrimaryUserMessage(envelope.message),
+          mode: envelope.mode,
+          projects: input.projects,
+          memoryFacts,
+          selectedSkillIds: selectedSkills?.map((block) => block.id) ?? [],
+          establishedFacts,
+        },
       });
     } catch (error) {
       await this.safeUnpin(runId, pinnedState);
@@ -1727,6 +1745,7 @@ export class AgentEnginePipeline {
       const toolCache = ToolCallCache.fromEntries(checkpoint.toolCacheEntries);
       const changedFiles = [...checkpoint.changedFiles];
       const mutationCheckpointIds = [...checkpoint.mutationCheckpointIds];
+      const establishedFacts: EstablishedFact[] = [];
 
       const approvalToken: ToolApprovalToken = {
         approvalId: pending.approvalId,
@@ -1817,6 +1836,7 @@ export class AgentEnginePipeline {
         changedFiles,
         mutationCheckpointIds,
         taskListRef,
+        establishedFacts,
         windowPolicy,
       });
 
@@ -1853,6 +1873,9 @@ export class AgentEnginePipeline {
           verificationRecord = record;
         },
         windowPolicy,
+        loopContext: {
+          establishedFacts,
+        },
       });
     } catch (error) {
       if (error instanceof AgentEngineError) {
@@ -1912,6 +1935,15 @@ export class AgentEnginePipeline {
     onRepoBuildStateAfter?: (state: RepoBuildState) => void;
     onVerificationRecord?: (record: VerificationRecord) => void;
     windowPolicy: WindowPolicy;
+    loopContext?: {
+      understanding?: RequestUnderstandingResult;
+      skillsQuery?: string;
+      mode?: "ask" | "plan" | "agent";
+      projects?: readonly ProjectDescriptor[];
+      memoryFacts?: readonly { id: string; content: string }[];
+      selectedSkillIds?: string[];
+      establishedFacts: EstablishedFact[];
+    };
   }): Promise<AgentRunResult> {
     const {
       runId,
@@ -1936,6 +1968,7 @@ export class AgentEnginePipeline {
 
     let currentOutcome = loopOutcome;
     let afterState = params.repoBuildStateAfter;
+    let repairAttempts = 0;
 
     while (true) {
       if (currentOutcome.kind === "approval_required") {
@@ -2036,14 +2069,30 @@ export class AgentEnginePipeline {
         });
       }
 
+      if (currentOutcome.kind !== "completed") {
+        await this.safeUnpin(runId, pinnedState);
+        return finish({
+          status: "failed",
+          reasonCodes: [...reasonCodes, "misconfigured"],
+          error: {
+            code: "misconfigured",
+            message: "Verification gate expected a completed model/tool loop.",
+          },
+        });
+      }
+
+      const loopChangedFiles = currentOutcome.changedFiles;
+      const loopMutationIds = currentOutcome.mutationCheckpointIds;
+      const loopAnswer = currentOutcome.answer;
+
       const verificationOutcome = await this.runVerificationGate({
         runId,
         bus,
         decision,
         input,
         pinnedState,
-        changedFiles: currentOutcome.changedFiles,
-        mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
+        changedFiles: loopChangedFiles,
+        mutationCheckpointIds: loopMutationIds,
         reasonCodes,
         warnings,
         repoBuildStateBefore,
@@ -2074,25 +2123,93 @@ export class AgentEnginePipeline {
         after: afterState,
         comparison: verificationOutcome.comparison,
         verification: verificationOutcome.verification,
-        changedFiles: currentOutcome.changedFiles,
+        changedFiles: loopChangedFiles,
       });
       if (record) {
         params.onVerificationRecord?.(record);
       }
 
       if (verificationOutcome.kind === "ok") {
+        if (repairAttempts > 0) {
+          reasonCodes.push("verification_repair_succeeded");
+        }
         await this.safeUnpin(runId, pinnedState);
         reasonCodes.push("answer_produced");
         return finish({
           status: "completed",
-          answer: currentOutcome.answer,
+          answer: loopAnswer,
           reasonCodes,
         });
       }
 
-      // Verification did not pass. Keep the edits, summarize the delta, and
-      // end the task. A later "fix those" turn reloads the persisted record.
-      this.commitMutations(currentOutcome.mutationCheckpointIds);
+      const canRepair =
+        verificationOutcome.repairable &&
+        repairAttempts < AGENT_ENGINE_THRESHOLDS.maxVerificationRepairAttempts &&
+        currentOutcome.kind === "completed" &&
+        budget.canStartModelCall();
+      if (canRepair) {
+        repairAttempts += 1;
+        reasonCodes.push("verification_repair_attempted");
+        currentOutcome.messages.push({
+          role: "user",
+          content: buildVerificationRepairPrompt({
+            verification: verificationOutcome.verification,
+            comparison: verificationOutcome.comparison,
+            changedFiles: loopChangedFiles,
+          }),
+        });
+        currentOutcome = await this.runModelToolLoop({
+          runId,
+          request: params.request,
+          decision,
+          understanding: params.loopContext?.understanding,
+          skillsQuery: params.loopContext?.skillsQuery,
+          mode: params.loopContext?.mode,
+          projects: params.loopContext?.projects,
+          dirtyPaths: params.dirtyPaths,
+          pinnedState,
+          workspaceRoot: input.workspaceRoot,
+          bus,
+          signal,
+          budget,
+          reasonCodes,
+          warnings,
+          messages: currentOutcome.messages,
+          toolCache: currentOutcome.toolCache,
+          changedFiles: loopChangedFiles,
+          mutationCheckpointIds: loopMutationIds,
+          taskListRef,
+          memoryFacts: params.loopContext?.memoryFacts,
+          establishedFacts: params.loopContext?.establishedFacts ?? [],
+          selectedSkillIds: params.loopContext?.selectedSkillIds,
+          evidence,
+          windowPolicy,
+        });
+        if (
+          currentOutcome.kind === "completed" ||
+          currentOutcome.kind === "approval_required"
+        ) {
+          continue;
+        }
+        if (currentOutcome.kind === "cancelled") {
+          await this.safeUnpin(runId, pinnedState);
+          return await cancelledResult();
+        }
+        if (currentOutcome.kind === "failed") {
+          await this.safeUnpin(runId, pinnedState);
+          return finish({
+            status: "failed",
+            answer: currentOutcome.answer,
+            reasonCodes: [...reasonCodes, ...currentOutcome.extraReasons],
+            error: currentOutcome.error,
+          });
+        }
+        reasonCodes.push("budget_exhausted");
+      }
+
+      // Verification did not pass (or the one repair attempt did not clear it).
+      // Keep the edits, summarize the delta, and end the task.
+      this.commitMutations(loopMutationIds);
       reasonCodes.push(
         "verification_kept_changes",
         "verification_incomplete",
@@ -2107,7 +2224,7 @@ export class AgentEnginePipeline {
         before: repoBuildStateBefore,
         after: afterState,
         comparison: verificationOutcome.comparison,
-        changedFiles: currentOutcome.changedFiles,
+        changedFiles: loopChangedFiles,
         signal,
       });
       reasonCodes.push("verification_summary_produced");
@@ -2124,7 +2241,7 @@ export class AgentEnginePipeline {
           after: afterState,
           comparison: verificationOutcome.comparison,
           verification: verificationOutcome.verification,
-          changedFiles: currentOutcome.changedFiles,
+          changedFiles: loopChangedFiles,
           userSummary: summary,
           previous: record,
         })) ?? record;
@@ -2151,7 +2268,10 @@ export class AgentEnginePipeline {
       reasonCodes.push("answer_produced");
       return finish({
         status: "completed",
-        answer: joinNonEmptyAnswers(currentOutcome.answer, summary),
+        answer: joinNonEmptyAnswers(
+          "answer" in currentOutcome ? currentOutcome.answer : loopAnswer,
+          summary,
+        ),
         reasonCodes,
       });
     }
@@ -2926,6 +3046,7 @@ export class AgentEnginePipeline {
     changedFiles: string[];
     mutationCheckpointIds: string[];
     memoryFacts?: readonly { id: string; content: string }[];
+    establishedFacts?: EstablishedFact[];
     selectedSkillIds?: string[];
     taskListRef: TaskListRef;
     evidence?: RunEvidence;
@@ -2958,6 +3079,8 @@ export class AgentEnginePipeline {
     let emittedLoopPressureWarning = false;
     let emittedLoopCompactionWarning = false;
     let successfulVerificationAfterMutation = false;
+    let explorationStallNudges = 0;
+    const establishedFacts = params.establishedFacts ?? [];
     const changeImpactGate = {
       required:
         decision.reasonCodes.includes("change_impact_recommended") &&
@@ -3000,6 +3123,9 @@ export class AgentEnginePipeline {
         estimator: this.tokenEstimator,
         budgetTokens: loopInputBudgetTokens,
         memoryFacts: params.memoryFacts,
+        establishedFacts,
+        maxEstablishedFactReinjectChars:
+          AGENT_ENGINE_THRESHOLDS.maxEstablishedFactReinjectChars,
         recentToolMessagesToKeepFull:
           params.windowPolicy.compaction.keepRecentToolResults,
         compactedToolResultChars:
@@ -3029,7 +3155,13 @@ export class AgentEnginePipeline {
           const extras = [
             compaction.summarizedDroppedTurns ? "summarized-dropped-turns" : null,
             compaction.reinjectedMemory ? "memory-reinjected" : null,
+            compaction.reinjectedEstablishedFacts
+              ? "established-facts-reinjected"
+              : null,
           ].filter(Boolean);
+          if (compaction.reinjectedEstablishedFacts) {
+            reasonCodes.push("established_facts_reinjected");
+          }
           warnings.push(
             "Compacted previous tool call history to keep follow-up model calls within the context budget.",
           );
@@ -3339,6 +3471,7 @@ export class AgentEnginePipeline {
           mutatingToolNames: DEFAULT_MUTATING_TOOL_NAMES,
           changeImpactGate,
           evidence,
+          establishedFacts,
         });
 
         if (outcome.kind === "approval_required") {
@@ -3405,6 +3538,34 @@ export class AgentEnginePipeline {
       this.emitStage(bus, runId, "tool_running", "completed", [
         "tools_executed",
       ]);
+
+      const usageSnap = budget.snapshot();
+      if (isExplorationRereadHeavy(usageSnap)) {
+        this.applyExplorationSignal(usageSnap, reasonCodes, warnings);
+        if (
+          explorationStallNudges <
+          AGENT_ENGINE_THRESHOLDS.maxExplorationStallNudges
+        ) {
+          explorationStallNudges += 1;
+          messages.push({
+            role: "user",
+            content: buildExplorationStallNudge(usageSnap),
+          });
+        } else {
+          reasonCodes.push("exploration_stall_broken");
+          warnings.push(
+            "Stopped the run after repeated file re-reads of the same paths.",
+          );
+          return {
+            kind: "completed",
+            answer,
+            changedFiles,
+            mutationCheckpointIds,
+            messages,
+            toolCache,
+          };
+        }
+      }
     }
   }
 
@@ -3553,6 +3714,7 @@ export class AgentEnginePipeline {
     /** Soft gate: require analyze_change_impact before first mutation when recommended. */
     changeImpactGate?: { required: boolean; satisfied: boolean };
     evidence?: RunEvidence;
+    establishedFacts?: EstablishedFact[];
   }): Promise<ToolCallOutcome> {
     const {
       runId,
@@ -3576,6 +3738,7 @@ export class AgentEnginePipeline {
       mutatingToolNames,
       changeImpactGate,
       evidence,
+      establishedFacts,
     } = params;
 
     const toolCall: ModelToolCall = {
@@ -3608,8 +3771,31 @@ export class AgentEnginePipeline {
       at: this.isoNow(),
     });
 
-    const cached = toolCache.get(toolCall.id);
+    const cachedByCallId = toolCache.get(toolCall.id);
+    const cachedByContent =
+      cachedByCallId === undefined &&
+      (READ_ONLY_TOOL_IDS as readonly string[]).includes(toolCall.name)
+        ? toolCache.getByContent(toolCall.name, argumentsValue)
+        : undefined;
+    const cached =
+      cachedByCallId ??
+      (cachedByContent && cachedByContent.status === "succeeded"
+        ? rebaseToolResult(cachedByContent, toolCall.id)
+        : undefined);
     if (cached) {
+      if (cachedByContent && cachedByCallId === undefined) {
+        toolCache.set(toolCall.id, cached);
+        reasonCodes.push("tool_result_deduped");
+        upsertEstablishedFact(
+          establishedFacts ?? [],
+          extractEstablishedFact({
+            toolName: toolCall.name,
+            argumentsValue,
+            output: cached.output,
+            outputPreview: cached.audit.outputPreview,
+          }),
+        );
+      }
       this.emit(bus, {
         type: "tool_completed",
         runId,
@@ -3797,6 +3983,21 @@ export class AgentEnginePipeline {
     }
 
     toolCache.set(toolCall.id, result);
+    if (
+      result.status === "succeeded" &&
+      (READ_ONLY_TOOL_IDS as readonly string[]).includes(toolCall.name)
+    ) {
+      toolCache.setContent(toolCall.name, argumentsValue, result);
+      upsertEstablishedFact(
+        establishedFacts ?? [],
+        extractEstablishedFact({
+          toolName: toolCall.name,
+          argumentsValue,
+          output: result.output,
+          outputPreview: result.audit.outputPreview,
+        }),
+      );
+    }
 
     if (result.status === "succeeded") {
       if (toolCall.name === "analyze_change_impact" && changeImpactGate) {
@@ -3814,6 +4015,11 @@ export class AgentEnginePipeline {
           }
         }
         reasonCodes.push("mutation_applied");
+        toolCache.invalidateContent();
+        dropEstablishedFactsForPaths(
+          establishedFacts ?? [],
+          output.changedFiles ?? [],
+        );
       }
       const autoAdvanced = maybeAutoAdvanceTaskList({
         enabled: taskListAutoAdvance,
@@ -4115,25 +4321,17 @@ export class AgentEnginePipeline {
     reasonCodes: AgentReasonCode[],
     warnings: string[],
   ): void {
-    if (
-      snapshot.fileReadCalls < AGENT_ENGINE_THRESHOLDS.explorationRereadMinCalls ||
-      snapshot.uniqueFilePathsTouched <= 0
-    ) {
-      return;
-    }
-    if (
-      snapshot.fileReadCalls <
-      snapshot.uniqueFilePathsTouched *
-        AGENT_ENGINE_THRESHOLDS.explorationRereadRatio
-    ) {
+    if (!isExplorationRereadHeavy(snapshot)) {
       return;
     }
     if (!reasonCodes.includes("exploration_reread_heavy")) {
       reasonCodes.push("exploration_reread_heavy");
     }
-    warnings.push(
-      `File reads (${snapshot.fileReadCalls}) substantially exceeded unique paths (${snapshot.uniqueFilePathsTouched}).`,
-    );
+    const warning =
+      `File reads (${snapshot.fileReadCalls}) substantially exceeded unique paths (${snapshot.uniqueFilePathsTouched}).`;
+    if (!warnings.includes(warning)) {
+      warnings.push(warning);
+    }
   }
 
   private resolveWindowPolicy(input: AgentEngineStartInput): WindowPolicy {

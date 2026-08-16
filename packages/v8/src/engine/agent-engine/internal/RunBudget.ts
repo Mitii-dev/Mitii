@@ -111,6 +111,20 @@ export class RunBudgetTracker {
     return false;
   }
 
+  /**
+   * Progress stall: many file reads against few unique paths.
+   * Separate from the flat ceilings in `isExhausted()`.
+   */
+  public isExplorationStalled(params: {
+    minCalls: number;
+    ratio: number;
+  }): boolean {
+    if (this.fileReadCalls < params.minCalls || this.touchedFilePaths.size <= 0) {
+      return false;
+    }
+    return this.fileReadCalls >= this.touchedFilePaths.size * params.ratio;
+  }
+
   public canStartModelCall(): boolean {
     return this.modelCalls < this.limits.maxModelCalls;
   }

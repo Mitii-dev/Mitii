@@ -8,6 +8,15 @@ export type {
   ClarificationPayload,
 } from "./buildClarificationPayload";
 export { extractFileReadPaths } from "./extractFileReadPaths";
+export {
+  extractEstablishedFact,
+  upsertEstablishedFact,
+  dropEstablishedFactsForPaths,
+} from "./extractEstablishedFact";
+export type { EstablishedFact } from "./extractEstablishedFact";
+export { isExplorationRereadHeavy } from "./isExplorationRereadHeavy";
+export { buildExplorationStallNudge } from "./buildExplorationStallNudge";
+export { buildVerificationRepairPrompt } from "./buildVerificationRepairPrompt";
 export { decideVerificationGate } from "./decideVerificationGate";
 export type { VerificationGateDecision } from "./decideVerificationGate";
 export { mapContextToPromptSlice } from "./mapContextToPromptSlice";

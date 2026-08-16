@@ -539,7 +539,7 @@ describe("AgentEnginePipeline mutation approvals (Phase 8)", () => {
     expect(kept.content).toBe("const x = 2;\n");
   });
 
-  it("keeps the first edit and ends with a verification summary instead of repairing in-loop", async () => {
+  it("repairs once after a repairable verification failure and keeps the repaired edit", async () => {
     const { fs, realTools } = createWorkspace();
     const tools = wrapTools(realTools);
     const pinnedState = { workspaceId: "ws_1", stateToken: "tok_1" };
@@ -653,13 +653,13 @@ describe("AgentEnginePipeline mutation approvals (Phase 8)", () => {
     const result = await handle.result;
 
     expect(result.status).toBe("completed");
-    expect(result.reasonCodes).toContain("verification_kept_changes");
-    expect(result.reasonCodes).toContain("verification_incomplete");
-    expect(result.reasonCodes).not.toContain("verification_repair_attempted");
+    expect(result.reasonCodes).toContain("verification_repair_attempted");
+    expect(result.reasonCodes).toContain("verification_repair_succeeded");
+    expect(result.reasonCodes).not.toContain("verification_kept_changes");
     expect(result.reasonCodes).not.toContain("mutation_rolled_back");
-    expect(verificationCalls).toBe(1);
+    expect(verificationCalls).toBe(2);
     const kept = await fs.readFile(`${WORKSPACE}/src/a.ts`);
-    expect(kept.content).toBe("const x = 2;\n");
+    expect(kept.content).toBe("const x = 3;\n");
     const verificationEvents = events.filter(
       (event) =>
         typeof event === "object" &&
@@ -667,11 +667,14 @@ describe("AgentEnginePipeline mutation approvals (Phase 8)", () => {
         "type" in event &&
         event.type === "verification_completed",
     );
-    expect(verificationEvents).toHaveLength(1);
+    expect(verificationEvents).toHaveLength(2);
     expect(verificationEvents[0]).toMatchObject({
       status: "verification_failed",
       checks: [{ kind: "typecheck", outcome: "failed" }],
       diagnostics: [{ path: "src/a.ts", severity: "error" }],
+    });
+    expect(verificationEvents[1]).toMatchObject({
+      status: "verified_success",
     });
   });
 
