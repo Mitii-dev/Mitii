@@ -147,6 +147,12 @@ export interface TokenUsageSnapshot {
   contextBreakdown?: ContextUsageBreakdown;
 }
 
+export type SemanticIndexSource =
+  | 'bundled'
+  | 'ollama'
+  | 'openai-compatible'
+  | 'disabled';
+
 export interface IndexStatusSnapshot {
   fileCount: number;
   truncated: boolean;
@@ -166,6 +172,9 @@ export interface IndexStatusSnapshot {
   stateTokenPreview?: string;
   lastIndexedAt?: string;
   message?: string;
+  embeddingSource?: SemanticIndexSource;
+  embeddingModel?: string;
+  embeddingEnabled?: boolean;
 }
 
 export interface WorkspaceSnapshotInfo {
@@ -516,6 +525,9 @@ export type WebviewToHostMessage =
       mcp?: McpSettings;
       approvalMode?: string;
       profile?: SettingsProfileView;
+      semanticIndex?: {
+        source?: SemanticIndexSource;
+      };
     }
   | { type: 'settings.setApiKey' }
   | { type: 'settings.clearApiKey' }

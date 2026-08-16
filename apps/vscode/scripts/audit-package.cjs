@@ -46,6 +46,14 @@ assertFile(join(dist, 'native', 'better_sqlite3.node'), 'SQLite native binding')
 assertFile(join(dist, 'tree-sitter', 'tree-sitter.wasm'), 'Tree-sitter core wasm');
 assertFile(join(dist, 'tree-sitter', 'tree-sitter-python.wasm'), 'Tree-sitter Python grammar');
 assertFile(
+  join(dist, 'native', 'onnxruntime', 'node_modules', 'onnxruntime-node', 'package.json'),
+  'ONNX Runtime native package',
+);
+assertFile(
+  join(dist, 'native', 'onnxruntime', 'node_modules', 'onnxruntime-web', 'package.json'),
+  'ONNX Runtime WASM package',
+);
+assertFile(
   join(dist, 'skills', 'planning-default', 'SKILL.md'),
   'bundled planning skill',
 );

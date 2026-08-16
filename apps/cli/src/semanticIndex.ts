@@ -1,8 +1,9 @@
 import {
   type EmbeddingBackend,
+  type EmbeddingSource,
+  defaultBundledModelsDirectory,
   normalizePositiveInteger,
-  resolveDefaultEmbeddingPreset,
-  shouldEnableSemanticIndex,
+  resolveEmbeddingSource,
   type SemanticIndexSettings,
 } from '@mitii/host';
 
@@ -27,59 +28,101 @@ export function resolveCliSemanticIndexSettings(options: {
     options.env.MITII_BASE_URL ??
     options.config.baseUrl ??
     'https://api.openai.com/v1';
-  const requestedBackend = parseEmbeddingBackend(
-    options.env.MITII_EMBEDDING_BACKEND ??
-      options.config.embeddingBackend ??
-      'auto',
+  const requestedSource = parseEmbeddingSource(
+    options.env.MITII_EMBEDDING_SOURCE ?? options.config.embeddingSource,
   );
-  const preset = resolveDefaultEmbeddingPreset({
-    baseUrl,
-    backend: requestedBackend,
-  });
-  const backend: EmbeddingBackend =
-    requestedBackend === 'auto' ? preset.backend : requestedBackend;
-  const embeddingModel =
-    options.env.MITII_EMBEDDING_MODEL ??
-    options.config.embeddingModel ??
-    preset.model;
+  const requestedBackend = parseEmbeddingBackend(
+    options.env.MITII_EMBEDDING_BACKEND ?? options.config.embeddingBackend,
+  );
   const embeddingModelConfigured = Boolean(
     options.env.MITII_EMBEDDING_MODEL?.trim() ||
       options.config.embeddingModel?.trim(),
   );
-  const providerConfigured =
-    options.config.provider === 'openai-compatible' || Boolean(apiKey);
-  return {
-    enabled: shouldEnableSemanticIndex({
-      requested: !explicitlyDisabled && providerConfigured,
-      providerType: providerConfigured ? 'openai-compatible' : 'echo',
-      baseUrl,
-      embeddingModelConfigured,
-      backend,
-    }),
-    backend,
+  const resolution = resolveEmbeddingSource({
+    schemaVersion: 1,
+    requestedEnabled: !explicitlyDisabled,
+    source: requestedSource,
+    backend: requestedBackend ?? (requestedSource ? undefined : 'auto'),
     baseUrl,
-    model: embeddingModel,
-    dimensions: normalizePositiveInteger(
-      Number(options.env.MITII_EMBEDDING_DIMENSIONS) ||
-        options.config.embeddingDimensions,
-      preset.dimensions,
-    ),
+    embeddingModelConfigured,
+  });
+
+  if (resolution.status === 'disabled') {
+    return {
+      enabled: false,
+      source: 'disabled',
+      backend: 'disabled',
+      baseUrl,
+      model:
+        options.env.MITII_EMBEDDING_MODEL ??
+        options.config.embeddingModel ??
+        '',
+      dimensions: normalizePositiveInteger(
+        Number(options.env.MITII_EMBEDDING_DIMENSIONS) ||
+          options.config.embeddingDimensions,
+        384,
+      ),
+      normalized: options.env.MITII_EMBEDDING_NORMALIZED !== '0',
+      modelsDirectory: defaultBundledModelsDirectory(),
+      ...(apiKey ? { apiKey } : {}),
+    };
+  }
+
+  const model =
+    resolution.source === 'bundled'
+      ? resolution.model
+      : options.env.MITII_EMBEDDING_MODEL ??
+        options.config.embeddingModel ??
+        resolution.model;
+  const dimensions =
+    resolution.source === 'bundled'
+      ? resolution.dimensions
+      : normalizePositiveInteger(
+          Number(options.env.MITII_EMBEDDING_DIMENSIONS) ||
+            options.config.embeddingDimensions,
+          resolution.dimensions,
+        );
+
+  return {
+    enabled: true,
+    source: resolution.source,
+    backend: resolution.backend,
+    baseUrl,
+    model,
+    dimensions,
     normalized: options.env.MITII_EMBEDDING_NORMALIZED !== '0',
+    modelsDirectory: defaultBundledModelsDirectory(),
     ...(apiKey ? { apiKey } : {}),
   };
 }
 
-function parseEmbeddingBackend(
+function parseEmbeddingSource(
   value: string | undefined,
-): EmbeddingBackend | 'auto' {
+): EmbeddingSource | undefined {
   const normalized = value?.trim();
   if (
-    normalized === 'auto' ||
+    normalized === 'bundled' ||
     normalized === 'openai-compatible' ||
     normalized === 'ollama' ||
     normalized === 'disabled'
   ) {
     return normalized;
   }
-  return 'auto';
+  return undefined;
+}
+
+function parseEmbeddingBackend(
+  value: string | undefined,
+): EmbeddingBackend | 'auto' | undefined {
+  const normalized = value?.trim();
+  if (
+    normalized === 'auto' ||
+    normalized === 'bundled' ||
+    normalized === 'openai-compatible' ||
+    normalized === 'ollama' ||
+    normalized === 'disabled'
+  ) {
+    return normalized;
+  }
+  return undefined;
 }

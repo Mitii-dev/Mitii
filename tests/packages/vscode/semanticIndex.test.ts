@@ -26,7 +26,7 @@ const secrets = {
 };
 
 describe('VS Code semantic index settings', () => {
-  it('does not enable vectors by default for local OpenAI-compatible chat providers', async () => {
+  it('enables bundled MiniLM by default for local OpenAI-compatible chat providers', async () => {
     const settings = await resolveVsCodeSemanticIndexSettings(
       vsCodeMock({
         'provider.type': 'openai-compatible',
@@ -35,10 +35,27 @@ describe('VS Code semantic index settings', () => {
       secrets as never,
     );
 
-    expect(settings.enabled).toBe(false);
+    expect(settings.enabled).toBe(true);
+    expect(settings.source).toBe('bundled');
+    expect(settings.backend).toBe('bundled');
+    expect(settings.model).toBe('all-MiniLM-L6-v2');
+    expect(settings.dimensions).toBe(384);
   });
 
-  it('enables vectors for local providers when an embedding model is explicitly configured', async () => {
+  it('enables bundled MiniLM for Anthropic chat providers', async () => {
+    const settings = await resolveVsCodeSemanticIndexSettings(
+      vsCodeMock({
+        'provider.type': 'anthropic',
+        'provider.baseUrl': 'https://api.anthropic.com',
+      }) as never,
+      secrets as never,
+    );
+
+    expect(settings.enabled).toBe(true);
+    expect(settings.source).toBe('bundled');
+  });
+
+  it('enables Ollama vectors when an embedding model is explicitly configured', async () => {
     const settings = await resolveVsCodeSemanticIndexSettings(
       vsCodeMock({
         'provider.type': 'openai-compatible',
@@ -49,6 +66,22 @@ describe('VS Code semantic index settings', () => {
     );
 
     expect(settings.enabled).toBe(true);
+    expect(settings.backend).toBe('ollama');
     expect(settings.model).toBe('nomic-embed-text');
+  });
+
+  it('honors an explicit bundled source over a leftover Ollama backend', async () => {
+    const settings = await resolveVsCodeSemanticIndexSettings(
+      vsCodeMock({
+        'provider.type': 'openai-compatible',
+        'provider.baseUrl': 'http://localhost:11434/v1',
+        'semanticIndex.source': 'bundled',
+        'semanticIndex.backend': 'ollama',
+      }) as never,
+      secrets as never,
+    );
+
+    expect(settings.source).toBe('bundled');
+    expect(settings.model).toBe('all-MiniLM-L6-v2');
   });
 });

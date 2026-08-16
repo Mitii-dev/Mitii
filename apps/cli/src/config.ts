@@ -10,7 +10,8 @@ export interface MitiiHostConfig {
   providerPreset?: string;
   model?: string;
   baseUrl?: string;
-  embeddingBackend?: 'auto' | 'openai-compatible' | 'ollama' | 'disabled';
+  embeddingBackend?: 'auto' | 'bundled' | 'openai-compatible' | 'ollama' | 'disabled';
+  embeddingSource?: 'bundled' | 'openai-compatible' | 'ollama' | 'disabled';
   embeddingModel?: string;
   embeddingDimensions?: number;
   /** Never read API keys from config files — env / SecretStorage only. */
@@ -55,10 +56,18 @@ export function loadMitiiHostConfig(cwd: string = process.cwd()): MitiiHostConfi
         baseUrl: typeof safe.baseUrl === 'string' ? safe.baseUrl : undefined,
         embeddingBackend:
           safe.embeddingBackend === 'auto' ||
+          safe.embeddingBackend === 'bundled' ||
           safe.embeddingBackend === 'openai-compatible' ||
           safe.embeddingBackend === 'ollama' ||
           safe.embeddingBackend === 'disabled'
             ? safe.embeddingBackend
+            : undefined,
+        embeddingSource:
+          safe.embeddingSource === 'bundled' ||
+          safe.embeddingSource === 'openai-compatible' ||
+          safe.embeddingSource === 'ollama' ||
+          safe.embeddingSource === 'disabled'
+            ? safe.embeddingSource
             : undefined,
         embeddingModel:
           typeof safe.embeddingModel === 'string'

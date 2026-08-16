@@ -329,6 +329,13 @@ function needsFullIndexRefresh(index: IndexStatusSnapshot): boolean {
   return false;
 }
 
+const EMBEDDING_SOURCES = [
+  'bundled',
+  'ollama',
+  'openai-compatible',
+  'disabled',
+] as const;
+
 export interface SidebarHostOptions {
   extensionMode: vscode.ExtensionMode;
   workspaceState: vscode.Memento;
@@ -421,7 +428,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   }
 
   async readIndexStatusPublic(): Promise<IndexStatusSnapshot> {
-    return this.readIndexStatus();
+    return this.withEmbedding(await this.readIndexStatus());
   }
 
   /**
@@ -812,11 +819,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         });
         return;
       case 'index.refresh':
-        this.post({ type: 'index.status', index: await this.readIndexStatus() });
+        this.post({
+          type: 'index.status',
+          index: await this.withEmbedding(await this.readIndexStatus()),
+        });
         return;
       case 'index.reindex': {
         this.postIndexingStatus('Indexing workspace…');
-        const index = await this.onIndexWorkspace();
+        const index = await this.withEmbedding(await this.onIndexWorkspace());
         this.lastIndex = index;
         this.post({ type: 'index.status', index });
         return;
@@ -1616,9 +1626,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     }
     this.postIndexingStatus('Checking repository index…');
     void this.ensureIndexed()
-      .then((index) => {
-        this.lastIndex = index;
-        this.post({ type: 'index.status', index });
+      .then(async (index) => {
+        this.lastIndex = await this.withEmbedding(index);
+        this.post({ type: 'index.status', index: this.lastIndex });
         this.channel.appendLine(
           `[index] ${reason} ${index.message ?? 'ready'} files=${index.fileCount}`,
         );
@@ -2008,6 +2018,37 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       await writeMcpSettings(this.vs, this.effectiveRoot(), message.mcp);
       this.invalidateClient();
     }
+    if (message.semanticIndex?.source) {
+      const source = EMBEDDING_SOURCES.includes(message.semanticIndex.source)
+        ? message.semanticIndex.source
+        : undefined;
+      if (source) {
+        await cfg.update(
+          'semanticIndex.source',
+          source,
+          this.vs.ConfigurationTarget.Workspace,
+        );
+        await cfg.update(
+          'semanticIndex.backend',
+          source === 'disabled' ? 'disabled' : source,
+          this.vs.ConfigurationTarget.Workspace,
+        );
+        if (source === 'disabled') {
+          await cfg.update(
+            'semanticIndex.enabled',
+            false,
+            this.vs.ConfigurationTarget.Workspace,
+          );
+        } else {
+          await cfg.update(
+            'semanticIndex.enabled',
+            true,
+            this.vs.ConfigurationTarget.Workspace,
+          );
+        }
+        this.invalidateClient();
+      }
+    }
     if (message.profile) {
       const root = this.effectiveRoot();
       const secret = await this.secrets.get('mitii.provider.apiKey');
@@ -2382,6 +2423,25 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     return status;
   }
 
+  private async withEmbedding(
+    index: IndexStatusSnapshot,
+  ): Promise<IndexStatusSnapshot> {
+    try {
+      const semantic = await resolveVsCodeSemanticIndexSettings(
+        this.vs,
+        this.secrets,
+      );
+      return {
+        ...index,
+        embeddingSource: semantic.source ?? (semantic.enabled ? 'bundled' : 'disabled'),
+        embeddingModel: semantic.model,
+        embeddingEnabled: semantic.enabled,
+      };
+    } catch {
+      return index;
+    }
+  }
+
   private async readIndexStatus(): Promise<IndexStatusSnapshot> {
     const root = this.effectiveRoot();
     if (!root) {
@@ -2598,7 +2658,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       provider,
       profiles: profilesFile.profiles,
       activeProfileId: profilesFile.activeProfileId,
-      index: await this.readIndexStatus(),
+      index: await this.withEmbedding(await this.readIndexStatus()),
       mcp: readMcpSettings(this.vs, this.effectiveRoot()),
       mcpRuntimeStatus: this.mcpRuntimeStatus(),
       mcpStore: readMcpStoreCatalog(this.effectiveRoot()),

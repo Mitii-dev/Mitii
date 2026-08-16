@@ -11,16 +11,17 @@ import {
   createWorkspaceIndexRuntime,
   createDefaultProjectCatalogBuilder,
   type EmbeddingProfile,
+  type EmbeddingProvider,
   type RepoGraph,
   type RepoMap,
   type WorkspaceSnapshot,
   type WorkspaceIndexingPipelineResult,
 } from '@mitii/v8';
 import {
-  createHostEmbeddingProvider,
   createLanceDbConnection,
   probeEmbeddingProvider,
   readIndexRuntimeMetadata,
+  resolveHostEmbeddingProvider,
   writeIndexRuntimeMetadata,
   type IndexRuntimeMetadata,
   type SemanticIndexSettings,
@@ -548,7 +549,7 @@ async function resolveSemanticCandidate(
           ...settings,
           dimensions: probe.dimensions,
         };
-  const provider = createHostEmbeddingProvider(runtimeSettings);
+  const provider = await resolveHostEmbeddingProvider(runtimeSettings);
 
   return {
     status: 'ready',
@@ -563,9 +564,9 @@ async function resolveSemanticRuntime(
 ): Promise<
   | {
       status: 'ready';
-      provider: ReturnType<typeof createHostEmbeddingProvider>;
+      provider: EmbeddingProvider;
       vector: {
-        embeddingProvider: ReturnType<typeof createHostEmbeddingProvider>;
+        embeddingProvider: EmbeddingProvider;
         lanceConnection: Awaited<ReturnType<typeof createLanceDbConnection>>;
       };
     }
@@ -581,7 +582,7 @@ async function resolveSemanticRuntime(
     };
   }
   try {
-    const provider = createHostEmbeddingProvider(candidate.settings);
+    const provider = await resolveHostEmbeddingProvider(candidate.settings);
     const lanceConnection = await createLanceDbConnection(lanceDbPath);
     return {
       status: 'ready',

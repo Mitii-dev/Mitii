@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { resolveCliSemanticIndexSettings } from '../src/semanticIndex.js';
 
 describe('CLI semantic index settings', () => {
-  it('uses the Ollama nomic embedding preset for local OpenAI-compatible providers', () => {
+  it('uses bundled MiniLM by default for local OpenAI-compatible providers', () => {
     const settings = resolveCliSemanticIndexSettings({
       env: {},
       config: {
@@ -13,12 +13,13 @@ describe('CLI semantic index settings', () => {
     });
 
     expect(settings.enabled).toBe(true);
-    expect(settings.backend).toBe('ollama');
-    expect(settings.model).toBe('nomic-embed-text');
-    expect(settings.dimensions).toBe(768);
+    expect(settings.backend).toBe('bundled');
+    expect(settings.source).toBe('bundled');
+    expect(settings.model).toBe('all-MiniLM-L6-v2');
+    expect(settings.dimensions).toBe(384);
   });
 
-  it('enables vectors for local providers when an embedding model is explicitly configured', () => {
+  it('enables Ollama vectors when an embedding model is explicitly configured', () => {
     const settings = resolveCliSemanticIndexSettings({
       env: { MITII_EMBEDDING_MODEL: 'nomic-embed-text' },
       config: {
@@ -32,7 +33,7 @@ describe('CLI semantic index settings', () => {
     expect(settings.model).toBe('nomic-embed-text');
   });
 
-  it('keeps OpenAI embedding defaults for cloud providers', () => {
+  it('keeps bundled MiniLM for cloud chat providers unless an embedding source is set', () => {
     const settings = resolveCliSemanticIndexSettings({
       env: { OPENAI_API_KEY: 'test-key' },
       config: {
@@ -42,12 +43,29 @@ describe('CLI semantic index settings', () => {
     });
 
     expect(settings.enabled).toBe(true);
-    expect(settings.backend).toBe('openai-compatible');
+    expect(settings.backend).toBe('bundled');
+    expect(settings.model).toBe('all-MiniLM-L6-v2');
+  });
+
+  it('uses OpenAI embeddings when the source is explicitly openai-compatible', () => {
+    const settings = resolveCliSemanticIndexSettings({
+      env: {
+        OPENAI_API_KEY: 'test-key',
+        MITII_EMBEDDING_SOURCE: 'openai-compatible',
+      },
+      config: {
+        provider: 'openai-compatible',
+        baseUrl: 'https://api.openai.com/v1',
+      },
+    });
+
+    expect(settings.enabled).toBe(true);
+    expect(settings.source).toBe('openai-compatible');
     expect(settings.model).toBe('text-embedding-3-small');
     expect(settings.dimensions).toBe(1536);
   });
 
-  it('keeps LM Studio on the OpenAI-compatible embedding path', () => {
+  it('keeps LM Studio on bundled MiniLM unless an embedding model is configured', () => {
     const settings = resolveCliSemanticIndexSettings({
       env: { OPENAI_API_KEY: 'test-key' },
       config: {
@@ -57,8 +75,8 @@ describe('CLI semantic index settings', () => {
     });
 
     expect(settings.enabled).toBe(true);
-    expect(settings.backend).toBe('openai-compatible');
-    expect(settings.model).toBe('text-embedding-3-small');
+    expect(settings.backend).toBe('bundled');
+    expect(settings.model).toBe('all-MiniLM-L6-v2');
   });
 
   it('honors disabled embedding backend', () => {

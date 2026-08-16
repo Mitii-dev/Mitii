@@ -32,12 +32,13 @@ import {
   type RepositoryRootState,
   type WorkspaceFileEntry,
   type WorkspaceSnapshot,
+  type EmbeddingProvider,
 } from '@mitii/v8';
 import {
   alignSemanticSettingsWithPersistedProfile,
-  createHostEmbeddingProvider,
   createLanceDbConnection,
   readIndexRuntimeMetadata,
+  resolveHostEmbeddingProvider,
   type SemanticIndexSettings,
 } from '../indexing/semanticIndex.js';
 import { WORKSPACE_WALK_SKIP_DIR_NAMES } from '../internal/workspaceWalk.js';
@@ -539,7 +540,7 @@ async function resolveVectorRetrievalRuntime(options: {
       status: 'ready' | 'degraded';
       reason?: string;
       vector: {
-        embeddingProvider: ReturnType<typeof createHostEmbeddingProvider>;
+        embeddingProvider: EmbeddingProvider;
         lanceConnection: Awaited<ReturnType<typeof createLanceDbConnection>>;
       };
     }
@@ -594,7 +595,7 @@ async function resolveVectorRetrievalRuntime(options: {
         'Vector retrieval is unavailable (profile_mismatch): current embedding profile differs from the profile that wrote LanceDB. Reindex to rebuild embeddings.',
     };
   }
-  const provider = createHostEmbeddingProvider(alignedSettings);
+  const provider = await resolveHostEmbeddingProvider(alignedSettings);
   try {
     const vector = {
       embeddingProvider: provider,

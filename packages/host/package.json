@@ -1,6 +1,6 @@
 {
   "name": "@mitii/host",
-  "version": "2.8.36",
+  "version": "2.8.37",
   "description": "Shared host kit for Mitii apps: SQLite injection, workspace indexing, repository context, durable ports (checkpoints/memory/skills/search), project rules, provider presets.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
@@ -40,7 +40,8 @@
   },
   "dependencies": {
     "@mitii/sdk": "workspace:*",
-    "@mitii/v8": "workspace:*"
+    "@mitii/v8": "workspace:*",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
@@ -49,6 +50,8 @@
   },
   "optionalDependencies": {
     "@lancedb/lancedb": "0.33.0",
+    "onnxruntime-node": "1.21.0",
+    "onnxruntime-web": "1.21.0",
     "tree-sitter-wasms": "^0.1.13",
     "web-tree-sitter": "^0.24.7"
   }

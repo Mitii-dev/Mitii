@@ -17,6 +17,7 @@ import type {
   McpSettings,
   MemoryItemView,
   ProviderSettingsSnapshot,
+  SemanticIndexSource,
   SettingsTab,
   SettingsProfileView,
   TokenBudgetFieldDescriptor,
@@ -76,6 +77,7 @@ interface SettingsPanelProps {
   index: IndexStatusSnapshot;
   onReindex: () => void;
   onRefreshIndex: () => void;
+  onEmbeddingSourceChange: (source: SemanticIndexSource) => void;
   memories: MemoryItemView[];
   onAddMemory: (text: string) => void;
   onDeleteMemory: (id: string) => void;
@@ -448,6 +450,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     index,
     onReindex,
     onRefreshIndex,
+    onEmbeddingSourceChange,
     memories,
     onAddMemory,
     onDeleteMemory,
@@ -816,6 +819,38 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 title="Repository index"
                 description="Local file map used by Ask, Plan, Agent, and Review."
               >
+                <div className="field">
+                  <label htmlFor="embedding-source">Embedding source</label>
+                  <select
+                    id="embedding-source"
+                    value={index.embeddingSource ?? 'bundled'}
+                    onChange={(e) =>
+                      onEmbeddingSourceChange(
+                        e.target.value as SemanticIndexSource,
+                      )
+                    }
+                  >
+                    <option value="bundled">
+                      Bundled MiniLM (on-device)
+                    </option>
+                    <option value="ollama">Ollama embeddings API</option>
+                    <option value="openai-compatible">
+                      OpenAI-compatible embeddings API
+                    </option>
+                    <option value="disabled">Disabled (lexical only)</option>
+                  </select>
+                  <p className="field-hint">
+                    {index.embeddingEnabled === false
+                      ? 'Semantic search is off. Reindex after enabling a source.'
+                      : index.embeddingSource === 'bundled'
+                        ? `On-device ${index.embeddingModel ?? 'all-MiniLM-L6-v2'} (384-d). Native ONNX when available, WASM otherwise. Reindex after changing source.`
+                        : index.embeddingSource === 'ollama'
+                          ? `HTTP embeddings via Ollama (${index.embeddingModel ?? 'nomic-embed-text'}). Reindex after changing source.`
+                          : index.embeddingSource === 'openai-compatible'
+                            ? `HTTP embeddings via the OpenAI-compatible API (${index.embeddingModel ?? 'text-embedding-3-small'}). Reindex after changing source.`
+                            : 'LanceDB stores vectors; it is not an embedding source.'}
+                  </p>
+                </div>
                 <KeyValueList
                   rows={[
                     { label: 'Indexed items', value: index.fileCount },

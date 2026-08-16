@@ -22,7 +22,7 @@ Forbidden: `host → apps`, `sdk → host`, `v8 → host`.
 npm install @mitii/host
 ```
 
-Requires **Node.js 20+**. Depends on `@mitii/sdk` and `@mitii/v8`. Optional: `@lancedb/lancedb` for vectors. License: **AGPL-3.0-or-later**.
+Requires **Node.js 20+**. Depends on `@mitii/sdk`, `@mitii/v8`, and `zod`. Optional: `@lancedb/lancedb` for the vector store, `onnxruntime-node` / `onnxruntime-web` for bundled MiniLM embeddings. License: **AGPL-3.0-or-later**.
 
 Published on `v*` release tags. For local development, consume via the workspace (`pnpm --filter @mitii/host`).
 
@@ -46,6 +46,7 @@ src/
   index.ts                 # public barrel — import from `@mitii/host`
   sqlite/                  # injection contract for openDatabase
   indexing/                # embeddings, full index, fingerprint snapshot
+    bundled-embedding/     # on-device MiniLM source (native ONNX + WASM)
   repository-context/      # createHostRepositoryContext
   ports/                   # search, memory, skills, checkpoints
   prompt/                  # project rules loader → start({ projectRules })
@@ -60,8 +61,9 @@ Prefer importing from `@mitii/host`. Do not import `internal/`.
 | Host API | Satisfies | Notes |
 |---|---|---|
 | `OpenHostSqliteDatabase` | Host injection | Required by indexing + repository context |
-| `OpenAiCompatibleEmbeddingProvider` | V8 `EmbeddingProvider` | Optional semantic path |
-| `createLanceDbConnection` | V8 `LanceDbConnectionPort` | Optional `@lancedb/lancedb` |
+| `OpenAiCompatibleEmbeddingProvider` | V8 `EmbeddingProvider` | HTTP Ollama / OpenAI-compatible embeddings |
+| `createBundledMiniLmEmbeddingProvider` | V8 `EmbeddingProvider` | On-device MiniLM (native ONNX, WASM fallback) |
+| `createLanceDbConnection` | V8 `LanceDbConnectionPort` | Optional `@lancedb/lancedb` vector store |
 | `runFullWorkspaceIndex` | Orchestrates V8 index runtime | Writes `.mitii/repository-index.sqlite`, LanceDB, graph/map |
 | `buildWorkspaceSnapshot` | Builds `PublishRepositoryStateInput` | Fingerprint-only; indexes marked unavailable |
 | `createHostRepositoryContext` | V8 `RepositoryContextPipeline` | Hybrid retrieve + file-map fallback |

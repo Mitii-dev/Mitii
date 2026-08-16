@@ -59,6 +59,7 @@ import type {
   ProviderSettingsSnapshot,
   ReviewDiffView,
   RunFileChangesView,
+  SemanticIndexSource,
   SettingsTab,
   SettingsProfileView,
   SkillCatalogItem,
@@ -2020,6 +2021,14 @@ export function App() {
           index={index}
           onReindex={() => postToHost({ type: 'index.reindex' })}
           onRefreshIndex={() => postToHost({ type: 'index.refresh' })}
+          onEmbeddingSourceChange={(source: SemanticIndexSource) => {
+            setIndex((current) => ({
+              ...current,
+              embeddingSource: source,
+              embeddingEnabled: source !== 'disabled',
+            }));
+            postToHost({ type: 'settings.set', semanticIndex: { source } });
+          }}
           memories={memories}
           onAddMemory={(text) => postToHost({ type: 'addMemory', text })}
           onDeleteMemory={(id) => postToHost({ type: 'deleteMemory', id })}

@@ -9,9 +9,13 @@ import type {
 } from '@mitii/v8';
 
 import {
-  isLocalBaseUrl,
-  isOllamaBaseUrl,
-} from '../config/providerPresets.js';
+  BUNDLED_MINILM_PRESET,
+  createBundledMiniLmEmbeddingProvider,
+  defaultBundledModelsDirectory,
+  resolveEmbeddingSource,
+  type EmbeddingSource,
+  type ResolveBundledEmbeddingProviderOptions,
+} from './bundled-embedding/index.js';
 
 export const DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL =
   'text-embedding-3-small';
@@ -19,7 +23,13 @@ export const DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_DIMENSIONS = 1536;
 export const DEFAULT_OLLAMA_EMBEDDING_MODEL = 'nomic-embed-text';
 export const DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS = 768;
 
-export type EmbeddingBackend = 'openai-compatible' | 'ollama' | 'disabled';
+export type EmbeddingBackend =
+  | 'openai-compatible'
+  | 'ollama'
+  | 'bundled'
+  | 'disabled';
+
+export type { EmbeddingSource };
 
 export interface EmbeddingPreset {
   backend: Exclude<EmbeddingBackend, 'disabled'>;
@@ -51,6 +61,13 @@ export const EMBEDDING_PRESETS = {
     baseUrlHint: 'http://localhost:11434/v1',
     normalized: true,
   },
+  'bundled-minilm-l6-v2': {
+    backend: 'bundled',
+    model: BUNDLED_MINILM_PRESET.model,
+    dimensions: BUNDLED_MINILM_PRESET.dimensions,
+    baseUrlHint: '',
+    normalized: true,
+  },
 } as const satisfies Record<string, EmbeddingPreset>;
 
 export type EmbeddingPresetId = keyof typeof EMBEDDING_PRESETS;
@@ -58,12 +75,14 @@ export type EmbeddingPresetId = keyof typeof EMBEDDING_PRESETS;
 export interface SemanticIndexSettings {
   enabled: boolean;
   backend?: EmbeddingBackend;
+  source?: EmbeddingSource;
   baseUrl: string;
   model: string;
   dimensions: number;
   normalized: boolean;
   apiKey?: string;
   fetchImpl?: typeof fetch;
+  modelsDirectory?: string;
 }
 
 export interface SemanticIndexEnablementOptions {
@@ -71,7 +90,8 @@ export interface SemanticIndexEnablementOptions {
   providerType: string;
   baseUrl: string;
   embeddingModelConfigured: boolean;
-  backend?: EmbeddingBackend;
+  backend?: EmbeddingBackend | 'auto';
+  source?: EmbeddingSource;
 }
 
 export type EmbeddingProbeResult =
@@ -110,27 +130,37 @@ export interface IndexRuntimeMetadata {
 export function shouldEnableSemanticIndex(
   options: SemanticIndexEnablementOptions,
 ): boolean {
-  if (!options.requested || options.providerType !== 'openai-compatible') {
-    return false;
-  }
-  return options.backend !== 'disabled';
+  return (
+    resolveEmbeddingSource({
+      schemaVersion: 1,
+      requestedEnabled: options.requested,
+      source: options.source,
+      backend: options.backend,
+      baseUrl: options.baseUrl,
+      embeddingModelConfigured: options.embeddingModelConfigured,
+    }).status === 'enabled'
+  );
 }
 
 export function resolveDefaultEmbeddingPreset(options: {
   baseUrl: string;
   backend?: EmbeddingBackend | 'auto';
+  source?: EmbeddingSource;
+  embeddingModelConfigured?: boolean;
 }): EmbeddingPreset {
-  if (options.backend === 'ollama') {
+  const resolution = resolveEmbeddingSource({
+    schemaVersion: 1,
+    requestedEnabled: true,
+    source: options.source,
+    backend: options.backend,
+    baseUrl: options.baseUrl,
+    embeddingModelConfigured: options.embeddingModelConfigured === true,
+  });
+  if (resolution.status === 'disabled' || resolution.source === 'bundled') {
+    return EMBEDDING_PRESETS['bundled-minilm-l6-v2'];
+  }
+  if (resolution.source === 'ollama') {
     return EMBEDDING_PRESETS['ollama-nomic-embed-text'];
-  }
-  if (options.backend === 'openai-compatible') {
-    return EMBEDDING_PRESETS['openai-text-embedding-3-small'];
-  }
-  if (isOllamaBaseUrl(options.baseUrl)) {
-    return EMBEDDING_PRESETS['ollama-nomic-embed-text'];
-  }
-  if (isLocalBaseUrl(options.baseUrl)) {
-    return EMBEDDING_PRESETS['openai-text-embedding-3-small'];
   }
   return EMBEDDING_PRESETS['openai-text-embedding-3-small'];
 }
@@ -150,7 +180,7 @@ export function alignSemanticSettingsWithPersistedProfile(
   settings: SemanticIndexSettings,
   profile: EmbeddingProfile,
 ): SemanticIndexSettings | undefined {
-  const backend = settings.backend ?? 'openai-compatible';
+  const backend = settings.backend ?? settings.source ?? 'openai-compatible';
   if (
     backend !== profile.providerId ||
     settings.model !== profile.modelId ||
@@ -169,10 +199,15 @@ export function alignSemanticSettingsWithPersistedProfile(
 
 export function createHostEmbeddingProvider(
   settings: SemanticIndexSettings,
-): OpenAiCompatibleEmbeddingProvider {
-  const backend = settings.backend ?? 'openai-compatible';
+): EmbeddingProvider {
+  const backend = settings.backend ?? settings.source ?? 'openai-compatible';
   if (!settings.enabled || backend === 'disabled') {
     throw new Error('Semantic index is disabled.');
+  }
+  if (backend === 'bundled') {
+    throw new Error(
+      'Bundled MiniLM embeddings require resolveHostEmbeddingProvider().',
+    );
   }
   return new OpenAiCompatibleEmbeddingProvider({
     ...settings,
@@ -180,22 +215,45 @@ export function createHostEmbeddingProvider(
   });
 }
 
+export async function resolveHostEmbeddingProvider(
+  settings: SemanticIndexSettings,
+  options?: ResolveBundledEmbeddingProviderOptions,
+): Promise<EmbeddingProvider> {
+  const backend = settings.backend ?? settings.source ?? 'openai-compatible';
+  if (!settings.enabled || backend === 'disabled') {
+    throw new Error('Semantic index is disabled.');
+  }
+  if (backend === 'bundled') {
+    return createBundledMiniLmEmbeddingProvider({
+      ...options,
+      modelsDirectory:
+        options?.modelsDirectory ??
+        settings.modelsDirectory ??
+        defaultBundledModelsDirectory(),
+    });
+  }
+  return createHostEmbeddingProvider(settings);
+}
+
 export async function probeEmbeddingProvider(
   settings: SemanticIndexSettings,
   context?: { abortSignal?: AbortSignal },
 ): Promise<EmbeddingProbeResult> {
   try {
-    const backend = settings.backend ?? 'openai-compatible';
-    const provider = new OpenAiCompatibleEmbeddingProvider(
-      {
-        ...settings,
-        enabled: true,
-        backend,
-      },
-      {
-        acceptDiscoveredDimensions: backend === 'ollama',
-      },
-    );
+    const backend = settings.backend ?? settings.source ?? 'openai-compatible';
+    const provider =
+      backend === 'bundled'
+        ? await resolveHostEmbeddingProvider(settings)
+        : new OpenAiCompatibleEmbeddingProvider(
+            {
+              ...settings,
+              enabled: true,
+              backend,
+            },
+            {
+              acceptDiscoveredDimensions: backend === 'ollama',
+            },
+          );
     const [vector] = await provider.embed(['mitii embedding probe'], {
       abortSignal: context?.abortSignal,
     });
@@ -222,8 +280,13 @@ function formatEmbeddingProbeFailure(
   error: unknown,
 ): string {
   const message = error instanceof Error ? error.message : String(error);
-  if ((settings.backend ?? 'openai-compatible') === 'ollama') {
+  if ((settings.backend ?? settings.source ?? 'openai-compatible') === 'ollama') {
     return `${message}. Ensure Ollama is running and run "ollama pull ${settings.model}".`;
+  }
+  if ((settings.backend ?? settings.source) === 'bundled') {
+    return `${message}. Bundled MiniLM downloads once into ${
+      settings.modelsDirectory ?? defaultBundledModelsDirectory()
+    }.`;
   }
   return message;
 }
@@ -240,7 +303,7 @@ export class OpenAiCompatibleEmbeddingProvider implements EmbeddingProvider {
     } = {},
   ) {
     this.fetchImpl = settings.fetchImpl ?? fetch;
-    const backend = settings.backend ?? 'openai-compatible';
+    const backend = settings.backend ?? settings.source ?? 'openai-compatible';
     this.profile = {
       id: [
         backend,
@@ -265,7 +328,8 @@ export class OpenAiCompatibleEmbeddingProvider implements EmbeddingProvider {
       input: texts,
     };
     if (
-      (this.settings.backend ?? 'openai-compatible') !== 'ollama' &&
+      (this.settings.backend ?? this.settings.source ?? 'openai-compatible') !==
+        'ollama' &&
       this.settings.dimensions > 0
     ) {
       body.dimensions = this.settings.dimensions;
@@ -290,7 +354,7 @@ export class OpenAiCompatibleEmbeddingProvider implements EmbeddingProvider {
   private embeddingsUrl(): string {
     return `${normalizeEmbeddingRequestBaseUrl(
       this.settings.baseUrl,
-      this.settings.backend ?? 'openai-compatible',
+      this.settings.backend ?? this.settings.source ?? 'openai-compatible',
     )}/embeddings`;
   }
 

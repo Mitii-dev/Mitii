@@ -45,10 +45,34 @@ describe('semantic index enablement', () => {
     ).toBe(true);
   });
 
-  it('chooses nomic-embed-text for Ollama auto embedding presets', () => {
+  it('enables bundled MiniLM even when the chat provider is not OpenAI-compatible', () => {
+    expect(
+      shouldEnableSemanticIndex({
+        requested: true,
+        providerType: 'anthropic',
+        baseUrl: 'https://api.anthropic.com',
+        embeddingModelConfigured: false,
+        source: 'bundled',
+      }),
+    ).toBe(true);
+  });
+
+  it('chooses bundled MiniLM for Ollama auto embedding presets without an explicit model', () => {
     const preset = resolveDefaultEmbeddingPreset({
       baseUrl: 'http://localhost:11434/v1',
       backend: 'auto',
+    });
+
+    expect(preset.backend).toBe('bundled');
+    expect(preset.model).toBe('all-MiniLM-L6-v2');
+    expect(preset.dimensions).toBe(384);
+  });
+
+  it('keeps nomic-embed-text when auto sees an explicit Ollama embedding model', () => {
+    const preset = resolveDefaultEmbeddingPreset({
+      baseUrl: 'http://localhost:11434/v1',
+      backend: 'auto',
+      embeddingModelConfigured: true,
     });
 
     expect(preset.backend).toBe('ollama');
@@ -62,8 +86,8 @@ describe('semantic index enablement', () => {
       backend: 'auto',
     });
 
-    expect(preset.backend).toBe('openai-compatible');
-    expect(preset.model).toBe('text-embedding-3-small');
+    expect(preset.backend).toBe('bundled');
+    expect(preset.model).toBe('all-MiniLM-L6-v2');
   });
 
   it('isolates embedding profiles by backend, model, dimensions, and normalization', () => {
@@ -97,6 +121,16 @@ describe('semantic index enablement', () => {
     expect(cloud.profile.id).toBe(
       'openai-compatible:text-embedding-3-small:1536:normalized',
     );
+    expect(() =>
+      createHostEmbeddingProvider({
+        enabled: true,
+        backend: 'bundled',
+        baseUrl: '',
+        model: 'all-MiniLM-L6-v2',
+        dimensions: 384,
+        normalized: true,
+      }),
+    ).toThrow(/resolveHostEmbeddingProvider/);
   });
 
   it('omits dimensions for Ollama embedding requests', async () => {

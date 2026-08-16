@@ -30,6 +30,7 @@ export type {
 export {
   OpenAiCompatibleEmbeddingProvider,
   createHostEmbeddingProvider,
+  resolveHostEmbeddingProvider,
   createLanceDbConnection,
   probeEmbeddingProvider,
   writeIndexRuntimeMetadata,
@@ -47,6 +48,7 @@ export {
 } from './indexing/semanticIndex.js';
 export type {
   EmbeddingBackend,
+  EmbeddingSource,
   EmbeddingPreset,
   EmbeddingPresetId,
   EmbeddingProbeResult,
@@ -54,6 +56,25 @@ export type {
   SemanticIndexEnablementOptions,
   IndexRuntimeMetadata,
 } from './indexing/semanticIndex.js';
+export {
+  BUNDLED_MINILM_CATALOG,
+  BUNDLED_MINILM_DIMENSIONS,
+  BUNDLED_MINILM_ID,
+  BUNDLED_MINILM_MODEL_ID,
+  BUNDLED_MINILM_PRESET,
+  DEFAULT_EMBEDDING_SOURCE,
+  ONNX_NATIVE_TARGETS,
+  createBundledMiniLmEmbeddingProvider,
+  defaultBundledModelsDirectory,
+  resolveEmbeddingSource,
+  EmbeddingSourceResolutionInputSchema,
+  EmbeddingSourceResolutionSchema,
+  EmbeddingSourceSchema,
+} from './indexing/bundled-embedding/index.js';
+export type {
+  EmbeddingSourceResolution,
+  EmbeddingSourceResolutionInput,
+} from './indexing/bundled-embedding/index.js';
 
 export {
   runFullWorkspaceIndex,

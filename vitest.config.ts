@@ -7,6 +7,7 @@ export default defineConfig({
       // Consumer suites exercise public entry points without requiring a prior dist build.
       '@mitii/v8': resolve(__dirname, 'packages/v8/src/index.ts'),
       '@mitii/sdk': resolve(__dirname, 'packages/sdk/src/index.ts'),
+      '@mitii/host': resolve(__dirname, 'packages/host/src/index.ts'),
     },
   },
   test: {

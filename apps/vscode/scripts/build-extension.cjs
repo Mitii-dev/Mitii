@@ -16,6 +16,9 @@ const {
 const {
   stageTreeSitterWasm,
 } = require(resolve(__dirname, '../../../scripts/stage-tree-sitter-wasm.cjs'));
+const {
+  stageOnnxRuntime,
+} = require(resolve(__dirname, '../../../scripts/stage-onnxruntime.cjs'));
 
 const root = join(__dirname, '..');
 const distDir = join(root, 'dist');
@@ -107,6 +110,7 @@ build({
     }
     stageNativeSqliteBinding();
     stageTreeSitterWasm(join(distDir, 'tree-sitter'));
+    stageOnnxRuntime(join(distDir, 'native', 'onnxruntime', 'node_modules'));
     stageBundledSkills();
     console.log(`built ${outfile}`);
   })
