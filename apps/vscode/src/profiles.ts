@@ -79,6 +79,21 @@ function normalizeProfile(
   const name = String(obj.name ?? '').trim();
   const id = String(obj.id ?? slugifyProfileId(name)).trim();
   if (!id || !name) return undefined;
+  const readNonNegativeNumber = (
+    value: unknown,
+    fallbackValue: unknown,
+    fallbackDefault: number,
+  ): number => {
+    const raw = Number(value);
+    if (Number.isFinite(raw) && raw >= 0) {
+      return Math.floor(raw);
+    }
+    const fallbackRaw = Number(fallbackValue);
+    if (Number.isFinite(fallbackRaw) && fallbackRaw >= 0) {
+      return Math.floor(fallbackRaw);
+    }
+    return fallbackDefault;
+  };
   return {
     id,
     name,
@@ -88,18 +103,16 @@ function normalizeProfile(
         typeof provider.preset === 'string' ? provider.preset : fallback.preset,
       baseUrl: String(provider.baseUrl ?? fallback.baseUrl),
       model: String(provider.model ?? fallback.model),
-      contextWindow:
-        Number(provider.contextWindow) || fallback.contextWindow || 32768,
-      maximumOutputTokens: (() => {
-        const raw = Number(provider.maximumOutputTokens);
-        if (Number.isFinite(raw) && raw >= 0) {
-          return raw;
-        }
-        const fallbackRaw = Number(fallback.maximumOutputTokens);
-        return Number.isFinite(fallbackRaw) && fallbackRaw >= 0
-          ? fallbackRaw
-          : 0;
-      })(),
+      contextWindow: readNonNegativeNumber(
+        provider.contextWindow,
+        fallback.contextWindow,
+        32768,
+      ),
+      maximumOutputTokens: readNonNegativeNumber(
+        provider.maximumOutputTokens,
+        fallback.maximumOutputTokens,
+        0,
+      ),
     },
     hasSecret: Boolean(obj.hasSecret),
     secretHash: typeof obj.secretHash === 'string' ? obj.secretHash : undefined,

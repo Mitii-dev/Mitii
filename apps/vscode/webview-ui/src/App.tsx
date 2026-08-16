@@ -443,11 +443,10 @@ export function App() {
       | ProviderSettingsSnapshot
       | ((prev: ProviderSettingsSnapshot) => ProviderSettingsSnapshot),
   ) => {
-    setProvider((prev) => {
-      const resolved = typeof next === 'function' ? next(prev) : next;
-      providerRef.current = resolved;
-      return resolved;
-    });
+    const resolved =
+      typeof next === 'function' ? next(providerRef.current) : next;
+    providerRef.current = resolved;
+    setProvider(resolved);
   };
 
   const applyTokenUsage = useCallback(

@@ -460,7 +460,7 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
       return {
         id,
         at,
-        kind: event.newErrorCount > 0 ? 'warn' : 'info',
+        kind: event.newErrorCount > 0 ? 'warning' : 'info',
         title: 'Verification comparison',
         detail: `new ${event.newErrorCount} · remaining ${event.remainingErrorCount} · cleared ${event.clearedErrorCount}`,
       };

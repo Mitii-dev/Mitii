@@ -200,21 +200,27 @@ function NumberField({
     }
   }, [value]);
 
-  const commit = (nextDraft: string) => {
+  const parseDraft = (nextDraft: string): number | undefined => {
     if (!nextDraft.trim()) {
-      setDraft(String(value));
-      return;
+      return undefined;
     }
     const parsed = Number(nextDraft);
     if (!Number.isFinite(parsed)) {
-      setDraft(String(value));
-      return;
+      return undefined;
     }
     const rounded = integer ? Math.floor(parsed) : parsed;
-    const bounded = Math.max(
+    return Math.max(
       min ?? Number.NEGATIVE_INFINITY,
       Math.min(max ?? Number.POSITIVE_INFINITY, rounded),
     );
+  };
+
+  const commit = (nextDraft: string) => {
+    const bounded = parseDraft(nextDraft);
+    if (bounded === undefined) {
+      setDraft(String(value));
+      return;
+    }
     setDraft(String(bounded));
     if (bounded !== value) onCommit(bounded);
   };
@@ -234,8 +240,13 @@ function NumberField({
           focusedRef.current = true;
         }}
         onChange={(e) => {
-          draftRef.current = e.target.value;
-          setDraft(e.target.value);
+          const nextDraft = e.target.value;
+          draftRef.current = nextDraft;
+          setDraft(nextDraft);
+          const bounded = parseDraft(nextDraft);
+          if (bounded !== undefined && bounded !== value) {
+            onCommit(bounded);
+          }
         }}
         onBlur={() => {
           focusedRef.current = false;
