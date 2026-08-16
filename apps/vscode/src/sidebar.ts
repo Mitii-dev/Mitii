@@ -59,6 +59,10 @@ import { scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
 import { findLocalModelPreset, LOCAL_MODEL_PRESETS } from './modelPresets.js';
+import {
+  normalizeTokenLimit,
+  readStoredContextWindow,
+} from './settingsFields.js';
 import { searchWorkspacePaths } from './pathSearch.js';
 import {
   hashSecret,
@@ -2033,58 +2037,44 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     await this.sendBootstrap();
   }
 
+  private configurationTarget(): vscode.ConfigurationTarget {
+    return this.vs.workspace.workspaceFolders?.length
+      ? this.vs.ConfigurationTarget.Workspace
+      : this.vs.ConfigurationTarget.Global;
+  }
+
+  private async writeConfigValue(key: string, value: unknown): Promise<void> {
+    const cfg = this.vs.workspace.getConfiguration('mitii');
+    await cfg.update(key, value, this.configurationTarget());
+  }
+
   private async writeProviderSettings(
     provider: NonNullable<
       Extract<WebviewToHostMessage, { type: 'settings.set' }>['provider']
     >,
   ): Promise<void> {
-    const cfg = this.vs.workspace.getConfiguration('mitii');
     if (provider.type !== undefined) {
-      await cfg.update(
-        'provider.type',
-        provider.type,
-        this.vs.ConfigurationTarget.Workspace,
-      );
+      await this.writeConfigValue('provider.type', provider.type);
     }
     if (provider.preset !== undefined) {
-      await cfg.update(
-        'provider.preset',
-        provider.preset,
-        this.vs.ConfigurationTarget.Workspace,
-      );
+      await this.writeConfigValue('provider.preset', provider.preset);
     }
     if (provider.baseUrl !== undefined) {
-      await cfg.update(
-        'provider.baseUrl',
-        provider.baseUrl,
-        this.vs.ConfigurationTarget.Workspace,
-      );
+      await this.writeConfigValue('provider.baseUrl', provider.baseUrl);
     }
     if (provider.model !== undefined) {
-      await cfg.update(
-        'provider.model',
-        provider.model,
-        this.vs.ConfigurationTarget.Workspace,
-      );
+      await this.writeConfigValue('provider.model', provider.model);
     }
     if (provider.contextWindow !== undefined) {
-      const raw = Number(provider.contextWindow);
-      const window =
-        Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 0;
-      await cfg.update(
+      await this.writeConfigValue(
         'provider.contextWindow',
-        window,
-        this.vs.ConfigurationTarget.Workspace,
+        normalizeTokenLimit(provider.contextWindow),
       );
     }
     if (provider.maximumOutputTokens !== undefined) {
-      const raw = Number(provider.maximumOutputTokens);
-      const maxOut =
-        Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 0;
-      await cfg.update(
+      await this.writeConfigValue(
         'provider.maximumOutputTokens',
-        maxOut,
-        this.vs.ConfigurationTarget.Workspace,
+        normalizeTokenLimit(provider.maximumOutputTokens),
       );
     }
     this.connectionOk = undefined;
@@ -2245,14 +2235,11 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           (await this.secrets.get('mitii.provider.apiKey')) ?? undefined,
       }),
     );
-    const contextWindow = resolveContextWindow(this.vs);
+    const contextWindow = readStoredContextWindow(
+      cfg.get<number>('provider.contextWindow'),
+    );
     const fromMaxOut = cfg.get<number>('provider.maximumOutputTokens');
-    const maximumOutputTokens =
-      typeof fromMaxOut === 'number' &&
-      Number.isFinite(fromMaxOut) &&
-      fromMaxOut >= 0
-        ? Math.floor(fromMaxOut)
-        : 0;
+    const maximumOutputTokens = normalizeTokenLimit(fromMaxOut);
     return {
       type,
       preset,
@@ -2261,6 +2248,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       hasApiKey,
       availableModels: this.buildAvailableModels(model, type, preset),
       contextWindow,
+      effectiveContextWindow: resolveContextWindow(this.vs),
       maximumOutputTokens,
       connectionOk: this.connectionOk,
       connectionStatus: this.connectionStatus,

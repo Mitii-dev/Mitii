@@ -203,8 +203,7 @@ input:focus-visible {
   overflow: hidden;
 }
 
-.chat-view,
-.settings-view {
+.chat-view {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -1606,169 +1605,231 @@ select.depth-select {
 }
 
 .settings-view {
+  position: relative;
   flex: 1;
   min-height: 0;
+  min-width: 0;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   overflow: hidden;
   padding: 0;
   gap: 0;
-  background: var(--vscode-sideBar-background, transparent);
+  font-family: var(--vscode-font-family, var(--mitii-font-ui));
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-foreground, var(--mitii-text));
+  background: var(--vscode-sideBar-background, var(--mitii-surface));
 }
 
-.settings-toolbar {
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 148px;
+  width: 148px;
+  min-width: 0;
+  padding: 8px 0;
+  border-right: 1px solid var(--vscode-panel-border, var(--mitii-border));
+  background: var(--vscode-sideBar-background, var(--mitii-surface));
+  overflow: visible;
+  z-index: 2;
+}
+
+.settings-nav__item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  padding: 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--mitii-border) 70%, transparent);
-  background: color-mix(
-    in srgb,
-    var(--vscode-sideBar-background, var(--mitii-surface)) 92%,
-    transparent
-  );
-  backdrop-filter: blur(8px);
-}
-
-.settings-tabs {
-  display: flex;
-  gap: 2px;
-  min-width: 0;
-  overflow-x: auto;
-  flex: 1 1 auto;
-  scrollbar-width: thin;
-}
-
-.settings-tab {
+  width: 100%;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 12px;
   border: 0;
-  border-bottom: 2px solid transparent;
+  border-radius: 0;
   background: transparent;
-  color: var(--mitii-muted);
-  border-radius: 6px 6px 0 0;
-  padding: 8px 12px;
+  color: var(--vscode-sideBar-foreground, var(--vscode-foreground, var(--mitii-text)));
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.3;
+  text-align: left;
   white-space: nowrap;
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition:
-    background 160ms ease,
-    color 160ms ease,
-    border-color 160ms ease;
 }
 
-.settings-tab__icon,
-.settings-section__icon {
+.settings-nav__item:hover {
+  background: var(--vscode-list-hoverBackground, transparent);
+}
+
+.settings-nav__item.is-active {
+  background: var(--vscode-list-activeSelectionBackground, var(--mitii-accent-soft));
+  color: var(--vscode-list-activeSelectionForeground, var(--mitii-text));
+}
+
+.settings-nav__icon {
   display: inline-flex;
+  flex: 0 0 16px;
   align-items: center;
   justify-content: center;
-  color: var(--mitii-muted);
+  width: 16px;
+  height: 16px;
+  color: inherit;
 }
 
-.settings-tab.active .settings-tab__icon,
-.settings-section__icon {
-  color: var(--mitii-accent);
+.settings-nav__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.settings-tab:hover {
-  color: var(--mitii-text);
-  background: color-mix(in srgb, var(--mitii-text) 4%, transparent);
+.settings-view.is-compact .settings-nav {
+  flex-basis: 40px;
+  width: 40px;
+  padding: 6px 0;
 }
 
-.settings-tab.active {
-  color: var(--mitii-text);
-  border-bottom-color: var(--mitii-accent);
-  background: color-mix(in srgb, var(--mitii-accent) 8%, transparent);
+.settings-view.is-compact .settings-nav__item {
+  justify-content: center;
+  padding: 0;
 }
 
-@media (max-width: 360px) {
-  .settings-toolbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
+.settings-view.is-compact .settings-nav__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
+.settings-nav-tooltip {
+  position: absolute;
+  left: 46px;
+  z-index: 40;
+  transform: translateY(-50%);
+  padding: 3px 8px;
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-widget-border, var(--mitii-border)));
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, var(--mitii-panel)));
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground, var(--mitii-text)));
+  font-family: var(--vscode-font-family, var(--mitii-font-ui));
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.settings-main {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--vscode-sideBar-background, var(--mitii-surface));
 }
 
 .settings-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 10px 10px 74px;
+  padding: 12px 14px 16px;
+}
+
+.settings-page-header {
+  margin: 0 0 16px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--vscode-panel-border, var(--mitii-border));
+}
+
+.settings-page-header__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--vscode-foreground, var(--mitii-text));
+}
+
+.settings-page-header__desc {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--vscode-descriptionForeground, var(--mitii-muted));
 }
 
 .settings-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 20px;
 }
 
 .settings-section {
-  border: 1px solid color-mix(in srgb, var(--mitii-border) 80%, transparent);
-  border-radius: 8px;
-  background: color-mix(
-    in srgb,
-    var(--mitii-panel-raised, var(--mitii-panel)) 86%,
-    transparent
-  );
-  overflow: hidden;
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--mitii-text) 4%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 0;
+  background: transparent;
 }
 
 .settings-section__header {
-  padding: 10px 12px 8px;
-  border-bottom: 1px solid color-mix(in srgb, var(--mitii-border) 55%, transparent);
-  background: color-mix(in srgb, var(--mitii-accent) 4%, transparent);
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .settings-section__title {
   margin: 0;
-  font-size: 13px;
-  font-weight: 650;
-  letter-spacing: 0.01em;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--vscode-foreground, var(--mitii-text));
 }
 
 .settings-section__desc {
-  margin: 5px 0 0;
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--mitii-muted);
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--vscode-descriptionForeground, var(--mitii-muted));
 }
 
 .settings-section__body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 10px 12px 12px;
+  padding: 0;
 }
 
 .settings-path {
-  padding: 8px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--mitii-border);
+  padding: 6px 8px;
+  border-radius: 2px;
+  border: 1px solid var(--vscode-input-border, var(--mitii-border));
   background: var(--vscode-input-background, var(--mitii-panel));
+  color: var(--vscode-input-foreground, var(--mitii-text));
   word-break: break-all;
   line-height: 1.4;
 }
 
+.settings-follow-input {
+  margin-top: 8px;
+  border: 1px solid var(--vscode-input-border, var(--mitii-border));
+  background: var(--vscode-input-background, var(--mitii-panel));
+  color: var(--vscode-input-foreground, var(--mitii-text));
+  border-radius: 2px;
+  min-height: 26px;
+  padding: 4px 8px;
+}
+
 .settings-advanced {
-  border-top: 1px solid var(--mitii-border-soft);
+  border-top: 1px solid var(--vscode-panel-border, var(--mitii-border));
   padding-top: 10px;
 }
 
 .settings-advanced summary {
   cursor: pointer;
-  color: var(--mitii-muted);
-  font-size: 11px;
-  font-weight: 650;
+  color: var(--vscode-descriptionForeground, var(--mitii-muted));
+  font-size: 12px;
+  font-weight: 400;
 }
 
 .settings-advanced[open] {
@@ -1783,7 +1844,7 @@ select.depth-select {
   gap: 8px;
 }
 
-@media (max-width: 360px) {
+@container settings (max-width: 360px) {
   .settings-field-grid {
     grid-template-columns: 1fr;
   }
@@ -1792,56 +1853,98 @@ select.depth-select {
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .field label {
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 400;
   letter-spacing: 0;
-  text-transform: uppercase;
-  color: var(--mitii-muted);
+  text-transform: none;
+  color: var(--vscode-foreground, var(--mitii-text));
 }
 
 .field input,
 .field select,
 .field textarea {
-  border: 1px solid var(--mitii-border);
+  border: 1px solid var(--vscode-input-border, var(--mitii-border));
   background: var(--vscode-input-background, var(--mitii-panel));
   color: var(--vscode-input-foreground, var(--mitii-text));
-  border-radius: 8px;
-  min-height: 28px;
-  padding: 5px 8px;
+  border-radius: 2px;
+  min-height: 26px;
+  padding: 4px 8px;
   outline: none;
 }
 
 .settings-view .btn {
-  min-height: 28px;
-  padding: 5px 10px;
+  min-height: 26px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.settings-view .btn:hover {
+  background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
+}
+
+.settings-view .btn.ghost {
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  border-color: var(--vscode-button-border, var(--vscode-panel-border, transparent));
+}
+
+.settings-view .btn.ghost:hover {
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground, transparent));
 }
 
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
-  border-color: color-mix(in srgb, var(--mitii-accent) 55%, var(--mitii-border));
+  border-color: var(--vscode-focusBorder, var(--mitii-accent));
+  outline: 1px solid var(--vscode-focusBorder, var(--mitii-accent));
+  outline-offset: -1px;
 }
 
-.stat-grid {
+.settings-kv {
+  margin: 0;
+  border: 1px solid var(--vscode-panel-border, var(--mitii-border));
+}
+
+.settings-kv__row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(88px, 38%) 1fr;
   gap: 8px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--vscode-panel-border, var(--mitii-border));
 }
 
-.stat {
-  border: 1px solid var(--mitii-border);
-  border-radius: 8px;
-  padding: 8px;
-  background: color-mix(in srgb, var(--mitii-panel) 80%, transparent);
+.settings-kv__row:first-child {
+  border-top: 0;
+}
+
+.settings-kv dt {
+  margin: 0;
+  color: var(--vscode-descriptionForeground, var(--mitii-muted));
+  font-size: 12px;
+}
+
+.settings-kv dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--vscode-foreground, var(--mitii-text));
+  word-break: break-word;
 }
 
 .mode-settings-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  gap: 0;
+  border: 1px solid var(--vscode-panel-border, var(--mitii-border));
 }
 
 .mode-settings-tab {
@@ -1850,52 +1953,49 @@ select.depth-select {
   justify-content: center;
   gap: 6px;
   min-width: 0;
-  min-height: 32px;
-  border: 1px solid var(--mitii-border-soft);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--mitii-panel) 80%, transparent);
-  color: var(--mitii-muted);
-  font-size: 11px;
-  font-weight: 650;
+  min-height: 28px;
+  border: 0;
+  border-right: 1px solid var(--vscode-panel-border, var(--mitii-border));
+  border-radius: 0;
+  background: transparent;
+  color: var(--vscode-foreground, var(--mitii-text));
+  font-size: 12px;
+  font-weight: 400;
 }
 
-.mode-settings-tab.active {
-  color: var(--mitii-text);
-  border-color: color-mix(in srgb, var(--mitii-accent) 42%, var(--mitii-border));
-  background: color-mix(in srgb, var(--mitii-accent) 9%, transparent);
+.mode-settings-tab:last-child {
+  border-right: 0;
 }
 
-.mode-settings-tab span:first-child {
+.mode-settings-tab.is-active {
+  background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground, transparent));
+  color: var(--vscode-foreground, var(--mitii-text));
+}
+
+.mode-settings-tab__icon {
   display: inline-flex;
-  color: var(--mitii-accent);
+  color: inherit;
 }
 
 .mode-settings-summary {
-  border: 1px solid var(--mitii-border-soft);
-  border-radius: 8px;
-  padding: 8px 10px;
-  color: var(--mitii-muted);
-  background: color-mix(in srgb, var(--mitii-text) 2%, transparent);
-  font-size: 11.5px;
-  line-height: 1.45;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--vscode-descriptionForeground, var(--mitii-muted));
+  background: transparent;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .settings-footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 4;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   padding: 8px 10px;
-  border-top: 1px solid color-mix(in srgb, var(--mitii-border) 70%, transparent);
-  background: color-mix(
-    in srgb,
-    var(--vscode-sideBar-background, var(--mitii-surface)) 94%,
-    transparent
-  );
-  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--vscode-panel-border, var(--mitii-border));
+  background: var(--vscode-sideBar-background, var(--mitii-surface));
 }
 
 .settings-footer__profiles {
@@ -1908,22 +2008,22 @@ select.depth-select {
 
 .settings-footer__profiles select {
   min-width: 0;
-  flex: 1 1 130px;
-  height: 28px;
-  border: 1px solid var(--mitii-border);
-  border-radius: 8px;
+  flex: 1 1 120px;
+  height: 26px;
+  border: 1px solid var(--vscode-input-border, var(--mitii-border));
+  border-radius: 2px;
   background: var(--vscode-input-background, var(--mitii-panel));
   color: var(--vscode-input-foreground, var(--mitii-text));
-  padding: 0 8px;
+  padding: 0 6px;
 }
 
 .settings-save-btn {
   flex: 0 0 auto;
-  min-height: 30px;
+  min-height: 26px;
   padding-inline: 12px;
 }
 
-@media (max-width: 360px) {
+@container settings (max-width: 360px) {
   .settings-footer {
     align-items: stretch;
     flex-direction: column;
@@ -1946,21 +2046,22 @@ select.depth-select {
   align-items: center;
   justify-content: center;
   padding: 18px;
-  background: color-mix(in srgb, black 36%, transparent);
+  background: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
 }
 
 .settings-modal {
   width: min(280px, 100%);
-  border: 1px solid var(--mitii-border);
-  border-radius: 8px;
+  border: 1px solid var(--vscode-widget-border, var(--mitii-border));
+  border-radius: 2px;
   background: var(--vscode-quickInput-background, var(--mitii-panel));
-  box-shadow: var(--mitii-shadow-soft);
+  color: var(--vscode-quickInput-foreground, var(--mitii-text));
   padding: 12px;
 }
 
 .settings-modal h3 {
   margin: 0 0 10px;
   font-size: 13px;
+  font-weight: 600;
 }
 
 .settings-modal__actions {
@@ -1968,35 +2069,25 @@ select.depth-select {
   margin-top: 10px;
 }
 
-.stat-value {
-  font-size: 22px;
-  line-height: 1.1;
-}
-
-.stat-label {
-  margin-top: 4px;
-  font-size: 10px;
-  letter-spacing: 0;
-  text-transform: uppercase;
-  color: var(--mitii-muted);
-}
-
 .index-capability-list {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--vscode-panel-border, var(--mitii-border));
 }
 
 .index-capability {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
   padding: 6px 8px;
-  border: 1px solid var(--mitii-border-soft);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--mitii-panel) 84%, transparent);
+  border-top: 1px solid var(--vscode-panel-border, var(--mitii-border));
+  background: transparent;
+}
+
+.index-capability:first-child {
+  border-top: 0;
 }
 
 .index-capability__name,
@@ -2008,37 +2099,30 @@ select.depth-select {
 }
 
 .index-capability__name {
-  color: var(--mitii-text);
+  color: var(--vscode-foreground, var(--mitii-text));
+  font-size: 12px;
 }
 
 .index-capability__status {
   flex: 0 0 auto;
-  font-size: 10px;
-  letter-spacing: 0;
-  text-transform: uppercase;
-  color: var(--mitii-muted);
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, var(--mitii-muted));
 }
 
 .index-capability--ready .index-capability__status {
-  color: var(--mitii-ok);
+  color: var(--vscode-testing-iconPassed, var(--mitii-ok));
 }
 
 .index-capability--degraded .index-capability__status {
-  color: var(--mitii-warn);
+  color: var(--vscode-editorWarning-foreground, var(--mitii-warn));
 }
 
 .index-capability--optional .index-capability__status {
-  color: var(--mitii-muted);
+  color: var(--vscode-descriptionForeground, var(--mitii-muted));
 }
 
 .index-capability--unavailable .index-capability__status {
-  color: var(--mitii-danger);
-}
-
-@media (max-width: 360px) {
-  .index-capability-list {
-    grid-template-columns: 1fr;
-  }
+  color: var(--vscode-errorForeground, var(--mitii-danger));
 }
 
 .row {
@@ -2148,16 +2232,48 @@ select.depth-select {
 
 .developer-options {
   display: grid;
-  gap: 8px;
-  margin-top: 10px;
-  padding: 10px;
-  border: 1px solid color-mix(in srgb, var(--mitii-border) 80%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--mitii-text) 2%, transparent);
+  gap: 10px;
 }
 
-.developer-options--locked {
+.developer-options.is-locked {
   opacity: 0.55;
+}
+
+.token-budget-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.token-budget-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-category__title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-foreground, var(--mitii-text));
+}
+
+.settings-view .side-panel {
+  gap: 10px;
+  border-top: 1px solid var(--vscode-panel-border, var(--mitii-border));
+  padding-top: 16px;
+}
+
+.settings-view .panel-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settings-view .memory-compose__input {
+  color: var(--vscode-input-foreground, var(--mitii-text));
+  background: var(--vscode-input-background, var(--mitii-panel));
+  border: 1px solid var(--vscode-input-border, var(--mitii-border));
+  border-radius: 2px;
 }
 
 .mono {
@@ -2174,17 +2290,37 @@ select.depth-select {
 
 .settings-status-pill {
   max-width: 100%;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.35;
-  color: var(--mitii-muted);
+  color: var(--vscode-descriptionForeground, var(--mitii-muted));
 }
 
 .settings-status-pill--ok {
-  color: var(--mitii-ok);
+  color: var(--vscode-testing-iconPassed, var(--mitii-ok));
 }
 
 .settings-status-pill--err {
-  color: var(--mitii-danger);
+  color: var(--vscode-errorForeground, var(--mitii-danger));
+}
+
+.settings-view .field-hint {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, var(--mitii-muted));
+}
+
+.settings-view .mono {
+  font-family: var(--vscode-editor-font-family, var(--mitii-font-mono));
+}
+
+.settings-view .mcp-server,
+.settings-view .mcp-server-row {
+  border: 1px solid var(--vscode-panel-border, var(--mitii-border));
+  border-radius: 2px;
+  background: transparent;
+}
+
+.settings-view .mcp-server-row__badge {
+  border-color: var(--vscode-panel-border, var(--mitii-border));
 }
 
 .model-custom-input {
@@ -3629,7 +3765,7 @@ select.depth-select {
   border-radius: 6px;
   padding: 8px 10px;
   background: color-mix(in srgb, var(--mitii-panel-raised) 76%, transparent);
-  color: var(--mitii-fg);
+  color: var(--mitii-text);
   font: inherit;
   font-size: 12px;
   line-height: 1.4;

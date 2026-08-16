@@ -99,6 +99,43 @@ export function IconIndex(props: IconProps) {
   );
 }
 
+export function IconFolder(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M2.5 4.5h4l1.2 1.4H13.5v6.6h-11z" />
+    </svg>
+  );
+}
+
+export function IconPlug(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M6 2.5v3M10 2.5v3" />
+      <path d="M4.5 5.5h7v3.2A3.5 3.5 0 0 1 8 12.2 3.5 3.5 0 0 1 4.5 8.7z" />
+      <path d="M8 12.2V14" />
+    </svg>
+  );
+}
+
+export function IconBug(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <circle cx="8" cy="8.5" r="3.2" />
+      <path d="M8 3.2v1.6M4.2 5.2 5.4 6.2M11.8 5.2 10.6 6.2M3.2 8.5h1.6M11.2 8.5h1.6M4.2 12 5.4 11M11.8 12 10.6 11" />
+    </svg>
+  );
+}
+
+export function IconLayers(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M8 2.8 13.2 5.6 8 8.4 2.8 5.6 8 2.8z" />
+      <path d="M3.2 8.2 8 10.8l4.8-2.6" />
+      <path d="M3.2 11 8 13.6l4.8-2.6" />
+    </svg>
+  );
+}
+
 export function IconCopy(props: IconProps) {
   return (
     <svg {...defaults} {...props}>

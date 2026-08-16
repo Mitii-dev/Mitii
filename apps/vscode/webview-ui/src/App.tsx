@@ -359,7 +359,7 @@ function mergeModelOptions(
 
 export function App() {
   const [nav, setNav] = useState<UiNav>('chat');
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>('workspace');
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('model');
   const [mode, setMode] = useState<AgentUiMode>('ask');
   const [depth, setDepth] = useState<AgentUiDepth>('auto');
   const [approvalMode, setApprovalMode] = useState<ApprovalUiMode>('guided');
@@ -380,7 +380,8 @@ export function App() {
     model: '',
     hasApiKey: false,
     availableModels: [],
-    contextWindow: 32768,
+    contextWindow: 0,
+    effectiveContextWindow: 32768,
     maximumOutputTokens: 0,
   });
   const [profiles, setProfiles] = useState<SettingsProfileView[]>([]);
@@ -437,6 +438,7 @@ export function App() {
   const providerRef = useRef<ProviderSettingsSnapshot>(provider);
   const listModelsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hydratedModeDefaults = useRef(false);
+  const readySentRef = useRef(false);
 
   const updateProvider = (
     next:
@@ -454,8 +456,9 @@ export function App() {
       setTokenUsage((prev) => {
         const shouldKeepLiveBreakdown =
           usage.contextBreakdown === undefined && usage.live && prev.live;
+        const current = providerRef.current;
         const providerContextWindow =
-          providerRef.current.contextWindow || provider.contextWindow;
+          current.effectiveContextWindow || current.contextWindow;
         return {
           ...usage,
           contextWindow:
@@ -469,7 +472,7 @@ export function App() {
         };
       });
     },
-    [provider.contextWindow],
+    [],
   );
 
   const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior) => {
@@ -504,10 +507,15 @@ export function App() {
       updateProvider({
         ...msg.provider,
         contextWindow: Number.isFinite(msg.provider.contextWindow)
-          ? msg.provider.contextWindow
-          : 32768,
+          ? Math.max(0, Math.floor(msg.provider.contextWindow))
+          : 0,
+        effectiveContextWindow: Number.isFinite(
+          msg.provider.effectiveContextWindow,
+        )
+          ? Math.max(1, Math.floor(msg.provider.effectiveContextWindow ?? 0))
+          : undefined,
         maximumOutputTokens: Number.isFinite(msg.provider.maximumOutputTokens)
-          ? msg.provider.maximumOutputTokens
+          ? Math.max(0, Math.floor(msg.provider.maximumOutputTokens))
           : 0,
       });
       setProfiles(msg.profiles ?? []);
@@ -660,7 +668,7 @@ export function App() {
           const id = activeAssistantId.current;
           if (!id) break;
           if (msg.event.kind === 'delta') break;
-          if (msg.event.kind === 'thinking' && !ui.showReasoning) break;
+          if (msg.event.kind === 'thinking' && !uiRef.current.showReasoning) break;
           // "Preparing tool" is a transient placeholder immediately superseded
           // by "Running <tool>" a moment later — drop it, it adds noise without signal.
           if (msg.event.kind === 'tool' && msg.event.title === 'Preparing tool') {
@@ -674,7 +682,7 @@ export function App() {
                     segments: appendActivitySegment(
                       t.segments,
                       msg.event,
-                      ui.reasoningPreviewMaxChars,
+                      uiRef.current.reasoningPreviewMaxChars,
                     ),
                   }
                 : t,
@@ -861,7 +869,11 @@ export function App() {
           setTokenUsage({
             ...EMPTY_TOKEN_USAGE,
             contextWindow:
-              providerRef.current.contextWindow || provider.contextWindow || 32768,
+              providerRef.current.effectiveContextWindow ||
+              providerRef.current.contextWindow ||
+              provider.effectiveContextWindow ||
+              provider.contextWindow ||
+              32768,
           });
           setTurns(msg.messages.map((m) => toChatTurn(m)));
           const loadedPlan = msg.pendingPlan ?? null;
@@ -921,16 +933,12 @@ export function App() {
           break;
       }
     });
-    postToHost({ type: 'ready' });
+    if (!readySentRef.current) {
+      readySentRef.current = true;
+      postToHost({ type: 'ready' });
+    }
     return off;
-  }, [
-    applyBootstrap,
-    applyTokenUsage,
-    markSuspensionResumed,
-    provider.contextWindow,
-    ui.reasoningPreviewMaxChars,
-    ui.showReasoning,
-  ]);
+  }, [applyBootstrap, applyTokenUsage, markSuspensionResumed]);
 
   useLayoutEffect(() => {
     const turnCountChanged = turns.length !== lastTurnCountRef.current;
@@ -1320,7 +1328,9 @@ export function App() {
     setTokenUsage((prev) => ({
       ...prev,
       contextWindow:
-        providerRef.current.contextWindow || prev.contextWindow,
+        providerRef.current.effectiveContextWindow ||
+        providerRef.current.contextWindow ||
+        prev.contextWindow,
     }));
   };
 

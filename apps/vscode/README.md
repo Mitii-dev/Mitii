@@ -54,7 +54,7 @@ For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code Secr
 | `mitii.mcp` | MCP server config (disabled by default) |
 | `mitii.ui.showReasoning` | Show streamed reasoning when available |
 
-All product settings use the `mitii.*` prefix.
+All product settings use the `mitii.*` prefix. Full field reference, save/reflect behavior, and UI map: [SETTINGS.md](./SETTINGS.md).
 
 ## Platform notes
 

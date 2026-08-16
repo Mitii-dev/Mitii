@@ -85,8 +85,10 @@ export interface ProviderSettingsSnapshot {
   hasApiKey: boolean;
   /** Discovered + preset model ids for the dropdown. */
   availableModels: string[];
-  /** Model context window in tokens (prompt budgeting + meter). */
+  /** Stored context window. 0 means use the model preset. */
   contextWindow: number;
+  /** Resolved window used at runtime when contextWindow is 0. */
+  effectiveContextWindow?: number;
   /** Max tokens the model may generate per call. */
   maximumOutputTokens: number;
   connectionOk?: boolean;
@@ -180,7 +182,7 @@ export interface UiSettingsSnapshot {
   contextToggles: ContextToggles;
   approvalMode: string;
   runBudget: RunBudgetSettingsSnapshot;
-  /** Master gate for Settings → Debug developer options. */
+  /** Master gate for Settings → Developer options. */
   developerEnabled: boolean;
   /** Maps to mitii.debug (verbose Output channel / stacks). */
   debugLogging: boolean;
