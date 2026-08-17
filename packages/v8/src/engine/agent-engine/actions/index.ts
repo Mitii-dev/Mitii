@@ -1,4 +1,5 @@
 export { assembleToolCalls } from "./assembleToolCalls";
+export { clampTurnMaximumOutputTokens } from "./clampTurnMaximumOutputTokens";
 export {
   amendMessageWithClarification,
   buildClarificationPayload,
@@ -10,12 +11,14 @@ export type {
 export { extractFileReadPaths } from "./extractFileReadPaths";
 export {
   extractEstablishedFact,
+  extractCompilerErrorQueue,
   upsertEstablishedFact,
   dropEstablishedFactsForPaths,
 } from "./extractEstablishedFact";
 export type { EstablishedFact } from "./extractEstablishedFact";
 export { isExplorationRereadHeavy } from "./isExplorationRereadHeavy";
 export { buildExplorationStallNudge } from "./buildExplorationStallNudge";
+export { buildPreflightDiagnosticRepairInstruction } from "./buildPreflightDiagnosticRepairInstruction";
 export { buildVerificationRepairPrompt } from "./buildVerificationRepairPrompt";
 export { decideVerificationGate } from "./decideVerificationGate";
 export type { VerificationGateDecision } from "./decideVerificationGate";
@@ -53,7 +56,28 @@ export {
   isPseudoToolRequestAnswer,
   isTransitionalAssistantAnswer,
   isUnfinishedInvestigationAnswer,
+  isDegenerateRepeatedAnswer,
   shouldRecoverIncompleteAssistantTurn,
   synthesizeFallbackAnswer,
   amendMessageWithPriorConversation,
 } from "./isIncompleteAssistantTurn";
+export {
+  resolveLoopTurnOutcome,
+  isUnfulfilledExecute,
+  requiresMutationForExecute,
+  buildUnfulfilledExecuteRecoveryMessage,
+} from "./resolveLoopTurnOutcome";
+export {
+  shouldContinueVerificationRepair,
+  maxVerificationRepairsForDepth,
+  nextStalledRepairCount,
+} from "./shouldContinueVerificationRepair";
+export type {
+  ShouldContinueVerificationRepairInput,
+  VerificationRepairStopReason,
+} from "./shouldContinueVerificationRepair";
+export type {
+  ResolveLoopTurnOutcome,
+  ResolveLoopTurnOutcomeInput,
+  LoopTurnDisposition,
+} from "./resolveLoopTurnOutcome";

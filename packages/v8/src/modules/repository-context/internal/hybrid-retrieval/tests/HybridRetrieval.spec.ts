@@ -11,6 +11,7 @@ import {
 
 import {
   RepoGraphRetrievalSource,
+  RepoMapRetrievalSource,
 } from "../sources";
 
 import type {
@@ -490,7 +491,7 @@ test(
 );
 
 test(
-  "snapshot consistency guards reject stale repository intelligence",
+  "snapshot consistency guards drop stale repository intelligence and continue",
   async () => {
     const map: RepoMap = {
       schemaVersion:
@@ -522,17 +523,161 @@ test(
     };
 
     const retriever =
-      new HybridRetriever([]);
+      new HybridRetriever([
+        {
+          source:
+            new StaticRetrievalSource(
+              "lexical",
+              complete([
+                candidate(
+                  "src/auth.ts",
+                  "auth",
+                  0.9,
+                ),
+              ]),
+            ),
+        },
+      ]);
 
-    await assert.rejects(
-      retriever.retrieve({
+    const result =
+      await retriever.retrieve({
         ...baseInput,
         workspaceSnapshotId:
           "snapshot-a",
         repoMap:
           map,
-      }),
-      /different workspace snapshot/i,
+      });
+
+    assert.equal(
+      result.candidates.length,
+      1,
+    );
+    assert.ok(
+      result.warnings.some(
+        (warning) =>
+          warning.code ===
+            "optional_source_unavailable" &&
+          /workspace snapshot/i.test(
+            warning.message,
+          ),
+      ),
+    );
+  },
+);
+
+test(
+  "directory-like file paths are promoted to folderPrefix",
+  async () => {
+    let captured:
+      | NormalizedHybridRetrievalRequest
+      | undefined;
+    const capture: RetrievalSource = {
+      id: "capture",
+      canRetrieve: () => true,
+      retrieve: async (request) => {
+        captured = request;
+        return {
+          status: "empty",
+          candidates: [],
+          truncated: false,
+          warnings: [],
+        };
+      },
+    };
+
+    await new HybridRetriever([
+      {
+        source: capture,
+      },
+    ]).retrieve({
+      ...baseInput,
+      filePaths: [
+        "packages/demo",
+      ],
+    });
+
+    assert.equal(
+      captured?.folderPrefix,
+      "packages/demo",
+    );
+    assert.deepEqual(
+      captured?.filePaths,
+      [],
+    );
+  },
+);
+
+test(
+  "repo map scope includes explicit files plus folder contents",
+  async () => {
+    const map: RepoMap = {
+      schemaVersion:
+        1,
+      workspaceSnapshotId:
+        "snapshot-1",
+      codeIndexChangeToken:
+        "change-1",
+      entries: [
+        repoMapEntry(
+          "packages/mui-builder/src/FormBuilder.tsx",
+          0.9,
+        ),
+        repoMapEntry(
+          "tsconfig.json",
+          0.8,
+        ),
+        repoMapEntry(
+          "packages/other/src/Other.ts",
+          1,
+        ),
+      ],
+      statistics: {
+        availableFiles:
+          3,
+        rankedFiles:
+          3,
+        includedFiles:
+          3,
+        includedSymbols:
+          0,
+        estimatedTokens:
+          0,
+        durationMs:
+          0,
+      },
+      status:
+        "complete",
+      generatedAt:
+        new Date(0)
+          .toISOString(),
+    };
+
+    const result =
+      await new HybridRetriever([
+        {
+          source:
+            new RepoMapRetrievalSource(),
+        },
+      ]).retrieve({
+        ...baseInput,
+        folderPrefix:
+          "packages/mui-builder",
+        filePaths: [
+          "tsconfig.json",
+        ],
+        repoMap:
+          map,
+      });
+
+    assert.deepEqual(
+      result.candidates.map(
+        (entry) =>
+          entry.relativePath,
+      ),
+      [
+        "packages/mui-builder/src/FormBuilder.tsx",
+        "tsconfig.json",
+      ],
     );
   },
 );
@@ -951,5 +1096,41 @@ function createGraph(
     generatedAt:
       new Date(0)
         .toISOString(),
+  };
+}
+
+function repoMapEntry(
+  relativePath: string,
+  score: number,
+): RepoMap["entries"][number] {
+  return {
+    file: {
+      id:
+        relativePath,
+      rootId:
+        "root",
+      relativePath,
+    },
+    symbols: [],
+    score,
+    pageRank:
+      0,
+    inboundImportCount:
+      0,
+    outboundImportCount:
+      0,
+    inboundReferenceCount:
+      0,
+    outboundReferenceCount:
+      0,
+    reasons: [
+      {
+        type:
+          "query_match",
+        score,
+        evidence:
+          `Matched ${relativePath}.`,
+      },
+    ],
   };
 }

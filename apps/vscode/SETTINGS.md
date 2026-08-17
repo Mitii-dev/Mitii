@@ -44,10 +44,14 @@ Anthropic and Gemini require a key. Echo and local OpenAI-compatible hosts usual
 
 ### Token limits
 
+The context window is the only token setting a customer needs. Retrieval, compaction, mutation batches, verification checks, and the derived model-call cap scale from that window. Developer → Token budget is optional.
+
 | UI field | Setting | Save / reflect |
 |---|---|---|
 | Context window | `mitii.provider.contextWindow` | Type freely, then click **Save**. The field does not write on each keystroke. After Save, the raw number is what you see. `0` means “use the model preset”. |
-| Max output | `mitii.provider.maximumOutputTokens` | Same commit rules as context window. `0` derives the output reserve from the window (and Developer → Token budget if enabled). |
+| Max output | `mitii.provider.maximumOutputTokens` | Same commit rules as context window. `0` derives the output reserve from the window. Leave at `0` unless you need a hard override. |
+| Derived budget | Computed preview | Read-only usable input, output reserve, model-call cap, files per mutation, and verification checks for the saved window. |
+| Reset budgets to defaults | Clears `mitii.tokenBudget.*` | Turns off custom token-budget overrides and restores built-in ratios for the current window. |
 
 Runtime still uses the **effective** window (`0` → model preset, else the stored number). The token meter uses that effective value, not `0`.
 
@@ -91,7 +95,7 @@ Caps for a single Mitii turn.
 | Loop iterations | `mitii.runBudget.maxLoopIterations` | Minimum 1. |
 | Wall time (min) | `mitii.runBudget.maxWallTimeMinutes` | Minimum 1. |
 
-These caps are owned here. Developer → Token budget does not override them.
+These caps are owned here. You do not need to retune them when the context window changes. Developer → Token budget does not override them.
 
 ---
 
@@ -140,11 +144,14 @@ Leave this off unless you need it. Options are grouped so the page stays scannab
 
 ### Token budget
 
+Leave this off. Changing the context window already scales the built-in defaults. These fields are ratio/cap overrides for people who need to tune Window Budget.
+
 | UI field | Setting | Save / reflect |
 |---|---|---|
 | Custom token budget | `mitii.tokenBudget.enabled` | When on, the ratio/cap fields below replace built-in defaults. |
 | Output reserve, tool schemas, shares, compaction, mutation batches, planning, skills, verification | `mitii.tokenBudget.<key>` | Each visible field saves its own number. Hover a field for its description. Hidden “run cap” keys stay owned by Modes → Run budget. |
 | Derived split | Computed preview | Read-only. Refresh after Save. |
+| Reset budgets to defaults | Clears `mitii.tokenBudget.*` | Same action as Provider → Token limits. |
 
 ### Diagnostics
 

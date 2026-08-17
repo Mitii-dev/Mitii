@@ -87,6 +87,14 @@ export const HYBRID_RETRIEVAL_DEFAULTS = {
   REPO_MAP_MAXIMUM_REASON_EVIDENCE:
     4,
 
+  /**
+   * When a folderPrefix is set, keep at least this many fused candidates
+   * by backfilling repo-map files in that folder. Weak NL queries must not
+   * collapse a package catalog to two hits.
+   */
+  MINIMUM_FOLDER_SCOPED_RESULTS:
+    12,
+
   GRAPH_EXACT_PATH_SCORE:
     1,
   GRAPH_FILE_ANCHOR_SCORE:

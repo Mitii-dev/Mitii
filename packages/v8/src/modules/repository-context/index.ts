@@ -12,6 +12,8 @@ export {
 export {
   collectRepositoryContextGraphAnchors,
   deriveContextSelectionBudget,
+  pathMatchesFolderPrefix,
+  restrictContextReferencesToFolderPrefix,
   REPOSITORY_CONTEXT_RETRIEVAL_POLICY,
 } from "./policy";
 export type {

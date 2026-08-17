@@ -26,6 +26,7 @@ import type {
 export interface ContextAssemblyInput {
   selection: ContextSelectionResult;
   snapshot: WorkspaceSnapshot;
+  folderPrefix?: string;
   abortSignal?: AbortSignal;
 }
 

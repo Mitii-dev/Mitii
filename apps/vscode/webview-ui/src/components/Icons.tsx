@@ -1,17 +1,17 @@
-import type { SVGProps } from 'react';
+import type { SVGProps } from "react";
 
 type IconProps = SVGProps<SVGSVGElement>;
 
 const defaults: IconProps = {
   width: 16,
   height: 16,
-  viewBox: '0 0 16 16',
-  fill: 'none',
-  stroke: 'currentColor',
+  viewBox: "0 0 16 16",
+  fill: "none",
+  stroke: "currentColor",
   strokeWidth: 1.5,
-  strokeLinecap: 'round',
-  strokeLinejoin: 'round',
-  'aria-hidden': true,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  "aria-hidden": true,
 };
 
 export function IconChat(props: IconProps) {
@@ -136,6 +136,16 @@ export function IconLayers(props: IconProps) {
   );
 }
 
+export function IconHelpCircle(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M6.4 6.2a1.8 1.8 0 0 1 3.5.6c0 1.4-1.9 1.5-1.9 3" />
+      <path d="M8 12h.01" />
+    </svg>
+  );
+}
+
 export function IconCopy(props: IconProps) {
   return (
     <svg {...defaults} {...props}>
@@ -148,7 +158,15 @@ export function IconCopy(props: IconProps) {
 export function IconStop(props: IconProps) {
   return (
     <svg {...defaults} {...props}>
-      <rect x="4.5" y="4.5" width="7" height="7" rx="1" fill="currentColor" stroke="none" />
+      <rect
+        x="4.5"
+        y="4.5"
+        width="7"
+        height="7"
+        rx="1"
+        fill="currentColor"
+        stroke="none"
+      />
     </svg>
   );
 }

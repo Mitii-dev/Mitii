@@ -49,6 +49,7 @@ export function buildToolGrant(params: {
     (toolId) => toolId !== "analyze_change_impact" || changeImpactAffordable,
   );
   const pathScopes = resolvePathScopes(understanding);
+  const mutationPathScopes = resolveMutationPathScopes(understanding);
   const commandRules = [
     {
       prefixes: [...DEFAULT_AGENT_READONLY_COMMAND_PREFIXES],
@@ -177,6 +178,7 @@ export function buildToolGrant(params: {
         ...network.allowedEffects,
       ],
       pathScopes,
+      ...(mutationPathScopes ? { mutationPathScopes } : {}),
       commandRules: processExecution.commandRules,
       networkHosts: network.networkHosts,
       approvalMode,
@@ -276,6 +278,28 @@ function resolvePathScopes(
   }
 
   return [...scopes];
+}
+
+function resolveMutationPathScopes(
+  understanding: RequestUnderstandingResult,
+): string[] | undefined {
+  const scopes = new Set<string>();
+  for (const target of understanding.taskAnalysis.targets) {
+    if (!target.explicit || target.value.length === 0) {
+      continue;
+    }
+    if (target.kind === "folder") {
+      scopes.add(normalizeScopePath(target.value));
+      continue;
+    }
+    if (target.kind === "file") {
+      scopes.add(parentDirectoryScope(target.value));
+    }
+  }
+  if (scopes.size === 0) {
+    return undefined;
+  }
+  return [...scopes].sort((left, right) => left.localeCompare(right));
 }
 
 function normalizeScopePath(value: string): string {

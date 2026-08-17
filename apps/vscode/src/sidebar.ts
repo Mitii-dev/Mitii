@@ -110,6 +110,7 @@ import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import {
   TOKEN_BUDGET_FIELDS,
   readTokenBudgetSettings,
+  tokenBudgetResetKeys,
 } from './tokenBudgetSettings.js';
 import {
   clearMemoriesForWorkspace,
@@ -807,6 +808,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       case 'settings.clearApiKey':
         await this.vs.commands.executeCommand('mitii.clearApiKey');
         await this.sendBootstrap();
+        return;
+      case 'settings.resetTokenBudget':
+        await this.resetTokenBudgetToDefaults();
         return;
       case 'provider.testConnection':
         await this.handleTestConnection(message);
@@ -2087,6 +2091,15 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   private async writeConfigValue(key: string, value: unknown): Promise<void> {
     const cfg = this.vs.workspace.getConfiguration('mitii');
     await cfg.update(key, value, this.configurationTarget());
+  }
+
+  private async resetTokenBudgetToDefaults(): Promise<void> {
+    const cfg = this.vs.workspace.getConfiguration('mitii');
+    const target = this.configurationTarget();
+    for (const key of tokenBudgetResetKeys()) {
+      await cfg.update(key, undefined, target);
+    }
+    await this.sendBootstrap();
   }
 
   private async writeProviderSettings(

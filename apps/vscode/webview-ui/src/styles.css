@@ -2251,6 +2251,57 @@ select.depth-select {
   gap: 8px;
 }
 
+.token-budget-field-help {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 2px;
+  color: var(--vscode-descriptionForeground, var(--mitii-muted));
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.token-budget-field-help p {
+  margin: 0;
+}
+
+.token-budget-field-help__top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 6px;
+}
+
+.token-budget-help-link,
+.token-budget-read-more {
+  color: var(--vscode-textLink-foreground, var(--mitii-accent));
+}
+
+.token-budget-help-link {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+}
+
+.token-budget-help-link:hover,
+.token-budget-help-link:focus-visible {
+  background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.08));
+  outline: none;
+}
+
+.token-budget-read-more {
+  width: fit-content;
+  text-decoration: none;
+}
+
+.token-budget-read-more:hover,
+.token-budget-read-more:focus-visible {
+  text-decoration: underline;
+}
+
 .settings-category__title {
   margin: 0;
   font-size: 12px;

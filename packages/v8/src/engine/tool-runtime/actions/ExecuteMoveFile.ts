@@ -4,6 +4,7 @@ import type { MutationTransactionRegistry } from "../internal/mutation";
 import { MutationError } from "../internal/mutation";
 import { PathContainmentError } from "../internal/PathContainment";
 import { moveFileInputSchema } from "../internal/ToolCatalog";
+import { resolveMutationPathScopes } from "./ResolveMutationPathScopes";
 
 export async function executeMoveFile(params: {
   arguments: unknown;
@@ -28,7 +29,7 @@ export async function executeMoveFile(params: {
   try {
     const result = await params.transactions.moveFile({
       workspaceRoot: params.workspaceRoot,
-      pathScopes: params.grant.pathScopes,
+      pathScopes: resolveMutationPathScopes(params.grant),
       fileSystem: params.fileSystem,
       from: parsed.from,
       to: parsed.to,

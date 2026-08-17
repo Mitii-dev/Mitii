@@ -94,9 +94,57 @@ describe("mapUnderstandingToSkillEvidence", () => {
 
     expect(evidence.primaryIntent).toBe("bugfix");
     expect(evidence.secondaryIntents).toEqual(["diagnose"]);
-    expect(evidence.recommendedSkillTags).toEqual(["localize", "null-safety"]);
+    expect(evidence.recommendedSkillTags).toEqual(["localize", "null-safety", "fix"]);
     expect(evidence.paths).toContain("parse.ts");
     expect(evidence.languages).toContain("typescript");
     expect(evidence.projectKinds).toContain("typescript");
+  });
+
+  it("recommends localize and fix tags for bugfix even without taskHints", () => {
+    const understanding = {
+      intent: {
+        status: "accepted",
+        classification: {
+          interactionIntent: "act",
+          primaryTaskIntent: "bugfix",
+          secondaryTaskIntents: [],
+          confidence: 0.9,
+          alternatives: [],
+          needsClarification: false,
+        },
+        scores: [],
+        confidenceMargin: 0.4,
+        recommendsClarification: false,
+        diagnostics: {
+          llmPrimaryIntent: "bugfix",
+          llmInteractionIntent: "act",
+          taskAgreement: true,
+          interactionAgreement: true,
+          interactionConflict: false,
+          agreementBonusApplied: 0,
+          disagreementPenaltyApplied: 0,
+          minimumConfidence: 0.55,
+          minimumMargin: 0.12,
+        },
+      },
+      taskAnalysis: {
+        scope: "package",
+        complexity: "moderate",
+        risk: "medium",
+        clarity: "clear",
+        targets: [],
+        constraints: [],
+        requestedOutcomes: [],
+        recommendsRepositoryDiscovery: true,
+        recommendsPlanning: false,
+        recommendsVerification: true,
+        recommendsTaskClarification: false,
+        signals: [],
+        confidence: 0.8,
+      },
+    } as RequestUnderstandingResult;
+
+    const evidence = mapUnderstandingToSkillEvidence(understanding);
+    expect(evidence.recommendedSkillTags).toEqual(["localize", "fix"]);
   });
 });

@@ -22,7 +22,10 @@ Given `contextWindowTokens`, optional host `maximumOutputTokens`, optional measu
 
 - `maximumOutputTokens` / `toolSchemaTokens` / `usableInputTokens` / `loopInputBudgetTokens`
 - `sections`: repository, conversation, plan, skills, system
-- `compaction`: warn/auto/hard ratios and how much tool history to keep
+- `compaction`: warn/auto/hard ratios, how much tool history to keep, live
+  tool-result content budget, compacted result/argument budgets, dropped-turn
+  summary budget, observation size/count, and memory/observation reinjection
+  budgets
 - `mutation`: files per call and patch payload size (scaled from output)
 - `planning`: diagnostic step cap and whether a visible plan / change-impact gate is affordable
 - `run`: suggested model/tool call caps
@@ -64,18 +67,47 @@ Mutation batch size follows **output**, not file-count guesses:
 
 ```text
 maxUniqueFilesPerCall = clamp(O / filesPerOutputTokens, minFiles, maxFiles)
+maxPatchesPerCall     = clamp(files × 2, files, maxPatchesPerCallCap)
 maxPatchPayloadCharacters = O × charsPerOutputToken × patchPayloadOutputRatio
+preferredBatchSize    = maxUniqueFilesPerCall
 ```
 
-Planning affordances follow **usable input**:
+Planning affordances follow **usable input**, scaled with the window so a 30k local cap still plans:
 
 ```text
-visiblePlanAffordable     = U >= visiblePlanMinUsableTokens
-changeImpactAffordable    = U >= changeImpactMinUsableTokens
+visiblePlanThreshold      = min(visiblePlanMinUsableTokens, W × visiblePlanMinUsableRatio)
+changeImpactThreshold     = min(changeImpactMinUsableTokens, W × changeImpactMinUsableRatio)
+visiblePlanAffordable     = U >= visiblePlanThreshold
+changeImpactAffordable    = U >= changeImpactThreshold
+maxSkills                 = clamp(maxSkillsBase + U / maxSkillsPerUsable, base, cap)
 maxDiagnosticSteps        = clamp(base + U / perUsable, base, max)
+maxModelCalls             = clamp(U / maxModelCallsPerUsable, min, max)
 ```
 
-Compaction keep-count also follows `U` so a 100k window retains more file bodies before rereading.
+A 30k local window still gets the `maxModelCallsMin` floor (48) so package-scale
+repair can run many small turns. Host `runBudget.unlimited` is not clamped.
+
+Decision Policy then merges profile mutation budgets with these window caps using `min()` (and ORs `requireBatchedExecution`).
+
+Compaction budgets also follow `U` so a 300k window retains more useful
+tool-history memory than a 30k window before rereading. Tool-history sizing is
+derived from ratios and clamped by developer-tunable min/max fields:
+
+```text
+keepRecentToolResults      = clamp(U × keepRecentToolResultsRatio, min, max)
+compactedToolResultChars   = clamp(U × compactedToolResultCharsRatio, min, max)
+compactedToolArgumentChars = clamp(U × compactedToolArgumentCharsRatio, min, max)
+toolResultContentChars     = clamp(U × toolResultContentCharsRatio, min, max)
+droppedTurnSummaryChars    = clamp(U × droppedTurnSummaryCharsRatio, min, max)
+establishedFactChars       = clamp(U × establishedFactCharsRatio, min, max)
+maxEstablishedFacts        = clamp(U × establishedFactCountRatio, min, max)
+establishedFactReinject    = clamp(U × establishedFactReinjectCharsRatio, min, max)
+memoryReinjectChars        = clamp(U × memoryReinjectCharsRatio, min, max)
+```
+
+Agent Engine consumes these derived values directly. It does not reintroduce
+separate fixed caps for tool-result serialization, dropped tool summaries, or
+mid-run observation reinjection.
 
 ## Pipeline stages
 
@@ -111,7 +143,9 @@ None. Pure function of the input contract. No LLM, filesystem, or host APIs.
 
 ## Developer settings
 
-The VS Code host maps Debug → developer → **Custom token budget** onto `policy` overrides. Each field is also a `mitii.tokenBudget.*` setting. When the toggle is off, V8 defaults apply. When it is on, every ratio and cap is editable and persisted.
+The customer knob is the advertised context window. Built-in defaults already scale every derived budget from that window. Hosts should not require users to edit ratios.
+
+The VS Code host maps Debug → developer → **Custom token budget** onto `policy` overrides. Each field is also a `mitii.tokenBudget.*` setting. When the toggle is off, V8 defaults apply. When it is on, every ratio and cap is editable and persisted. Reset clears those overrides.
 
 `mitii.provider.maximumOutputTokens = 0` means “derive O from the window”. A positive value is a host override and still cannot exceed `W − 1`.
 

@@ -161,6 +161,12 @@ describe("DecisionPolicyPipeline", () => {
     const windowPolicy = deriveWindowPolicy({
       schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
       contextWindowTokens: 30_000,
+      policy: {
+        visiblePlanMinUsableTokens: 1_000_000,
+        visiblePlanMinUsableRatio: 1,
+        changeImpactMinUsableTokens: 1_000_000,
+        changeImpactMinUsableRatio: 1,
+      },
     });
     expect(windowPolicy.planning.visiblePlanAffordable).toBe(false);
     expect(windowPolicy.planning.changeImpactAffordable).toBe(false);
@@ -733,6 +739,10 @@ describe("DecisionPolicyPipeline", () => {
 
     expect(decision.route).toBe("execute");
     expect(decision.toolGrant.pathScopes).toEqual(["."]);
+    expect(decision.toolGrant.mutationPathScopes).toEqual([
+      "apps/docs/src/components",
+      "packages",
+    ]);
     expect(decision.toolGrant.allowedTools).toContain("search_files");
     expect(decision.toolGrant.allowedTools).toContain("glob_files");
     expect(decision.toolGrant.allowedTools).toContain("list_directory");
@@ -933,6 +943,9 @@ describe("DecisionPolicyPipeline", () => {
     );
 
     expect(decision.toolGrant.pathScopes).toEqual(["."]);
+    expect(decision.toolGrant.mutationPathScopes).toEqual([
+      "packages/mui-builder",
+    ]);
     const narrowed = pipeline.narrow({
       previous: decision,
       discoveredPaths: [
@@ -945,6 +958,9 @@ describe("DecisionPolicyPipeline", () => {
 
     expect(narrowed.reasonCodes).toContain("grant_narrowed");
     expect(narrowed.toolGrant.pathScopes).toEqual(["packages/mui-builder"]);
+    expect(narrowed.toolGrant.mutationPathScopes).toEqual([
+      "packages/mui-builder",
+    ]);
 
     const again = pipeline.narrow({
       previous: narrowed,

@@ -66,6 +66,93 @@ export function collectRepositoryContextGraphAnchors(
 }
 
 /**
+ * True when `relativePath` is the folder itself or a descendant.
+ */
+export function pathMatchesFolderPrefix(
+  relativePath: string,
+  folderPrefix: string,
+): boolean {
+  const path = relativePath.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  const prefix = folderPrefix.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  if (!path || !prefix) {
+    return false;
+  }
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
+/**
+ * Keep editor/git/explicit priors that sit inside the user-mentioned folder, plus
+ * any paths that were already named as explicit file filters.
+ *
+ * Unrelated workspace tabs and dirty files must not fill an empty retrieval
+ * (or narrow the write grant) away from the mentioned folder.
+ */
+export function restrictContextReferencesToFolderPrefix(
+  references: ContextSelectionReferences | undefined,
+  folderPrefix: string | undefined,
+  extraFilePaths: readonly string[] = [],
+): ContextSelectionReferences | undefined {
+  if (!references || !folderPrefix) {
+    return references;
+  }
+
+  const allowedFiles = new Set(
+    extraFilePaths
+      .map((path) => path.trim().replace(/\\/g, "/"))
+      .filter(Boolean),
+  );
+  const keep = (reference?: ContextFileReference) => {
+    if (!reference) {
+      return false;
+    }
+    const relativePath = reference.relativePath.trim().replace(/\\/g, "/");
+    return (
+      allowedFiles.has(relativePath) ||
+      pathMatchesFolderPrefix(relativePath, folderPrefix)
+    );
+  };
+
+  const currentFile = keep(references.currentFile)
+    ? references.currentFile
+    : undefined;
+  const currentSelection =
+    references.currentSelection &&
+    keep(references.currentSelection)
+      ? references.currentSelection
+      : undefined;
+  const openFiles = (references.openFiles ?? []).filter(keep);
+  const gitDiffFiles = (references.gitDiffFiles ?? []).filter(keep);
+  const diagnosticFiles = (references.diagnosticFiles ?? []).filter(keep);
+  const recentEditFiles = (references.recentEditFiles ?? []).filter(keep);
+  const explicitFiles = (references.explicitFiles ?? []).filter(keep);
+  const pinnedFiles = (references.pinnedFiles ?? []).filter(keep);
+
+  if (
+    !currentFile &&
+    !currentSelection &&
+    openFiles.length === 0 &&
+    gitDiffFiles.length === 0 &&
+    diagnosticFiles.length === 0 &&
+    recentEditFiles.length === 0 &&
+    explicitFiles.length === 0 &&
+    pinnedFiles.length === 0
+  ) {
+    return undefined;
+  }
+
+  return {
+    ...(currentFile ? { currentFile } : {}),
+    ...(currentSelection ? { currentSelection } : {}),
+    ...(openFiles.length > 0 ? { openFiles } : {}),
+    ...(gitDiffFiles.length > 0 ? { gitDiffFiles } : {}),
+    ...(diagnosticFiles.length > 0 ? { diagnosticFiles } : {}),
+    ...(recentEditFiles.length > 0 ? { recentEditFiles } : {}),
+    ...(explicitFiles.length > 0 ? { explicitFiles } : {}),
+    ...(pinnedFiles.length > 0 ? { pinnedFiles } : {}),
+  };
+}
+
+/**
  * Derive a ContextSelectionBudget from the active model context window.
  * Floors at CONTEXT_SELECTION_DEFAULTS and caps at CONTEXT_SELECTION_LIMITS.
  */

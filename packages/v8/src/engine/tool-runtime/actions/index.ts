@@ -21,3 +21,4 @@ export { executeApplyPatch } from "./ExecuteApplyPatch";
 export { executeDeleteFile } from "./ExecuteDeleteFile";
 export { executeDeleteDirectory } from "./ExecuteDeleteDirectory";
 export { executeMoveFile } from "./ExecuteMoveFile";
+export { resolveMutationPathScopes } from "./ResolveMutationPathScopes";

@@ -174,13 +174,34 @@ function compactEvent(
         toolName: event.toolName,
         summary: event.summary,
         status: event.status,
+        reasonCode: event.reasonCode,
+        warnings: event.warnings,
+        outputPreview: event.outputPreview,
+        durationMs: event.durationMs,
+        bytesProduced: event.bytesProduced,
+        truncated: event.truncated,
+        redacted: event.redacted,
       };
     case 'context_ready':
       return {
         ...base,
         blockCount: event.blockCount,
+        retrievedCandidates: event.retrievedCandidates,
+        selectedItems: event.selectedItems,
+        droppedBlocks: event.droppedBlocks,
         status: event.status,
         paths: 'paths' in event ? event.paths : undefined,
+        retrievalSources:
+          'retrievalSources' in event ? event.retrievalSources : undefined,
+      };
+    case 'model_turn':
+      return {
+        ...base,
+        turnIndex: event.turnIndex,
+        inputTokens: event.inputTokens,
+        outputTokens: event.outputTokens,
+        finishReason: event.finishReason,
+        truncated: event.truncated,
       };
     case 'skills_ready':
     case 'memory_ready':

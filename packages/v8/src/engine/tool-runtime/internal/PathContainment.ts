@@ -66,6 +66,53 @@ export function isPathWithinScopes(
   return false;
 }
 
+/**
+ * When a search/glob defaults to workspace root but the grant is folder-scoped,
+ * remap "." to the pattern prefix or the first concrete path scope.
+ */
+export function resolveScopedSearchPath(params: {
+  requestedPath: string;
+  pattern?: string;
+  pathScopes: readonly string[];
+}): string {
+  const requested = normalizeRelativePath(params.requestedPath);
+  if (isPathWithinScopes(requested, params.pathScopes)) {
+    return requested;
+  }
+  if (requested !== ".") {
+    return requested;
+  }
+
+  const fromPattern = params.pattern
+    ? globPatternDirectory(params.pattern)
+    : undefined;
+  if (fromPattern && isPathWithinScopes(fromPattern, params.pathScopes)) {
+    return fromPattern;
+  }
+
+  const scoped = params.pathScopes
+    .map((scope) => normalizeRelativePath(scope))
+    .find((scope) => scope !== ".");
+  return scoped ?? requested;
+}
+
+function globPatternDirectory(pattern: string): string | undefined {
+  const cut = pattern.search(/[*?[]/);
+  const prefix = (cut === -1 ? pattern : pattern.slice(0, cut)).replace(
+    /\\/g,
+    "/",
+  );
+  const trimmed = prefix.replace(/\/+$/, "");
+  if (!trimmed || trimmed === ".") {
+    return undefined;
+  }
+  const lastSlash = trimmed.lastIndexOf("/");
+  if (lastSlash <= 0) {
+    return undefined;
+  }
+  return trimmed.slice(0, lastSlash);
+}
+
 export function isPhysicalPathWithinRoot(
   workspaceRoot: string,
   absolutePath: string,

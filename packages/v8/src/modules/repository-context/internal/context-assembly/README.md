@@ -33,7 +33,7 @@ context-assembly/
 
 ## Types And Contracts
 
-- `ContextAssemblyInput`: selection result, workspace snapshot, and optional abort signal.
+- `ContextAssemblyInput`: selection result, workspace snapshot, optional `folderPrefix`, and optional abort signal.
 - `ContextContentSource`: loader contract for workspace files, previews, or future sources.
 - `ContextBlock`: prompt-safe assembled content with path, line ranges, token estimate, truncation, redaction, and provenance.
 - `DroppedContextBlock`: selected item that could not be assembled with a cause.

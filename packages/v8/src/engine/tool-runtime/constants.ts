@@ -64,6 +64,7 @@ export const TOOL_REASON_CODES = [
   "command_injection",
   "network_not_allowed",
   "limit_exceeded",
+  "mutation_budget_exceeded",
   "output_truncated",
   "timeout",
   "cancelled",

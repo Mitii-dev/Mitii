@@ -24,7 +24,11 @@ import {
   shouldPostWebviewReady,
   tokenLimitDraftAfterHostEcho,
 } from '../../../apps/vscode/src/settingsFields';
-import { TOKEN_BUDGET_FIELDS } from '../../../apps/vscode/src/tokenBudgetSettings';
+import {
+  defaultTokenBudgetSettings,
+  TOKEN_BUDGET_FIELDS,
+  tokenBudgetResetKeys,
+} from '../../../apps/vscode/src/tokenBudgetSettings';
 import type {
   ProviderSettingsSnapshot,
   UiSettingsSnapshot,
@@ -60,14 +64,33 @@ const BASE_UI: UiSettingsSnapshot = {
       maximumOutputTokens: 3277,
       toolSchemaTokens: 6554,
       usableInputTokens: 22937,
+      loopInputBudgetTokens: 21560,
       repositoryTokens: 6422,
       conversationTokens: 9174,
       planTokens: 1376,
       skillsTokens: 917,
       systemTokens: 5048,
-      maxModelCalls: 16,
+      compactionWarnTokens: 15092,
+      compactionAutoTokens: 17248,
+      compactionHardTokens: 19835,
+      keepRecentToolResults: 3,
+      compactedToolResultChars: 400,
+      compactedToolArgumentChars: 256,
+      toolResultContentChars: 2000,
+      droppedTurnSummaryChars: 1200,
+      establishedFactChars: 220,
+      maxEstablishedFacts: 12,
+      establishedFactReinjectChars: 1600,
+      memoryReinjectChars: 800,
+      maxPatchesPerCall: 8,
+      maxModelCalls: 48,
       maxToolCalls: 32,
       maxUniqueFilesPerCall: 4,
+      maxPatchPayloadCharacters: 5898,
+      requireBatchedExecution: true,
+      maxDiagnosticSteps: 3,
+      maxSkills: 3,
+      maxVerificationChecks: 2,
       visiblePlanAffordable: false,
       changeImpactAffordable: false,
       runBudgetUnlimited: false,
@@ -506,5 +529,36 @@ describe('token limits must not snap back to 30000 while editing', () => {
     expect(reflected.contextWindow).toBe(16_000);
     expect(reflected.maximumOutputTokens).toBe(2_048);
     expect(reflected.contextWindow).not.toBe(30_000);
+  });
+});
+
+describe('window-scaled token budget defaults', () => {
+  it('lists every custom token-budget key so Reset can clear them', () => {
+    const keys = tokenBudgetResetKeys();
+    expect(keys).toContain('tokenBudget.enabled');
+    for (const field of TOKEN_BUDGET_FIELDS) {
+      expect(keys).toContain(`tokenBudget.${field.key}`);
+    }
+    expect(keys).toHaveLength(TOKEN_BUDGET_FIELDS.length + 1);
+  });
+
+  it('scales derived budgets from the context window without custom overrides', () => {
+    const at30k = defaultTokenBudgetSettings(30_000);
+    const at60k = defaultTokenBudgetSettings(60_000);
+    expect(at30k.enabled).toBe(false);
+    expect(at60k.enabled).toBe(false);
+    expect(at60k.preview.contextWindowTokens).toBe(60_000);
+    expect(at60k.preview.usableInputTokens).toBeGreaterThan(
+      at30k.preview.usableInputTokens,
+    );
+    expect(at60k.preview.maximumOutputTokens).toBeGreaterThan(
+      at30k.preview.maximumOutputTokens,
+    );
+    expect(at60k.preview.maxUniqueFilesPerCall).toBeGreaterThanOrEqual(
+      at30k.preview.maxUniqueFilesPerCall,
+    );
+    expect(at60k.preview.maxVerificationChecks).toBeGreaterThanOrEqual(
+      at30k.preview.maxVerificationChecks,
+    );
   });
 });

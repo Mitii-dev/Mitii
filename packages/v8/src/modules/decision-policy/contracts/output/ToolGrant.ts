@@ -60,6 +60,7 @@ export const toolGrantSchema = z
     allowedTools: z.array(z.string().min(1)),
     allowedEffects: z.array(toolEffectSchema),
     pathScopes: z.array(z.string().min(1)).min(1),
+    mutationPathScopes: z.array(z.string().min(1)).min(1).optional(),
     commandRules: z.array(commandRuleSchema).optional(),
     networkHosts: z.array(z.string().min(1)).optional(),
     approvalMode: approvalModeSchema,

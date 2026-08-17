@@ -94,6 +94,132 @@ describe("Tool Runtime grant and security enforcement", () => {
     expect(result.reasonCode).toBe("path_out_of_scope");
   });
 
+  it("remaps default glob path into the granted folder scope", async () => {
+    const runtime = new ToolRuntimePipeline({
+      fileSystem: new InMemoryFileSystemAdapter(
+        WORKSPACE,
+        directory({
+          packages: directory({
+            demo: directory({
+              src: directory({
+                types: directory({ "a.ts": file("export type A = 1;\n") }),
+              }),
+            }),
+          }),
+        }),
+      ),
+      process: new InMemoryProcessAdapter(async () => ({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        cancelled: false,
+        truncated: false,
+      })),
+    });
+
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "g-scope",
+      toolName: "glob_files",
+      arguments: { pattern: "packages/demo/src/types*" },
+      grant: createReadOnlyGrant({
+        allowedTools: [...createReadOnlyGrant().allowedTools, "glob_files"],
+        pathScopes: ["packages/demo"],
+      }),
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(result.status).toBe("succeeded");
+    const output = result.output as { path: string; matches: Array<{ path: string }> };
+    expect(output.path).toBe("packages/demo/src");
+    expect(output.matches.some((match) => match.path.includes("types"))).toBe(
+      true,
+    );
+  });
+
+  it("keeps discovery at workspace root while mutations stay in mutationPathScopes", async () => {
+    const runtime = new ToolRuntimePipeline({
+      fileSystem: new InMemoryFileSystemAdapter(
+        WORKSPACE,
+        directory({
+          packages: directory({
+            demo: directory({
+              src: directory({ "a.ts": file("const a = 1;\n") }),
+            }),
+          }),
+          apps: directory({
+            docs: directory({
+              src: directory({ "b.ts": file("const b = 1;\n") }),
+            }),
+          }),
+        }),
+      ),
+      process: new InMemoryProcessAdapter(async () => ({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        cancelled: false,
+        truncated: false,
+      })),
+    });
+    const grant = createReadOnlyGrant({
+      maximumWorkspaceEffect: "write",
+      allowedTools: [...createReadOnlyGrant().allowedTools, "apply_patch", "glob_files"],
+      allowedEffects: ["workspace_read", "workspace_write"],
+      pathScopes: ["."],
+      mutationPathScopes: ["packages/demo"],
+    });
+
+    const glob = await runtime.execute({
+      schemaVersion: 1,
+      callId: "g1",
+      toolName: "glob_files",
+      arguments: { pattern: "**/*.ts", path: "." },
+      grant,
+      workspaceRoot: WORKSPACE,
+    });
+    expect(glob.status).toBe("succeeded");
+
+    const outside = await runtime.execute({
+      schemaVersion: 1,
+      callId: "p-out",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [
+          {
+            path: "apps/docs/src/b.ts",
+            oldText: "const b = 1;\n",
+            newText: "const b = 2;\n",
+          },
+        ],
+      },
+      grant,
+      workspaceRoot: WORKSPACE,
+    });
+    expect(outside.status).toBe("rejected");
+    expect(outside.reasonCode).toBe("path_out_of_scope");
+
+    const inside = await runtime.execute({
+      schemaVersion: 1,
+      callId: "p-in",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [
+          {
+            path: "packages/demo/src/a.ts",
+            oldText: "const a = 1;\n",
+            newText: "const a = 2;\n",
+          },
+        ],
+      },
+      grant,
+      workspaceRoot: WORKSPACE,
+    });
+    expect(inside.status).toBe("succeeded");
+  });
+
   it("rejects symlink escape outside workspace", async () => {
     const runtime = createRuntimeWithSymlinkEscape();
     const result = await runtime.execute({

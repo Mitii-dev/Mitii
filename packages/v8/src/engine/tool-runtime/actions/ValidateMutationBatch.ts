@@ -45,7 +45,7 @@ export function validateMutationBatch(params: {
 
   if (patches.length > hardPatchCap) {
     throw new MutationBatchValidationError(
-      "limit_exceeded",
+      "mutation_budget_exceeded",
       `apply_patch allows at most ${hardPatchCap} patches per call (got ${patches.length}). Split into smaller batches.`,
     );
   }
@@ -57,7 +57,7 @@ export function validateMutationBatch(params: {
   );
   if (uniqueFiles.size > budget.maxUniqueFilesPerCall) {
     throw new MutationBatchValidationError(
-      "limit_exceeded",
+      "mutation_budget_exceeded",
       `apply_patch allows at most ${budget.maxUniqueFilesPerCall} unique files per call (got ${uniqueFiles.size}). Split into smaller batches.`,
     );
   }
@@ -70,7 +70,7 @@ export function validateMutationBatch(params: {
   }
   if (payloadCharacters > budget.maxPatchPayloadCharacters) {
     throw new MutationBatchValidationError(
-      "limit_exceeded",
+      "mutation_budget_exceeded",
       `apply_patch payload is ${payloadCharacters} characters; max is ${budget.maxPatchPayloadCharacters}. Use smaller diffs or fewer files per call.`,
     );
   }

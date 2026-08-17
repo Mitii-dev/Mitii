@@ -10,8 +10,8 @@ export const PROMPT_CONSTRUCTION_THRESHOLDS = {
   outputReserveRatio: 0.3,
 
   /**
-   * Fraction of the remaining per-turn context window offered to output after
-   * the concrete prompt has been assembled.
+   * Safety fraction of leftover context that output may use when the leftover
+   * is smaller than the window-derived reserve. Output never exceeds the reserve.
    */
   dynamicOutputWindowRatio: 0.95,
 

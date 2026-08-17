@@ -4,6 +4,7 @@ import {
   amendMessageWithPriorConversation,
   buildIncompleteAnswerRecoveryMessage,
   hasLeakedToolCallMarkup,
+  isDegenerateRepeatedAnswer,
   isEmptyAssistantTurn,
   isPseudoToolRequestAnswer,
   isTransitionalAssistantAnswer,
@@ -215,6 +216,31 @@ describe("isIncompleteAssistantTurn", () => {
         changedFileCount: 0,
       }),
     ).toBe(false);
+  });
+
+  it("detects long repeating numbered diagnoses as degenerate", () => {
+    const lines = Array.from({ length: 24 }, (_, index) => {
+      const name = ["alpha.ts", "beta.ts", "gamma.ts"][index % 3];
+      return `${index + 1}. **${name}** - the same structural type mismatch appears after the config-object change.`;
+    });
+    const content = `Now I have a clear picture of the remaining errors.\n\n${lines.join("\n")}\n`;
+    expect(content.length).toBeGreaterThan(2_000);
+    expect(isDegenerateRepeatedAnswer(content)).toBe(true);
+    expect(
+      shouldRecoverIncompleteAssistantTurn({
+        content,
+        toolCallCount: 0,
+        changedFileCount: 2,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not treat a long unique analysis as degenerate", () => {
+    const content = Array.from({ length: 40 }, (_, index) => {
+      return `Section ${index}: unique finding about module-${index} and its contract.`;
+    }).join("\n");
+    expect(content.length).toBeGreaterThan(2_000);
+    expect(isDegenerateRepeatedAnswer(content)).toBe(false);
   });
 
   it("builds recovery and fallback answers", () => {

@@ -16,7 +16,7 @@ import {
   StructuralShadowGrantAuthorizer,
   type ShadowGrantAuthorizer,
 } from "../../internal/shadow/ShadowGrantAuthorizer";
-import { buildRejectedResult } from "./buildToolResult";
+import { buildRejectedResult, formatZodIssues } from "./buildToolResult";
 import type { CallClock, ToolExecuteOptions } from "../types";
 
 export type PreflightSuccess = {
@@ -157,7 +157,7 @@ export function preflightToolCall(params: {
           clock,
           status: "rejected",
           reasonCode: "invalid_arguments",
-          warnings: [error.issues.map((issue) => issue.message).join("; ")],
+          warnings: [formatZodIssues(error)],
         }),
       };
     }

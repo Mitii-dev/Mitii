@@ -6,7 +6,10 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 
 import { createWorkspaceMemoryStore } from './ports/memoryStore.js';
 import { loadProjectRules } from './prompt/projectRules.js';
-import { buildWorkspaceSnapshot } from './indexing/fingerprintSnapshot.js';
+import {
+  buildWorkspaceSnapshot,
+  resolveFingerprintRootId,
+} from './indexing/fingerprintSnapshot.js';
 
 describe('host durable workspace kit', () => {
   let root: string;
@@ -17,6 +20,12 @@ describe('host durable workspace kit', () => {
 
   afterEach(async () => {
     await rm(root, { recursive: true, force: true });
+  });
+
+  it('uses the workspace directory name as fingerprint rootId', () => {
+    expect(resolveFingerprintRootId('/Users/dev/ffb')).toBe('ffb');
+    expect(resolveFingerprintRootId('/Users/dev/ffb/')).toBe('ffb');
+    expect(resolveFingerprintRootId('/')).toBe('workspace');
   });
 
   it('round-trips memory facts across store instances', async () => {
@@ -88,5 +97,6 @@ describe('host durable workspace kit', () => {
     expect(snapshot.candidate.reasons?.[0]?.message).not.toContain(
       'full vector/code index deferred',
     );
+    expect(snapshot.candidate.roots[0]?.rootId).toBe(root.split(/[\\/]/).pop());
   });
 });

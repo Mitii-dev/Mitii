@@ -136,7 +136,7 @@ describe("validateMutationBatch", () => {
 });
 
 describe("ToolRuntimePipeline mutation batch limits", () => {
-  it("rejects oversized apply_patch at preflight with limit_exceeded", async () => {
+  it("rejects oversized apply_patch at preflight with mutation_budget_exceeded", async () => {
     const runtime = createRuntime();
     const result = await runtime.execute({
       schemaVersion: 1,
@@ -163,6 +163,6 @@ describe("ToolRuntimePipeline mutation batch limits", () => {
     });
 
     expect(result.status).toBe("rejected");
-    expect(result.reasonCode).toBe("limit_exceeded");
+    expect(result.reasonCode).toBe("mutation_budget_exceeded");
   });
 });

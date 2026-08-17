@@ -20,6 +20,7 @@ import type {
 import { MEMORY_SCHEMA_VERSION } from "../../../modules/memory";
 import type { MemoryCommitInput } from "../../../modules/memory";
 import {
+  DEFAULT_PLAN_CHARACTERS_PER_TOKEN,
   PLANNING_SCHEMA_VERSION,
   compileDiscoveryBrief,
   formatPlanAsAnswer,
@@ -49,7 +50,10 @@ import type {
   ProjectDescriptor,
   RepositoryStateReference,
 } from "../../../modules/repository-state";
-import { deriveContextSelectionBudget } from "../../../modules/repository-context";
+import {
+  deriveContextSelectionBudget,
+  pathMatchesFolderPrefix,
+} from "../../../modules/repository-context";
 import {
   WINDOW_BUDGET_SCHEMA_VERSION,
   deriveWindowPolicy,
@@ -90,9 +94,12 @@ import {
   buildIncompleteAnswerRecoveryMessage,
   buildMutationBudgetInstruction,
   buildOutputTruncationRecovery,
+  buildPreflightDiagnosticRepairInstruction,
   buildVerificationRepairPrompt,
+  clampTurnMaximumOutputTokens,
   compactModelLoopMessages,
   decideVerificationGate,
+  estimateModelMessagesTokens,
   dropEstablishedFactsForPaths,
   extractEstablishedFact,
   extractFileReadPaths,
@@ -109,6 +116,12 @@ import {
   shouldRecoverIncompleteAssistantTurn,
   synthesizeFallbackAnswer,
   amendMessageWithPriorConversation,
+  resolveLoopTurnOutcome,
+  isUnfulfilledExecute,
+  requiresMutationForExecute,
+  buildUnfulfilledExecuteRecoveryMessage,
+  shouldContinueVerificationRepair,
+  nextStalledRepairCount,
 } from "../actions";
 import type { EstablishedFact, VerificationGateDecision } from "../actions";
 import { ToolCallCache, rebaseToolResult } from "../internal/ToolCallCache";
@@ -170,6 +183,15 @@ export type AgentEnginePipelineDependencies = AgentEngineDependencies;
 const DEFAULT_MUTATING_TOOL_NAMES = new Set(
   DEFAULT_MUTATION_TOOL_DEFINITIONS.map((tool) => tool.name),
 );
+const TARGETED_REJECTED_MUTATION_DISCOVERY_TOOLS = new Set([
+  "analyze_change_impact",
+  "file_metadata",
+  "glob_files",
+  "list_directory",
+  "read_file",
+  "read_many_files",
+  "search_files",
+]);
 
 type ToolCallOutcome =
   | { kind: "message"; message: ModelMessage }
@@ -190,6 +212,8 @@ type ToolLoopOutcome =
       mutationCheckpointIds: string[];
       messages: ModelMessage[];
       toolCache: ToolCallCache;
+      /** Authority as of the end of the loop — may have been refreshed mid-run. */
+      decision: ExecutionDecision;
     }
   | {
       kind: "approval_required";
@@ -199,6 +223,8 @@ type ToolLoopOutcome =
       changedFiles: string[];
       mutationCheckpointIds: string[];
       answer?: string;
+      /** Authority as of the end of the loop — may have been refreshed mid-run. */
+      decision: ExecutionDecision;
     }
   | { kind: "cancelled" }
   | { kind: "budget_exhausted"; answer?: string; message: string }
@@ -861,25 +887,38 @@ export class AgentEnginePipeline {
 
         repositoryContext = mapContextToPromptSlice(contextResult);
         reasonCodes.push("context_retrieved");
-        contextPaths = contextResult.assembly.blocks
-          .map((block) => block.relativePath)
-          .filter((path): path is string => Boolean(path?.trim()))
-          .slice(0, 12);
+        contextPaths = scopeDiscoveredContextPaths(
+          contextResult.assembly.blocks
+            .map((block) => block.relativePath)
+            .filter((path): path is string => Boolean(path?.trim())),
+          contextFocus,
+        );
         this.emit(bus, {
           type: "context_ready",
           runId,
           stateToken: contextResult.stateToken,
           blockCount: contextResult.assembly.blocks.length,
+          retrievedCandidates: contextResult.statistics.retrievedCandidates,
+          selectedItems: contextResult.statistics.selectedItems,
+          droppedBlocks: contextResult.statistics.droppedBlocks,
           status: contextResult.status,
           ...(contextPaths.length > 0 ? { paths: contextPaths } : {}),
+          ...(contextResult.retrieval?.sourceReports &&
+          contextResult.retrieval.sourceReports.length > 0
+            ? {
+                retrievalSources: contextResult.retrieval.sourceReports
+                  .slice(0, 8)
+                  .map((report) => ({
+                    sourceId: report.sourceId,
+                    status: report.status,
+                    candidateCount: report.candidateCount,
+                  })),
+              }
+            : {}),
           at: this.isoNow(),
         });
         for (const warning of contextResult.warnings) {
-          if (
-            warning.code === "optional_source_unavailable" ||
-            warning.code === "file_map_fallback" ||
-            warning.code === "state_degraded"
-          ) {
+          if (CONTEXT_READY_WARNING_CODES.has(warning.code)) {
             this.emit(bus, {
               type: "warning",
               runId,
@@ -1158,6 +1197,7 @@ export class AgentEnginePipeline {
             reasonCodes,
             warnings,
             taskListRef,
+            windowPolicy,
           });
           discoveryBrief = discovery.brief;
           recordDiscoveryEvidence(runEvidence, {
@@ -1303,15 +1343,39 @@ export class AgentEnginePipeline {
       const mutationBudgetRule = buildMutationBudgetInstruction(
         decision.toolGrant.mutationBudget,
       );
-      const hostInstructions: PromptInstructions | undefined = mutationBudgetRule
-        ? {
-            ...input.instructions,
-            projectRules: [
-              ...(input.instructions?.projectRules ?? []),
-              mutationBudgetRule,
-            ],
-          }
-        : input.instructions;
+      const preflightDiagnosticRule =
+        repoBuildStateBefore && repoBuildStateBefore.summary.errorCount > 0
+          ? buildPreflightDiagnosticRepairInstruction({
+              diagnostics: repoBuildStateBefore.diagnostics,
+              totalErrorCount: repoBuildStateBefore.summary.errorCount,
+              pathScopes: decision.toolGrant.pathScopes,
+              maxDiagnostics: windowPolicy.planning.maxDiagnosticSteps,
+              maxChars:
+                windowPolicy.sections.planTokens *
+                DEFAULT_PLAN_CHARACTERS_PER_TOKEN,
+            })
+          : undefined;
+      const projectRules = [
+        ...(input.instructions?.projectRules ?? []),
+        ...(mutationBudgetRule ? [mutationBudgetRule] : []),
+        ...(preflightDiagnosticRule
+          ? [
+              {
+                id: "mitii.preflight_diagnostics",
+                title: "Preflight diagnostic repair targets",
+                priority: 95,
+                content: preflightDiagnosticRule,
+              },
+            ]
+          : []),
+      ];
+      const hostInstructions: PromptInstructions | undefined =
+        projectRules.length > 0
+          ? {
+              ...input.instructions,
+              projectRules,
+            }
+          : input.instructions;
 
       const instructions = mergePromptInstructions({
         host: hostInstructions,
@@ -1388,6 +1452,7 @@ export class AgentEnginePipeline {
         selectedSkillIds: selectedSkills?.map((block) => block.id) ?? [],
         evidence: runEvidence,
         windowPolicy,
+        repoBuildStateBefore,
       });
 
       return await this.finishAfterLoop({
@@ -1782,6 +1847,7 @@ export class AgentEnginePipeline {
         mutatingToolNames: DEFAULT_MUTATING_TOOL_NAMES,
         // Approval resume already passed any pre-mutation gates.
         changeImpactGate: { required: false, satisfied: true },
+        windowPolicy,
       });
 
       if (toolOutcome.kind === "approval_required") {
@@ -1838,6 +1904,7 @@ export class AgentEnginePipeline {
         taskListRef,
         establishedFacts,
         windowPolicy,
+        repoBuildStateBefore: checkpoint.repoBuildStateBefore,
       });
 
       return await this.finishAfterLoop({
@@ -1949,7 +2016,6 @@ export class AgentEnginePipeline {
       runId,
       requestId,
       input,
-      decision,
       bus,
       signal,
       pinnedState,
@@ -1967,8 +2033,18 @@ export class AgentEnginePipeline {
     } = params;
 
     let currentOutcome = loopOutcome;
+    // Authority may have been refreshed mid-loop (e.g. after approval or
+    // escalation); prefer whatever the loop last resolved over the pre-loop
+    // decision so verification and any repair rerun use live authority.
+    let decision =
+      currentOutcome.kind === "completed" ||
+      currentOutcome.kind === "approval_required"
+        ? currentOutcome.decision
+        : params.decision;
     let afterState = params.repoBuildStateAfter;
     let repairAttempts = 0;
+    let previousAfterErrorCount: number | undefined;
+    let consecutiveStalledRepairs = 0;
 
     while (true) {
       if (currentOutcome.kind === "approval_required") {
@@ -2089,6 +2165,9 @@ export class AgentEnginePipeline {
         runId,
         bus,
         decision,
+        primaryTaskIntent:
+          params.loopContext?.understanding?.intent.classification
+            .primaryTaskIntent,
         input,
         pinnedState,
         changedFiles: loopChangedFiles,
@@ -2142,11 +2221,29 @@ export class AgentEnginePipeline {
         });
       }
 
+      const currentAfterErrorCount =
+        verificationOutcome.comparison?.afterErrorCount ??
+        verificationOutcome.verification?.diagnostics.filter(
+          (diagnostic) => diagnostic.severity === "error",
+        ).length ??
+        0;
+      consecutiveStalledRepairs = nextStalledRepairCount({
+        previousAfterErrorCount,
+        currentAfterErrorCount,
+        consecutiveStalledRepairs,
+      });
+      previousAfterErrorCount = currentAfterErrorCount;
+
+      const repairDecision = shouldContinueVerificationRepair({
+        repairAttempts,
+        explorationDepth: input.explorationDepth,
+        consecutiveStalledRepairs,
+        canStartModelCall: budget.canStartModelCall(),
+      });
       const canRepair =
         verificationOutcome.repairable &&
-        repairAttempts < AGENT_ENGINE_THRESHOLDS.maxVerificationRepairAttempts &&
-        currentOutcome.kind === "completed" &&
-        budget.canStartModelCall();
+        repairDecision.continue &&
+        currentOutcome.kind === "completed";
       if (canRepair) {
         repairAttempts += 1;
         reasonCodes.push("verification_repair_attempted");
@@ -2156,6 +2253,7 @@ export class AgentEnginePipeline {
             verification: verificationOutcome.verification,
             comparison: verificationOutcome.comparison,
             changedFiles: loopChangedFiles,
+            mutationBudget: decision.toolGrant.mutationBudget,
           }),
         });
         currentOutcome = await this.runModelToolLoop({
@@ -2189,6 +2287,7 @@ export class AgentEnginePipeline {
           currentOutcome.kind === "completed" ||
           currentOutcome.kind === "approval_required"
         ) {
+          decision = currentOutcome.decision;
           continue;
         }
         if (currentOutcome.kind === "cancelled") {
@@ -2207,7 +2306,7 @@ export class AgentEnginePipeline {
         reasonCodes.push("budget_exhausted");
       }
 
-      // Verification did not pass (or the one repair attempt did not clear it).
+      // Verification did not pass (or remaining-error repairs stalled / capped).
       // Keep the edits, summarize the delta, and end the task.
       this.commitMutations(loopMutationIds);
       reasonCodes.push(
@@ -2487,6 +2586,7 @@ export class AgentEnginePipeline {
     runId: string;
     bus: EventBus;
     decision: ExecutionDecision;
+    primaryTaskIntent?: string;
     input: AgentEngineStartInput;
     pinnedState: RepositoryStateReference | undefined;
     changedFiles: string[];
@@ -2502,6 +2602,7 @@ export class AgentEnginePipeline {
       runId,
       bus,
       decision,
+      primaryTaskIntent,
       input,
       pinnedState,
       changedFiles,
@@ -2613,6 +2714,12 @@ export class AgentEnginePipeline {
       verificationRequired: decision.verification.required,
       allowUnavailable: decision.verification.allowUnavailable,
       changedFileCount: changedFiles.length,
+      mutationRequired: requiresMutationForExecute({
+        route: decision.route,
+        maximumWorkspaceEffect: decision.toolGrant.maximumWorkspaceEffect,
+        primaryTaskIntent,
+        reasonCodes: decision.reasonCodes,
+      }),
       canVerify,
       missingInfrastructure,
       verification: verificationResult,
@@ -3051,6 +3158,7 @@ export class AgentEnginePipeline {
     taskListRef: TaskListRef;
     evidence?: RunEvidence;
     windowPolicy: WindowPolicy;
+    repoBuildStateBefore?: RepoBuildState;
   }): Promise<ToolLoopOutcome> {
     const {
       runId,
@@ -3075,12 +3183,46 @@ export class AgentEnginePipeline {
     let answer = "";
     let truncationRecoveries = 0;
     let incompleteAnswerRecoveries = 0;
+    let unfulfilledExecuteRecoveries = 0;
     let pendingTextContinuation = "";
     let emittedLoopPressureWarning = false;
     let emittedLoopCompactionWarning = false;
     let successfulVerificationAfterMutation = false;
     let explorationStallNudges = 0;
+    let rejectedMutationRecoveries = 0;
+    let rejectedToolRecoveries = 0;
+    let readOnlyToolTurnsWithoutMutation = 0;
+    let awaitingReadOnlyMutationRetry = false;
+    let readOnlyMutationRetryAttempts = 0;
+    let awaitingRejectedMutationRetry:
+      | {
+          allowTargetedDiscovery: boolean;
+          targetedDiscoveryToolCallsUsed: number;
+          maxTargetedDiscoveryToolCalls: number;
+        }
+      | undefined;
+    const explorationBaseline = budget.snapshot();
     const establishedFacts = params.establishedFacts ?? [];
+    const isMutationRequired = () =>
+      requiresMutationForExecute({
+        route: decision.route,
+        maximumWorkspaceEffect: grant.maximumWorkspaceEffect,
+        primaryTaskIntent:
+          params.understanding?.intent.classification.primaryTaskIntent,
+        reasonCodes: decision.reasonCodes,
+      });
+    const currentPreflightDiagnosticRule = () =>
+      params.repoBuildStateBefore && params.repoBuildStateBefore.summary.errorCount > 0
+        ? buildPreflightDiagnosticRepairInstruction({
+            diagnostics: params.repoBuildStateBefore.diagnostics,
+            totalErrorCount: params.repoBuildStateBefore.summary.errorCount,
+            pathScopes: grant.pathScopes,
+            maxDiagnostics: params.windowPolicy.planning.maxDiagnosticSteps,
+            maxChars:
+              params.windowPolicy.sections.planTokens *
+              DEFAULT_PLAN_CHARACTERS_PER_TOKEN,
+          })
+        : undefined;
     const changeImpactGate = {
       required:
         decision.reasonCodes.includes("change_impact_recommended") &&
@@ -3125,11 +3267,17 @@ export class AgentEnginePipeline {
         memoryFacts: params.memoryFacts,
         establishedFacts,
         maxEstablishedFactReinjectChars:
-          AGENT_ENGINE_THRESHOLDS.maxEstablishedFactReinjectChars,
+          params.windowPolicy.compaction.establishedFactReinjectChars,
+        maxMemoryReinjectChars:
+          params.windowPolicy.compaction.memoryReinjectChars,
         recentToolMessagesToKeepFull:
           params.windowPolicy.compaction.keepRecentToolResults,
         compactedToolResultChars:
           params.windowPolicy.compaction.compactedToolResultChars,
+        compactedToolArgumentChars:
+          params.windowPolicy.compaction.compactedToolArgumentChars,
+        droppedTurnSummaryChars:
+          params.windowPolicy.compaction.droppedTurnSummaryChars,
         warnRatio: params.windowPolicy.compaction.warnRatio,
         autoRatio: params.windowPolicy.compaction.autoRatio,
         hardRatio: params.windowPolicy.compaction.hardRatio,
@@ -3180,6 +3328,18 @@ export class AgentEnginePipeline {
         ...params.request,
         messages: [...messages],
       };
+      const usedInputTokens =
+        estimateModelMessagesTokens(turnRequest.messages, this.tokenEstimator) +
+        (turnRequest.tools && turnRequest.tools.length > 0
+          ? this.tokenEstimator.estimate(JSON.stringify(turnRequest.tools))
+          : 0);
+      turnRequest.maximumOutputTokens = clampTurnMaximumOutputTokens({
+        reservedOutputTokens:
+          params.request.maximumOutputTokens ??
+          params.windowPolicy.maximumOutputTokens,
+        contextWindowTokens: params.windowPolicy.contextWindowTokens,
+        usedInputTokens,
+      });
 
       const turn = await this.consumeModelTurn({
         llm: this.deps.llm,
@@ -3246,6 +3406,15 @@ export class AgentEnginePipeline {
         toolCalls: turn.toolCalls,
         mutationBudget: grant.mutationBudget,
         recoveryAttempt: truncationRecoveries,
+        requireMutation: isUnfulfilledExecute({
+          route: decision.route,
+          maximumWorkspaceEffect: grant.maximumWorkspaceEffect,
+          primaryTaskIntent:
+            params.understanding?.intent.classification.primaryTaskIntent ?? "",
+          toolCallCount: turn.toolCalls.length,
+          changedFileCount: changedFiles.length,
+          content: turn.content,
+        }),
       });
 
       if (recovery?.shouldRecover) {
@@ -3282,20 +3451,6 @@ export class AgentEnginePipeline {
         continue;
       }
 
-      if (turn.content.length > 0) {
-        const turnAnswer = truncated
-          ? `${turn.content}\n\n…(output truncated — token limit reached)`
-          : turn.content;
-        if (pendingTextContinuation.length > 0) {
-          answer = appendTextContinuation(pendingTextContinuation, turnAnswer);
-          if (!truncated) {
-            pendingTextContinuation = "";
-          }
-        } else {
-          answer = turnAnswer;
-        }
-      }
-
       reasonCodes.push("model_completed");
       this.emitStage(bus, runId, "model_running", "completed", [
         "model_completed",
@@ -3303,10 +3458,44 @@ export class AgentEnginePipeline {
       ]);
 
       if (turn.toolCalls.length === 0) {
+        if (turn.content.length > 0) {
+          const turnAnswer = truncated
+            ? `${turn.content}\n\n…(output truncated — token limit reached)`
+            : turn.content;
+          if (pendingTextContinuation.length > 0) {
+            answer = appendTextContinuation(
+              pendingTextContinuation,
+              turnAnswer,
+            );
+            if (!truncated) {
+              pendingTextContinuation = "";
+            }
+          } else {
+            answer = turnAnswer;
+          }
+        }
+
         const incompleteAssistantTurn = shouldRecoverIncompleteAssistantTurn({
           content: turn.content,
           toolCallCount: 0,
           changedFileCount: changedFiles.length,
+        });
+        const loopOutcome = resolveLoopTurnOutcome({
+          route: decision.route,
+          maximumWorkspaceEffect: grant.maximumWorkspaceEffect,
+          primaryTaskIntent:
+            params.understanding?.intent.classification.primaryTaskIntent ?? "",
+          toolCallCount: 0,
+          changedFileCount: changedFiles.length,
+          content: turn.content,
+          finishReason: turn.finishReason,
+          truncated,
+          mutationBudget: grant.mutationBudget,
+          recoveries: {
+            truncation: truncationRecoveries,
+            incompleteAnswer: incompleteAnswerRecoveries,
+            unfulfilledExecute: unfulfilledExecuteRecoveries,
+          },
         });
         if (
           incompleteAssistantTurn &&
@@ -3325,10 +3514,56 @@ export class AgentEnginePipeline {
             mutationCheckpointIds,
             messages,
             toolCache,
+            decision,
           };
         }
 
         if (
+          loopOutcome.disposition === "recover_unfulfilled_execute" &&
+          unfulfilledExecuteRecoveries <
+            AGENT_ENGINE_THRESHOLDS.maxUnfulfilledExecuteRecoveries &&
+          budget.canStartModelCall()
+        ) {
+          unfulfilledExecuteRecoveries += 1;
+          reasonCodes.push("unfulfilled_execute_recovered");
+          if (turn.content.trim().length > 0) {
+            messages.push({
+              role: "assistant",
+              content: turn.content,
+            });
+          }
+          messages.push({
+            role: "user",
+            content:
+              loopOutcome.recoveryMessage ??
+              buildUnfulfilledExecuteRecoveryMessage(grant.mutationBudget),
+          });
+          warnings.push(
+            "Execute route produced analysis with no workspace edits; requesting apply_patch.",
+          );
+          this.emit(bus, {
+            type: "warning",
+            runId,
+            message:
+              "Model ended on a diagnosis without apply_patch; continuing so the fix can be applied.",
+            at: this.isoNow(),
+          });
+          continue;
+        }
+
+        if (loopOutcome.reasonCode === "unfulfilled_execute_exhausted") {
+          reasonCodes.push("unfulfilled_execute_exhausted");
+          return {
+            kind: "failed",
+            answer: answer || undefined,
+            extraReasons: ["unfulfilled_execute_exhausted"],
+            error: {
+              code: "no_mutation_performed",
+              message:
+                "The model exhausted the recovery budget without applying workspace edits.",
+            },
+          };
+        } else if (
           incompleteAssistantTurn &&
           incompleteAnswerRecoveries <
             AGENT_ENGINE_THRESHOLDS.maxIncompleteAnswerRecoveries &&
@@ -3394,6 +3629,7 @@ export class AgentEnginePipeline {
           mutationCheckpointIds,
           messages,
           toolCache,
+          decision,
         };
       }
 
@@ -3436,6 +3672,27 @@ export class AgentEnginePipeline {
       const taskListAutoAdvanceBudget = {
         remaining: this.deps.taskListAutoAdvance === true ? 1 : 0,
       };
+      let attemptedMutatingTool = false;
+      let rejectedMutation:
+        | {
+            toolName: string;
+            status: ToolResult["status"];
+            reasonCode?: ToolResult["reasonCode"];
+            warnings: readonly string[];
+            summary?: string;
+          }
+        | undefined;
+      let successfulToolCount = 0;
+      let rejectedToolCount = 0;
+      let rejectedTool:
+        | {
+            toolName: string;
+            status: ToolResult["status"];
+            reasonCode?: ToolResult["reasonCode"];
+            warnings: readonly string[];
+            summary?: string;
+          }
+        | undefined;
 
       for (const toolCall of turn.toolCalls) {
         if (signal.aborted) {
@@ -3470,9 +3727,10 @@ export class AgentEnginePipeline {
           taskListAutoAdvanceBudget,
           mutatingToolNames: DEFAULT_MUTATING_TOOL_NAMES,
           changeImpactGate,
-          evidence,
-          establishedFacts,
-        });
+        evidence,
+        establishedFacts,
+        windowPolicy: params.windowPolicy,
+      });
 
         if (outcome.kind === "approval_required") {
           const approvalId = this.deps.idGenerator.next("appr");
@@ -3491,11 +3749,52 @@ export class AgentEnginePipeline {
             changedFiles,
             mutationCheckpointIds,
             answer: answer || undefined,
+            decision,
           };
         }
 
         messages.push(outcome.message);
         const result = toolCache.get(toolCall.id);
+        const mutatingTool = DEFAULT_MUTATING_TOOL_NAMES.has(toolCall.name);
+        if (mutatingTool) {
+          attemptedMutatingTool = true;
+        }
+        if (result?.status === "succeeded") {
+          successfulToolCount += 1;
+        } else if (result) {
+          rejectedToolCount += 1;
+          rejectedTool = {
+            toolName: toolCall.name,
+            status: result.status,
+            reasonCode: result.reasonCode,
+            warnings: result.warnings,
+            summary: this.summarizeToolCall(
+              toolCall.name,
+              toolCall.arguments.trim().length === 0
+                ? {}
+                : safeJsonParse(toolCall.arguments),
+            ),
+          };
+        }
+        if (
+          mutatingTool &&
+          result &&
+          result.status !== "succeeded" &&
+          result.reasonCode !== "approval_required"
+        ) {
+          rejectedMutation = {
+            toolName: toolCall.name,
+            status: result.status,
+            reasonCode: result.reasonCode,
+            warnings: result.warnings,
+            summary: this.summarizeToolCall(
+              toolCall.name,
+              toolCall.arguments.trim().length === 0
+                ? {}
+                : safeJsonParse(toolCall.arguments),
+            ),
+          };
+        }
         if (
           changedFiles.length > 0 &&
           result &&
@@ -3539,9 +3838,236 @@ export class AgentEnginePipeline {
         "tools_executed",
       ]);
 
+      if (
+        isMutationRequired() &&
+        changedFiles.length === 0 &&
+        awaitingRejectedMutationRetry &&
+        !attemptedMutatingTool
+      ) {
+        if (
+          isTargetedDiscoveryAfterRejectedMutation({
+            recovery: awaitingRejectedMutationRetry,
+            toolCalls: turn.toolCalls,
+            successfulToolCount,
+            rejectedToolCount,
+          })
+        ) {
+          const used =
+            awaitingRejectedMutationRetry.targetedDiscoveryToolCallsUsed +
+            turn.toolCalls.length;
+          const max =
+            awaitingRejectedMutationRetry.maxTargetedDiscoveryToolCalls;
+          awaitingRejectedMutationRetry = {
+            ...awaitingRejectedMutationRetry,
+            targetedDiscoveryToolCallsUsed: used,
+            allowTargetedDiscovery: used < max,
+          };
+          messages.push({
+            role: "user",
+            content:
+              `Use that targeted discovery result to retry the corrected workspace edit now. Targeted stale-patch reads used: ${used}/${max}. Your next turn must call apply_patch/delete_file/move_file or stop with a clear blocker. Only read again if it is one of the exact stale patch files and still within this budget.`,
+          });
+          warnings.push(
+            "Allowed targeted stale-patch discovery after a recoverable rejected mutation.",
+          );
+          continue;
+        }
+
+        reasonCodes.push("tool_failed", "unfulfilled_execute_exhausted");
+        return {
+          kind: "failed",
+          answer: answer || undefined,
+          extraReasons: [],
+          error: {
+            code: "no_mutation_performed",
+            message:
+              "The model read more files after a rejected mutation instead of retrying the workspace edit.",
+          },
+        };
+      }
+
+      if (
+        isMutationRequired() &&
+        changedFiles.length === 0 &&
+        awaitingReadOnlyMutationRetry &&
+        !attemptedMutatingTool
+      ) {
+        if (
+          readOnlyMutationRetryAttempts <
+            AGENT_ENGINE_THRESHOLDS.maxUnfulfilledExecuteRecoveries &&
+          budget.canStartModelCall()
+        ) {
+          readOnlyMutationRetryAttempts += 1;
+          reasonCodes.push("unfulfilled_execute_recovered");
+          messages.push({
+            role: "user",
+            content:
+              "You read again instead of editing. This is the final chance: your very next turn must call apply_patch/delete_file/move_file with a bounded change, or stop with a clear blocker. No further reads.\n\n" +
+              buildUnfulfilledExecuteRecoveryMessage(grant.mutationBudget),
+          });
+          warnings.push(
+            "Model kept reading after the first-mutation nudge; granting one final chance before failing the run.",
+          );
+          continue;
+        }
+
+        reasonCodes.push("unfulfilled_execute_exhausted");
+        return {
+          kind: "failed",
+          answer: answer || undefined,
+          extraReasons: [],
+          error: {
+            code: "no_mutation_performed",
+            message:
+              "The model continued reading after being told to apply the required workspace edit.",
+          },
+        };
+      }
+
+      if (
+        isMutationRequired() &&
+        changedFiles.length === 0 &&
+        !attemptedMutatingTool &&
+        rejectedTool &&
+        successfulToolCount === 0 &&
+        rejectedToolCount === turn.toolCalls.length
+      ) {
+        reasonCodes.push("tool_failed");
+        if (
+          rejectedToolRecoveries <
+            AGENT_ENGINE_THRESHOLDS.maxUnfulfilledExecuteRecoveries &&
+          budget.canStartModelCall()
+        ) {
+          rejectedToolRecoveries += 1;
+          messages.push({
+            role: "user",
+            content: buildRejectedToolRecoveryMessage(rejectedTool),
+          });
+          warnings.push(
+            `All requested tools were ${rejectedTool.status}; requesting corrected tool arguments or a patch.`,
+          );
+          continue;
+        }
+
+        reasonCodes.push("unfulfilled_execute_exhausted");
+        return {
+          kind: "failed",
+          answer: answer || undefined,
+          extraReasons: [],
+          error: {
+            code: "no_mutation_performed",
+            message:
+              "The model repeatedly called rejected tools instead of applying the required workspace edits.",
+          },
+        };
+      }
+
+      if (
+        isMutationRequired() &&
+        changedFiles.length === 0 &&
+        rejectedMutation
+      ) {
+        reasonCodes.push("tool_failed");
+        if (
+          rejectedMutationRecoveries <
+            AGENT_ENGINE_THRESHOLDS.maxUnfulfilledExecuteRecoveries &&
+          budget.canStartModelCall()
+        ) {
+          rejectedMutationRecoveries += 1;
+          const maxTargetedDiscoveryToolCalls =
+            grant.mutationBudget?.maxUniqueFilesPerCall ??
+            AGENT_ENGINE_THRESHOLDS.defaultPreferredBatchSize;
+          const allowTargetedDiscovery =
+            allowsTargetedDiscoveryAfterRejectedMutation(rejectedMutation);
+          awaitingRejectedMutationRetry = {
+            allowTargetedDiscovery,
+            targetedDiscoveryToolCallsUsed: 0,
+            maxTargetedDiscoveryToolCalls,
+          };
+          messages.push({
+            role: "user",
+            content: buildRejectedMutationRecoveryMessage({
+              ...rejectedMutation,
+              maxTargetedDiscoveryToolCalls,
+            }),
+          });
+          warnings.push(
+            `Mutation tool ${rejectedMutation.toolName} ${rejectedMutation.status}; requesting a corrected edit.`,
+          );
+          continue;
+        }
+
+        reasonCodes.push("unfulfilled_execute_exhausted");
+        return {
+          kind: "failed",
+          answer: answer || undefined,
+          extraReasons: [],
+          error: {
+            code: "no_mutation_performed",
+            message:
+              "The model could not apply a valid workspace edit after a rejected mutation attempt.",
+          },
+        };
+      }
+
+      if (attemptedMutatingTool) {
+        awaitingRejectedMutationRetry = undefined;
+        awaitingReadOnlyMutationRetry = false;
+        readOnlyToolTurnsWithoutMutation = 0;
+        readOnlyMutationRetryAttempts = 0;
+      } else if (
+        isMutationRequired() &&
+        changedFiles.length === 0 &&
+        successfulToolCount > 0
+      ) {
+        readOnlyToolTurnsWithoutMutation += 1;
+        if (
+          readOnlyToolTurnsWithoutMutation >=
+          AGENT_ENGINE_THRESHOLDS.maxReadOnlyToolTurnsBeforeMutationNudge
+        ) {
+          if (budget.canStartModelCall()) {
+            const diagnosticRule = currentPreflightDiagnosticRule();
+            awaitingReadOnlyMutationRetry = true;
+            reasonCodes.push("unfulfilled_execute_recovered");
+            messages.push({
+              role: "user",
+              content:
+                "You have enough repository context to attempt the requested edit. Stop reading/searching. Your next turn must call apply_patch/delete_file/move_file with a bounded change, or stop with a clear blocker.\n\n" +
+                (diagnosticRule ? `${diagnosticRule}\n\n` : "") +
+                buildUnfulfilledExecuteRecoveryMessage(grant.mutationBudget),
+            });
+            warnings.push(
+              "Execute route spent multiple tool turns reading without edits; requesting the first mutation.",
+            );
+            continue;
+          }
+
+          reasonCodes.push("unfulfilled_execute_exhausted");
+          return {
+            kind: "failed",
+            answer: answer || undefined,
+            extraReasons: ["unfulfilled_execute_exhausted"],
+            error: {
+              code: "no_mutation_performed",
+              message:
+                "The model repeatedly read files but did not apply the required workspace edits.",
+            },
+          };
+        }
+      }
+
       const usageSnap = budget.snapshot();
-      if (isExplorationRereadHeavy(usageSnap)) {
-        this.applyExplorationSignal(usageSnap, reasonCodes, warnings);
+      const loopUsageSnap = {
+        fileReadCalls:
+          usageSnap.fileReadCalls - explorationBaseline.fileReadCalls,
+        uniqueFilePathsTouched: Math.max(
+          1,
+          usageSnap.uniqueFilePathsTouched -
+            explorationBaseline.uniqueFilePathsTouched,
+        ),
+      };
+      if (isExplorationRereadHeavy(loopUsageSnap)) {
+        this.applyExplorationSignal(loopUsageSnap, reasonCodes, warnings);
         if (
           explorationStallNudges <
           AGENT_ENGINE_THRESHOLDS.maxExplorationStallNudges
@@ -3549,13 +4075,28 @@ export class AgentEnginePipeline {
           explorationStallNudges += 1;
           messages.push({
             role: "user",
-            content: buildExplorationStallNudge(usageSnap),
+            content: buildExplorationStallNudge(loopUsageSnap, {
+              mutationRequired:
+                isMutationRequired() && changedFiles.length === 0,
+            }),
           });
         } else {
           reasonCodes.push("exploration_stall_broken");
           warnings.push(
             "Stopped the run after repeated file re-reads of the same paths.",
           );
+          if (isMutationRequired() && changedFiles.length === 0) {
+            return {
+              kind: "failed",
+              answer: answer || undefined,
+              extraReasons: ["unfulfilled_execute_exhausted"],
+              error: {
+                code: "no_mutation_performed",
+                message:
+                  "The model repeatedly read files but did not apply the required workspace edits.",
+              },
+            };
+          }
           return {
             kind: "completed",
             answer,
@@ -3563,6 +4104,7 @@ export class AgentEnginePipeline {
             mutationCheckpointIds,
             messages,
             toolCache,
+            decision,
           };
         }
       }
@@ -3715,6 +4257,7 @@ export class AgentEnginePipeline {
     changeImpactGate?: { required: boolean; satisfied: boolean };
     evidence?: RunEvidence;
     establishedFacts?: EstablishedFact[];
+    windowPolicy: WindowPolicy;
   }): Promise<ToolCallOutcome> {
     const {
       runId,
@@ -3739,6 +4282,7 @@ export class AgentEnginePipeline {
       changeImpactGate,
       evidence,
       establishedFacts,
+      windowPolicy,
     } = params;
 
     const toolCall: ModelToolCall = {
@@ -3793,7 +4337,9 @@ export class AgentEnginePipeline {
             argumentsValue,
             output: cached.output,
             outputPreview: cached.audit.outputPreview,
+            maxChars: windowPolicy.compaction.establishedFactChars,
           }),
+          { maxFacts: windowPolicy.compaction.maxEstablishedFacts },
         );
       }
       this.emit(bus, {
@@ -3803,7 +4349,7 @@ export class AgentEnginePipeline {
         toolName: toolCall.name,
         status: cached.status,
         ...(summary ? { summary } : {}),
-        ...(cached.reasonCode ? { reasonCode: cached.reasonCode } : {}),
+        ...toolCompletionDiagnostics(cached),
         at: this.isoNow(),
       });
       return {
@@ -3811,7 +4357,9 @@ export class AgentEnginePipeline {
         message: {
           role: "tool",
           toolCallId: toolCall.id,
-          content: serializeToolResultForModel(cached),
+          content: serializeToolResultForModel(cached, {
+            maxContentChars: windowPolicy.compaction.toolResultContentChars,
+          }),
         },
       };
     }
@@ -3863,7 +4411,7 @@ export class AgentEnginePipeline {
         toolName: toolCall.name,
         status: result.status,
         ...(summary ? { summary } : {}),
-        reasonCode: result.reasonCode,
+        ...toolCompletionDiagnostics(result),
         at: now,
       });
       return {
@@ -3871,7 +4419,9 @@ export class AgentEnginePipeline {
         message: {
           role: "tool",
           toolCallId: toolCall.id,
-          content: serializeToolResultForModel(result),
+          content: serializeToolResultForModel(result, {
+            maxContentChars: windowPolicy.compaction.toolResultContentChars,
+          }),
         },
       };
     }
@@ -3918,7 +4468,7 @@ export class AgentEnginePipeline {
         toolName: toolCall.name,
         status: result.status,
         ...(summary ? { summary } : {}),
-        ...(result.reasonCode ? { reasonCode: result.reasonCode } : {}),
+        ...toolCompletionDiagnostics(result),
         at: this.isoNow(),
       });
       recordToolEvidence(evidence, {
@@ -3933,7 +4483,9 @@ export class AgentEnginePipeline {
         message: {
           role: "tool",
           toolCallId: toolCall.id,
-          content: serializeToolResultForModel(result),
+          content: serializeToolResultForModel(result, {
+            maxContentChars: windowPolicy.compaction.toolResultContentChars,
+          }),
         },
       };
     }
@@ -3967,7 +4519,7 @@ export class AgentEnginePipeline {
         toolName: toolCall.name,
         status: result.status,
         ...(summary ? { summary } : {}),
-        ...(result.reasonCode ? { reasonCode: result.reasonCode } : {}),
+        ...toolCompletionDiagnostics(result),
         at: this.isoNow(),
       });
       // Do not cache: resume must re-execute this call once approved.
@@ -3990,14 +4542,16 @@ export class AgentEnginePipeline {
       toolCache.setContent(toolCall.name, argumentsValue, result);
       upsertEstablishedFact(
         establishedFacts ?? [],
-        extractEstablishedFact({
-          toolName: toolCall.name,
-          argumentsValue,
-          output: result.output,
-          outputPreview: result.audit.outputPreview,
-        }),
-      );
-    }
+          extractEstablishedFact({
+            toolName: toolCall.name,
+            argumentsValue,
+            output: result.output,
+            outputPreview: result.audit.outputPreview,
+            maxChars: windowPolicy.compaction.establishedFactChars,
+          }),
+          { maxFacts: windowPolicy.compaction.maxEstablishedFacts },
+        );
+      }
 
     if (result.status === "succeeded") {
       if (toolCall.name === "analyze_change_impact" && changeImpactGate) {
@@ -4058,7 +4612,7 @@ export class AgentEnginePipeline {
       toolName: toolCall.name,
       status: result.status,
       ...(summary ? { summary } : {}),
-      ...(result.reasonCode ? { reasonCode: result.reasonCode } : {}),
+      ...toolCompletionDiagnostics(result),
       at: this.isoNow(),
     });
     recordToolEvidence(evidence, {
@@ -4074,7 +4628,9 @@ export class AgentEnginePipeline {
       message: {
         role: "tool",
         toolCallId: toolCall.id,
-        content: serializeToolResultForModel(result),
+        content: serializeToolResultForModel(result, {
+          maxContentChars: windowPolicy.compaction.toolResultContentChars,
+        }),
       },
     };
   }
@@ -4571,6 +5127,7 @@ export class AgentEnginePipeline {
     reasonCodes: AgentReasonCode[];
     warnings: string[];
     taskListRef: TaskListRef;
+    windowPolicy: WindowPolicy;
   }): Promise<{
     brief: DiscoveryBrief;
     failed: boolean;
@@ -4590,6 +5147,7 @@ export class AgentEnginePipeline {
       reasonCodes,
       warnings,
       taskListRef,
+      windowPolicy,
     } = params;
 
     this.emitStage(bus, runId, "discovery", "started");
@@ -4738,7 +5296,9 @@ export class AgentEnginePipeline {
             role: "tool",
             toolCallId: toolCall.id,
             content: result
-              ? serializeToolResultForModel(result)
+              ? serializeToolResultForModel(result, {
+                  maxContentChars: windowPolicy.compaction.toolResultContentChars,
+                })
               : "Tool runtime unavailable.",
           });
         }
@@ -5110,6 +5670,179 @@ function uniqueStrings(values: readonly string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
+function safeJsonParse(value: string): unknown {
+  try {
+    return value.trim().length > 0 ? JSON.parse(value) : {};
+  } catch {
+    return {};
+  }
+}
+
+function buildRejectedMutationRecoveryMessage(params: {
+  toolName: string;
+  status: ToolResult["status"];
+  reasonCode?: ToolResult["reasonCode"];
+  warnings: readonly string[];
+  summary?: string;
+  maxTargetedDiscoveryToolCalls?: number;
+}): string {
+  const reason = params.reasonCode ? ` (${params.reasonCode})` : "";
+  const warnings =
+    params.warnings.length > 0
+      ? `\nTool warning: ${params.warnings.slice(0, 3).join(" ")}`
+      : "";
+  const summary = params.summary ? `\nAttempt: ${params.summary}` : "";
+  const allowTargetedDiscovery =
+    allowsTargetedDiscoveryAfterRejectedMutation(params);
+
+  const instructions = [
+    `The mutation tool ${params.toolName} was ${params.status}${reason}.`,
+    `${summary}${warnings}`,
+    "Do not restart broad exploration.",
+    "Use the rejected tool result and already-read file content to correct the edit.",
+  ];
+
+  if (allowTargetedDiscovery) {
+    const max =
+      params.maxTargetedDiscoveryToolCalls ??
+      AGENT_ENGINE_THRESHOLDS.defaultPreferredBatchSize;
+    instructions.push(
+      `If the rejection indicates stale oldText or a missing patch path, you may use at most ${max} targeted read/list/search call(s) for exact stale patch files or their parent directories.`,
+      "After that targeted discovery, retry apply_patch/delete_file/move_file with corrected arguments, or stop with a clear blocker.",
+    );
+  } else {
+    instructions.push(
+      "Your next turn must either call apply_patch/delete_file/move_file with corrected arguments, or stop with a clear blocker. Do not read or search more files first.",
+    );
+  }
+
+  return instructions.join("\n");
+}
+
+function allowsTargetedDiscoveryAfterRejectedMutation(params: {
+  toolName: string;
+  reasonCode?: ToolResult["reasonCode"];
+  warnings: readonly string[];
+  summary?: string;
+}): boolean {
+  if (params.toolName !== "apply_patch") {
+    return false;
+  }
+
+  const details = [
+    params.reasonCode,
+    params.summary,
+    ...params.warnings,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (params.reasonCode === "path_out_of_scope") {
+    return true;
+  }
+  if (
+    params.reasonCode === "invalid_arguments" &&
+    (details.includes("analyze_change_impact") ||
+      details.includes("oldtext") ||
+      details.includes("old text") ||
+      details.includes("not found") ||
+      details.includes("does not exist") ||
+      details.includes("missing"))
+  ) {
+    return true;
+  }
+  if (params.reasonCode !== "patch_conflict") {
+    return false;
+  }
+  return (
+    details.includes("oldtext") ||
+    details.includes("old text") ||
+    details.includes("not found") ||
+    details.includes("does not exist") ||
+    details.includes("missing")
+  );
+}
+
+function isTargetedDiscoveryAfterRejectedMutation(params: {
+  recovery: {
+    allowTargetedDiscovery: boolean;
+    targetedDiscoveryToolCallsUsed: number;
+    maxTargetedDiscoveryToolCalls: number;
+  };
+  toolCalls: readonly ModelToolCall[];
+  successfulToolCount: number;
+  rejectedToolCount: number;
+}): boolean {
+  if (
+    !params.recovery.allowTargetedDiscovery ||
+    params.toolCalls.length === 0 ||
+    params.recovery.targetedDiscoveryToolCallsUsed + params.toolCalls.length >
+      params.recovery.maxTargetedDiscoveryToolCalls ||
+    params.successfulToolCount === 0 ||
+    params.rejectedToolCount > 0
+  ) {
+    return false;
+  }
+
+  return params.toolCalls.every((call) =>
+    TARGETED_REJECTED_MUTATION_DISCOVERY_TOOLS.has(call.name),
+  );
+}
+
+function buildRejectedToolRecoveryMessage(params: {
+  toolName: string;
+  status: ToolResult["status"];
+  reasonCode?: ToolResult["reasonCode"];
+  warnings: readonly string[];
+  summary?: string;
+}): string {
+  const reason = params.reasonCode ? ` (${params.reasonCode})` : "";
+  const summary = params.summary ? `\nAttempt: ${params.summary}` : "";
+  const warnings =
+    params.warnings.length > 0
+      ? `\nTool warning: ${params.warnings.slice(0, 3).join(" ")}`
+      : "";
+
+  return [
+    `The requested tool ${params.toolName} was ${params.status}${reason}.`,
+    `${summary}${warnings}`,
+    "Do not repeat rejected tool calls.",
+    "If you need more context, call the read/search tool once with corrected, valid arguments. If you already have enough context, call apply_patch now.",
+    "Do not end the turn with more malformed or duplicate read/search calls.",
+  ].join("\n");
+}
+
+function toolCompletionDiagnostics(
+  result: ToolResult,
+): Partial<Extract<RunEvent, { type: "tool_completed" }>> {
+  const warnings = result.warnings
+    .map((warning) => truncateForLogField(warning, 500))
+    .filter((warning) => warning.length > 0)
+    .slice(0, 5);
+  const outputPreview = result.audit.outputPreview
+    ? truncateForLogField(result.audit.outputPreview, 1_000)
+    : undefined;
+
+  return {
+    ...(result.reasonCode ? { reasonCode: result.reasonCode } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
+    ...(outputPreview ? { outputPreview } : {}),
+    durationMs: result.durationMs,
+    bytesProduced: result.bytesProduced,
+    truncated: result.truncated,
+    redacted: result.redacted,
+  };
+}
+
+function truncateForLogField(value: string, maxChars: number): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxChars) {
+    return compact;
+  }
+  return `${compact.slice(0, Math.max(0, maxChars - 1))}…`;
+}
+
 function inferLanguageFromPaths(paths: readonly string[]): ProjectDescriptor["primaryLanguageId"] {
   const joined = paths.join(" ").toLowerCase();
   if (/\.(ts|tsx|js|jsx|mjs|cjs)\b/.test(joined)) return "typescript";
@@ -5153,6 +5886,48 @@ function buildPlanningQuery(
   }
 
   return current.slice(0, 1_000);
+}
+
+const CONTEXT_READY_WARNING_CODES = new Set([
+  "optional_source_unavailable",
+  "required_source_unavailable",
+  "file_map_fallback",
+  "state_degraded",
+  "source_failed",
+]);
+
+function looksLikeContextFilePath(path: string): boolean {
+  const lastSegment = path.split("/").at(-1) ?? "";
+  if (!lastSegment) {
+    return false;
+  }
+  if (lastSegment.startsWith(".") && lastSegment.length > 1) {
+    return true;
+  }
+  return lastSegment.includes(".") && !lastSegment.endsWith(".");
+}
+
+function scopeDiscoveredContextPaths(
+  paths: readonly string[],
+  focus: {
+    folderPrefix?: string;
+    filePaths: readonly string[];
+  },
+): string[] {
+  const unique = [...new Set(paths.map((path) => path.trim()).filter(Boolean))];
+  if (!focus.folderPrefix && focus.filePaths.length === 0) {
+    return unique.slice(0, 12);
+  }
+  const allowedFiles = new Set(focus.filePaths);
+  return unique
+    .filter(
+      (path) =>
+        allowedFiles.has(path) ||
+        (focus.folderPrefix
+          ? pathMatchesFolderPrefix(path, focus.folderPrefix)
+          : false),
+    )
+    .slice(0, 12);
 }
 
 /**
@@ -5200,7 +5975,7 @@ function deriveContextFocusFromUnderstanding(
     ) {
       continue;
     }
-    if (target.kind === "file") {
+    if (target.kind === "file" && looksLikeContextFilePath(value)) {
       filePaths.push(value);
     } else {
       folderPrefixes.push(value);

@@ -28,6 +28,13 @@ export const windowPolicyCompactionSchema = z
     hardRatio: z.number().min(0).max(1),
     keepRecentToolResults: z.number().int().positive(),
     compactedToolResultChars: z.number().int().positive(),
+    compactedToolArgumentChars: z.number().int().positive(),
+    toolResultContentChars: z.number().int().positive(),
+    droppedTurnSummaryChars: z.number().int().positive(),
+    establishedFactChars: z.number().int().positive(),
+    maxEstablishedFacts: z.number().int().positive(),
+    establishedFactReinjectChars: z.number().int().positive(),
+    memoryReinjectChars: z.number().int().positive(),
   })
   .strict();
 

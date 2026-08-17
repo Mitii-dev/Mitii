@@ -17,6 +17,9 @@ function normalizeGrantForCompare(grant: ToolGrant): ToolGrant {
     allowedTools: [...grant.allowedTools].sort(),
     allowedEffects: [...grant.allowedEffects].sort(),
     pathScopes: [...grant.pathScopes].sort(),
+    mutationPathScopes: grant.mutationPathScopes
+      ? [...grant.mutationPathScopes].sort()
+      : undefined,
     networkHosts: grant.networkHosts
       ? [...grant.networkHosts].sort()
       : undefined,

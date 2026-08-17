@@ -44,7 +44,8 @@ tool-runtime/
 - `createBuiltinToolRegistry` wires default V8 tools.
 - `defineTool` creates typed custom tool definitions.
 - `StructuralShadowGrantAuthorizer` can evaluate a Cedar-shaped structural grant in parallel with normal validation.
-- Mutation batches enforce `maxPatchesPerCall`, `maxUniqueFilesPerCall`, and `maxPatchPayloadCharacters`.
+- Mutation batches enforce `maxPatchesPerCall`, `maxUniqueFilesPerCall`, and `maxPatchPayloadCharacters`. Exceeding those caps fails preflight with `mutation_budget_exceeded` (not a generic `limit_exceeded`).
+- Mutation tools (`apply_patch`, delete, move) authorize against `grant.mutationPathScopes` when present; discovery tools keep `grant.pathScopes`.
 - Process execution always goes through `ProcessPort`.
 - Network access always goes through `NetworkPort` and host allow-lists.
 - Output is bounded by the minimum of tool, grant, and session limits.

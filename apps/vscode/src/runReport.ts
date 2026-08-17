@@ -141,7 +141,24 @@ export function formatContextInspection(events: RunEvent[]): string[] {
           ? ` paths=${event.paths.slice(0, 8).join(',')}`
           : '';
       lines.push(
-        `[context] token=${event.stateToken.slice(0, 12)}… blocks=${event.blockCount} status=${event.status}${paths}`,
+        `[context] token=${event.stateToken.slice(0, 12)}… blocks=${event.blockCount} retrieved=${event.retrievedCandidates} selected=${event.selectedItems} dropped=${event.droppedBlocks} status=${event.status}${paths}`,
+      );
+      if (event.retrievalSources && event.retrievalSources.length > 0) {
+        lines.push(
+          `[context] sources=${event.retrievalSources
+            .map(
+              (source: {
+                sourceId: string;
+                status: string;
+                candidateCount: number;
+              }) => `${source.sourceId}:${source.status}:${source.candidateCount}`,
+            )
+            .join(',')}`,
+        );
+      }
+    } else if (event.type === 'model_turn') {
+      lines.push(
+        `[model] turn=${event.turnIndex} in=${event.inputTokens ?? '-'} out=${event.outputTokens ?? '-'} finish=${event.finishReason ?? '-'}${event.truncated ? ' truncated' : ''}`,
       );
     } else if (event.type === 'skills_ready') {
       const selected =

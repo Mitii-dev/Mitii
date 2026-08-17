@@ -4,6 +4,7 @@ import type { MutationTransactionRegistry } from "../internal/mutation";
 import { MutationError } from "../internal/mutation";
 import { PathContainmentError } from "../internal/PathContainment";
 import { deleteDirectoryInputSchema } from "../internal/ToolCatalog";
+import { resolveMutationPathScopes } from "./ResolveMutationPathScopes";
 
 export async function executeDeleteDirectory(params: {
   arguments: unknown;
@@ -29,7 +30,7 @@ export async function executeDeleteDirectory(params: {
   try {
     const result = await params.transactions.deleteDirectory({
       workspaceRoot: params.workspaceRoot,
-      pathScopes: params.grant.pathScopes,
+      pathScopes: resolveMutationPathScopes(params.grant),
       fileSystem: params.fileSystem,
       path: parsed.path,
       recursive,

@@ -168,4 +168,23 @@ describe("decideVerificationGate", () => {
       }),
     ).toEqual({ action: "accept", acceptKind: "skipped_not_required" });
   });
+
+  it("rejects zero-edit mutation-required runs", () => {
+    expect(
+      decideVerificationGate({
+        verificationRequired: true,
+        allowUnavailable: false,
+        changedFileCount: 0,
+        mutationRequired: true,
+        canVerify: true,
+      }),
+    ).toMatchObject({
+      action: "reject",
+      repairable: false,
+      rejectKind: "no_mutation_performed",
+      error: {
+        code: "no_mutation_performed",
+      },
+    });
+  });
 });

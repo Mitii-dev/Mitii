@@ -332,6 +332,106 @@ describe("AgentEnginePipeline repair remaining-error queue (Phase 4)", () => {
     expect(verifyCalls).toBe(2);
   });
 
+  it("keeps repairing remaining baseline errors across multiple batches on auto depth", async () => {
+    const tree = directory({
+      src: directory({
+        "a.ts": file("const a = 1;\n"),
+        "b.ts": file("const b = 1;\n"),
+        "c.ts": file("const c = 1;\n"),
+      }),
+    });
+    const fs = new InMemoryFileSystemAdapter(WORKSPACE, tree);
+    const realTools = new ToolRuntimePipeline({
+      fileSystem: fs,
+      process: new InMemoryProcessAdapter(async () => ({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        cancelled: false,
+        truncated: false,
+      })),
+    });
+    const tools = wrapTools(realTools);
+    const baseline = ["src/a.ts", "src/b.ts", "src/c.ts"];
+    const verifyResults = [["src/b.ts", "src/c.ts"], ["src/c.ts"], []];
+    let verifyCalls = 0;
+
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        toolGrant: createWriteGrant(),
+        pinnedState,
+        verification: { required: true, minimumEvidence: [], allowUnavailable: false },
+        reasonCodes: ["mutation_execute", "preflight_build_recommended"],
+      }),
+      llm: new ScriptedLlmPort(
+        [
+          {
+            toolCalls: [
+              {
+                id: "call_patch_a",
+                name: "apply_patch",
+                arguments: JSON.stringify({
+                  patches: [{ path: "src/a.ts", oldText: "const a = 1;\n", newText: "const a: number = 1;\n" }],
+                }),
+              },
+            ],
+          },
+          { content: "Fixed src/a.ts." },
+          {
+            toolCalls: [
+              {
+                id: "call_patch_b",
+                name: "apply_patch",
+                arguments: JSON.stringify({
+                  patches: [{ path: "src/b.ts", oldText: "const b = 1;\n", newText: "const b: number = 1;\n" }],
+                }),
+              },
+            ],
+          },
+          { content: "Fixed src/b.ts." },
+          {
+            toolCalls: [
+              {
+                id: "call_patch_c",
+                name: "apply_patch",
+                arguments: JSON.stringify({
+                  patches: [{ path: "src/c.ts", oldText: "const c = 1;\n", newText: "const c: number = 1;\n" }],
+                }),
+              },
+            ],
+          },
+          { content: "Fixed src/c.ts. All typecheck errors resolved." },
+        ],
+        createCapabilities({ supportsTools: true }),
+      ),
+    });
+    deps.tools = tools;
+    deps.verification = {
+      verify: async () => verificationResult(verifyResults[verifyCalls++] ?? []),
+      captureBuildState: async () => buildState(baseline),
+      buildStateFromResult: (_input, result) =>
+        buildState(result.diagnostics.map((d) => d.path)),
+      compareBuildStates: ({ after }) =>
+        compare(baseline, after.diagnostics.map((d) => d.path)),
+    };
+    const engine = new AgentEnginePipeline(deps);
+
+    const result = await engine.start(
+      baseStartInput({
+        repositoryState: { reference: pinnedState, readiness: "ready" },
+      }),
+    ).result;
+
+    expect(result.status).toBe("completed");
+    expect(result.reasonCodes).toContain("verification_repair_attempted");
+    expect(result.reasonCodes).toContain("verification_repair_succeeded");
+    expect(result.reasonCodes).not.toContain("verification_kept_changes");
+    expect(verifyCalls).toBe(3);
+    expect((await fs.readFile(`${WORKSPACE}/src/c.ts`)).content).toContain("number");
+  });
+
   it("Quick exploration depth stops after one remaining-error batch instead of looping to zero", async () => {
     const { realTools } = createWorkspace();
     const tools = wrapTools(realTools);

@@ -50,6 +50,9 @@ skills/
 - Hosts that list skills in `metadata` mode still hydrate full playbooks through
   `loadBody`. Compact fallback is what keeps oversized playbooks from evicting
   the skill the ranker selected.
+- Agent Engine maps `bugfix` / `diagnose` understanding into recommended skill
+  tags `localize` and `fix` (plus any tags already on `taskHints`). Skills does
+  not own that mapping; it only consumes `SkillTaskEvidence`.
 
 ## Ownership Boundaries
 

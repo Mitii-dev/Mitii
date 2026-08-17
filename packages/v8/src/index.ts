@@ -108,6 +108,8 @@ export { RepositoryContextPipeline } from "./modules/repository-context";
 export {
   collectRepositoryContextGraphAnchors,
   deriveContextSelectionBudget,
+  pathMatchesFolderPrefix,
+  restrictContextReferencesToFolderPrefix,
   REPOSITORY_CONTEXT_RETRIEVAL_POLICY,
 } from "./modules/repository-context";
 export {

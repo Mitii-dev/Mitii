@@ -1,6 +1,6 @@
 {
   "name": "@mitii/v8",
-  "version": "2.8.38",
+  "version": "2.8.39",
   "description": "Host-neutral Mitii V8 agent runtime (modules + engine).",
   "license": "AGPL-3.0-or-later",
   "type": "module",

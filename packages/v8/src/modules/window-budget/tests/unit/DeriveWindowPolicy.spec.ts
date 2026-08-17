@@ -13,7 +13,7 @@ describe("deriveWindowPolicy", () => {
     });
     const large = deriveWindowPolicy({
       schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
-      contextWindowTokens: 100_000,
+      contextWindowTokens: 300_000,
     });
 
     expect(small.maximumOutputTokens).toBeLessThan(large.maximumOutputTokens);
@@ -21,12 +21,27 @@ describe("deriveWindowPolicy", () => {
     expect(small.sections.repositoryTokens).toBeLessThan(
       large.sections.repositoryTokens,
     );
-    expect(small.planning.visiblePlanAffordable).toBe(false);
+    expect(small.planning.visiblePlanAffordable).toBe(true);
+    expect(small.planning.changeImpactAffordable).toBe(true);
+    expect(small.skills.maxSkills).toBeGreaterThanOrEqual(2);
+    expect(small.mutation.maxPatchesPerCall).toBeGreaterThanOrEqual(
+      small.mutation.maxUniqueFilesPerCall,
+    );
     expect(large.planning.visiblePlanAffordable).toBe(true);
     expect(small.mutation.maxUniqueFilesPerCall).toBeLessThanOrEqual(
       large.mutation.maxUniqueFilesPerCall,
     );
+    expect(small.run.maxModelCalls).toBeGreaterThanOrEqual(48);
     expect(small.run.maxModelCalls).toBeLessThanOrEqual(large.run.maxModelCalls);
+    expect(small.compaction.toolResultContentChars).toBeLessThan(
+      large.compaction.toolResultContentChars,
+    );
+    expect(small.compaction.droppedTurnSummaryChars).toBeLessThan(
+      large.compaction.droppedTurnSummaryChars,
+    );
+    expect(small.compaction.maxEstablishedFacts).toBeLessThanOrEqual(
+      large.compaction.maxEstablishedFacts,
+    );
   });
 
   it("treats a positive maximumOutputTokens as a host override", () => {
@@ -37,6 +52,17 @@ describe("deriveWindowPolicy", () => {
     });
     expect(result.maximumOutputTokens).toBe(4_096);
     expect(result.reasonCodes).toContain("output_host_override");
+  });
+
+  it("keeps plan and change-impact affordable on a 30k window with a 5k output cap", () => {
+    const result = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 30_000,
+      maximumOutputTokens: 5_000,
+    });
+    expect(result.planning.visiblePlanAffordable).toBe(true);
+    expect(result.planning.changeImpactAffordable).toBe(true);
+    expect(result.skills.maxSkills).toBeGreaterThanOrEqual(2);
   });
 
   it("uses measured tool schema tokens when provided", () => {
@@ -66,6 +92,28 @@ describe("deriveWindowPolicy", () => {
     expect(result.resolvedPolicy.outputRatio).toBe(0.05);
     expect(result.sections.repositoryTokens).toBeGreaterThan(
       Math.floor(result.usableInputTokens * 0.4),
+    );
+  });
+
+  it("derives compaction budgets from usable input and policy overrides", () => {
+    const result = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 60_000,
+      policy: {
+        toolResultContentCharsRatio: 0.02,
+        toolResultContentCharsMin: 100,
+        toolResultContentCharsMax: 50_000,
+        establishedFactCountRatio: 0.001,
+        establishedFactCountMin: 2,
+        establishedFactCountMax: 100,
+      },
+    });
+
+    expect(result.compaction.toolResultContentChars).toBe(
+      Math.floor(result.usableInputTokens * 0.02),
+    );
+    expect(result.compaction.maxEstablishedFacts).toBe(
+      Math.floor(result.usableInputTokens * 0.001),
     );
   });
 

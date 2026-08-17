@@ -1070,29 +1070,42 @@ export class RepoGraphRetrievalSource
       return false;
     }
 
-    if (
-      request.filePaths.length >
-        0 &&
-      !request.filePaths.includes(
-        candidate.relativePath,
-      )
-    ) {
-      return false;
-    }
-
-    if (
-      request.folderPrefix &&
-      candidate.relativePath !==
-        request.folderPrefix &&
-      !candidate.relativePath
-        .startsWith(
-          `${request.folderPrefix}/`,
-        )
-    ) {
+    if (!this.matchesFileScope(candidate.relativePath, request)) {
       return false;
     }
 
     return true;
+  }
+
+  private matchesFileScope(
+    relativePath: string,
+    request:
+      NormalizedHybridRetrievalRequest,
+  ): boolean {
+    if (
+      request.filePaths.length ===
+        0 &&
+      !request.folderPrefix
+    ) {
+      return true;
+    }
+
+    if (
+      request.filePaths.includes(
+        relativePath,
+      )
+    ) {
+      return true;
+    }
+
+    return Boolean(
+      request.folderPrefix &&
+        (relativePath ===
+          request.folderPrefix ||
+          relativePath.startsWith(
+            `${request.folderPrefix}/`,
+          )),
+    );
   }
 
   private isRetrievalEdge(

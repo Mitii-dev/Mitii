@@ -11,12 +11,9 @@ export interface DynamicOutputTokenResolution {
 /**
  * Resolve the final per-call output limit after prompt assembly.
  *
- * The early output reserve protects room for an answer while optional context is
- * selected. Once the concrete prompt is known, any unused input room can be
- * offered back to the model. The configured output value is treated as the
- * reserved baseline, not as a hard ceiling, because several local and
- * OpenAI-compatible providers can use more output when the prompt is smaller
- * than expected.
+ * The window-derived reserve is a hard ceiling. Leftover input room can only
+ * shrink that cap so a small local window cannot spend 95% of remaining
+ * context on one ramble or truncated patch.
  */
 export function resolveDynamicOutputTokens(params: {
   contextWindowTokens: number;
@@ -50,26 +47,16 @@ export function resolveDynamicOutputTokens(params: {
     1,
     Math.floor(availableOutputTokens * dynamicOutputRatio),
   );
+  const reservedCeiling = Math.min(configuredOutputTokens, outputReservedTokens);
 
-  const targetOutputTokens =
-    availableOutputTokens >= outputReservedTokens
-      ? Math.max(
-          configuredOutputTokens,
-          outputReservedTokens,
-          scaledAvailableOutputTokens,
-        )
-      : scaledAvailableOutputTokens;
   const maximumOutputTokens = clampInt(
-    targetOutputTokens,
+    Math.min(reservedCeiling, scaledAvailableOutputTokens),
     1,
     Math.max(1, availableOutputTokens),
   );
 
   const reasonCodes: PromptReasonCode[] = [];
-  if (maximumOutputTokens > outputReservedTokens) {
-    reasonCodes.push("dynamic_output_expanded");
-  }
-  if (maximumOutputTokens < outputReservedTokens) {
+  if (maximumOutputTokens < reservedCeiling) {
     reasonCodes.push("dynamic_output_limited_by_context");
   }
 

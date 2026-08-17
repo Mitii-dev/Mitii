@@ -83,6 +83,22 @@ describe("filesystem mutation tools", () => {
     );
   });
 
+  it("names missing apply_patch fields instead of a bare Required", async () => {
+    const { runtime } = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "p-missing",
+      toolName: "apply_patch",
+      arguments: { patches: [{ path: "src/a.ts" }] },
+      grant: createWriteGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCode).toBe("invalid_arguments");
+    expect(result.warnings.join(" ")).toContain("patches.0.oldText");
+    expect(result.warnings.join(" ")).toContain("patches.0.newText");
+  });
+
   it("deletes a file and rolls it back", async () => {
     const { fs, runtime } = createRuntime();
 

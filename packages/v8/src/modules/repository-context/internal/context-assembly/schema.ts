@@ -308,6 +308,10 @@ export const contextAssemblyInputSchema =
       contextSelectionResultSchema,
     snapshot:
       workspaceSnapshotSchema,
+    folderPrefix:
+      z.string()
+        .min(1)
+        .optional(),
     abortSignal:
       z.custom<AbortSignal>(
         (value) =>

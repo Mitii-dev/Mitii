@@ -6,8 +6,8 @@ Prompt Construction builds the provider-neutral `ModelRequest` that is sent thro
 
 - Validates `PromptConstructionInput`.
 - Reserves output tokens before allocating input budget.
-- Dynamically expands the final output limit into unused context window after
-  prompt assembly.
+- Caps the final output limit at the window-derived reserve after prompt
+  assembly. Leftover context can only shrink that cap.
 - Builds system/developer/user/tool conversation messages.
 - Serializes repository context into bounded prompt blocks.
 - Injects selected skill and memory instruction blocks.
@@ -47,11 +47,12 @@ prompt-construction/
   `ModelRequest.maximumOutputTokens` is resolved after concrete prompt usage is
   known.
 - The final output limit is recomputed every turn from the remaining context
-  window. By default it offers 95% of the unused window to model output.
-- The configured max output value acts as the reserved baseline used for input
-  budgeting, not as the final per-turn ceiling. For example, a 30k context
-  window with a 12k prompt and a 5k configured output reserve resolves to
-  `floor((30k - 12k) * 0.95) = 17.1k` output tokens for that turn.
+  window. The window-derived reserve is the ceiling. Leftover input room can
+  only shrink that cap so a 30k local window cannot spend ~18k tokens on one
+  truncated patch.
+- For example, a 30k context window with a 12k prompt and a 3k window-derived
+  reserve resolves to 3k output tokens for that turn, not
+  `floor((30k - 12k) * 0.95)`.
 - If the assembled prompt consumes more than the planned input budget, output is
   reduced to fit the remaining context window instead of forcing a truncation.
 - Sections can be omitted or truncated with explicit reason codes.
@@ -128,6 +129,6 @@ Prompt Construction result returns a result like this:
   "provenance": [{ "blockId": "repo:src/LoginForm.tsx", "section": "repository", "source": "repository-context", "trust": "untrusted_repository_content" }],
   "omissions": [],
   "warnings": [],
-  "reasonCodes": ["output_reserved_first", "dynamic_output_expanded", "within_provider_limits"]
+  "reasonCodes": ["output_reserved_first", "within_provider_limits"]
 }
 ```

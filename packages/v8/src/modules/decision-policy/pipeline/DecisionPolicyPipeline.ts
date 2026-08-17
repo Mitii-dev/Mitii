@@ -365,6 +365,9 @@ function narrowToolGrant(params: {
   return {
     ...previous,
     pathScopes: narrowedScopes,
+    mutationPathScopes: previous.mutationPathScopes
+      ? narrowPathScopes(previous.mutationPathScopes, params.discoveredPaths)
+      : previous.mutationPathScopes,
     approvalMode: highRisk ? "every_mutation" : previous.approvalMode,
     mutationBudget:
       highRisk && previous.mutationBudget

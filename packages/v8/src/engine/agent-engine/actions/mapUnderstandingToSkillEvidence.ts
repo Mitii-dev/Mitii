@@ -14,8 +14,18 @@ export function mapUnderstandingToSkillEvidence(
     extraPaths?: readonly string[];
   },
 ): SkillTaskEvidence {
-  const recommendedSkillTags =
-    understanding.intent.classification.taskHints?.recommendedSkillTags ?? [];
+  const recommendedSkillTags = [
+    ...(understanding.intent.classification.taskHints?.recommendedSkillTags ??
+      []),
+  ];
+  const primary = understanding.intent.classification.primaryTaskIntent;
+  if (primary === "bugfix" || primary === "diagnose") {
+    for (const tag of ["localize", "fix"]) {
+      if (!recommendedSkillTags.includes(tag)) {
+        recommendedSkillTags.push(tag);
+      }
+    }
+  }
 
   const paths = understanding.taskAnalysis.targets
     .filter((target) => target.kind === "file" || target.kind === "folder")

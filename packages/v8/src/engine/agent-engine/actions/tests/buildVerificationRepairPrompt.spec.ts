@@ -43,9 +43,24 @@ describe("buildVerificationRepairPrompt", () => {
       changedFiles: ["src/a.ts"],
     });
 
-    expect(prompt).toContain("one repair attempt");
+    expect(prompt).toContain("Call apply_patch now");
+    expect(prompt).not.toContain("one repair attempt");
     expect(prompt).toContain("src/a.ts:1");
     expect(prompt).toContain("Expected x to be 3.");
     expect(prompt).not.toContain("full dump");
+  });
+
+  it("embeds apply_patch batch caps from the mutation budget", () => {
+    const prompt = buildVerificationRepairPrompt({
+      changedFiles: ["src/a.ts"],
+      mutationBudget: {
+        maxPatchesPerCall: 8,
+        maxUniqueFilesPerCall: 5,
+        preferredBatchSize: 3,
+      },
+    });
+    expect(prompt).toContain("8 patches");
+    expect(prompt).toContain("5 unique files");
+    expect(prompt).toContain("3 files");
   });
 });

@@ -26,6 +26,11 @@ export function buildOutputTruncationRecovery(params: {
   toolCalls: readonly ModelToolCall[];
   mutationBudget?: MutationBudget;
   recoveryAttempt: number;
+  /**
+   * When true, a truncated text-only turn on execute+write must recover as
+   * a mutation batch, not as essay continuation.
+   */
+  requireMutation?: boolean;
 }): TruncationRecoveryPlan | null {
   const truncated = params.finishReason === "length";
   if (!truncated) {
@@ -51,6 +56,38 @@ export function buildOutputTruncationRecovery(params: {
     const text = params.content.trim();
     if (text.length === 0) {
       return null;
+    }
+
+    if (params.requireMutation) {
+      const preferred = escalatePreferredBatchSize(
+        params.mutationBudget?.preferredBatchSize ??
+          AGENT_ENGINE_THRESHOLDS.defaultPreferredBatchSize,
+        params.recoveryAttempt,
+      );
+      const maxPatches = escalateMaxPatches(
+        params.mutationBudget?.maxPatchesPerCall ??
+          AGENT_ENGINE_THRESHOLDS.defaultMaxPatchesPerCall,
+        params.recoveryAttempt,
+      );
+      return {
+        shouldRecover: true,
+        recoveryKind: "tool_call",
+        incompleteToolCalls: [],
+        assistantContent: params.content,
+        recoveryMessage: {
+          role: "user",
+          content: [
+            "Your previous response was truncated because the output token limit was reached.",
+            "Do not continue the written analysis.",
+            params.recoveryAttempt === 0
+              ? `Call apply_patch now with a smaller batch: at most ${preferred} files (hard max ${maxPatches} patches).`
+              : params.recoveryAttempt === 1
+                ? `Previous retry was still truncated. Shrink further: at most ${preferred} file(s) and ${maxPatches} patch(es).`
+                : `Last recovery. One file, one minimal hunk (hard max ${maxPatches} patch).`,
+            "Leave remaining files for later turns.",
+          ].join("\n"),
+        },
+      };
     }
 
     return {

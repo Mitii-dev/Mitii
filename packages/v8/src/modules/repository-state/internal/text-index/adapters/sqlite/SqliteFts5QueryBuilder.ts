@@ -39,11 +39,10 @@ export class SqliteFts5QueryBuilder {
       request.rootIds,
     );
 
-    this.addListCondition(
+    this.addFileScopeCondition(
       conditions,
       parameters,
-      "f.relative_path",
-      request.filePaths,
+      request,
     );
 
     this.addListCondition(
@@ -52,23 +51,6 @@ export class SqliteFts5QueryBuilder {
       "f.kind",
       request.kinds,
     );
-
-    if (request.folderPrefix) {
-      conditions.push(
-        [
-          "(",
-          "f.relative_path = ?",
-          "OR",
-          "f.relative_path LIKE ? ESCAPE '\\'",
-          ")",
-        ].join(" "),
-      );
-
-      parameters.push(
-        request.folderPrefix,
-        `${this.escapeLike(request.folderPrefix)}/%`,
-      );
-    }
 
     parameters.push(
       request.maximumResults + 1,
@@ -167,6 +149,40 @@ export class SqliteFts5QueryBuilder {
     parameters.push(...values);
   }
 
+  private addFileScopeCondition(
+    conditions: string[],
+    parameters: unknown[],
+    request:
+      NormalizedTextSearchRequest,
+  ): void {
+    const clauses: string[] = [];
+
+    if (request.filePaths.length > 0) {
+      clauses.push(
+        `f.relative_path IN (${request.filePaths.map(() => "?").join(", ")})`,
+      );
+      parameters.push(...request.filePaths);
+    }
+
+    if (request.folderPrefix) {
+      clauses.push(
+        [
+          "f.relative_path = ?",
+          "OR",
+          "f.relative_path LIKE ? ESCAPE '\\'",
+        ].join(" "),
+      );
+      parameters.push(
+        request.folderPrefix,
+        `${this.escapeLike(request.folderPrefix)}/%`,
+      );
+    }
+
+    if (clauses.length > 0) {
+      conditions.push(`(${clauses.join(" OR ")})`);
+    }
+  }
+
   private escapeLike(
     value: string,
   ): string {
@@ -177,4 +193,3 @@ export class SqliteFts5QueryBuilder {
     );
   }
 }
-

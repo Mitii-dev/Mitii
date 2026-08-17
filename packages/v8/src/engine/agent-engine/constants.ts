@@ -94,6 +94,8 @@ export const AGENT_REASON_CODES = [
   "output_truncation_recovered",
   "incomplete_answer_recovered",
   "incomplete_answer_fallback",
+  "unfulfilled_execute_recovered",
+  "unfulfilled_execute_exhausted",
   "tools_executed",
   "mutation_applied",
   "mutation_rolled_back",

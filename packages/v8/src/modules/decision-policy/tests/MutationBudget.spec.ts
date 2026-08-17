@@ -66,6 +66,35 @@ describe("ResolveMutationBudget", () => {
     expect(result.mutationBudget).toEqual(MUTATION_BUDGET_PROFILES.standard);
     expect(result.reasonCodes).toContain("mutation_budget_standard");
   });
+
+  it("takes the tighter of profile and window mutation caps", () => {
+    const result = resolveMutationBudget({
+      understanding: createUnderstanding({
+        taskAnalysis: {
+          scope: "single_location",
+          complexity: "simple",
+          estimatedFilesAffected: { minimum: 1, maximum: 1 },
+          recommendsPlanning: false,
+        },
+      }),
+      windowPolicy: {
+        mutation: {
+          maxPatchesPerCall: 3,
+          maxUniqueFilesPerCall: 2,
+          maxPatchPayloadCharacters: 8_000,
+          preferredBatchSize: 1,
+          requireBatchedExecution: true,
+        },
+      } as never,
+    });
+
+    expect(result.profile).toBe("relaxed");
+    expect(result.mutationBudget.maxPatchesPerCall).toBe(3);
+    expect(result.mutationBudget.maxUniqueFilesPerCall).toBe(2);
+    expect(result.mutationBudget.maxPatchPayloadCharacters).toBe(8_000);
+    expect(result.mutationBudget.preferredBatchSize).toBe(1);
+    expect(result.mutationBudget.requireBatchedExecution).toBe(true);
+  });
 });
 
 describe("DecisionPolicyPipeline mutation budget", () => {

@@ -2,7 +2,9 @@ import type { ToolGrant } from "../../../modules/decision-policy";
 import type { WorkspaceFileSystemPort } from "../contracts";
 import type { MutationTransactionRegistry } from "../internal/mutation";
 import { MutationError } from "../internal/mutation";
+import { PathContainmentError } from "../internal/PathContainment";
 import { applyPatchInputSchema } from "../internal/ToolCatalog";
+import { resolveMutationPathScopes } from "./ResolveMutationPathScopes";
 
 export async function executeApplyPatch(params: {
   arguments: unknown;
@@ -30,7 +32,7 @@ export async function executeApplyPatch(params: {
   try {
     const result = await params.transactions.applyPatches({
       workspaceRoot: params.workspaceRoot,
-      pathScopes: params.grant.pathScopes,
+      pathScopes: resolveMutationPathScopes(params.grant),
       fileSystem: params.fileSystem,
       patches: parsed.patches,
       dirtyPaths: params.dirtyPaths,
@@ -42,7 +44,10 @@ export async function executeApplyPatch(params: {
       redacted: false,
     };
   } catch (error) {
-    if (error instanceof MutationError) {
+    if (
+      error instanceof MutationError ||
+      error instanceof PathContainmentError
+    ) {
       throw error;
     }
     throw new MutationError(

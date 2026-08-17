@@ -97,7 +97,7 @@ export {
  * Fingerprint-only publish candidate (honest: indexes unavailable).
  * Not the V8 `WorkspaceSnapshot` artifact used by indexing/retrieval.
  */
-export { buildWorkspaceSnapshot } from './indexing/fingerprintSnapshot.js';
+export { buildWorkspaceSnapshot, resolveFingerprintRootId } from './indexing/fingerprintSnapshot.js';
 export type {
   WorkspaceSnapshot,
   WorkspaceSnapshotOptions,

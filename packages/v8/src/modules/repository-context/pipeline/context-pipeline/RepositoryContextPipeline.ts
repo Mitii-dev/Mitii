@@ -25,7 +25,10 @@ import type {
   RepositoryContextPipelineStage,
   RepositoryContextResolvedState,
 } from "../../contracts/types";
-import { collectRepositoryContextGraphAnchors } from "../../policy";
+import {
+  collectRepositoryContextGraphAnchors,
+  restrictContextReferencesToFolderPrefix,
+} from "../../policy";
 
 function deriveCodeIndexChangeToken(
   artifacts: RepositoryContextResolvedState,
@@ -221,8 +224,13 @@ export class RepositoryContextPipeline {
     }
 
     const codeIndexChangeToken = deriveCodeIndexChangeToken(artifacts);
-    const anchorFilePaths = collectRepositoryContextGraphAnchors(
+    const focusedReferences = restrictContextReferencesToFolderPrefix(
       input.references,
+      input.folderPrefix,
+      input.filePaths ?? [],
+    );
+    const anchorFilePaths = collectRepositoryContextGraphAnchors(
+      focusedReferences,
     );
 
     const retrieval = await this.dependencies.retriever.retrieve({
@@ -295,9 +303,9 @@ export class RepositoryContextPipeline {
             breadth: input.breadth,
           }
         : {}),
-      ...(input.references
+      ...(focusedReferences
         ? {
-            references: input.references,
+            references: focusedReferences,
           }
         : {}),
       ...(input.selectionBudget
@@ -315,6 +323,11 @@ export class RepositoryContextPipeline {
     const assembly = await this.dependencies.assembler.assemble({
       selection,
       snapshot: artifacts.snapshot,
+      ...(input.folderPrefix
+        ? {
+            folderPrefix: input.folderPrefix,
+          }
+        : {}),
       ...(input.abortSignal
         ? {
             abortSignal: input.abortSignal,

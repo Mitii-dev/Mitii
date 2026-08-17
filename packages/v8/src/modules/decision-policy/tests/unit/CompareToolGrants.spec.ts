@@ -40,4 +40,19 @@ describe("toolGrantsEquivalent", () => {
       toolGrantsEquivalent(grant({ pathScopes: ["."] }), grant()),
     ).toBe(false);
   });
+
+  it("detects distinct mutation path scopes", () => {
+    expect(
+      toolGrantsEquivalent(
+        grant({ mutationPathScopes: ["packages/a"] }),
+        grant({ mutationPathScopes: ["packages/b"] }),
+      ),
+    ).toBe(false);
+    expect(
+      toolGrantsEquivalent(
+        grant({ mutationPathScopes: ["packages/b", "packages/a"] }),
+        grant({ mutationPathScopes: ["packages/a", "packages/b"] }),
+      ),
+    ).toBe(true);
+  });
 });

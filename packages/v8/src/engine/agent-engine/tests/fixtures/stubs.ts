@@ -171,6 +171,7 @@ export function createUnderstanding(
 export class ScriptedLlmPort implements LlmPort {
   public readonly id = "scripted-engine-llm";
   public readonly capabilities: ModelCapabilities;
+  public readonly requests: ModelRequest[] = [];
   private turn = 0;
 
   constructor(
@@ -187,9 +188,10 @@ export class ScriptedLlmPort implements LlmPort {
   }
 
   public async *complete(
-    _request: ModelRequest,
+    request: ModelRequest,
     context?: { abortSignal?: AbortSignal },
   ): AsyncIterable<ModelEvent> {
+    this.requests.push(request);
     if (context?.abortSignal?.aborted) {
       yield {
         type: "cancelled",
@@ -308,9 +310,15 @@ export function createStubDependencies(options: {
     planning: options.planning,
     prompt: {
       construct: (input: PromptConstructionInput): PromptConstructionResult => {
+        const instructionText =
+          input.instructions?.projectRules?.length
+            ? `\n${input.instructions.projectRules
+                .map((rule) => rule.content)
+                .join("\n")}`
+            : "";
         const systemContent = input.planText?.trim()
-          ? `system\n${input.planText.trim()}`
-          : "system";
+          ? `system${instructionText}\n${input.planText.trim()}`
+          : `system${instructionText}`;
         const prior = (input.conversation ?? []).filter(
           (message) =>
             message.role === "user" || message.role === "assistant",
@@ -413,7 +421,17 @@ export function createStubDependencies(options: {
           query: input.query,
           mode: input.mode,
           status: "complete",
-          retrieval: {},
+          retrieval: options.contextBlocks
+            ? {
+                sourceReports: [
+                  {
+                    sourceId: "text-index",
+                    status: "complete",
+                    candidateCount: options.contextBlocks.length,
+                  },
+                ],
+              }
+            : {},
           selection: {},
           assembly: {
             blocks: (options.contextBlocks ?? []).map((block) => ({
@@ -429,8 +447,8 @@ export function createStubDependencies(options: {
           },
           warnings: [],
           statistics: {
-            retrievedCandidates: 0,
-            selectedItems: 0,
+            retrievedCandidates: options.contextBlocks?.length ?? 0,
+            selectedItems: options.contextBlocks?.length ?? 0,
             assembledBlocks: options.contextBlocks?.length ?? 0,
             droppedBlocks: 0,
             usedTokens: 10,

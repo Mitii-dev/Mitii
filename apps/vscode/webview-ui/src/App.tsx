@@ -127,7 +127,7 @@ const DEFAULT_TOKEN_BUDGET: TokenBudgetSettingsSnapshot = {
     planTokens: 1376,
     skillsTokens: 917,
     systemTokens: 5048,
-    maxModelCalls: 16,
+    maxModelCalls: 48,
     maxToolCalls: 32,
     maxUniqueFilesPerCall: 4,
     visiblePlanAffordable: false,
@@ -2047,6 +2047,9 @@ export function App() {
             updateUiDraft({ contextToggles: { [source]: enabled } });
           }}
           onSaveAll={saveAllSettings}
+          onResetTokenBudget={() =>
+            postToHost({ type: 'settings.resetTokenBudget' })
+          }
           saving={settingsSaving}
         />
       ) : null}

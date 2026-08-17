@@ -8,7 +8,7 @@ Decision Policy is V8's authority module. It converts request evidence into one 
 - Applies hard caps from interaction mode.
 - Decides planning depth and plan gate.
 - Decides whether repository context is required.
-- Compiles `ToolGrant` with allowed tools, effects, paths, command/network rules, limits, approval mode, and mutation budget.
+- Compiles `ToolGrant` with allowed tools, effects, paths, command/network rules, limits, approval mode, mutation budget, and optional mutation path scopes.
 - Scans prompt-injection signals and clamps authority when needed.
 - Builds verification requirements.
 - Produces a trace for audit/debugging.
@@ -33,7 +33,7 @@ decision-policy/
 
 - `DecisionPolicyInput`: envelope, understanding, optional repository-state summary, approval mode, plan approval mode, host capability flags, and optional `windowPolicy` from Window Budget. When `windowPolicy` is omitted, visible-plan and change-impact affordances stay on (large-window behavior). When present, planning depth and mutation batch size follow the derived usable-input / output reserves.
 - `ExecutionDecision`: route, planning depth, plan gate, run disposition, repository-context requirement, optional pinned state, tool grant, verification requirement, reason codes, warnings, rationale, and optional trace.
-- `ToolGrant`: maximum workspace effect, allowed tools/effects, path scopes, command rules, network hosts, approval mode, limits, and optional mutation budget.
+- `ToolGrant`: maximum workspace effect, allowed tools/effects, path scopes, optional mutation path scopes, command rules, network hosts, approval mode, limits, and optional mutation budget.
 - `MutationBudget`: per-call patch limits and preferred batching hints.
 - `DecisionTrace`: route priority step, grant profile, mutation profile, injection clamp, and signals used.
 
@@ -44,7 +44,9 @@ decision-policy/
 - `narrow()` may reduce scope or tighten approval/budgets after discovery; it cannot add authority.
 - `narrow()` returns the previous decision when the grant is unchanged.
   Callers MUST emit `grant_narrowed` only when `toolGrantsEquivalent` is false.
-- Mutation profiles are `relaxed`, `standard`, and `tight`.
+- Mutation profiles are `relaxed`, `standard`, and `tight`. When `windowPolicy` is present, each numeric cap is `min(profile, window)` and `requireBatchedExecution` is OR'd.
+- Write grants may set `mutationPathScopes` from explicit folder/file targets. Discovery tools keep `pathScopes: ["."]` for package / multi-file work so `glob_files` / `search_files` can still see the repo; `apply_patch` / delete / move enforce `mutationPathScopes`.
+- `narrow()` also narrows `mutationPathScopes` when they were set.
 - Verification requirements specify required evidence and whether unavailable evidence is acceptable.
 - Host capability flags currently include web search availability.
 

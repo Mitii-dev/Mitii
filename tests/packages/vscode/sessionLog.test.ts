@@ -169,6 +169,69 @@ describe('sessionLog', () => {
     });
   });
 
+  it('persists bounded tool rejection diagnostics', () => {
+    const root = mkdtempSync(join(tmpdir(), 'mitii-session-log-'));
+    dirs.push(root);
+
+    const result = {
+      schemaVersion: 1,
+      runId: 'run_tool_reject',
+      requestId: 'req_tool_reject',
+      status: 'failed',
+      route: 'execute',
+      planningDepth: 'none',
+      reasonCodes: ['tool_failed'],
+      warnings: [],
+      usage: { modelCalls: 1, toolCalls: 1, loopIterations: 1 },
+      durationMs: 10,
+      error: { code: 'no_mutation_performed', message: 'Patch rejected.' },
+    } as AgentRunResult;
+
+    const event = {
+      type: 'tool_completed',
+      runId: 'run_tool_reject',
+      callId: 'call_patch',
+      toolName: 'apply_patch',
+      status: 'rejected',
+      summary: 'patches=1 paths=src/a.ts',
+      reasonCode: 'patch_conflict',
+      warnings: ['oldText not found in "src/a.ts"'],
+      outputPreview: '{"error":"patch_conflict"}',
+      durationMs: 12,
+      bytesProduced: 0,
+      truncated: false,
+      redacted: false,
+      at: '2026-07-28T00:00:00.000Z',
+    } as RunEvent;
+
+    const file = appendSessionLog(root, {
+      kind: 'run',
+      at: '2026-07-28T00:00:00.000Z',
+      prompt: 'fix',
+      mode: 'agent',
+      result,
+      events: [event],
+    });
+
+    const toolLine = readFileSync(file!, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .find((line) => line.type === 'tool_completed');
+
+    expect(toolLine).toMatchObject({
+      toolName: 'apply_patch',
+      status: 'rejected',
+      reasonCode: 'patch_conflict',
+      warnings: ['oldText not found in "src/a.ts"'],
+      outputPreview: '{"error":"patch_conflict"}',
+      durationMs: 12,
+      bytesProduced: 0,
+      truncated: false,
+      redacted: false,
+    });
+  });
+
   it('keeps session logs readable by suppressing content deltas and truncating answers by context budget', () => {
     const root = mkdtempSync(join(tmpdir(), 'mitii-session-log-'));
     dirs.push(root);

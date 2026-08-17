@@ -29,6 +29,7 @@ export default defineConfig({
       'packages/v8/src/modules/task-list/**/*.spec.ts',
       'packages/v8/src/modules/prompt-construction/**/*.spec.ts',
       'packages/v8/src/modules/repository-context/tests/**/*.spec.ts',
+      'packages/v8/src/modules/window-budget/**/*.spec.ts',
       'packages/v8/src/modules/skills/**/*.spec.ts',
       'packages/v8/src/modules/verification/**/*.spec.ts',
       'packages/v8/src/modules/repository-state/internal/repo-map/**/*.spec.ts',

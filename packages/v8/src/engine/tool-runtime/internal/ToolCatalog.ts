@@ -340,9 +340,9 @@ export const readPackageScriptsOutputSchema = z
 
 export const structuredPatchSchema = z
   .object({
-    path: z.string().min(1),
-    oldText: z.string(),
-    newText: z.string(),
+    path: z.string().min(1, "path is required"),
+    oldText: z.string({ required_error: "oldText is required" }),
+    newText: z.string({ required_error: "newText is required" }),
     expectedHash: z.string().min(1).optional(),
   })
   .strict();

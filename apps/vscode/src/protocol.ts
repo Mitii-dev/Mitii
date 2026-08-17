@@ -218,6 +218,7 @@ export interface TokenBudgetFieldDescriptor {
   group: string;
   label: string;
   description: string;
+  docsHref?: string;
   kind: 'ratio' | 'int' | 'number';
   min: number;
   max?: number;
@@ -231,14 +232,33 @@ export interface TokenBudgetPreview {
   maximumOutputTokens: number;
   toolSchemaTokens: number;
   usableInputTokens: number;
+  loopInputBudgetTokens: number;
   repositoryTokens: number;
   conversationTokens: number;
   planTokens: number;
   skillsTokens: number;
   systemTokens: number;
+  compactionWarnTokens: number;
+  compactionAutoTokens: number;
+  compactionHardTokens: number;
+  keepRecentToolResults: number;
+  compactedToolResultChars: number;
+  compactedToolArgumentChars: number;
+  toolResultContentChars: number;
+  droppedTurnSummaryChars: number;
+  establishedFactChars: number;
+  maxEstablishedFacts: number;
+  establishedFactReinjectChars: number;
+  memoryReinjectChars: number;
+  maxPatchesPerCall: number;
   maxModelCalls: number;
   maxToolCalls: number;
   maxUniqueFilesPerCall: number;
+  maxPatchPayloadCharacters: number;
+  requireBatchedExecution: boolean;
+  maxDiagnosticSteps: number;
+  maxSkills: number;
+  maxVerificationChecks: number;
   visiblePlanAffordable: boolean;
   changeImpactAffordable: boolean;
   runBudgetUnlimited: boolean;
@@ -531,6 +551,7 @@ export type WebviewToHostMessage =
     }
   | { type: 'settings.setApiKey' }
   | { type: 'settings.clearApiKey' }
+  | { type: 'settings.resetTokenBudget' }
   | { type: 'profile.switch'; id: string }
   | {
       type: 'provider.testConnection';

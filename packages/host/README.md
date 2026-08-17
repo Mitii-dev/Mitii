@@ -65,8 +65,8 @@ Prefer importing from `@mitii/host`. Do not import `internal/`.
 | `createBundledMiniLmEmbeddingProvider` | V8 `EmbeddingProvider` | On-device MiniLM (native ONNX, WASM fallback) |
 | `createLanceDbConnection` | V8 `LanceDbConnectionPort` | Optional `@lancedb/lancedb` vector store |
 | `runFullWorkspaceIndex` | Orchestrates V8 index runtime | Writes `.mitii/repository-index.sqlite`, LanceDB, graph/map |
-| `buildWorkspaceSnapshot` | Builds `PublishRepositoryStateInput` | Fingerprint-only; indexes marked unavailable |
-| `createHostRepositoryContext` | V8 `RepositoryContextPipeline` | Hybrid retrieve + file-map fallback |
+| `buildWorkspaceSnapshot` | Builds `PublishRepositoryStateInput` | Fingerprint-only; indexes marked unavailable. `roots[0].rootId` is the workspace directory basename. |
+| `createHostRepositoryContext` | V8 `RepositoryContextPipeline` | Hybrid retrieve + file-map fallback. File-map fallback honors `folderPrefix`. |
 | `createWorkspaceCheckpointStore` | SDK checkpoint store | `.mitii/checkpoints/` |
 | `createWorkspaceVerificationStore` | Verification record store | `.mitii/verification/` |
 | `createWorkspaceMemoryStore` | V8 `MemoryStorePort` | `.mitii/memory/facts.json` |
@@ -155,6 +155,12 @@ await client.start({ /* … */, projectRules });
   skills/<id>/SKILL.md
   rules/**/*.md
 ```
+
+## Index pin and reuse
+
+`buildWorkspaceSnapshot` / `resolveFingerprintRootId` set `roots[0].rootId` to the workspace directory basename (not a hardcoded `"workspace"`). That keeps fingerprint identity stable across republish.
+
+VS Code `hostAsk` reuses an existing `.mitii/repository-index.sqlite` when `getLatest` is empty: it publishes that fingerprint pin and skips a full reindex. File-map fallback in `createHostRepositoryContext` filters snapshot/map paths with `folderPrefix`.
 
 ## Development (monorepo)
 

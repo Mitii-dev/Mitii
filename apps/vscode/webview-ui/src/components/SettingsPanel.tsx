@@ -40,6 +40,7 @@ import {
   IconPlan,
   IconPlug,
 } from './Icons';
+import { TokenBudgetFieldHelp } from './TokenBudgetFieldHelp';
 
 interface SettingsPanelProps {
   tab: SettingsTab;
@@ -88,6 +89,7 @@ interface SettingsPanelProps {
   onClearCheckpoints: () => void;
   onToggleContext: (source: keyof ContextToggles, enabled: boolean) => void;
   onSaveAll: () => void;
+  onResetTokenBudget: () => void;
   saving: boolean;
 }
 
@@ -216,6 +218,7 @@ function NumberField({
   disabled,
   integer = true,
   hint,
+  footer,
   onCommit,
 }: {
   id: string;
@@ -227,6 +230,7 @@ function NumberField({
   disabled?: boolean;
   integer?: boolean;
   hint?: string;
+  footer?: ReactNode;
   onCommit: (value: number) => void;
 }) {
   const [draft, setDraft] = useState(String(value));
@@ -298,6 +302,7 @@ function NumberField({
           }
         }}
       />
+      {footer}
     </div>
   );
 }
@@ -319,6 +324,37 @@ function KeyValueList({
   );
 }
 
+function CustomerWindowBudgetSummary({
+  preview,
+}: {
+  preview: TokenBudgetPreview;
+}) {
+  return (
+    <div className="token-budget-preview">
+      <p className="field-hint">
+        These values follow the context window automatically. You do not need
+        Developer options. Click Save after changing the window to recompute.
+      </p>
+      <KeyValueList
+        rows={[
+          { label: 'Effective window', value: String(preview.contextWindowTokens) },
+          { label: 'Usable input', value: String(preview.usableInputTokens) },
+          { label: 'Output reserve', value: String(preview.maximumOutputTokens) },
+          { label: 'Model-call cap', value: String(preview.maxModelCalls) },
+          {
+            label: 'Files per mutation',
+            value: String(preview.maxUniqueFilesPerCall),
+          },
+          {
+            label: 'Verification checks',
+            value: String(preview.maxVerificationChecks),
+          },
+        ]}
+      />
+    </div>
+  );
+}
+
 function TokenBudgetPreviewTable({ preview }: { preview: TokenBudgetPreview }) {
   const rows: Array<[string, string]> = [
     ['Window', String(preview.contextWindowTokens)],
@@ -333,6 +369,11 @@ function TokenBudgetPreviewTable({ preview }: { preview: TokenBudgetPreview }) {
     ['Model-call cap', String(preview.maxModelCalls)],
     ['Tool-call cap', String(preview.maxToolCalls)],
     ['Files per mutation', String(preview.maxUniqueFilesPerCall)],
+    ['Patch payload chars', String(preview.maxPatchPayloadCharacters)],
+    ['Recent tool results', String(preview.keepRecentToolResults)],
+    ['Tool result content', `${preview.toolResultContentChars} chars`],
+    ['Observation facts', String(preview.maxEstablishedFacts)],
+    ['Verification checks', String(preview.maxVerificationChecks)],
     ['Visible plan', preview.visiblePlanAffordable ? 'affordable' : 'skipped'],
     [
       'Change impact',
@@ -362,11 +403,13 @@ function TokenBudgetPreviewTable({ preview }: { preview: TokenBudgetPreview }) {
 function TokenBudgetFields({
   fields,
   policy,
+  preview,
   disabled,
   onChange,
 }: {
   fields: TokenBudgetFieldDescriptor[];
   policy: Record<string, number>;
+  preview: TokenBudgetPreview;
   disabled: boolean;
   onChange: (key: string, value: number) => void;
 }) {
@@ -407,6 +450,13 @@ function TokenBudgetFields({
                 disabled={disabled}
                 hint={field.description}
                 value={policy[field.key] ?? field.min}
+                footer={
+                  <TokenBudgetFieldHelp
+                    field={field}
+                    value={policy[field.key] ?? field.min}
+                    preview={preview}
+                  />
+                }
                 onCommit={(value) => onChange(field.key, value)}
               />
             ))}
@@ -461,6 +511,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     onClearCheckpoints,
     onToggleContext,
     onSaveAll,
+    onResetTokenBudget,
     saving,
   } = props;
   const [modeSettingsTab, setModeSettingsTab] =
@@ -730,7 +781,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
               <SettingsSection
                 title="Token limits"
-                description="Applied on Save. 0 uses the model preset."
+                description="Set the context window for this machine. Mitii scales retrieval, compaction, mutation batches, and verification from that window. Developer options are not required."
               >
                 <div className="settings-field-grid">
                   <NumberField
@@ -772,6 +823,24 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     ? 'Max output 0 derives the reserve from the window.'
                     : `Max output will save as ${provider.maximumOutputTokens.toLocaleString()} tokens.`}
                 </p>
+                {ui.tokenBudget.enabled ? (
+                  <p className="field-hint">
+                    Custom token-budget overrides are on. Use Reset budgets to
+                    defaults if you only want the context window to drive these
+                    numbers.
+                  </p>
+                ) : null}
+                <CustomerWindowBudgetSummary preview={ui.tokenBudget.preview} />
+                <div className="row">
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={onResetTokenBudget}
+                    title="Clear custom token-budget overrides and use built-in defaults for this window"
+                  >
+                    Reset budgets to defaults
+                  </button>
+                </div>
               </SettingsSection>
             </div>
           ) : null}
@@ -1051,7 +1120,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
               </SettingsSection>
               <SettingsSection
                 title="Run budget"
-                description="Caps for a single Mitii turn before it stops."
+                description="Optional safety caps for one turn. You do not need to retune these when you change the context window."
               >
                 <label className="toggle">
                   <input
@@ -1209,7 +1278,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
               <SettingsSection
                 title="Token budget"
-                description="Custom window ratios and caps. Model and tool call limits stay in Modes → Run budget."
+                description="Optional overrides. Leave this off unless you need to change ratios. The context window already scales the built-in defaults."
               >
                 <div
                   className={`developer-options${
@@ -1230,9 +1299,20 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     Custom token budget
                   </label>
                   <TokenBudgetPreviewTable preview={ui.tokenBudget.preview} />
+                  <div className="row">
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      onClick={onResetTokenBudget}
+                      disabled={!ui.developerEnabled}
+                    >
+                      Reset budgets to defaults
+                    </button>
+                  </div>
                   <TokenBudgetFields
                     fields={ui.tokenBudget.fields}
                     policy={ui.tokenBudget.policy}
+                    preview={ui.tokenBudget.preview}
                     disabled={!ui.developerEnabled || !ui.tokenBudget.enabled}
                     onChange={(key, value) =>
                       onSaveUi({

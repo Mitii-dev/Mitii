@@ -180,9 +180,24 @@ export const runEventSchema = z.discriminatedUnion("type", [
       runId: z.string().min(1),
       stateToken: z.string().min(1),
       blockCount: z.number().int().nonnegative(),
+      retrievedCandidates: z.number().int().nonnegative(),
+      selectedItems: z.number().int().nonnegative(),
+      droppedBlocks: z.number().int().nonnegative(),
       status: z.string().min(1),
       /** Safe path previews for UI — never full file contents. */
       paths: z.array(z.string().min(1).max(512)).max(12).optional(),
+      retrievalSources: z
+        .array(
+          z
+            .object({
+              sourceId: z.string().min(1).max(64),
+              status: z.string().min(1).max(32),
+              candidateCount: z.number().int().nonnegative(),
+            })
+            .strict(),
+        )
+        .max(8)
+        .optional(),
       at: z.string().datetime(),
     })
     .strict(),
@@ -227,6 +242,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
       status: z.string().min(1),
       summary: z.string().min(1).max(500).optional(),
       reasonCode: z.string().min(1).max(80).optional(),
+      warnings: z.array(z.string().min(1).max(500)).max(5).optional(),
+      outputPreview: z.string().max(1_000).optional(),
+      durationMs: z.number().int().nonnegative().optional(),
+      bytesProduced: z.number().int().nonnegative().optional(),
+      truncated: z.boolean().optional(),
+      redacted: z.boolean().optional(),
       at: z.string().datetime(),
     })
     .strict(),

@@ -84,8 +84,10 @@ describe("compactModelLoopMessages", () => {
     const result = compactModelLoopMessages({
       messages,
       estimator,
-      budgetTokens: 400,
+      budgetTokens: 1_000,
       minMessagesToKeep: 2,
+      hardRatio: 0.3,
+      maxMemoryReinjectChars: 200,
       memoryFacts: [{ id: "m1", content: "Prefer pnpm." }],
     });
 
@@ -100,16 +102,16 @@ describe("compactModelLoopMessages", () => {
     expect(result.reinjectedMemory).toBe(true);
     expect(
       result.messages.some((message) =>
-        message.content.includes("memory reinjected after hard compaction"),
+        message.content.includes("memory reinjected after compaction"),
       ),
     ).toBe(true);
   });
 
-  it("reinjects mid-run established facts on hard compaction", () => {
+  it("reinjects mid-run established facts on auto compaction", () => {
     const messages: ModelMessage[] = [
       { role: "system", content: "system" },
-      { role: "user", content: "old context ".repeat(200) },
-      { role: "assistant", content: "old answer ".repeat(200) },
+      { role: "user", content: "old context ".repeat(100) },
+      { role: "assistant", content: "old answer ".repeat(100) },
       { role: "user", content: "recent ask" },
       { role: "assistant", content: "recent answer" },
     ];
@@ -117,8 +119,12 @@ describe("compactModelLoopMessages", () => {
     const result = compactModelLoopMessages({
       messages,
       estimator,
-      budgetTokens: 400,
+      budgetTokens: 1_000,
       minMessagesToKeep: 2,
+      warnRatio: 0.2,
+      autoRatio: 0.35,
+      hardRatio: 0.95,
+      maxEstablishedFactReinjectChars: 400,
       establishedFacts: [
         {
           id: "read_file:src/formik.ts",
@@ -127,7 +133,7 @@ describe("compactModelLoopMessages", () => {
       ],
     });
 
-    expect(result.pressure).toBe("hard");
+    expect(result.pressure).toBe("auto");
     expect(result.reinjectedEstablishedFacts).toBe(true);
     expect(
       result.messages.some((message) =>
@@ -139,6 +145,54 @@ describe("compactModelLoopMessages", () => {
         message.content.includes("useFormik returns [values, helpers]"),
       ),
     ).toBe(true);
+  });
+
+  it("summarizes dropped tool turns with path and finding", () => {
+    const messages: ModelMessage[] = [
+      { role: "system", content: "system" },
+      { role: "user", content: "read it" },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "call_old",
+            name: "read_file",
+            arguments: JSON.stringify({ path: "src/form.ts", startLine: 3 }),
+          },
+        ],
+      },
+      {
+        role: "tool",
+        toolCallId: "call_old",
+        content: JSON.stringify({
+          status: "succeeded",
+          toolName: "read_file",
+          callId: "call_old",
+          output: {
+            path: "src/form.ts",
+            content: "export function buildForm() { return values; }",
+          },
+        }),
+      },
+      { role: "user", content: "newer context ".repeat(100) },
+      { role: "assistant", content: "recent answer" },
+    ];
+
+    const result = compactModelLoopMessages({
+      messages,
+      estimator,
+      budgetTokens: 500,
+      minMessagesToKeep: 2,
+      droppedTurnSummaryChars: 1_000,
+    });
+
+    const summary = result.messages.find((message) =>
+      message.content.includes("compacted prior context"),
+    )?.content;
+
+    expect(summary).toContain("read_file src/form.ts:3");
+    expect(summary).toContain("buildForm");
   });
 
   it("resolves sorted compaction thresholds and pressure", () => {
@@ -241,5 +295,61 @@ describe("compactModelLoopMessages", () => {
       result.messages.find((message) => message.toolCallId === "call_old")
         ?.content.length,
     ).toBeLessThan(1_000);
+  });
+
+  it("keeps compacted read tool arguments schema-shaped", () => {
+    const hugeArguments = JSON.stringify({
+      path: "src/large.ts",
+      startLine: 10,
+      endLine: 40,
+      extraContext: "x".repeat(10_000),
+    });
+    const messages: ModelMessage[] = [
+      { role: "system", content: "system" },
+      { role: "user", content: "fix it" },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "call_old_read",
+            name: "read_file",
+            arguments: hugeArguments,
+          },
+        ],
+      },
+      {
+        role: "tool",
+        toolCallId: "call_old_read",
+        content: JSON.stringify({
+          status: "succeeded",
+          output: "x".repeat(6_000),
+        }),
+      },
+    ];
+
+    const result = compactModelLoopMessages({
+      messages,
+      estimator,
+      budgetTokens: 1_200,
+      recentToolMessagesToKeepFull: 0,
+      minMessagesToKeep: 4,
+    });
+
+    const oldToolCall = result.messages
+      .flatMap((message) => message.toolCalls ?? [])
+      .find((toolCall) => toolCall.id === "call_old_read");
+
+    expect(result.compacted).toBe(true);
+    expect(oldToolCall?.arguments).toBe(
+      JSON.stringify({
+        path: "src/large.ts",
+        startLine: 10,
+        endLine: 40,
+      }),
+    );
+    expect(oldToolCall?.arguments).not.toContain(
+      "previous_completed_tool_call_arguments_omitted",
+    );
   });
 });

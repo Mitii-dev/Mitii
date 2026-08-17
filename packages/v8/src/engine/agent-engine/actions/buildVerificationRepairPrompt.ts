@@ -16,6 +16,11 @@ export function buildVerificationRepairPrompt(params: {
   comparison?: RepoBuildStateComparison;
   changedFiles: readonly string[];
   maxDiagnostics?: number;
+  mutationBudget?: {
+    maxPatchesPerCall: number;
+    maxUniqueFilesPerCall: number;
+    preferredBatchSize: number;
+  };
 }): string {
   const maxDiagnostics = params.maxDiagnostics ?? DEFAULT_MAX_DIAGNOSTICS;
   const diagnostics = (params.verification?.diagnostics ?? [])
@@ -42,10 +47,16 @@ export function buildVerificationRepairPrompt(params: {
       ? `Changed files: ${params.changedFiles.slice(0, 12).join(", ")}.`
       : undefined;
 
+  const budget = params.mutationBudget;
+  const batch =
+    budget !== undefined
+      ? `apply_patch hard limits this turn: at most ${budget.preferredBatchSize} files, ${budget.maxUniqueFilesPerCall} unique files, ${budget.maxPatchesPerCall} patches. Remaining errors go on the next turn.`
+      : "Prefer minimal patches. Then stop so verification can run again.";
+
   return [
-    "Verification failed. This is your one repair attempt.",
-    "Fix the remaining errors below. Do not re-read the whole repository.",
-    "Prefer minimal patches. Then stop so verification can run again.",
+    "Verification failed. Call apply_patch now for the next remaining-error batch.",
+    "Do not write a report or re-read the whole repository. Remaining errors go on later turns.",
+    batch,
     counts,
     changed,
     diagnostics.length > 0

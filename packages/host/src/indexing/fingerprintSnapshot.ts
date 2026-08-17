@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readdir, stat } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { basename, join, relative } from 'node:path';
 
 import {
   REPOSITORY_STATE_SCHEMA_VERSION,
@@ -22,6 +22,14 @@ export interface WorkspaceSnapshot {
   truncated: boolean;
   /** Sorted relative paths included in the fingerprint (for lightweight repo maps). */
   relativePaths: string[];
+}
+
+export function resolveFingerprintRootId(workspaceRoot: string): string {
+  const name = basename(workspaceRoot.replace(/[\\/]+$/, '')).trim();
+  if (!name || name === '.' || name === '..') {
+    return 'workspace';
+  }
+  return name;
 }
 
 export function fingerprintWorkspaceIndexSnapshot(
@@ -91,6 +99,7 @@ export async function buildWorkspaceSnapshot(
     .digest('hex');
   const rev = digest.slice(0, 16);
   const generatedAt = new Date().toISOString();
+  const rootId = resolveFingerprintRootId(options.workspaceRoot);
 
   const candidate: PublishRepositoryStateInput = {
     schemaVersion: REPOSITORY_STATE_SCHEMA_VERSION,
@@ -99,7 +108,7 @@ export async function buildWorkspaceSnapshot(
     scanCompleteness: truncated ? 'truncated' : 'complete',
     roots: [
       {
-        rootId: 'workspace',
+        rootId,
         projectCatalogRevision: `catalog_${rev}`,
         capabilities: [
           {
@@ -131,7 +140,7 @@ export async function buildWorkspaceSnapshot(
         message: truncated
           ? `Fingerprint snapshot truncated after ${maxFiles} files. codeIndex/textIndex/vectorIndex unavailable until full index runs.`
           : `Fingerprint-only snapshot of ${entries.length} files. catalog degraded; codeIndex/textIndex/vectorIndex unavailable (run full workspace index for FTS/symbols/vectors).`,
-        rootId: 'workspace',
+        rootId,
       },
     ],
     generatedAt,

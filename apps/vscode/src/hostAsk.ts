@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   AGENT_ENGINE_SCHEMA_VERSION,
@@ -76,7 +76,7 @@ export function formatRunEventLine(event: RunEvent): string | undefined {
         'paths' in event && Array.isArray(event.paths) && event.paths.length
           ? ` paths=${event.paths.slice(0, 6).join(',')}`
           : '';
-      return `[context] blocks=${event.blockCount} status=${event.status}${paths}`;
+      return `[context] blocks=${event.blockCount} retrieved=${event.retrievedCandidates} selected=${event.selectedItems} dropped=${event.droppedBlocks} status=${event.status}${paths}`;
     }
     case 'decision_made':
       return `[decision] ${event.route}${event.maximumWorkspaceEffect ? ` effect=${event.maximumWorkspaceEffect}` : ''}${formatEventList(' scopes', event.pathScopes)}`;
@@ -276,7 +276,16 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         'reasonCode' in event && typeof event.reasonCode === 'string'
           ? event.reasonCode
           : undefined;
-      const detail = [event.summary, reason ? `(${reason})` : undefined]
+      const warning =
+        Array.isArray(event.warnings) &&
+        typeof event.warnings[0] === 'string'
+          ? event.warnings[0]
+          : undefined;
+      const detail = [
+        event.summary,
+        reason ? `(${reason})` : undefined,
+        warning,
+      ]
         .filter(Boolean)
         .join(' ');
       return {
@@ -310,7 +319,7 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
               : 'Read repository context',
         detail: pathPreview
           ? `${pathPreview}${more}`
-          : `${event.blockCount} block(s) · ${event.status}`,
+          : `${event.blockCount} block(s) · retrieved ${event.retrievedCandidates} · selected ${event.selectedItems} · dropped ${event.droppedBlocks} · ${event.status}`,
         status: event.status,
       };
     }
@@ -1056,41 +1065,54 @@ export async function runAskInOutputChannel(options: {
       );
       if (!latest) {
         const workspaceId = options.workspaceId ?? 'vscode_workspace';
-        try {
-          const full = await runFullWorkspaceIndex({
-            mitiiDir: scaffoldMitiiWorkspace(workspaceRoot),
-            workspaceRoot,
-            workspaceId,
-            ...(options.secrets
-              ? {
-                  semanticIndex: await resolveVsCodeSemanticIndexSettings(
-                    vs,
-                    options.secrets,
-                  ),
-                }
-              : {}),
-          });
-          await client.publishRepositoryStateFromIndexing(full.indexing, {
-            catalogRevisionByRoot: full.catalogRevisionByRoot,
-            graphRevisionByRoot: full.graphRevisionByRoot,
-            mapRevisionByRoot: full.mapRevisionByRoot,
-          });
-          channel.appendLine(
-            `[index] auto-published full index (${full.fileCount} files); vector=${full.vectorIndex.status}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
-          );
-        } catch (fullIndexError) {
+        const mitiiDir = scaffoldMitiiWorkspace(workspaceRoot);
+        const sqlitePath = join(mitiiDir, 'repository-index.sqlite');
+        if (existsSync(sqlitePath)) {
           const snap = await buildWorkspaceSnapshot({
             workspaceRoot,
             workspaceId,
           });
           await client.publishRepositoryState(snap.candidate);
           channel.appendLine(
-            `[index] auto-published host snapshot (${snap.fileCount} files; full index unavailable: ${
-              fullIndexError instanceof Error
-                ? fullIndexError.message
-                : String(fullIndexError)
-            })`,
+            `[index] reused on-disk index at ${sqlitePath}; published fingerprint pin (${snap.fileCount} files)`,
           );
+        } else {
+          try {
+            const full = await runFullWorkspaceIndex({
+              mitiiDir,
+              workspaceRoot,
+              workspaceId,
+              ...(options.secrets
+                ? {
+                    semanticIndex: await resolveVsCodeSemanticIndexSettings(
+                      vs,
+                      options.secrets,
+                    ),
+                  }
+                : {}),
+            });
+            await client.publishRepositoryStateFromIndexing(full.indexing, {
+              catalogRevisionByRoot: full.catalogRevisionByRoot,
+              graphRevisionByRoot: full.graphRevisionByRoot,
+              mapRevisionByRoot: full.mapRevisionByRoot,
+            });
+            channel.appendLine(
+              `[index] auto-published full index (${full.fileCount} files); vector=${full.vectorIndex.status}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
+            );
+          } catch (fullIndexError) {
+            const snap = await buildWorkspaceSnapshot({
+              workspaceRoot,
+              workspaceId,
+            });
+            await client.publishRepositoryState(snap.candidate);
+            channel.appendLine(
+              `[index] auto-published host snapshot (${snap.fileCount} files; full index unavailable: ${
+                fullIndexError instanceof Error
+                  ? fullIndexError.message
+                  : String(fullIndexError)
+              })`,
+            );
+          }
         }
       }
     } catch (error) {

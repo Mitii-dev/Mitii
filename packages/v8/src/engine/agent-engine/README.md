@@ -52,11 +52,21 @@ agent-engine/
   after one nudge stop the spin with `exploration_stall_broken`.
 - Identical read-only tool+args reuse the prior result (`tool_result_deduped`).
   Mutations invalidate that content cache.
-- Hard compaction reinjects mid-run observations as well as pre-run memory.
+- Auto/hard compaction reinjects mid-run observations as well as pre-run
+  memory. Observation count, observation size, reinjection size, dropped-turn
+  summary size, compacted tool-result size, compacted tool-argument size, and
+  live tool-result content size are all read from `WindowPolicy.compaction`.
+- Tool-result history compaction preserves schema-shaped read/search arguments
+  and replaces older tool results with path/range/finding stubs instead of
+  slicing raw JSON or dropping tool rows from the summary.
 - Empty memory retrieval is `memory_empty` (store wired, no facts). Missing
   memory port or workspace id remains `memory_skipped`.
 - Task-list updates are validated through the Task List module.
 - Output truncation recovery can ask the model to continue safely within remaining budgets.
+- Execute + write + mutation-intent turns that produce text and no `apply_patch` are **unfulfilled execute**. The loop nudges once (`unfulfilled_execute_recovered`, `maxUnfulfilledExecuteRecoveries: 1`) to call `apply_patch` in a bounded batch. A second text-only turn completes with `unfulfilled_execute_exhausted` instead of spinning.
+- Truncation on that same execute+write path recovers as a **tool-call** nudge, not essay continuation. Direct-answer truncation still continues the text.
+- `context_ready` may include `retrievalSources` (`sourceId`, `status`, `candidateCount`) from hybrid retrieval reports.
+- `model_turn` events include turn index, optional token counts, `finishReason`, and `truncated`.
 - `composeReadOnlyAgentEngine` provides a useful read-only wiring helper.
 
 ### Start order
@@ -77,20 +87,20 @@ planning:
   discover_and_plan  -> bounded read-only discovery loop, then planning.plan({ discoveryBrief, strategyOverride })
   else               -> planning.plan({ strategyOverride }) immediately
 prompt construction
-model/tool loop
+model/tool loop               (per-turn max_tokens clamped to the window reserve, not leftover context)
 verification gate + repair queue (see below)
 ```
 
 - Strategy is resolved by Engine, not Planning: `resolvePlanStrategyRules` (a pure function) runs before deciding whether to invoke discovery. Only `discover_and_plan` triggers Engine's bounded read-only discovery loop (max two model turns, file/search budget, no mutation tools) — it emits `discovery_started` / `discovery_progress` / `discovery_completed`, shows a temporary discovery task list, then calls Planning with `DiscoveryBrief` and `skipDiscover: true`. Planning either runs its own one-shot Change+Verify draft call or falls back to the deterministic discovery skeleton. The discovery list is replaced by the plan-derived execution checklist. There is exactly one understanding LLM call and, for `discover_and_plan`, at most one additional plan-drafting call — never a second strategy classifier.
 - The resulting `planStrategy` is stored on the run result and plan-approval checkpoint. Hosts that carry an approved plan SHOULD also carry `approvedPlanStrategy`; otherwise the engine infers a conservative strategy from the artifact.
 
-### Verification gate (one repair, then keep)
+### Verification gate (repair while errors drop)
 
 After a mutation, `finishAfterLoop` runs Verification, compares before/after when a snapshot exists, and **does not roll back**.
 
 - **Passed**: commit mutations and complete as today.
-- **Repairable failure** (`verification_failed`): persist the record, inject a compact remaining-error prompt (not the full dump), and run **one** more model/tool loop. Re-verify. `verification_repair_attempted` / `verification_repair_succeeded` mark that path.
-- **Still failing, or not repairable** (blocked / cancelled / infra-missing): keep the edits, write a short user summary, commit a memory pointer, and complete with `verification_incomplete` / `verification_kept_changes`.
+- **Repairable failure** (`verification_failed`): persist the record, inject a compact remaining-error prompt (not the full dump), and run another model/tool loop. Auto/deep keep repairing while the error count drops (`maxVerificationRepairAttempts`, stop after `maxStalledVerificationRepairs` non-improving verifies). Quick exploration stays at one repair. `verification_repair_attempted` / `verification_repair_succeeded` mark that path.
+- **Still failing, or not repairable** (blocked / cancelled / infra-missing / stalled): keep the edits, write a short user summary, commit a memory pointer, and complete with `verification_incomplete` / `verification_kept_changes`.
 - **Cancel / interrupt**: persist whatever before/after snapshot exists so the next turn can reload it.
 - **Retry**: a later user ask matching “fix the remaining verification errors” loads `loadLatest(workspaceId)` instead of scraping chat history.
 

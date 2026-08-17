@@ -15,6 +15,17 @@ export const AGENT_ENGINE_THRESHOLDS = {
    * ("Let me check…") with no tool calls instead of a final answer.
    */
   maxIncompleteAnswerRecoveries: 2,
+  /**
+   * Max nudges when execute+write+mutation intent ends on a text-only
+   * diagnosis instead of apply_patch.
+   */
+  maxUnfulfilledExecuteRecoveries: 1,
+  /**
+   * Max successful read/search/tool turns in execute mode before requiring the
+   * first mutation attempt. This catches broad investigation loops that never
+   * reach apply_patch.
+   */
+  maxReadOnlyToolTurnsBeforeMutationNudge: 6,
   /** Fallback preferred batch size when grant omits mutationBudget. */
   defaultPreferredBatchSize: 3,
   /** Fallback hard patch cap when grant omits mutationBudget. */
@@ -27,12 +38,14 @@ export const AGENT_ENGINE_THRESHOLDS = {
   explorationRereadMinCalls: 8,
   /** One mid-loop nudge, then stop the spin. */
   maxExplorationStallNudges: 1,
-  /** One in-run repair after a repairable verification failure. */
-  maxVerificationRepairAttempts: 1,
-  /** Per-fact clip when pinning mid-run observations across compaction. */
-  establishedFactChars: 220,
-  maxEstablishedFacts: 12,
-  maxEstablishedFactReinjectChars: 1_600,
+  /**
+   * In-run remaining-error repairs after a repairable verification failure.
+   * Small windows can only patch a few files per turn, so package-scale
+   * diagnostic work needs multiple verify → patch cycles.
+   */
+  maxVerificationRepairAttempts: 8,
+  /** Stop repairing after this many consecutive non-improving verifies. */
+  maxStalledVerificationRepairs: 2,
 } as const;
 
 /**

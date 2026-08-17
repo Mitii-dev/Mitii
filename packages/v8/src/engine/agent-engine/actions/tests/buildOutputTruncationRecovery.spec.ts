@@ -152,6 +152,21 @@ describe("buildOutputTruncationRecovery", () => {
     expect(plan!.assistantContent).toContain("cut off mid-sent");
     expect(plan!.recoveryMessage.content).toContain("Continue exactly");
   });
+
+  it("recovers truncated text on a mutation execute as apply_patch, not essay continuation", () => {
+    const plan = buildOutputTruncationRecovery({
+      finishReason: "length",
+      content: "Here are all the TypeScript errors that got cut off",
+      toolCalls: [],
+      recoveryAttempt: 0,
+      requireMutation: true,
+      mutationBudget: tightBudget,
+    });
+    expect(plan).not.toBeNull();
+    expect(plan!.recoveryKind).toBe("tool_call");
+    expect(plan!.recoveryMessage.content).toContain("apply_patch");
+    expect(plan!.recoveryMessage.content).not.toContain("Continue exactly");
+  });
 });
 
 describe("isCompleteToolCall", () => {

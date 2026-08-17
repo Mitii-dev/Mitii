@@ -46,6 +46,7 @@ hybrid-retrieval/
 - Candidate keys prevent duplicate path/span/symbol results.
 - Source weights let exact text, graph, map, and vector evidence contribute differently.
 - Identifier-aware reranking boosts matches such as `LoginForm`, `login`, and `button`.
+- Folder-scoped requests (`folderPrefix`) backfill repo-map files after fusion and after rerank so out-of-folder lexical hits cannot starve the in-folder catalog. The floor is `MINIMUM_FOLDER_SCOPED_RESULTS` (12), capped by `maximumResults`.
 - Partial source failures can still produce a usable `partial` result.
 
 ## Ownership Boundaries

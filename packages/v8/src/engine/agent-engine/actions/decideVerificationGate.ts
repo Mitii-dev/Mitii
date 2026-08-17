@@ -30,6 +30,7 @@ export type VerificationGateDecision =
       repairable: boolean;
       rejectKind:
         | "verification_failed"
+        | "no_mutation_performed"
         | "blocked"
         | "cancelled"
         | "infrastructure_unavailable";
@@ -41,10 +42,24 @@ export function decideVerificationGate(params: {
   verificationRequired: boolean;
   allowUnavailable: boolean;
   changedFileCount: number;
+  mutationRequired?: boolean;
   canVerify: boolean;
   missingInfrastructure?: readonly string[];
   verification?: VerificationResult;
 }): VerificationGateDecision {
+  if (params.mutationRequired && params.changedFileCount === 0) {
+    return {
+      action: "reject",
+      repairable: false,
+      rejectKind: "no_mutation_performed",
+      error: {
+        code: "no_mutation_performed",
+        message:
+          "The task required workspace edits, but the model completed without changing any files.",
+      },
+    };
+  }
+
   if (!params.verificationRequired || params.changedFileCount === 0) {
     return { action: "accept", acceptKind: "skipped_not_required" };
   }

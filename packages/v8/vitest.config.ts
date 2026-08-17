@@ -23,6 +23,7 @@ export default defineConfig({
       'src/modules/repository-context/internal/hybrid-retrieval/IdentifierAwareRetrievalReranker.spec.ts',
       'src/modules/prompt-construction/**/*.spec.ts',
       'src/modules/repository-context/tests/**/*.spec.ts',
+      'src/modules/window-budget/**/*.spec.ts',
       'src/modules/skills/**/*.spec.ts',
       'src/modules/verification/**/*.spec.ts',
       'src/modules/repository-state/internal/repo-map/**/*.spec.ts',

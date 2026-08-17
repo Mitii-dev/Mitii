@@ -47,6 +47,39 @@ export function isEmptyAssistantTurn(params: {
 }
 
 /**
+ * True when a long answer is the same heading / numbered item repeating.
+ * Generic degeneracy detector — not tied to a package or error message.
+ */
+export function isDegenerateRepeatedAnswer(content: string): boolean {
+  const text = content.trim();
+  if (text.length < 2_000) {
+    return false;
+  }
+
+  const numbered =
+    text.match(/^\d+\.\s+\*{0,2}[^\n]{8,160}/gm)?.map((line) =>
+      line.replace(/^\d+\.\s+/, "").replace(/\*+/g, "").trim().toLowerCase(),
+    ) ?? [];
+  if (numbered.length >= 12) {
+    const unique = new Set(numbered);
+    if (unique.size <= Math.max(3, Math.floor(numbered.length * 0.25))) {
+      return true;
+    }
+  }
+
+  const windows: string[] = [];
+  const windowSize = 80;
+  for (let index = 0; index + windowSize <= Math.min(text.length, 8_000); index += 40) {
+    windows.push(text.slice(index, index + windowSize));
+  }
+  if (windows.length < 8) {
+    return false;
+  }
+  const uniqueWindows = new Set(windows);
+  return uniqueWindows.size <= Math.max(3, Math.floor(windows.length * 0.2));
+}
+
+/**
  * Some reasoning models respond with an instruction-shaped request for the
  * user/runtime to read files, but without issuing real tool calls. That is not
  * a final answer.
@@ -135,6 +168,7 @@ export function shouldRecoverIncompleteAssistantTurn(params: {
   if (params.toolCallCount > 0) return false;
   if (isEmptyAssistantTurn(params)) return true;
   if (isPseudoToolRequestAnswer(params.content)) return true;
+  if (isDegenerateRepeatedAnswer(params.content)) return true;
   if (isUnfinishedInvestigationAnswer(params.content)) return true;
   // Defense in depth: blank stored answer after mutations must not complete.
   if (params.content.trim().length === 0 && params.changedFileCount > 0) {

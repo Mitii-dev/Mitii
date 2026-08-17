@@ -7,6 +7,8 @@ import {
 import {
   collectRepositoryContextGraphAnchors,
   deriveContextSelectionBudget,
+  pathMatchesFolderPrefix,
+  restrictContextReferencesToFolderPrefix,
   REPOSITORY_CONTEXT_RETRIEVAL_POLICY,
 } from "../policy";
 
@@ -56,6 +58,55 @@ describe("collectRepositoryContextGraphAnchors", () => {
     );
     expect(collectRepositoryContextGraphAnchors({ gitDiffFiles })).toHaveLength(
       REPOSITORY_CONTEXT_RETRIEVAL_POLICY.maximumGraphFileAnchors,
+    );
+  });
+});
+
+describe("restrictContextReferencesToFolderPrefix", () => {
+  it("keeps only editor and git priors inside the mentioned folder", () => {
+    expect(
+      restrictContextReferencesToFolderPrefix(
+        {
+          currentFile: { relativePath: ".gitignore" },
+          openFiles: [
+            { relativePath: "apps/docs/readme.md" },
+            { relativePath: "packages/demo/src/used.ts" },
+          ],
+          gitDiffFiles: [{ relativePath: "packages/demo/src/other.ts" }],
+        },
+        "packages/demo",
+      ),
+    ).toEqual({
+      openFiles: [{ relativePath: "packages/demo/src/used.ts" }],
+      gitDiffFiles: [{ relativePath: "packages/demo/src/other.ts" }],
+    });
+  });
+
+  it("keeps explicit file filters even when they sit outside the folder", () => {
+    expect(
+      restrictContextReferencesToFolderPrefix(
+        {
+          gitDiffFiles: [{ relativePath: "apps/docs/readme.md" }],
+          explicitFiles: [{ relativePath: "apps/docs/readme.md" }],
+        },
+        "packages/demo",
+        ["apps/docs/readme.md"],
+      ),
+    ).toEqual({
+      gitDiffFiles: [{ relativePath: "apps/docs/readme.md" }],
+      explicitFiles: [{ relativePath: "apps/docs/readme.md" }],
+    });
+  });
+});
+
+describe("pathMatchesFolderPrefix", () => {
+  it("matches the folder itself and descendants only", () => {
+    expect(pathMatchesFolderPrefix("packages/demo", "packages/demo")).toBe(true);
+    expect(
+      pathMatchesFolderPrefix("packages/demo/src/used.ts", "packages/demo"),
+    ).toBe(true);
+    expect(pathMatchesFolderPrefix("packages/other/src/used.ts", "packages/demo")).toBe(
+      false,
     );
   });
 });

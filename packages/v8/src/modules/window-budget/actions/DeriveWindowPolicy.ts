@@ -106,22 +106,60 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
   const systemTokens = Math.max(0, usableInputTokens - allocated);
 
   const keepRecentToolResults = clampInt(
-    policy.keepRecentToolResultsBase +
-      Math.floor(usableInputTokens / policy.keepRecentToolResultsPerUsable),
-    policy.keepRecentToolResultsBase,
+    Math.floor(usableInputTokens * policy.keepRecentToolResultsRatio),
+    policy.keepRecentToolResultsMin,
     policy.keepRecentToolResultsMax,
   );
   const compactedToolResultChars = clampInt(
-    policy.compactedToolResultCharsBase +
-      Math.floor(usableInputTokens / policy.compactedToolResultCharsPerUsable),
-    policy.compactedToolResultCharsBase,
+    Math.floor(usableInputTokens * policy.compactedToolResultCharsRatio),
+    policy.compactedToolResultCharsMin,
     policy.compactedToolResultCharsMax,
+  );
+  const compactedToolArgumentChars = clampInt(
+    Math.floor(usableInputTokens * policy.compactedToolArgumentCharsRatio),
+    policy.compactedToolArgumentCharsMin,
+    policy.compactedToolArgumentCharsMax,
+  );
+  const toolResultContentChars = clampInt(
+    Math.floor(usableInputTokens * policy.toolResultContentCharsRatio),
+    policy.toolResultContentCharsMin,
+    policy.toolResultContentCharsMax,
+  );
+  const droppedTurnSummaryChars = clampInt(
+    Math.floor(usableInputTokens * policy.droppedTurnSummaryCharsRatio),
+    policy.droppedTurnSummaryCharsMin,
+    policy.droppedTurnSummaryCharsMax,
+  );
+  const establishedFactChars = clampInt(
+    Math.floor(usableInputTokens * policy.establishedFactCharsRatio),
+    policy.establishedFactCharsMin,
+    policy.establishedFactCharsMax,
+  );
+  const maxEstablishedFacts = clampInt(
+    Math.floor(usableInputTokens * policy.establishedFactCountRatio),
+    policy.establishedFactCountMin,
+    policy.establishedFactCountMax,
+  );
+  const establishedFactReinjectChars = clampInt(
+    Math.floor(usableInputTokens * policy.establishedFactReinjectCharsRatio),
+    policy.establishedFactReinjectCharsMin,
+    policy.establishedFactReinjectCharsMax,
+  );
+  const memoryReinjectChars = clampInt(
+    Math.floor(usableInputTokens * policy.memoryReinjectCharsRatio),
+    policy.memoryReinjectCharsMin,
+    policy.memoryReinjectCharsMax,
   );
 
   const maxUniqueFilesPerCall = clampInt(
     Math.floor(maximumOutputTokens / policy.filesPerOutputTokens),
     policy.minUniqueFilesPerCall,
     policy.maxUniqueFilesPerCallCap,
+  );
+  const maxPatchesPerCall = clampInt(
+    maxUniqueFilesPerCall * 2,
+    maxUniqueFilesPerCall,
+    policy.maxPatchesPerCallCap,
   );
   const maxPatchPayloadCharacters = Math.max(
     1,
@@ -156,6 +194,15 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     policy.verificationChecksMax,
   );
 
+  const visiblePlanThreshold = Math.min(
+    policy.visiblePlanMinUsableTokens,
+    Math.max(1, Math.floor(windowTokens * policy.visiblePlanMinUsableRatio)),
+  );
+  const changeImpactThreshold = Math.min(
+    policy.changeImpactMinUsableTokens,
+    Math.max(1, Math.floor(windowTokens * policy.changeImpactMinUsableRatio)),
+  );
+
   return windowPolicySchema.parse({
     schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
     contextWindowTokens: windowTokens,
@@ -176,9 +223,16 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
       hardRatio: policy.compactionHardRatio,
       keepRecentToolResults,
       compactedToolResultChars,
+      compactedToolArgumentChars,
+      toolResultContentChars,
+      droppedTurnSummaryChars,
+      establishedFactChars,
+      maxEstablishedFacts,
+      establishedFactReinjectChars,
+      memoryReinjectChars,
     },
     mutation: {
-      maxPatchesPerCall: maxUniqueFilesPerCall,
+      maxPatchesPerCall,
       maxUniqueFilesPerCall,
       maxPatchPayloadCharacters,
       preferredBatchSize: maxUniqueFilesPerCall,
@@ -187,10 +241,8 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     },
     planning: {
       maxDiagnosticSteps,
-      visiblePlanAffordable:
-        usableInputTokens >= policy.visiblePlanMinUsableTokens,
-      changeImpactAffordable:
-        usableInputTokens >= policy.changeImpactMinUsableTokens,
+      visiblePlanAffordable: usableInputTokens >= visiblePlanThreshold,
+      changeImpactAffordable: usableInputTokens >= changeImpactThreshold,
       budgetTokens: planTokens,
     },
     run: {

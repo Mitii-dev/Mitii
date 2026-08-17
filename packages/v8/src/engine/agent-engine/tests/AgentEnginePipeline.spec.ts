@@ -216,6 +216,305 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.reasonCodes).toContain("mutation_applied");
   });
 
+  it("nudges execute+write when the model dumps a diagnosis instead of apply_patch", async () => {
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          toolGrant: createReadOnlyGrant({
+            maximumWorkspaceEffect: "write",
+            allowedTools: ["apply_patch"],
+            allowedEffects: ["workspace_write"],
+            approvalMode: "never",
+            mutationBudget: {
+              maxPatchesPerCall: 8,
+              maxUniqueFilesPerCall: 5,
+              maxPatchPayloadCharacters: 24_000,
+              preferredBatchSize: 3,
+              requireBatchedExecution: false,
+            },
+          }),
+          reasonCodes: ["mutation_execute"],
+        }),
+        understanding: createUnderstanding({
+          intent: {
+            status: "accepted",
+            classification: {
+              interactionIntent: "act",
+              primaryTaskIntent: "bugfix",
+              secondaryTaskIntents: [],
+              confidence: 0.9,
+              alternatives: [],
+              needsClarification: false,
+              reason: "Fixture.",
+            },
+            scores: [
+              {
+                intent: "bugfix",
+                score: 0.9,
+                ruleScore: 0.8,
+                llmScore: 0.9,
+              },
+            ],
+            confidenceMargin: 0.4,
+            recommendsClarification: false,
+            diagnostics: {
+              llmPrimaryIntent: "bugfix",
+              llmInteractionIntent: "act",
+              taskAgreement: true,
+              interactionAgreement: true,
+              interactionConflict: false,
+              agreementBonusApplied: 0,
+              disagreementPenaltyApplied: 0,
+              minimumConfidence: 0.6,
+              minimumMargin: 0.15,
+            },
+          },
+        }),
+        llm: new ScriptedLlmPort([
+          {
+            content:
+              "Now I have a clear picture of the codebase. Let me analyze the TypeScript errors:\n1. field should be the config object, not a string.",
+          },
+          {
+            content: "",
+            toolCalls: [
+              {
+                id: "call_patch",
+                name: "apply_patch",
+                arguments: JSON.stringify({
+                  patches: [
+                    {
+                      path: "src/types.ts",
+                      oldText: "field: string",
+                      newText: "field: FieldConfig",
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+          { content: "Updated the field config type." },
+        ]),
+        toolResults: {
+          apply_patch: {
+            status: "succeeded",
+            output: {
+              checkpointId: "cp_fix",
+              changedFiles: ["src/types.ts"],
+            },
+          },
+        },
+      }),
+    );
+
+    const result = await engine.start(
+      baseStartInput({
+        workspaceRoot: "/repo",
+        request: {
+          sessionId: "sess_1",
+          mode: "agent",
+          userMessage: "Fix all ts errors in this package",
+          workspace: { workspaceId: "ws_1" },
+        },
+      }),
+    ).result;
+
+    expect(result.status).toBe("completed");
+    expect(result.reasonCodes).toContain("unfulfilled_execute_recovered");
+    expect(result.reasonCodes).toContain("mutation_applied");
+    expect(result.answer).toContain("Updated the field config type");
+  });
+
+  it("does not continue truncated essays on execute+write; asks for apply_patch instead", async () => {
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          toolGrant: createReadOnlyGrant({
+            maximumWorkspaceEffect: "write",
+            allowedTools: ["apply_patch"],
+            allowedEffects: ["workspace_write"],
+            approvalMode: "never",
+          }),
+          reasonCodes: ["mutation_execute"],
+        }),
+        understanding: createUnderstanding({
+          intent: {
+            status: "accepted",
+            classification: {
+              interactionIntent: "act",
+              primaryTaskIntent: "bugfix",
+              secondaryTaskIntents: [],
+              confidence: 0.9,
+              alternatives: [],
+              needsClarification: false,
+              reason: "Fixture.",
+            },
+            scores: [
+              {
+                intent: "bugfix",
+                score: 0.9,
+                ruleScore: 0.8,
+                llmScore: 0.9,
+              },
+            ],
+            confidenceMargin: 0.4,
+            recommendsClarification: false,
+            diagnostics: {
+              llmPrimaryIntent: "bugfix",
+              llmInteractionIntent: "act",
+              taskAgreement: true,
+              interactionAgreement: true,
+              interactionConflict: false,
+              agreementBonusApplied: 0,
+              disagreementPenaltyApplied: 0,
+              minimumConfidence: 0.6,
+              minimumMargin: 0.15,
+            },
+          },
+        }),
+        llm: new ScriptedLlmPort([
+          {
+            content: "Here is a long diagnosis of every TypeScript error that got cut off mid-sent",
+            finishReason: "length",
+          },
+          {
+            content: "",
+            toolCalls: [
+              {
+                id: "call_patch",
+                name: "apply_patch",
+                arguments: JSON.stringify({
+                  patches: [
+                    {
+                      path: "src/a.ts",
+                      oldText: "x",
+                      newText: "y",
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+          { content: "Applied the first batch." },
+        ]),
+        toolResults: {
+          apply_patch: {
+            status: "succeeded",
+            output: {
+              checkpointId: "cp_2",
+              changedFiles: ["src/a.ts"],
+            },
+          },
+        },
+      }),
+    );
+
+    const result = await engine.start(
+      baseStartInput({
+        workspaceRoot: "/repo",
+        request: {
+          sessionId: "sess_1",
+          mode: "agent",
+          userMessage: "Fix the type errors",
+          workspace: { workspaceId: "ws_1" },
+        },
+      }),
+    ).result;
+
+    expect(result.status).toBe("completed");
+    expect(result.reasonCodes).toContain("output_truncation_recovered");
+    expect(result.reasonCodes).toContain("mutation_applied");
+    expect(result.answer).not.toContain("second half");
+  });
+
+  it("exhausts a single unfulfilled-execute recovery then fails without edits", async () => {
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          toolGrant: createReadOnlyGrant({
+            maximumWorkspaceEffect: "write",
+            allowedTools: ["apply_patch"],
+            allowedEffects: ["workspace_write"],
+            approvalMode: "never",
+          }),
+          reasonCodes: ["mutation_execute"],
+        }),
+        understanding: createUnderstanding({
+          intent: {
+            ...createUnderstanding().intent,
+            classification: {
+              ...createUnderstanding().intent.classification,
+              interactionIntent: "act",
+              primaryTaskIntent: "bugfix",
+            },
+          },
+        }),
+        llm: new ScriptedLlmPort([
+          { content: "Here are all the TypeScript errors I found." },
+          { content: "Here is the same diagnosis again without patches." },
+        ]),
+      }),
+    );
+
+    const result = await engine.start(
+      baseStartInput({
+        workspaceRoot: "/repo",
+        request: {
+          sessionId: "sess_1",
+          mode: "agent",
+          userMessage: "Fix the type errors",
+          workspace: { workspaceId: "ws_1" },
+        },
+      }),
+    ).result;
+
+    expect(result.status).toBe("failed");
+    expect(result.reasonCodes).toContain("unfulfilled_execute_recovered");
+    expect(result.reasonCodes).toContain("unfulfilled_execute_exhausted");
+    expect(result.reasonCodes).not.toContain("mutation_applied");
+    expect(result.error?.code).toBe("no_mutation_performed");
+  });
+
+  it("completes repository_answer analysis without forcing apply_patch", async () => {
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "repository_answer",
+          toolGrant: createReadOnlyGrant(),
+          reasonCodes: ["repository_grounded_answer"],
+        }),
+        llm: new ScriptedLlmPort(
+          [
+            {
+              content:
+                "The parser returns null when the token stream is empty. That is expected for this API.",
+            },
+          ],
+          createCapabilities({ supportsTools: false }),
+        ),
+      }),
+    );
+
+    const result = await engine.start(
+      baseStartInput({
+        request: {
+          sessionId: "sess_1",
+          mode: "ask",
+          userMessage: "What happens when the parser is empty?",
+          workspace: { workspaceId: "ws_1" },
+        },
+      }),
+    ).result;
+
+    expect(result.status).toBe("completed");
+    expect(result.answer).toContain("parser returns null");
+    expect(result.reasonCodes).not.toContain("unfulfilled_execute_recovered");
+    expect(result.reasonCodes).toContain("answer_produced");
+  });
+
   it("suspends on clarification without calling the model", async () => {
     let modelCalls = 0;
     const llm = new ScriptedLlmPort([{ content: "should not run" }]);
@@ -330,6 +629,28 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.usage.modelCalls).toBe(2);
     expect(result.reasonCodes).toContain("context_retrieved");
     expect(result.reasonCodes).toContain("tools_executed");
+    const contextReady = events.find(
+      (event): event is {
+        type: "context_ready";
+        blockCount: number;
+        retrievedCandidates: number;
+        selectedItems: number;
+        droppedBlocks: number;
+      } => (event as { type?: string }).type === "context_ready",
+    );
+    expect(contextReady).toMatchObject({
+      blockCount: 1,
+      retrievedCandidates: 1,
+      selectedItems: 1,
+      droppedBlocks: 0,
+      retrievalSources: [
+        {
+          sourceId: "text-index",
+          status: "complete",
+          candidateCount: 1,
+        },
+      ],
+    });
     const toolStarted = events.find(
       (event): event is { type: "tool_started"; summary?: string } =>
         (event as { type?: string }).type === "tool_started",
@@ -338,6 +659,130 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     for (const event of events) {
       expect(() => runEventSchema.parse(event)).not.toThrow();
     }
+  });
+
+  it("emits required retrieval warnings from context_ready", async () => {
+    const dependencies = createStubDependencies({
+      decision: createDecision({
+        route: "repository_answer",
+        repositoryContextRequired: true,
+        pinnedState: { workspaceId: "ws_1", stateToken: "tok_1" },
+        toolGrant: createReadOnlyGrant(),
+      }),
+      llm: new ScriptedLlmPort([{ content: "done" }], createCapabilities({
+        supportsTools: false,
+      })),
+    });
+    const originalExecute = dependencies.repositoryContext?.execute.bind(
+      dependencies.repositoryContext,
+    );
+    dependencies.repositoryContext = {
+      execute: async (input) => {
+        const result = await originalExecute!(input);
+        return {
+          ...result,
+          warnings: [
+            {
+              stage: "retrieval",
+              code: "required_source_unavailable",
+              message:
+                "Pinned repository state does not expose a ready text index.",
+            },
+          ],
+        };
+      },
+    };
+
+    const handle = new AgentEnginePipeline(dependencies).start(
+      baseStartInput({
+        workspaceRoot: "/repo",
+        repositoryState: {
+          reference: { workspaceId: "ws_1", stateToken: "tok_1" },
+          readiness: "ready",
+        },
+        request: {
+          sessionId: "sess_1",
+          mode: "ask",
+          userMessage: "What does auth export?",
+          workspace: { workspaceId: "ws_1" },
+        },
+      }),
+    );
+    const events = await collectEvents(handle.events);
+    await handle.result;
+
+    expect(
+      events.some(
+        (event) =>
+          event.type === "warning" &&
+          "message" in event &&
+          /ready text index/.test(String(event.message)),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not narrow the write grant from assembled paths outside the mentioned folder", async () => {
+    let discoveredPaths: readonly string[] | undefined;
+    const understanding = createUnderstanding();
+    const dependencies = createStubDependencies({
+      understanding: createUnderstanding({
+        taskAnalysis: {
+          ...understanding.taskAnalysis,
+          targets: [
+            { kind: "folder", value: "packages/demo", explicit: true },
+          ],
+        },
+      }),
+      decision: createDecision({
+        route: "repository_answer",
+        repositoryContextRequired: true,
+        pinnedState: { workspaceId: "ws_1", stateToken: "tok_1" },
+        toolGrant: createReadOnlyGrant({
+          maximumWorkspaceEffect: "write",
+          pathScopes: ["packages/demo"],
+        }),
+      }),
+      contextBlocks: [
+        {
+          id: "ignore",
+          relativePath: ".gitignore",
+          content: "node_modules",
+        },
+        {
+          id: "docs",
+          relativePath: "apps/docs/readme.md",
+          content: "docs",
+        },
+      ],
+      llm: new ScriptedLlmPort([{ content: "done" }], createCapabilities({
+        supportsTools: false,
+      })),
+    });
+    dependencies.decision.narrow = (input) => {
+      discoveredPaths = input.discoveredPaths;
+      return input.previous;
+    };
+
+    const result = await new AgentEnginePipeline(dependencies)
+      .start(
+        baseStartInput({
+          workspaceRoot: "/repo",
+          repositoryState: {
+            reference: { workspaceId: "ws_1", stateToken: "tok_1" },
+            readiness: "ready",
+          },
+          request: {
+            sessionId: "sess_1",
+            mode: "agent",
+            userMessage: "fix types in @packages/demo",
+            workspace: { workspaceId: "ws_1" },
+          },
+        }),
+      )
+      .result;
+
+    expect(result.status).toBe("completed");
+    expect(discoveredPaths).toEqual([]);
   });
 
   it("scales repository selection budget from model context window", async () => {
@@ -463,12 +908,17 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     ).result;
 
     const secondRequestText = JSON.stringify(captured[1]?.messages ?? []);
+    const secondRequestToolArguments =
+      captured[1]?.messages
+        .flatMap((message) => message.toolCalls ?? [])
+        .map((toolCall) => toolCall.arguments) ?? [];
 
     expect(result.status).toBe("completed");
     expect(captured).toHaveLength(3);
     expect(secondRequestText).not.toContain("a".repeat(1_000));
-    expect(secondRequestText).toContain(
-      "previous_completed_tool_call_arguments_omitted",
+    expect(secondRequestText).not.toContain("oldText");
+    expect(secondRequestToolArguments).toContain(
+      JSON.stringify({ path: "src/large.ts" }),
     );
     expect(result.warnings).toContain(
       "Compacted previous tool call history to keep follow-up model calls within the context budget.",
@@ -718,6 +1168,74 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.suspension?.approval?.toolName).toBe("apply_patch");
     expect(result.suspension?.approval?.paths).toEqual(["src/a.ts"]);
     expect(result.reasonCodes).toContain("approval_suspended");
+  });
+
+  it("emits bounded diagnostics for rejected tool results", async () => {
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          toolGrant: createReadOnlyGrant({
+            maximumWorkspaceEffect: "write",
+            allowedTools: ["apply_patch", "read_file"],
+            allowedEffects: ["workspace_write", "workspace_read"],
+            approvalMode: "never",
+          }),
+          reasonCodes: ["mutation_execute"],
+        }),
+        llm: new ScriptedLlmPort([
+          {
+            toolCalls: [
+              {
+                id: "call_patch",
+                name: "apply_patch",
+                arguments: JSON.stringify({
+                  patches: [
+                    {
+                      path: "src/a.ts",
+                      oldText: "old",
+                      newText: "new",
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+          { content: "Cannot continue without a valid patch." },
+        ]),
+        toolResults: {
+          apply_patch: {
+            status: "rejected",
+            reasonCode: "patch_conflict",
+            warnings: ['oldText not found in "src/a.ts"'],
+          },
+        },
+      }),
+    );
+
+    const handle = engine.start(baseStartInput({ workspaceRoot: "/repo" }));
+    const [, events] = await Promise.all([
+      handle.result,
+      collectEvents(handle.events),
+    ]);
+
+    const completed = events
+      .map((event) => runEventSchema.parse(event))
+      .find(
+        (event) =>
+          event.type === "tool_completed" &&
+          event.toolName === "apply_patch",
+      );
+
+    expect(completed).toMatchObject({
+      status: "rejected",
+      reasonCode: "patch_conflict",
+      warnings: ['oldText not found in "src/a.ts"'],
+      durationMs: expect.any(Number),
+      bytesProduced: expect.any(Number),
+      truncated: false,
+      redacted: false,
+    });
   });
 
   it("cancels an in-flight model turn", async () => {
@@ -1267,10 +1785,136 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     ]);
     expect(capturedVerificationInput?.changeScope).toBe("module");
     expect(capturedPlanningInput?.explorationDepth).toBe("auto");
-    expect(capturedPlanningInput?.buildEvidence?.diagnostics?.[0]?.path).toBe(
-      "packages/mui-builder/src/Button.tsx",
-    );
-  });
+  expect(capturedPlanningInput?.buildEvidence?.diagnostics?.[0]?.path).toBe(
+    "packages/mui-builder/src/Button.tsx",
+  );
+});
+
+it("injects scoped preflight diagnostics into execute repair prompts", async () => {
+  const repoBuildStateBefore = {
+    schemaVersion: 1 as const,
+    capturedAt: "2026-08-14T12:00:00.000Z",
+    phase: "before" as const,
+    scope: {
+      workspaceRoot: "/repo",
+      folderPrefixes: ["packages/mui-builder"],
+      projectIds: ["mui-builder"],
+      changeScope: "module" as const,
+    },
+    checks: [
+      {
+        checkId: "mui-builder:typecheck",
+        kind: "typecheck" as const,
+        projectId: "mui-builder",
+        label: "typecheck",
+        evidenceSource: "package.json",
+        outcome: "failed" as const,
+        exitCode: 2,
+        summary: "Typecheck failed.",
+      },
+    ],
+    diagnostics: [
+      {
+        path: "packages/mui-builder/src/Button.tsx",
+        severity: "error" as const,
+        message: "Type mismatch",
+        startLine: 12,
+        source: "tsc",
+        code: "TS2322",
+        checkId: "mui-builder:typecheck",
+      },
+      {
+        path: "packages/other/src/Other.ts",
+        severity: "error" as const,
+        message: "Out of scope.",
+        startLine: 1,
+        source: "tsc",
+        code: "TS1000",
+      },
+    ],
+    summary: {
+      errorCount: 2,
+      warningCount: 0,
+      failedCheckIds: ["mui-builder:typecheck"],
+    },
+    reasonCodes: ["checks_failed" as const],
+  };
+  const llm = new ScriptedLlmPort(
+    [
+      { content: "I will inspect first." },
+      { content: "Still no patch." },
+    ],
+    createCapabilities({ supportsTools: true }),
+  );
+  const baseUnderstanding = createUnderstanding();
+  const engine = new AgentEnginePipeline(
+    createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        repositoryContextRequired: false,
+        toolGrant: createReadOnlyGrant({
+          maximumWorkspaceEffect: "write",
+          allowedTools: ["read_file", "apply_patch"],
+          allowedEffects: ["workspace_read", "workspace_write"],
+          pathScopes: ["packages/mui-builder"],
+        }),
+        reasonCodes: ["mutation_execute", "preflight_build_recommended"],
+      }),
+      understanding: createUnderstanding({
+        intent: {
+          ...baseUnderstanding.intent,
+          classification: {
+            ...baseUnderstanding.intent.classification,
+            interactionIntent: "act",
+            primaryTaskIntent: "bugfix",
+          },
+        },
+      }),
+      llm,
+      verification: {
+        verify: async () => {
+          throw new Error("verification should not run without mutations");
+        },
+        captureBuildState: async () => repoBuildStateBefore,
+        buildStateFromResult: () => repoBuildStateBefore,
+        compareBuildStates: () => ({
+          beforeErrorCount: 2,
+          afterErrorCount: 2,
+          clearedErrorCount: 0,
+          newErrorCount: 0,
+          remainingErrorCount: 2,
+          failedCheckIdsBefore: ["mui-builder:typecheck"],
+          failedCheckIdsAfter: ["mui-builder:typecheck"],
+          reasonCodes: ["errors_remaining"],
+        }),
+      },
+    }),
+  );
+
+  await engine.start(
+    baseStartInput({
+      request: {
+        sessionId: "sess_preflight_diagnostic_prompt",
+        mode: "agent",
+        userMessage: "@packages/mui-builder fix all ts errors",
+        workspace: { workspaceId: "ws_1" },
+      },
+      workspaceRoot: "/repo",
+      repositoryState: {
+        reference: { workspaceId: "ws_1", stateToken: "tok_1" },
+        readiness: "ready",
+      },
+    }),
+  ).result;
+
+  const firstSystem = llm.requests[0]?.messages.find(
+    (message) => message.role === "system",
+  )?.content;
+  expect(firstSystem).toContain("Preflight verification already captured 2");
+  expect(firstSystem).toContain("packages/mui-builder/src/Button.tsx:12 TS2322");
+  expect(firstSystem).toContain("call apply_patch");
+  expect(firstSystem).not.toContain("packages/other");
+});
 
   it("completes plan mode with the structured plan as the answer", async () => {
     const { PLANNING_SCHEMA_VERSION, formatPlanAsAnswer } = await import(
@@ -1761,7 +2405,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
       expected.usableInputTokens,
     );
     expect(capturedDecisions[0]?.windowPolicy?.planning.visiblePlanAffordable).toBe(
-      false,
+      true,
     );
     expect(capturedPrompts[0]?.outputReserveTokens).toBe(
       expected.maximumOutputTokens,

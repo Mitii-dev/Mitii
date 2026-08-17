@@ -30,14 +30,42 @@ export function resolveMutationBudget(params: {
   const { understanding, windowPolicy } = params;
   const profile = selectProfile(understanding.taskAnalysis);
   const reasonCode = profileToReasonCode(profile);
+  const profileBudget = { ...MUTATION_BUDGET_PROFILES[profile] };
   const mutationBudget = windowPolicy
-    ? { ...windowPolicy.mutation }
-    : { ...MUTATION_BUDGET_PROFILES[profile] };
+    ? mergeMutationBudget(profileBudget, windowPolicy.mutation)
+    : profileBudget;
 
   return {
     mutationBudget,
     profile,
     reasonCodes: [reasonCode],
+  };
+}
+
+function mergeMutationBudget(
+  profileBudget: MutationBudget,
+  windowMutation: WindowPolicy["mutation"],
+): MutationBudget {
+  return {
+    maxPatchesPerCall: Math.min(
+      profileBudget.maxPatchesPerCall,
+      windowMutation.maxPatchesPerCall,
+    ),
+    maxUniqueFilesPerCall: Math.min(
+      profileBudget.maxUniqueFilesPerCall,
+      windowMutation.maxUniqueFilesPerCall,
+    ),
+    maxPatchPayloadCharacters: Math.min(
+      profileBudget.maxPatchPayloadCharacters,
+      windowMutation.maxPatchPayloadCharacters,
+    ),
+    preferredBatchSize: Math.min(
+      profileBudget.preferredBatchSize,
+      windowMutation.preferredBatchSize,
+    ),
+    requireBatchedExecution:
+      profileBudget.requireBatchedExecution ||
+      windowMutation.requireBatchedExecution,
   };
 }
 

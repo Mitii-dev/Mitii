@@ -40,6 +40,8 @@ repository-context/
 - Public callers provide only a state reference, never independent artifact revisions.
 - Status can be `complete`, `partial`, `empty`, `cancelled`, or `failed`.
 - Retrieval can use repo map, repo graph, text index, and vector index.
+- When `folderPrefix` is set, hybrid retrieval backfills repo-map files in that folder so a weak query cannot collapse the package catalog below `MINIMUM_FOLDER_SCOPED_RESULTS` (12) in-folder candidates.
+- `context_ready.retrievalSources` (via the engine) surfaces per-source `sourceId` / `status` / `candidateCount` from hybrid `sourceReports`.
 - Selection balances score, references, diversity, and budgets.
 - Assembly applies content-source loading, secret redaction, sanitization, and truncation.
 
