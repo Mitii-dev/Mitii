@@ -73,6 +73,8 @@ export {
   synthesizeFallbackAnswer,
   amendMessageWithPriorConversation,
 } from "./isIncompleteAssistantTurn";
+
+export { recoverLeakedToolCallsFromMarkup } from "./recoverLeakedToolCalls";
 export {
   resolveLoopTurnOutcome,
   isUnfulfilledExecute,

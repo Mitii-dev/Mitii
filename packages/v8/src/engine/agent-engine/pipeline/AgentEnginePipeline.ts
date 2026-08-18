@@ -128,6 +128,7 @@ import {
   buildUnfulfilledExecuteRecoveryMessage,
   shouldContinueVerificationRepair,
   nextStalledRepairCount,
+  recoverLeakedToolCallsFromMarkup,
 } from "../actions";
 import type {
   EstablishedFact,
@@ -3837,7 +3838,25 @@ export class AgentEnginePipeline {
         ...(truncated ? (["output_truncated"] as const) : []),
       ]);
 
-      if (turn.toolCalls.length === 0) {
+      let toolCalls = turn.toolCalls;
+      if (
+        toolCalls.length === 0 &&
+        turn.content.trim().length > 0 &&
+        /<\s*(?:read_file|read_many_files|search_files|glob_files|list_directory|goto_definition|find_references|analyze_change_impact)\b/i.test(
+          turn.content,
+        )
+      ) {
+        const recovered = recoverLeakedToolCallsFromMarkup({
+          content: turn.content,
+          allowedToolNames: new Set(grant.allowedTools),
+        });
+        toolCalls = recovered.toolCalls;
+        if (recovered.warnings.length > 0) {
+          warnings.push(...recovered.warnings);
+        }
+      }
+
+      if (toolCalls.length === 0) {
         if (turn.content.length > 0) {
           const turnAnswer = truncated
             ? `${turn.content}\n\n…(output truncated — token limit reached)`
@@ -4014,7 +4033,7 @@ export class AgentEnginePipeline {
       }
 
       // Tool phase
-      const needsWorkspaceTools = turn.toolCalls.some(
+      const needsWorkspaceTools = toolCalls.some(
         (call) => !isUpdateTodosTool(call.name),
       );
       if (needsWorkspaceTools && !this.deps.tools) {
@@ -4043,7 +4062,7 @@ export class AgentEnginePipeline {
       messages.push({
         role: "assistant",
         content: turn.content,
-        toolCalls: turn.toolCalls,
+        toolCalls,
       });
 
       this.emitStage(bus, runId, "tool_running", "started");
@@ -4074,7 +4093,7 @@ export class AgentEnginePipeline {
           }
         | undefined;
 
-      for (const toolCall of turn.toolCalls) {
+      for (const toolCall of toolCalls) {
         if (signal.aborted) {
           return { kind: "cancelled" };
         }
@@ -4230,14 +4249,14 @@ export class AgentEnginePipeline {
         if (
           isTargetedDiscoveryAfterRejectedMutation({
             recovery: awaitingRejectedMutationRetry,
-            toolCalls: turn.toolCalls,
+            toolCalls,
             successfulToolCount,
             rejectedToolCount,
           })
         ) {
           const used =
             awaitingRejectedMutationRetry.targetedDiscoveryToolCallsUsed +
-            turn.toolCalls.length;
+            toolCalls.length;
           const max =
             awaitingRejectedMutationRetry.maxTargetedDiscoveryToolCalls;
           awaitingRejectedMutationRetry = {
@@ -4313,7 +4332,7 @@ export class AgentEnginePipeline {
         !attemptedMutatingTool &&
         rejectedTool &&
         successfulToolCount === 0 &&
-        rejectedToolCount === turn.toolCalls.length
+        rejectedToolCount === toolCalls.length
       ) {
         reasonCodes.push("tool_failed");
         if (

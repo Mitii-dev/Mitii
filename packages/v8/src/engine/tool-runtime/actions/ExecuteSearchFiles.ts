@@ -10,6 +10,7 @@ import {
   resolveScopedSearchPath,
 } from "../internal/PathContainment";
 import { sanitizeTextOutput } from "../internal/OutputSanitizer";
+import { resolveSearchPattern } from "../internal/SearchPattern";
 import {
   searchFilesInputSchema,
   searchFilesOutputSchema,
@@ -21,7 +22,12 @@ export async function executeSearchFiles(params: {
   workspaceRoot: string;
   fileSystem: WorkspaceFileSystemPort;
   maxOutputBytes: number;
-}): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
+}): Promise<{
+  output: unknown;
+  truncated: boolean;
+  redacted: boolean;
+  warnings?: string[];
+}> {
   const input = searchFilesInputSchema.parse(params.arguments);
   const contained = await resolveContainedPath({
     fileSystem: params.fileSystem,
@@ -40,10 +46,15 @@ export async function executeSearchFiles(params: {
     workspaceRoot: params.workspaceRoot,
   });
 
-  const needle = input.caseSensitive ? input.query : input.query.toLowerCase();
+  const pattern = resolveSearchPattern({
+    query: input.query,
+    mode: input.mode,
+    caseSensitive: input.caseSensitive,
+  });
   const matches: Array<{ path: string; line: number; text: string }> = [];
   let truncated = false;
   let redacted = false;
+  const warnings = pattern.warning ? [pattern.warning] : [];
 
   for (const file of files) {
     if (!isPathWithinGrant(file.relativePath, params.grant.pathScopes)) {
@@ -52,8 +63,7 @@ export async function executeSearchFiles(params: {
     const lines = file.content.split(/\r?\n/);
     for (let i = 0; i < lines.length; i += 1) {
       const line = lines[i] ?? "";
-      const haystack = input.caseSensitive ? line : line.toLowerCase();
-      if (!haystack.includes(needle)) {
+      if (!pattern.matches(line)) {
         continue;
       }
       const sanitized = sanitizeTextOutput(line, 2_000);
@@ -75,6 +85,7 @@ export async function executeSearchFiles(params: {
 
   const output = searchFilesOutputSchema.parse({
     query: input.query,
+    mode: pattern.mode,
     matches,
     truncated,
   });
@@ -91,10 +102,11 @@ export async function executeSearchFiles(params: {
       output: searchFilesOutputSchema.parse(reduced),
       truncated: true,
       redacted,
+      warnings,
     };
   }
 
-  return { output, truncated, redacted };
+  return { output, truncated, redacted, warnings };
 }
 
 async function collectSearchFiles(params: {

@@ -25,6 +25,7 @@ function createRuntime() {
       src: directory({
         "util.ts": file("export const n = 1;\n"),
         "util.spec.ts": file("describe('util', () => {});\n"),
+        "pattern.ts": file("const literal = 'items[0]';\nconst count = total + 1;\n"),
         nested: directory({
           "deep.ts": file("export const deep = true;\n"),
         }),
@@ -189,6 +190,14 @@ describe("model tool definition single source", () => {
       (readonlyCmd?.inputSchema as { properties?: Record<string, unknown> })
         .properties,
     ).not.toHaveProperty("cwd");
+
+    const searchFiles = listBuiltinModelToolDefinitions().find(
+      (t) => t.name === "search_files",
+    );
+    expect(
+      (searchFiles?.inputSchema as { properties?: Record<string, unknown> })
+        .properties,
+    ).toHaveProperty("mode");
   });
 
   it("search_files succeeds when path points at a single file", async () => {
@@ -208,5 +217,78 @@ describe("model tool definition single source", () => {
     expect(output.matches.length).toBeGreaterThan(0);
     expect(output.matches[0]?.path).toBe("src/util.ts");
     expect(output.matches[0]?.text).toContain("export const n");
+  });
+
+  it("search_files auto mode keeps bracket-heavy queries as literal text", async () => {
+    const runtime = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "s-literal",
+      toolName: "search_files",
+      arguments: { query: "items[0]", path: "src" },
+      grant: createReadOnlyGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("succeeded");
+    const output = result.output as {
+      mode: "literal" | "regex";
+      matches: Array<{ path: string; text: string }>;
+    };
+    expect(output.mode).toBe("literal");
+    expect(output.matches).toHaveLength(1);
+    expect(output.matches[0]?.path).toBe("src/pattern.ts");
+    expect(output.matches[0]?.text).toContain("items[0]");
+  });
+
+  it("search_files supports explicit regex mode", async () => {
+    const runtime = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "s-regex",
+      toolName: "search_files",
+      arguments: { query: "^export const \\w+ = 1;$", path: "src", mode: "regex" },
+      grant: createReadOnlyGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("succeeded");
+    const output = result.output as {
+      mode: "literal" | "regex";
+      matches: Array<{ path: string }>;
+    };
+    expect(output.mode).toBe("regex");
+    expect(output.matches.map((match) => match.path)).toEqual(["src/util.ts"]);
+  });
+
+  it("search_files auto mode upgrades obvious regex patterns", async () => {
+    const runtime = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "s-auto-regex",
+      toolName: "search_files",
+      arguments: { query: "^export const \\w+ = 1;$", path: "src" },
+      grant: createReadOnlyGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("succeeded");
+    const output = result.output as {
+      mode: "literal" | "regex";
+      matches: Array<{ path: string }>;
+    };
+    expect(output.mode).toBe("regex");
+    expect(output.matches.map((match) => match.path)).toEqual(["src/util.ts"]);
+  });
+
+  it("search_files rejects an invalid explicit regex", async () => {
+    const runtime = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "s-invalid-regex",
+      toolName: "search_files",
+      arguments: { query: "(", path: "src", mode: "regex" },
+      grant: createReadOnlyGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCode).toBe("invalid_arguments");
   });
 });

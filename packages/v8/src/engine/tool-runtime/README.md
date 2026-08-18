@@ -51,6 +51,10 @@ tool-runtime/
 - Output is bounded by the minimum of tool, grant, and session limits.
 - `search_files.path` may be a file or a directory. Adapters MUST stat the
   root before `readdir`; a file root returns that single file.
+- `search_files` stays line-oriented and returns structured matches. Its
+  contract supports `mode: "auto" | "literal" | "regex"` so hosts and models
+  can search text generically without depending on a specific CLI search tool.
+  Auto mode prefers literal search unless the query shows clear regex intent.
 
 ## Ownership Boundaries
 

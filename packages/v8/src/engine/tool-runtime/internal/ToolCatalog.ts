@@ -67,12 +67,31 @@ export const searchFilesInputSchema = z
     path: z.string().min(1).default("."),
     maxMatches: z.number().int().positive().max(200).optional(),
     caseSensitive: z.boolean().optional(),
+    mode: z.enum(["auto", "literal", "regex"]).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.mode !== "regex") {
+      return;
+    }
+    try {
+      new RegExp(value.query, value.caseSensitive ? "" : "i");
+    } catch (error) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Invalid regular expression.",
+        path: ["query"],
+      });
+    }
+  });
 
 export const searchFilesOutputSchema = z
   .object({
     query: z.string(),
+    mode: z.enum(["literal", "regex"]),
     matches: z.array(
       z.object({
         path: z.string(),
