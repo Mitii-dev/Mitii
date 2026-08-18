@@ -4,7 +4,7 @@ import {
   InMemoryMemoryStore,
   MemoryPipeline,
   MEMORY_SCHEMA_VERSION,
-  type MemoryFact,
+  type MemoryFactDraft,
 } from "../../../modules/memory";
 import {
   PromptConstructionPipeline,
@@ -68,7 +68,7 @@ const EVAL_SKILLS: readonly SkillDescriptor[] = [
   },
 ];
 
-const EVAL_MEMORY: readonly MemoryFact[] = [
+const EVAL_MEMORY: readonly MemoryFactDraft[] = [
   {
     id: "m-pnpm",
     content: "This workspace uses pnpm for package management.",

@@ -328,7 +328,7 @@ async function runAsk(options: {
   mode: AgentMode;
   outcome?: Awaited<ReturnType<typeof driveRun>>;
 }> {
-  const { client, ports } = createCliClient({
+  const { client, ports, memoryCapture } = createCliClient({
     cwd: options.cwd,
     forceEcho: options.forceEcho,
   });
@@ -359,6 +359,7 @@ async function runAsk(options: {
     autoClarify: options.autoClarify,
     autoApproval: options.autoApproval,
     io,
+    memoryCapture,
   });
   reportOutcome(io, options.json, outcome);
   return { code: outcome.exitCode, mode, outcome };

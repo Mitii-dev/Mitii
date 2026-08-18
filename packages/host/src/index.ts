@@ -130,6 +130,29 @@ export {
   createWorkspaceMemoryStore,
   FileWorkspaceMemoryStore,
 } from './ports/memoryStore.js';
+export { observeWorkspaceEvent } from './ports/memoryCapture.js';
+export type {
+  ObserveWorkspaceEventInput,
+  ObserveWorkspaceEventResult,
+} from './ports/memoryCapture.js';
+export {
+  observeRunToolEvent,
+  shouldObserveRunEvent,
+} from './ports/observeRunEvent.js';
+export type {
+  MemoryCaptureContext,
+  ObservingRunEvent,
+} from './ports/observeRunEvent.js';
+export { resolveMemoryEmbeddingPort } from './ports/resolveMemoryEmbedding.js';
+export {
+  FileWorkspaceObservationStore,
+  evictOldestObservations,
+  MAX_OBSERVATIONS_PER_WORKSPACE,
+} from './ports/memoryObservations.js';
+export type { MemoryObservation } from './ports/memoryObservations.js';
+export { appendMemoryAudit } from './ports/memoryAudit.js';
+export type { MemoryAuditEvent } from './ports/memoryAudit.js';
+export { createMemoryEmbeddingPort } from './ports/memoryEmbeddingAdapter.js';
 
 export {
   createOptionalSearchPort,

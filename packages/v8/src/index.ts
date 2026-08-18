@@ -291,6 +291,8 @@ export {
   memoryCommitResultSchema,
   memoryFactSchema,
   InMemoryMemoryStore,
+  HashMemoryEmbedding,
+  buildSyntheticMemoryDraft,
   MEMORY_SCHEMA_VERSION,
 } from "./modules/memory";
 export type {
@@ -299,7 +301,12 @@ export type {
   MemoryCommitInput,
   MemoryCommitResult,
   MemoryFact,
+  MemoryFactDraft,
+  MemoryScope,
   MemoryStorePort,
+  MemoryEmbeddingPort,
+  SyntheticObservation,
+  SyntheticObservationInput,
 } from "./modules/memory";
 
 export { CodeNavigationPipeline } from "./modules/code-navigation";

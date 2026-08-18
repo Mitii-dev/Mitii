@@ -29,6 +29,7 @@ import {
   createOptionalSearchPort,
   createWorkspaceCheckpointStore,
   createWorkspaceVerificationStore,
+  resolveMemoryEmbeddingPort,
   resolveProviderApiKey,
 } from '@mitii/host';
 import type * as vscode from 'vscode';
@@ -236,11 +237,14 @@ export async function createVscodeClient(
         })
       : undefined;
 
+  const semanticIndex = workspaceRoot
+    ? await resolveVsCodeSemanticIndexSettings(vs, secrets)
+    : undefined;
   const repositoryContext = workspaceRoot
     ? createHostRepositoryContext({
         repositoryState,
         workspaceRoot,
-        semanticIndex: await resolveVsCodeSemanticIndexSettings(vs, secrets),
+        semanticIndex,
         ...(git ? { git } : {}),
         resolveEditorReferences: () =>
           resolveVsCodeEditorReferences(vs, workspaceRoot),
@@ -287,6 +291,9 @@ export async function createVscodeClient(
       memoryEnabled && options.workspaceState
         ? createVsCodeMemoryStore(options.workspaceState, ports.workspaceId)
         : undefined,
+    memoryEmbedding: memoryEnabled
+      ? resolveMemoryEmbeddingPort(semanticIndex)
+      : undefined,
   });
   return { client, ports };
 }

@@ -4,8 +4,12 @@ import { MEMORY_SCHEMA_VERSION } from "../../constants";
 import {
   DEFAULT_MAX_MEMORY_FACTS,
   DEFAULT_MEMORY_BUDGET_TOKENS,
+  DEFAULT_MEMORY_IMPORTANCE,
 } from "../../defaults";
-import { memoryScopeSchema } from "../output/MemoryFact";
+import {
+  memoryFactTypeSchema,
+  memoryScopeSchema,
+} from "../output/MemoryFact";
 
 export const memoryRetrieveInputSchema = z
   .object({
@@ -21,6 +25,12 @@ export const memoryRetrieveInputSchema = z
       .default(DEFAULT_MEMORY_BUDGET_TOKENS),
     maxFacts: z.number().int().positive().default(DEFAULT_MAX_MEMORY_FACTS),
     now: z.string().datetime().optional(),
+    /** Workspace-relative file targets from Request Understanding. */
+    fileTargets: z.array(z.string().min(1)).default([]),
+    /** Extra concept tokens to union into the retrieve query. */
+    concepts: z.array(z.string().min(1)).default([]),
+    /** Optional run id recorded on access touch. */
+    runId: z.string().min(1).optional(),
   })
   .strict();
 
@@ -40,7 +50,19 @@ export const memoryCommitInputSchema = z
     /** Explicit expiry; otherwise policy default retention applies. */
     expiresAt: z.string().datetime().optional(),
     now: z.string().datetime().optional(),
+    type: memoryFactTypeSchema.default("fact"),
+    title: z.string().min(1).optional(),
+    concepts: z.array(z.string().min(1)).default([]),
+    files: z.array(z.string().min(1)).default([]),
+    importance: z
+      .number()
+      .int()
+      .min(1)
+      .max(10)
+      .default(DEFAULT_MEMORY_IMPORTANCE),
+    sourceIds: z.array(z.string().min(1)).default([]),
   })
   .strict();
 
-export type MemoryCommitInput = z.infer<typeof memoryCommitInputSchema>;
+export type MemoryCommitInput = z.input<typeof memoryCommitInputSchema>;
+export type MemoryCommitParsedInput = z.infer<typeof memoryCommitInputSchema>;

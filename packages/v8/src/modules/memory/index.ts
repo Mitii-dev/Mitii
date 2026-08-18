@@ -2,6 +2,7 @@ export {
   MEMORY_SCHEMA_VERSION,
   MEMORY_SCOPES,
   MEMORY_PRIVACY_LEVELS,
+  MEMORY_FACT_TYPES,
   MEMORY_RETRIEVAL_STATUSES,
   MEMORY_COMMIT_STATUSES,
   MEMORY_OMISSION_REASONS,
@@ -15,6 +16,10 @@ export {
   DEFAULT_CHARACTERS_PER_TOKEN,
   DEFAULT_MIN_MEMORY_SCORE,
   DEFAULT_RETENTION_DAYS,
+  DEFAULT_MEMORY_IMPORTANCE,
+  DEFAULT_MAX_DERIVED_CONCEPTS,
+  DEFAULT_MAX_ACCESS_LOG,
+  DEFAULT_EMBED_MAX_CHARS,
 } from "./defaults";
 
 export { MemoryPipeline } from "./pipeline/MemoryPipeline";
@@ -26,6 +31,7 @@ export {
   memoryScopeSchema,
   memoryPrivacySchema,
   memoryFactSchema,
+  memoryFactTypeSchema,
   memoryInstructionBlockSchema,
   memoryOmissionSchema,
   memoryRetrieveResultSchema,
@@ -39,6 +45,8 @@ export type {
   MemoryScope,
   MemoryPrivacy,
   MemoryFact,
+  MemoryFactDraft,
+  MemoryFactType,
   MemoryInstructionBlock,
   MemoryOmission,
   MemoryRetrieveResult,
@@ -47,6 +55,12 @@ export type {
   MemoryErrorCode,
   MemoryStorePort,
   MemoryIdGeneratorPort,
+  MemoryEmbeddingPort,
 } from "./contracts";
 
-export { InMemoryMemoryStore } from "./adapters";
+export { InMemoryMemoryStore, HashMemoryEmbedding } from "./adapters";
+export { buildSyntheticMemoryDraft } from "./observe/buildSyntheticMemoryDraft";
+export type {
+  SyntheticObservation,
+  SyntheticObservationInput,
+} from "./observe/buildSyntheticMemoryDraft";

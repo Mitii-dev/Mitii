@@ -6,17 +6,21 @@ export type {
   MemoryRetrieveInput,
   MemoryRetrieveParsedInput,
   MemoryCommitInput,
+  MemoryCommitParsedInput,
 } from "./input/MemoryInput";
 
 export {
   memoryScopeSchema,
   memoryPrivacySchema,
+  memoryFactTypeSchema,
   memoryFactSchema,
 } from "./output/MemoryFact";
 export type {
   MemoryScope,
   MemoryPrivacy,
+  MemoryFactType,
   MemoryFact,
+  MemoryFactDraft,
 } from "./output/MemoryFact";
 
 export {
@@ -39,4 +43,5 @@ export type { MemoryErrorCode } from "./errors/MemoryErrors";
 export type {
   MemoryStorePort,
   MemoryIdGeneratorPort,
+  MemoryEmbeddingPort,
 } from "./ports/MemoryPorts";

@@ -9,6 +9,7 @@ import type {
   AgentMode,
   ComposeReadOnlyAgentEngineOptions,
   LlmPort,
+  MemoryEmbeddingPort,
   MemoryStorePort,
   PublishRepositoryStateInput,
   PublishRepositoryStateResult,
@@ -49,6 +50,7 @@ export interface CreateMitiiClientOptions {
   checkpointStore?: ComposeReadOnlyAgentEngineOptions['checkpointStore'];
   skillsCatalog?: SkillsCatalogPort;
   memoryStore?: MemoryStorePort;
+  memoryEmbedding?: MemoryEmbeddingPort;
   toolDefinitions?: ComposeReadOnlyAgentEngineOptions['toolDefinitions'];
   /**
    * When true (default), create an in-memory checkpoint store if none is
@@ -116,6 +118,7 @@ export class MitiiClient {
       checkpointStore,
       skillsCatalog: options.skillsCatalog,
       memoryStore: options.memoryStore,
+      memoryEmbedding: options.memoryEmbedding,
       toolDefinitions: options.toolDefinitions,
       taskListAutoAdvance: options.taskListAutoAdvance,
     });

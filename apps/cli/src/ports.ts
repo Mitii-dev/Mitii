@@ -12,6 +12,7 @@ import {
   type CreateMitiiClientOptions,
   type MitiiClient,
 } from '@mitii/sdk';
+import { MemoryPipeline } from '@mitii/v8';
 import {
   createFileSystemSkillsCatalog,
   createHostCodeNavigationPort,
@@ -24,7 +25,9 @@ import {
   getProviderPreset,
   inferHostProviderType,
   isHostProviderType,
+  resolveMemoryEmbeddingPort,
   resolveProviderApiKey,
+  type MemoryCaptureContext,
 } from '@mitii/host';
 import type { LlmPort, ModelCapabilities, ModelEvent, ModelRequest } from '@mitii/v8';
 
@@ -147,7 +150,11 @@ export function createCliClient(options: {
   forceEcho?: boolean;
   env?: NodeJS.ProcessEnv;
   clientOverrides?: Partial<CreateMitiiClientOptions>;
-}): { client: MitiiClient; ports: ResolvedCliPorts } {
+}): {
+  client: MitiiClient;
+  ports: ResolvedCliPorts;
+  memoryCapture?: MemoryCaptureContext;
+} {
   const ports = resolveCliPorts({
     forceEcho: options.forceEcho,
     env: options.env,
@@ -184,10 +191,17 @@ export function createCliClient(options: {
   const config = loadMitiiHostConfig(options.cwd);
   const workspaceSkillsEnabled = env.MITII_DISABLE_WORKSPACE_SKILLS !== '1';
   const memoryDisabled = env.MITII_DISABLE_MEMORY === '1';
+  const semanticIndex = resolveCliSemanticIndexSettings({ env, config });
+  const memoryEmbedding = memoryDisabled
+    ? undefined
+    : resolveMemoryEmbeddingPort(semanticIndex);
+  const memoryStore = memoryDisabled
+    ? undefined
+    : createWorkspaceMemoryStore(options.cwd, ports.workspaceId);
   const repositoryContext = createHostRepositoryContext({
     repositoryState,
     workspaceRoot: options.cwd,
-    semanticIndex: resolveCliSemanticIndexSettings({ env, config }),
+    semanticIndex,
     git,
   });
   const client = createMitiiClient({
@@ -208,10 +222,24 @@ export function createCliClient(options: {
       workspaceRoot: workspaceSkillsEnabled ? options.cwd : undefined,
       contentMode: 'metadata',
     }),
-    memoryStore: memoryDisabled
-      ? undefined
-      : createWorkspaceMemoryStore(options.cwd, ports.workspaceId),
+    memoryStore,
+    memoryEmbedding,
     ...options.clientOverrides,
   });
-  return { client, ports };
+  return {
+    client,
+    ports,
+    ...(memoryStore
+      ? {
+          memoryCapture: {
+            workspaceRoot: options.cwd,
+            workspaceId: ports.workspaceId,
+            pipeline: new MemoryPipeline({
+              store: memoryStore,
+              embedding: memoryEmbedding,
+            }),
+          },
+        }
+      : {}),
+  };
 }

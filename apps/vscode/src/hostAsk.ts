@@ -20,7 +20,7 @@ import { buildContextUsageBreakdown } from './contextUsage.js';
 import { readContextToggles } from './contextToggles.js';
 import { getSharedMcpManager } from './mcp/manager.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
-import { estimateMemoryPromptBlock } from './memoryStore.js';
+import { createVsCodeMemoryStore, estimateMemoryPromptBlock } from './memoryStore.js';
 import { scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
 import type {
@@ -41,7 +41,12 @@ import { openSessionLog } from './sessionLog.js';
 import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import { findLocalModelPreset } from './modelPresets.js';
-import { loadProjectRules } from '@mitii/host';
+import {
+  loadProjectRules,
+  observeRunToolEvent,
+  type MemoryCaptureContext,
+} from '@mitii/host';
+import { MemoryPipeline } from '@mitii/v8';
 
 export function formatRunEventLine(event: RunEvent): string | undefined {
   switch (event.type) {
@@ -1167,6 +1172,22 @@ export async function runAskInOutputChannel(options: {
       logVerbosity: resolveLogVerbosity(vs),
     });
     const events: RunEvent[] = [];
+    const memoryCapture: MemoryCaptureContext | undefined =
+      toggles.memory &&
+      workspaceRoot &&
+      options.workspaceState &&
+      options.workspaceId
+        ? {
+            workspaceRoot,
+            workspaceId: options.workspaceId,
+            pipeline: new MemoryPipeline({
+              store: createVsCodeMemoryStore(
+                options.workspaceState,
+                options.workspaceId,
+              ),
+            }),
+          }
+        : undefined;
     const sessionLog = openSessionLog(workspaceRoot, {
       at: runStartedAt,
       prompt: options.prompt,
@@ -1191,6 +1212,13 @@ export async function runAskInOutputChannel(options: {
       try {
         for await (const event of run.events) {
           events.push(event);
+          if (memoryCapture) {
+            await observeRunToolEvent({
+              event,
+              capture: memoryCapture,
+              userPrompt: options.prompt,
+            });
+          }
           sessionLog?.appendEvent(event);
           const activity = runEventToActivity(event);
           if (activity) {

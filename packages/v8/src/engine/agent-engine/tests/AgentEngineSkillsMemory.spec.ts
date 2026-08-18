@@ -208,6 +208,63 @@ describe("AgentEngine Skills/Memory wiring (Phase 9)", () => {
     ]);
   });
 
+  it("passes Understanding file targets into memory retrieve", async () => {
+    const memory = {
+      retrieve: vi.fn(async () => ({
+        schemaVersion: MEMORY_SCHEMA_VERSION,
+        status: "empty" as const,
+        instructions: [],
+        omissions: [],
+        usedTokens: 0,
+        budgetTokens: 600,
+        warnings: [],
+        reasonCodes: ["no_relevant_memory" as const],
+        durationMs: 1,
+      })),
+    };
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "direct_answer",
+        repositoryContextRequired: false,
+      }),
+      understanding: createUnderstanding({
+        taskAnalysis: {
+          ...createUnderstanding().taskAnalysis,
+          targets: [
+            { kind: "file", value: "src/LoginForm.tsx", explicit: true },
+            { kind: "folder", value: "src/ui", explicit: true },
+          ],
+        },
+      }),
+      llm: new ScriptedLlmPort(
+        [{ content: "ok" }],
+        createCapabilities({ supportsTools: false }),
+      ),
+    });
+
+    const engine = new AgentEnginePipeline({
+      ...deps,
+      memory,
+    });
+
+    const handle = engine.start({
+      schemaVersion: 1,
+      request: {
+        sessionId: "s1",
+        mode: "ask",
+        userMessage: "Show a loading label on Sign in",
+        workspace: { workspaceId: "ws" },
+      },
+    });
+
+    await handle.result;
+
+    expect(memory.retrieve).toHaveBeenCalledOnce();
+    expect(memory.retrieve.mock.calls[0]?.[0].fileTargets).toEqual([
+      "src/LoginForm.tsx",
+    ]);
+  });
+
   it("narrows the decision grant after repository context discovery", async () => {
     const construct = vi.fn(createStubDependencies({}).prompt.construct);
     const baseDecision = createDecision({

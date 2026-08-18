@@ -1,7 +1,7 @@
 import { DecisionPolicyPipeline } from "../../../modules/decision-policy";
 import type { LlmPort, ModelToolDefinition } from "../../../modules/model-gateway";
 import { MemoryPipeline } from "../../../modules/memory";
-import type { MemoryStorePort } from "../../../modules/memory";
+import type { MemoryEmbeddingPort, MemoryStorePort } from "../../../modules/memory";
 import { PlanningPipeline } from "../../../modules/planning";
 import { PromptConstructionPipeline } from "../../../modules/prompt-construction";
 import type { RepositoryContextPipeline } from "../../../modules/repository-context";
@@ -41,6 +41,8 @@ export interface ComposeReadOnlyAgentEngineOptions {
   skillsCatalog?: SkillsCatalogPort;
   /** Optional Memory store — omitting leaves the core loop intact. */
   memoryStore?: MemoryStorePort;
+  /** Optional embeddings for hybrid memory retrieve. */
+  memoryEmbedding?: MemoryEmbeddingPort;
   /**
    * When true (default), wire the generic Planning facade.
    * Set false only for tests that intentionally skip structured plans.
@@ -88,7 +90,10 @@ export function composeReadOnlyAgentEngine(
       ? new SkillsPipeline({ catalog: options.skillsCatalog })
       : undefined,
     memory: options.memoryStore
-      ? new MemoryPipeline({ store: options.memoryStore })
+      ? new MemoryPipeline({
+          store: options.memoryStore,
+          embedding: options.memoryEmbedding,
+        })
       : undefined,
     planning:
       options.enablePlanning === false

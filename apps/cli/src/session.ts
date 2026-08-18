@@ -9,6 +9,11 @@ import {
 } from '@mitii/sdk';
 import * as readline from 'node:readline';
 
+import {
+  observeRunToolEvent,
+  type MemoryCaptureContext,
+} from '@mitii/host';
+
 import { formatTaskList } from './runReport.js';
 
 export interface SessionIo {
@@ -35,6 +40,8 @@ export interface DriveRunOptions {
   /** Non-interactive approval decision. */
   autoApproval?: 'approved' | 'denied';
   io: SessionIo;
+  /** Optional host capture after mutating / failed tools. */
+  memoryCapture?: MemoryCaptureContext;
 }
 
 export interface DriveRunOutcome {
@@ -125,10 +132,19 @@ function streamEvents(
   io: SessionIo,
   json: boolean,
   events: RunEvent[],
+  memoryCapture?: MemoryCaptureContext,
+  userPrompt?: string,
 ): Promise<void> {
   return (async () => {
     for await (const event of run.events) {
       events.push(event);
+      if (memoryCapture) {
+        await observeRunToolEvent({
+          event,
+          capture: memoryCapture,
+          userPrompt,
+        });
+      }
       if (json) continue;
       if (
         event.type === 'model_delta' &&
@@ -242,7 +258,14 @@ export async function driveRun(
       : () => undefined;
 
     try {
-      await streamEvents(run, options.io, json, events);
+      await streamEvents(
+        run,
+        options.io,
+        json,
+        events,
+        options.memoryCapture,
+        options.start.prompt,
+      );
       result = await run.result;
     } finally {
       unsubscribe();

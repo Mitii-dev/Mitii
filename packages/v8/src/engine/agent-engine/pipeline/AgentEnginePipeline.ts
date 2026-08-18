@@ -103,6 +103,7 @@ import {
   dropEstablishedFactsForPaths,
   extractEstablishedFact,
   extractFileReadPaths,
+  extractMemoryFileTargets,
   filterToolDefinitions,
   isExplorationRereadHeavy,
   upsertEstablishedFact,
@@ -1135,11 +1136,15 @@ export class AgentEnginePipeline {
       const workspaceId = envelope.workspace?.workspaceId;
       if (this.deps.memory && workspaceId) {
         this.emitStage(bus, runId, "memory_ready", "started");
+        const memoryFileTargets = extractMemoryFileTargets(understanding);
         const memoryResult = await this.deps.memory.retrieve({
           schemaVersion: MEMORY_SCHEMA_VERSION,
           query: extractPrimaryUserMessage(envelope.message),
           scope: { kind: "workspace", workspaceId },
           now: this.isoNow(),
+          ...(memoryFileTargets.length > 0
+            ? { fileTargets: memoryFileTargets }
+            : {}),
         });
         selectedMemory = memoryResult.instructions.map((block) => ({
           id: block.id,
@@ -3277,6 +3282,7 @@ export class AgentEnginePipeline {
       tags: ["verification", "retry"],
       privacy: "private",
       source: "verification",
+      type: "bug",
     };
     try {
       const result = await this.deps.memory.commit(input);

@@ -1,10 +1,22 @@
-import type { MemoryFact, MemoryOmission, MemoryScope } from "../contracts";
+import type {
+  MemoryEmbeddingPort,
+  MemoryFact,
+  MemoryOmission,
+  MemoryScope,
+} from "../contracts";
 import { DEFAULT_CHARACTERS_PER_TOKEN } from "../defaults";
+import { MemoryBm25Index } from "../internal/bm25Index";
+import { extractEntitiesFromQuery } from "../internal/extractEntities";
+import { rankFactsByFileTargets } from "../internal/fileMatch";
+import { diversifyBySource, fuseRankedStreams } from "../internal/hybridFuse";
+import { scoreMemoryRetention } from "../internal/retention";
+import { MemoryVectorIndex } from "../internal/vectorIndex";
 import { MEMORY_THRESHOLDS } from "../policy";
 
 export interface ScoredMemory {
   fact: MemoryFact;
   score: number;
+  streams: readonly string[];
 }
 
 export function filterMemoryCandidates(params: {
@@ -17,15 +29,23 @@ export function filterMemoryCandidates(params: {
   omissions: MemoryOmission[];
   staleFiltered: boolean;
   privacyFiltered: boolean;
+  supersededFiltered: boolean;
 } {
   const omissions: MemoryOmission[] = [];
   const candidates: MemoryFact[] = [];
   let staleFiltered = false;
   let privacyFiltered = false;
+  let supersededFiltered = false;
 
   for (const fact of params.facts) {
     if (!scopesCompatible(fact.scope, params.scope)) {
       omissions.push({ memoryId: fact.id, reason: "scope_mismatch" });
+      continue;
+    }
+
+    if (fact.isLatest === false) {
+      omissions.push({ memoryId: fact.id, reason: "superseded" });
+      supersededFiltered = true;
       continue;
     }
 
@@ -53,63 +73,167 @@ export function filterMemoryCandidates(params: {
     candidates.push(fact);
   }
 
-  return { candidates, omissions, staleFiltered, privacyFiltered };
+  return {
+    candidates,
+    omissions,
+    staleFiltered,
+    privacyFiltered,
+    supersededFiltered,
+  };
 }
 
-export function scoreMemoryRelevance(params: {
+export async function scoreMemoryRelevance(params: {
   facts: readonly MemoryFact[];
   query: string;
-}): ScoredMemory[] {
-  const queryTokens = tokenize(params.query);
-  const scored: ScoredMemory[] = [];
+  fileTargets?: readonly string[];
+  concepts?: readonly string[];
+  maxFacts: number;
+  now: Date;
+  embedding?: MemoryEmbeddingPort;
+}): Promise<{
+  scored: ScoredMemory[];
+  fileBoosted: boolean;
+  hybrid: boolean;
+  embeddingWarning?: string;
+}> {
+  const fileTargets = params.fileTargets ?? [];
+  const extraConcepts = params.concepts ?? [];
+  const byId = new Map(params.facts.map((fact) => [fact.id, fact]));
 
+  const searchQuery = buildSearchQuery(
+    params.query,
+    fileTargets,
+    extraConcepts,
+  );
+
+  const index = new MemoryBm25Index();
   for (const fact of params.facts) {
-    const tagTokens = new Set(fact.tags.map((tag) => tag.toLowerCase()));
-    const contentTokens = tokenize(fact.content);
-
-    let tagHits = 0;
-    for (const token of queryTokens) {
-      if (tagTokens.has(token)) {
-        tagHits += 1;
-      }
-    }
-    const tagScore =
-      tagTokens.size === 0
-        ? 0
-        : Math.min(1, tagHits / Math.max(1, tagTokens.size));
-
-    let contentHits = 0;
-    for (const token of queryTokens) {
-      if (contentTokens.has(token)) {
-        contentHits += 1;
-      }
-    }
-    const contentScore =
-      queryTokens.size === 0
-        ? 0
-        : Math.min(1, contentHits / Math.max(1, queryTokens.size));
-
-    const score =
-      MEMORY_THRESHOLDS.tagOverlapWeight * tagScore +
-      MEMORY_THRESHOLDS.contentOverlapWeight * contentScore;
-
-    if (score >= MEMORY_THRESHOLDS.minimumRelevanceScore) {
-      scored.push({ fact, score });
-    } else if (tagHits > 0 && tagScore >= 0.5) {
-      // A strong tag hit (majority of tags matched) is enough material relevance.
-      scored.push({
-        fact,
-        score: Math.max(score, MEMORY_THRESHOLDS.minimumRelevanceScore),
-      });
-    }
+    index.add(fact);
   }
 
-  return scored.sort((a, b) => {
-    if (b.score !== a.score) {
-      return b.score - a.score;
-    }
-    return b.fact.createdAt.localeCompare(a.fact.createdAt);
+  const retrieveDepth = Math.max(params.maxFacts * 4, 20);
+  const bm25Hits = index.search(searchQuery, retrieveDepth);
+  const fileHits = rankFactsByFileTargets(params.facts, fileTargets);
+  const vector = await searchVectorHits({
+    facts: params.facts,
+    query: searchQuery,
+    limit: retrieveDepth,
+    embedding: params.embedding,
   });
+
+  const fused = fuseRankedStreams(
+    [
+      {
+        id: "bm25",
+        weight: MEMORY_THRESHOLDS.bm25StreamWeight,
+        rankedIds: bm25Hits.map((hit) => hit.id),
+      },
+      {
+        id: "file",
+        weight: MEMORY_THRESHOLDS.fileStreamWeight,
+        rankedIds: fileHits,
+      },
+      {
+        id: "vector",
+        weight: MEMORY_THRESHOLDS.vectorStreamWeight,
+        rankedIds: vector.ids,
+      },
+    ],
+    retrieveDepth,
+  );
+
+  const diversified = diversifyBySource(
+    fused,
+    (id) => {
+      const fact = byId.get(id);
+      if (!fact) {
+        return id;
+      }
+      return fact.sourceIds[0] ?? fact.source ?? id;
+    },
+    retrieveDepth,
+  );
+
+  const scored: ScoredMemory[] = [];
+  for (const hit of diversified) {
+    const fact = byId.get(hit.id);
+    if (!fact) {
+      continue;
+    }
+    const retention = scoreMemoryRetention(fact, params.now);
+    const mixed =
+      hit.score * (1 - MEMORY_THRESHOLDS.retentionMix) +
+      retention * MEMORY_THRESHOLDS.retentionMix;
+    scored.push({
+      fact,
+      score: mixed,
+      streams: hit.streams,
+    });
+  }
+
+  scored.sort((left, right) => {
+    if (right.score !== left.score) {
+      return right.score - left.score;
+    }
+    if (right.fact.importance !== left.fact.importance) {
+      return right.fact.importance - left.fact.importance;
+    }
+    return right.fact.createdAt.localeCompare(left.fact.createdAt);
+  });
+
+  return {
+    scored,
+    fileBoosted: scored.some((entry) => entry.streams.includes("file")),
+    hybrid: scored.some((entry) => entry.streams.includes("vector")),
+    embeddingWarning: vector.warning,
+  };
+}
+
+async function searchVectorHits(params: {
+  facts: readonly MemoryFact[];
+  query: string;
+  limit: number;
+  embedding?: MemoryEmbeddingPort;
+}): Promise<{ ids: string[]; warning?: string }> {
+  if (!params.embedding || params.facts.length === 0) {
+    return { ids: [] };
+  }
+  try {
+    const queryVector = await params.embedding.embed(
+      params.query.slice(0, MEMORY_THRESHOLDS.embedMaxChars),
+    );
+    if (queryVector.length !== params.embedding.dimensions) {
+      return {
+        ids: [],
+        warning: "Memory embedding query dimension mismatch; using BM25 only.",
+      };
+    }
+    const index = new MemoryVectorIndex();
+    for (const fact of params.facts) {
+      const text = [fact.title ?? "", fact.content, ...fact.concepts, ...fact.files]
+        .filter(Boolean)
+        .join(" ")
+        .slice(0, MEMORY_THRESHOLDS.embedMaxChars);
+      const embedding = await params.embedding.embed(text);
+      if (embedding.length !== params.embedding.dimensions) {
+        continue;
+      }
+      index.add(fact.id, embedding);
+    }
+    return {
+      ids: index
+        .search(queryVector, params.limit)
+        .filter((hit) => hit.score >= MEMORY_THRESHOLDS.vectorMinScore)
+        .map((hit) => hit.id),
+    };
+  } catch (error) {
+    return {
+      ids: [],
+      warning: `Memory embedding failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
 }
 
 export function applyMemoryBudget(params: {
@@ -177,9 +301,11 @@ export function applyMemoryBudget(params: {
       continue;
     }
 
+    const title =
+      entry.fact.title ?? `Memory (${entry.fact.scope.kind})`;
     instructions.push({
       id: entry.fact.id,
-      title: `Memory (${entry.fact.scope.kind})`,
+      title,
       content: entry.fact.content.trim(),
       priority: Math.round(entry.score * 100),
       provenance: {
@@ -211,6 +337,22 @@ export function estimateTokens(content: string): number {
   );
 }
 
+export function buildSearchQuery(
+  query: string,
+  fileTargets: readonly string[],
+  concepts: readonly string[],
+): string {
+  const extras = [
+    ...fileTargets,
+    ...concepts,
+    ...extractEntitiesFromQuery(query),
+  ].filter((value) => value.trim().length > 0);
+  if (extras.length === 0) {
+    return query;
+  }
+  return `${query} ${[...new Set(extras)].join(" ")}`;
+}
+
 function scopesCompatible(fact: MemoryScope, request: MemoryScope): boolean {
   if (fact.kind !== request.kind) {
     return false;
@@ -222,19 +364,4 @@ function scopesCompatible(fact: MemoryScope, request: MemoryScope): boolean {
     return fact.workspaceId === request.workspaceId;
   }
   return fact.projectId === request.projectId;
-}
-
-function tokenize(text: string): Set<string> {
-  return new Set(
-    text
-      .toLowerCase()
-      .split(/[^a-z0-9_+.-]+/i)
-      .filter((token) => token.length >= 2)
-      .flatMap((token) => {
-        const normalized = token.replace(/s$/i, "");
-        return normalized.length >= 2 && normalized !== token
-          ? [token, normalized]
-          : [token];
-      }),
-  );
 }
