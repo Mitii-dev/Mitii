@@ -42,6 +42,8 @@ export const repoBuildStateComparisonReasonSchema = z.enum([
   "errors_remaining",
   "new_errors_introduced",
   "warnings_remaining",
+  "new_warnings_introduced",
+  "warnings_cleared",
   "checks_still_failing",
   "no_before_state",
 ]);
@@ -53,6 +55,9 @@ export const repoBuildStateComparisonSchema = z
     clearedErrorCount: z.number().int().nonnegative(),
     newErrorCount: z.number().int().nonnegative(),
     remainingErrorCount: z.number().int().nonnegative(),
+    /** Warning-severity counterpart to the error counts above. */
+    newWarningCount: z.number().int().nonnegative().optional(),
+    clearedWarningCount: z.number().int().nonnegative().optional(),
     failedCheckIdsBefore: z.array(z.string().min(1)),
     failedCheckIdsAfter: z.array(z.string().min(1)),
     reasonCodes: z.array(repoBuildStateComparisonReasonSchema),

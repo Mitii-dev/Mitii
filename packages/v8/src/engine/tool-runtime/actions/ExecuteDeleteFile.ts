@@ -4,6 +4,7 @@ import type { MutationTransactionRegistry } from "../internal/mutation";
 import { MutationError } from "../internal/mutation";
 import { PathContainmentError } from "../internal/PathContainment";
 import { deleteFileInputSchema } from "../internal/ToolCatalog";
+import { describeCaughtError } from "../internal/describeCaughtError";
 import { resolveMutationPathScopes } from "./ResolveMutationPathScopes";
 
 export async function executeDeleteFile(params: {
@@ -52,7 +53,7 @@ export async function executeDeleteFile(params: {
     }
     throw new MutationError(
       "execution_failed",
-      `delete_file failed: ${String(error)}`,
+      `delete_file failed: ${describeCaughtError(error)}`,
     );
   }
 }

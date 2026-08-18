@@ -13,6 +13,9 @@ export const WINDOW_BUDGET_REASON_CODES = [
   "effort_medium",
   "effort_high",
   "mutation_effort_capped",
+  "repository_tokens_capped",
+  "plan_tokens_capped",
+  "skills_tokens_capped",
 ] as const;
 
 export const WINDOW_BUDGET_ERROR_CODES = ["invalid_input"] as const;

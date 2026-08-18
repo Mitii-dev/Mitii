@@ -844,6 +844,18 @@ function resolveRunBudget(vs: typeof vscode): AgentRunBudget {
   };
 }
 
+/** Developer-facing run-log detail level; see `mitii.logVerbosity` in package.json. */
+function resolveLogVerbosity(
+  vs: typeof vscode,
+): 'minimal' | 'standard' | 'verbose' {
+  const value = vs.workspace
+    .getConfiguration('mitii')
+    .get<string>('logVerbosity');
+  return value === 'minimal' || value === 'standard' || value === 'verbose'
+    ? value
+    : 'verbose';
+}
+
 /**
  * Run an ask through the SDK with OutputChannel streaming + optional UI hooks.
  */
@@ -1152,6 +1164,7 @@ export async function runAskInOutputChannel(options: {
         : {}),
       ...(options.taskList ? { taskList: options.taskList } : {}),
       ...(options.depth ? { explorationDepth: options.depth } : {}),
+      logVerbosity: resolveLogVerbosity(vs),
     });
     const events: RunEvent[] = [];
     const sessionLog = openSessionLog(workspaceRoot, {

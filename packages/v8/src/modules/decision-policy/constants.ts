@@ -118,6 +118,12 @@ export const DECISION_REASON_CODES = [
   "verification_required",
   "verification_not_required",
   "grant_narrowed",
+  /** Grant expansion included network access (fetch_url/fetch_docs/web_search). */
+  "network_access_granted",
+  /** A host policy (planApproval: never) suppressed a plan gate risk analysis required. */
+  "plan_gate_suppressed_by_policy",
+  /** The window-derived mutation budget further tightened the profile-selected budget. */
+  "mutation_budget_window_clamped",
 ] as const;
 
 export const DECISION_POLICY_ERROR_CODES = [

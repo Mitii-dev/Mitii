@@ -19,7 +19,12 @@ export async function executeFetchUrl(params: {
   signal?: AbortSignal;
   /** When true, trim HTML-ish noise for documentation pages. */
   docsMode?: boolean;
-}): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
+}): Promise<{
+  output: unknown;
+  truncated: boolean;
+  redacted: boolean;
+  timedOut?: boolean;
+}> {
   const input = fetchUrlInputSchema.parse(params.arguments);
 
   if (!params.grant.allowedEffects.includes("network_access")) {
@@ -41,13 +46,31 @@ export async function executeFetchUrl(params: {
     );
   }
 
-  const fetched = await params.network.fetch({
-    url: input.url,
-    method: "GET",
-    timeoutMs: params.timeoutMs,
-    maxBodyBytes: Math.min(params.maxOutputBytes, DEFAULT_MAX_OUTPUT_BYTES),
-    signal: params.signal,
-  });
+  let fetched;
+  try {
+    fetched = await params.network.fetch({
+      url: input.url,
+      method: "GET",
+      timeoutMs: params.timeoutMs,
+      maxBodyBytes: Math.min(params.maxOutputBytes, DEFAULT_MAX_OUTPUT_BYTES),
+      signal: params.signal,
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ETIMEDOUT") {
+      return {
+        output: fetchUrlOutputSchema.parse({
+          url: input.url,
+          status: 0,
+          body: "",
+          truncated: false,
+        }),
+        truncated: false,
+        redacted: false,
+        timedOut: true,
+      };
+    }
+    throw error;
+  }
 
   let body = fetched.body;
   if (params.docsMode) {

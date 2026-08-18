@@ -50,7 +50,19 @@ export function planRoute(params: {
   });
   const planGateResult =
     params.planApproval === "never"
-      ? { planGate: "none" as const, reasonCodes: ["plan_gate_none" as const] }
+      ? {
+          planGate: "none" as const,
+          reasonCodes:
+            resolvedPlanGate.planGate === "required_before_execute"
+              ? // Host policy suppressed a gate risk analysis required — keep
+                // that fact visible instead of silently replacing it with
+                // "plan_gate_none", which looks identical to "never needed one".
+                ([
+                  "plan_gate_none",
+                  "plan_gate_suppressed_by_policy",
+                ] as const)
+              : (["plan_gate_none"] as const),
+        }
       : resolvedPlanGate;
 
   return {

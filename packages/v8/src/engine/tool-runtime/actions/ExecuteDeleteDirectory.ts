@@ -4,6 +4,7 @@ import type { MutationTransactionRegistry } from "../internal/mutation";
 import { MutationError } from "../internal/mutation";
 import { PathContainmentError } from "../internal/PathContainment";
 import { deleteDirectoryInputSchema } from "../internal/ToolCatalog";
+import { describeCaughtError } from "../internal/describeCaughtError";
 import { resolveMutationPathScopes } from "./ResolveMutationPathScopes";
 
 export async function executeDeleteDirectory(params: {
@@ -56,7 +57,7 @@ export async function executeDeleteDirectory(params: {
     }
     throw new MutationError(
       "execution_failed",
-      `delete_directory failed: ${String(error)}`,
+      `delete_directory failed: ${describeCaughtError(error)}`,
     );
   }
 }

@@ -113,7 +113,18 @@ export class SkillsPipeline {
       input: parsed,
       similarity: this.similarity,
     });
-    const conflicts = resolveSkillConflicts({ scored: matched });
+    if (matched.nonMatchedCount > 0) {
+      // Not pushed to `omissions`/`omittedCount` — those are reserved for
+      // budget/conflict/duplicate drops of already-applicable skills. This
+      // is the much larger "didn't match at all" population, which was
+      // previously invisible: `omittedCount` only ever reflected the small
+      // conflict/budget slice, never the catalog majority that never
+      // qualified as a candidate in the first place.
+      warnings.push(
+        `${matched.nonMatchedCount} of ${catalog.length} catalog skill(s) did not match this request (path/intent/route/keyword/threshold) and were not considered.`,
+      );
+    }
+    const conflicts = resolveSkillConflicts({ scored: matched.scored });
     if (conflicts.conflictsResolved) {
       reasonCodes.push("conflicts_resolved");
     }

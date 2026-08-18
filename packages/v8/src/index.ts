@@ -419,6 +419,8 @@ export {
   runEvidenceSchema,
   runEventSchema,
   AGENT_ENGINE_SCHEMA_VERSION,
+  AGENT_LOG_VERBOSITIES,
+  DEFAULT_AGENT_LOG_VERBOSITY,
   composeReadOnlyAgentEngine,
   InMemoryRunCheckpointStore,
   FileRunCheckpointStore,
@@ -440,4 +442,5 @@ export type {
   AgentRunCheckpoint,
   AgentEngineRunCheckpointStorePort,
   PendingApprovalState,
+  AgentLogVerbosity,
 } from "./engine/agent-engine";

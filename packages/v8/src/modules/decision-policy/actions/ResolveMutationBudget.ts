@@ -34,11 +34,18 @@ export function resolveMutationBudget(params: {
   const mutationBudget = windowPolicy
     ? mergeMutationBudget(profileBudget, windowPolicy.mutation)
     : profileBudget;
+  const windowClamped =
+    mutationBudget.maxPatchesPerCall < profileBudget.maxPatchesPerCall ||
+    mutationBudget.maxUniqueFilesPerCall < profileBudget.maxUniqueFilesPerCall ||
+    mutationBudget.maxPatchPayloadCharacters <
+      profileBudget.maxPatchPayloadCharacters;
 
   return {
     mutationBudget,
     profile,
-    reasonCodes: [reasonCode],
+    reasonCodes: windowClamped
+      ? [reasonCode, "mutation_budget_window_clamped"]
+      : [reasonCode],
   };
 }
 

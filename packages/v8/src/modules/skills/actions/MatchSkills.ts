@@ -9,6 +9,18 @@ export interface ScoredSkill {
   reasons: string[];
 }
 
+export interface MatchSkillsResult {
+  scored: ScoredSkill[];
+  /**
+   * Catalog entries that never became a scored candidate (path gate,
+   * applicability, or below minimumMatchScore) — distinct from `omissions`
+   * elsewhere in the pipeline, which only covers budget/conflict/duplicate
+   * drops of already-applicable skills. Without this, "why didn't skill X
+   * load" is undiagnosable for the common non-match case.
+   */
+  nonMatchedCount: number;
+}
+
 /**
  * Score catalog entries against task evidence, route, and query keywords.
  */
@@ -16,13 +28,15 @@ export async function matchSkills(params: {
   catalog: readonly SkillIndexEntry[];
   input: SkillsSelectParsedInput;
   similarity?: SkillSimilarityPort;
-}): Promise<ScoredSkill[]> {
+}): Promise<MatchSkillsResult> {
   const { catalog, input, similarity } = params;
   const queryTokens = tokenize(input.query);
   const scored: ScoredSkill[] = [];
+  let nonMatchedCount = 0;
 
   for (const skill of catalog) {
     if (!isPathGateSatisfied(skill, input)) {
+      nonMatchedCount += 1;
       continue;
     }
 
@@ -87,6 +101,7 @@ export async function matchSkills(params: {
             : reasons.includes("keyword")));
 
     if (!applicable) {
+      nonMatchedCount += 1;
       continue;
     }
 
@@ -143,13 +158,14 @@ export async function matchSkills(params: {
       !skill.alwaysApply &&
       normalized < SKILLS_THRESHOLDS.minimumMatchScore
     ) {
+      nonMatchedCount += 1;
       continue;
     }
 
     scored.push({ skill, score: normalized, reasons });
   }
 
-  return scored.sort((a, b) => {
+  scored.sort((a, b) => {
     if (b.score !== a.score) {
       return b.score - a.score;
     }
@@ -164,6 +180,8 @@ export async function matchSkills(params: {
     }
     return a.skill.id.localeCompare(b.skill.id);
   });
+
+  return { scored, nonMatchedCount };
 }
 
 export function estimateTokens(content: string): number {

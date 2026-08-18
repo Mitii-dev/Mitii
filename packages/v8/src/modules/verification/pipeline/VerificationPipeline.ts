@@ -209,6 +209,22 @@ export class VerificationPipeline {
       );
     }
 
+    const failedChecksWithoutDiagnostics = executed.checks.filter(
+      (check) => check.outcome === "failed",
+    );
+    if (failedChecksWithoutDiagnostics.length > 0 && allDiagnostics.length === 0) {
+      // A failing exit code with zero parsed diagnostics usually means the
+      // output format wasn't recognized by NormalizeDiagnostics, not that
+      // the tool genuinely produced no findings — otherwise indistinguishable
+      // from a real "failed with no evidence" case.
+      warnings.push(
+        `${failedChecksWithoutDiagnostics.length} check(s) failed but no diagnostics could be parsed from their output: ${failedChecksWithoutDiagnostics
+          .map((check) => check.checkId)
+          .slice(0, 5)
+          .join(", ")}.`,
+      );
+    }
+
     return verificationResultSchema.parse({
       schemaVersion: VERIFICATION_SCHEMA_VERSION,
       status: recommendation.status,

@@ -382,7 +382,7 @@ function resolveNetworkAuthority(params: {
     allowedEffects: ["network_access"],
     // Search without hosts keeps an empty allowlist; fetch tools require hosts.
     networkHosts: hosts,
-    reasonCodes: hosts.length > 0 || wantsSearch ? [] : [],
+    reasonCodes: ["network_access_granted"],
   };
 }
 

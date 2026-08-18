@@ -22,7 +22,11 @@ export class NodeNetworkAdapter implements NetworkPort {
       const controller = new AbortController();
       const onAbort = (): void => controller.abort();
       request.signal?.addEventListener("abort", onAbort, { once: true });
-      const timer = setTimeout(() => controller.abort(), request.timeoutMs);
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, request.timeoutMs);
 
       try {
         const response = await fetch(current, {
@@ -32,6 +36,18 @@ export class NodeNetworkAdapter implements NetworkPort {
             : undefined,
           redirect: "manual",
           signal: controller.signal,
+        }).catch((error) => {
+          // Distinguish "our timeout fired" from "caller cancelled" —
+          // both abort the same AbortController and would otherwise
+          // produce an identical, generically-worded AbortError.
+          if (timedOut) {
+            const timeoutError = new Error(
+              `Request to "${current}" timed out after ${request.timeoutMs}ms.`,
+            ) as NodeJS.ErrnoException;
+            timeoutError.code = "ETIMEDOUT";
+            throw timeoutError;
+          }
+          throw error;
         });
 
         if (

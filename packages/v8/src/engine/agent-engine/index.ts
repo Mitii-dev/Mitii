@@ -6,7 +6,10 @@ export {
   AGENT_REASON_CODES,
   AGENT_ERROR_CODES,
   AGENT_EVENT_TYPES,
+  AGENT_LOG_VERBOSITIES,
+  DEFAULT_AGENT_LOG_VERBOSITY,
 } from "./constants";
+export type { AgentLogVerbosity } from "./constants";
 
 export {
   DEFAULT_MAX_MODEL_CALLS,

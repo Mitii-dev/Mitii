@@ -20,7 +20,11 @@ import { projectDescriptorSchema } from "../../../../modules/repository-state";
 import { windowBudgetPolicyOverridesSchema } from "../../../../modules/window-budget";
 import { WINDOW_BUDGET_EFFORTS } from "../../../../modules/window-budget";
 
-import { AGENT_ENGINE_SCHEMA_VERSION } from "../../constants";
+import {
+  AGENT_ENGINE_SCHEMA_VERSION,
+  AGENT_LOG_VERBOSITIES,
+  DEFAULT_AGENT_LOG_VERBOSITY,
+} from "../../constants";
 import {
   DEFAULT_MAX_LOOP_ITERATIONS,
   DEFAULT_MAX_MODEL_CALLS,
@@ -125,6 +129,13 @@ export const agentEngineStartInputSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Developer-facing diagnostic detail level for this run's RunEvent
+     * stream. See AGENT_LOG_VERBOSITIES. Defaults to "verbose" so bugs are
+     * discoverable; hosts can turn this down when log volume matters more
+     * than diagnostic depth.
+     */
+    logVerbosity: z.enum(AGENT_LOG_VERBOSITIES).default(DEFAULT_AGENT_LOG_VERBOSITY),
   })
   .strict();
 

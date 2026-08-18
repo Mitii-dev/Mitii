@@ -158,6 +158,11 @@ import {
 } from "../internal/discoveryPass";
 import { EventBus } from "../internal/EventBus";
 import { RunBudgetTracker } from "../internal/RunBudget";
+import {
+  logVerbosityAtLeast,
+  type AgentLogVerbosity,
+} from "../internal/logVerbosity";
+import { describeCaughtError } from "../internal/describeCaughtError";
 import type { PendingApprovalState } from "../internal/RunCheckpoint";
 import {
   appendTaskListToPlanText,
@@ -248,6 +253,11 @@ type VerificationGateOutcome =
   | {
       kind: "failed";
       repairable: boolean;
+      /** Distinguishes a repairable failure from a hard block/cancel/infra-unavailable reject. */
+      rejectKind: Extract<
+        VerificationGateDecision,
+        { action: "reject" }
+      >["rejectKind"];
       error: { code: string; message: string };
       verification?: VerificationResult;
       /** Before/after diagnostic diff, when a saved before-state exists. */
@@ -449,13 +459,32 @@ export class AgentEnginePipeline {
     } = params;
     const startedMs = Date.now();
     const windowPolicy = this.resolveWindowPolicy(input);
-    const budgetLimits = this.clampRunBudget(
+    const runBudgetClamp = this.clampRunBudget(
       agentRunBudgetSchema.parse(input.budget ?? {}),
       windowPolicy,
     );
-    const budget = new RunBudgetTracker(budgetLimits, startedMs);
+    const budget = new RunBudgetTracker(runBudgetClamp.budget, startedMs);
     const reasonCodes: AgentReasonCode[] = ["run_started"];
     const warnings: string[] = [];
+    if (
+      runBudgetClamp.clamped.length > 0 &&
+      logVerbosityAtLeast(input.logVerbosity, "standard")
+    ) {
+      for (const field of runBudgetClamp.clamped) {
+        this.emit(bus, {
+          type: "warning",
+          runId,
+          message: `Run budget "${field.field}" reduced from ${field.requested} to ${field.effective} by the window policy.`,
+          code: "run_budget_clamped",
+          data: {
+            field: field.field,
+            requested: field.requested,
+            effective: field.effective,
+          },
+          at: this.isoNow(),
+        });
+      }
+    }
     let pinnedState: RepositoryStateReference | undefined;
     let requestId = input.request.requestId ?? runId;
     let route: AgentRunResult["route"];
@@ -568,6 +597,7 @@ export class AgentEnginePipeline {
           before: repoBuildStateBefore,
           after: repoBuildStateAfter,
           previous: verificationRecord,
+          logVerbosity: input.logVerbosity,
         })) ?? verificationRecord;
       return finish({
         status: "cancelled",
@@ -622,6 +652,10 @@ export class AgentEnginePipeline {
         const retryRecord = await this.tryLoadVerificationRetry({
           workspaceId: resolveWorkspaceId(input),
           userMessage: extractPrimaryUserMessage(envelope.message),
+          runId,
+          bus,
+          warnings,
+          logVerbosity: input.logVerbosity,
         });
         if (retryRecord) {
           repoBuildStateBefore = retryRecord.after ?? retryRecord.before;
@@ -658,6 +692,7 @@ export class AgentEnginePipeline {
                 status: "captured_before",
                 before: repoBuildStateBefore,
                 previous: verificationRecord,
+                logVerbosity: input.logVerbosity,
               })) ?? verificationRecord;
           }
         }
@@ -912,20 +947,31 @@ export class AgentEnginePipeline {
                     sourceId: report.sourceId,
                     status: report.status,
                     candidateCount: report.candidateCount,
+                    ...(report.status === "failed" && report.error
+                      ? { error: report.error.slice(0, 300) }
+                      : {}),
                   })),
               }
             : {}),
           at: this.isoNow(),
         });
         for (const warning of contextResult.warnings) {
-          if (CONTEXT_READY_WARNING_CODES.has(warning.code)) {
-            this.emit(bus, {
-              type: "warning",
-              runId,
-              message: warning.message,
-              at: this.isoNow(),
-            });
+          const standard = CONTEXT_READY_WARNING_CODES.has(warning.code);
+          const verboseOnly = CONTEXT_READY_VERBOSE_WARNING_CODES.has(
+            warning.code,
+          );
+          if (!standard && !verboseOnly) continue;
+          if (!logVerbosityAtLeast(input.logVerbosity, standard ? "standard" : "verbose")) {
+            continue;
           }
+          this.emit(bus, {
+            type: "warning",
+            runId,
+            message: warning.message,
+            code: warning.code,
+            stage: "context_ready",
+            at: this.isoNow(),
+          });
         }
         this.emitStage(bus, runId, "context_ready", "completed", [
           "context_retrieved",
@@ -957,6 +1003,11 @@ export class AgentEnginePipeline {
             approvalMode: decision.toolGrant.approvalMode,
             pathScopes: decision.toolGrant.pathScopes.slice(0, 20),
             reasonCodes: decision.reasonCodes.slice(-8),
+            truncated:
+              decision.toolGrant.pathScopes.length > 20 ||
+              decision.reasonCodes.length > 8
+                ? true
+                : undefined,
             at: this.isoNow(),
           });
         }
@@ -993,6 +1044,7 @@ export class AgentEnginePipeline {
               status: "captured_before",
               before: repoBuildStateBefore,
               previous: verificationRecord,
+              logVerbosity: input.logVerbosity,
             })) ?? verificationRecord;
         }
       }
@@ -1031,6 +1083,9 @@ export class AgentEnginePipeline {
           content: formatSkillPromptContent(block),
           priority: block.priority,
         }));
+        if (skillsResult.warnings.length > 0 && logVerbosityAtLeast(input.logVerbosity, "verbose")) {
+          warnings.push(...skillsResult.warnings);
+        }
         reasonCodes.push(
           skillsResult.instructions.length > 0
             ? "skills_selected"
@@ -1312,6 +1367,24 @@ export class AgentEnginePipeline {
           }
         } else {
           reasonCodes.push("plan_skipped");
+          warnings.push(...planningResult.warnings);
+          if (planningResult.status === "blocked") {
+            // Distinguish "planning wasn't needed" from "planning ran and was
+            // rejected" — both used to collapse into the same "plan_skipped".
+            if (logVerbosityAtLeast(input.logVerbosity, "standard")) {
+              this.emit(bus, {
+                type: "warning",
+                runId,
+                message:
+                  planningResult.warnings[0] ??
+                  "Plan draft was rejected by validation.",
+                code: "plan_blocked_invalid",
+                stage: "plan_ready",
+                data: { reasonCodes: planningResult.reasonCodes.join(",") },
+                at: this.isoNow(),
+              });
+            }
+          }
           this.emitStage(bus, runId, "plan_ready", "completed", [
             "plan_skipped",
           ]);
@@ -1417,6 +1490,33 @@ export class AgentEnginePipeline {
       }
 
       reasonCodes.push("prompt_constructed");
+      if (promptResult.warnings.length > 0) {
+        warnings.push(...promptResult.warnings);
+      }
+      if (logVerbosityAtLeast(input.logVerbosity, "standard")) {
+        this.emit(bus, {
+          type: "prompt_ready",
+          runId,
+          status: promptResult.status,
+          totalOmittedTokens: promptResult.budget.totalOmittedTokens,
+          totalTruncatedTokens: promptResult.budget.totalTruncatedTokens,
+          ...(promptResult.omissions.length > 0
+            ? {
+                omissions: promptResult.omissions.slice(0, 20).map((omission) => ({
+                  section: omission.section,
+                  reason: omission.reason,
+                  ...(typeof omission.tokens === "number"
+                    ? { tokens: omission.tokens }
+                    : {}),
+                })),
+              }
+            : {}),
+          ...(promptResult.warnings.length > 0
+            ? { warnings: promptResult.warnings.slice(0, 20) }
+            : {}),
+          at: this.isoNow(),
+        });
+      }
 
       // --- Model / tool loop ---
       const messages: ModelMessage[] = [...promptResult.request.messages];
@@ -1456,6 +1556,7 @@ export class AgentEnginePipeline {
         evidence: runEvidence,
         windowPolicy,
         repoBuildStateBefore,
+        logVerbosity: input.logVerbosity,
       });
 
       return await this.finishAfterLoop({
@@ -1564,15 +1665,35 @@ export class AgentEnginePipeline {
     const excludedWaitMs =
       (checkpoint.excludedWaitMs ?? 0) + suspensionWaitMs;
     const windowPolicy = this.resolveWindowPolicy(startInput);
+    const resumeBudgetClamp = this.clampRunBudget(
+      agentRunBudgetSchema.parse(startInput.budget ?? {}),
+      windowPolicy,
+    );
     const budget = new RunBudgetTracker(
-      this.clampRunBudget(
-        agentRunBudgetSchema.parse(startInput.budget ?? {}),
-        windowPolicy,
-      ),
+      resumeBudgetClamp.budget,
       checkpoint.startedAtMs,
       checkpoint.usage,
       excludedWaitMs,
     );
+    if (
+      resumeBudgetClamp.clamped.length > 0 &&
+      logVerbosityAtLeast(startInput.logVerbosity, "standard")
+    ) {
+      for (const field of resumeBudgetClamp.clamped) {
+        this.emit(bus, {
+          type: "warning",
+          runId,
+          message: `Run budget "${field.field}" reduced from ${field.requested} to ${field.effective} by the window policy.`,
+          code: "run_budget_clamped",
+          data: {
+            field: field.field,
+            requested: field.requested,
+            effective: field.effective,
+          },
+          at: this.isoNow(),
+        });
+      }
+    }
 
     const finish = (
       partial: Omit<
@@ -1647,6 +1768,7 @@ export class AgentEnginePipeline {
           before: checkpoint.repoBuildStateBefore,
           after: repoBuildStateAfter,
           previous: verificationRecord,
+          logVerbosity: startInput.logVerbosity,
         })) ?? verificationRecord;
       return finish({
         status: "cancelled",
@@ -1911,6 +2033,7 @@ export class AgentEnginePipeline {
         establishedFacts,
         windowPolicy,
         repoBuildStateBefore: checkpoint.repoBuildStateBefore,
+        logVerbosity: startInput.logVerbosity,
       });
 
       return await this.finishAfterLoop({
@@ -2209,6 +2332,7 @@ export class AgentEnginePipeline {
         comparison: verificationOutcome.comparison,
         verification: verificationOutcome.verification,
         changedFiles: loopChangedFiles,
+        logVerbosity: input.logVerbosity,
       });
       if (record) {
         params.onVerificationRecord?.(record);
@@ -2289,6 +2413,7 @@ export class AgentEnginePipeline {
           selectedSkillIds: params.loopContext?.selectedSkillIds,
           evidence,
           windowPolicy,
+          logVerbosity: input.logVerbosity,
         });
         if (
           currentOutcome.kind === "completed" ||
@@ -2315,12 +2440,34 @@ export class AgentEnginePipeline {
 
       // Verification did not pass (or remaining-error repairs stalled / capped).
       // Keep the edits, summarize the delta, and end the task.
-      this.commitMutations(loopMutationIds);
+      this.commitMutations(loopMutationIds, {
+        runId,
+        bus,
+        warnings,
+        logVerbosity: input.logVerbosity,
+      });
       reasonCodes.push(
         "verification_kept_changes",
         "verification_incomplete",
         "verification_failed",
       );
+      if (
+        !verificationOutcome.repairable &&
+        logVerbosityAtLeast(input.logVerbosity, "standard")
+      ) {
+        // The run's terminal status is still "completed" here — this is the
+        // only signal that changes were kept despite a hard/blocked
+        // verification rejection rather than a genuinely clean pass.
+        reasonCodes.push("verification_rejected_kept");
+        this.emit(bus, {
+          type: "warning",
+          runId,
+          message: `Changes were kept despite a non-repairable verification rejection (${verificationOutcome.rejectKind}).`,
+          code: "verification_rejected_kept",
+          data: { rejectKind: verificationOutcome.rejectKind },
+          at: this.isoNow(),
+        });
+      }
       const summary = await this.summarizeVerificationForUser({
         bus,
         runId,
@@ -2332,6 +2479,7 @@ export class AgentEnginePipeline {
         comparison: verificationOutcome.comparison,
         changedFiles: loopChangedFiles,
         signal,
+        logVerbosity: input.logVerbosity,
       });
       reasonCodes.push("verification_summary_produced");
       const summarized =
@@ -2350,6 +2498,7 @@ export class AgentEnginePipeline {
           changedFiles: loopChangedFiles,
           userSummary: summary,
           previous: record,
+          logVerbosity: input.logVerbosity,
         })) ?? record;
       if (summarized) {
         params.onVerificationRecord?.(summarized);
@@ -2425,6 +2574,16 @@ export class AgentEnginePipeline {
       if (pinResult.status === "failed") {
         warnings.push(pinResult.message);
         reasonCodes.push("state_unavailable");
+        if (logVerbosityAtLeast(input.logVerbosity, "standard")) {
+          this.emit(bus, {
+            type: "warning",
+            runId,
+            message: pinResult.message,
+            code: "state_unavailable",
+            stage: "received",
+            at: this.isoNow(),
+          });
+        }
         return undefined;
       }
       reasonCodes.push("state_pinned");
@@ -2710,6 +2869,8 @@ export class AgentEnginePipeline {
           clearedErrorCount: comparison.clearedErrorCount,
           newErrorCount: comparison.newErrorCount,
           remainingErrorCount: comparison.remainingErrorCount,
+          newWarningCount: comparison.newWarningCount,
+          clearedWarningCount: comparison.clearedWarningCount,
           failedCheckIdsAfter: comparison.failedCheckIdsAfter.slice(0, 16),
           reasonCodes: comparison.reasonCodes.slice(0, 16),
           at: this.isoNow(),
@@ -2742,7 +2903,12 @@ export class AgentEnginePipeline {
         reasonCodes,
         warnings,
       });
-      this.commitMutations(mutationCheckpointIds);
+      this.commitMutations(mutationCheckpointIds, {
+        runId,
+        bus,
+        warnings,
+        logVerbosity: input.logVerbosity,
+      });
       recordStopEvidence(evidence, decisionOutcome.acceptKind);
       this.emitEvidenceUpdated(bus, runId, evidence);
       return {
@@ -2759,6 +2925,7 @@ export class AgentEnginePipeline {
     return {
       kind: "failed",
       repairable: decisionOutcome.repairable,
+      rejectKind: decisionOutcome.rejectKind,
       error: decisionOutcome.error,
       verification: decisionOutcome.verification,
       comparison,
@@ -2804,15 +2971,37 @@ export class AgentEnginePipeline {
     }
   }
 
-  private commitMutations(mutationCheckpointIds: readonly string[]): void {
+  private commitMutations(
+    mutationCheckpointIds: readonly string[],
+    context?: {
+      runId: string;
+      bus: EventBus;
+      warnings: string[];
+      logVerbosity: AgentLogVerbosity;
+    },
+  ): void {
     if (mutationCheckpointIds.length === 0 || !this.deps.tools?.commitMutation) {
       return;
     }
     for (const checkpointId of mutationCheckpointIds) {
       try {
         this.deps.tools.commitMutation(checkpointId);
-      } catch {
-        // Commit is best-effort; the mutation already applied successfully.
+      } catch (error) {
+        // Best-effort: the mutation already applied to the workspace: a
+        // failed checkpoint commit does not undo the edit, it only means the
+        // checkpoint bookkeeping for that file may be stale.
+        const message = `Failed to commit mutation checkpoint "${checkpointId}": ${describeCaughtError(error)}`;
+        context?.warnings.push(message);
+        if (context && logVerbosityAtLeast(context.logVerbosity, "standard")) {
+          this.emit(context.bus, {
+            type: "warning",
+            runId: context.runId,
+            message,
+            code: "mutation_commit_failed",
+            data: { checkpointId },
+            at: this.isoNow(),
+          });
+        }
       }
     }
   }
@@ -2846,6 +3035,10 @@ export class AgentEnginePipeline {
       warnings: verification.warnings
         .slice(0, 20)
         .map((warning) => this.truncateForEvent(warning, 500)),
+      truncated:
+        verification.checks.length > 20 || verification.diagnostics.length > 20
+          ? true
+          : undefined,
       at: this.isoNow(),
     });
   }
@@ -2863,6 +3056,11 @@ export class AgentEnginePipeline {
       warningCount: state.summary.warningCount,
       failedCheckIds: state.summary.failedCheckIds.slice(0, 16),
       projectIds: state.scope.projectIds.slice(0, 16),
+      truncated:
+        state.summary.failedCheckIds.length > 16 ||
+        state.scope.projectIds.length > 16
+          ? true
+          : undefined,
       at: this.isoNow(),
     });
   }
@@ -2882,6 +3080,7 @@ export class AgentEnginePipeline {
     changedFiles?: readonly string[];
     userSummary?: string;
     previous?: VerificationRecord;
+    logVerbosity: AgentLogVerbosity;
   }): Promise<VerificationRecord | undefined> {
     if (!params.before && !params.after && !params.verification) {
       return params.previous;
@@ -2903,11 +3102,18 @@ export class AgentEnginePipeline {
         userSummary: params.userSummary ?? params.previous?.userSummary,
       });
     } catch (error) {
-      params.warnings.push(
-        `Verification record could not be built: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      const message = `Verification record could not be built: ${describeCaughtError(error)}`;
+      params.warnings.push(message);
+      params.reasonCodes.push("verification_record_build_failed");
+      if (logVerbosityAtLeast(params.logVerbosity, "standard")) {
+        this.emit(params.bus, {
+          type: "warning",
+          runId: params.runId,
+          message,
+          code: "verification_record_build_failed",
+          at: this.isoNow(),
+        });
+      }
       return params.previous;
     }
 
@@ -2925,9 +3131,7 @@ export class AgentEnginePipeline {
         });
       } catch (error) {
         params.warnings.push(
-          `Verification record persist failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `Verification record persist failed: ${describeCaughtError(error)}`,
         );
       }
     }
@@ -2946,6 +3150,7 @@ export class AgentEnginePipeline {
     comparison?: RepoBuildStateComparison;
     changedFiles: readonly string[];
     signal: AbortSignal;
+    logVerbosity: AgentLogVerbosity;
   }): Promise<string> {
     const fallback = params.record
       ? buildVerificationUserSummary(params.record)
@@ -2955,12 +3160,28 @@ export class AgentEnginePipeline {
           changedFiles: params.changedFiles,
           rolledBack: false,
         });
-    const narrative = await this.tryNarrateVerificationSummary({
+    const narration = await this.tryNarrateVerificationSummary({
       record: params.record,
       fallback,
       signal: params.signal,
     });
-    const summary = narrative ?? fallback;
+    if (
+      narration.skippedReason &&
+      logVerbosityAtLeast(params.logVerbosity, "verbose")
+    ) {
+      // Not a run failure — the deterministic fallback summary is always
+      // correct — but without this, "narration ran and was rejected" and
+      // "narration wasn't attempted" are indistinguishable in logs.
+      this.emit(params.bus, {
+        type: "warning",
+        runId: params.runId,
+        message: `LLM verification-summary narration was skipped (${narration.skippedReason}); used the deterministic summary instead.`,
+        code: "verification_narration_failed",
+        data: { skippedReason: narration.skippedReason },
+        at: this.isoNow(),
+      });
+    }
+    const summary = narration.text ?? fallback;
     this.emit(params.bus, {
       type: "verification_summary_ready",
       runId: params.runId,
@@ -2982,9 +3203,12 @@ export class AgentEnginePipeline {
     record?: VerificationRecord;
     fallback: string;
     signal: AbortSignal;
-  }): Promise<string | undefined> {
+  }): Promise<
+    | { text: string; skippedReason?: undefined }
+    | { text?: undefined; skippedReason?: string }
+  > {
     if (!params.record || params.signal.aborted) {
-      return undefined;
+      return { skippedReason: undefined };
     }
     try {
       const request: ModelRequest = {
@@ -3012,7 +3236,7 @@ export class AgentEnginePipeline {
           sawToolCall = true;
         }
         if (event.type === "failed" || event.type === "cancelled") {
-          return undefined;
+          return { skippedReason: `llm_${event.type}` };
         }
       }
       const trimmed = text.trim();
@@ -3023,11 +3247,11 @@ export class AgentEnginePipeline {
           trimmed,
         )
       ) {
-        return undefined;
+        return { skippedReason: "rejected_quality_gate" };
       }
-      return trimmed.slice(0, 4_000);
-    } catch {
-      return undefined;
+      return { text: trimmed.slice(0, 4_000) };
+    } catch (error) {
+      return { skippedReason: `llm_error:${describeCaughtError(error)}` };
     }
   }
 
@@ -3071,6 +3295,10 @@ export class AgentEnginePipeline {
   private async tryLoadVerificationRetry(params: {
     workspaceId?: string;
     userMessage: string;
+    runId: string;
+    bus: EventBus;
+    warnings: string[];
+    logVerbosity: AgentLogVerbosity;
   }): Promise<VerificationRecord | undefined> {
     if (
       !params.workspaceId ||
@@ -3081,7 +3309,20 @@ export class AgentEnginePipeline {
     }
     try {
       return await this.deps.verification.loadLatestRecord(params.workspaceId);
-    } catch {
+    } catch (error) {
+      // Distinct from "no prior record" (a resolved undefined): the store
+      // read itself failed, so the user's retry ask silently gets no record.
+      const message = `Failed to load the prior verification record: ${describeCaughtError(error)}`;
+      params.warnings.push(message);
+      if (logVerbosityAtLeast(params.logVerbosity, "standard")) {
+        this.emit(params.bus, {
+          type: "warning",
+          runId: params.runId,
+          message,
+          code: "verification_retry_load_failed",
+          at: this.isoNow(),
+        });
+      }
       return undefined;
     }
   }
@@ -3167,6 +3408,7 @@ export class AgentEnginePipeline {
     evidence?: RunEvidence;
     windowPolicy: WindowPolicy;
     repoBuildStateBefore?: RepoBuildState;
+    logVerbosity: AgentLogVerbosity;
   }): Promise<ToolLoopOutcome> {
     const {
       runId,
@@ -3184,6 +3426,7 @@ export class AgentEnginePipeline {
       mutationCheckpointIds,
       taskListRef,
       evidence,
+      logVerbosity,
     } = params;
     let decision = params.decision;
     let grant = decision.toolGrant;
@@ -3305,6 +3548,17 @@ export class AgentEnginePipeline {
           runId,
           message:
             "Model loop context is approaching the compaction threshold.",
+          code: "compaction_pressure_warn",
+          ...(logVerbosityAtLeast(logVerbosity, "standard")
+            ? {
+                data: {
+                  usedTokens: compaction.usedTokens,
+                  warnTokens: compaction.thresholds.warnTokens,
+                  autoTokens: compaction.thresholds.autoTokens,
+                  hardTokens: compaction.thresholds.hardTokens,
+                },
+              }
+            : {}),
           at: this.isoNow(),
         });
       }
@@ -3331,6 +3585,18 @@ export class AgentEnginePipeline {
             message: `Compacted previous tool call history before the next model call (pressure=${compaction.pressure}${
               extras.length > 0 ? `; ${extras.join(", ")}` : ""
             }).`,
+            code: "compaction_applied",
+            ...(logVerbosityAtLeast(logVerbosity, "standard")
+              ? {
+                  data: {
+                    pressure: compaction.pressure,
+                    usedTokens: compaction.usedTokens,
+                    hardTokens: compaction.thresholds.hardTokens,
+                    stillOverHardCeiling:
+                      compaction.usedTokens > compaction.thresholds.hardTokens,
+                  },
+                }
+              : {}),
             at: this.isoNow(),
           });
         }
@@ -3353,11 +3619,31 @@ export class AgentEnginePipeline {
         contextWindowTokens: params.windowPolicy.contextWindowTokens,
         usedInputTokens,
       });
-      turnRequest.maximumOutputTokens =
-        usedInputTokens + reservedOutputTokens <
-        params.windowPolicy.contextWindowTokens
-          ? reservedOutputTokens
-          : overflowOutputTokens;
+      const willClampOutputTokens =
+        usedInputTokens + reservedOutputTokens >=
+        params.windowPolicy.contextWindowTokens;
+      turnRequest.maximumOutputTokens = willClampOutputTokens
+        ? overflowOutputTokens
+        : reservedOutputTokens;
+      if (
+        willClampOutputTokens &&
+        overflowOutputTokens < reservedOutputTokens &&
+        logVerbosityAtLeast(logVerbosity, "standard")
+      ) {
+        this.emit(bus, {
+          type: "warning",
+          runId,
+          message: `Turn output tokens reduced from ${reservedOutputTokens} to ${overflowOutputTokens} because input tokens crowded the context window.`,
+          code: "output_tokens_clamped",
+          data: {
+            reservedOutputTokens,
+            clampedOutputTokens: overflowOutputTokens,
+            usedInputTokens,
+            contextWindowTokens: params.windowPolicy.contextWindowTokens,
+          },
+          at: this.isoNow(),
+        });
+      }
 
       const turn = await this.consumeModelTurn({
         llm: this.deps.llm,
@@ -4118,6 +4404,22 @@ export class AgentEnginePipeline {
           AGENT_ENGINE_THRESHOLDS.maxExplorationStallNudges
         ) {
           explorationStallNudges += 1;
+          if (logVerbosityAtLeast(logVerbosity, "verbose")) {
+            // Live signal while the run is still in progress — the array
+            // pushes above only surface in the terminal result's warnings.
+            this.emit(bus, {
+              type: "warning",
+              runId,
+              message: `File reads (${loopUsageSnap.fileReadCalls}) substantially exceeded unique paths (${loopUsageSnap.uniqueFilePathsTouched}); nudging the model (attempt ${explorationStallNudges}).`,
+              code: "exploration_reread_heavy",
+              data: {
+                fileReadCalls: loopUsageSnap.fileReadCalls,
+                uniqueFilePathsTouched: loopUsageSnap.uniqueFilePathsTouched,
+                nudgeAttempt: explorationStallNudges,
+              },
+              at: this.isoNow(),
+            });
+          }
           messages.push({
             role: "user",
             content: buildExplorationStallNudge(loopUsageSnap, {
@@ -4130,6 +4432,19 @@ export class AgentEnginePipeline {
           warnings.push(
             "Stopped the run after repeated file re-reads of the same paths.",
           );
+          if (logVerbosityAtLeast(logVerbosity, "standard")) {
+            this.emit(bus, {
+              type: "warning",
+              runId,
+              message: "Stopped the run after repeated file re-reads of the same paths.",
+              code: "exploration_stall_broken",
+              data: {
+                fileReadCalls: loopUsageSnap.fileReadCalls,
+                uniqueFilePathsTouched: loopUsageSnap.uniqueFilePathsTouched,
+              },
+              at: this.isoNow(),
+            });
+          }
           if (isMutationRequired() && changedFiles.length === 0) {
             return {
               kind: "failed",
@@ -4205,6 +4520,11 @@ export class AgentEnginePipeline {
           approvalMode: narrowed.toolGrant.approvalMode,
           pathScopes: narrowed.toolGrant.pathScopes.slice(0, 20),
           reasonCodes: narrowed.reasonCodes.slice(-8),
+          truncated:
+            narrowed.toolGrant.pathScopes.length > 20 ||
+            narrowed.reasonCodes.length > 8
+              ? true
+              : undefined,
           at: this.isoNow(),
         });
       }
@@ -4912,7 +5232,11 @@ export class AgentEnginePipeline {
   private clampRunBudget(
     parsed: ReturnType<typeof agentRunBudgetSchema.parse>,
     windowPolicy: WindowPolicy,
-  ): ReturnType<typeof agentRunBudgetSchema.parse> {
+  ): {
+    budget: ReturnType<typeof agentRunBudgetSchema.parse>;
+    /** Fields the window policy actually reduced below the host's request. */
+    clamped: Array<{ field: string; requested: number; effective: number }>;
+  } {
     const maxModelCalls = Math.min(
       parsed.unlimited ? windowPolicy.run.maxModelCalls : parsed.maxModelCalls,
       windowPolicy.run.maxModelCalls,
@@ -4925,11 +5249,39 @@ export class AgentEnginePipeline {
       parsed.unlimited ? windowPolicy.run.maxModelCalls : parsed.maxLoopIterations,
       windowPolicy.run.maxModelCalls,
     );
+    const clamped: Array<{ field: string; requested: number; effective: number }> =
+      [];
+    if (!parsed.unlimited) {
+      if (maxModelCalls < parsed.maxModelCalls) {
+        clamped.push({
+          field: "maxModelCalls",
+          requested: parsed.maxModelCalls,
+          effective: maxModelCalls,
+        });
+      }
+      if (maxToolCalls < parsed.maxToolCalls) {
+        clamped.push({
+          field: "maxToolCalls",
+          requested: parsed.maxToolCalls,
+          effective: maxToolCalls,
+        });
+      }
+      if (maxLoopIterations < parsed.maxLoopIterations) {
+        clamped.push({
+          field: "maxLoopIterations",
+          requested: parsed.maxLoopIterations,
+          effective: maxLoopIterations,
+        });
+      }
+    }
     return {
-      ...parsed,
-      maxModelCalls,
-      maxToolCalls,
-      maxLoopIterations,
+      budget: {
+        ...parsed,
+        maxModelCalls,
+        maxToolCalls,
+        maxLoopIterations,
+      },
+      clamped,
     };
   }
 
@@ -5198,6 +5550,8 @@ export class AgentEnginePipeline {
       this.deps.llm.capabilities.supportsTools &&
       !signal.aborted;
 
+    let stopReason: "natural" | "turn_cap" | "budget_exhausted" | "aborted" | "model_error" =
+      "natural";
     if (canLoop) {
       const grant = createDiscoveryGrant(decision.toolGrant);
       const tools = filterToolDefinitions({
@@ -5212,15 +5566,14 @@ export class AgentEnginePipeline {
         { role: "user", content: prompt.user },
       ];
 
-      for (
-        let turn = 0;
-        turn < DISCOVERY_PASS_POLICY.maxModelTurns;
-        turn += 1
-      ) {
-        if (signal.aborted || !discoveryBudgetRemaining(collector)) {
+      let turn = 0;
+      for (; turn < DISCOVERY_PASS_POLICY.maxModelTurns; turn += 1) {
+        if (signal.aborted) {
+          stopReason = "aborted";
           break;
         }
-        if (!budget.canStartModelCall()) {
+        if (!discoveryBudgetRemaining(collector) || !budget.canStartModelCall()) {
+          stopReason = "budget_exhausted";
           break;
         }
         budget.recordModelCall();
@@ -5239,12 +5592,14 @@ export class AgentEnginePipeline {
           bus,
         });
         if (turnResult.kind !== "completed") {
+          stopReason = turnResult.kind === "cancelled" ? "aborted" : "model_error";
           break;
         }
         const toolCalls = turnResult.toolCalls.filter((call) =>
           isDiscoveryToolAllowed(call.name),
         );
         if (toolCalls.length === 0) {
+          // Model chose to stop calling tools — a natural finish.
           break;
         }
         messages.push({
@@ -5264,6 +5619,9 @@ export class AgentEnginePipeline {
                 : JSON.parse(toolCall.arguments);
           } catch {
             argumentsValue = {};
+            warnings.push(
+              `Invalid JSON arguments for tool ${toolCall.name}.`,
+            );
           }
           const summary = this.summarizeToolCall(toolCall.name, argumentsValue);
           this.emit(bus, {
@@ -5322,6 +5680,9 @@ export class AgentEnginePipeline {
           });
         }
       }
+      if (stopReason === "natural" && turn >= DISCOVERY_PASS_POLICY.maxModelTurns) {
+        stopReason = "turn_cap";
+      }
     } else {
       reasonCodes.push("discovery_skipped");
     }
@@ -5345,6 +5706,7 @@ export class AgentEnginePipeline {
       surfaceCount: brief.proposedChangeSurfaces.length,
       openQuestionCount: brief.openQuestions.length,
       brief,
+      stopReason,
       at: this.isoNow(),
     });
     this.emitStage(bus, runId, "discovery", "completed", [
@@ -5913,6 +6275,25 @@ const CONTEXT_READY_WARNING_CODES = new Set([
   "file_map_fallback",
   "state_degraded",
   "source_failed",
+  // A user-pinned/referenced file was dropped by budget allocation — the
+  // single most user-visible context bug class, so it stays at "standard".
+  "required_reference_omitted",
+]);
+
+/**
+ * Lower-severity, higher-frequency context-selection drop reasons. These are
+ * genuinely useful for deep debugging but noisy on every run, so they only
+ * surface at logVerbosity "verbose".
+ */
+const CONTEXT_READY_VERBOSE_WARNING_CODES = new Set([
+  "token_budget_reached",
+  "item_limit_reached",
+  "file_limit_reached",
+  "per_file_limit_reached",
+  "representation_downgraded",
+  "unknown_token_estimate",
+  "excluded_path_removed",
+  "duplicate_reference_removed",
 ]);
 
 function looksLikeContextFilePath(path: string): boolean {

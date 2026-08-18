@@ -3,6 +3,23 @@
  */
 export const AGENT_ENGINE_SCHEMA_VERSION = 1 as const;
 
+/**
+ * Developer-facing log verbosity. Controls how much diagnostic detail is
+ * attached to RunEvents beyond the events every run already emits.
+ *
+ * - "minimal": only the baseline event set (pre-existing behavior).
+ * - "standard": adds structured reason codes / before-after values for
+ *   clamps, drops, and soft failures — low volume, high diagnostic value.
+ * - "verbose": adds everything, including per-attempt retry events and
+ *   uncapped omission/evidence detail. Higher volume.
+ *
+ * Defaults to "verbose" so bugs are discoverable by default; hosts that find
+ * the volume excessive can turn it down without any behavior change.
+ */
+export const AGENT_LOG_VERBOSITIES = ["minimal", "standard", "verbose"] as const;
+export const DEFAULT_AGENT_LOG_VERBOSITY = "verbose" as const;
+export type AgentLogVerbosity = (typeof AGENT_LOG_VERBOSITIES)[number];
+
 export const AGENT_RUN_STATUSES = [
   "completed",
   "suspended",
@@ -115,6 +132,28 @@ export const AGENT_REASON_CODES = [
   "context_failed",
   "state_unavailable",
   "resume_complete",
+  /** A requested run-budget ceiling was reduced by the window policy. */
+  "run_budget_clamped",
+  /** Turn's maximum output tokens was reduced to avoid exceeding the context window. */
+  "output_tokens_clamped",
+  /** A best-effort mutation checkpoint commit failed; changes may not be durably committed. */
+  "mutation_commit_failed",
+  /** Best-effort state unpin failed on a terminal path; pinned state may leak. */
+  "state_unpin_failed",
+  /** Loading a prior verification retry record failed (distinct from "no record found"). */
+  "verification_retry_load_failed",
+  /** Building the verification record for persistence failed. */
+  "verification_record_build_failed",
+  /** LLM verification-summary narration failed or was rejected; a template fallback was used. */
+  "verification_narration_failed",
+  /** A hard/blocked verification rejection was kept rather than repaired (see rejectKind on the event). */
+  "verification_rejected_kept",
+  /** A host policy (planApproval: never) suppressed a plan gate that risk analysis required. */
+  "plan_gate_suppressed_by_policy",
+  /** Grant expansion included network access (fetch_url/fetch_docs/web_search). */
+  "network_access_granted",
+  /** One or more values in an emitted event array were truncated for size; see truncated flag. */
+  "event_list_truncated",
 ] as const;
 
 
@@ -138,6 +177,7 @@ export const AGENT_EVENT_TYPES = [
   "discovery_completed",
   "task_list_updated",
   "context_ready",
+  "prompt_ready",
   "model_delta",
   "model_turn",
   "tool_started",

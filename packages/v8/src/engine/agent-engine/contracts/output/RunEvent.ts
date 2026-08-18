@@ -10,6 +10,11 @@ import {
   discoveryBriefSchema,
   planArtifactSchema,
 } from "../../../../modules/planning";
+import {
+  promptConstructionStatusSchema,
+  promptOmissionReasonSchema,
+  promptSectionSchema,
+} from "../../../../modules/prompt-construction";
 import { taskListSchema } from "../../../../modules/task-list";
 import { repositoryStateReferenceSchema } from "../../../../modules/repository-state";
 import {
@@ -76,6 +81,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       approvalMode: approvalModeSchema,
       pathScopes: z.array(z.string().min(1).max(512)).max(20),
       reasonCodes: z.array(z.string().min(1)).max(20).optional(),
+      /** True when reasonCodes/pathScopes were truncated to fit the array caps above. */
+      truncated: z.boolean().optional(),
       at: z.string().datetime(),
     })
     .strict(),
@@ -159,6 +166,16 @@ export const runEventSchema = z.discriminatedUnion("type", [
       surfaceCount: z.number().int().nonnegative(),
       openQuestionCount: z.number().int().nonnegative(),
       brief: discoveryBriefSchema.optional(),
+      /** Why the discovery loop stopped — distinguishes a natural finish from a hit cap. */
+      stopReason: z
+        .enum([
+          "natural",
+          "turn_cap",
+          "budget_exhausted",
+          "aborted",
+          "model_error",
+        ])
+        .optional(),
       at: z.string().datetime(),
     })
     .strict(),
@@ -193,11 +210,36 @@ export const runEventSchema = z.discriminatedUnion("type", [
               sourceId: z.string().min(1).max(64),
               status: z.string().min(1).max(32),
               candidateCount: z.number().int().nonnegative(),
+              /** Safe truncated error summary when status is "failed". */
+              error: z.string().min(1).max(300).optional(),
             })
             .strict(),
         )
         .max(8)
         .optional(),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("prompt_ready"),
+      runId: z.string().min(1),
+      status: promptConstructionStatusSchema,
+      totalOmittedTokens: z.number().int().nonnegative(),
+      totalTruncatedTokens: z.number().int().nonnegative(),
+      omissions: z
+        .array(
+          z
+            .object({
+              section: promptSectionSchema,
+              reason: promptOmissionReasonSchema,
+              tokens: z.number().int().nonnegative().optional(),
+            })
+            .strict(),
+        )
+        .max(20)
+        .optional(),
+      warnings: z.array(z.string().min(1).max(500)).max(20).optional(),
       at: z.string().datetime(),
     })
     .strict(),
@@ -222,6 +264,10 @@ export const runEventSchema = z.discriminatedUnion("type", [
       cacheMissTokens: z.number().int().nonnegative().optional(),
       finishReason: z.string().min(1).optional(),
       truncated: z.boolean().optional(),
+      /** Retries the gateway performed before this turn completed (rate limit/timeout/5xx). */
+      retryCount: z.number().int().nonnegative().optional(),
+      /** SSE chunks dropped for malformed payloads during this turn's stream. */
+      malformedChunkCount: z.number().int().nonnegative().optional(),
       at: z.string().datetime(),
     })
     .strict(),
@@ -275,6 +321,14 @@ export const runEventSchema = z.discriminatedUnion("type", [
       type: z.literal("warning"),
       runId: z.string().min(1),
       message: z.string().min(1),
+      /** Structured reason code, when known — prefer this over parsing `message`. */
+      code: z.string().min(1).max(80).optional(),
+      /** Stage active when the warning was raised. */
+      stage: agentActiveStageSchema.optional(),
+      /** Safe scalar context (counts, ids, before/after values) for filtering/aggregation. */
+      data: z
+        .record(z.string(), z.union([z.string().max(300), z.number(), z.boolean()]))
+        .optional(),
       at: z.string().datetime(),
     })
     .strict(),
@@ -283,6 +337,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       type: z.literal("verification_completed"),
       runId: z.string().min(1),
       status: verificationStatusSchema,
+      /** Set when a hard/blocked rejection was kept rather than repaired; see AGENT_REASON_CODES. */
+      rejectKind: z.string().min(1).max(80).optional(),
       reasonCodes: z.array(verificationReasonCodeSchema),
       checks: z
         .array(
@@ -311,6 +367,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
         )
         .max(20),
       warnings: z.array(z.string().min(1).max(500)).max(20),
+      /** True when checks/diagnostics were truncated to fit the array caps above. */
+      truncated: z.boolean().optional(),
       at: z.string().datetime(),
     })
     .strict(),
@@ -324,6 +382,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       failedCheckIds: z.array(z.string().min(1).max(160)).max(16),
       projectIds: z.array(z.string().min(1).max(160)).max(16),
       durationMs: z.number().int().nonnegative().optional(),
+      /** True when failedCheckIds/projectIds were truncated to fit the array caps above. */
+      truncated: z.boolean().optional(),
       at: z.string().datetime(),
     })
     .strict(),
@@ -336,6 +396,9 @@ export const runEventSchema = z.discriminatedUnion("type", [
       clearedErrorCount: z.number().int().nonnegative(),
       newErrorCount: z.number().int().nonnegative(),
       remainingErrorCount: z.number().int().nonnegative(),
+      /** Warning-severity counterpart to the error counts above. */
+      newWarningCount: z.number().int().nonnegative().optional(),
+      clearedWarningCount: z.number().int().nonnegative().optional(),
       failedCheckIdsAfter: z.array(z.string().min(1).max(160)).max(16),
       reasonCodes: z.array(z.string().min(1).max(80)).max(16),
       at: z.string().datetime(),

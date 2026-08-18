@@ -4,6 +4,7 @@ import type { MutationTransactionRegistry } from "../internal/mutation";
 import { MutationError } from "../internal/mutation";
 import { PathContainmentError } from "../internal/PathContainment";
 import { applyPatchInputSchema } from "../internal/ToolCatalog";
+import { describeCaughtError } from "../internal/describeCaughtError";
 import { resolveMutationPathScopes } from "./ResolveMutationPathScopes";
 
 export async function executeApplyPatch(params: {
@@ -52,7 +53,7 @@ export async function executeApplyPatch(params: {
     }
     throw new MutationError(
       "execution_failed",
-      `apply_patch failed: ${String(error)}`,
+      `apply_patch failed: ${describeCaughtError(error)}`,
     );
   }
 }

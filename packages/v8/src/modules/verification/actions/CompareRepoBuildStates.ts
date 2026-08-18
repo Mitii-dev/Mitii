@@ -33,6 +33,23 @@ export function compareRepoBuildStates(params: {
     beforeErrorKeys.has(key),
   ).length;
 
+  const beforeWarningKeys = new Set(
+    (before?.diagnostics ?? [])
+      .filter((diag) => diag.severity === "warning")
+      .map(diagnosticKey),
+  );
+  const afterWarningKeys = new Set(
+    after.diagnostics
+      .filter((diag) => diag.severity === "warning")
+      .map(diagnosticKey),
+  );
+  const newWarningCount = [...afterWarningKeys].filter(
+    (key) => !beforeWarningKeys.has(key),
+  ).length;
+  const clearedWarningCount = [...beforeWarningKeys].filter(
+    (key) => !afterKeys.has(key),
+  ).length;
+
   const reasonCodes: RepoBuildStateComparisonReason[] = [];
   if (!before) reasonCodes.push("no_before_state");
   if (clearedErrorCount > 0) reasonCodes.push("errors_cleared");
@@ -41,6 +58,12 @@ export function compareRepoBuildStates(params: {
   }
   if (newErrorCount > 0) reasonCodes.push("new_errors_introduced");
   if (after.summary.warningCount > 0) reasonCodes.push("warnings_remaining");
+  if (before && newWarningCount > 0) {
+    reasonCodes.push("new_warnings_introduced");
+  }
+  if (before && clearedWarningCount > 0) {
+    reasonCodes.push("warnings_cleared");
+  }
   if (after.summary.failedCheckIds.length > 0) {
     reasonCodes.push("checks_still_failing");
   }
@@ -51,6 +74,7 @@ export function compareRepoBuildStates(params: {
     clearedErrorCount,
     newErrorCount,
     remainingErrorCount,
+    ...(before ? { newWarningCount, clearedWarningCount } : {}),
     failedCheckIdsBefore: before?.summary.failedCheckIds ?? [],
     failedCheckIdsAfter: after.summary.failedCheckIds,
     reasonCodes: [...new Set(reasonCodes)],

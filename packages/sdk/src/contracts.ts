@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   AGENT_ENGINE_SCHEMA_VERSION,
+  AGENT_LOG_VERBOSITIES,
   agentEngineResumeInputSchema,
   agentEngineStartInputSchema,
   agentModeSchema,
@@ -105,6 +106,11 @@ export const mitiiStartInputSchema = z
       .strict()
       .optional(),
     /**
+     * Developer-facing run-log detail level. Defaults to "verbose" so bugs
+     * are discoverable; hosts can turn it down when log volume matters more.
+     */
+    logVerbosity: z.enum(AGENT_LOG_VERBOSITIES).optional(),
+    /**
      * Host-pinned workspace paths (@mentions). Mapped to intake
      * referencedArtifacts so understanding/context can prefer them.
      */
@@ -201,6 +207,7 @@ export function toAgentEngineStartInput(
     dirtyPaths: parsed.dirtyPaths,
     explorationDepth: parsed.explorationDepth,
     windowBudget: parsed.windowBudget,
+    logVerbosity: parsed.logVerbosity,
     instructions:
       parsed.projectRules && parsed.projectRules.length > 0
         ? {

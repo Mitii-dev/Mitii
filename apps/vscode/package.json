@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.8.40",
+  "version": "2.8.41",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -929,6 +929,21 @@
           "default": 30,
           "minimum": 1,
           "description": "Maximum active wall-clock minutes allowed in one Mitii run. Time waiting for user approval is excluded by the engine."
+        },
+        "mitii.logVerbosity": {
+          "type": "string",
+          "enum": [
+            "minimal",
+            "standard",
+            "verbose"
+          ],
+          "enumDescriptions": [
+            "Baseline run events only (stage/tool/model/verification progress).",
+            "Adds structured reason codes and before/after values for clamps, drops, and soft failures.",
+            "Adds everything, including live nudge/retry-level detail. More log volume."
+          ],
+          "default": "verbose",
+          "description": "How much diagnostic detail Mitii records in the run log, for finding bugs. Turn this down if the exported session log is too noisy."
         },
         "mitii.onboarding.completed": {
           "type": "boolean",

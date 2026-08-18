@@ -20,7 +20,12 @@ export async function executeReadManyFiles(params: {
   workspaceRoot: string;
   fileSystem: WorkspaceFileSystemPort;
   maxOutputBytes: number;
-}): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
+}): Promise<{
+  output: unknown;
+  truncated: boolean;
+  redacted: boolean;
+  warnings?: string[];
+}> {
   const input = readManyFilesInputSchema.parse(params.arguments);
   const maxBytesPerFile =
     input.maxBytesPerFile ?? DEFAULT_MAX_BYTES_PER_FILE_MANY;
@@ -86,9 +91,20 @@ export async function executeReadManyFiles(params: {
     truncated: anyTruncated,
   });
 
+  const failedFiles = files.filter((file) => file.error);
+
   return {
     output,
     truncated: anyTruncated,
     redacted,
+    warnings:
+      failedFiles.length > 0
+        ? [
+            `${failedFiles.length} of ${files.length} requested file(s) could not be read: ${failedFiles
+              .slice(0, 5)
+              .map((file) => `${file.path} (${file.error})`)
+              .join(", ")}${failedFiles.length > 5 ? ", ..." : ""}`,
+          ]
+        : undefined,
   };
 }

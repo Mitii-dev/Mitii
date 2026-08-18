@@ -97,6 +97,14 @@ Caps for a single Mitii turn.
 
 These caps are owned here. You do not need to retune them when the context window changes. Developer → Token budget does not override them.
 
+### Log verbosity
+
+Controls how much diagnostic detail lands in the run log (visible via "Export session log" / "Open session log").
+
+| UI field | Setting | Notes |
+|---|---|---|
+| Log verbosity | `mitii.logVerbosity` | `minimal` (baseline events only), `standard` (adds reason codes and before/after values for clamps and soft failures), `verbose` (default; adds retry/nudge-level detail). Turn this down if exported logs are too noisy — it does not change what the agent does, only what it records. |
+
 ---
 
 ## Context

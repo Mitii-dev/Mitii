@@ -91,23 +91,29 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     Math.floor(usableInputTokens * policy.loopSafetyRatio),
   );
 
+  const repositoryTokensShare = Math.floor(
+    usableInputTokens * policy.repositoryShare,
+  );
   const repositoryTokens = Math.min(
     policy.repositoryTokensCap,
-    Math.floor(usableInputTokens * policy.repositoryShare),
+    repositoryTokensShare,
   );
+  if (repositoryTokensShare > policy.repositoryTokensCap) {
+    reasonCodes.push("repository_tokens_capped");
+  }
   const conversationTokens = Math.floor(
     usableInputTokens * policy.conversationShare,
   );
-  const planTokens = clampInt(
-    Math.floor(usableInputTokens * policy.planShare),
-    1,
-    policy.planTokensCap,
-  );
-  const skillsTokens = clampInt(
-    Math.floor(usableInputTokens * policy.skillsShare),
-    1,
-    policy.skillsTokensCap,
-  );
+  const planTokensShare = Math.floor(usableInputTokens * policy.planShare);
+  const planTokens = clampInt(planTokensShare, 1, policy.planTokensCap);
+  if (planTokensShare > policy.planTokensCap) {
+    reasonCodes.push("plan_tokens_capped");
+  }
+  const skillsTokensShare = Math.floor(usableInputTokens * policy.skillsShare);
+  const skillsTokens = clampInt(skillsTokensShare, 1, policy.skillsTokensCap);
+  if (skillsTokensShare > policy.skillsTokensCap) {
+    reasonCodes.push("skills_tokens_capped");
+  }
   const allocated =
     repositoryTokens + conversationTokens + planTokens + skillsTokens;
   const systemTokens = Math.max(0, usableInputTokens - allocated);

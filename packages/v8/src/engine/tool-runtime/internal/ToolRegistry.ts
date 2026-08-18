@@ -29,6 +29,8 @@ export interface ToolExecutionResult {
   cancelled?: boolean;
   argv?: string[];
   path?: string;
+  /** Non-fatal issues surfaced alongside a successful/partial result (e.g. denied or unreadable paths). */
+  warnings?: string[];
 }
 
 export type ToolHandler = (
