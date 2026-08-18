@@ -6,7 +6,7 @@
 export const REPOSITORY_INDEX_FORMAT = {
   textIndexSchemaVersion: 2,
   textPipelineVersion: "chunking-v2-identifier-fts",
-  graphBuilderVersion: "graph-v2-calls",
+  graphBuilderVersion: "graph-v3-tags-queries",
 } as const;
 
 export type RepositoryIndexFormat = typeof REPOSITORY_INDEX_FORMAT;

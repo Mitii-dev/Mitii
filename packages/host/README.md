@@ -47,6 +47,7 @@ src/
   sqlite/                  # injection contract for openDatabase
   indexing/                # embeddings, full index, fingerprint snapshot
     bundled-embedding/     # on-device MiniLM source (native ONNX + WASM)
+    treeSitter/            # web-tree-sitter runtime; V8 injects query text
   repository-context/      # createHostRepositoryContext
   ports/                   # search, memory, skills, checkpoints
   prompt/                  # project rules loader → start({ projectRules })

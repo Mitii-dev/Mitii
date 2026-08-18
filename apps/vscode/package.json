@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.8.42",
+  "version": "2.8.43",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -692,7 +692,7 @@
           "type": "number",
           "default": 0,
           "minimum": 0,
-          "description": "Maximum tokens the model may generate per call. Set 0 to derive the reserve from the context window. A positive value is a hard host override. Leave at 0 unless you need to cap output independently of the window."
+          "description": "Maximum tokens the model may generate per call. Set 0 to derive the reserve from the context window (recommended; ~20% of the window, at least 4096 when the window allows). A positive value is a hard host override. The legacy default 5000 is ignored so apply_patch batches are not truncated. Leave at 0 unless your runtime has a different hard cap."
         },
         "mitii.semanticIndex.enabled": {
           "type": "boolean",
@@ -849,7 +849,7 @@
         "mitii.agent.taskListAutoAdvance": {
           "type": "boolean",
           "default": true,
-          "description": "Product default ON: after a successful built-in mutating tool in Agent mode, mark the active checklist item done and activate the next pending item (at most once per model turn). The SDK/engine library default remains off when hosts do not pass taskListAutoAdvance."
+          "description": "Product default ON: after a successful built-in mutating tool in Agent mode, mark matching checklist items done (by changed path) and activate the next pending change item. Unmatched mutations still advance the active item at most once per model turn. The SDK/engine library default remains off when hosts do not pass taskListAutoAdvance."
         },
         "mitii.ui.contextToggles.repoMap": {
           "type": "boolean",

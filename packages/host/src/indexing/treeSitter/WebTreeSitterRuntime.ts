@@ -5,13 +5,20 @@ import { dirname, join } from 'node:path';
 import { resolveRuntimeFilename } from '../../internal/resolveRuntimeFilename.js';
 
 import type {
-  SourceReferenceKind,
   TreeSitterRuntimeParseInput,
   TreeSitterRuntimeParseResult,
   TreeSitterRuntimePort,
   TreeSitterRuntimeReference,
   TreeSitterRuntimeSymbol,
 } from '@mitii/v8';
+
+import {
+  isReferenceNameCapture,
+  isSymbolDefinitionCapture,
+  isSymbolNameCapture,
+  referenceKindFromCapture,
+  symbolKindFromCapture,
+} from './treeSitterQueryCaptures.js';
 
 type TreeSitterPoint = {
   row: number;
@@ -94,29 +101,27 @@ export const WEB_TREE_SITTER_GRAMMAR_WASM_BY_LANGUAGE = {
   c: 'tree-sitter-c.wasm',
   cpp: 'tree-sitter-cpp.wasm',
   csharp: 'tree-sitter-c_sharp.wasm',
+  dart: 'tree-sitter-dart.wasm',
+  elixir: 'tree-sitter-elixir.wasm',
   go: 'tree-sitter-go.wasm',
+  haskell: 'tree-sitter-haskell.wasm',
   java: 'tree-sitter-java.wasm',
   javascript: 'tree-sitter-javascript.wasm',
   kotlin: 'tree-sitter-kotlin.wasm',
+  lua: 'tree-sitter-lua.wasm',
   php: 'tree-sitter-php.wasm',
   python: 'tree-sitter-python.wasm',
   ruby: 'tree-sitter-ruby.wasm',
   rust: 'tree-sitter-rust.wasm',
+  scala: 'tree-sitter-scala.wasm',
   shell: 'tree-sitter-bash.wasm',
+  solidity: 'tree-sitter-solidity.wasm',
   sql: 'tree-sitter-sql.wasm',
   swift: 'tree-sitter-swift.wasm',
   tsx: 'tree-sitter-tsx.wasm',
   typescript: 'tree-sitter-typescript.wasm',
+  zig: 'tree-sitter-zig.wasm',
 } as const;
-
-const REFERENCE_KINDS = new Set<SourceReferenceKind>([
-  'call',
-  'construct',
-  'read',
-  'type',
-  'unknown',
-  'write',
-]);
 
 export interface WebTreeSitterRuntimeOptions {
   coreWasmPath: string;
@@ -128,6 +133,7 @@ interface RawRuntimeSymbol {
   name: string;
   node: TreeSitterNode;
   nameNode: TreeSitterNode;
+  kind?: string;
 }
 
 export class WebTreeSitterRuntime implements TreeSitterRuntimePort {
@@ -270,11 +276,17 @@ export class WebTreeSitterRuntime implements TreeSitterRuntimePort {
   }): TreeSitterRuntimeSymbol[] {
     const raw: RawRuntimeSymbol[] = [];
     const seen = new Set<string>();
-    const query = this.createQuery(
+    const query = this.tryCreateQuery(
       options.module,
       options.language,
       options.querySource,
+      options.warnings,
+      'symbol',
     );
+
+    if (!query) {
+      return [];
+    }
 
     try {
       const matches = query.matches(options.rootNode, {
@@ -291,8 +303,8 @@ export class WebTreeSitterRuntime implements TreeSitterRuntimePort {
           break;
         }
 
-        const nameCapture = match.captures.find(
-          (capture) => capture.name === 'name',
+        const nameCapture = match.captures.find((capture) =>
+          isSymbolNameCapture(capture.name),
         );
 
         if (!nameCapture) {
@@ -300,8 +312,8 @@ export class WebTreeSitterRuntime implements TreeSitterRuntimePort {
         }
 
         const definitionCapture =
-          match.captures.find(
-            (capture) => capture.name === 'definition',
+          match.captures.find((capture) =>
+            isSymbolDefinitionCapture(capture.name),
           ) ?? nameCapture;
 
         const name = nameCapture.node.text.trim();
@@ -327,6 +339,9 @@ export class WebTreeSitterRuntime implements TreeSitterRuntimePort {
           name,
           node,
           nameNode: nameCapture.node,
+          kind:
+            symbolKindFromCapture(definitionCapture.name) ??
+            symbolKindFromCapture(nameCapture.name),
         });
       }
 
@@ -342,6 +357,7 @@ export class WebTreeSitterRuntime implements TreeSitterRuntimePort {
     return raw.map((item) => ({
       name: item.name,
       nodeType: item.node.type,
+      ...(item.kind ? { kind: item.kind } : {}),
       signature: this.signatureForNode(item.node),
       parentName: this.findParentSymbolName(item, raw),
       exported: this.isExported(item.node),
@@ -363,21 +379,37 @@ export class WebTreeSitterRuntime implements TreeSitterRuntimePort {
   }): TreeSitterRuntimeReference[] {
     const references: TreeSitterRuntimeReference[] = [];
     const seen = new Set<string>();
-    const query = this.createQuery(
+    const query = this.tryCreateQuery(
       options.module,
       options.language,
       options.querySource,
+      options.warnings,
+      'reference',
     );
 
-    try {
-      const captures = query.matches(options.rootNode, {
-        matchLimit: options.maximumReferences * 4,
-      }).flatMap((match) => match.captures);
+    if (!query) {
+      return [];
+    }
 
-      for (const capture of captures) {
+    try {
+      const matches = query.matches(options.rootNode, {
+        matchLimit: options.maximumReferences * 4,
+      });
+
+      for (const match of matches) {
         this.throwIfAborted(options.abortSignal);
 
-        if (!capture.name.startsWith('reference')) {
+        const nameCapture = match.captures.find((capture) =>
+          capture.name.startsWith('name.reference.'),
+        );
+        const kindCapture = match.captures.find(
+          (capture) =>
+            capture.name.startsWith('reference.') ||
+            capture.name.startsWith('name.reference.'),
+        );
+        const capture = nameCapture ?? kindCapture;
+
+        if (!capture || !isReferenceNameCapture(capture.name)) {
           continue;
         }
 
@@ -408,7 +440,9 @@ export class WebTreeSitterRuntime implements TreeSitterRuntimePort {
         seen.add(key);
         references.push({
           symbolName,
-          kind: this.referenceKind(capture.name),
+          kind: referenceKindFromCapture(
+            kindCapture?.name ?? capture.name,
+          ),
           line: capture.node.startPosition.row + 1,
           column: capture.node.startPosition.column + 1,
         });
@@ -424,6 +458,23 @@ export class WebTreeSitterRuntime implements TreeSitterRuntimePort {
     }
 
     return references;
+  }
+
+  private tryCreateQuery(
+    module: WebTreeSitterModule,
+    language: TreeSitterLanguage,
+    querySource: string,
+    warnings: string[],
+    queryKind: 'symbol' | 'reference',
+  ): TreeSitterQuery | undefined {
+    try {
+      return this.createQuery(module, language, querySource);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error);
+      warnings.push(`${queryKind} query failed to compile: ${message}`);
+      return undefined;
+    }
   }
 
   private createQuery(
@@ -510,14 +561,6 @@ export class WebTreeSitterRuntime implements TreeSitterRuntimePort {
     }
 
     return false;
-  }
-
-  private referenceKind(captureName: string): SourceReferenceKind {
-    const value = captureName.split('.')[1] ?? 'unknown';
-
-    return REFERENCE_KINDS.has(value as SourceReferenceKind)
-      ? (value as SourceReferenceKind)
-      : 'unknown';
   }
 
   private throwIfAborted(abortSignal?: AbortSignal): void {

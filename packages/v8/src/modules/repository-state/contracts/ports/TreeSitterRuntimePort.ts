@@ -18,6 +18,12 @@ export type SourceReferenceKind =
 export interface TreeSitterRuntimeSymbol {
   name: string;
   nodeType: string;
+  /**
+   * Capture-derived kind when the query uses `@definition.<kind>`
+   * or `@name.definition.<kind>`. Parsers SHOULD prefer this over
+   * guessing from `nodeType`.
+   */
+  kind?: string;
   signature?: string;
   parentName?: string;
   exported?: boolean;
@@ -46,7 +52,17 @@ export interface TreeSitterRuntimeParseInput {
   language: SourceLanguageId;
   relativePath: string;
   content: string;
+  /**
+   * Tree-sitter query capturing definitions. Accepted capture names:
+   * - Mitii: `@name` plus optional `@definition`
+   * - Aider tags: `@name.definition.<kind>` plus optional `@definition.<kind>`
+   */
   symbolQuery?: string;
+  /**
+   * Tree-sitter query capturing references. Accepted capture names:
+   * - Mitii: `@reference.<kind>` (`call` | `construct` | `type` | `read` | `write`)
+   * - Aider tags: `@name.reference.<kind>` plus optional `@reference.<kind>`
+   */
   referenceQuery?: string;
   maximumSymbols: number;
   maximumImports: number;

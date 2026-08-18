@@ -45,6 +45,7 @@ repository-state/
 - Partial/filtered/truncated/cancelled scans publish as degraded or unavailable.
 - `REPOSITORY_INDEX_FORMAT` changes require hosts to rebuild persisted indexes.
 - Workspace Indexing produces candidates; Repository State is the publication authority.
+- Source analysis injects tree-sitter tags queries through `TreeSitterRuntimePort`; bump `graphBuilderVersion` when those queries change call-graph facts.
 
 ## Ownership Boundaries
 
