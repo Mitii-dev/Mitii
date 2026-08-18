@@ -87,6 +87,10 @@ export {
   DEFAULT_WINDOW_BUDGET_POLICY,
   WINDOW_BUDGET_POLICY,
   WINDOW_BUDGET_SCHEMA_VERSION,
+  WINDOW_BUDGET_EFFORTS,
+  DEFAULT_WINDOW_BUDGET_EFFORT,
+  WINDOW_BUDGET_EFFORT_OVERLAY,
+  resolveWindowBudgetEffort,
   windowBudgetInputSchema,
   windowBudgetPolicySchema,
   windowBudgetPolicyOverridesSchema,
@@ -140,4 +144,5 @@ export type {
   WindowBudgetPolicy,
   WindowBudgetPolicyOverrides,
   WindowPolicy,
+  WindowBudgetEffort,
 } from '@mitii/v8';

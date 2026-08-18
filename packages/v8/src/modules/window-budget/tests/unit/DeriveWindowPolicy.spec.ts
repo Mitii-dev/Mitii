@@ -28,11 +28,13 @@ describe("deriveWindowPolicy", () => {
       small.mutation.maxUniqueFilesPerCall,
     );
     expect(large.planning.visiblePlanAffordable).toBe(true);
-    expect(small.mutation.maxUniqueFilesPerCall).toBeLessThanOrEqual(
+    expect(small.mutation.maxUniqueFilesPerCall).toBeLessThan(
       large.mutation.maxUniqueFilesPerCall,
     );
-    expect(small.run.maxModelCalls).toBeGreaterThanOrEqual(48);
-    expect(small.run.maxModelCalls).toBeLessThanOrEqual(large.run.maxModelCalls);
+    expect(small.effort).toBe("medium");
+    expect(small.run.maxModelCalls).toBe(40);
+    expect(small.run.maxModelCalls).toBe(large.run.maxModelCalls);
+    expect(small.run.maxVerificationRepairs).toBe(1);
     expect(small.compaction.toolResultContentChars).toBeLessThan(
       large.compaction.toolResultContentChars,
     );
@@ -41,6 +43,27 @@ describe("deriveWindowPolicy", () => {
     );
     expect(small.compaction.maxEstablishedFacts).toBeLessThanOrEqual(
       large.compaction.maxEstablishedFacts,
+    );
+  });
+
+  it("scales files per mutation with the context window, not the output ceiling", () => {
+    const at30k = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 30_000,
+    });
+    const at200k = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 200_000,
+    });
+    expect(at30k.mutation.maxUniqueFilesPerCall).toBe(3);
+    expect(at200k.mutation.maxUniqueFilesPerCall).toBe(8);
+    expect(at200k.reasonCodes).toContain("mutation_effort_capped");
+    expect(at200k.reasonCodes).toContain("effort_medium");
+    expect(at200k.compaction.autoMaxTokens).toBe(32_000);
+    expect(at200k.compaction.hardMaxTokens).toBe(40_000);
+    expect(at200k.maximumOutputTokens).toBe(20_000);
+    expect(at200k.maximumOutputTokens).toBeGreaterThan(
+      at30k.maximumOutputTokens,
     );
   });
 
@@ -129,5 +152,33 @@ describe("deriveWindowPolicy", () => {
         result.usableInputTokens,
     ).toBeLessThanOrEqual(8_192);
     expect(result.loopInputBudgetTokens).toBeGreaterThan(0);
+  });
+
+  it("applies named effort overlays without changing the advertised window", () => {
+    const medium = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 200_000,
+    });
+    const high = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 200_000,
+      effort: "high",
+    });
+    const low = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 200_000,
+      effort: "low",
+    });
+
+    expect(medium.contextWindowTokens).toBe(200_000);
+    expect(high.contextWindowTokens).toBe(200_000);
+    expect(low.mutation.maxUniqueFilesPerCall).toBe(4);
+    expect(medium.mutation.maxUniqueFilesPerCall).toBe(8);
+    expect(high.mutation.maxUniqueFilesPerCall).toBe(12);
+    expect(low.run.maxModelCalls).toBe(24);
+    expect(high.run.maxModelCalls).toBe(64);
+    expect(low.run.maxVerificationRepairs).toBe(0);
+    expect(high.run.maxVerificationRepairs).toBe(2);
+    expect(high.reasonCodes).toContain("effort_high");
   });
 });

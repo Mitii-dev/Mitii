@@ -18,6 +18,7 @@ import { taskListSchema } from "../../../../modules/task-list";
 import { promptInstructionsSchema } from "../../../../modules/prompt-construction";
 import { projectDescriptorSchema } from "../../../../modules/repository-state";
 import { windowBudgetPolicyOverridesSchema } from "../../../../modules/window-budget";
+import { WINDOW_BUDGET_EFFORTS } from "../../../../modules/window-budget";
 
 import { AGENT_ENGINE_SCHEMA_VERSION } from "../../constants";
 import {
@@ -120,6 +121,7 @@ export const agentEngineStartInputSchema = z
     windowBudget: z
       .object({
         policy: windowBudgetPolicyOverridesSchema.optional(),
+        effort: z.enum(WINDOW_BUDGET_EFFORTS).optional(),
       })
       .strict()
       .optional(),

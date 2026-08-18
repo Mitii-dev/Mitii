@@ -63,6 +63,8 @@ interface AnthropicMessageResponse {
   usage?: {
     input_tokens?: number;
     output_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
   };
 }
 
@@ -622,23 +624,35 @@ export class AnthropicLlmPort implements LlmPort {
   private mapUsage(usage?: {
     input_tokens?: number;
     output_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
   }):
     | {
         inputTokens?: number;
         outputTokens?: number;
         totalTokens?: number;
+        cacheHitTokens?: number;
+        cacheMissTokens?: number;
       }
     | undefined {
     if (!usage) return undefined;
     const inputTokens = usage.input_tokens;
     const outputTokens = usage.output_tokens;
-    if (inputTokens === undefined && outputTokens === undefined) {
+    const cacheHitTokens = usage.cache_read_input_tokens;
+    const cacheMissTokens = usage.input_tokens;
+    if (
+      inputTokens === undefined &&
+      outputTokens === undefined &&
+      cacheHitTokens === undefined
+    ) {
       return undefined;
     }
     return {
       ...(inputTokens !== undefined ? { inputTokens } : {}),
       ...(outputTokens !== undefined ? { outputTokens } : {}),
       totalTokens: (inputTokens ?? 0) + (outputTokens ?? 0),
+      ...(cacheHitTokens !== undefined ? { cacheHitTokens } : {}),
+      ...(cacheMissTokens !== undefined ? { cacheMissTokens } : {}),
     };
   }
 

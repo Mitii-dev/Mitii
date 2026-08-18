@@ -11,7 +11,10 @@
     "isolatedModules": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "paths": {
+      "@mitii/live-token-budget": ["../src/liveTokenBudgetPreview.ts"]
+    }
   },
   "include": ["src"]
 }

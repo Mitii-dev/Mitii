@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { WINDOW_BUDGET_SCHEMA_VERSION } from "../../constants";
+import { WINDOW_BUDGET_EFFORTS } from "../../effort";
 
 const ratioSchema = z.number().min(0).max(1);
 const positiveIntSchema = z.number().int().positive();
@@ -110,6 +111,11 @@ export const windowBudgetInputSchema = z
      */
     toolSchemaTokens: nonnegativeIntSchema.optional(),
     policy: windowBudgetPolicyOverridesSchema.optional(),
+    /**
+     * Working-set overlay. Omit for medium. Caps mutation batches, model
+     * calls, and compaction ceilings independently of the advertised window.
+     */
+    effort: z.enum(WINDOW_BUDGET_EFFORTS).optional(),
   })
   .strict();
 

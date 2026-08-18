@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.8.39",
+  "version": "2.8.40",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -248,7 +248,7 @@
         },
         "mitii.tokenBudget.outputMaxTokens": {
           "type": "number",
-          "default": 8192,
+          "default": 32768,
           "minimum": 1,
           "description": "Ceiling for the derived output reserve."
         },
@@ -315,13 +315,13 @@
         },
         "mitii.tokenBudget.planTokensCap": {
           "type": "number",
-          "default": 8000,
+          "default": 16000,
           "minimum": 1,
           "description": "Hard cap on plan tokens regardless of share."
         },
         "mitii.tokenBudget.skillsTokensCap": {
           "type": "number",
-          "default": 2400,
+          "default": 8000,
           "minimum": 1,
           "description": "Hard cap on skill-body tokens regardless of share."
         },
@@ -527,7 +527,7 @@
           "type": "number",
           "default": 800,
           "minimum": 1,
-          "description": "Unique files per mutation call scale as output / this value."
+          "description": "Unique files per mutation call scale as (context window × output ratio) / this value."
         },
         "mitii.tokenBudget.minUniqueFilesPerCall": {
           "type": "number",
@@ -537,7 +537,7 @@
         },
         "mitii.tokenBudget.maxUniqueFilesPerCallCap": {
           "type": "number",
-          "default": 8,
+          "default": 48,
           "minimum": 1,
           "description": "Ceiling for files allowed in one mutation call."
         },
@@ -640,7 +640,7 @@
         },
         "mitii.tokenBudget.verificationChecksMax": {
           "type": "number",
-          "default": 8,
+          "default": 16,
           "minimum": 1,
           "description": "Ceiling for verification checks."
         },

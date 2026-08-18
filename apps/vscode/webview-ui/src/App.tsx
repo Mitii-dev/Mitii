@@ -37,9 +37,11 @@ import { OnboardingPanel } from './components/OnboardingPanel';
 import { PendingPlanBanner } from './components/PendingPlanBanner';
 import { PlanFollowStrip } from './components/PlanPanel';
 import { ReviewPanel } from './components/ReviewPanel';
+import { SettingsErrorBoundary } from './components/SettingsErrorBoundary';
 import { SettingsPanel } from './components/SettingsPanel';
 import { SkillManagementPanel } from './components/skills/SkillManagementPanel';
 import { WorkspaceBanner } from './components/WorkspaceBanner';
+import { deriveLiveTokenBudgetPreview } from '@mitii/live-token-budget';
 import { getProviderPreset, modelsForProvider } from './providerOptions';
 import type {
   ActivityEventPayload,
@@ -117,25 +119,14 @@ const DEFAULT_TOKEN_BUDGET: TokenBudgetSettingsSnapshot = {
   enabled: false,
   policy: {},
   fields: [],
-  preview: {
-    contextWindowTokens: 32768,
-    maximumOutputTokens: 3277,
-    toolSchemaTokens: 6554,
-    usableInputTokens: 22937,
-    repositoryTokens: 6422,
-    conversationTokens: 9174,
-    planTokens: 1376,
-    skillsTokens: 917,
-    systemTokens: 5048,
-    maxModelCalls: 48,
-    maxToolCalls: 32,
-    maxUniqueFilesPerCall: 4,
-    visiblePlanAffordable: false,
-    changeImpactAffordable: false,
-    runBudgetUnlimited: false,
-    runBudgetMaxModelCalls: 64,
-    runBudgetMaxToolCalls: 128,
-  },
+  preview: deriveLiveTokenBudgetPreview({
+    contextWindowTokens: 32_768,
+    runBudget: {
+      unlimited: false,
+      maxModelCalls: 64,
+      maxToolCalls: 128,
+    },
+  }),
 };
 
 const DEFAULT_UI: UiSettingsSnapshot = {
@@ -1984,6 +1975,12 @@ export function App() {
       ) : null}
 
       {nav === 'settings' ? (
+        <SettingsErrorBoundary
+          onReset={() => {
+            setSettingsTab('model');
+            navigate('settings', 'model');
+          }}
+        >
         <SettingsPanel
           tab={settingsTab}
           onTabChange={(tab) => {
@@ -2052,6 +2049,7 @@ export function App() {
           }
           saving={settingsSaving}
         />
+        </SettingsErrorBoundary>
       ) : null}
 
       {nav === 'skills' && skillManagement ? (

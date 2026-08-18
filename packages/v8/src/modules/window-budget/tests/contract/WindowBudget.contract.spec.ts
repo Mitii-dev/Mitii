@@ -21,6 +21,8 @@ describe("Window Budget contract", () => {
     );
     expect(result.reasonCodes).toContain("output_derived_from_window");
     expect(result.reasonCodes).toContain("tool_schema_fallback");
+    expect(result.reasonCodes).toContain("effort_medium");
+    expect(result.effort).toBe("medium");
   });
 
   it("rejects invalid input with a stable error code", () => {

@@ -223,6 +223,9 @@ export interface TokenBudgetFieldDescriptor {
   min: number;
   max?: number;
   step: number;
+  defaultValue?: number;
+  /** High-level Developer controls vs core ratio/clamp fields. */
+  tier?: 'simple' | 'advanced';
   /** Hide fields owned by Modes → Run budget. */
   hiddenFromDebug?: boolean;
 }

@@ -1,5 +1,9 @@
 import { WINDOW_BUDGET_SCHEMA_VERSION } from "../constants";
 import {
+  WINDOW_BUDGET_EFFORT_OVERLAY,
+  resolveWindowBudgetEffort,
+} from "../effort";
+import {
   WindowBudgetError,
   windowBudgetInputSchema,
   windowPolicySchema,
@@ -32,6 +36,9 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
   const policy = mergeWindowBudgetPolicy(parsed.policy);
   const windowTokens = parsed.contextWindowTokens;
   const reasonCodes: WindowBudgetReasonCode[] = [];
+  const effort = resolveWindowBudgetEffort(parsed.effort);
+  const overlay = WINDOW_BUDGET_EFFORT_OVERLAY[effort];
+  reasonCodes.push(`effort_${effort}`);
 
   const derivedOutput = clampInt(
     Math.floor(windowTokens * policy.outputRatio),
@@ -151,11 +158,17 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     policy.memoryReinjectCharsMax,
   );
 
-  const maxUniqueFilesPerCall = clampInt(
-    Math.floor(maximumOutputTokens / policy.filesPerOutputTokens),
-    policy.minUniqueFilesPerCall,
-    policy.maxUniqueFilesPerCallCap,
+  const windowDerivedFiles = Math.floor(
+    (windowTokens * policy.outputRatio) / policy.filesPerOutputTokens,
   );
+  const maxUniqueFilesPerCall = clampInt(
+    windowDerivedFiles,
+    policy.minUniqueFilesPerCall,
+    Math.min(policy.maxUniqueFilesPerCallCap, overlay.maxUniqueFilesPerCall),
+  );
+  if (windowDerivedFiles > overlay.maxUniqueFilesPerCall) {
+    reasonCodes.push("mutation_effort_capped");
+  }
   const maxPatchesPerCall = clampInt(
     maxUniqueFilesPerCall * 2,
     maxUniqueFilesPerCall,
@@ -176,11 +189,7 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     policy.diagnosticStepsBase,
     policy.diagnosticStepsMax,
   );
-  const maxModelCalls = clampInt(
-    Math.floor(usableInputTokens / policy.maxModelCallsPerUsable),
-    policy.maxModelCallsMin,
-    policy.maxModelCallsMax,
-  );
+  const maxModelCalls = overlay.maxModelCalls;
   const maxSkills = clampInt(
     policy.maxSkillsBase +
       Math.floor(usableInputTokens / policy.maxSkillsPerUsable),
@@ -206,6 +215,7 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
   return windowPolicySchema.parse({
     schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
     contextWindowTokens: windowTokens,
+    effort,
     maximumOutputTokens,
     toolSchemaTokens,
     usableInputTokens,
@@ -230,6 +240,8 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
       maxEstablishedFacts,
       establishedFactReinjectChars,
       memoryReinjectChars,
+      autoMaxTokens: overlay.compactionAutoMaxTokens,
+      hardMaxTokens: overlay.compactionHardMaxTokens,
     },
     mutation: {
       maxPatchesPerCall,
@@ -248,6 +260,7 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     run: {
       maxModelCalls,
       maxToolCalls: maxModelCalls * 2,
+      maxVerificationRepairs: overlay.maxVerificationRepairs,
     },
     skills: {
       budgetTokens: skillsTokens,

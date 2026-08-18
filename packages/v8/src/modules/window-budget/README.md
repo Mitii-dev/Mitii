@@ -4,7 +4,7 @@ Window Budget turns an advertised model context window into one proportional tok
 
 ## Responsibility
 
-Given `contextWindowTokens`, optional host `maximumOutputTokens`, optional measured tool-schema tokens, and optional policy overrides, produce a validated `WindowPolicy`.
+Given `contextWindowTokens`, optional host `maximumOutputTokens`, optional measured tool-schema tokens, optional `effort` (`low` | `medium` | `high`, default `medium`), and optional policy overrides, produce a validated `WindowPolicy`.
 
 ## Input
 
@@ -15,20 +15,23 @@ Given `contextWindowTokens`, optional host `maximumOutputTokens`, optional measu
 - `maximumOutputTokens`: omit or `0` to derive from the window; a positive value is a host override
 - `toolSchemaTokens`: omit or `0` to use the fallback; a positive value is a measured tool-JSON cost
 - `policy`: optional overrides for every ratio and clamp (developer settings)
+- `effort`: optional working-set overlay; omit to use `medium`
 
 ## Output
 
 `WindowPolicy`:
 
+- `effort`: `low` | `medium` | `high` (default `medium`)
 - `maximumOutputTokens` / `toolSchemaTokens` / `usableInputTokens` / `loopInputBudgetTokens`
 - `sections`: repository, conversation, plan, skills, system
-- `compaction`: warn/auto/hard ratios, how much tool history to keep, live
+- `compaction`: warn/auto/hard ratios plus absolute `autoMaxTokens` /
+  `hardMaxTokens` ceilings from the effort overlay, how much tool history to keep, live
   tool-result content budget, compacted result/argument budgets, dropped-turn
   summary budget, observation size/count, and memory/observation reinjection
   budgets
 - `mutation`: files per call and patch payload size (scaled from output)
 - `planning`: diagnostic step cap and whether a visible plan / change-impact gate is affordable
-- `run`: suggested model/tool call caps
+- `run`: model/tool call caps and `maxVerificationRepairs` from the effort overlay
 - `skills`: skill body budget and max selected skills
 - `maxVerificationChecks`
 - `resolvedPolicy`: the full policy after defaults + overrides
@@ -60,17 +63,22 @@ Worked defaults (`outputRatio=0.10`, tool fallback 8k / 20% of W):
 | Window | Output | Tools | Usable | Repo | Plan | Skills |
 |---|---|---|---|---|---|---|
 | 30k | 3,000 | 6,000 | ~21k | ~5.9k | ~1.3k | ~0.8k |
-| 100k | 8,000 | 8,000 | ~84k | ~23.5k | ~5.0k | 2.4k cap |
-| 200k | 8,000 | 8,000 | ~184k | 51.5k | 8k cap | 2.4k cap |
+| 100k | 10,000 | 8,000 | ~82k | ~23k | ~4.9k | ~3.3k |
+| 200k | 20,000 | 8,000 | ~172k | ~48k | ~10k | ~6.9k |
 
-Mutation batch size follows **output**, not file-count guesses:
+Mutation batch size follows the **context window**, then the effort overlay
+caps it so a 200k model does not keep 25-file patches:
 
 ```text
-maxUniqueFilesPerCall = clamp(O / filesPerOutputTokens, minFiles, maxFiles)
-maxPatchesPerCall     = clamp(files × 2, files, maxPatchesPerCallCap)
+windowFiles            = (W × outputRatio) / filesPerOutputTokens
+maxUniqueFilesPerCall  = clamp(windowFiles, minFiles, min(maxFilesCap, effort.maxUniqueFilesPerCall))
+maxPatchesPerCall      = clamp(files × 2, files, maxPatchesPerCallCap)
 maxPatchPayloadCharacters = O × charsPerOutputToken × patchPayloadOutputRatio
-preferredBatchSize    = maxUniqueFilesPerCall
+preferredBatchSize     = maxUniqueFilesPerCall
 ```
+
+Medium effort (the default): 30k → 3 files, 48k → 6 files, 200k → 8 files
+(not 25). High effort raises the 200k cap to 12; low effort lowers it to 4.
 
 Planning affordances follow **usable input**, scaled with the window so a 30k local cap still plans:
 
@@ -81,11 +89,12 @@ visiblePlanAffordable     = U >= visiblePlanThreshold
 changeImpactAffordable    = U >= changeImpactThreshold
 maxSkills                 = clamp(maxSkillsBase + U / maxSkillsPerUsable, base, cap)
 maxDiagnosticSteps        = clamp(base + U / perUsable, base, max)
-maxModelCalls             = clamp(U / maxModelCallsPerUsable, min, max)
+maxModelCalls             = effort overlay (medium: 40)
 ```
 
-A 30k local window still gets the `maxModelCallsMin` floor (48) so package-scale
-repair can run many small turns. Host `runBudget.unlimited` is not clamped.
+Effort also sets compaction ceilings (`autoMaxTokens` / `hardMaxTokens`) and
+`run.maxVerificationRepairs` (medium: 1). Host `runBudget.unlimited` is still
+clamped to these window-effort loop caps.
 
 Decision Policy then merges profile mutation budgets with these window caps using `min()` (and ORs `requireBatchedExecution`).
 
@@ -128,6 +137,7 @@ None. Pure function of the input contract. No LLM, filesystem, or host APIs.
 - `deriveWindowPolicy`
 - `mergeWindowBudgetPolicy`
 - `DEFAULT_WINDOW_BUDGET_POLICY` / `WINDOW_BUDGET_POLICY`
+- `WINDOW_BUDGET_EFFORTS` / `DEFAULT_WINDOW_BUDGET_EFFORT` / `WINDOW_BUDGET_EFFORT_OVERLAY` / `resolveWindowBudgetEffort`
 - `windowBudgetInputSchema`, `windowBudgetPolicySchema`, `windowPolicySchema`
 - inferred types and `WindowBudgetError`
 
@@ -145,7 +155,7 @@ None. Pure function of the input contract. No LLM, filesystem, or host APIs.
 
 The customer knob is the advertised context window. Built-in defaults already scale every derived budget from that window. Hosts should not require users to edit ratios.
 
-The VS Code host maps Debug → developer → **Custom token budget** onto `policy` overrides. Each field is also a `mitii.tokenBudget.*` setting. When the toggle is off, V8 defaults apply. When it is on, every ratio and cap is editable and persisted. Reset clears those overrides.
+The VS Code host maps Developer → **Token budget** onto `policy` overrides. Simple sliders cover files per mutation, output reserve, module shares, and verification checks. Advanced keeps the core ratios and clamps. Each field is also a `mitii.tokenBudget.*` setting. When the toggle is off, V8 defaults apply and scale with the context window. Moving a Simple slider turns custom budget on and pins that value so later window changes do not overwrite it. Reset clears those overrides.
 
 `mitii.provider.maximumOutputTokens = 0` means “derive O from the window”. A positive value is a host override and still cannot exceed `W − 1`.
 

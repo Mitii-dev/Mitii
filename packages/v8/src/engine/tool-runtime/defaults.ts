@@ -25,7 +25,7 @@ export const DEFAULT_FALLBACK_MUTATION_BUDGET = {
   maxPatchesPerCall: 8,
   maxUniqueFilesPerCall: 5,
   maxPatchPayloadCharacters: 24_000,
-  preferredBatchSize: 3,
+  preferredBatchSize: 8,
   requireBatchedExecution: false,
 } as const;
 

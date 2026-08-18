@@ -23,26 +23,26 @@ export const DECISION_POLICY_THRESHOLDS = {
 export const MUTATION_BUDGET_PROFILES = {
   /** Localized single-file / small edits — still capped to protect output tokens. */
   relaxed: {
-    maxPatchesPerCall: 12,
-    maxUniqueFilesPerCall: 8,
-    maxPatchPayloadCharacters: 40_000,
-    preferredBatchSize: 5,
+    maxPatchesPerCall: 48,
+    maxUniqueFilesPerCall: 32,
+    maxPatchPayloadCharacters: 80_000,
+    preferredBatchSize: 12,
     requireBatchedExecution: false,
   },
   /** Default agent execute path. */
   standard: {
-    maxPatchesPerCall: 8,
-    maxUniqueFilesPerCall: 5,
-    maxPatchPayloadCharacters: 24_000,
-    preferredBatchSize: 3,
+    maxPatchesPerCall: 36,
+    maxUniqueFilesPerCall: 24,
+    maxPatchPayloadCharacters: 48_000,
+    preferredBatchSize: 8,
     requireBatchedExecution: false,
   },
-  /** Large / multi-file / high-complexity refactors — force small batches. */
+  /** Large / multi-file / high-complexity refactors — batch, but do not shrink below window effort. */
   tight: {
-    maxPatchesPerCall: 5,
-    maxUniqueFilesPerCall: 3,
-    maxPatchPayloadCharacters: 16_000,
-    preferredBatchSize: 2,
+    maxPatchesPerCall: 16,
+    maxUniqueFilesPerCall: 12,
+    maxPatchPayloadCharacters: 32_000,
+    preferredBatchSize: 8,
     requireBatchedExecution: true,
   },
 } as const;

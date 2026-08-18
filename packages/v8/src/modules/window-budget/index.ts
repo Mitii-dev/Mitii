@@ -6,6 +6,16 @@ export {
 
 export { DEFAULT_WINDOW_BUDGET_POLICY } from "./defaults";
 export { WINDOW_BUDGET_POLICY, mergeWindowBudgetPolicy } from "./policy";
+export {
+  WINDOW_BUDGET_EFFORTS,
+  DEFAULT_WINDOW_BUDGET_EFFORT,
+  WINDOW_BUDGET_EFFORT_OVERLAY,
+  resolveWindowBudgetEffort,
+} from "./effort";
+export type {
+  WindowBudgetEffort,
+  WindowBudgetEffortOverlay,
+} from "./effort";
 
 export {
   deriveWindowPolicy,

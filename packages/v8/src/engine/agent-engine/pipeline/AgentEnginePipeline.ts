@@ -69,7 +69,6 @@ import { SKILLS_SCHEMA_VERSION } from "../../../modules/skills";
 import {
   TOOL_RUNTIME_SCHEMA_VERSION,
   fingerprintToolCall,
-  toolResultSchema,
 } from "../../tool-runtime";
 import type { ToolApprovalToken, ToolResult } from "../../tool-runtime";
 import {
@@ -89,6 +88,7 @@ import type {
 import {
   amendMessageWithClarification,
   assembleToolCalls,
+  annotateMutationToolDefinitions,
   buildClarificationPayload,
   buildExplorationStallNudge,
   buildIncompleteAnswerRecoveryMessage,
@@ -1328,15 +1328,18 @@ export class AgentEnginePipeline {
       }
 
       // --- Prompt ---
-      const tools = attachTaskListTool({
-        mode: envelope.mode,
-        tools: filterToolDefinitions({
-          grant: decision.toolGrant,
-          definitions:
-            input.tools ?? this.deps.toolDefinitions ?? DEFAULT_TOOL_DEFINITIONS,
-          supportsTools: this.deps.llm.capabilities.supportsTools,
+      const tools = annotateMutationToolDefinitions(
+        attachTaskListTool({
+          mode: envelope.mode,
+          tools: filterToolDefinitions({
+            grant: decision.toolGrant,
+            definitions:
+              input.tools ?? this.deps.toolDefinitions ?? DEFAULT_TOOL_DEFINITIONS,
+            supportsTools: this.deps.llm.capabilities.supportsTools,
+          }),
         }),
-      });
+        decision.toolGrant.mutationBudget,
+      );
 
       planText = appendTaskListToPlanText(planText, taskListRef.current);
 
@@ -1867,17 +1870,20 @@ export class AgentEnginePipeline {
       messages.push(toolOutcome.message);
       await this.deps.checkpointStore.delete(runId);
 
-      const toolDefinitions = attachTaskListTool({
-        mode: startInput.request.mode,
-        tools: filterToolDefinitions({
-          grant: decision.toolGrant,
-          definitions:
-            startInput.tools ??
-            this.deps.toolDefinitions ??
-            DEFAULT_TOOL_DEFINITIONS,
-          supportsTools: this.deps.llm.capabilities.supportsTools,
+      const toolDefinitions = annotateMutationToolDefinitions(
+        attachTaskListTool({
+          mode: startInput.request.mode,
+          tools: filterToolDefinitions({
+            grant: decision.toolGrant,
+            definitions:
+              startInput.tools ??
+              this.deps.toolDefinitions ??
+              DEFAULT_TOOL_DEFINITIONS,
+            supportsTools: this.deps.llm.capabilities.supportsTools,
+          }),
         }),
-      });
+        decision.toolGrant.mutationBudget,
+      );
 
       const loopOutcome = await this.runModelToolLoop({
         runId,
@@ -2239,6 +2245,7 @@ export class AgentEnginePipeline {
         explorationDepth: input.explorationDepth,
         consecutiveStalledRepairs,
         canStartModelCall: budget.canStartModelCall(),
+        maxAttempts: windowPolicy.run.maxVerificationRepairs,
       });
       const canRepair =
         verificationOutcome.repairable &&
@@ -2711,19 +2718,20 @@ export class AgentEnginePipeline {
     }
 
     const decisionOutcome = decideVerificationGate({
-      verificationRequired: decision.verification.required,
-      allowUnavailable: decision.verification.allowUnavailable,
-      changedFileCount: changedFiles.length,
-      mutationRequired: requiresMutationForExecute({
-        route: decision.route,
-        maximumWorkspaceEffect: decision.toolGrant.maximumWorkspaceEffect,
-        primaryTaskIntent,
-        reasonCodes: decision.reasonCodes,
-      }),
-      canVerify,
-      missingInfrastructure,
-      verification: verificationResult,
-    });
+        verificationRequired: decision.verification.required,
+        allowUnavailable: decision.verification.allowUnavailable,
+        changedFileCount: changedFiles.length,
+        mutationRequired: requiresMutationForExecute({
+          route: decision.route,
+          maximumWorkspaceEffect: decision.toolGrant.maximumWorkspaceEffect,
+          primaryTaskIntent,
+          reasonCodes: decision.reasonCodes,
+        }),
+        canVerify,
+        missingInfrastructure,
+        verification: verificationResult,
+        comparison,
+      });
 
     if (decisionOutcome.action === "accept") {
       this.applyVerificationAcceptSideEffects({
@@ -3192,6 +3200,7 @@ export class AgentEnginePipeline {
     let rejectedMutationRecoveries = 0;
     let rejectedToolRecoveries = 0;
     let readOnlyToolTurnsWithoutMutation = 0;
+    let readOnlyToolTurnsAfterMutation = 0;
     let awaitingReadOnlyMutationRetry = false;
     let readOnlyMutationRetryAttempts = 0;
     let awaitingRejectedMutationRetry:
@@ -3281,6 +3290,9 @@ export class AgentEnginePipeline {
         warnRatio: params.windowPolicy.compaction.warnRatio,
         autoRatio: params.windowPolicy.compaction.autoRatio,
         hardRatio: params.windowPolicy.compaction.hardRatio,
+        autoMaxTokens: params.windowPolicy.compaction.autoMaxTokens,
+        hardMaxTokens: params.windowPolicy.compaction.hardMaxTokens,
+        preservePrefix: this.deps.llm.capabilities.supportsPromptCaching,
       });
       if (
         compaction.pressure === "warn" &&
@@ -3333,13 +3345,19 @@ export class AgentEnginePipeline {
         (turnRequest.tools && turnRequest.tools.length > 0
           ? this.tokenEstimator.estimate(JSON.stringify(turnRequest.tools))
           : 0);
-      turnRequest.maximumOutputTokens = clampTurnMaximumOutputTokens({
-        reservedOutputTokens:
-          params.request.maximumOutputTokens ??
-          params.windowPolicy.maximumOutputTokens,
+      const reservedOutputTokens =
+        params.request.maximumOutputTokens ??
+        params.windowPolicy.maximumOutputTokens;
+      const overflowOutputTokens = clampTurnMaximumOutputTokens({
+        reservedOutputTokens,
         contextWindowTokens: params.windowPolicy.contextWindowTokens,
         usedInputTokens,
       });
+      turnRequest.maximumOutputTokens =
+        usedInputTokens + reservedOutputTokens <
+        params.windowPolicy.contextWindowTokens
+          ? reservedOutputTokens
+          : overflowOutputTokens;
 
       const turn = await this.consumeModelTurn({
         llm: this.deps.llm,
@@ -3381,6 +3399,8 @@ export class AgentEnginePipeline {
         turnIndex: Math.max(0, budget.snapshot().modelCalls - 1),
         inputTokens: turn.usage?.inputTokens,
         outputTokens: turn.usage?.outputTokens,
+        cacheHitTokens: turn.usage?.cacheHitTokens,
+        cacheMissTokens: turn.usage?.cacheMissTokens,
         finishReason: turn.finishReason,
         truncated: truncated || undefined,
         at: this.isoNow(),
@@ -4014,6 +4034,7 @@ export class AgentEnginePipeline {
         awaitingRejectedMutationRetry = undefined;
         awaitingReadOnlyMutationRetry = false;
         readOnlyToolTurnsWithoutMutation = 0;
+        readOnlyToolTurnsAfterMutation = 0;
         readOnlyMutationRetryAttempts = 0;
       } else if (
         isMutationRequired() &&
@@ -4053,6 +4074,30 @@ export class AgentEnginePipeline {
                 "The model repeatedly read files but did not apply the required workspace edits.",
             },
           };
+        }
+      } else if (
+        changedFiles.length > 0 &&
+        successfulToolCount > 0 &&
+        !attemptedMutatingTool
+      ) {
+        readOnlyToolTurnsAfterMutation += 1;
+        if (
+          readOnlyToolTurnsAfterMutation >=
+          AGENT_ENGINE_THRESHOLDS.maxReadOnlyToolTurnsAfterMutationNudge
+        ) {
+          if (budget.canStartModelCall()) {
+            readOnlyToolTurnsAfterMutation = 0;
+            reasonCodes.push("unfulfilled_execute_recovered");
+            messages.push({
+              role: "user",
+              content:
+                "Stop globbing/searching. Continue apply_patch for remaining errors, or run typecheck/diagnostics. Do not start a new exploration pass.",
+            });
+            warnings.push(
+              "Execute route spent multiple tool turns reading after mutations; requesting the next patch or verification.",
+            );
+            continue;
+          }
         }
       }
 
@@ -4374,56 +4419,9 @@ export class AgentEnginePipeline {
       !changeImpactGate.satisfied &&
       mutatingToolNames.has(toolCall.name)
     ) {
-      const now = this.isoNow();
-      const result = toolResultSchema.parse({
-        schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
-        callId: toolCall.id,
-        toolName: toolCall.name,
-        status: "rejected",
-        reasonCode: "invalid_arguments",
-        truncated: false,
-        redacted: false,
-        durationMs: 0,
-        bytesProduced: 0,
-        warnings: [
-          "Call analyze_change_impact on the primary seed path before the first mutating edit for this shared-scope repair.",
-        ],
-        audit: {
-          callId: toolCall.id,
-          toolName: toolCall.name,
-          startedAt: now,
-          endedAt: now,
-          status: "rejected",
-          reasonCode: "invalid_arguments",
-          inputPreview: toolCall.name,
-          bytesProduced: 0,
-          durationMs: 0,
-          truncated: false,
-          redacted: false,
-        },
-      });
-      reasonCodes.push("change_impact_gate_blocked");
-      toolCache.set(toolCall.id, result);
-      this.emit(bus, {
-        type: "tool_completed",
-        runId,
-        callId: toolCall.id,
-        toolName: toolCall.name,
-        status: result.status,
-        ...(summary ? { summary } : {}),
-        ...toolCompletionDiagnostics(result),
-        at: now,
-      });
-      return {
-        kind: "message",
-        message: {
-          role: "tool",
-          toolCallId: toolCall.id,
-          content: serializeToolResultForModel(result, {
-            maxContentChars: windowPolicy.compaction.toolResultContentChars,
-          }),
-        },
-      };
+      warnings.push(
+        "Proceeding with the mutating edit before analyze_change_impact. Call it on the primary seed when useful; do not block the batch.",
+      );
     }
 
     if (isUpdateTodosTool(toolCall.name)) {
@@ -4855,6 +4853,8 @@ export class AgentEnginePipeline {
     loopIterations: number;
     inputTokens: number;
     outputTokens: number;
+    cacheHitTokens: number;
+    cacheMissTokens: number;
     fileReadCalls: number;
     uniqueFilePathsTouched: number;
   }) {
@@ -4864,6 +4864,8 @@ export class AgentEnginePipeline {
       loopIterations: snapshot.loopIterations,
       inputTokens: snapshot.inputTokens,
       outputTokens: snapshot.outputTokens,
+      cacheHitTokens: snapshot.cacheHitTokens,
+      cacheMissTokens: snapshot.cacheMissTokens,
       fileReadCalls: snapshot.fileReadCalls,
       uniqueFilePathsTouched: snapshot.uniqueFilePathsTouched,
     };
@@ -4903,6 +4905,7 @@ export class AgentEnginePipeline {
       maximumOutputTokens: this.deps.llm.capabilities.maximumOutputTokens,
       toolSchemaTokens,
       policy: input.windowBudget?.policy,
+      effort: input.windowBudget?.effort,
     });
   }
 
@@ -4910,23 +4913,23 @@ export class AgentEnginePipeline {
     parsed: ReturnType<typeof agentRunBudgetSchema.parse>,
     windowPolicy: WindowPolicy,
   ): ReturnType<typeof agentRunBudgetSchema.parse> {
-    if (parsed.unlimited) {
-      return parsed;
-    }
+    const maxModelCalls = Math.min(
+      parsed.unlimited ? windowPolicy.run.maxModelCalls : parsed.maxModelCalls,
+      windowPolicy.run.maxModelCalls,
+    );
+    const maxToolCalls = Math.min(
+      parsed.unlimited ? windowPolicy.run.maxToolCalls : parsed.maxToolCalls,
+      windowPolicy.run.maxToolCalls,
+    );
+    const maxLoopIterations = Math.min(
+      parsed.unlimited ? windowPolicy.run.maxModelCalls : parsed.maxLoopIterations,
+      windowPolicy.run.maxModelCalls,
+    );
     return {
       ...parsed,
-      maxModelCalls: Math.min(
-        parsed.maxModelCalls,
-        windowPolicy.run.maxModelCalls,
-      ),
-      maxToolCalls: Math.min(
-        parsed.maxToolCalls,
-        windowPolicy.run.maxToolCalls,
-      ),
-      maxLoopIterations: Math.min(
-        parsed.maxLoopIterations,
-        windowPolicy.run.maxModelCalls,
-      ),
+      maxModelCalls,
+      maxToolCalls,
+      maxLoopIterations,
     };
   }
 
@@ -4941,7 +4944,12 @@ export class AgentEnginePipeline {
         kind: "completed";
         content: string;
         toolCalls: ModelToolCall[];
-        usage?: { inputTokens?: number; outputTokens?: number };
+        usage?: {
+          inputTokens?: number;
+          outputTokens?: number;
+          cacheHitTokens?: number;
+          cacheMissTokens?: number;
+        };
         finishReason?: string;
       }
     | { kind: "cancelled" }
@@ -4956,7 +4964,14 @@ export class AgentEnginePipeline {
     const contentParts: string[] = [];
     const reasoningParts: string[] = [];
     const toolDeltas: ModelToolCallDelta[] = [];
-    let usage: { inputTokens?: number; outputTokens?: number } | undefined;
+    let usage:
+      | {
+          inputTokens?: number;
+          outputTokens?: number;
+          cacheHitTokens?: number;
+          cacheMissTokens?: number;
+        }
+      | undefined;
     let finishReason: string | undefined;
 
     try {
@@ -4983,6 +4998,8 @@ export class AgentEnginePipeline {
             usage = {
               inputTokens: event.usage.inputTokens,
               outputTokens: event.usage.outputTokens,
+              cacheHitTokens: event.usage.cacheHitTokens,
+              cacheMissTokens: event.usage.cacheMissTokens,
             };
             break;
           case "completed":
@@ -4991,6 +5008,8 @@ export class AgentEnginePipeline {
               usage = {
                 inputTokens: event.usage.inputTokens,
                 outputTokens: event.usage.outputTokens,
+                cacheHitTokens: event.usage.cacheHitTokens,
+                cacheMissTokens: event.usage.cacheMissTokens,
               };
             }
             break;

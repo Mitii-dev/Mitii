@@ -18,7 +18,18 @@ import type {
   TokenBudgetSettingsSnapshot,
 } from './protocol.js';
 
-export const TOKEN_BUDGET_FIELDS: readonly TokenBudgetFieldDescriptor[] = [
+const SIMPLE_TOKEN_BUDGET_KEYS = new Set([
+  'outputRatio',
+  'repositoryShare',
+  'conversationShare',
+  'planShare',
+  'skillsShare',
+]);
+
+const TOKEN_BUDGET_FIELD_SPECS: readonly Omit<
+  TokenBudgetFieldDescriptor,
+  'defaultValue' | 'tier'
+>[] = [
   {
     key: 'outputRatio',
     group: 'Output reserve',
@@ -448,7 +459,8 @@ export const TOKEN_BUDGET_FIELDS: readonly TokenBudgetFieldDescriptor[] = [
     key: 'filesPerOutputTokens',
     group: 'Mutation batches',
     label: 'Files per output tokens',
-    description: 'Unique files per apply_patch call scale as output / this value.',
+    description:
+      'Unique files per apply_patch call scale as (context window × output ratio) / this value.',
     kind: 'number',
     min: 1,
     step: 50,
@@ -659,6 +671,14 @@ export const TOKEN_BUDGET_FIELDS: readonly TokenBudgetFieldDescriptor[] = [
   },
 ];
 
+export const TOKEN_BUDGET_FIELDS: readonly TokenBudgetFieldDescriptor[] =
+  TOKEN_BUDGET_FIELD_SPECS.map((field) => ({
+    ...field,
+    defaultValue:
+      DEFAULT_WINDOW_BUDGET_POLICY[field.key as keyof WindowBudgetPolicy],
+    tier: SIMPLE_TOKEN_BUDGET_KEYS.has(field.key) ? 'simple' : 'advanced',
+  }));
+
 export function tokenBudgetResetKeys(): readonly string[] {
   return [
     'tokenBudget.enabled',
@@ -718,11 +738,13 @@ export function toTokenBudgetPreview(
     compactionWarnTokens: Math.floor(
       policy.loopInputBudgetTokens * policy.compaction.warnRatio,
     ),
-    compactionAutoTokens: Math.floor(
-      policy.loopInputBudgetTokens * policy.compaction.autoRatio,
+    compactionAutoTokens: Math.min(
+      Math.floor(policy.loopInputBudgetTokens * policy.compaction.autoRatio),
+      policy.compaction.autoMaxTokens,
     ),
-    compactionHardTokens: Math.floor(
-      policy.loopInputBudgetTokens * policy.compaction.hardRatio,
+    compactionHardTokens: Math.min(
+      Math.floor(policy.loopInputBudgetTokens * policy.compaction.hardRatio),
+      policy.compaction.hardMaxTokens,
     ),
     keepRecentToolResults: policy.compaction.keepRecentToolResults,
     compactedToolResultChars: policy.compaction.compactedToolResultChars,

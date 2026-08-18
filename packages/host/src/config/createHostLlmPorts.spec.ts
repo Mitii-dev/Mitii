@@ -26,6 +26,8 @@ describe('createHostLlmPorts', () => {
     expect(ports.type).toBe('openai-compatible');
     expect(ports.providerLabel).toBe('openai-compatible:deepseek-chat');
     expect(ports.runLlm.id).toBe('openai-compatible');
+    expect(ports.runLlm.capabilities.supportsPromptCaching).toBe(true);
+    expect(ports.understandingLlm.capabilities.supportsPromptCaching).toBe(true);
   });
 
   it('constructs native anthropic and gemini ports', () => {

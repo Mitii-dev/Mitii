@@ -13,7 +13,7 @@ export const applyPatchTool: RegisteredTool = {
     name: "apply_patch",
     effects: ["workspace_write"],
     description:
-      "Apply structured oldText/newText patches inside a recoverable transaction. Batch small: prefer ≤3 files per call (hard max from grant mutationBudget, catalog max 12). Use minimal hunks — never rewrite many whole files in one response; continue across turns for large refactors. Create new files with oldText=\"\". For deletes use delete_file/delete_directory; for renames/moves use move_file.",
+      "Apply structured oldText/newText patches inside a recoverable transaction. Batch to the mutation budget on this grant (preferredBatchSize / maxUniqueFilesPerCall; catalog max 12 unique files). Use minimal hunks — never rewrite many whole files in one response; continue across turns for large refactors. Create new files with oldText=\"\". For deletes use delete_file/delete_directory; for renames/moves use move_file.",
     inputSchema: applyPatchInputSchema,
     outputSchema: applyPatchOutputSchema,
     modelInputSchema: {

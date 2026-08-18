@@ -123,7 +123,7 @@ Decision Policy execution decision returns a result like this:
     "pathScopes": ["."],
     "approvalMode": "on_request",
     "limits": { "maxToolCalls": 20, "maxWallTimeMs": 120000, "maxOutputBytes": 256000 },
-    "mutationBudget": { "maxPatchesPerCall": 6, "maxUniqueFilesPerCall": 3, "maxPatchPayloadCharacters": 24000, "preferredBatchSize": 2, "requireBatchedExecution": false }
+    "mutationBudget": { "maxPatchesPerCall": 16, "maxUniqueFilesPerCall": 8, "maxPatchPayloadCharacters": 32000, "preferredBatchSize": 8, "requireBatchedExecution": true }
   },
   "verification": { "required": true, "minimumEvidence": ["tests_or_diagnostics"], "allowUnavailable": false },
   "reasonCodes": ["execute_requested", "localized_change", "verification_required"]

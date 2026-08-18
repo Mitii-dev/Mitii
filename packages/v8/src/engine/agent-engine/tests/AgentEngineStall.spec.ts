@@ -663,4 +663,111 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.usage.modelCalls).toBe(2);
     expect(result.answer ?? "").not.toContain("Should not be reached");
   });
+
+  it("nudges after consecutive glob/search turns following a mutation", async () => {
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        toolGrant: createReadOnlyGrant({
+          maximumWorkspaceEffect: "write",
+          allowedTools: ["glob_files", "apply_patch"],
+          allowedEffects: ["workspace_read", "workspace_write"],
+          approvalMode: "never",
+        }),
+        reasonCodes: ["mutation_execute"],
+      }),
+      llm: new ScriptedLlmPort(
+        [
+          { toolCalls: [patchCall("call_patch_first")] },
+          {
+            toolCalls: [
+              {
+                id: "call_glob_1",
+                name: "glob_files",
+                arguments: JSON.stringify({ pattern: "**/*.ts" }),
+              },
+            ],
+          },
+          {
+            toolCalls: [
+              {
+                id: "call_glob_2",
+                name: "glob_files",
+                arguments: JSON.stringify({ pattern: "**/*.tsx" }),
+              },
+            ],
+          },
+          {
+            toolCalls: [
+              {
+                id: "call_glob_3",
+                name: "glob_files",
+                arguments: JSON.stringify({ pattern: "**/*.js" }),
+              },
+            ],
+          },
+          { content: "Continuing after the glob stall nudge." },
+        ],
+        createCapabilities({ supportsTools: true }),
+      ),
+    });
+    const originalExecute = deps.tools!.execute.bind(deps.tools);
+    deps.tools = {
+      ...deps.tools!,
+      execute: async (input, options): Promise<ToolResult> => {
+        if (input.toolName === "apply_patch") {
+          return {
+            schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+            callId: input.callId,
+            toolName: input.toolName,
+            status: "succeeded",
+            truncated: false,
+            redacted: false,
+            durationMs: 1,
+            bytesProduced: 24,
+            warnings: [],
+            output: {
+              checkpointId: "ckpt_1",
+              changedFiles: ["src/form.ts"],
+            },
+            audit: {
+              callId: input.callId,
+              toolName: input.toolName,
+              startedAt: "2026-07-25T12:00:00.000Z",
+              endedAt: "2026-07-25T12:00:00.001Z",
+              status: "succeeded",
+              inputPreview: "{}",
+              outputPreview: "{}",
+              bytesProduced: 24,
+              durationMs: 1,
+              truncated: false,
+              redacted: false,
+            },
+          };
+        }
+        return originalExecute(input, options);
+      },
+    };
+
+    const engine = new AgentEnginePipeline(deps);
+    const result = await engine.start(
+      agentEngineStartInputSchema.parse({
+        schemaVersion: 1,
+        request: {
+          sessionId: "sess_post_mutation_glob_stall",
+          mode: "agent",
+          userMessage: "Fix all TypeScript errors",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/workspace",
+      }),
+    ).result;
+
+    expect(result.status).toBe("completed");
+    expect(result.reasonCodes).toContain("mutation_applied");
+    expect(result.reasonCodes).toContain("unfulfilled_execute_recovered");
+    expect(result.warnings.some((warning) => warning.includes("reading after mutations"))).toBe(
+      true,
+    );
+  });
 });

@@ -39,7 +39,11 @@ describe('AnthropicLlmPort', () => {
             },
           ],
           stop_reason: 'tool_use',
-          usage: { input_tokens: 3, output_tokens: 2 },
+          usage: {
+            input_tokens: 30,
+            output_tokens: 2,
+            cache_read_input_tokens: 70,
+          },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       );
@@ -101,8 +105,14 @@ describe('AnthropicLlmPort', () => {
       'tool_calls',
     );
     expect(completed?.type === 'completed' && completed.usage?.totalTokens).toBe(
-      5,
+      32,
     );
+    expect(
+      completed?.type === 'completed' && completed.usage?.cacheHitTokens,
+    ).toBe(70);
+    expect(
+      completed?.type === 'completed' && completed.usage?.cacheMissTokens,
+    ).toBe(30);
   });
 
   it('maps SSE text and tool-use deltas', async () => {

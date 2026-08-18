@@ -701,7 +701,7 @@ describe("AgentEngine task list", () => {
     expect(result.reasonCodes).toContain("task_list_updated");
   });
 
-  it("blocks the first mutation until analyze_change_impact runs when recommended", async () => {
+  it("lets the first mutation proceed while change-impact is still recommended", async () => {
     const llm = new ScriptedLlmPort([
       {
         content: "",
@@ -768,7 +768,7 @@ describe("AgentEngine task list", () => {
 
     const result = await engine.start(agentStartInput()).result;
     expect(result.status).toBe("completed");
-    expect(result.reasonCodes).toContain("change_impact_gate_blocked");
+    expect(result.reasonCodes).not.toContain("change_impact_gate_blocked");
     expect(result.reasonCodes).toContain("change_impact_observed");
   });
 });

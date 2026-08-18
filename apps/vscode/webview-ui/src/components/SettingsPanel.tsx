@@ -7,6 +7,10 @@ import {
   type ReactNode,
 } from 'react';
 
+import {
+  deriveLiveTokenBudgetPreview,
+  resolvePreviewContextWindow,
+} from '@mitii/live-token-budget';
 import { getProviderPreset, PROVIDER_OPTIONS } from '../providerOptions';
 import type {
   CheckpointItemView,
@@ -20,7 +24,6 @@ import type {
   SemanticIndexSource,
   SettingsTab,
   SettingsProfileView,
-  TokenBudgetFieldDescriptor,
   TokenBudgetPreview,
   UiSettingsPatch,
   UiSettingsSnapshot,
@@ -40,7 +43,9 @@ import {
   IconPlan,
   IconPlug,
 } from './Icons';
-import { TokenBudgetFieldHelp } from './TokenBudgetFieldHelp';
+import { NumberField } from './NumberField';
+import { TokenBudgetAllocation } from './TokenBudgetAllocation';
+import { TokenBudgetEditor } from './TokenBudgetEditor';
 
 interface SettingsPanelProps {
   tab: SettingsTab;
@@ -208,105 +213,6 @@ function SettingsSection({
   );
 }
 
-function NumberField({
-  id,
-  label,
-  value,
-  min,
-  max,
-  step,
-  disabled,
-  integer = true,
-  hint,
-  footer,
-  onCommit,
-}: {
-  id: string;
-  label: string;
-  value: number;
-  min?: number;
-  max?: number;
-  step?: number;
-  disabled?: boolean;
-  integer?: boolean;
-  hint?: string;
-  footer?: ReactNode;
-  onCommit: (value: number) => void;
-}) {
-  const [draft, setDraft] = useState(String(value));
-  const draftRef = useRef(draft);
-  const focusedRef = useRef(false);
-  draftRef.current = draft;
-
-  useEffect(() => {
-    if (!focusedRef.current) {
-      setDraft(String(value));
-    }
-  }, [value]);
-
-  const parseDraft = (nextDraft: string): number | undefined => {
-    if (!nextDraft.trim()) {
-      return undefined;
-    }
-    const parsed = Number(nextDraft);
-    if (!Number.isFinite(parsed)) {
-      return undefined;
-    }
-    const rounded = integer ? Math.floor(parsed) : parsed;
-    return Math.max(
-      min ?? Number.NEGATIVE_INFINITY,
-      Math.min(max ?? Number.POSITIVE_INFINITY, rounded),
-    );
-  };
-
-  const commit = (nextDraft: string) => {
-    const bounded = parseDraft(nextDraft);
-    if (bounded === undefined) {
-      setDraft(String(value));
-      return;
-    }
-    setDraft(String(bounded));
-    if (bounded !== value) onCommit(bounded);
-  };
-
-  return (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
-      <input
-        id={id}
-        type="number"
-        inputMode="numeric"
-        min={min}
-        max={max}
-        step="any"
-        disabled={disabled}
-        title={hint}
-        data-step={step}
-        value={draft}
-        onFocus={() => {
-          focusedRef.current = true;
-        }}
-        onChange={(e) => {
-          const nextDraft = e.target.value;
-          draftRef.current = nextDraft;
-          setDraft(nextDraft);
-        }}
-        onBlur={() => {
-          focusedRef.current = false;
-          commit(draftRef.current);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            commit(draftRef.current);
-          }
-        }}
-      />
-      {footer}
-    </div>
-  );
-}
-
 function KeyValueList({
   rows,
 }: {
@@ -332,9 +238,11 @@ function CustomerWindowBudgetSummary({
   return (
     <div className="token-budget-preview">
       <p className="field-hint">
-        These values follow the context window automatically. You do not need
-        Developer options. Click Save after changing the window to recompute.
+        These values follow the context window as you edit it. Use Developer →
+        Token budget if you need sliders for files per mutation or module
+        shares.
       </p>
+      <TokenBudgetAllocation preview={preview} />
       <KeyValueList
         rows={[
           { label: 'Effective window', value: String(preview.contextWindowTokens) },
@@ -389,80 +297,13 @@ function TokenBudgetPreviewTable({ preview }: { preview: TokenBudgetPreview }) {
   return (
     <div className="token-budget-preview">
       <p className="field-hint">
-        Derived split for the current window. Save to recompute. Shares are of
-        usable input (window − output − tools). Model and tool call limits are
-        owned by Modes → Run budget.
+        Derived split for the current window. Shares are of usable input
+        (window − output − tools). Model and tool call limits are owned by
+        Modes → Run budget.
       </p>
       <KeyValueList
         rows={rows.map(([label, value]) => ({ label, value }))}
       />
-    </div>
-  );
-}
-
-function TokenBudgetFields({
-  fields,
-  policy,
-  preview,
-  disabled,
-  onChange,
-}: {
-  fields: TokenBudgetFieldDescriptor[];
-  policy: Record<string, number>;
-  preview: TokenBudgetPreview;
-  disabled: boolean;
-  onChange: (key: string, value: number) => void;
-}) {
-  const groups = useMemo(() => {
-    const next = new Map<string, TokenBudgetFieldDescriptor[]>();
-    for (const field of fields) {
-      if (field.hiddenFromDebug) continue;
-      const group = next.get(field.group) ?? [];
-      group.push(field);
-      next.set(field.group, group);
-    }
-    return [...next.entries()];
-  }, [fields]);
-
-  if (fields.length === 0) {
-    return (
-      <p className="field-hint">
-        Token-budget fields appear after the host sends settings.
-      </p>
-    );
-  }
-
-  return (
-    <div className="token-budget-fields">
-      {groups.map(([group, groupFields]) => (
-        <div key={group} className="token-budget-group">
-          <h4 className="settings-category__title">{group}</h4>
-          <div className="settings-field-grid">
-            {groupFields.map((field) => (
-              <NumberField
-                key={field.key}
-                id={`tokenBudget.${field.key}`}
-                label={field.label}
-                min={field.min}
-                max={field.max}
-                step={field.step}
-                integer={field.kind === 'int'}
-                disabled={disabled}
-                hint={field.description}
-                value={policy[field.key] ?? field.min}
-                footer={
-                  <TokenBudgetFieldHelp
-                    field={field}
-                    value={policy[field.key] ?? field.min}
-                    preview={preview}
-                  />
-                }
-                onCommit={(value) => onChange(field.key, value)}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
@@ -518,6 +359,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
     useState<'ask' | 'plan' | 'agent'>('ask');
   const [newProfileOpen, setNewProfileOpen] = useState(false);
   const [newProfileName, setNewProfileName] = useState('');
+  const [draftContextWindow, setDraftContextWindow] = useState<
+    number | undefined
+  >();
+  const [draftMaxOutput, setDraftMaxOutput] = useState<number | undefined>();
   const rootRef = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
   const [iconTooltip, setIconTooltip] = useState<{
@@ -595,6 +440,33 @@ export function SettingsPanel(props: SettingsPanelProps) {
   );
   const keyRequired =
     provider.type === 'anthropic' || provider.type === 'gemini';
+  const previewContextWindow = resolvePreviewContextWindow({
+    draft: draftContextWindow,
+    stored: provider.contextWindow,
+    effective: provider.effectiveContextWindow,
+    fallback: ui.tokenBudget.preview.contextWindowTokens,
+  });
+  const previewMaxOutput =
+    draftMaxOutput ?? provider.maximumOutputTokens;
+  const livePreview = useMemo(() => {
+    try {
+      return deriveLiveTokenBudgetPreview({
+        contextWindowTokens: previewContextWindow,
+        maximumOutputTokens: previewMaxOutput,
+        policy: ui.tokenBudget.enabled ? ui.tokenBudget.policy : undefined,
+        runBudget: ui.runBudget,
+      });
+    } catch {
+      return ui.tokenBudget.preview;
+    }
+  }, [
+    previewContextWindow,
+    previewMaxOutput,
+    ui.runBudget,
+    ui.tokenBudget.enabled,
+    ui.tokenBudget.policy,
+    ui.tokenBudget.preview,
+  ]);
 
   return (
     <div
@@ -781,7 +653,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
               <SettingsSection
                 title="Token limits"
-                description="Set the context window for this machine. Mitii scales retrieval, compaction, mutation batches, and verification from that window. Developer options are not required."
+                description="Set the context window for this machine. Retrieval, compaction, mutation batches, and verification update immediately from that window."
               >
                 <div className="settings-field-grid">
                   <NumberField
@@ -790,12 +662,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     min={0}
                     step={1}
                     value={provider.contextWindow}
-                    onCommit={(value) =>
+                    onDraftChange={setDraftContextWindow}
+                    onCommit={(value) => {
+                      setDraftContextWindow(undefined);
                       onProviderChange((prev) => ({
                         ...prev,
                         contextWindow: value,
-                      }))
-                    }
+                      }));
+                    }}
                   />
                   <NumberField
                     id="maxOutput"
@@ -803,12 +677,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     min={0}
                     step={1}
                     value={provider.maximumOutputTokens}
-                    onCommit={(value) =>
+                    onDraftChange={setDraftMaxOutput}
+                    onCommit={(value) => {
+                      setDraftMaxOutput(undefined);
                       onProviderChange((prev) => ({
                         ...prev,
                         maximumOutputTokens: value,
-                      }))
-                    }
+                      }));
+                    }}
                   />
                 </div>
                 <p className="field-hint">
@@ -830,7 +706,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     numbers.
                   </p>
                 ) : null}
-                <CustomerWindowBudgetSummary preview={ui.tokenBudget.preview} />
+                <CustomerWindowBudgetSummary preview={livePreview} />
                 <div className="row">
                   <button
                     type="button"
@@ -1278,7 +1154,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
               <SettingsSection
                 title="Token budget"
-                description="Optional overrides. Leave this off unless you need to change ratios. The context window already scales the built-in defaults."
+                description="The context window drives these numbers. Open Simple sliders to tune files per mutation and module shares. Advanced keeps the core clamps."
               >
                 <div
                   className={`developer-options${
@@ -1298,7 +1174,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     />
                     Custom token budget
                   </label>
-                  <TokenBudgetPreviewTable preview={ui.tokenBudget.preview} />
+                  <p className="field-hint">
+                    {ui.tokenBudget.enabled
+                      ? 'Custom values stay put when the window changes. Reset to follow the window again.'
+                      : 'Leave off to follow the context window. Moving a Simple slider turns this on.'}
+                  </p>
                   <div className="row">
                     <button
                       type="button"
@@ -1309,17 +1189,23 @@ export function SettingsPanel(props: SettingsPanelProps) {
                       Reset budgets to defaults
                     </button>
                   </div>
-                  <TokenBudgetFields
+                  <TokenBudgetEditor
                     fields={ui.tokenBudget.fields}
                     policy={ui.tokenBudget.policy}
-                    preview={ui.tokenBudget.preview}
-                    disabled={!ui.developerEnabled || !ui.tokenBudget.enabled}
-                    onChange={(key, value) =>
+                    preview={livePreview}
+                    customEnabled={ui.tokenBudget.enabled}
+                    outputOverride={previewMaxOutput > 0}
+                    disabled={!ui.developerEnabled}
+                    onPolicyChange={(patch) =>
                       onSaveUi({
-                        tokenBudget: { policy: { [key]: value } },
+                        tokenBudget: { enabled: true, policy: patch },
                       })
                     }
                   />
+                  <details className="settings-advanced">
+                    <summary>Derived counts</summary>
+                    <TokenBudgetPreviewTable preview={livePreview} />
+                  </details>
                 </div>
               </SettingsSection>
 

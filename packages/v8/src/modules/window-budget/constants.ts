@@ -9,6 +9,10 @@ export const WINDOW_BUDGET_REASON_CODES = [
   "tool_schema_measured",
   "tool_schema_fallback",
   "usable_input_clamped",
+  "effort_low",
+  "effort_medium",
+  "effort_high",
+  "mutation_effort_capped",
 ] as const;
 
 export const WINDOW_BUDGET_ERROR_CODES = ["invalid_input"] as const;

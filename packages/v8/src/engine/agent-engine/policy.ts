@@ -26,10 +26,15 @@ export const AGENT_ENGINE_THRESHOLDS = {
    * reach apply_patch.
    */
   maxReadOnlyToolTurnsBeforeMutationNudge: 6,
+  /**
+   * After the first mutation, cap consecutive non-mutating tool turns so
+   * glob/search cannot spin while the transcript is expensive.
+   */
+  maxReadOnlyToolTurnsAfterMutationNudge: 3,
   /** Fallback preferred batch size when grant omits mutationBudget. */
-  defaultPreferredBatchSize: 3,
+  defaultPreferredBatchSize: 8,
   /** Fallback hard patch cap when grant omits mutationBudget. */
-  defaultMaxPatchesPerCall: 8,
+  defaultMaxPatchesPerCall: 16,
   /**
    * Flag context-loss re-reads when file-read calls exceed unique paths
    * by this ratio and at least `explorationRereadMinCalls` reads occurred.
@@ -40,10 +45,9 @@ export const AGENT_ENGINE_THRESHOLDS = {
   maxExplorationStallNudges: 1,
   /**
    * In-run remaining-error repairs after a repairable verification failure.
-   * Small windows can only patch a few files per turn, so package-scale
-   * diagnostic work needs multiple verify → patch cycles.
+   * Medium effort is one repair; lint-only leftovers should not reopen the loop.
    */
-  maxVerificationRepairAttempts: 8,
+  maxVerificationRepairAttempts: 1,
   /** Stop repairing after this many consecutive non-improving verifies. */
   maxStalledVerificationRepairs: 2,
 } as const;

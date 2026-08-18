@@ -1,4 +1,7 @@
-import type { VerificationResult } from "../../../modules/verification";
+import type {
+  RepoBuildStateComparison,
+  VerificationResult,
+} from "../../../modules/verification";
 
 /**
  * Pure decision for how Agent Engine should treat a Verification result.
@@ -46,6 +49,7 @@ export function decideVerificationGate(params: {
   canVerify: boolean;
   missingInfrastructure?: readonly string[];
   verification?: VerificationResult;
+  comparison?: RepoBuildStateComparison;
 }): VerificationGateDecision {
   if (params.mutationRequired && params.changedFileCount === 0) {
     return {
@@ -104,6 +108,9 @@ export function decideVerificationGate(params: {
       // Keep mutations; do not roll back a successful edit for missing scripts.
       return { action: "accept", acceptKind: "implemented_unverified" };
     case "verification_failed":
+      if (isUserGoalComplete({ verification, comparison: params.comparison })) {
+        return { action: "accept", acceptKind: "implemented_unverified" };
+      }
       return {
         action: "reject",
         repairable: true,
@@ -157,6 +164,40 @@ export function decideVerificationGate(params: {
       };
     }
   }
+}
+
+/**
+ * True when compiler/diagnostics errors are gone and the only remaining
+ * failed checks are lint/format. Those leftovers must not reopen a long
+ * repair loop after the user-visible typecheck work succeeded.
+ */
+export function isUserGoalComplete(params: {
+  verification: VerificationResult;
+  comparison?: RepoBuildStateComparison;
+}): boolean {
+  const { verification, comparison } = params;
+  if (
+    comparison &&
+    (comparison.afterErrorCount > 0 || comparison.newErrorCount > 0)
+  ) {
+    return false;
+  }
+  const failed = verification.checks.filter(
+    (check) => check.outcome === "failed" || check.outcome === "timed_out",
+  );
+  if (failed.length === 0) {
+    return comparison !== undefined && comparison.afterErrorCount === 0;
+  }
+  const lintOnly = failed.every(
+    (check) => check.kind === "lint" || check.kind === "format",
+  );
+  const typecheckOrBuildFailed = failed.some(
+    (check) => check.kind === "typecheck" || check.kind === "build",
+  );
+  const diagnosticsFailed = failed.some(
+    (check) => check.kind === "diagnostics" || check.kind === "syntax",
+  );
+  return lintOnly && !typecheckOrBuildFailed && !diagnosticsFailed;
 }
 
 function isSoftUnavailableBlock(

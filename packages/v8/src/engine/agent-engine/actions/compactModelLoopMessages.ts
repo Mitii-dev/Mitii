@@ -45,6 +45,15 @@ export function compactModelLoopMessages(params: {
   warnRatio?: number;
   autoRatio?: number;
   hardRatio?: number;
+  /** Absolute cap for auto compaction (effort overlay). */
+  autoMaxTokens?: number;
+  /** Absolute cap for hard compaction (effort overlay). */
+  hardMaxTokens?: number;
+  /**
+   * Prefix-cache providers: do not rewrite history until the hard window
+   * ceiling. Compacting the prefix turns cache hits into misses.
+   */
+  preservePrefix?: boolean;
   /** Budgeted memory facts to reinject after auto/hard compaction. */
   memoryFacts?: readonly { id: string; content: string }[];
   maxMemoryReinjectChars?: number;
@@ -77,6 +86,9 @@ export function compactModelLoopMessages(params: {
     warnRatio: params.warnRatio ?? DEFAULT_WARN_RATIO,
     autoRatio: params.autoRatio ?? DEFAULT_AUTO_RATIO,
     hardRatio: params.hardRatio ?? DEFAULT_HARD_RATIO,
+    autoMaxTokens: params.autoMaxTokens,
+    hardMaxTokens: params.hardMaxTokens,
+    preservePrefix: params.preservePrefix,
   });
 
   let working = params.messages.map(cloneMessage);
@@ -273,6 +285,9 @@ export function resolveCompactionThresholds(params: {
   warnRatio?: number;
   autoRatio?: number;
   hardRatio?: number;
+  autoMaxTokens?: number;
+  hardMaxTokens?: number;
+  preservePrefix?: boolean;
 }): ModelLoopCompactionThresholds {
   const budgetTokens = Math.max(1, Math.floor(params.budgetTokens));
   const warnRatio = clampRatio(params.warnRatio ?? DEFAULT_WARN_RATIO);
@@ -280,10 +295,31 @@ export function resolveCompactionThresholds(params: {
   const hardRatio = clampRatio(params.hardRatio ?? DEFAULT_HARD_RATIO);
   const sorted = [warnRatio, autoRatio, hardRatio].sort((a, b) => a - b);
 
+  let warnTokens = Math.max(1, Math.floor(budgetTokens * sorted[0]!));
+  let autoTokens = Math.max(1, Math.floor(budgetTokens * sorted[1]!));
+  let hardTokens = Math.max(1, Math.floor(budgetTokens * sorted[2]!));
+
+  if (params.autoMaxTokens !== undefined) {
+    autoTokens = Math.min(autoTokens, Math.max(1, Math.floor(params.autoMaxTokens)));
+  }
+  if (params.hardMaxTokens !== undefined) {
+    hardTokens = Math.min(hardTokens, Math.max(1, Math.floor(params.hardMaxTokens)));
+  }
+  if (params.preservePrefix) {
+    autoTokens = hardTokens;
+    warnTokens = Math.min(warnTokens, autoTokens);
+  }
+  if (autoTokens < warnTokens) {
+    warnTokens = autoTokens;
+  }
+  if (hardTokens < autoTokens) {
+    hardTokens = autoTokens;
+  }
+
   return {
-    warnTokens: Math.max(1, Math.floor(budgetTokens * sorted[0]!)),
-    autoTokens: Math.max(1, Math.floor(budgetTokens * sorted[1]!)),
-    hardTokens: Math.max(1, Math.floor(budgetTokens * sorted[2]!)),
+    warnTokens,
+    autoTokens,
+    hardTokens,
   };
 }
 

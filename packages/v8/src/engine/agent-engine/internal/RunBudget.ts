@@ -6,6 +6,8 @@ export class RunBudgetTracker {
   private loopIterations = 0;
   private inputTokens = 0;
   private outputTokens = 0;
+  private cacheHitTokens = 0;
+  private cacheMissTokens = 0;
   private fileReadCalls = 0;
   private readonly touchedFilePaths = new Set<string>();
   private readonly startedMs: number;
@@ -21,6 +23,8 @@ export class RunBudgetTracker {
       loopIterations?: number;
       inputTokens?: number;
       outputTokens?: number;
+      cacheHitTokens?: number;
+      cacheMissTokens?: number;
     },
     excludedWaitMs: number = 0,
   ) {
@@ -31,6 +35,8 @@ export class RunBudgetTracker {
     this.loopIterations = initialUsage?.loopIterations ?? 0;
     this.inputTokens = initialUsage?.inputTokens ?? 0;
     this.outputTokens = initialUsage?.outputTokens ?? 0;
+    this.cacheHitTokens = initialUsage?.cacheHitTokens ?? 0;
+    this.cacheMissTokens = initialUsage?.cacheMissTokens ?? 0;
   }
 
   public recordModelCall(): void {
@@ -58,12 +64,20 @@ export class RunBudgetTracker {
   public addUsage(usage?: {
     inputTokens?: number;
     outputTokens?: number;
+    cacheHitTokens?: number;
+    cacheMissTokens?: number;
   }): void {
     if (usage?.inputTokens !== undefined) {
       this.inputTokens += usage.inputTokens;
     }
     if (usage?.outputTokens !== undefined) {
       this.outputTokens += usage.outputTokens;
+    }
+    if (usage?.cacheHitTokens !== undefined) {
+      this.cacheHitTokens += usage.cacheHitTokens;
+    }
+    if (usage?.cacheMissTokens !== undefined) {
+      this.cacheMissTokens += usage.cacheMissTokens;
     }
   }
 
@@ -139,6 +153,8 @@ export class RunBudgetTracker {
     loopIterations: number;
     inputTokens: number;
     outputTokens: number;
+    cacheHitTokens: number;
+    cacheMissTokens: number;
     fileReadCalls: number;
     uniqueFilePathsTouched: number;
   } {
@@ -148,6 +164,8 @@ export class RunBudgetTracker {
       loopIterations: this.loopIterations,
       inputTokens: this.inputTokens,
       outputTokens: this.outputTokens,
+      cacheHitTokens: this.cacheHitTokens,
+      cacheMissTokens: this.cacheMissTokens,
       fileReadCalls: this.fileReadCalls,
       uniqueFilePathsTouched: this.touchedFilePaths.size,
     };

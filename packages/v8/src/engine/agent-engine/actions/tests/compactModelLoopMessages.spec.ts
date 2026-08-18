@@ -352,4 +352,26 @@ describe("compactModelLoopMessages", () => {
       "previous_completed_tool_call_arguments_omitted",
     );
   });
+
+  it("caps auto compaction with an absolute token ceiling", () => {
+    const thresholds = resolveCompactionThresholds({
+      budgetTokens: 200_000,
+      autoMaxTokens: 32_000,
+      hardMaxTokens: 40_000,
+    });
+    expect(thresholds.autoTokens).toBe(32_000);
+    expect(thresholds.hardTokens).toBe(40_000);
+    expect(thresholds.warnTokens).toBeLessThanOrEqual(thresholds.autoTokens);
+  });
+
+  it("delays auto compaction until the hard ceiling when preserving the prefix", () => {
+    const thresholds = resolveCompactionThresholds({
+      budgetTokens: 200_000,
+      autoMaxTokens: 32_000,
+      hardMaxTokens: 40_000,
+      preservePrefix: true,
+    });
+    expect(thresholds.autoTokens).toBe(thresholds.hardTokens);
+    expect(thresholds.autoTokens).toBe(40_000);
+  });
 });

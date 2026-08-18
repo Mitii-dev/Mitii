@@ -12,6 +12,8 @@ export interface ShouldContinueVerificationRepairInput {
   explorationDepth?: "auto" | "quick" | "deep";
   consecutiveStalledRepairs: number;
   canStartModelCall: boolean;
+  /** Window-effort cap. When 0, never start a repair loop. */
+  maxAttempts?: number;
 }
 
 /**
@@ -26,7 +28,8 @@ export function shouldContinueVerificationRepair(
     return { continue: false, reason: "budget" };
   }
 
-  const maxAttempts = maxVerificationRepairsForDepth(input.explorationDepth);
+  const maxAttempts =
+    input.maxAttempts ?? maxVerificationRepairsForDepth(input.explorationDepth);
   if (input.repairAttempts >= maxAttempts) {
     return {
       continue: false,

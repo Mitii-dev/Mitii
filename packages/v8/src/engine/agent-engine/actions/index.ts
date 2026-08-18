@@ -20,7 +20,10 @@ export { isExplorationRereadHeavy } from "./isExplorationRereadHeavy";
 export { buildExplorationStallNudge } from "./buildExplorationStallNudge";
 export { buildPreflightDiagnosticRepairInstruction } from "./buildPreflightDiagnosticRepairInstruction";
 export { buildVerificationRepairPrompt } from "./buildVerificationRepairPrompt";
-export { decideVerificationGate } from "./decideVerificationGate";
+export {
+  decideVerificationGate,
+  isUserGoalComplete,
+} from "./decideVerificationGate";
 export type { VerificationGateDecision } from "./decideVerificationGate";
 export { mapContextToPromptSlice } from "./mapContextToPromptSlice";
 export { mapUnderstandingToSkillEvidence } from "./mapUnderstandingToSkillEvidence";
@@ -29,6 +32,7 @@ export type { SkillRepoEvidence } from "./deriveSkillRepoEvidence";
 export { mapUnderstandingToPlanningEvidence } from "./mapUnderstandingToPlanningEvidence";
 export { mergePromptInstructions } from "./mergePromptInstructions";
 export { filterToolDefinitions } from "./filterToolDefinitions";
+export { annotateMutationToolDefinitions } from "./annotateMutationToolDefinitions";
 export { serializeToolResultForModel } from "./serializeToolResultForModel";
 export {
   buildOutputTruncationRecovery,

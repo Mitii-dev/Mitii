@@ -59,10 +59,7 @@ function mergeMutationBudget(
       profileBudget.maxPatchPayloadCharacters,
       windowMutation.maxPatchPayloadCharacters,
     ),
-    preferredBatchSize: Math.min(
-      profileBudget.preferredBatchSize,
-      windowMutation.preferredBatchSize,
-    ),
+    preferredBatchSize: windowMutation.preferredBatchSize,
     requireBatchedExecution:
       profileBudget.requireBatchedExecution ||
       windowMutation.requireBatchedExecution,

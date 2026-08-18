@@ -83,8 +83,8 @@ const BASE_UI: UiSettingsSnapshot = {
       establishedFactReinjectChars: 1600,
       memoryReinjectChars: 800,
       maxPatchesPerCall: 8,
-      maxModelCalls: 48,
-      maxToolCalls: 32,
+      maxModelCalls: 40,
+      maxToolCalls: 80,
       maxUniqueFilesPerCall: 4,
       maxPatchPayloadCharacters: 5898,
       requireBatchedExecution: true,
@@ -94,8 +94,8 @@ const BASE_UI: UiSettingsSnapshot = {
       visiblePlanAffordable: false,
       changeImpactAffordable: false,
       runBudgetUnlimited: false,
-      runBudgetMaxModelCalls: 64,
-      runBudgetMaxToolCalls: 128,
+      runBudgetMaxModelCalls: 40,
+      runBudgetMaxToolCalls: 80,
     },
   },
 };
@@ -540,6 +540,27 @@ describe('window-scaled token budget defaults', () => {
       expect(keys).toContain(`tokenBudget.${field.key}`);
     }
     expect(keys).toHaveLength(TOKEN_BUDGET_FIELDS.length + 1);
+  });
+
+  it('marks high-level budget fields as simple and the rest as advanced', () => {
+    const simple = TOKEN_BUDGET_FIELDS.filter((field) => field.tier === 'simple').map(
+      (field) => field.key,
+    );
+    expect(simple).toEqual([
+      'outputRatio',
+      'repositoryShare',
+      'conversationShare',
+      'planShare',
+      'skillsShare',
+    ]);
+    expect(
+      TOKEN_BUDGET_FIELDS.every((field) => typeof field.defaultValue === 'number'),
+    ).toBe(true);
+    expect(
+      TOKEN_BUDGET_FIELDS.filter((field) => field.tier !== 'simple').every(
+        (field) => field.tier === 'advanced',
+      ),
+    ).toBe(true);
   });
 
   it('scales derived budgets from the context window without custom overrides', () => {

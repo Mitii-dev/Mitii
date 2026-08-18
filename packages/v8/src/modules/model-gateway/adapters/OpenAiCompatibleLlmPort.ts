@@ -14,6 +14,7 @@ import type {
   ModelFinishReason,
   ModelMessage,
   ModelRequest,
+  ModelTokenUsage,
   ModelToolCallDelta,
   ResolveModelCapabilitiesInput,
 } from "../contracts/types";
@@ -60,6 +61,14 @@ export interface OpenAiCompatibleLlmPortConfig {
   sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
+type OpenAiCompatibleUsage = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  prompt_cache_hit_tokens?: number;
+  prompt_cache_miss_tokens?: number;
+};
+
 interface OpenAiChatCompletionResponse {
   choices?: Array<{
     message?: {
@@ -77,11 +86,7 @@ interface OpenAiChatCompletionResponse {
     };
     finish_reason?: string | null;
   }>;
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-  };
+  usage?: OpenAiCompatibleUsage;
 }
 
 interface OpenAiChatCompletionChunk {
@@ -101,11 +106,7 @@ interface OpenAiChatCompletionChunk {
     };
     finish_reason?: string | null;
   }>;
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-  };
+  usage?: OpenAiCompatibleUsage;
 }
 
 /**
@@ -411,13 +412,7 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
       yield { type: "tool_call_delta", toolCalls };
     }
 
-    const usage = json.usage
-      ? {
-          inputTokens: json.usage.prompt_tokens,
-          outputTokens: json.usage.completion_tokens,
-          totalTokens: json.usage.total_tokens,
-        }
-      : undefined;
+    const usage = this.mapUsage(json.usage);
 
     if (usage) {
       yield { type: "usage", usage };
@@ -546,13 +541,7 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
       events.push({ type: "tool_call_delta", toolCalls });
     }
 
-    const usage = chunk.usage
-      ? {
-          inputTokens: chunk.usage.prompt_tokens,
-          outputTokens: chunk.usage.completion_tokens,
-          totalTokens: chunk.usage.total_tokens,
-        }
-      : undefined;
+    const usage = this.mapUsage(chunk.usage);
 
     if (usage) {
       events.push({ type: "usage", usage });
@@ -568,6 +557,37 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
     }
 
     return events;
+  }
+
+  private mapUsage(
+    usage?: OpenAiCompatibleUsage,
+  ): ModelTokenUsage | undefined {
+    if (!usage) {
+      return undefined;
+    }
+    const inputTokens = usage.prompt_tokens;
+    const outputTokens = usage.completion_tokens;
+    const cacheHitTokens = usage.prompt_cache_hit_tokens;
+    const cacheMissTokens = usage.prompt_cache_miss_tokens;
+    if (
+      inputTokens === undefined &&
+      outputTokens === undefined &&
+      cacheHitTokens === undefined &&
+      cacheMissTokens === undefined
+    ) {
+      return undefined;
+    }
+    return {
+      ...(inputTokens !== undefined ? { inputTokens } : {}),
+      ...(outputTokens !== undefined ? { outputTokens } : {}),
+      ...(usage.total_tokens !== undefined
+        ? { totalTokens: usage.total_tokens }
+        : {
+            totalTokens: (inputTokens ?? 0) + (outputTokens ?? 0),
+          }),
+      ...(cacheHitTokens !== undefined ? { cacheHitTokens } : {}),
+      ...(cacheMissTokens !== undefined ? { cacheMissTokens } : {}),
+    };
   }
 
   private mapFinishReason(

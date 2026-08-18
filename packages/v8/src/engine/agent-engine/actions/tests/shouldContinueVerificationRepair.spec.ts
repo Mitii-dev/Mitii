@@ -29,14 +29,33 @@ describe("shouldContinueVerificationRepair", () => {
     ).toEqual({ continue: false, reason: "quick_cap" });
   });
 
-  it("keeps repairing on auto while errors are dropping", () => {
-    expect(maxVerificationRepairsForDepth("auto")).toBeGreaterThan(1);
+  it("caps auto repairs at the engine default", () => {
+    expect(maxVerificationRepairsForDepth("auto")).toBe(1);
     expect(
       shouldContinueVerificationRepair({
-        repairAttempts: 3,
+        repairAttempts: 1,
         explorationDepth: "auto",
         consecutiveStalledRepairs: 0,
         canStartModelCall: true,
+      }),
+    ).toEqual({ continue: false, reason: "max_attempts" });
+  });
+
+  it("honors an explicit window-effort repair cap", () => {
+    expect(
+      shouldContinueVerificationRepair({
+        repairAttempts: 0,
+        consecutiveStalledRepairs: 0,
+        canStartModelCall: true,
+        maxAttempts: 0,
+      }),
+    ).toEqual({ continue: false, reason: "max_attempts" });
+    expect(
+      shouldContinueVerificationRepair({
+        repairAttempts: 1,
+        consecutiveStalledRepairs: 0,
+        canStartModelCall: true,
+        maxAttempts: 2,
       }),
     ).toEqual({ continue: true, reason: "continue" });
   });
@@ -44,9 +63,10 @@ describe("shouldContinueVerificationRepair", () => {
   it("stops after consecutive non-improving repairs", () => {
     expect(
       shouldContinueVerificationRepair({
-        repairAttempts: 2,
+        repairAttempts: 1,
         consecutiveStalledRepairs: 2,
         canStartModelCall: true,
+        maxAttempts: 8,
       }),
     ).toEqual({ continue: false, reason: "stalled" });
   });

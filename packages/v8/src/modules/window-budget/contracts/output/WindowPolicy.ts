@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { WINDOW_BUDGET_REASON_CODES } from "../../constants";
+import { WINDOW_BUDGET_EFFORTS } from "../../effort";
 import { windowBudgetPolicySchema } from "../input/WindowBudgetInput";
 
 export const windowBudgetReasonCodeSchema = z.enum(WINDOW_BUDGET_REASON_CODES);
@@ -35,6 +36,10 @@ export const windowPolicyCompactionSchema = z
     maxEstablishedFacts: z.number().int().positive(),
     establishedFactReinjectChars: z.number().int().positive(),
     memoryReinjectChars: z.number().int().positive(),
+    /** Absolute auto-compaction ceiling (effort overlay). */
+    autoMaxTokens: z.number().int().positive(),
+    /** Absolute hard-compaction ceiling (effort overlay). */
+    hardMaxTokens: z.number().int().positive(),
   })
   .strict();
 
@@ -69,6 +74,7 @@ export const windowPolicyRunSchema = z
   .object({
     maxModelCalls: z.number().int().positive(),
     maxToolCalls: z.number().int().positive(),
+    maxVerificationRepairs: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -91,6 +97,7 @@ export const windowPolicySchema = z
   .object({
     schemaVersion: z.literal(1),
     contextWindowTokens: z.number().int().positive(),
+    effort: z.enum(WINDOW_BUDGET_EFFORTS),
     maximumOutputTokens: z.number().int().positive(),
     toolSchemaTokens: z.number().int().nonnegative(),
     usableInputTokens: z.number().int().nonnegative(),

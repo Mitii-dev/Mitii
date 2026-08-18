@@ -332,7 +332,7 @@ describe("AgentEnginePipeline repair remaining-error queue (Phase 4)", () => {
     expect(verifyCalls).toBe(2);
   });
 
-  it("keeps repairing remaining baseline errors across multiple batches on auto depth", async () => {
+  it("keeps repairing remaining baseline errors across multiple batches on high effort", async () => {
     const tree = directory({
       src: directory({
         "a.ts": file("const a = 1;\n"),
@@ -421,6 +421,7 @@ describe("AgentEnginePipeline repair remaining-error queue (Phase 4)", () => {
     const result = await engine.start(
       baseStartInput({
         repositoryState: { reference: pinnedState, readiness: "ready" },
+        windowBudget: { effort: "high" },
       }),
     ).result;
 

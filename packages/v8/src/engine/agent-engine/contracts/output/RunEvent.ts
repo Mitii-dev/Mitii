@@ -218,6 +218,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       turnIndex: z.number().int().nonnegative(),
       inputTokens: z.number().int().nonnegative().optional(),
       outputTokens: z.number().int().nonnegative().optional(),
+      cacheHitTokens: z.number().int().nonnegative().optional(),
+      cacheMissTokens: z.number().int().nonnegative().optional(),
       finishReason: z.string().min(1).optional(),
       truncated: z.boolean().optional(),
       at: z.string().datetime(),

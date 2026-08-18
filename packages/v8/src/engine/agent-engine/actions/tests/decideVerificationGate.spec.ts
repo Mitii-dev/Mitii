@@ -169,6 +169,48 @@ describe("decideVerificationGate", () => {
     ).toEqual({ action: "accept", acceptKind: "skipped_not_required" });
   });
 
+  it("accepts lint-only failures when typecheck and diagnostics are already green", () => {
+    expect(
+      decideVerificationGate({
+        verificationRequired: true,
+        allowUnavailable: false,
+        changedFileCount: 1,
+        canVerify: true,
+        comparison: {
+          beforeErrorCount: 109,
+          afterErrorCount: 0,
+          clearedErrorCount: 109,
+          newErrorCount: 0,
+          remainingErrorCount: 0,
+          failedCheckIdsBefore: ["typecheck"],
+          failedCheckIdsAfter: ["lint"],
+          reasonCodes: [],
+        },
+        verification: {
+          ...result("verification_failed", ["checks_failed"]),
+          checks: [
+            {
+              checkId: "typecheck:workspace",
+              kind: "typecheck",
+              label: "typecheck",
+              evidenceSource: "tool:typecheck",
+              outcome: "passed",
+              summary: "Typecheck passed.",
+            },
+            {
+              checkId: "lint:workspace",
+              kind: "lint",
+              label: "lint",
+              evidenceSource: "tool:lint",
+              outcome: "failed",
+              summary: "Lint reported leftover style issues.",
+            },
+          ],
+        },
+      }),
+    ).toEqual({ action: "accept", acceptKind: "implemented_unverified" });
+  });
+
   it("rejects zero-edit mutation-required runs", () => {
     expect(
       decideVerificationGate({
