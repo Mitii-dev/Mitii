@@ -16,6 +16,19 @@ describe('createHostLlmPorts', () => {
     expect(ports.runLlm.id).toBe('echo');
   });
 
+  it('enables prompt-cache usage mapping for openai-compatible runtimes', () => {
+    const ports = createHostLlmPorts({
+      type: 'openai-compatible',
+      preset: 'ollama',
+      model: 'qwen3.8:27b',
+      baseUrl: 'http://localhost:11434/v1',
+    });
+    expect(ports.runLlm.capabilities.supportsPromptCaching).toBe(true);
+    expect(ports.understandingLlm.capabilities.supportsPromptCaching).toBe(
+      true,
+    );
+  });
+
   it('constructs openai-compatible ports from the deepseek preset', () => {
     const ports = createHostLlmPorts({
       type: 'openai-compatible',

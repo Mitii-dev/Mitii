@@ -108,16 +108,20 @@ export class MutationTransactionRegistry {
         current = proposed.get(relativePath)!.content;
       }
 
-      const preflight = preflightStructuredPatch({
-        patch: { ...patch, path: relativePath },
-        currentContent: current,
-      });
-      validatePostEditSyntax(relativePath, preflight.proposedContent);
-      proposed.set(relativePath, {
-        content: preflight.proposedContent,
-        created:
-          (proposed.get(relativePath)?.created ?? false) || preflight.created,
-      });
+      try {
+        const preflight = preflightStructuredPatch({
+          patch: { ...patch, path: relativePath },
+          currentContent: current,
+        });
+        validatePostEditSyntax(relativePath, preflight.proposedContent);
+        proposed.set(relativePath, {
+          content: preflight.proposedContent,
+          created:
+            (proposed.get(relativePath)?.created ?? false) || preflight.created,
+        });
+      } catch (error) {
+        throw attachPatchConflictContent(error, relativePath, current);
+      }
     }
 
     const checkpointId = this.idGenerator();
@@ -152,7 +156,11 @@ export class MutationTransactionRegistry {
       this.checkpoints.delete(checkpointId);
       if (error instanceof MutationError) {
         throw rollbackSuffix
-          ? new MutationError(error.reasonCode, `${error.message}${rollbackSuffix}`)
+          ? new MutationError(
+              error.reasonCode,
+              `${error.message}${rollbackSuffix}`,
+              error.details,
+            )
           : error;
       }
       throw new MutationError(
@@ -472,7 +480,11 @@ export class MutationTransactionRegistry {
       this.checkpoints.delete(checkpointId);
       if (error instanceof MutationError) {
         throw rollbackSuffix
-          ? new MutationError(error.reasonCode, `${error.message}${rollbackSuffix}`)
+          ? new MutationError(
+              error.reasonCode,
+              `${error.message}${rollbackSuffix}`,
+              error.details,
+            )
           : error;
       }
       throw new MutationError(
@@ -486,4 +498,28 @@ export class MutationTransactionRegistry {
       changedFiles: [...params.changedFiles],
     };
   }
+}
+
+const PATCH_CONFLICT_CONTENT_CHARS = 16_000;
+
+function attachPatchConflictContent(
+  error: unknown,
+  path: string,
+  currentContent: string | undefined,
+): unknown {
+  if (!(error instanceof MutationError) || error.reasonCode !== "patch_conflict") {
+    return error;
+  }
+  if (currentContent === undefined) {
+    return error;
+  }
+  const clipped =
+    currentContent.length > PATCH_CONFLICT_CONTENT_CHARS
+      ? `${currentContent.slice(0, PATCH_CONFLICT_CONTENT_CHARS)}\n…[truncated]`
+      : currentContent;
+  return new MutationError(error.reasonCode, error.message, {
+    ...error.details,
+    path,
+    currentContent: clipped,
+  });
 }

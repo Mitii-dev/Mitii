@@ -179,7 +179,7 @@ PlanningInput -> PlanningResult. Engine supplies understanding evidence, optiona
         "steps": [
           {
             "id": "step-fix-diagnostic-1",
-            "intent": "Fix packages/mui-builder/src/Button.tsx:42 TS2322",
+            "intent": "Fix TS2322 in packages/mui-builder/src/Button.tsx",
             "targetRefs": ["packages/mui-builder/src/Button.tsx"]
           }
         ]

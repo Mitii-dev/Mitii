@@ -1,5 +1,6 @@
 import type { PromptReasonCode } from "../contracts";
 import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../policy";
+import { resolveGenerationCeiling } from "../../window-budget";
 
 export interface DynamicOutputTokenResolution {
   maximumOutputTokens: number;
@@ -11,9 +12,10 @@ export interface DynamicOutputTokenResolution {
 /**
  * Resolve the final per-call output limit after prompt assembly.
  *
- * The window-derived reserve is a hard ceiling. Leftover input room can only
- * shrink that cap so a small local window cannot spend 95% of remaining
- * context on one ramble or truncated patch.
+ * The planning reserve keeps input from filling the window. Generation then
+ * uses leftover context (safety ratio) so a 10k-free turn can write ~10k.
+ * A real host override of maximumOutputTokens stays a hard ceiling; the
+ * derived reserve and the legacy 5000 default do not.
  */
 export function resolveDynamicOutputTokens(params: {
   contextWindowTokens: number;
@@ -47,16 +49,21 @@ export function resolveDynamicOutputTokens(params: {
     1,
     Math.floor(availableOutputTokens * dynamicOutputRatio),
   );
-  const reservedCeiling = Math.min(configuredOutputTokens, outputReservedTokens);
+  const generationCeiling = resolveGenerationCeiling({
+    contextWindowTokens,
+    configuredOutputTokens,
+  });
 
   const maximumOutputTokens = clampInt(
-    Math.min(reservedCeiling, scaledAvailableOutputTokens),
+    Math.min(generationCeiling, scaledAvailableOutputTokens),
     1,
     Math.max(1, availableOutputTokens),
   );
 
   const reasonCodes: PromptReasonCode[] = [];
-  if (maximumOutputTokens < reservedCeiling) {
+  if (maximumOutputTokens > outputReservedTokens) {
+    reasonCodes.push("dynamic_output_expanded");
+  } else if (maximumOutputTokens < outputReservedTokens) {
     reasonCodes.push("dynamic_output_limited_by_context");
   }
 

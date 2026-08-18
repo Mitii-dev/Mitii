@@ -394,7 +394,7 @@ export type {
   TaskListPurpose,
 } from "./modules/task-list";
 
-export { deriveWindowPolicy, mergeWindowBudgetPolicy } from "./modules/window-budget";
+export { deriveWindowPolicy, mergeWindowBudgetPolicy, resolveGenerationCeiling } from "./modules/window-budget";
 export {
   WINDOW_BUDGET_SCHEMA_VERSION,
   DEFAULT_WINDOW_BUDGET_POLICY,

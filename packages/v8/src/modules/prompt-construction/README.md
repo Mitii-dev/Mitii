@@ -6,8 +6,8 @@ Prompt Construction builds the provider-neutral `ModelRequest` that is sent thro
 
 - Validates `PromptConstructionInput`.
 - Reserves output tokens before allocating input budget.
-- Caps the final output limit at the window-derived reserve after prompt
-  assembly. Leftover context can only shrink that cap.
+- After prompt assembly, sets the final output limit from leftover context
+  (safety ratio). The planning reserve is not a generation ceiling.
 - Builds system/developer/user/tool conversation messages.
 - Serializes repository context into bounded prompt blocks.
 - Injects selected skill and memory instruction blocks.
@@ -46,13 +46,14 @@ prompt-construction/
 - Output reserve is calculated before context allocation, then the final
   `ModelRequest.maximumOutputTokens` is resolved after concrete prompt usage is
   known.
-- The final output limit is recomputed every turn from the remaining context
-  window. The window-derived reserve is the ceiling. Leftover input room can
-  only shrink that cap so a 30k local window cannot spend ~18k tokens on one
-  truncated patch.
-- For example, a 30k context window with a 12k prompt and a 3k window-derived
-  reserve resolves to 3k output tokens for that turn, not
-  `floor((30k - 12k) * 0.95)`.
+- The final output limit is recomputed every turn from leftover context.
+  The planning reserve keeps input from filling the window; generation then
+  uses `floor(leftover * 0.95)`, capped by a real host override of
+  `maximumOutputTokens`. The derived reserve and the legacy 5000 default are
+  not generation ceilings.
+- For example, a 30k context window with a 12k prompt and a 6k planning
+  reserve resolves to `floor((30k - 12k) * 0.95)` = 17.1k output tokens,
+  not the 6k reserve. A 10k-free turn can write about 10k tokens.
 - If the assembled prompt consumes more than the planned input budget, output is
   reduced to fit the remaining context window instead of forcing a truncation.
 - Sections can be omitted or truncated with explicit reason codes.

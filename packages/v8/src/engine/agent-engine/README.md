@@ -49,21 +49,31 @@ agent-engine/
   `grant_narrowed` is emitted only when the grant actually changed.
 - `usage` reports `fileReadCalls` vs `uniqueFilePathsTouched`. Repeated
   re-reads of the same files emit `exploration_reread_heavy` mid-loop and
-  after one nudge stop the spin with `exploration_stall_broken`.
+  after one nudge stop the spin with `exploration_stall_broken`. Stall
+  detection uses paths read in the current loop (reset after a successful
+  mutation) so verification repair can re-read known error files without
+  aborting.
 - Identical read-only tool+args reuse the prior result (`tool_result_deduped`).
   Mutations invalidate that content cache.
 - Auto/hard compaction reinjects mid-run observations as well as pre-run
   memory. Observation count, observation size, reinjection size, dropped-turn
   summary size, compacted tool-result size, compacted tool-argument size, and
   live tool-result content size are all read from `WindowPolicy.compaction`.
+  The model-loop prefix is preserved until the hard compaction ceiling so
+  local KV caches and provider prompt caches can hit across turns.
 - Tool-result history compaction preserves schema-shaped read/search arguments
   and replaces older tool results with path/range/finding stubs instead of
   slicing raw JSON or dropping tool rows from the summary.
 - Empty memory retrieval is `memory_empty` (store wired, no facts). Missing
   memory port or workspace id remains `memory_skipped`.
-- Task-list updates are validated through the Task List module.
+- Task-list updates are validated through the Task List module. Successful
+  mutations complete every matching change item (by path), not just the
+  active row once per turn.
 - Output truncation recovery can ask the model to continue safely within remaining budgets.
-- Execute + write + mutation-intent turns that produce text and no `apply_patch` are **unfulfilled execute**. The loop nudges once (`unfulfilled_execute_recovered`, `maxUnfulfilledExecuteRecoveries: 1`) to call `apply_patch` in a bounded batch. A second text-only turn completes with `unfulfilled_execute_exhausted` instead of spinning.
+- Execute + write + mutation-intent turns that produce text and no `apply_patch` are **unfulfilled execute**. The loop nudges once (`unfulfilled_execute_recovered`, `maxUnfulfilledExecuteRecoveries: 1`) to call `apply_patch` in a bounded batch grouped by error class. A second text-only turn completes with `unfulfilled_execute_exhausted` instead of spinning.
+- `apply_patch` `patch_conflict` results include the current file content so the model can retry exact `oldText` without a separate re-read turn.
+- Compiler/tsc tool output is grouped by error code and asks for a class-wide batch, not one diagnostic at a time.
+- `budget_exhausted` after mutations still captures `repo_build_state` phase `after` so remaining error counts are visible.
 - Truncation on that same execute+write path recovers as a **tool-call** nudge, not essay continuation. Direct-answer truncation still continues the text.
 - `context_ready` may include `retrievalSources` (`sourceId`, `status`, `candidateCount`) from hybrid retrieval reports.
 - `model_turn` events include turn index, optional token counts, `finishReason`, and `truncated`.
@@ -87,7 +97,7 @@ planning:
   discover_and_plan  -> bounded read-only discovery loop, then planning.plan({ discoveryBrief, strategyOverride })
   else               -> planning.plan({ strategyOverride }) immediately
 prompt construction
-model/tool loop               (per-turn max_tokens clamped to the window reserve, not leftover context)
+model/tool loop               (per-turn max_tokens follows leftover context, capped by a real host override)
 verification gate + repair queue (see below)
 ```
 
@@ -99,7 +109,7 @@ verification gate + repair queue (see below)
 After a mutation, `finishAfterLoop` runs Verification, compares before/after when a snapshot exists, and **does not roll back**.
 
 - **Passed**: commit mutations and complete as today.
-- **Repairable failure** (`verification_failed`): persist the record, inject a compact remaining-error prompt (not the full dump), and run another model/tool loop. Window effort caps repairs (`run.maxVerificationRepairs`; medium is 1). Stop after `maxStalledVerificationRepairs` non-improving verifies. Lint/format-only leftovers after typecheck and diagnostics are green complete as `implemented_unverified` instead of opening another repair loop. `verification_repair_attempted` / `verification_repair_succeeded` mark that path.
+- **Repairable failure** (`verification_failed`): persist the record, inject a compact remaining-error prompt (not the full dump), and run another model/tool loop. Window effort caps repairs (`run.maxVerificationRepairs`; medium is 8). Quick exploration stays at one repair. Stop after `maxStalledVerificationRepairs` non-improving verifies. Lint/format-only leftovers after typecheck and diagnostics are green complete as `implemented_unverified` instead of opening another repair loop. `verification_repair_attempted` / `verification_repair_succeeded` mark that path.
 - **Still failing, or not repairable** (blocked / cancelled / infra-missing / stalled): keep the edits, write a short user summary, commit a memory pointer, and complete with `verification_incomplete` / `verification_kept_changes`.
 - **Cancel / interrupt**: persist whatever before/after snapshot exists so the next turn can reload it.
 - **Retry**: a later user ask matching “fix the remaining verification errors” loads `loadLatest(workspaceId)` instead of scraping chat history.

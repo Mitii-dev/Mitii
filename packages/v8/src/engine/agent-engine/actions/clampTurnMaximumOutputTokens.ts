@@ -1,6 +1,9 @@
+import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../../../modules/prompt-construction/policy";
+
 /**
- * Keep each model turn inside the window-derived output reserve and the
- * tokens still left after the current compacted prompt.
+ * Per-turn max_tokens follows leftover context so a 10k-free window can
+ * write ~10k. The planning reserve is not a generation ceiling unless the
+ * caller passes a real host override as reservedOutputTokens.
  */
 export function clampTurnMaximumOutputTokens(params: {
   reservedOutputTokens: number;
@@ -11,5 +14,9 @@ export function clampTurnMaximumOutputTokens(params: {
   const reservedOutputTokens = Math.max(1, Math.floor(params.reservedOutputTokens));
   const usedInputTokens = Math.max(0, Math.floor(params.usedInputTokens));
   const remaining = Math.max(1, contextWindowTokens - usedInputTokens);
-  return Math.max(1, Math.min(reservedOutputTokens, remaining - 1, remaining));
+  const scaled = Math.max(
+    1,
+    Math.floor(remaining * PROMPT_CONSTRUCTION_THRESHOLDS.dynamicOutputWindowRatio),
+  );
+  return Math.max(1, Math.min(reservedOutputTokens, scaled, remaining - 1, remaining));
 }

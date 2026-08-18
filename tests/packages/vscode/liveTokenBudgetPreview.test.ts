@@ -97,7 +97,7 @@ describe('live token budget preview', () => {
       repositoryShare: Number.POSITIVE_INFINITY,
       conversationShare: undefined as unknown as number,
     });
-    expect(merged.outputRatio).toBe(0.1);
+    expect(merged.outputRatio).toBe(0.2);
     expect(merged.repositoryShare).toBe(0.28);
     expect(safeSliderValue(Number.NaN, 1, 20)).toBe(1);
     expect(safeSliderValue(50, 1, 20)).toBe(20);

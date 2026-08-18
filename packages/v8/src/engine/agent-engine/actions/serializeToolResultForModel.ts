@@ -75,6 +75,8 @@ function budgetToolOutputForModel(
         ...record,
         stdout: clipString(compilerQueue, maxChars).text,
         compilerErrorQueue: true,
+        repairHint:
+          "Fix every listed TypeScript error class across its files this turn (up to the mutation batch). Do not address only the first diagnostic.",
       },
       truncated: true,
     };

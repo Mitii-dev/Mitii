@@ -1,6 +1,7 @@
 export {
   WINDOW_BUDGET_SCHEMA_VERSION,
   WINDOW_BUDGET_REASON_CODES,
+  LEGACY_DEFAULT_MAXIMUM_OUTPUT_TOKENS,
   WINDOW_BUDGET_ERROR_CODES,
 } from "./constants";
 
@@ -19,6 +20,7 @@ export type {
 
 export {
   deriveWindowPolicy,
+  resolveGenerationCeiling,
 } from "./actions";
 
 export {

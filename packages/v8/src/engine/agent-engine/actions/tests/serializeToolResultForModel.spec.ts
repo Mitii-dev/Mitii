@@ -75,11 +75,17 @@ describe("serializeToolResultForModel", () => {
     );
 
     const parsed = JSON.parse(serialized) as {
-      output: { stdout: string; compilerErrorQueue?: boolean };
+      output: {
+        stdout: string;
+        compilerErrorQueue?: boolean;
+        repairHint?: string;
+      };
     };
     expect(parsed.output.compilerErrorQueue).toBe(true);
     expect(parsed.output.stdout).toContain("Remaining compiler errors (2)");
-    expect(parsed.output.stdout).toContain("a.tsx:13 TS2339");
-    expect(parsed.output.stdout).toContain("b.tsx:14 TS2693");
+    expect(parsed.output.stdout).toContain("TS2339");
+    expect(parsed.output.stdout).toContain("a.tsx:13");
+    expect(parsed.output.stdout).toContain("b.tsx:14");
+    expect(parsed.output.repairHint).toContain("error class");
   });
 });

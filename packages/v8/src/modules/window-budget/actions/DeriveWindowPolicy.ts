@@ -1,4 +1,7 @@
-import { WINDOW_BUDGET_SCHEMA_VERSION } from "../constants";
+import {
+  LEGACY_DEFAULT_MAXIMUM_OUTPUT_TOKENS,
+  WINDOW_BUDGET_SCHEMA_VERSION,
+} from "../constants";
 import {
   WINDOW_BUDGET_EFFORT_OVERLAY,
   resolveWindowBudgetEffort,
@@ -40,21 +43,28 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
   const overlay = WINDOW_BUDGET_EFFORT_OVERLAY[effort];
   reasonCodes.push(`effort_${effort}`);
 
+  const windowOutputCap = Math.min(
+    policy.outputMaxTokens,
+    Math.max(1, Math.floor(windowTokens * policy.outputWindowCapRatio)),
+    Math.max(1, windowTokens - 1),
+  );
+  const outputMin = Math.min(policy.outputMinTokens, windowOutputCap);
   const derivedOutput = clampInt(
     Math.floor(windowTokens * policy.outputRatio),
-    policy.outputMinTokens,
-    Math.min(
-      policy.outputMaxTokens,
-      Math.max(1, Math.floor(windowTokens * policy.outputWindowCapRatio)),
-      Math.max(1, windowTokens - 1),
-    ),
+    outputMin,
+    windowOutputCap,
   );
 
-  const hostOutput = parsed.maximumOutputTokens ?? 0;
+  const rawHostOutput = parsed.maximumOutputTokens ?? 0;
+  const legacyHostDefault = rawHostOutput === LEGACY_DEFAULT_MAXIMUM_OUTPUT_TOKENS;
+  const hostOutput = legacyHostDefault ? 0 : rawHostOutput;
   const maximumOutputTokens =
     hostOutput > 0
       ? clampInt(hostOutput, 1, Math.max(1, windowTokens - 1))
       : derivedOutput;
+  if (legacyHostDefault) {
+    reasonCodes.push("output_legacy_default_ignored");
+  }
   reasonCodes.push(
     hostOutput > 0 ? "output_host_override" : "output_derived_from_window",
   );

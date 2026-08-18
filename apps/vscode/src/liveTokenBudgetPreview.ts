@@ -7,10 +7,10 @@ import type { TokenBudgetPreview } from './protocol.js';
  * every derived budget before Save.
  */
 export const DEFAULT_WINDOW_BUDGET_NUMBERS: Record<string, number> = {
-  outputRatio: 0.1,
-  outputMinTokens: 1_024,
+  outputRatio: 0.2,
+  outputMinTokens: 10_240,
   outputMaxTokens: 32_768,
-  outputWindowCapRatio: 0.2,
+  outputWindowCapRatio: 0.35,
   toolSchemaFallbackTokens: 8_000,
   toolSchemaFallbackWindowRatio: 0.2,
   minimumUsableInputTokens: 2_048,
@@ -255,20 +255,26 @@ export function deriveLiveTokenBudgetPreview(
     Math.floor(input.contextWindowTokens) || 1,
   );
 
+  const windowOutputCap = Math.min(
+    policyNumber(policy, 'outputMaxTokens'),
+    Math.max(
+      1,
+      Math.floor(windowTokens * policyNumber(policy, 'outputWindowCapRatio')),
+    ),
+    Math.max(1, windowTokens - 1),
+  );
+  const outputMin = Math.min(
+    policyNumber(policy, 'outputMinTokens'),
+    windowOutputCap,
+  );
   const derivedOutput = clampInt(
     Math.floor(windowTokens * policyNumber(policy, 'outputRatio')),
-    policyNumber(policy, 'outputMinTokens'),
-    Math.min(
-      policyNumber(policy, 'outputMaxTokens'),
-      Math.max(
-        1,
-        Math.floor(windowTokens * policyNumber(policy, 'outputWindowCapRatio')),
-      ),
-      Math.max(1, windowTokens - 1),
-    ),
+    outputMin,
+    windowOutputCap,
   );
 
-  const hostOutput = input.maximumOutputTokens ?? 0;
+  const rawHostOutput = input.maximumOutputTokens ?? 0;
+  const hostOutput = rawHostOutput === 5_000 ? 0 : rawHostOutput;
   const maximumOutputTokens =
     hostOutput > 0
       ? clampInt(hostOutput, 1, Math.max(1, windowTokens - 1))

@@ -208,5 +208,9 @@ export function mapExecutionError(params: {
     status,
     reasonCode,
     warnings,
+    output:
+      error instanceof MutationError && error.details
+        ? error.details
+        : undefined,
   });
 }

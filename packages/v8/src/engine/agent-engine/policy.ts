@@ -44,10 +44,11 @@ export const AGENT_ENGINE_THRESHOLDS = {
   /** One mid-loop nudge, then stop the spin. */
   maxExplorationStallNudges: 1,
   /**
-   * In-run remaining-error repairs after a repairable verification failure.
-   * Medium effort is one repair; lint-only leftovers should not reopen the loop.
+   * Fallback remaining-error repairs when Window Policy is absent.
+   * Window effort is the live cap (medium: 8). Stop earlier when
+   * consecutive verifies stop improving.
    */
-  maxVerificationRepairAttempts: 1,
+  maxVerificationRepairAttempts: 8,
   /** Stop repairing after this many consecutive non-improving verifies. */
   maxStalledVerificationRepairs: 2,
 } as const;

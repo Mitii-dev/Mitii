@@ -115,6 +115,94 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.answer ?? "").not.toContain("Should not be reached");
   });
 
+  it("does not stall-break after a mutation when later reads hit already-seen paths", async () => {
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        toolGrant: createReadOnlyGrant({
+          maximumWorkspaceEffect: "write",
+          allowedTools: ["read_file", "apply_patch"],
+          allowedEffects: ["workspace_read", "workspace_write"],
+          approvalMode: "never",
+        }),
+        reasonCodes: ["mutation_execute"],
+      }),
+      llm: new ScriptedLlmPort(
+        [
+          {
+            toolCalls: Array.from({ length: 8 }, (_, index) =>
+              readCall(`call_read_before_${index}`),
+            ),
+          },
+          { toolCalls: [patchCall("call_patch_after_reread")] },
+          {
+            toolCalls: Array.from({ length: 4 }, (_, index) =>
+              readCall(`call_read_after_${index}`),
+            ),
+          },
+          { content: "Patched remaining type errors." },
+        ],
+        createCapabilities({ supportsTools: true }),
+      ),
+    });
+    const originalExecute = deps.tools!.execute.bind(deps.tools);
+    deps.tools = {
+      ...deps.tools!,
+      execute: async (input, options) => {
+        if (input.toolName === "apply_patch") {
+          return {
+            schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+            callId: input.callId,
+            toolName: input.toolName,
+            status: "succeeded",
+            truncated: false,
+            redacted: false,
+            durationMs: 1,
+            bytesProduced: 24,
+            warnings: [],
+            output: {
+              checkpointId: "ckpt_after_reread",
+              changedFiles: ["src/form.ts"],
+            },
+            audit: {
+              callId: input.callId,
+              toolName: input.toolName,
+              startedAt: "2026-07-25T12:00:00.000Z",
+              endedAt: "2026-07-25T12:00:00.001Z",
+              status: "succeeded",
+              inputPreview: "{}",
+              outputPreview: "{}",
+              bytesProduced: 24,
+              durationMs: 1,
+              truncated: false,
+              redacted: false,
+            },
+          };
+        }
+        return originalExecute(input, options);
+      },
+    };
+
+    const engine = new AgentEnginePipeline(deps);
+    const result = await engine.start(
+      agentEngineStartInputSchema.parse({
+        schemaVersion: 1,
+        request: {
+          sessionId: "sess_repair_reread",
+          mode: "agent",
+          userMessage: "Fix all TypeScript errors",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/workspace",
+      }),
+    ).result;
+
+    expect(result.status).toBe("completed");
+    expect(result.reasonCodes).toContain("mutation_applied");
+    expect(result.reasonCodes).not.toContain("exploration_stall_broken");
+    expect(result.answer ?? "").toContain("Patched remaining type errors.");
+  });
+
   it("fails mutation runs that keep re-reading without edits", async () => {
     const deps = createStubDependencies({
       decision: createDecision({

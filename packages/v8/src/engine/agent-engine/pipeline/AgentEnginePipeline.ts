@@ -57,6 +57,7 @@ import {
 import {
   WINDOW_BUDGET_SCHEMA_VERSION,
   deriveWindowPolicy,
+  resolveGenerationCeiling,
 } from "../../../modules/window-budget";
 import type { WindowPolicy } from "../../../modules/window-budget";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
@@ -106,6 +107,10 @@ import {
   extractMemoryFileTargets,
   filterToolDefinitions,
   isExplorationRereadHeavy,
+  createLoopFileReadTracker,
+  recordLoopFileReads,
+  resetLoopFileReadTracker,
+  snapshotLoopFileReads,
   upsertEstablishedFact,
   isEmptyAssistantTurn,
   isTransitionalAssistantAnswer,
@@ -124,7 +129,11 @@ import {
   shouldContinueVerificationRepair,
   nextStalledRepairCount,
 } from "../actions";
-import type { EstablishedFact, VerificationGateDecision } from "../actions";
+import type {
+  EstablishedFact,
+  LoopFileReadTracker,
+  VerificationGateDecision,
+} from "../actions";
 import { ToolCallCache, rebaseToolResult } from "../internal/ToolCallCache";
 import { AGENT_ENGINE_SCHEMA_VERSION } from "../constants";
 import {
@@ -233,7 +242,13 @@ type ToolLoopOutcome =
       decision: ExecutionDecision;
     }
   | { kind: "cancelled" }
-  | { kind: "budget_exhausted"; answer?: string; message: string }
+  | {
+      kind: "budget_exhausted";
+      answer?: string;
+      message: string;
+      changedFiles: string[];
+      mutationCheckpointIds: string[];
+    }
   | {
       kind: "failed";
       answer?: string;
@@ -2256,6 +2271,57 @@ export class AgentEnginePipeline {
       }
 
       if (currentOutcome.kind === "budget_exhausted") {
+        if (currentOutcome.changedFiles.length > 0) {
+          const verificationOutcome = await this.runVerificationGate({
+            runId,
+            bus,
+            decision,
+            primaryTaskIntent:
+              params.loopContext?.understanding?.intent.classification
+                .primaryTaskIntent,
+            input,
+            pinnedState,
+            changedFiles: currentOutcome.changedFiles,
+            mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
+            reasonCodes,
+            warnings,
+            repoBuildStateBefore,
+            onRepoBuildStateAfter: (state) => {
+              afterState = state;
+              params.onRepoBuildStateAfter?.(state);
+            },
+            evidence,
+            windowPolicy,
+          });
+          this.commitMutations(currentOutcome.mutationCheckpointIds, {
+            runId,
+            bus,
+            warnings,
+            logVerbosity: input.logVerbosity,
+          });
+          const record = await this.persistVerificationArtifact({
+            runId,
+            requestId,
+            workspaceId: resolveWorkspaceId(input),
+            bus,
+            reasonCodes,
+            warnings,
+            status:
+              verificationOutcome.kind === "ok" &&
+              verificationOutcome.acceptKind === "verified_success"
+                ? "passed"
+                : "incomplete",
+            before: repoBuildStateBefore,
+            after: afterState,
+            comparison: verificationOutcome.comparison,
+            verification: verificationOutcome.verification,
+            changedFiles: currentOutcome.changedFiles,
+            logVerbosity: input.logVerbosity,
+          });
+          if (record) {
+            params.onVerificationRecord?.(record);
+          }
+        }
         await this.safeUnpin(runId, pinnedState);
         reasonCodes.push("budget_exhausted");
         return finish({
@@ -3446,6 +3512,7 @@ export class AgentEnginePipeline {
     let emittedLoopCompactionWarning = false;
     let successfulVerificationAfterMutation = false;
     let explorationStallNudges = 0;
+    const loopFileReads = createLoopFileReadTracker();
     let rejectedMutationRecoveries = 0;
     let rejectedToolRecoveries = 0;
     let readOnlyToolTurnsWithoutMutation = 0;
@@ -3459,7 +3526,6 @@ export class AgentEnginePipeline {
           maxTargetedDiscoveryToolCalls: number;
         }
       | undefined;
-    const explorationBaseline = budget.snapshot();
     const establishedFacts = params.establishedFacts ?? [];
     const isMutationRequired = () =>
       requiresMutationForExecute({
@@ -3499,6 +3565,8 @@ export class AgentEnginePipeline {
           kind: "budget_exhausted",
           answer: answer || undefined,
           message: `Run budget exhausted (${exhausted}).`,
+          changedFiles,
+          mutationCheckpointIds,
         };
       }
 
@@ -3507,6 +3575,8 @@ export class AgentEnginePipeline {
           kind: "budget_exhausted",
           answer: answer || undefined,
           message: "Model call budget exhausted.",
+          changedFiles,
+          mutationCheckpointIds,
         };
       }
 
@@ -3541,7 +3611,7 @@ export class AgentEnginePipeline {
         hardRatio: params.windowPolicy.compaction.hardRatio,
         autoMaxTokens: params.windowPolicy.compaction.autoMaxTokens,
         hardMaxTokens: params.windowPolicy.compaction.hardMaxTokens,
-        preservePrefix: this.deps.llm.capabilities.supportsPromptCaching,
+        preservePrefix: true,
       });
       if (
         compaction.pressure === "warn" &&
@@ -3617,33 +3687,31 @@ export class AgentEnginePipeline {
         (turnRequest.tools && turnRequest.tools.length > 0
           ? this.tokenEstimator.estimate(JSON.stringify(turnRequest.tools))
           : 0);
-      const reservedOutputTokens =
-        params.request.maximumOutputTokens ??
-        params.windowPolicy.maximumOutputTokens;
-      const overflowOutputTokens = clampTurnMaximumOutputTokens({
-        reservedOutputTokens,
+      const generationCeiling = resolveGenerationCeiling({
+        contextWindowTokens: params.windowPolicy.contextWindowTokens,
+        configuredOutputTokens: params.windowPolicy.maximumOutputTokens,
+        reasonCodes: params.windowPolicy.reasonCodes,
+      });
+      const leftoverOutputTokens = clampTurnMaximumOutputTokens({
+        reservedOutputTokens: generationCeiling,
         contextWindowTokens: params.windowPolicy.contextWindowTokens,
         usedInputTokens,
       });
-      const willClampOutputTokens =
-        usedInputTokens + reservedOutputTokens >=
-        params.windowPolicy.contextWindowTokens;
-      turnRequest.maximumOutputTokens = willClampOutputTokens
-        ? overflowOutputTokens
-        : reservedOutputTokens;
+      const previousOutputTokens =
+        turnRequest.maximumOutputTokens ?? generationCeiling;
+      turnRequest.maximumOutputTokens = leftoverOutputTokens;
       if (
-        willClampOutputTokens &&
-        overflowOutputTokens < reservedOutputTokens &&
+        leftoverOutputTokens < previousOutputTokens &&
         logVerbosityAtLeast(logVerbosity, "standard")
       ) {
         this.emit(bus, {
           type: "warning",
           runId,
-          message: `Turn output tokens reduced from ${reservedOutputTokens} to ${overflowOutputTokens} because input tokens crowded the context window.`,
+          message: `Turn output tokens reduced from ${previousOutputTokens} to ${leftoverOutputTokens} because leftover context was smaller than the generation ceiling.`,
           code: "output_tokens_clamped",
           data: {
-            reservedOutputTokens,
-            clampedOutputTokens: overflowOutputTokens,
+            reservedOutputTokens: generationCeiling,
+            clampedOutputTokens: leftoverOutputTokens,
             usedInputTokens,
             contextWindowTokens: params.windowPolicy.contextWindowTokens,
           },
@@ -4015,6 +4083,8 @@ export class AgentEnginePipeline {
             kind: "budget_exhausted",
             answer: answer || undefined,
             message: "Tool call budget exhausted.",
+            changedFiles,
+            mutationCheckpointIds,
           };
         }
 
@@ -4042,6 +4112,7 @@ export class AgentEnginePipeline {
         evidence,
         establishedFacts,
         windowPolicy: params.windowPolicy,
+        loopFileReads,
       });
 
         if (outcome.kind === "approval_required") {
@@ -4328,6 +4399,10 @@ export class AgentEnginePipeline {
         readOnlyToolTurnsWithoutMutation = 0;
         readOnlyToolTurnsAfterMutation = 0;
         readOnlyMutationRetryAttempts = 0;
+        if (changedFiles.length > 0) {
+          resetLoopFileReadTracker(loopFileReads);
+          explorationStallNudges = 0;
+        }
       } else if (
         isMutationRequired() &&
         changedFiles.length === 0 &&
@@ -4393,16 +4468,7 @@ export class AgentEnginePipeline {
         }
       }
 
-      const usageSnap = budget.snapshot();
-      const loopUsageSnap = {
-        fileReadCalls:
-          usageSnap.fileReadCalls - explorationBaseline.fileReadCalls,
-        uniqueFilePathsTouched: Math.max(
-          1,
-          usageSnap.uniqueFilePathsTouched -
-            explorationBaseline.uniqueFilePathsTouched,
-        ),
-      };
+      const loopUsageSnap = snapshotLoopFileReads(loopFileReads);
       if (isExplorationRereadHeavy(loopUsageSnap)) {
         this.applyExplorationSignal(loopUsageSnap, reasonCodes, warnings);
         if (
@@ -4629,6 +4695,7 @@ export class AgentEnginePipeline {
     evidence?: RunEvidence;
     establishedFacts?: EstablishedFact[];
     windowPolicy: WindowPolicy;
+    loopFileReads?: LoopFileReadTracker;
   }): Promise<ToolCallOutcome> {
     const {
       runId,
@@ -4654,6 +4721,7 @@ export class AgentEnginePipeline {
       evidence,
       establishedFacts,
       windowPolicy,
+      loopFileReads,
     } = params;
 
     const toolCall: ModelToolCall = {
@@ -4675,6 +4743,9 @@ export class AgentEnginePipeline {
     const fileReadPaths = extractFileReadPaths(toolCall.name, argumentsValue);
     if (fileReadPaths) {
       budget.recordFileRead(fileReadPaths);
+      if (loopFileReads) {
+        recordLoopFileReads(loopFileReads, fileReadPaths);
+      }
     }
 
     this.emit(bus, {
@@ -4906,6 +4977,7 @@ export class AgentEnginePipeline {
         preToolActiveId,
         toolStatus: result.status,
         isMutatingTool: mutatingToolNames.has(toolCall.name),
+        changedFiles: output?.changedFiles ?? [],
       });
       if (autoAdvanced.warnings.length > 0) {
         warnings.push(...autoAdvanced.warnings);
@@ -5154,16 +5226,13 @@ export class AgentEnginePipeline {
     request: ModelRequest,
     windowPolicy: WindowPolicy,
   ): number {
-    if (request.maximumOutputTokens === undefined) {
-      return windowPolicy.loopInputBudgetTokens;
-    }
     const toolDefinitionTokens =
       request.tools && request.tools.length > 0
         ? this.tokenEstimator.estimate(JSON.stringify(request.tools))
         : windowPolicy.toolSchemaTokens;
     const rawBudget =
       windowPolicy.contextWindowTokens -
-      Math.max(0, request.maximumOutputTokens) -
+      windowPolicy.maximumOutputTokens -
       toolDefinitionTokens;
     return Math.max(
       1,
@@ -6086,7 +6155,7 @@ function buildRejectedMutationRecoveryMessage(params: {
     `The mutation tool ${params.toolName} was ${params.status}${reason}.`,
     `${summary}${warnings}`,
     "Do not restart broad exploration.",
-    "Use the rejected tool result and already-read file content to correct the edit.",
+    "When the rejected result includes currentContent, copy exact oldText from that content and retry apply_patch immediately. Do not spend a turn re-reading unless currentContent is missing.",
   ];
 
   if (allowTargetedDiscovery) {

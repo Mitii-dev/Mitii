@@ -16,7 +16,14 @@ export {
   dropEstablishedFactsForPaths,
 } from "./extractEstablishedFact";
 export type { EstablishedFact } from "./extractEstablishedFact";
-export { isExplorationRereadHeavy } from "./isExplorationRereadHeavy";
+export {
+  createLoopFileReadTracker,
+  isExplorationRereadHeavy,
+  recordLoopFileReads,
+  resetLoopFileReadTracker,
+  snapshotLoopFileReads,
+} from "./isExplorationRereadHeavy";
+export type { LoopFileReadTracker } from "./isExplorationRereadHeavy";
 export { buildExplorationStallNudge } from "./buildExplorationStallNudge";
 export { buildPreflightDiagnosticRepairInstruction } from "./buildPreflightDiagnosticRepairInstruction";
 export { buildVerificationRepairPrompt } from "./buildVerificationRepairPrompt";

@@ -19,7 +19,7 @@ export interface ShouldContinueVerificationRepairInput {
 /**
  * Whether Agent Engine should inject another remaining-error repair loop.
  * Quick exploration stays at one repair; auto/deep keep going while the
- * error count is dropping and the run budget remains.
+ * error count is dropping and the window-effort / run budget remain.
  */
 export function shouldContinueVerificationRepair(
   input: ShouldContinueVerificationRepairInput,
@@ -28,13 +28,17 @@ export function shouldContinueVerificationRepair(
     return { continue: false, reason: "budget" };
   }
 
+  if (input.explorationDepth === "quick") {
+    const quickCap = maxVerificationRepairsForDepth("quick");
+    if (input.repairAttempts >= quickCap) {
+      return { continue: false, reason: "quick_cap" };
+    }
+  }
+
   const maxAttempts =
     input.maxAttempts ?? maxVerificationRepairsForDepth(input.explorationDepth);
   if (input.repairAttempts >= maxAttempts) {
-    return {
-      continue: false,
-      reason: input.explorationDepth === "quick" ? "quick_cap" : "max_attempts",
-    };
+    return { continue: false, reason: "max_attempts" };
   }
 
   if (

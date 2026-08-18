@@ -58,13 +58,14 @@ Tool JSON is treated as a **fixed cost**. Shares below are of `U`, not of `W`:
 | Skills | `skillsShare` | `skillsTokensCap` |
 | System + rules | remainder | none |
 
-Worked defaults (`outputRatio=0.10`, tool fallback 8k / 20% of W):
+Worked defaults (`outputRatio=0.20`, `outputMinTokens=10240`,
+`outputWindowCapRatio=0.35`, tool fallback 8k / 20% of W):
 
 | Window | Output | Tools | Usable | Repo | Plan | Skills |
 |---|---|---|---|---|---|---|
-| 30k | 3,000 | 6,000 | ~21k | ~5.9k | ~1.3k | ~0.8k |
-| 100k | 10,000 | 8,000 | ~82k | ~23k | ~4.9k | ~3.3k |
-| 200k | 20,000 | 8,000 | ~172k | ~48k | ~10k | ~6.9k |
+| 30k | 10,240 | 6,000 | ~13.8k | ~3.9k | ~0.8k | ~0.6k |
+| 100k | 20,000 | 8,000 | ~72k | ~20k | ~4.3k | ~2.9k |
+| 200k | 32,768 | 8,000 | ~159k | ~45k | ~9.5k | ~6.4k |
 
 Mutation batch size follows the **context window**, then the effort overlay
 caps it so a 200k model does not keep 25-file patches:
@@ -77,7 +78,7 @@ maxPatchPayloadCharacters = O × charsPerOutputToken × patchPayloadOutputRatio
 preferredBatchSize     = maxUniqueFilesPerCall
 ```
 
-Medium effort (the default): 30k → 3 files, 48k → 6 files, 200k → 8 files
+Medium effort (the default): 30k → 7 files, 48k → 8 files, 200k → 8 files
 (not 25). High effort raises the 200k cap to 12; low effort lowers it to 4.
 
 Planning affordances follow **usable input**, scaled with the window so a 30k local cap still plans:
@@ -93,7 +94,7 @@ maxModelCalls             = effort overlay (medium: 40)
 ```
 
 Effort also sets compaction ceilings (`autoMaxTokens` / `hardMaxTokens`) and
-`run.maxVerificationRepairs` (medium: 1). Host `runBudget.unlimited` is still
+`run.maxVerificationRepairs` (medium: 8). Host `runBudget.unlimited` is still
 clamped to these window-effort loop caps.
 
 Decision Policy then merges profile mutation budgets with these window caps using `min()` (and ORs `requireBatchedExecution`).
@@ -157,7 +158,7 @@ The customer knob is the advertised context window. Built-in defaults already sc
 
 The VS Code host maps Developer → **Token budget** onto `policy` overrides. Simple sliders cover files per mutation, output reserve, module shares, and verification checks. Advanced keeps the core ratios and clamps. Each field is also a `mitii.tokenBudget.*` setting. When the toggle is off, V8 defaults apply and scale with the context window. Moving a Simple slider turns custom budget on and pins that value so later window changes do not overwrite it. Reset clears those overrides.
 
-`mitii.provider.maximumOutputTokens = 0` means “derive O from the window”. A positive value is a host override and still cannot exceed `W − 1`.
+`mitii.provider.maximumOutputTokens = 0` means “derive O from the window”. A positive value is a host override and still cannot exceed `W − 1`. The historical default `5000` is treated as unset (`output_legacy_default_ignored`) so mutation batches are not truncated. `O` is the planning reserve (input must not fill the window). Per-turn `max_tokens` is leftover context, owned by Prompt Construction / Agent Engine, unless the host overrode output.
 
 ## Explicit non-responsibilities
 

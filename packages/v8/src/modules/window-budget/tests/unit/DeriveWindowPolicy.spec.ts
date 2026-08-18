@@ -34,7 +34,7 @@ describe("deriveWindowPolicy", () => {
     expect(small.effort).toBe("medium");
     expect(small.run.maxModelCalls).toBe(40);
     expect(small.run.maxModelCalls).toBe(large.run.maxModelCalls);
-    expect(small.run.maxVerificationRepairs).toBe(1);
+    expect(small.run.maxVerificationRepairs).toBe(8);
     expect(small.compaction.toolResultContentChars).toBeLessThan(
       large.compaction.toolResultContentChars,
     );
@@ -55,13 +55,14 @@ describe("deriveWindowPolicy", () => {
       schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
       contextWindowTokens: 200_000,
     });
-    expect(at30k.mutation.maxUniqueFilesPerCall).toBe(3);
+    expect(at30k.mutation.maxUniqueFilesPerCall).toBe(7);
+    expect(at30k.maximumOutputTokens).toBe(10_240);
     expect(at200k.mutation.maxUniqueFilesPerCall).toBe(8);
     expect(at200k.reasonCodes).toContain("mutation_effort_capped");
     expect(at200k.reasonCodes).toContain("effort_medium");
     expect(at200k.compaction.autoMaxTokens).toBe(32_000);
     expect(at200k.compaction.hardMaxTokens).toBe(40_000);
-    expect(at200k.maximumOutputTokens).toBe(20_000);
+    expect(at200k.maximumOutputTokens).toBe(32_768);
     expect(at200k.maximumOutputTokens).toBeGreaterThan(
       at30k.maximumOutputTokens,
     );
@@ -75,6 +76,23 @@ describe("deriveWindowPolicy", () => {
     });
     expect(result.maximumOutputTokens).toBe(4_096);
     expect(result.reasonCodes).toContain("output_host_override");
+  });
+
+  it("ignores the legacy 5000 output default and derives from the window", () => {
+    const derived = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 35_000,
+    });
+    const legacy = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 35_000,
+      maximumOutputTokens: 5_000,
+    });
+    expect(legacy.maximumOutputTokens).toBe(derived.maximumOutputTokens);
+    expect(legacy.maximumOutputTokens).toBeGreaterThan(5_000);
+    expect(legacy.reasonCodes).toContain("output_legacy_default_ignored");
+    expect(legacy.reasonCodes).toContain("output_derived_from_window");
+    expect(legacy.reasonCodes).not.toContain("output_host_override");
   });
 
   it("keeps plan and change-impact affordable on a 30k window with a 5k output cap", () => {
@@ -178,7 +196,7 @@ describe("deriveWindowPolicy", () => {
     expect(low.run.maxModelCalls).toBe(24);
     expect(high.run.maxModelCalls).toBe(64);
     expect(low.run.maxVerificationRepairs).toBe(0);
-    expect(high.run.maxVerificationRepairs).toBe(2);
+    expect(high.run.maxVerificationRepairs).toBe(12);
     expect(high.reasonCodes).toContain("effort_high");
   });
 });

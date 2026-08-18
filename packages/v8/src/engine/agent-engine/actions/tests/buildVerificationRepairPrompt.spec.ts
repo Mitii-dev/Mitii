@@ -44,6 +44,7 @@ describe("buildVerificationRepairPrompt", () => {
     });
 
     expect(prompt).toContain("Call apply_patch now");
+    expect(prompt).toContain("Group remaining errors by code");
     expect(prompt).not.toContain("one repair attempt");
     expect(prompt).toContain("src/a.ts:1");
     expect(prompt).toContain("Expected x to be 3.");

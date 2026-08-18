@@ -17,23 +17,23 @@ describe("shouldContinueVerificationRepair", () => {
     ).toEqual({ continue: true, reason: "continue" });
   });
 
-  it("caps quick exploration at one repair", () => {
-    expect(maxVerificationRepairsForDepth("quick")).toBe(1);
+  it("keeps the quick cap even when window effort allows more repairs", () => {
     expect(
       shouldContinueVerificationRepair({
         repairAttempts: 1,
         explorationDepth: "quick",
         consecutiveStalledRepairs: 0,
         canStartModelCall: true,
+        maxAttempts: 8,
       }),
     ).toEqual({ continue: false, reason: "quick_cap" });
   });
 
   it("caps auto repairs at the engine default", () => {
-    expect(maxVerificationRepairsForDepth("auto")).toBe(1);
+    expect(maxVerificationRepairsForDepth("auto")).toBe(8);
     expect(
       shouldContinueVerificationRepair({
-        repairAttempts: 1,
+        repairAttempts: 8,
         explorationDepth: "auto",
         consecutiveStalledRepairs: 0,
         canStartModelCall: true,

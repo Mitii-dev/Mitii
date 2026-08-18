@@ -27,7 +27,7 @@ describe("prompt construction output reserve", () => {
     );
   });
 
-  it("treats configured max output as the per-turn ceiling", () => {
+  it("treats a real host max output as the per-turn ceiling", () => {
     const result = new PromptConstructionPipeline().construct(
       createPromptInput({
         capabilities: createCapabilities({
@@ -42,7 +42,7 @@ describe("prompt construction output reserve", () => {
     expect(result.reasonCodes).not.toContain("dynamic_output_expanded");
   });
 
-  it("does not expand output past the reserve on large windows", () => {
+  it("does not expand output past a real host ceiling on large windows", () => {
     const result = new PromptConstructionPipeline().construct(
       createPromptInput({
         capabilities: createCapabilities({
@@ -57,7 +57,7 @@ describe("prompt construction output reserve", () => {
     expect(result.reasonCodes).not.toContain("dynamic_output_expanded");
   });
 
-  it("holds the window reserve instead of filling leftover input room", () => {
+  it("expands past the planning reserve into leftover context", () => {
     const result = new PromptConstructionPipeline().construct(
       createPromptInput({
         capabilities: createCapabilities({
@@ -69,11 +69,12 @@ describe("prompt construction output reserve", () => {
     );
 
     expect(result.budget.outputReservedTokens).toBe(5_000);
-    expect(result.request.maximumOutputTokens).toBeLessThanOrEqual(5_000);
-    expect(result.reasonCodes).not.toContain("dynamic_output_expanded");
+    expect(result.request.maximumOutputTokens).toBeGreaterThan(5_000);
+    expect(result.request.maximumOutputTokens).toBeLessThanOrEqual(20_000);
+    expect(result.reasonCodes).toContain("dynamic_output_expanded");
   });
 
-  it("keeps a 5k configured output limit when the turn has free window", () => {
+  it("ignores the legacy 5k default and writes into leftover context", () => {
     const result = new PromptConstructionPipeline().construct(
       createPromptInput({
         capabilities: createCapabilities({
@@ -83,23 +84,36 @@ describe("prompt construction output reserve", () => {
       }),
     );
 
-    expect(result.budget.outputReservedTokens).toBe(5_000);
-    expect(result.request.maximumOutputTokens).toBeLessThanOrEqual(5_000);
-    expect(result.reasonCodes).not.toContain("dynamic_output_expanded");
+    expect(result.request.maximumOutputTokens).toBeGreaterThan(5_000);
+    expect(result.reasonCodes).toContain("dynamic_output_expanded");
   });
 
-  it("caps a 30k window at the reserve instead of 95 percent leftover", () => {
+  it("lets a 10k-free window write about 10k tokens", () => {
     const result = resolveDynamicOutputTokens({
       contextWindowTokens: 30_000,
-      configuredOutputTokens: 5_000,
-      outputReservedTokens: 5_000,
+      configuredOutputTokens: 10_240,
+      outputReservedTokens: 10_240,
+      usedInputTokens: 20_000,
+    });
+
+    expect(result.availableOutputTokens).toBe(10_000);
+    expect(result.dynamicOutputRatio).toBe(0.95);
+    expect(result.maximumOutputTokens).toBe(9_500);
+    expect(result.reasonCodes).toContain("dynamic_output_limited_by_context");
+  });
+
+  it("expands a derived reserve to 95 percent leftover", () => {
+    const result = resolveDynamicOutputTokens({
+      contextWindowTokens: 30_000,
+      configuredOutputTokens: 10_240,
+      outputReservedTokens: 10_240,
       usedInputTokens: 12_000,
     });
 
     expect(result.availableOutputTokens).toBe(18_000);
     expect(result.dynamicOutputRatio).toBe(0.95);
-    expect(result.maximumOutputTokens).toBe(5_000);
-    expect(result.reasonCodes).not.toContain("dynamic_output_expanded");
+    expect(result.maximumOutputTokens).toBe(17_100);
+    expect(result.reasonCodes).toContain("dynamic_output_expanded");
   });
 
   it("keeps output inside the remaining context when input exceeds reserve budget", () => {

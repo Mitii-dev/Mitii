@@ -1019,57 +1019,63 @@ function buildDiagnosticChangeSteps(
     return [];
   }
 
-  return groupDiagnosticsByPath(diagnostics)
+  return groupDiagnosticsByCode(diagnostics)
     .slice(0, maxDiagnosticSteps ?? DEFAULT_MAX_STEPS_PER_PHASE)
-    .map(({ path, diagnostics: fileDiagnostics }, index) => {
-      const primary = fileDiagnostics[0]!;
-      const code = primary.code ? ` ${primary.code}` : "";
-      const line = primary.startLine ? `:${primary.startLine}` : "";
+    .map(({ code, paths, diagnostics: classDiagnostics }, index) => {
+      const primary = classDiagnostics[0]!;
+      const codeLabel = code || "diagnostic";
+      const fileNote =
+        paths.length === 1
+          ? paths[0]!
+          : `${paths[0]!} +${paths.length - 1} files`;
       const countNote =
-        fileDiagnostics.length === 1
-          ? `the reported diagnostic${code}`
-          : `${fileDiagnostics.length} reported diagnostics`;
+        classDiagnostics.length === 1
+          ? `the reported ${codeLabel} diagnostic`
+          : `all ${classDiagnostics.length} ${codeLabel} diagnostics`;
       return step(
         `step-fix-diagnostic-${index + 1}`,
-        clipPhrase(`Fix ${path}${line}${code}`, 200),
-        [path],
+        clipPhrase(`Fix ${codeLabel} in ${fileNote}`, 200),
+        paths,
         clipPhrase(
-          `Address ${countNote} in ${path} without broad unrelated rewrites. ${primary.message}`,
+          `Address ${countNote} in a single batch (same root cause). ${primary.message}`,
           1_000,
         ),
-        `Diagnostics for ${path} are resolved or reduced without introducing new errors.`,
+        `${codeLabel} diagnostics are resolved or reduced without introducing new errors.`,
         risk,
         buildEvidence?.failedChecks?.join(", "),
       );
     });
 }
 
-function groupDiagnosticsByPath(
+function groupDiagnosticsByCode(
   diagnostics: readonly NonNullable<PlanningBuildEvidence["diagnostics"]>[number][],
 ): Array<{
-  path: string;
+  code: string;
+  paths: string[];
   diagnostics: NonNullable<PlanningBuildEvidence["diagnostics"]>;
 }> {
-  const byPath = new Map<
+  const byCode = new Map<
     string,
     NonNullable<PlanningBuildEvidence["diagnostics"]>
   >();
   for (const diagnostic of diagnostics) {
-    const path = diagnostic.path.trim();
-    if (!path || byPath.get(path)?.length === 12) {
-      continue;
-    }
-    const existing = byPath.get(path);
+    const code = diagnostic.code?.trim() || diagnostic.path.trim() || "unknown";
+    const existing = byCode.get(code);
     if (existing) {
-      existing.push(diagnostic);
+      if (existing.length < 24) {
+        existing.push(diagnostic);
+      }
     } else {
-      byPath.set(path, [diagnostic]);
+      byCode.set(code, [diagnostic]);
     }
   }
-  return [...byPath.entries()].map(([path, grouped]) => ({
-    path,
-    diagnostics: grouped,
-  }));
+  return [...byCode.entries()]
+    .map(([code, grouped]) => ({
+      code,
+      paths: [...new Set(grouped.map((item) => item.path.trim()).filter(Boolean))],
+      diagnostics: grouped,
+    }))
+    .sort((left, right) => right.diagnostics.length - left.diagnostics.length);
 }
 
 function buildVerifySteps(

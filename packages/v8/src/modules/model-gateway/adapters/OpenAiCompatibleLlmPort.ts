@@ -182,7 +182,7 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
       supportsReasoning:
         config.capabilities?.supportsReasoning ?? false,
       supportsPromptCaching:
-        config.capabilities?.supportsPromptCaching ?? false,
+        config.capabilities?.supportsPromptCaching ?? true,
       supportsEmbeddings:
         config.capabilities?.supportsEmbeddings ?? false,
       ...(config.capabilities?.agenticTier

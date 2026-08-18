@@ -223,6 +223,12 @@ describe("Tool Runtime Phase 8 mutations", () => {
 
     expect(result.status).toBe("rejected");
     expect(result.reasonCode).toBe("patch_conflict");
+    expect(result.output).toEqual(
+      expect.objectContaining({
+        path: "src/a.ts",
+        currentContent: "const x = 1;\n",
+      }),
+    );
   });
 
   it("rejects write grant without write effect", async () => {

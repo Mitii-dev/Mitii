@@ -170,7 +170,8 @@ export function buildUnfulfilledExecuteRecoveryMessage(
     "You described the fix but did not call apply_patch.",
     "Do not repeat the diagnosis or write a report.",
     `Call apply_patch now for the next batch: at most ${preferred} files (hard max ${maxFiles} unique files, ${maxPatches} patches).`,
-    "Leave remaining files for later turns.",
+    "Fix a whole error class per turn (same TS code / same root cause across files). Do not spend a turn on a single diagnostic when more of that class remain.",
+    "Leave remaining error classes for later turns.",
     "If a file is still unknown, read it — then patch. Do not end this turn with analysis only.",
   ].join("\n");
 }

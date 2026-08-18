@@ -26,7 +26,7 @@ export function buildMutationBudgetInstruction(
       "Use minimal diffs (small oldText anchors). Never emit 30+ file rewrites in one response — split across turns.",
       "If a prior turn was truncated, immediately retry with a smaller batch.",
       "After a multi-file apply_patch, re-read or typecheck the touched files before the next mutation. Do not batch files whose contents may be stale.",
-      "If apply_patch returns patch_conflict, re-read that file and retry it alone — do not resubmit the whole batch.",
+      "If apply_patch returns patch_conflict, the tool result includes current file content — copy exact oldText from that content and retry the stale file alone. Do not re-read unless currentContent is missing.",
     ].join("\n"),
   };
 }

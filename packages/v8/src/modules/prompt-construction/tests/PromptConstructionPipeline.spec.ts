@@ -77,10 +77,10 @@ describe("PromptConstructionPipeline", () => {
       result.budget.contextWindowTokens - result.budget.outputReservedTokens,
     );
     expect(result.reasonCodes).toContain("output_reserved_first");
+    expect(result.request.maximumOutputTokens).toBeGreaterThan(0);
     expect(result.request.maximumOutputTokens).toBeLessThanOrEqual(
-      result.budget.outputReservedTokens,
+      result.budget.contextWindowTokens - result.budget.totalUsedTokens,
     );
-    expect(result.reasonCodes).not.toContain("dynamic_output_expanded");
   });
 
   it("attaches provenance to every included context block", () => {

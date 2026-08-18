@@ -85,6 +85,9 @@ describe("extractEstablishedFact", () => {
     ].join("\n");
 
     expect(extractCompilerErrorQueue({ stdout })).toContain("TS2345");
+    expect(extractCompilerErrorQueue({ stdout })).toContain(
+      "fix every listed class",
+    );
 
     const fact = extractEstablishedFact({
       toolName: "run_readonly_command",
@@ -93,8 +96,9 @@ describe("extractEstablishedFact", () => {
     });
 
     expect(fact?.id).toBe("error-queue:compiler");
-    expect(fact?.content).toContain("field-autocomplete.tsx:8 TS2345");
-    expect(fact?.content).toContain("field-checkbox.tsx:8 TS2345");
+    expect(fact?.content).toContain("TS2345 (2 in 2 file(s))");
+    expect(fact?.content).toContain("field-autocomplete.tsx:8");
+    expect(fact?.content).toContain("field-checkbox.tsx:8");
   });
 
   it("uses the caller max fact count when upserting", () => {

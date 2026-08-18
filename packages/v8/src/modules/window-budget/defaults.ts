@@ -5,10 +5,11 @@ import type { WindowBudgetPolicy } from "./contracts";
  * Ratios are of the named base (window or usable input), not magic counts.
  */
 export const DEFAULT_WINDOW_BUDGET_POLICY: WindowBudgetPolicy = {
-  outputRatio: 0.1,
-  outputMinTokens: 1_024,
+  outputRatio: 0.2,
+  /** Floor so a 30k window can emit a full mutation batch instead of 6k. */
+  outputMinTokens: 10_240,
   outputMaxTokens: 32_768,
-  outputWindowCapRatio: 0.2,
+  outputWindowCapRatio: 0.35,
   toolSchemaFallbackTokens: 8_000,
   toolSchemaFallbackWindowRatio: 0.2,
   minimumUsableInputTokens: 2_048,

@@ -106,17 +106,16 @@ function resolveMaximumOutput(
   contextWindowTokens: number,
 ): number {
   const fromSetting = cfg.get<number>('provider.maximumOutputTokens');
-  if (
+  const hostOutput =
     typeof fromSetting === 'number' &&
     Number.isFinite(fromSetting) &&
     fromSetting > 0
-  ) {
-    return Math.min(Math.floor(fromSetting), Math.max(1, contextWindowTokens - 1));
-  }
+      ? Math.floor(fromSetting)
+      : 0;
   return deriveWindowPolicy({
     schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
     contextWindowTokens: Math.max(1, contextWindowTokens),
-    maximumOutputTokens: 0,
+    maximumOutputTokens: hostOutput,
     policy: readTokenBudgetPolicyOverrides(cfg),
   }).maximumOutputTokens;
 }

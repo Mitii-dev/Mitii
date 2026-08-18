@@ -10,8 +10,8 @@ export const PROMPT_CONSTRUCTION_THRESHOLDS = {
   outputReserveRatio: 0.3,
 
   /**
-   * Safety fraction of leftover context that output may use when the leftover
-   * is smaller than the window-derived reserve. Output never exceeds the reserve.
+   * Safety fraction of leftover context that output may use. A 10k-free
+   * window yields ~9.5k max_tokens. A real host override still caps this.
    */
   dynamicOutputWindowRatio: 0.95,
 

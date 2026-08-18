@@ -30,7 +30,7 @@ export function buildPreflightDiagnosticRepairInstruction(
   const remaining = Math.max(0, input.totalErrorCount - diagnostics.length);
   const body = [
     `Preflight verification already captured ${input.totalErrorCount} error(s). Use these scoped diagnostics as the first repair targets; do not restart broad exploration.`,
-    "Patch listed files in a bounded batch. Read only the exact listed file if its current content is missing, then call apply_patch.",
+    "Patch every listed error class in one bounded apply_patch batch (same root cause across files). Read a listed file only if its current content is missing, then call apply_patch.",
     ...lines,
     remaining > 0
       ? `There are ${remaining} additional error(s); fix the listed batch first, then verify or continue.`

@@ -394,13 +394,12 @@ export function maybeAutoAdvanceTaskList(params: {
   preToolActiveId?: string;
   toolStatus: ToolResult["status"];
   isMutatingTool: boolean;
-  /** When false, skip (e.g. already advanced once this model turn). */
+  /** When false, skip the unmatched-active fallback (already advanced this turn). */
   allowAdvance?: boolean;
+  /** Paths written by this mutation; matching checklist rows complete together. */
+  changedFiles?: readonly string[];
 }): { advanced: boolean; taskList?: TaskList; warnings: string[] } {
   if (!(params.enabled ?? TASK_LIST_POLICY.autoAdvanceOnMutationSuccess)) {
-    return { advanced: false, warnings: [] };
-  }
-  if (params.allowAdvance === false) {
     return { advanced: false, warnings: [] };
   }
   if (!params.current || params.current.items.length === 0) {
@@ -410,6 +409,59 @@ export function maybeAutoAdvanceTaskList(params: {
     return { advanced: false, warnings: [] };
   }
 
+  const changedFiles = (params.changedFiles ?? []).filter(Boolean);
+  const matching = params.current.items.filter(
+    (item) =>
+      item.status !== "done" &&
+      item.status !== "skipped" &&
+      isMutationAutoAdvanceEligible(item) &&
+      itemMentionsAnyPath(item, changedFiles),
+  );
+
+  if (matching.length === 0) {
+    if (params.allowAdvance === false) {
+      return { advanced: false, warnings: [] };
+    }
+    return advanceActiveChecklistItem(params);
+  }
+
+  const doneIds = new Set(matching.map((item) => item.id));
+  const nextPending = params.current.items.find(
+    (item) =>
+      item.status === "pending" &&
+      !doneIds.has(item.id) &&
+      isMutationAutoAdvanceEligible(item),
+  );
+  const patchItems = [
+    ...matching.map((item) => ({ id: item.id, status: "done" as const })),
+    ...(nextPending ? [{ id: nextPending.id, status: "active" as const }] : []),
+  ];
+  const result = pipeline.apply({
+    schemaVersion: 1,
+    current: params.current,
+    source: params.current.source,
+    operation: {
+      type: "patch",
+      items: patchItems,
+    },
+  });
+  if (result.status !== "applied" || !result.taskList) {
+    return { advanced: false, warnings: result.warnings };
+  }
+  return {
+    advanced: result.reasonCodes.includes("task_list_patched"),
+    taskList: result.taskList,
+    warnings: result.warnings,
+  };
+}
+
+function advanceActiveChecklistItem(params: {
+  current?: TaskList;
+  preToolActiveId?: string;
+}): { advanced: boolean; taskList?: TaskList; warnings: string[] } {
+  if (!params.current) {
+    return { advanced: false, warnings: [] };
+  }
   const activeItems = params.current.items.filter(
     (item) => item.status === "active",
   );
@@ -424,8 +476,6 @@ export function maybeAutoAdvanceTaskList(params: {
     return { advanced: false, warnings: [] };
   }
 
-  // Activate the next concrete change-like pending item only. Never auto-activate
-  // Discover/Verify process rows — those need model/evidence patches.
   const nextPending = params.current.items.find(
     (item) =>
       item.status === "pending" &&
@@ -453,6 +503,17 @@ export function maybeAutoAdvanceTaskList(params: {
     taskList: result.taskList,
     warnings: result.warnings,
   };
+}
+
+function itemMentionsAnyPath(
+  item: { title: string; detail?: string },
+  paths: readonly string[],
+): boolean {
+  if (paths.length === 0) {
+    return false;
+  }
+  const hint = `${item.title} ${item.detail ?? ""}`;
+  return paths.some((path) => path.length > 0 && hint.includes(path));
 }
 
 /** Mutation success may only complete concrete change-like checklist rows. */

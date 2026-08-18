@@ -3,7 +3,7 @@ import type {
   VerificationResult,
 } from "../../../modules/verification";
 
-const DEFAULT_MAX_DIAGNOSTICS = 8;
+const DEFAULT_MAX_DIAGNOSTICS = 16;
 const DEFAULT_MESSAGE_CHARS = 180;
 
 /**
@@ -55,7 +55,8 @@ export function buildVerificationRepairPrompt(params: {
 
   return [
     "Verification failed. Call apply_patch now for the next remaining-error batch.",
-    "Do not write a report or re-read the whole repository. Remaining errors go on later turns.",
+    "Group remaining errors by code/message and fix each class across its files this turn. Do not stop after the first diagnostic.",
+    "Do not write a report or re-read the whole repository. Remaining error classes go on later turns.",
     batch,
     counts,
     changed,

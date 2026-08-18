@@ -380,8 +380,8 @@ describe("PlanningPipeline", () => {
     ]);
     expect(changeSteps.map((step) => step.intent)).toEqual(
       expect.arrayContaining([
-        "Fix packages/mui-builder/src/Button.tsx:42 TS2322",
-        "Fix packages/mui-builder/src/theme.ts:7 TS2339",
+        "Fix TS2322 in packages/mui-builder/src/Button.tsx",
+        "Fix TS2339 in packages/mui-builder/src/theme.ts",
       ]),
     );
     expect(changeSteps.map((step) => step.id)).not.toContain("step-implement");

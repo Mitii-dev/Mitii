@@ -127,9 +127,7 @@ export function createHostLlmPorts(
       ...openaiShared,
       capabilities: {
         supportsTools: true,
-        ...(isDeepSeekCompatible(input.preset, preset?.id, baseUrl)
-          ? { supportsPromptCaching: true }
-          : {}),
+        supportsPromptCaching: true,
         ...capabilities,
       },
     });
@@ -138,9 +136,7 @@ export function createHostLlmPorts(
       capabilities: {
         supportsTools: true,
         supportsStructuredOutput: true,
-        ...(isDeepSeekCompatible(input.preset, preset?.id, baseUrl)
-          ? { supportsPromptCaching: true }
-          : {}),
+        supportsPromptCaching: true,
         ...capabilities,
       },
     });
@@ -159,15 +155,4 @@ export function createHostLlmPorts(
     providerLabel: 'echo',
     type: 'echo',
   };
-}
-
-function isDeepSeekCompatible(
-  preset?: string,
-  presetId?: string,
-  baseUrl?: string,
-): boolean {
-  if (preset === 'deepseek' || presetId === 'deepseek') {
-    return true;
-  }
-  return /deepseek\.com/i.test(baseUrl ?? '');
 }

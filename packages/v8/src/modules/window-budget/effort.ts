@@ -37,14 +37,14 @@ export const WINDOW_BUDGET_EFFORT_OVERLAY: Record<
     maxModelCalls: 40,
     compactionAutoMaxTokens: 32_000,
     compactionHardMaxTokens: 40_000,
-    maxVerificationRepairs: 1,
+    maxVerificationRepairs: 8,
   },
   high: {
     maxUniqueFilesPerCall: 12,
     maxModelCalls: 64,
     compactionAutoMaxTokens: 48_000,
     compactionHardMaxTokens: 64_000,
-    maxVerificationRepairs: 2,
+    maxVerificationRepairs: 12,
   },
 };
 
