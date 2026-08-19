@@ -1,8 +1,10 @@
 import {
+  resolveMaximumIndexFiles,
   runFullWorkspaceIndex as runSharedFullWorkspaceIndex,
   type FullWorkspaceIndexResult,
   type SemanticIndexSettings,
 } from '@mitii/host';
+import * as vscode from 'vscode';
 
 import { openSqliteDatabase } from './nativeSqlite.js';
 
@@ -19,8 +21,14 @@ export async function runFullWorkspaceIndex(options: {
   abortSignal?: AbortSignal;
   onProgress?: Parameters<typeof runSharedFullWorkspaceIndex>[0]['onProgress'];
 }): Promise<FullWorkspaceIndexResult> {
+  const configured = vscode.workspace
+    .getConfiguration('mitii')
+    .get<number>('workspace.maximumIndexFiles');
   return runSharedFullWorkspaceIndex({
     ...options,
+    maximumFiles: resolveMaximumIndexFiles(
+      options.maximumFiles ?? configured,
+    ),
     openDatabase: openSqliteDatabase as never,
   });
 }

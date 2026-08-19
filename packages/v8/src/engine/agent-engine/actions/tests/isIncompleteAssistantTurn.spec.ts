@@ -3,12 +3,15 @@ import { describe, expect, it } from "vitest";
 import {
   amendMessageWithPriorConversation,
   buildIncompleteAnswerRecoveryMessage,
+  compactRecoveredAssistantContent,
   hasLeakedToolCallMarkup,
   isDegenerateRepeatedAnswer,
   isEmptyAssistantTurn,
+  isMidWorkAnalysisDump,
   isPseudoToolRequestAnswer,
   isTransitionalAssistantAnswer,
   isUnfinishedInvestigationAnswer,
+  selectUserFacingLoopAnswer,
   shouldRecoverIncompleteAssistantTurn,
   synthesizeFallbackAnswer,
 } from "../isIncompleteAssistantTurn";
@@ -184,6 +187,61 @@ describe("isIncompleteAssistantTurn", () => {
         changedFileCount: 1,
       }),
     ).toBe(false);
+  });
+
+  it("treats long remaining-error planning essays as mid-work dumps", () => {
+    const dump = [
+      "Let me analyze the 19 remaining errors:",
+      "",
+      "Let me group by root cause and think about what patches to apply.",
+      "I need to check FieldType, then I should fix FormRenderer, then I will apply_patch.",
+      "Let me think about InputTypes as a value vs a type.",
+      "I am going to add the missing exports next.",
+      "Let me focus on the TS2305 class first.",
+      "I will write the patches after I confirm the const object.",
+      "Let me take a pragmatic approach and apply the remaining fixes.",
+      "I need to stop globbing and continue apply_patch for remaining errors.",
+      ...Array.from(
+        { length: 8 },
+        (_, index) =>
+          `Let me think through remaining class ${index}: I should patch it this turn instead of writing another report.`,
+      ),
+    ].join("\n");
+
+    expect(dump.length).toBeGreaterThan(800);
+    expect(isMidWorkAnalysisDump(dump)).toBe(true);
+    expect(isTransitionalAssistantAnswer(dump)).toBe(true);
+    expect(
+      shouldRecoverIncompleteAssistantTurn({
+        content: dump,
+        toolCallCount: 0,
+        changedFileCount: 4,
+      }),
+    ).toBe(true);
+    const compacted = compactRecoveredAssistantContent(dump);
+    expect(compacted).toContain("omitted mid-work analysis");
+    expect(compacted.length).toBeLessThan(dump.length);
+    expect(
+      selectUserFacingLoopAnswer({
+        loopAnswer: dump,
+        fallbackSummary:
+          "Verification did not go clean. I kept the edits. After: 24 error(s).",
+        changedFiles: ["src/a.ts"],
+      }),
+    ).toBe(
+      "Verification did not go clean. I kept the edits. After: 24 error(s).",
+    );
+  });
+
+  it("keeps a concise outcome summary when joining with verification text", () => {
+    expect(
+      selectUserFacingLoopAnswer({
+        loopAnswer:
+          "Updated field-radio.tsx so RadioGroup receives row instead of disabled.",
+        fallbackSummary: "Cleared 2 remaining errors.",
+        changedFiles: ["src/field-radio.tsx"],
+      }),
+    ).toContain("Updated field-radio.tsx");
   });
 
   it("recovers empty and transitional finals", () => {

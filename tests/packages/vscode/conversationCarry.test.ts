@@ -206,6 +206,32 @@ describe('conversationCarry (VS Code host)', () => {
     ).toContain('old files were removed');
   });
 
+  it('does not dump mid-work analysis over a verification summary', () => {
+    const dump = [
+      'Let me analyze the 19 remaining errors:',
+      ...Array.from(
+        { length: 12 },
+        (_, index) =>
+          `Let me think about remaining class ${index}. I will apply_patch after I finish this plan.`,
+      ),
+    ].join('\n');
+    const summary =
+      'Verification did not go clean. I kept the edits.\n\nBefore: 116 error(s)\nAfter: 24 error(s)';
+
+    expect(
+      resolveDisplayedAssistantText({
+        streamedText: dump,
+        finalAnswer: summary,
+      }),
+    ).toBe(summary);
+    expect(
+      enrichAssistantCarryText({
+        answer: dump,
+        changedPaths: ['packages/mui-builder/src/FormRenderer.tsx'],
+      }),
+    ).toBe('Completed workspace edits (1 file changed).');
+  });
+
   it('compacts activity and file changes for history', () => {
     const activity = compactActivityForHistory([
       {

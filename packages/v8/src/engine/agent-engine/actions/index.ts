@@ -68,9 +68,12 @@ export {
   isPseudoToolRequestAnswer,
   isTransitionalAssistantAnswer,
   isUnfinishedInvestigationAnswer,
+  isMidWorkAnalysisDump,
   isDegenerateRepeatedAnswer,
   shouldRecoverIncompleteAssistantTurn,
   synthesizeFallbackAnswer,
+  compactRecoveredAssistantContent,
+  selectUserFacingLoopAnswer,
   amendMessageWithPriorConversation,
 } from "./isIncompleteAssistantTurn";
 

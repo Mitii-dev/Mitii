@@ -429,6 +429,124 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.answer).not.toContain("second half");
   });
 
+  it("does not keep a truncated analysis dump as the answer after mutations", async () => {
+    const dump = [
+      "Let me analyze the remaining errors:",
+      ...Array.from(
+        { length: 12 },
+        (_, index) =>
+          `Let me think about remaining class ${index}. I will apply_patch after I finish this plan.`,
+      ),
+    ].join("\n");
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          toolGrant: createReadOnlyGrant({
+            maximumWorkspaceEffect: "write",
+            allowedTools: ["apply_patch"],
+            allowedEffects: ["workspace_write"],
+            approvalMode: "never",
+          }),
+          reasonCodes: ["mutation_execute"],
+        }),
+        understanding: createUnderstanding({
+          intent: {
+            status: "accepted",
+            classification: {
+              interactionIntent: "act",
+              primaryTaskIntent: "bugfix",
+              secondaryTaskIntents: [],
+              confidence: 0.9,
+              alternatives: [],
+              needsClarification: false,
+              reason: "Fixture.",
+            },
+            scores: [
+              {
+                intent: "bugfix",
+                score: 0.9,
+                ruleScore: 0.8,
+                llmScore: 0.9,
+              },
+            ],
+            confidenceMargin: 0.4,
+            recommendsClarification: false,
+            diagnostics: {
+              llmPrimaryIntent: "bugfix",
+              llmInteractionIntent: "act",
+              taskAgreement: true,
+              interactionAgreement: true,
+              interactionConflict: false,
+              agreementBonusApplied: 0,
+              disagreementPenaltyApplied: 0,
+              minimumConfidence: 0.6,
+              minimumMargin: 0.15,
+            },
+          },
+        }),
+        llm: new ScriptedLlmPort([
+          {
+            content: "",
+            toolCalls: [
+              {
+                id: "call_patch_1",
+                name: "apply_patch",
+                arguments: JSON.stringify({
+                  patches: [{ path: "src/a.ts", oldText: "x", newText: "y" }],
+                }),
+              },
+            ],
+          },
+          {
+            content: dump,
+            finishReason: "length",
+          },
+          {
+            content: "",
+            toolCalls: [
+              {
+                id: "call_patch_2",
+                name: "apply_patch",
+                arguments: JSON.stringify({
+                  patches: [{ path: "src/b.ts", oldText: "u", newText: "v" }],
+                }),
+              },
+            ],
+          },
+          { content: "Updated src/b.ts so the remaining type error is gone." },
+        ]),
+        toolResults: {
+          apply_patch: {
+            status: "succeeded",
+            output: {
+              checkpointId: "cp_post",
+              changedFiles: ["src/a.ts", "src/b.ts"],
+            },
+          },
+        },
+      }),
+    );
+
+    const result = await engine.start(
+      baseStartInput({
+        workspaceRoot: "/repo",
+        request: {
+          sessionId: "sess_1",
+          mode: "agent",
+          userMessage: "Fix the type errors",
+          workspace: { workspaceId: "ws_1" },
+        },
+      }),
+    ).result;
+
+    expect(result.status).toBe("completed");
+    expect(result.reasonCodes).toContain("output_truncation_recovered");
+    expect(result.reasonCodes).toContain("mutation_applied");
+    expect(result.answer).toContain("Updated src/b.ts");
+    expect(result.answer).not.toContain("Let me analyze the remaining errors");
+  });
+
   it("exhausts a single unfulfilled-execute recovery then fails without edits", async () => {
     const engine = new AgentEnginePipeline(
       createStubDependencies({

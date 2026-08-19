@@ -115,6 +115,8 @@ import {
   upsertEstablishedFact,
   isEmptyAssistantTurn,
   isTransitionalAssistantAnswer,
+  compactRecoveredAssistantContent,
+  selectUserFacingLoopAnswer,
   mapContextToPromptSlice,
   mapUnderstandingToPlanningEvidence,
   mapUnderstandingToSkillEvidence,
@@ -124,7 +126,6 @@ import {
   synthesizeFallbackAnswer,
   amendMessageWithPriorConversation,
   resolveLoopTurnOutcome,
-  isUnfulfilledExecute,
   requiresMutationForExecute,
   buildUnfulfilledExecuteRecoveryMessage,
   shouldContinueVerificationRepair,
@@ -2331,7 +2332,10 @@ export class AgentEnginePipeline {
         reasonCodes.push("budget_exhausted");
         return finish({
           status: "budget_exhausted",
-          answer: currentOutcome.answer,
+          answer: selectUserFacingLoopAnswer({
+            loopAnswer: currentOutcome.answer,
+            changedFiles: currentOutcome.changedFiles,
+          }),
           reasonCodes,
           error: {
             code: "budget_exhausted",
@@ -2599,10 +2603,12 @@ export class AgentEnginePipeline {
       reasonCodes.push("answer_produced");
       return finish({
         status: "completed",
-        answer: joinNonEmptyAnswers(
-          "answer" in currentOutcome ? currentOutcome.answer : loopAnswer,
-          summary,
-        ),
+        answer: selectUserFacingLoopAnswer({
+          loopAnswer:
+            "answer" in currentOutcome ? currentOutcome.answer : loopAnswer,
+          fallbackSummary: summary,
+          changedFiles: loopChangedFiles,
+        }),
         reasonCodes,
       });
     }
@@ -3822,14 +3828,12 @@ export class AgentEnginePipeline {
         toolCalls: turn.toolCalls,
         mutationBudget: grant.mutationBudget,
         recoveryAttempt: truncationRecoveries,
-        requireMutation: isUnfulfilledExecute({
+        requireMutation: requiresMutationForExecute({
           route: decision.route,
           maximumWorkspaceEffect: grant.maximumWorkspaceEffect,
           primaryTaskIntent:
-            params.understanding?.intent.classification.primaryTaskIntent ?? "",
-          toolCallCount: turn.toolCalls.length,
-          changedFileCount: changedFiles.length,
-          content: turn.content,
+            params.understanding?.intent.classification.primaryTaskIntent,
+          reasonCodes: decision.reasonCodes,
         }),
       });
 
@@ -3842,12 +3846,10 @@ export class AgentEnginePipeline {
             recovery.assistantContent,
           );
           answer = pendingTextContinuation;
-        } else {
-          answer = recovery.assistantContent;
         }
         messages.push({
           role: "assistant",
-          content: recovery.assistantContent,
+          content: compactRecoveredAssistantContent(recovery.assistantContent),
         });
         messages.push(recovery.recoveryMessage);
         this.emit(bus, {
@@ -3963,7 +3965,7 @@ export class AgentEnginePipeline {
           if (turn.content.trim().length > 0) {
             messages.push({
               role: "assistant",
-              content: turn.content,
+              content: compactRecoveredAssistantContent(turn.content),
             });
           }
           messages.push({
@@ -4016,7 +4018,7 @@ export class AgentEnginePipeline {
           if (turn.content.trim().length > 0) {
             messages.push({
               role: "assistant",
-              content: turn.content,
+              content: compactRecoveredAssistantContent(turn.content),
             });
           }
           messages.push({
@@ -7023,16 +7025,6 @@ function isVerificationRetryAsk(message: string): boolean {
   return /\b(fix (those|them|the remaining(?: ones)?|remaining (?:errors|issues|diagnostics)|the (?:verification )?errors)|retry verification|continue (?:the )?verification)\b/i.test(
     message,
   );
-}
-
-function joinNonEmptyAnswers(
-  ...parts: Array<string | undefined>
-): string | undefined {
-  const joined = parts
-    .map((part) => part?.trim())
-    .filter((part): part is string => Boolean(part))
-    .join("\n\n");
-  return joined.length > 0 ? joined : undefined;
 }
 
 export type { AgentRunStatus };

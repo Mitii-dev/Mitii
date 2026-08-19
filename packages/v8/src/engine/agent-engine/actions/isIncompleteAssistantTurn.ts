@@ -1,3 +1,5 @@
+import { AGENT_ENGINE_THRESHOLDS } from "../policy";
+
 /**
  * Detect empty or transitional assistant turns that must not end a run.
  * Models often narrate ("Let me check…") then stop or return blank after tools.
@@ -38,6 +40,15 @@ const READ_FILES_REQUEST =
  */
 const ENDS_WITH_CONTINUE_INVESTIGATION =
   /(?:^|[.!\n])\s*(?:wait[,.]?\s+)?(?:(?:but\s+)?(?:first|actually)[,.]?\s+)?(?:let me|i(?:'ll| will)|i(?:'m| am) going to|i need to|i should)\b[\s\S]{0,220}(?:check|look(?:\s+at)?|read|inspect|search|try|build|run|see|verify|examine|investigate|open|find|re-?read|start|begin|continue|implement|fix|apply|patch)\b[\s\S]{0,200}$/i;
+
+const PLANNING_PHRASE =
+  /\b(?:let me|i(?:'ll| will)|i(?:'m| am) going to|i need to|i should|here(?:'|’)s my (?:plan|final plan)|let me think)\b/gi;
+
+const ANALYSIS_OPENER =
+  /^(?:let me analyze|let me think|ok(?:ay)?[,.]?\s+let me|here(?:'|’)s my (?:plan|final plan))\b/i;
+
+const PAST_TENSE_OUTCOME =
+  /\b(?:i (?:fixed|updated|changed|patched|cleared|removed|added)|verification (?:passed|failed)|edits were kept|completed workspace edits)\b/i;
 
 export function isEmptyAssistantTurn(params: {
   content: string;
@@ -109,6 +120,8 @@ export function isTransitionalAssistantAnswer(content: string): boolean {
   if (text.length === 0) return true;
   if (isPseudoToolRequestAnswer(text)) return true;
   if (isUnfinishedInvestigationAnswer(text)) return true;
+  if (isMidWorkAnalysisDump(text)) return true;
+  if (isDegenerateRepeatedAnswer(text)) return true;
   if (text.length > 600) return false;
 
   const singleBeat = text.split(/\n+/).filter((line) => line.trim().length > 0)
@@ -160,6 +173,32 @@ export function isUnfinishedInvestigationAnswer(content: string): boolean {
   return ENDS_WITH_CONTINUE_INVESTIGATION.test(cleaned);
 }
 
+/**
+ * Long first-person planning essays are not user-facing answers. Truncated
+ * remaining-error turns often spend the output budget restating a plan
+ * instead of calling apply_patch; length alone must not make them "final".
+ */
+export function isMidWorkAnalysisDump(content: string): boolean {
+  const text = content.trim();
+  if (text.length < 800) {
+    return false;
+  }
+  if (PAST_TENSE_OUTCOME.test(text) && text.length < 4_000) {
+    return false;
+  }
+
+  const planning = text.match(PLANNING_PHRASE) ?? [];
+  if (planning.length >= 8) {
+    return true;
+  }
+  if (ANALYSIS_OPENER.test(text) && planning.length >= 4) {
+    return true;
+  }
+
+  const fenceCount = (text.match(/```/g) ?? []).length;
+  return fenceCount % 2 === 1 && text.length > 1_200;
+}
+
 export function shouldRecoverIncompleteAssistantTurn(params: {
   content: string;
   toolCallCount: number;
@@ -170,6 +209,7 @@ export function shouldRecoverIncompleteAssistantTurn(params: {
   if (isPseudoToolRequestAnswer(params.content)) return true;
   if (isDegenerateRepeatedAnswer(params.content)) return true;
   if (isUnfinishedInvestigationAnswer(params.content)) return true;
+  if (isMidWorkAnalysisDump(params.content)) return true;
   // Defense in depth: blank stored answer after mutations must not complete.
   if (params.content.trim().length === 0 && params.changedFileCount > 0) {
     return true;
@@ -237,6 +277,65 @@ export function synthesizeFallbackAnswer(params: {
     prior ||
     "I stopped without a complete final answer. Please ask a follow-up if you want me to continue."
   );
+}
+
+/**
+ * Keep mid-work analysis out of the live transcript so leftover output
+ * tokens stay available for apply_patch instead of another essay.
+ */
+export function compactRecoveredAssistantContent(content: string): string {
+  const text = content.trim();
+  if (text.length === 0) {
+    return text;
+  }
+  const dump =
+    isMidWorkAnalysisDump(text) ||
+    isUnfinishedInvestigationAnswer(text) ||
+    isDegenerateRepeatedAnswer(text);
+  if (!dump) {
+    return text;
+  }
+  const maxChars = AGENT_ENGINE_THRESHOLDS.maxRecoveredAnalysisChars;
+  if (text.length <= maxChars) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(1, maxChars - 1))}…\n(omitted mid-work analysis; continue with tools)`;
+}
+
+/**
+ * Prefer a verification summary (or a short changed-files fallback) over a
+ * truncated planning dump when the run ends.
+ */
+export function selectUserFacingLoopAnswer(params: {
+  loopAnswer?: string;
+  fallbackSummary?: string;
+  changedFiles?: readonly string[];
+}): string | undefined {
+  const loop = params.loopAnswer?.trim() ?? "";
+  const summary = params.fallbackSummary?.trim() ?? "";
+  const files = params.changedFiles ?? [];
+  const hideLoop =
+    loop.length > 0 &&
+    (isTransitionalAssistantAnswer(loop) ||
+      isMidWorkAnalysisDump(loop) ||
+      isUnfinishedInvestigationAnswer(loop) ||
+      isDegenerateRepeatedAnswer(loop));
+
+  if (hideLoop) {
+    if (summary.length > 0) {
+      return summary;
+    }
+    if (files.length > 0) {
+      return synthesizeFallbackAnswer({
+        priorAnswer: loop,
+        changedFiles: files,
+      });
+    }
+    return undefined;
+  }
+
+  const joined = [loop, summary].filter((part) => part.length > 0).join("\n\n");
+  return joined.length > 0 ? joined : undefined;
 }
 
 /**

@@ -67,6 +67,11 @@ export const AGENT_ENGINE_THRESHOLDS = {
   maxVerificationRepairAttempts: 8,
   /** Stop repairing after this many consecutive non-improving verifies. */
   maxStalledVerificationRepairs: 2,
+  /**
+   * When a recovered turn was a mid-work analysis dump, keep only this many
+   * characters in the transcript so leftover output budget remains for patches.
+   */
+  maxRecoveredAnalysisChars: 480,
 } as const;
 
 /**
