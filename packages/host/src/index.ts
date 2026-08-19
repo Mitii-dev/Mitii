@@ -90,6 +90,11 @@ export {
   INDEX_LOCK_FILE,
   INDEX_LOCK_STALE_MS,
 } from './indexing/indexLock.js';
+export {
+  DEFAULT_MAXIMUM_INDEX_FILES,
+  MAXIMUM_INDEX_FILES,
+  resolveMaximumIndexFiles,
+} from './indexing/indexLimits.js';
 export { isSecurityConcern, WorkspaceIgnorePolicy, WS_CONSTANTS } from '@mitii/v8';
 
 export {

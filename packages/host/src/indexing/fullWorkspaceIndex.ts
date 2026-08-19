@@ -32,6 +32,11 @@ import {
   IndexLockedError,
   acquireIndexLock,
 } from './indexLock.js';
+import {
+  MAXIMUM_INDEX_FILES,
+  resolveIndexScanTimeoutMs,
+  resolveMaximumIndexFiles,
+} from './indexLimits.js';
 import type {
   HostSqliteDatabase,
   OpenHostSqliteDatabase,
@@ -40,8 +45,6 @@ import type {
 const INDEX_DB_FILE = 'repository-index.sqlite';
 const LANCEDB_DIR = 'lancedb';
 const INDEX_RUNTIME_FILE = 'index-runtime.json';
-const DEFAULT_MAXIMUM_FILES = 20_000;
-const DEFAULT_SCAN_TIMEOUT_MS = 120_000;
 
 type BuiltProjectCatalog = Awaited<
   ReturnType<
@@ -185,7 +188,7 @@ async function runFullWorkspaceIndexOnce(options: {
       textIndexDatabase: database as never,
     });
 
-    const maximumFiles = options.maximumFiles ?? DEFAULT_MAXIMUM_FILES;
+    const maximumFiles = resolveMaximumIndexFiles(options.maximumFiles);
     options.onProgress?.({
       stage: 'scanning',
       message: 'Scanning workspace files',
@@ -193,7 +196,8 @@ async function runFullWorkspaceIndexOnce(options: {
     const snapshot = await components.scanner.scan({
       roots: [options.workspaceRoot],
       maximumFiles,
-      timeoutMs: DEFAULT_SCAN_TIMEOUT_MS,
+      maximumDirectories: Math.max(10_000, maximumFiles),
+      timeoutMs: resolveIndexScanTimeoutMs(maximumFiles),
     });
     const snapshotFingerprint = fingerprintWorkspaceIndexSnapshot(snapshot);
     const formatMismatch = hasIndexFormatMismatch(previousMetadata);
@@ -275,7 +279,7 @@ async function runFullWorkspaceIndexOnce(options: {
       maximumFiles,
       maximumReportedFileResults: Math.min(
         maximumFiles,
-        100_000,
+        MAXIMUM_INDEX_FILES,
       ),
       cleanupMissing,
       ...(options.filePaths?.length ? { filePaths: options.filePaths } : {}),
