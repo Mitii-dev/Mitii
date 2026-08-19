@@ -12,6 +12,7 @@ import {
   planStrategyDecisionSchema,
   repositoryStateReferenceSchema,
   taskListSchema,
+  WINDOW_BUDGET_EFFORTS,
   windowBudgetPolicyOverridesSchema,
 } from '@mitii/v8';
 import type {
@@ -102,6 +103,7 @@ export const mitiiStartInputSchema = z
     windowBudget: z
       .object({
         policy: windowBudgetPolicyOverridesSchema.optional(),
+        effort: z.enum(WINDOW_BUDGET_EFFORTS).optional(),
       })
       .strict()
       .optional(),

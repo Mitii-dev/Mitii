@@ -33,6 +33,8 @@ export interface StructuredPatch {
   oldText: string;
   newText: string;
   expectedHash?: string;
+  /** When true, replace every exact oldText occurrence. Default is unique match. */
+  replaceAll?: boolean;
 }
 
 export interface AppliedPatchRecord {

@@ -559,4 +559,115 @@ describe("AgentEnginePipeline repair remaining-error queue (Phase 4)", () => {
     expect(result.reasonCodes).not.toContain("repo_build_state_remaining_error_batch");
     expect(result.reasonCodes).not.toContain("mutation_rolled_back");
   });
+
+  it("reserves first-loop model calls so remaining-error repair can start", async () => {
+    const { fs, realTools } = createWorkspace();
+    const tools = wrapTools(realTools);
+    const baseline = ["src/a.ts", "src/b.ts"];
+    const verifyResults = [["src/b.ts"], []];
+    let verifyCalls = 0;
+
+    const failedPatchTurns = Array.from({ length: 7 }, (_, index) => ({
+      toolCalls: [
+        {
+          id: `call_stale_patch_${index}`,
+          name: "apply_patch",
+          arguments: JSON.stringify({
+            patches: [
+              {
+                path: "src/b.ts",
+                oldText: "not-in-file",
+                newText: "const b: number = 1;\n",
+              },
+            ],
+          }),
+        },
+      ],
+    }));
+
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        toolGrant: createWriteGrant(),
+        pinnedState,
+        verification: { required: true, minimumEvidence: [], allowUnavailable: false },
+        reasonCodes: ["mutation_execute", "preflight_build_recommended"],
+      }),
+      llm: new ScriptedLlmPort(
+        [
+          {
+            toolCalls: [
+              {
+                id: "call_patch_a",
+                name: "apply_patch",
+                arguments: JSON.stringify({
+                  patches: [
+                    {
+                      path: "src/a.ts",
+                      oldText: "const a = 1;\n",
+                      newText: "const a: number = 1;\n",
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+          ...failedPatchTurns,
+          {
+            toolCalls: [
+              {
+                id: "call_patch_b",
+                name: "apply_patch",
+                arguments: JSON.stringify({
+                  patches: [
+                    {
+                      path: "src/b.ts",
+                      oldText: "const b = 1;\n",
+                      newText: "const b: number = 1;\n",
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+          { content: "Fixed src/b.ts. All typecheck errors resolved." },
+        ],
+        createCapabilities({ supportsTools: true }),
+      ),
+    });
+    deps.tools = tools;
+    deps.verification = {
+      verify: async () => verificationResult(verifyResults[verifyCalls++] ?? []),
+      captureBuildState: async () => buildState(baseline),
+      buildStateFromResult: (_input, result) =>
+        buildState(result.diagnostics.map((d) => d.path)),
+      compareBuildStates: ({ after }) =>
+        compare(baseline, after.diagnostics.map((d) => d.path)),
+    };
+    const engine = new AgentEnginePipeline(deps);
+
+    const result = await engine.start(
+      baseStartInput({
+        repositoryState: { reference: pinnedState, readiness: "ready" },
+        budget: {
+          maxModelCalls: 10,
+          maxToolCalls: 32,
+          maxLoopIterations: 32,
+          maxWallTimeMs: 60_000,
+        },
+      }),
+    ).result;
+
+    expect(result.status).toBe("completed");
+    expect(result.reasonCodes).toContain("verification_repair_budget_reserved");
+    expect(result.reasonCodes).toContain("verification_repair_attempted");
+    expect(result.reasonCodes).toContain("verification_repair_succeeded");
+    expect(result.reasonCodes).not.toContain("budget_exhausted");
+    expect(verifyCalls).toBe(2);
+
+    const a = await fs.readFile(`${WORKSPACE}/src/a.ts`);
+    const b = await fs.readFile(`${WORKSPACE}/src/b.ts`);
+    expect(a.content).toContain("number");
+    expect(b.content).toContain("number");
+  });
 });

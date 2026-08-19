@@ -130,7 +130,7 @@ export class WorkspaceScanner {
 
       followSymbolicLinks: limits.followSymbolicLinks,
 
-      shouldIgnore: (context) => this.ignorePolicy.shouldIgnore(context),
+      shouldIgnore: (context) => this.ignorePolicy.shouldIgnoreAsync(context),
 
       ...(abortSignal
         ? {

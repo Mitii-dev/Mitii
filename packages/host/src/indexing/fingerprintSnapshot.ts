@@ -8,7 +8,7 @@ import {
   type WorkspaceSnapshot as V8WorkspaceSnapshot,
 } from '@mitii/v8';
 
-import { WORKSPACE_WALK_SKIP_DIR_NAMES } from '../internal/workspaceWalk.js';
+import { WORKSPACE_WALK_SKIP_DIR_NAMES, shouldSkipWorkspaceWalkFile } from '../internal/workspaceWalk.js';
 
 export interface WorkspaceSnapshotOptions {
   workspaceRoot: string;
@@ -82,6 +82,9 @@ export async function buildWorkspaceSnapshot(
       }
       if (!info.isFile()) continue;
       const rel = relative(options.workspaceRoot, full).replace(/\\/g, '/');
+      if (shouldSkipWorkspaceWalkFile(rel, name)) {
+        continue;
+      }
       relativePaths.push(rel);
       entries.push(`${rel}:${info.size}:${Math.trunc(info.mtimeMs)}`);
       if (entries.length >= maxFiles) {

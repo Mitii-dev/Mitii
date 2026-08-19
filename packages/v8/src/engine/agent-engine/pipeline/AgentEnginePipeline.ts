@@ -70,6 +70,7 @@ import { SKILLS_SCHEMA_VERSION } from "../../../modules/skills";
 import {
   TOOL_RUNTIME_SCHEMA_VERSION,
   fingerprintToolCall,
+  isPatchTargetedDiscoveryReason,
 } from "../../tool-runtime";
 import type { ToolApprovalToken, ToolResult } from "../../tool-runtime";
 import {
@@ -128,6 +129,7 @@ import {
   buildUnfulfilledExecuteRecoveryMessage,
   shouldContinueVerificationRepair,
   nextStalledRepairCount,
+  reservedVerificationRepairModelCalls,
   recoverLeakedToolCallsFromMarkup,
 } from "../actions";
 import type {
@@ -1578,6 +1580,7 @@ export class AgentEnginePipeline {
         windowPolicy,
         repoBuildStateBefore,
         logVerbosity: input.logVerbosity,
+        reserveVerificationRepairModelCalls: true,
       });
 
       return await this.finishAfterLoop({
@@ -2055,6 +2058,7 @@ export class AgentEnginePipeline {
         windowPolicy,
         repoBuildStateBefore: checkpoint.repoBuildStateBefore,
         logVerbosity: startInput.logVerbosity,
+        reserveVerificationRepairModelCalls: true,
       });
 
       return await this.finishAfterLoop({
@@ -3482,6 +3486,11 @@ export class AgentEnginePipeline {
     windowPolicy: WindowPolicy;
     repoBuildStateBefore?: RepoBuildState;
     logVerbosity: AgentLogVerbosity;
+    /**
+     * First mutate loop only: hold back window-effort repair calls so
+     * remaining-error verification can start after a productive loop.
+     */
+    reserveVerificationRepairModelCalls?: boolean;
   }): Promise<ToolLoopOutcome> {
     const {
       runId,
@@ -3518,6 +3527,7 @@ export class AgentEnginePipeline {
     let rejectedToolRecoveries = 0;
     let readOnlyToolTurnsWithoutMutation = 0;
     let readOnlyToolTurnsAfterMutation = 0;
+    let afterMutationReadOnlyNudges = 0;
     let awaitingReadOnlyMutationRetry = false;
     let readOnlyMutationRetryAttempts = 0;
     let awaitingRejectedMutationRetry:
@@ -3571,7 +3581,32 @@ export class AgentEnginePipeline {
         };
       }
 
-      if (!budget.canStartModelCall()) {
+      const reservedRepairCalls =
+        params.reserveVerificationRepairModelCalls === true
+          ? reservedVerificationRepairModelCalls({
+              maxModelCalls: budget.maxModelCalls(),
+              maxVerificationRepairs:
+                params.windowPolicy.run.maxVerificationRepairs,
+            })
+          : 0;
+      const reserveForThisTurn =
+        changedFiles.length > 0 ? reservedRepairCalls : 0;
+      if (!budget.canStartModelCall(reserveForThisTurn)) {
+        if (changedFiles.length > 0 && budget.canStartModelCall()) {
+          reasonCodes.push("verification_repair_budget_reserved");
+          warnings.push(
+            "Leaving remaining model-call budget for verification repair after mutations.",
+          );
+          return {
+            kind: "completed",
+            answer,
+            changedFiles,
+            mutationCheckpointIds,
+            messages,
+            toolCache,
+            decision,
+          };
+        }
         return {
           kind: "budget_exhausted",
           answer: answer || undefined,
@@ -4072,6 +4107,7 @@ export class AgentEnginePipeline {
         remaining: this.deps.taskListAutoAdvance === true ? 1 : 0,
       };
       let attemptedMutatingTool = false;
+      let succeededMutatingTool = false;
       let rejectedMutation:
         | {
             toolName: string;
@@ -4163,6 +4199,9 @@ export class AgentEnginePipeline {
         }
         if (result?.status === "succeeded") {
           successfulToolCount += 1;
+          if (mutatingTool) {
+            succeededMutatingTool = true;
+          }
         } else if (result) {
           rejectedToolCount += 1;
           rejectedTool = {
@@ -4296,7 +4335,7 @@ export class AgentEnginePipeline {
       ) {
         if (
           readOnlyMutationRetryAttempts <
-            AGENT_ENGINE_THRESHOLDS.maxUnfulfilledExecuteRecoveries &&
+            AGENT_ENGINE_THRESHOLDS.maxReadOnlyMutationRetryAttempts &&
           budget.canStartModelCall()
         ) {
           readOnlyMutationRetryAttempts += 1;
@@ -4304,11 +4343,11 @@ export class AgentEnginePipeline {
           messages.push({
             role: "user",
             content:
-              "You read again instead of editing. This is the final chance: your very next turn must call apply_patch/delete_file/move_file with a bounded change, or stop with a clear blocker. No further reads.\n\n" +
+              "You read again instead of editing. Your very next turn must call apply_patch/delete_file/move_file with a bounded change, or stop with a clear blocker. No further reads unless you state the blocker first.\n\n" +
               buildUnfulfilledExecuteRecoveryMessage(grant.mutationBudget),
           });
           warnings.push(
-            "Model kept reading after the first-mutation nudge; granting one final chance before failing the run.",
+            "Model kept reading after the first-mutation nudge; granting another bounded chance before failing the run.",
           );
           continue;
         }
@@ -4416,9 +4455,9 @@ export class AgentEnginePipeline {
         awaitingRejectedMutationRetry = undefined;
         awaitingReadOnlyMutationRetry = false;
         readOnlyToolTurnsWithoutMutation = 0;
-        readOnlyToolTurnsAfterMutation = 0;
         readOnlyMutationRetryAttempts = 0;
-        if (changedFiles.length > 0) {
+        if (succeededMutatingTool) {
+          readOnlyToolTurnsAfterMutation = 0;
           resetLoopFileReadTracker(loopFileReads);
           explorationStallNudges = 0;
         }
@@ -4471,7 +4510,12 @@ export class AgentEnginePipeline {
           readOnlyToolTurnsAfterMutation >=
           AGENT_ENGINE_THRESHOLDS.maxReadOnlyToolTurnsAfterMutationNudge
         ) {
-          if (budget.canStartModelCall()) {
+          if (
+            afterMutationReadOnlyNudges <
+              AGENT_ENGINE_THRESHOLDS.maxReadOnlyToolTurnsAfterMutationNudges &&
+            budget.canStartModelCall()
+          ) {
+            afterMutationReadOnlyNudges += 1;
             readOnlyToolTurnsAfterMutation = 0;
             reasonCodes.push("unfulfilled_execute_recovered");
             messages.push({
@@ -4484,6 +4528,20 @@ export class AgentEnginePipeline {
             );
             continue;
           }
+
+          reasonCodes.push("post_mutation_read_capped");
+          warnings.push(
+            "Stopped further read-only turns after mutations so verification can use remaining model-call budget.",
+          );
+          return {
+            kind: "completed",
+            answer,
+            changedFiles,
+            mutationCheckpointIds,
+            messages,
+            toolCache,
+            decision,
+          };
         }
       }
 
@@ -6216,6 +6274,9 @@ function allowsTargetedDiscoveryAfterRejectedMutation(params: {
   if (params.reasonCode === "path_out_of_scope") {
     return true;
   }
+  if (isPatchTargetedDiscoveryReason(params.reasonCode)) {
+    return true;
+  }
   if (
     params.reasonCode === "invalid_arguments" &&
     (details.includes("analyze_change_impact") ||
@@ -6227,16 +6288,7 @@ function allowsTargetedDiscoveryAfterRejectedMutation(params: {
   ) {
     return true;
   }
-  if (params.reasonCode !== "patch_conflict") {
-    return false;
-  }
-  return (
-    details.includes("oldtext") ||
-    details.includes("old text") ||
-    details.includes("not found") ||
-    details.includes("does not exist") ||
-    details.includes("missing")
-  );
+  return false;
 }
 
 function isTargetedDiscoveryAfterRejectedMutation(params: {

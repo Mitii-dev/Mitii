@@ -72,11 +72,64 @@ export const TOOL_REASON_CODES = [
   "approval_mismatch",
   "dirty_overlap",
   "patch_conflict",
+  "old_text_not_found",
+  "old_text_ambiguous",
+  "patch_target_missing",
+  "patch_hash_mismatch",
+  "identical_old_and_new",
+  "patch_syntax_invalid",
   "checkpoint_missing",
   "rollback_failed",
   "pinned_state_missing",
   "execution_failed",
 ] as const;
+
+/**
+ * Patch failures that include `currentContent` so the model can retry
+ * exact oldText without a separate re-read. `patch_conflict` remains as a
+ * legacy umbrella for older hosts and stubbed tests.
+ */
+export const PATCH_CURRENT_CONTENT_REASON_CODES = [
+  "patch_conflict",
+  "old_text_not_found",
+  "old_text_ambiguous",
+  "patch_hash_mismatch",
+  "patch_syntax_invalid",
+] as const;
+
+/**
+ * Patch failures where targeted read/list/search of the failed path is
+ * a useful next step. Ambiguous matches and no-op patches should retry
+ * from attached content instead of exploring more files.
+ */
+export const PATCH_TARGETED_DISCOVERY_REASON_CODES = [
+  "patch_conflict",
+  "old_text_not_found",
+  "patch_target_missing",
+  "patch_hash_mismatch",
+] as const;
+
+export function isPatchCurrentContentReason(
+  reasonCode: string | undefined,
+): boolean {
+  return (
+    reasonCode !== undefined &&
+    (PATCH_CURRENT_CONTENT_REASON_CODES as readonly string[]).includes(
+      reasonCode,
+    )
+  );
+}
+
+export function isPatchTargetedDiscoveryReason(
+  reasonCode: string | undefined,
+): boolean {
+  return (
+    reasonCode !== undefined &&
+    (PATCH_TARGETED_DISCOVERY_REASON_CODES as readonly string[]).includes(
+      reasonCode,
+    )
+  );
+}
 
 export const TOOL_RUNTIME_ERROR_CODES = [
   "invalid_input",

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
@@ -28,6 +28,10 @@ import {
 } from './semanticIndex.js';
 import { createDefaultTreeSitterRuntime } from './treeSitter/createDefaultTreeSitterRuntime.js';
 import { fingerprintWorkspaceIndexSnapshot } from './fingerprintSnapshot.js';
+import {
+  IndexLockedError,
+  acquireIndexLock,
+} from './indexLock.js';
 import type {
   HostSqliteDatabase,
   OpenHostSqliteDatabase,
@@ -36,7 +40,8 @@ import type {
 const INDEX_DB_FILE = 'repository-index.sqlite';
 const LANCEDB_DIR = 'lancedb';
 const INDEX_RUNTIME_FILE = 'index-runtime.json';
-const DEFAULT_MAXIMUM_FILES = 2_000;
+const DEFAULT_MAXIMUM_FILES = 20_000;
+const DEFAULT_SCAN_TIMEOUT_MS = 120_000;
 
 type BuiltProjectCatalog = Awaited<
   ReturnType<
@@ -44,8 +49,24 @@ type BuiltProjectCatalog = Awaited<
   >
 >;
 
+export type WorkspaceIndexProgressStage =
+  | 'locking'
+  | 'scanning'
+  | 'indexing'
+  | 'graph'
+  | 'complete'
+  | 'cancelled'
+  | 'rebuilding_corrupt';
+
+export interface WorkspaceIndexProgress {
+  stage: WorkspaceIndexProgressStage;
+  message: string;
+  fileCount?: number;
+}
+
 export interface FullWorkspaceIndexResult {
-  status: 'indexed' | 'unchanged';
+  status: 'indexed' | 'unchanged' | 'skipped' | 'cancelled';
+  skipReason?: 'locked';
   indexing: WorkspaceIndexingPipelineResult;
   fileCount: number;
   truncated: boolean;
@@ -77,8 +98,72 @@ export async function runFullWorkspaceIndex(options: {
   semanticIndex?: SemanticIndexSettings;
   force?: boolean;
   filePaths?: readonly string[];
+  abortSignal?: AbortSignal;
+  onProgress?: (progress: WorkspaceIndexProgress) => void;
 }): Promise<FullWorkspaceIndexResult> {
   mkdirSync(options.mitiiDir, { recursive: true });
+  options.onProgress?.({
+    stage: 'locking',
+    message: 'Acquiring index lock',
+  });
+
+  let lock;
+  try {
+    lock = acquireIndexLock(options.mitiiDir);
+  } catch (error) {
+    if (
+      error instanceof IndexLockedError &&
+      options.filePaths?.length
+    ) {
+      const skipped = skippedFromPreviousMetadata(options);
+      if (skipped) return skipped;
+    }
+    throw error;
+  }
+
+  try {
+    return await runWithCorruptRetry(options);
+  } finally {
+    lock.release();
+  }
+}
+
+async function runWithCorruptRetry(
+  options: Parameters<typeof runFullWorkspaceIndex>[0],
+): Promise<FullWorkspaceIndexResult> {
+  try {
+    return await runFullWorkspaceIndexOnce(options);
+  } catch (error) {
+    if (!isCorruptIndexError(error)) {
+      throw error;
+    }
+    options.onProgress?.({
+      stage: 'rebuilding_corrupt',
+      message: 'Index store is corrupt; rebuilding',
+    });
+    removeCorruptIndexArtifacts(options.mitiiDir);
+    return runFullWorkspaceIndexOnce({
+      ...options,
+      force: true,
+    });
+  }
+}
+
+async function runFullWorkspaceIndexOnce(options: {
+  mitiiDir: string;
+  workspaceRoot: string;
+  workspaceId: string;
+  openDatabase: OpenHostSqliteDatabase;
+  maximumFiles?: number;
+  semanticIndex?: SemanticIndexSettings;
+  force?: boolean;
+  filePaths?: readonly string[];
+  abortSignal?: AbortSignal;
+  onProgress?: (progress: WorkspaceIndexProgress) => void;
+}): Promise<FullWorkspaceIndexResult> {
+  if (options.abortSignal?.aborted) {
+    throw new Error('Workspace indexing was cancelled.');
+  }
 
   const databasePath = join(options.mitiiDir, INDEX_DB_FILE);
   const lanceDbPath = join(options.mitiiDir, LANCEDB_DIR);
@@ -101,9 +186,14 @@ export async function runFullWorkspaceIndex(options: {
     });
 
     const maximumFiles = options.maximumFiles ?? DEFAULT_MAXIMUM_FILES;
+    options.onProgress?.({
+      stage: 'scanning',
+      message: 'Scanning workspace files',
+    });
     const snapshot = await components.scanner.scan({
       roots: [options.workspaceRoot],
       maximumFiles,
+      timeoutMs: DEFAULT_SCAN_TIMEOUT_MS,
     });
     const snapshotFingerprint = fingerprintWorkspaceIndexSnapshot(snapshot);
     const formatMismatch = hasIndexFormatMismatch(previousMetadata);
@@ -119,6 +209,11 @@ export async function runFullWorkspaceIndex(options: {
 
     if (isUnchangedFullIndex(unchangedCheck)) {
       const metadata = unchangedCheck.metadata;
+      options.onProgress?.({
+        stage: 'complete',
+        message: 'Index already up to date',
+        fileCount: metadata.fileCount,
+      });
       return {
         status: 'unchanged',
         indexing: metadata.lastIndexingResult,
@@ -167,22 +262,65 @@ export async function runFullWorkspaceIndex(options: {
     const cleanupMissing =
       snapshot.status === 'complete' && !options.filePaths?.length;
 
+    options.onProgress?.({
+      stage: 'indexing',
+      message: 'Indexing code and text',
+      fileCount: snapshot.statistics.files,
+    });
+
     const indexing = await indexingRuntime.pipeline.execute({
       workspace: options.workspaceId,
       snapshot,
       indexedAt: Date.now(),
       maximumFiles,
-      maximumReportedFileResults: maximumFiles,
+      maximumReportedFileResults: Math.min(
+        maximumFiles,
+        100_000,
+      ),
       cleanupMissing,
       ...(options.filePaths?.length ? { filePaths: options.filePaths } : {}),
       synchronizeEmbeddings: indexingRuntime.synchronizeEmbeddings,
+      ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
     });
+
+    if (indexing.status === 'cancelled' || options.abortSignal?.aborted) {
+      options.onProgress?.({
+        stage: 'cancelled',
+        message: 'Indexing cancelled',
+        fileCount: snapshot.statistics.files,
+      });
+      return {
+        status: 'cancelled',
+        indexing,
+        fileCount: snapshot.statistics.files,
+        truncated: snapshot.status !== 'complete',
+        databasePath,
+        vectorIndex: {
+          status: 'unavailable',
+          reason: 'Indexing was cancelled.',
+          lanceDbPath,
+          runtimeMetadataPath,
+        },
+        treeSitter,
+        catalogRevisionByRoot: {},
+        graphRevisionByRoot: {},
+        mapRevisionByRoot: {},
+        graphArtifactPaths: {},
+        mapArtifactPaths: {},
+      };
+    }
 
     const vectorIndex = resolveVectorIndexStatus({
       semanticRuntime,
       indexing,
       lanceDbPath,
       runtimeMetadataPath,
+    });
+
+    options.onProgress?.({
+      stage: 'graph',
+      message: 'Building repository graph',
+      fileCount: snapshot.statistics.files,
     });
 
     const graphMap = await buildGraphMapArtifacts({
@@ -218,6 +356,12 @@ export async function runFullWorkspaceIndex(options: {
       treeSitterRuntime: treeSitter.status,
       ...graphMap,
       generatedAt: new Date(indexing.indexedAt).toISOString(),
+    });
+
+    options.onProgress?.({
+      stage: 'complete',
+      message: 'Index updated',
+      fileCount: snapshot.statistics.files,
     });
 
     return {
@@ -657,4 +801,60 @@ function resolveVectorIndexStatus(options: {
     lanceDbPath: options.lanceDbPath,
     runtimeMetadataPath: options.runtimeMetadataPath,
   };
+}
+
+function skippedFromPreviousMetadata(options: {
+  mitiiDir: string;
+  workspaceId: string;
+}): FullWorkspaceIndexResult | undefined {
+  const databasePath = join(options.mitiiDir, INDEX_DB_FILE);
+  const lanceDbPath = join(options.mitiiDir, LANCEDB_DIR);
+  const runtimeMetadataPath = join(options.mitiiDir, INDEX_RUNTIME_FILE);
+  const metadata = readIndexRuntimeMetadata(runtimeMetadataPath);
+  if (
+    !metadata ||
+    metadata.workspaceId !== options.workspaceId ||
+    !metadata.lastIndexingResult ||
+    typeof metadata.fileCount !== 'number'
+  ) {
+    return undefined;
+  }
+
+  return {
+    status: 'skipped',
+    skipReason: 'locked',
+    indexing: metadata.lastIndexingResult,
+    fileCount: metadata.fileCount,
+    truncated: metadata.truncated ?? false,
+    databasePath,
+    vectorIndex: vectorIndexFromMetadata({
+      metadata,
+      semanticProfileId: metadata.embeddingProfile?.id,
+      lanceDbPath,
+      runtimeMetadataPath,
+    }),
+    treeSitter: treeSitterStatusFromMetadata(metadata.treeSitterRuntime),
+    catalogRevisionByRoot: metadata.catalogRevisionByRoot ?? {},
+    graphRevisionByRoot: metadata.graphRevisionByRoot ?? {},
+    mapRevisionByRoot: metadata.mapRevisionByRoot ?? {},
+    graphArtifactPaths: metadata.graphArtifactPaths ?? {},
+    mapArtifactPaths: metadata.mapArtifactPaths ?? {},
+  };
+}
+
+function isCorruptIndexError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const cause =
+    error instanceof Error && error.cause instanceof Error
+      ? error.cause.message
+      : '';
+  return /SQLITE_CORRUPT|SQLITE_NOTADB|SQLITE_IOERR|SQLITE_FULL|database disk image is malformed|not a database|file is not a database/i.test(
+    `${message}\n${cause}`,
+  );
+}
+
+function removeCorruptIndexArtifacts(mitiiDir: string): void {
+  for (const name of [INDEX_DB_FILE, `${INDEX_DB_FILE}-wal`, `${INDEX_DB_FILE}-shm`, LANCEDB_DIR, INDEX_RUNTIME_FILE]) {
+    rmSync(join(mitiiDir, name), { recursive: true, force: true });
+  }
 }

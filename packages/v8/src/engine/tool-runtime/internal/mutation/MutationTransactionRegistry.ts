@@ -1,4 +1,5 @@
 import type { WorkspaceFileSystemPort } from "../../contracts";
+import { isPatchCurrentContentReason } from "../../constants";
 import {
   normalizeRelativePath,
   resolveContainedPath,
@@ -120,7 +121,7 @@ export class MutationTransactionRegistry {
             (proposed.get(relativePath)?.created ?? false) || preflight.created,
         });
       } catch (error) {
-        throw attachPatchConflictContent(error, relativePath, current);
+        throw attachPatchFailureContent(error, relativePath, current);
       }
     }
 
@@ -502,12 +503,15 @@ export class MutationTransactionRegistry {
 
 const PATCH_CONFLICT_CONTENT_CHARS = 16_000;
 
-function attachPatchConflictContent(
+function attachPatchFailureContent(
   error: unknown,
   path: string,
   currentContent: string | undefined,
 ): unknown {
-  if (!(error instanceof MutationError) || error.reasonCode !== "patch_conflict") {
+  if (
+    !(error instanceof MutationError) ||
+    !isPatchCurrentContentReason(error.reasonCode)
+  ) {
     return error;
   }
   if (currentContent === undefined) {

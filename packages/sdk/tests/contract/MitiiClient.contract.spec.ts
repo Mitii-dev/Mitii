@@ -243,6 +243,19 @@ describe('MitiiClient contract (Phase 12)', () => {
     expect(engineInput.windowBudget?.policy?.repositoryShare).toBe(0.3);
   });
 
+  it('maps windowBudget effort onto engine start input', () => {
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'Use a larger working set',
+        windowBudget: {
+          effort: 'high',
+        },
+      },
+      { mode: 'ask', sessionId: 'sess_test' },
+    );
+    expect(engineInput.windowBudget?.effort).toBe('high');
+  });
+
   it('rejects resume without approval or clarificationAnswer', () => {
     const parsed = mitiiResumeInputSchema.safeParse({
       schemaVersion: 1,

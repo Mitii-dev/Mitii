@@ -241,4 +241,114 @@ describe('full workspace indexing incremental publish', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it('does not index gitignored files or env secrets', async () => {
+    const Database = require('better-sqlite3') as new (
+      filename: string,
+      options?: { readonly?: boolean; fileMustExist?: boolean },
+    ) => unknown;
+    const root = await mkdtemp(join(tmpdir(), 'mitii-full-index-ignore-'));
+
+    try {
+      await mkdir(join(root, 'src'), { recursive: true });
+      await mkdir(join(root, 'tmp'), { recursive: true });
+      await writeFile(join(root, '.gitignore'), 'tmp/\nignored.ts\n', 'utf8');
+      await writeFile(join(root, 'src', 'app.py'), 'def foo():\n    return 1\n', 'utf8');
+      await writeFile(join(root, 'src', 'ignored.ts'), 'export const skip = 1;\n', 'utf8');
+      await writeFile(join(root, 'tmp', 'cache.txt'), 'stale\n', 'utf8');
+      await writeFile(join(root, '.env'), 'SECRET=1\n', 'utf8');
+
+      const result = await runFullWorkspaceIndex({
+        mitiiDir: join(root, '.mitii'),
+        workspaceRoot: root,
+        workspaceId: 'test_workspace',
+        maximumFiles: 100,
+        openDatabase: ((
+          filename: string,
+          openOptions?: { readonly?: boolean; fileMustExist?: boolean },
+        ) => new Database(filename, openOptions)) as never,
+      });
+
+      const indexed = result.indexing.fileResults.map((file) => file.relativePath);
+      expect(result.status).toBe('indexed');
+      expect(indexed.some((path) => path.endsWith('src/app.py') || path === 'src/app.py')).toBe(
+        true,
+      );
+      expect(indexed.some((path) => path.includes('ignored.ts'))).toBe(false);
+      expect(indexed.some((path) => path.includes('tmp/'))).toBe(false);
+      expect(indexed.some((path) => path === '.env' || path.endsWith('/.env'))).toBe(
+        false,
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rebuilds when the sqlite file is corrupt', async () => {
+    const Database = require('better-sqlite3') as new (
+      filename: string,
+      options?: { readonly?: boolean; fileMustExist?: boolean },
+    ) => unknown;
+    const root = await mkdtemp(join(tmpdir(), 'mitii-full-index-corrupt-'));
+
+    try {
+      await mkdir(join(root, 'src'), { recursive: true });
+      await writeFile(join(root, 'src', 'app.py'), 'def foo():\n    return 1\n', 'utf8');
+
+      const common = {
+        mitiiDir: join(root, '.mitii'),
+        workspaceRoot: root,
+        workspaceId: 'test_workspace',
+        maximumFiles: 100,
+        openDatabase: ((
+          filename: string,
+          openOptions?: { readonly?: boolean; fileMustExist?: boolean },
+        ) => new Database(filename, openOptions)) as never,
+      };
+
+      const first = await runFullWorkspaceIndex(common);
+      await rm(join(root, '.mitii', 'repository-index.sqlite-wal'), { force: true });
+      await rm(join(root, '.mitii', 'repository-index.sqlite-shm'), { force: true });
+      await writeFile(join(root, '.mitii', 'repository-index.sqlite'), 'not a database', 'utf8');
+      const rebuilt = await runFullWorkspaceIndex(common);
+
+      expect(first.status).toBe('indexed');
+      expect(rebuilt.status).toBe('indexed');
+      expect(rebuilt.fileCount).toBeGreaterThan(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('returns cancelled when abort is signaled before indexing', async () => {
+    const Database = require('better-sqlite3') as new (
+      filename: string,
+      options?: { readonly?: boolean; fileMustExist?: boolean },
+    ) => unknown;
+    const root = await mkdtemp(join(tmpdir(), 'mitii-full-index-abort-'));
+
+    try {
+      await mkdir(join(root, 'src'), { recursive: true });
+      await writeFile(join(root, 'src', 'app.py'), 'def foo():\n    return 1\n', 'utf8');
+
+      const abort = new AbortController();
+      abort.abort();
+
+      await expect(
+        runFullWorkspaceIndex({
+          mitiiDir: join(root, '.mitii'),
+          workspaceRoot: root,
+          workspaceId: 'test_workspace',
+          maximumFiles: 100,
+          abortSignal: abort.signal,
+          openDatabase: ((
+            filename: string,
+            openOptions?: { readonly?: boolean; fileMustExist?: boolean },
+          ) => new Database(filename, openOptions)) as never,
+        }),
+      ).rejects.toThrow(/cancelled/i);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

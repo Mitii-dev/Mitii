@@ -284,3 +284,33 @@ export function IconDepthDeep(props: IconProps) {
     </svg>
   );
 }
+
+export function IconEffortLow(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M3.5 11.5v-2h2v2z" />
+      <path d="M7 11.5v-4h2v4z" opacity="0.35" />
+      <path d="M10.5 11.5v-7h2v7z" opacity="0.35" />
+    </svg>
+  );
+}
+
+export function IconEffortMedium(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M3.5 11.5v-2h2v2z" />
+      <path d="M7 11.5v-4h2v4z" />
+      <path d="M10.5 11.5v-7h2v7z" opacity="0.35" />
+    </svg>
+  );
+}
+
+export function IconEffortHigh(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M3.5 11.5v-2h2v2z" />
+      <path d="M7 11.5v-4h2v4z" />
+      <path d="M10.5 11.5v-7h2v7z" />
+    </svg>
+  );
+}

@@ -16,6 +16,8 @@ export async function runFullWorkspaceIndex(options: {
   semanticIndex?: SemanticIndexSettings;
   force?: boolean;
   filePaths?: readonly string[];
+  abortSignal?: AbortSignal;
+  onProgress?: Parameters<typeof runSharedFullWorkspaceIndex>[0]['onProgress'];
 }): Promise<FullWorkspaceIndexResult> {
   return runSharedFullWorkspaceIndex({
     mitiiDir: join(options.cwd, '.mitii'),
@@ -25,6 +27,8 @@ export async function runFullWorkspaceIndex(options: {
     semanticIndex: options.semanticIndex,
     force: options.force,
     filePaths: options.filePaths,
+    abortSignal: options.abortSignal,
+    onProgress: options.onProgress,
     openDatabase: ((
       filename: string,
       openOptions?: { readonly?: boolean; fileMustExist?: boolean },

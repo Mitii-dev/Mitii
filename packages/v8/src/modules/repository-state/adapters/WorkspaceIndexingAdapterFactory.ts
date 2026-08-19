@@ -167,9 +167,10 @@ export class WorkspaceIndexingAdapterFactory {
           new BoundedWalker(
             fileSystem,
           ),
-          new WorkspaceIgnorePolicy(
-            options.ignorePolicy,
-          ),
+          new WorkspaceIgnorePolicy({
+            ...(options.ignorePolicy ?? {}),
+            fileSystem: options.ignorePolicy?.fileSystem ?? fileSystem,
+          }),
         ),
       pipeline:
         new WorkspaceIndexingPipeline({

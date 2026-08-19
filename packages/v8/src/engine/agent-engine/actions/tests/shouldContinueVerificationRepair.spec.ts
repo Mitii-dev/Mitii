@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   maxVerificationRepairsForDepth,
   nextStalledRepairCount,
+  reservedVerificationRepairModelCalls,
   shouldContinueVerificationRepair,
 } from "../shouldContinueVerificationRepair";
 
@@ -96,5 +97,38 @@ describe("shouldContinueVerificationRepair", () => {
         consecutiveStalledRepairs: 0,
       }),
     ).toBe(1);
+  });
+
+  it("reserves a slice of model calls for remaining-error repairs", () => {
+    expect(
+      reservedVerificationRepairModelCalls({
+        maxModelCalls: 40,
+        maxVerificationRepairs: 8,
+      }),
+    ).toBe(8);
+    expect(
+      reservedVerificationRepairModelCalls({
+        maxModelCalls: 64,
+        maxVerificationRepairs: 8,
+      }),
+    ).toBe(8);
+    expect(
+      reservedVerificationRepairModelCalls({
+        maxModelCalls: 10,
+        maxVerificationRepairs: 8,
+      }),
+    ).toBe(2);
+    expect(
+      reservedVerificationRepairModelCalls({
+        maxModelCalls: 4,
+        maxVerificationRepairs: 8,
+      }),
+    ).toBe(1);
+    expect(
+      reservedVerificationRepairModelCalls({
+        maxModelCalls: 40,
+        maxVerificationRepairs: 0,
+      }),
+    ).toBe(0);
   });
 });

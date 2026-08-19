@@ -872,6 +872,7 @@ export async function runAskInOutputChannel(options: {
   channel: vscode.OutputChannel;
   mode?: 'ask' | 'plan' | 'agent';
   depth?: string;
+  effort?: string;
   approvalMode?: string;
   pinnedPaths?: string[];
   workspaceId?: string;
@@ -1147,6 +1148,12 @@ export async function runAskInOutputChannel(options: {
       : [];
     const runStartedAt = new Date().toISOString();
     const windowBudgetPolicy = readTokenBudgetPolicyOverrides(cfg);
+    const effort =
+      options.effort === 'low' ||
+      options.effort === 'high' ||
+      options.effort === 'medium'
+        ? options.effort
+        : undefined;
     let run = client.start({
       prompt,
       mode: options.mode ?? 'ask',
@@ -1155,8 +1162,13 @@ export async function runAskInOutputChannel(options: {
       approvalMode: approvalPolicy.approvalMode,
       planApproval: approvalPolicy.planApproval,
       budget: resolveRunBudget(vs),
-      ...(windowBudgetPolicy
-        ? { windowBudget: { policy: windowBudgetPolicy } }
+      ...(windowBudgetPolicy || effort
+        ? {
+            windowBudget: {
+              ...(windowBudgetPolicy ? { policy: windowBudgetPolicy } : {}),
+              ...(effort ? { effort } : {}),
+            },
+          }
         : {}),
       ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
       ...(pinnedPaths.length > 0 ? { pinnedPaths } : {}),

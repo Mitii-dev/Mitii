@@ -105,6 +105,12 @@ export interface RawChunkSpan {
 
   title?: string;
   symbolLocalId?: string;
+
+  /**
+   * Optional rewritten body (collapsed parent overview).
+   * Offsets still refer to the original source span.
+   */
+  contentOverride?: string;
 }
 
 export interface ChunkingStrategyResult {
@@ -224,6 +230,7 @@ export type ChunkingWarningCode =
   | "invalid_span"
   | "duplicate_span_removed"
   | "chunks_truncated"
+  | "collapsed_parent"
   | "cancelled";
 
 export interface ChunkingWarning {

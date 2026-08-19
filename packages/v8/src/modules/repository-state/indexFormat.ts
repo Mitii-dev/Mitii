@@ -4,8 +4,8 @@
  * current builders, so `.mitii` short-circuit cannot reuse a stale index.
  */
 export const REPOSITORY_INDEX_FORMAT = {
-  textIndexSchemaVersion: 2,
-  textPipelineVersion: "chunking-v2-identifier-fts",
+  textIndexSchemaVersion: 3,
+  textPipelineVersion: "chunking-v3-collapse-trigram",
   graphBuilderVersion: "graph-v3-tags-queries",
 } as const;
 

@@ -42,7 +42,7 @@ import {
   resolveHostEmbeddingProvider,
   type SemanticIndexSettings,
 } from '../indexing/semanticIndex.js';
-import { WORKSPACE_WALK_SKIP_DIR_NAMES } from '../internal/workspaceWalk.js';
+import { WORKSPACE_WALK_SKIP_DIR_NAMES, shouldSkipWorkspaceWalkFile } from '../internal/workspaceWalk.js';
 import type { OpenHostSqliteDatabase } from '../sqlite/types.js';
 
 const MAX_REPO_MAP_FILES = 400;
@@ -948,6 +948,7 @@ async function buildHostWorkspaceSnapshot(
       if (!info.isFile()) continue;
       const relativePath = relative(workspaceRoot, full).replace(/\\/g, '/');
       if (!relativePath || relativePath.startsWith('..')) continue;
+      if (shouldSkipWorkspaceWalkFile(relativePath, name)) continue;
       files.push({
         relativePath,
         size: info.size,

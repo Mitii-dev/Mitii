@@ -22,6 +22,7 @@ export interface ChatTurn {
   role: 'user' | 'assistant';
   text: string;
   segments: TurnSegment[];
+  warnings?: string[];
   mode?: AgentUiMode;
   streaming?: boolean;
   status?: string;
@@ -152,6 +153,16 @@ export function MessageList({
                   {turn.route ? (
                     <span className="meta-pill">{turn.route}</span>
                   ) : null}
+                </div>
+              ) : null}
+              {turn.warnings?.length ? (
+                <div className="run-warning-banner" role="alert">
+                  <strong>Warning</strong>
+                  <ul className="run-warning-banner__list">
+                    {turn.warnings.map((warning, index) => (
+                      <li key={`${turn.id}-warning-${index}`}>{warning}</li>
+                    ))}
+                  </ul>
                 </div>
               ) : null}
               {(() => {

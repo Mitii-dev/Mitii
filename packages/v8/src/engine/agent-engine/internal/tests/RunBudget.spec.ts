@@ -82,4 +82,25 @@ describe("RunBudgetTracker", () => {
       uniqueFilePathsTouched: 1,
     });
   });
+
+  it("reserves model calls so later phases can still start", () => {
+    const budget = new RunBudgetTracker({
+      maxModelCalls: 10,
+      maxToolCalls: 50,
+      maxLoopIterations: 50,
+      maxWallTimeMs: 60_000,
+    });
+
+    expect(budget.maxModelCalls()).toBe(10);
+    expect(budget.canStartModelCall(2)).toBe(true);
+
+    for (let index = 0; index < 8; index += 1) {
+      budget.recordModelCall();
+    }
+
+    expect(budget.canStartModelCall(2)).toBe(false);
+    expect(budget.canStartModelCall()).toBe(true);
+    expect(budget.remainingModelCalls()).toBe(2);
+    expect(budget.isExhausted()).toBe(false);
+  });
 });

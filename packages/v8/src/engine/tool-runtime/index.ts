@@ -7,8 +7,12 @@ export {
   TOOL_BACKENDS,
   TOOL_RESULT_STATUSES,
   TOOL_REASON_CODES,
+  PATCH_CURRENT_CONTENT_REASON_CODES,
+  PATCH_TARGETED_DISCOVERY_REASON_CODES,
   TOOL_RUNTIME_ERROR_CODES,
   TOOL_EFFECTS,
+  isPatchCurrentContentReason,
+  isPatchTargetedDiscoveryReason,
 } from "./constants";
 
 export {

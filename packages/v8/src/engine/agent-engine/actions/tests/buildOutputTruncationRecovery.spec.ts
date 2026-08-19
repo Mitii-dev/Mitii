@@ -204,6 +204,7 @@ describe("buildMutationBudgetInstruction", () => {
     expect(block?.content).toContain("≤5 patches");
     expect(block?.content).toContain("≤3 unique files");
     expect(block?.content).toContain("re-read or typecheck");
-    expect(block?.content).toContain("patch_conflict");
+    expect(block?.content).toContain("old_text_not_found");
+    expect(block?.content).toContain("replaceAll=true");
   });
 });

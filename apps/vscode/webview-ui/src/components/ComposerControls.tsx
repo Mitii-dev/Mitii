@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import type { AgentUiDepth, AgentUiMode } from '../protocol';
+import type { AgentUiDepth, AgentUiEffort, AgentUiMode } from '../protocol';
 import { MODE_COLORS } from '../modeColors';
 import {
   normalizeApproval,
@@ -21,6 +21,9 @@ import {
   IconDepthAuto,
   IconDepthDeep,
   IconDepthQuick,
+  IconEffortHigh,
+  IconEffortLow,
+  IconEffortMedium,
   IconFullAccess,
   IconPlan,
   IconReview,
@@ -30,7 +33,7 @@ export type { ApprovalUiMode };
 export { normalizeApproval };
 export { MODE_COLORS };
 
-type ComposerSelectId = 'mode' | 'approval' | 'depth';
+type ComposerSelectId = 'mode' | 'approval' | 'depth' | 'effort';
 
 interface ComposerOption<T extends string> {
   id: T;
@@ -122,6 +125,30 @@ const DEPTH_OPTIONS: ComposerOption<AgentUiDepth>[] = [
   },
 ];
 
+const EFFORT_OPTIONS: ComposerOption<AgentUiEffort>[] = [
+  {
+    id: 'low',
+    label: 'Low',
+    description: 'Fewer model/tool calls; no remaining-error repairs',
+    color: '#94a3b8',
+    icon: <IconEffortLow />,
+  },
+  {
+    id: 'medium',
+    label: 'Medium',
+    description: 'Default working set for most tasks',
+    color: '#38bdf8',
+    icon: <IconEffortMedium />,
+  },
+  {
+    id: 'high',
+    label: 'High',
+    description: 'More model/tool calls and remaining-error repairs',
+    color: '#f59e0b',
+    icon: <IconEffortHigh />,
+  },
+];
+
 export const MODE_HINT: Record<AgentUiMode, string> = {
   ask: 'Explore and answer — read-only.',
   plan: 'Analyze and propose a structured plan.',
@@ -133,9 +160,11 @@ interface ComposerControlsProps {
   mode: AgentUiMode;
   approvalMode: string;
   depth: AgentUiDepth;
+  effort: AgentUiEffort;
   onModeChange: (mode: AgentUiMode) => void;
   onApprovalModeChange: (mode: ApprovalUiMode) => void;
   onDepthChange: (depth: AgentUiDepth) => void;
+  onEffortChange: (effort: AgentUiEffort) => void;
   includeReview?: boolean;
 }
 
@@ -143,9 +172,11 @@ export function ComposerControls({
   mode,
   approvalMode,
   depth,
+  effort,
   onModeChange,
   onApprovalModeChange,
   onDepthChange,
+  onEffortChange,
   includeReview = true,
 }: ComposerControlsProps) {
   const [openSelect, setOpenSelect] = useState<ComposerSelectId | null>(null);
@@ -159,6 +190,8 @@ export function ComposerControls({
     APPROVAL_OPTIONS[1]!;
   const activeDepth =
     DEPTH_OPTIONS.find((o) => o.id === depth) ?? DEPTH_OPTIONS[0]!;
+  const activeEffort =
+    EFFORT_OPTIONS.find((o) => o.id === effort) ?? EFFORT_OPTIONS[1]!;
 
   useEffect(() => {
     if (!openSelect) return;
@@ -300,6 +333,14 @@ export function ComposerControls({
         selected: activeDepth,
         options: DEPTH_OPTIONS,
         onChange: onDepthChange,
+      })}
+      {renderDropdown({
+        id: 'effort',
+        label: 'Effort',
+        value: effort,
+        selected: activeEffort,
+        options: EFFORT_OPTIONS,
+        onChange: onEffortChange,
       })}
     </div>
   );

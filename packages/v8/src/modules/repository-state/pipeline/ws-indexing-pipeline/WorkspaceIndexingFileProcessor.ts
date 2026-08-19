@@ -66,6 +66,15 @@ export class WorkspaceIndexingFileProcessor {
       );
     }
 
+    const catalogFresh =
+      await this.tryBuildUnchangedResultFromCatalog(
+        input,
+      );
+
+    if (catalogFresh) {
+      return catalogFresh;
+    }
+
     let source;
 
     try {
@@ -639,6 +648,60 @@ export class WorkspaceIndexingFileProcessor {
     };
   }
 
+  private async tryBuildUnchangedResultFromCatalog(
+    input:
+      WorkspaceIndexingFileProcessorInput,
+  ): Promise<
+    WorkspaceIndexingFileResult |
+    undefined
+  > {
+    const file =
+      input.selected.file;
+
+    if (
+      file.size === undefined ||
+      !file.modifiedAt
+    ) {
+      return undefined;
+    }
+
+    const states =
+      await this.readFreshnessStates(
+        input,
+      );
+
+    if (!states) {
+      return undefined;
+    }
+
+    const {
+      codeState,
+      textState,
+    } = states;
+
+    if (
+      !this.codeStateIsStatFresh(
+        codeState,
+        input.selected,
+        input.request.analysisVersion,
+      ) ||
+      !this.textStateIsFresh(
+        textState,
+        codeState.contentHash,
+        input.request.textPipelineVersion,
+      )
+    ) {
+      return undefined;
+    }
+
+    return this.buildUnchangedResult(
+      input,
+      codeState,
+      textState,
+      codeState.contentHash,
+    );
+  }
+
   private async tryBuildUnchangedResult(
     values: {
       input:
@@ -649,6 +712,58 @@ export class WorkspaceIndexingFileProcessor {
   ): Promise<
     WorkspaceIndexingFileResult |
     undefined
+  > {
+    const states =
+      await this.readFreshnessStates(
+        values.input,
+      );
+
+    if (!states) {
+      return undefined;
+    }
+
+    const {
+      request,
+      selected,
+    } = values.input;
+    const {
+      codeState,
+      textState,
+    } = states;
+
+    if (
+      !this.codeStateIsFresh(
+        codeState,
+        selected,
+        values.contentHash,
+        request.analysisVersion,
+      ) ||
+      !this.textStateIsFresh(
+        textState,
+        values.contentHash,
+        request.textPipelineVersion,
+      )
+    ) {
+      return undefined;
+    }
+
+    return this.buildUnchangedResult(
+      values.input,
+      codeState,
+      textState,
+      values.contentHash,
+    );
+  }
+
+  private async readFreshnessStates(
+    input:
+      WorkspaceIndexingFileProcessorInput,
+  ): Promise<
+    | {
+        codeState: CodeIndexFileState;
+        textState: TextIndexDocumentState;
+      }
+    | undefined
   > {
     const freshness =
       this.dependencies
@@ -661,15 +776,10 @@ export class WorkspaceIndexingFileProcessor {
     const {
       request,
       selected,
-    } = values.input;
-
-    let codeState:
-      CodeIndexFileState | null;
-    let textState:
-      TextIndexDocumentState | null;
+    } = input;
 
     try {
-      [
+      const [
         codeState,
         textState,
       ] =
@@ -713,28 +823,33 @@ export class WorkspaceIndexingFileProcessor {
                 : {},
             ),
         ]);
+
+      if (!codeState || !textState) {
+        return undefined;
+      }
+
+      return {
+        codeState,
+        textState,
+      };
     } catch {
       return undefined;
     }
+  }
 
-    if (
-      !this.codeStateIsFresh(
-        codeState,
-        selected,
-        values.contentHash,
-        request.analysisVersion,
-      ) ||
-      !this.textStateIsFresh(
-        textState,
-        values.contentHash,
-        request.textPipelineVersion,
-      )
-    ) {
-      return undefined;
-    }
-
+  private buildUnchangedResult(
+    input:
+      WorkspaceIndexingFileProcessorInput,
+    codeState:
+      CodeIndexFileState,
+    textState:
+      TextIndexDocumentState,
+    contentHash:
+      string,
+  ): WorkspaceIndexingFileResult {
     return this.buildResult({
-      selected,
+      selected:
+        input.selected,
       status:
         "complete",
       codeIndex:
@@ -747,7 +862,7 @@ export class WorkspaceIndexingFileProcessor {
               : "unchanged",
           analysis:
             this.syntheticAnalysis(
-              selected,
+              input.selected,
               codeState,
             ),
           update:
@@ -783,11 +898,44 @@ export class WorkspaceIndexingFileProcessor {
               },
             },
         },
-      contentHash:
-        values.contentHash,
+      contentHash,
       warnings:
         [],
     });
+  }
+
+  private codeStateIsStatFresh(
+    state:
+      CodeIndexFileState,
+    selected:
+      WorkspaceIndexingFileProcessorInput[
+        "selected"
+      ],
+    analysisVersion:
+      string,
+  ): boolean {
+    const file =
+      selected.file;
+
+    if (
+      state.analysisVersion !==
+        analysisVersion ||
+      !file.modifiedAt ||
+      state.modifiedAt !==
+        file.modifiedAt ||
+      state.size !==
+        (file.size ?? 0) ||
+      state.providerPath !==
+        file.providerPath
+    ) {
+      return false;
+    }
+
+    return (
+      !selected.language ||
+      selected.language ===
+        state.language
+    );
   }
 
   private codeStateIsFresh(

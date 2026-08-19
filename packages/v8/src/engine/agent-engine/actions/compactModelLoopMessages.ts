@@ -393,17 +393,29 @@ function scaledChars(budgetTokens: number, ratio: number): number {
   return Math.max(1, Math.floor(Math.max(1, budgetTokens) * ratio));
 }
 
+/** Identical old/new so a copied compacted patch cannot apply as a real edit. */
+const COMPACTED_PATCH_PLACEHOLDER = "[compacted prior patch]";
+
 function buildCompactedToolArguments(toolCall: ModelToolCall): string {
   const schemaSafe = buildSchemaSafeCompactedToolArguments(toolCall);
   if (schemaSafe) {
     return schemaSafe;
   }
 
-  return JSON.stringify({
-    compacted: true,
-    reason: "previous_completed_tool_call_arguments_omitted",
-    originalArgumentCharacters: toolCall.arguments.length,
-  });
+  if (toolCall.name === "apply_patch") {
+    return JSON.stringify({
+      patches: [
+        {
+          path: "(compacted prior patch)",
+          oldText: COMPACTED_PATCH_PLACEHOLDER,
+          newText: COMPACTED_PATCH_PLACEHOLDER,
+        },
+      ],
+    });
+  }
+
+  // Never emit unrecognized keys. Models copy compacted history as the next call.
+  return "{}";
 }
 
 function buildSchemaSafeCompactedToolArguments(
@@ -446,9 +458,50 @@ function buildSchemaSafeCompactedToolArguments(
         ["path", "symbolName", "maximumHops"],
         ["path"],
       );
+    case "apply_patch":
+      return compactApplyPatchArguments(parsed);
+    case "delete_file":
+    case "delete_directory":
+      return compactObject(parsed, ["path", "recursive"], ["path"]);
+    case "move_file":
+      return compactObject(parsed, ["from", "to"], ["from", "to"]);
     default:
       return undefined;
   }
+}
+
+function compactApplyPatchArguments(
+  parsed: Record<string, unknown>,
+): string | undefined {
+  const rawPatches = Array.isArray(parsed.patches)
+    ? parsed.patches
+    : typeof parsed.path === "string" && parsed.path.trim().length > 0
+      ? [parsed]
+      : [];
+  if (rawPatches.length === 0) {
+    return undefined;
+  }
+
+  const patches: Array<{
+    path: string;
+    oldText: string;
+    newText: string;
+  }> = [];
+  for (const raw of rawPatches) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return undefined;
+    }
+    const path = (raw as Record<string, unknown>).path;
+    if (typeof path !== "string" || path.trim().length === 0) {
+      return undefined;
+    }
+    patches.push({
+      path,
+      oldText: COMPACTED_PATCH_PLACEHOLDER,
+      newText: COMPACTED_PATCH_PLACEHOLDER,
+    });
+  }
+  return JSON.stringify({ patches });
 }
 
 function compactReadManyFilesArguments(

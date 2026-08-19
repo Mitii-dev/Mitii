@@ -61,6 +61,29 @@ export function maxVerificationRepairsForDepth(
   return AGENT_ENGINE_THRESHOLDS.maxVerificationRepairAttempts;
 }
 
+/**
+ * Hold back a slice of maxModelCalls from the first mutate loop so
+ * remaining-error repairs can start. Without this, a productive first loop
+ * consumes the whole ceiling and `maxVerificationRepairs` never runs.
+ */
+export function reservedVerificationRepairModelCalls(input: {
+  maxModelCalls: number;
+  maxVerificationRepairs: number;
+}): number {
+  if (input.maxVerificationRepairs <= 0 || input.maxModelCalls <= 1) {
+    return 0;
+  }
+  const byShare = Math.floor(
+    input.maxModelCalls *
+      AGENT_ENGINE_THRESHOLDS.verificationRepairModelCallReserveRatio,
+  );
+  const reserved = Math.min(
+    input.maxVerificationRepairs,
+    Math.max(1, byShare),
+  );
+  return Math.min(reserved, input.maxModelCalls - 1);
+}
+
 export function nextStalledRepairCount(params: {
   previousAfterErrorCount?: number;
   currentAfterErrorCount: number;

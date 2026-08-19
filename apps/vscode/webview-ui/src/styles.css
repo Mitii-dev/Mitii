@@ -358,6 +358,31 @@ input:focus-visible {
   white-space: nowrap;
 }
 
+.run-warning-banner {
+  margin: 0 0 10px;
+  padding: 9px 11px;
+  border-radius: var(--mitii-radius-lg);
+  border: 1px solid color-mix(in srgb, var(--mitii-warn) 42%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-warn) 12%, var(--mitii-panel) 88%);
+  color: var(--mitii-text);
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset;
+}
+
+.run-warning-banner strong {
+  display: inline-block;
+  margin-bottom: 4px;
+  color: var(--mitii-warn);
+}
+
+.run-warning-banner__list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.run-warning-banner__list li + li {
+  margin-top: 4px;
+}
+
 .timeline {
   list-style: none;
   margin: 8px 0 12px;
@@ -1080,6 +1105,7 @@ input:focus-visible {
 
 .composer-dropdown--approval .composer-dropdown__menu,
 .composer-dropdown--depth .composer-dropdown__menu,
+.composer-dropdown--effort .composer-dropdown__menu,
 .composer-dropdown--profile .composer-dropdown__menu,
 .composer-dropdown--model .composer-dropdown__menu {
   left: auto;
@@ -1089,6 +1115,7 @@ input:focus-visible {
 @media (max-width: 360px) {
   .composer-dropdown--approval .composer-dropdown__menu,
   .composer-dropdown--depth .composer-dropdown__menu,
+  .composer-dropdown--effort .composer-dropdown__menu,
   .composer-dropdown--profile .composer-dropdown__menu,
   .composer-dropdown--model .composer-dropdown__menu {
     right: auto;

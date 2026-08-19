@@ -363,6 +363,16 @@ export const SETTINGS_FIELDS: readonly SettingsFieldSpec[] = [
     sample: '/tmp/mitii-workspace',
   },
   {
+    id: 'ui.effort',
+    page: 'modes',
+    tab: 'modes',
+    setting: 'ui.effort',
+    label: 'Working set',
+    kind: 'enum',
+    reflect: 'raw',
+    sample: 'high',
+  },
+  {
     id: 'ui.modeDefaults.ask.depth',
     page: 'modes',
     tab: 'modes',

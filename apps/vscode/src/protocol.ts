@@ -5,6 +5,7 @@
 
 export type AgentUiMode = 'ask' | 'plan' | 'agent' | 'review';
 export type AgentUiDepth = 'auto' | 'quick' | 'deep';
+export type AgentUiEffort = 'low' | 'medium' | 'high';
 export type UiNav = 'chat' | 'history' | 'settings' | 'skills';
 export type SettingsTab =
   | 'workspace'
@@ -187,6 +188,8 @@ export interface UiSettingsSnapshot {
   showReasoning: boolean;
   reasoningPreviewMaxChars: number;
   depth: AgentUiDepth;
+  /** Working-set overlay: loop/mutation/repair caps. Default medium. */
+  effort: AgentUiEffort;
   modeDefaults: Record<'ask' | 'plan' | 'agent', ModeDefaultSettingsSnapshot>;
   contextToggles: ContextToggles;
   approvalMode: string;
@@ -484,6 +487,7 @@ export type WebviewToHostMessage =
       prompt: string;
       mode: AgentUiMode;
       depth?: AgentUiDepth;
+      effort?: AgentUiEffort;
       approvalMode?: string;
       pinnedPaths?: string[];
     }

@@ -275,7 +275,7 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     },
     run: {
       maxModelCalls,
-      maxToolCalls: maxModelCalls * 2,
+      maxToolCalls: overlay.maxToolCalls,
       maxVerificationRepairs: overlay.maxVerificationRepairs,
     },
     skills: {

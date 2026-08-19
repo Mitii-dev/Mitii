@@ -1,5 +1,5 @@
 export const TEXT_INDEX_SCHEMA_VERSION =
-  2 as const;
+  3 as const;
 
 export const TEXT_INDEX_IDS = {
   QUERY_NORMALIZER:
@@ -16,7 +16,7 @@ export const TEXT_INDEX_IDS = {
 
 export const TEXT_INDEX_DEFAULTS = {
   PIPELINE_VERSION:
-    "chunking-v2-identifier-fts",
+    "chunking-v3-collapse-trigram",
 
   SEARCH_MODE:
     "any" as const,
@@ -73,6 +73,8 @@ export const TEXT_INDEX_TABLES = {
     "text_index_chunks",
   FTS:
     "text_index_fts",
+  FTS_TRIGRAM:
+    "text_index_fts_trigram",
   METADATA:
     "text_index_metadata",
   CHANGES:
@@ -222,6 +224,37 @@ export const TEXT_INDEX_SQL = {
     WHERE schema_version < 2;
   `,
 
+  CREATE_TRIGRAM_FTS: `
+    CREATE VIRTUAL TABLE IF NOT EXISTS text_index_fts_trigram USING fts5(
+      chunk_id UNINDEXED,
+      workspace UNINDEXED,
+      root_id UNINDEXED,
+      relative_path,
+      kind UNINDEXED,
+      title,
+      content,
+      tokenize = 'trigram'
+    );
+  `,
+
+  DROP_TRIGRAM_FTS: `
+    DROP TABLE IF EXISTS text_index_fts_trigram;
+  `,
+
+  INSERT_CHUNK_FTS_TRIGRAM_DIRECT: `
+    INSERT INTO text_index_fts_trigram (
+      rowid,
+      chunk_id,
+      workspace,
+      root_id,
+      relative_path,
+      kind,
+      title,
+      content
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+
   LIST_CHUNKS_FOR_FTS: `
     SELECT
       rowid AS rowid,
@@ -340,6 +373,17 @@ export const TEXT_INDEX_SQL = {
     )
   `,
 
+  DELETE_DOCUMENT_FTS_TRIGRAM: `
+    DELETE FROM text_index_fts_trigram
+    WHERE rowid IN (
+      SELECT rowid
+      FROM text_index_chunks
+      WHERE workspace = ?
+        AND root_id = ?
+        AND relative_path = ?
+    )
+  `,
+
   INSERT_CHUNK: `
     INSERT INTO text_index_chunks (
       id,
@@ -366,6 +410,31 @@ export const TEXT_INDEX_SQL = {
 
   INSERT_CHUNK_FTS: `
     INSERT INTO text_index_fts (
+      rowid,
+      chunk_id,
+      workspace,
+      root_id,
+      relative_path,
+      kind,
+      title,
+      content
+    )
+    SELECT
+      rowid,
+      id,
+      workspace,
+      root_id,
+      relative_path,
+      kind,
+      ?,
+      ?
+    FROM text_index_chunks
+    WHERE workspace = ?
+      AND id = ?
+  `,
+
+  INSERT_CHUNK_FTS_TRIGRAM: `
+    INSERT INTO text_index_fts_trigram (
       rowid,
       chunk_id,
       workspace,

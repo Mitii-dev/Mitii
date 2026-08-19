@@ -139,8 +139,24 @@ export class RunBudgetTracker {
     return this.fileReadCalls >= this.touchedFilePaths.size * params.ratio;
   }
 
-  public canStartModelCall(): boolean {
-    return this.modelCalls < this.limits.maxModelCalls;
+  public maxModelCalls(): number {
+    return this.limits.maxModelCalls;
+  }
+
+  public remainingModelCalls(): number {
+    return Math.max(0, this.limits.maxModelCalls - this.modelCalls);
+  }
+
+  /**
+   * `reserved` holds calls back for a later phase (verification repair).
+   * The reserve is never allowed to consume the entire ceiling.
+   */
+  public canStartModelCall(reserved = 0): boolean {
+    const reserve = Math.max(
+      0,
+      Math.min(reserved, Math.max(0, this.limits.maxModelCalls - 1)),
+    );
+    return this.modelCalls < this.limits.maxModelCalls - reserve;
   }
 
   public canStartToolCall(): boolean {

@@ -8,6 +8,7 @@ import {
 } from "../../actions";
 import type { ToolInvocationInput, ToolResult } from "../../contracts";
 import { assertApprovalSatisfied } from "../../internal/mutation/assertApprovalSatisfied";
+import { coerceArgumentsToSchema } from "../../internal/CoerceArgumentsToSchema";
 import { fingerprintToolCall } from "../../internal/mutation";
 import type { SessionBudget } from "../../internal/SessionBudget";
 import { SessionBudgetError } from "../../internal/SessionBudget";
@@ -23,6 +24,7 @@ export type PreflightSuccess = {
   ok: true;
   registered: RegisteredTool;
   maxOutputBytes: number;
+  argumentsValue: unknown;
 };
 
 export type PreflightFailure = {
@@ -128,6 +130,11 @@ export function preflightToolCall(params: {
     onShadowAuthorize: options.onShadowAuthorize,
   });
 
+  const argumentsValue = coerceArgumentsToSchema(
+    parsed.arguments,
+    registered.definition.inputSchema,
+  );
+
   if (
     options.enforceShadowAuthorization === true &&
     shadow.decision === "Deny"
@@ -147,7 +154,7 @@ export function preflightToolCall(params: {
   }
 
   try {
-    registered.definition.inputSchema.parse(parsed.arguments);
+    registered.definition.inputSchema.parse(argumentsValue);
   } catch (error) {
     if (error instanceof ZodError) {
       return {
@@ -167,7 +174,7 @@ export function preflightToolCall(params: {
   try {
     validateMutationBatch({
       toolName: parsed.toolName,
-      arguments: parsed.arguments,
+      arguments: argumentsValue,
       grant: parsed.grant,
     });
   } catch (error) {
@@ -190,14 +197,14 @@ export function preflightToolCall(params: {
     assertApprovalSatisfied({
       tool: registered.definition,
       grant: parsed.grant,
-      arguments: parsed.arguments,
+      arguments: argumentsValue,
       approval: options.approval,
     });
   } catch (error) {
     if (error instanceof GrantValidationError) {
       const fingerprint = fingerprintToolCall(
         parsed.toolName,
-        parsed.arguments,
+        argumentsValue,
       );
       return {
         ok: false,
@@ -213,7 +220,7 @@ export function preflightToolCall(params: {
                   approvalRequired: true,
                   fingerprint,
                   toolName: parsed.toolName,
-                  paths: extractMutationPaths(parsed.toolName, parsed.arguments),
+                  paths: extractMutationPaths(parsed.toolName, argumentsValue),
                 }
               : undefined,
         }),
@@ -228,7 +235,7 @@ export function preflightToolCall(params: {
     parsed.grant.limits.maxOutputBytes,
   );
 
-  return { ok: true, registered, maxOutputBytes };
+  return { ok: true, registered, maxOutputBytes, argumentsValue };
 }
 
 function extractMutationPaths(

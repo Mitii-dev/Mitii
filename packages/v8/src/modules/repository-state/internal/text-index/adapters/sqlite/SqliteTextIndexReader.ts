@@ -83,12 +83,43 @@ export class SqliteTextIndexReader
           ) as
           SqliteTextSearchRow[];
 
+      const trigramQuery =
+        this.queryBuilder.buildTrigram(
+          request,
+        );
+
+      let trigramRows:
+        SqliteTextSearchRow[] = [];
+
+      if (trigramQuery) {
+        try {
+          trigramRows =
+            this.database
+              .prepare(
+                trigramQuery.sql,
+              )
+              .all(
+                ...trigramQuery
+                  .parameters,
+              ) as
+              SqliteTextSearchRow[];
+        } catch {
+          trigramRows = [];
+        }
+      }
+
+      const merged =
+        this.mergeSearchRows(
+          rows,
+          trigramRows,
+        );
+
       const truncated =
-        rows.length >
+        merged.length >
         request.maximumResults;
 
       const selectedRows =
-        rows.slice(
+        merged.slice(
           0,
           request.maximumResults,
         );
@@ -389,6 +420,53 @@ export class SqliteTextIndexReader
         "Unable to read the SQLite Text Index revision.",
       );
     }
+  }
+
+  private mergeSearchRows(
+    lexicalRows:
+      readonly SqliteTextSearchRow[],
+    trigramRows:
+      readonly SqliteTextSearchRow[],
+  ): SqliteTextSearchRow[] {
+    const byChunkId =
+      new Map<string, SqliteTextSearchRow>();
+
+    for (const row of lexicalRows) {
+      byChunkId.set(row.chunkId, row);
+    }
+
+    for (const row of trigramRows) {
+      const existing =
+        byChunkId.get(row.chunkId);
+
+      if (!existing) {
+        byChunkId.set(row.chunkId, row);
+        continue;
+      }
+
+      if (
+        Number(row.rawRank) <
+        Number(existing.rawRank)
+      ) {
+        byChunkId.set(row.chunkId, {
+          ...existing,
+          rawRank: row.rawRank,
+        });
+      }
+    }
+
+    return [...byChunkId.values()].sort(
+      (left, right) =>
+        Number(left.rawRank) -
+          Number(right.rawRank) ||
+        left.relativePath.localeCompare(
+          right.relativePath,
+        ) ||
+        left.ordinal - right.ordinal ||
+        left.chunkId.localeCompare(
+          right.chunkId,
+        ),
+    );
   }
 
   private mapSearchRows(

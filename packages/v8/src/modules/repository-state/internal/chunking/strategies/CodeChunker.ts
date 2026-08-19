@@ -12,12 +12,22 @@ import {
 } from "../ChunkTextIndex";
 
 import type {
+  SourceAnalysisSymbol,
+} from "../../source-analysis/types";
+
+import type {
   ChunkingStrategy,
   ChunkingStrategyContext,
   ChunkingStrategyResult,
   ChunkingWarning,
   RawChunkSpan,
 } from "../types";
+
+interface RangedSymbol {
+  symbol: SourceAnalysisSymbol;
+  startOffset: number;
+  endOffset: number;
+}
 
 export class CodeChunker
   implements ChunkingStrategy
@@ -68,6 +78,7 @@ export class CodeChunker
     const symbolSpans =
       this.createSymbolSpans(
         context,
+        warnings,
       );
 
     if (
@@ -109,7 +120,78 @@ export class CodeChunker
 
   private createSymbolSpans(
     context: ChunkingStrategyContext,
+    warnings: ChunkingWarning[],
   ): RawChunkSpan[] {
+    const ranged =
+      this.collectRangedSymbols(
+        context,
+      );
+
+    if (ranged.length === 0) {
+      return [];
+    }
+
+    const byId =
+      new Map(
+        ranged.map((node) => [
+          node.symbol.localId,
+          node,
+        ]),
+      );
+
+    const childrenByParent =
+      new Map<string, RangedSymbol[]>();
+
+    const roots: RangedSymbol[] = [];
+
+    for (const node of ranged) {
+      const parentId =
+        node.symbol.parentLocalId;
+
+      if (
+        parentId &&
+        byId.has(parentId)
+      ) {
+        const siblings =
+          childrenByParent.get(
+            parentId,
+          ) ?? [];
+
+        siblings.push(node);
+        childrenByParent.set(
+          parentId,
+          siblings,
+        );
+      } else {
+        roots.push(node);
+      }
+    }
+
+    const expanded: RawChunkSpan[] = [];
+
+    for (
+      const root of this.removeOverlappingSymbols(
+        this.sortByRange(roots),
+      )
+    ) {
+      expanded.push(
+        ...this.expandSymbol(
+          root,
+          childrenByParent,
+          context.content,
+          context.options
+            .maximumChunkCharacters,
+          warnings,
+        ),
+      );
+    }
+
+    return this.sortSpans(expanded);
+  }
+
+  private collectRangedSymbols(
+    context: ChunkingStrategyContext,
+  ): RangedSymbol[] {
     const analysis =
       context.sourceAnalysis;
 
@@ -130,70 +212,200 @@ export class CodeChunker
         context.content,
       );
 
-    const spans:
-      RawChunkSpan[] = [];
+    const ranged: RangedSymbol[] = [];
 
-    for (
-      const symbol of analysis
-        .symbols
-        .filter(
-          (candidate) =>
-            !candidate
-              .parentLocalId,
-        )
-        .sort(
-          (left, right) =>
-            left.startLine -
-              right.startLine ||
-            (
-              left.endLine ??
-              left.startLine
-            ) -
-              (
-                right.endLine ??
-                right.startLine
-              ) ||
-            left.localId
-              .localeCompare(
-                right.localId,
-              ),
-        )
-    ) {
+    for (const symbol of analysis.symbols) {
       const startOffset =
-        textIndex
-          .lineStartOffset(
-            symbol.startLine,
-          );
+        textIndex.lineStartOffset(
+          symbol.startLine,
+        );
 
       const endOffset =
-        textIndex
-          .lineEndOffsetExclusive(
-            symbol.endLine ??
-              symbol.startLine,
-          );
+        textIndex.lineEndOffsetExclusive(
+          symbol.endLine ??
+            symbol.startLine,
+        );
 
       if (
-        startOffset ===
-          undefined ||
+        startOffset === undefined ||
         endOffset === undefined ||
         endOffset <= startOffset
       ) {
         continue;
       }
 
-      spans.push({
+      ranged.push({
+        symbol,
         startOffset,
         endOffset,
-        kind: "code_symbol",
-        title: symbol.name,
-        symbolLocalId:
-          symbol.localId,
       });
     }
 
-    return this.removeOverlaps(
-      spans,
+    return ranged;
+  }
+
+  private expandSymbol(
+    node: RangedSymbol,
+    childrenByParent: ReadonlyMap<string, RangedSymbol[]>,
+    content: string,
+    maximumChunkCharacters: number,
+    warnings: ChunkingWarning[],
+  ): RawChunkSpan[] {
+    const children =
+      this.sortByRange(
+        childrenByParent.get(
+          node.symbol.localId,
+        ) ?? [],
+      );
+
+    const size =
+      node.endOffset - node.startOffset;
+
+    if (
+      size <= maximumChunkCharacters ||
+      children.length === 0
+    ) {
+      return [
+        {
+          startOffset: node.startOffset,
+          endOffset: node.endOffset,
+          kind: "code_symbol",
+          title: node.symbol.name,
+          symbolLocalId: node.symbol.localId,
+        },
+      ];
+    }
+
+    const overview =
+      this.collapseParentContent(
+        content,
+        node,
+        children,
+        maximumChunkCharacters,
+      );
+
+    warnings.push({
+      code: "collapsed_parent",
+      message:
+        CHUNKING_MESSAGES.COLLAPSED_PARENT,
+      strategyId: this.id,
+      startOffset: node.startOffset,
+      endOffset: node.endOffset,
+    });
+
+    const spans: RawChunkSpan[] = [
+      {
+        startOffset: node.startOffset,
+        endOffset: node.endOffset,
+        kind: "code_region",
+        title: node.symbol.name,
+        symbolLocalId: node.symbol.localId,
+        contentOverride: overview,
+      },
+    ];
+
+    for (const child of children) {
+      spans.push(
+        ...this.expandSymbol(
+          child,
+          childrenByParent,
+          content,
+          maximumChunkCharacters,
+          warnings,
+        ),
+      );
+    }
+
+    return spans;
+  }
+
+  private collapseParentContent(
+    content: string,
+    parent: RangedSymbol,
+    children: readonly RangedSymbol[],
+    maximumCharacters: number,
+  ): string {
+    let text = content.slice(
+      parent.startOffset,
+      parent.endOffset,
     );
+
+    const ordered = [...children].sort(
+      (left, right) =>
+        right.startOffset - left.startOffset,
+    );
+
+    for (const child of ordered) {
+      const relStart =
+        child.startOffset - parent.startOffset;
+      const relEnd =
+        child.endOffset - parent.startOffset;
+
+      if (
+        relStart < 0 ||
+        relEnd > text.length ||
+        relEnd <= relStart
+      ) {
+        continue;
+      }
+
+      const placeholder =
+        this.collapseChildPlaceholder(
+          text.slice(relStart, relEnd),
+        );
+
+      text =
+        text.slice(0, relStart) +
+        placeholder +
+        text.slice(relEnd);
+    }
+
+    if (text.length <= maximumCharacters) {
+      return text;
+    }
+
+    const cut = text.lastIndexOf(
+      "\n",
+      maximumCharacters,
+    );
+
+    return text.slice(
+      0,
+      cut > maximumCharacters / 2
+        ? cut
+        : maximumCharacters,
+    );
+  }
+
+  private collapseChildPlaceholder(
+    childText: string,
+  ): string {
+    const openBrace = childText.indexOf("{");
+    const closeBrace = childText.lastIndexOf("}");
+
+    if (
+      openBrace >= 0 &&
+      closeBrace > openBrace
+    ) {
+      return (
+        childText.slice(0, openBrace).trimEnd() +
+        " { ... }"
+      );
+    }
+
+    const colon = childText.indexOf(":");
+
+    if (colon >= 0 && colon < 120) {
+      return childText.slice(0, colon + 1) + " ...";
+    }
+
+    const newline = childText.indexOf("\n");
+
+    if (newline >= 0) {
+      return childText.slice(0, newline) + "\n...";
+    }
+
+    return childText;
   }
 
   private createDeclarationSpans(
@@ -303,27 +515,49 @@ export class CodeChunker
     return result;
   }
 
-  private removeOverlaps(
-    spans: readonly RawChunkSpan[],
-  ): RawChunkSpan[] {
-    const result:
-      RawChunkSpan[] = [];
-
+  private removeOverlappingSymbols(
+    symbols: readonly RangedSymbol[],
+  ): RangedSymbol[] {
+    const result: RangedSymbol[] = [];
     let lastEnd = -1;
 
-    for (const span of spans) {
-      if (
-        span.startOffset <
-        lastEnd
-      ) {
+    for (const symbol of symbols) {
+      if (symbol.startOffset < lastEnd) {
         continue;
       }
 
-      result.push(span);
-      lastEnd = span.endOffset;
+      result.push(symbol);
+      lastEnd = symbol.endOffset;
     }
 
     return result;
+  }
+
+  private sortByRange(
+    symbols: readonly RangedSymbol[],
+  ): RangedSymbol[] {
+    return [...symbols].sort(
+      (left, right) =>
+        left.startOffset - right.startOffset ||
+        right.endOffset - left.endOffset ||
+        left.symbol.localId.localeCompare(
+          right.symbol.localId,
+        ),
+    );
+  }
+
+  private sortSpans(
+    spans: readonly RawChunkSpan[],
+  ): RawChunkSpan[] {
+    return [...spans].sort(
+      (left, right) =>
+        left.startOffset - right.startOffset ||
+        right.endOffset - left.endOffset ||
+        left.kind.localeCompare(right.kind) ||
+        (left.symbolLocalId ?? "").localeCompare(
+          right.symbolLocalId ?? "",
+        ),
+    );
   }
 
   private collectLineStarts(
@@ -369,4 +603,3 @@ export class CodeChunker
       : "";
   }
 }
-

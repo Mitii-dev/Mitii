@@ -363,6 +363,7 @@ export const structuredPatchSchema = z
     oldText: z.string({ required_error: "oldText is required" }),
     newText: z.string({ required_error: "newText is required" }),
     expectedHash: z.string().min(1).optional(),
+    replaceAll: z.boolean().optional(),
   })
   .strict();
 

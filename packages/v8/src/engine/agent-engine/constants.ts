@@ -120,6 +120,10 @@ export const AGENT_REASON_CODES = [
   "verification_failed",
   "verification_repair_attempted",
   "verification_repair_succeeded",
+  /** First mutate loop stopped early so remaining model calls can repair. */
+  "verification_repair_budget_reserved",
+  /** Post-mutation glob/read streak capped so verification can run. */
+  "post_mutation_read_capped",
   "verification_skipped",
   "answer_produced",
   "cancelled",

@@ -36,6 +36,9 @@ export {
   createDefaultProjectCatalogBuilder,
   RepoGraphBuilder,
   RepoMapBuilder,
+  WorkspaceIgnorePolicy,
+  isSecurityConcern,
+  WS_CONSTANTS,
 } from "./modules/repository-state";
 export {
   LANGUAGE_IDS,
@@ -73,6 +76,9 @@ export type {
   WorkspaceRetrievalRuntimeVectorOptions,
   WorkspaceIndexingPipelineInput,
   WorkspaceIndexingPipelineResult,
+  WorkspaceIgnoreDecision,
+  WorkspaceIgnorePolicyOptions,
+  WorkspaceIgnoreReason,
   WorkspaceSnapshot,
   WorkspaceFileEntry,
   RepoGraph,

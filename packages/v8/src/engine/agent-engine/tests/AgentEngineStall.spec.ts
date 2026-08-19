@@ -255,7 +255,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.answer ?? "").not.toContain("I still need the same file");
   });
 
-  it("gives one grace turn after the first-mutation nudge, then fails if reading continues", async () => {
+  it("gives two grace turns after the first-mutation nudge, then fails if reading continues", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
         route: "execute",
@@ -282,6 +282,12 @@ describe("AgentEnginePipeline stall and read dedup", () => {
             content: "I need to re-check that file once more.",
             toolCalls: [
               readPathCall("call_read_after_grace", "src/final-2.ts"),
+            ],
+          },
+          {
+            content: "I still want one more read.",
+            toolCalls: [
+              readPathCall("call_read_after_second_grace", "src/final-3.ts"),
             ],
           },
           { content: "Should not be reached after read-only execute drift." },
@@ -361,6 +367,103 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     ).result;
 
     expect(result.reasonCodes).toContain("unfulfilled_execute_recovered");
+    expect(result.status).not.toBe("failed");
+    expect(result.error?.code).not.toBe("no_mutation_performed");
+  });
+
+  it("still succeeds when the model patches on the second grace turn after the first-mutation nudge", async () => {
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        toolGrant: createReadOnlyGrant({
+          maximumWorkspaceEffect: "write",
+          allowedTools: ["read_file", "apply_patch"],
+          allowedEffects: ["workspace_read", "workspace_write"],
+          approvalMode: "never",
+        }),
+        reasonCodes: ["mutation_execute"],
+      }),
+      llm: new ScriptedLlmPort(
+        [
+          ...Array.from({ length: 6 }, (_, index) => ({
+            toolCalls: [
+              readPathCall(`call_read_${index}`, `src/file-${index}.ts`),
+            ],
+          })),
+          {
+            content: "I still want to inspect one more file.",
+            toolCalls: [readPathCall("call_read_after_nudge", "src/final.ts")],
+          },
+          {
+            content: "One more verification read.",
+            toolCalls: [
+              readPathCall("call_read_after_first_grace", "src/final-2.ts"),
+            ],
+          },
+          {
+            content: "Applying the fix now.",
+            toolCalls: [patchCall("call_patch_after_second_grace")],
+          },
+          { content: "Done." },
+        ],
+        createCapabilities({ supportsTools: true }),
+      ),
+    });
+
+    const originalExecute = deps.tools!.execute.bind(deps.tools);
+    deps.tools = {
+      ...deps.tools!,
+      execute: async (input, options) => {
+        if (input.toolName === "apply_patch") {
+          return {
+            schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+            callId: input.callId,
+            toolName: input.toolName,
+            status: "succeeded",
+            truncated: false,
+            redacted: false,
+            durationMs: 1,
+            bytesProduced: 24,
+            warnings: [],
+            output: {
+              checkpointId: "ckpt_after_second_grace",
+              changedFiles: ["src/form.ts"],
+            },
+            audit: {
+              callId: input.callId,
+              toolName: input.toolName,
+              startedAt: "2026-07-25T12:00:00.000Z",
+              endedAt: "2026-07-25T12:00:00.001Z",
+              status: "succeeded",
+              inputPreview: "{}",
+              outputPreview: "{}",
+              bytesProduced: 24,
+              durationMs: 1,
+              truncated: false,
+              redacted: false,
+            },
+          };
+        }
+        return originalExecute(input, options);
+      },
+    };
+
+    const engine = new AgentEnginePipeline(deps);
+    const result = await engine.start(
+      agentEngineStartInputSchema.parse({
+        schemaVersion: 1,
+        request: {
+          sessionId: "sess_mutation_second_grace_recovered",
+          mode: "agent",
+          userMessage: "Fix all TypeScript errors",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/workspace",
+      }),
+    ).result;
+
+    expect(result.reasonCodes).toContain("unfulfilled_execute_recovered");
+    expect(result.reasonCodes).toContain("mutation_applied");
     expect(result.status).not.toBe("failed");
     expect(result.error?.code).not.toBe("no_mutation_performed");
   });
@@ -467,7 +570,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
             callId: input.callId,
             toolName: input.toolName,
             status: "rejected",
-            reasonCode: "patch_conflict",
+            reasonCode: "patch_target_missing",
             truncated: false,
             redacted: false,
             durationMs: 1,
@@ -481,7 +584,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
               startedAt: "2026-07-25T12:00:00.000Z",
               endedAt: "2026-07-25T12:00:00.001Z",
               status: "rejected",
-              reasonCode: "patch_conflict",
+              reasonCode: "patch_target_missing",
               inputPreview: "{}",
               outputPreview: "{}",
               bytesProduced: 0,
@@ -603,7 +706,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
             callId: input.callId,
             toolName: input.toolName,
             status: "rejected",
-            reasonCode: "patch_conflict",
+            reasonCode: "old_text_not_found",
             truncated: false,
             redacted: false,
             durationMs: 1,
@@ -615,7 +718,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
               startedAt: "2026-07-25T12:00:00.000Z",
               endedAt: "2026-07-25T12:00:00.001Z",
               status: "rejected",
-              reasonCode: "patch_conflict",
+              reasonCode: "old_text_not_found",
               inputPreview: "{}",
               outputPreview: "{}",
               bytesProduced: 0,
@@ -856,6 +959,141 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.reasonCodes).toContain("unfulfilled_execute_recovered");
     expect(result.warnings.some((warning) => warning.includes("reading after mutations"))).toBe(
       true,
+    );
+  });
+
+  it("stops post-mutation globbing after one nudge so verification can run", async () => {
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        toolGrant: createReadOnlyGrant({
+          maximumWorkspaceEffect: "write",
+          allowedTools: ["glob_files", "apply_patch"],
+          allowedEffects: ["workspace_read", "workspace_write"],
+          approvalMode: "never",
+        }),
+        reasonCodes: ["mutation_execute"],
+      }),
+      llm: new ScriptedLlmPort(
+        [
+          { toolCalls: [patchCall("call_patch_first")] },
+          {
+            toolCalls: [
+              {
+                id: "call_glob_1",
+                name: "glob_files",
+                arguments: JSON.stringify({ pattern: "**/*.ts" }),
+              },
+            ],
+          },
+          {
+            toolCalls: [
+              {
+                id: "call_glob_2",
+                name: "glob_files",
+                arguments: JSON.stringify({ pattern: "**/*.tsx" }),
+              },
+            ],
+          },
+          {
+            toolCalls: [
+              {
+                id: "call_glob_3",
+                name: "glob_files",
+                arguments: JSON.stringify({ pattern: "**/*.js" }),
+              },
+            ],
+          },
+          {
+            toolCalls: [
+              {
+                id: "call_glob_4",
+                name: "glob_files",
+                arguments: JSON.stringify({ pattern: "**/*.mjs" }),
+              },
+            ],
+          },
+          {
+            toolCalls: [
+              {
+                id: "call_glob_5",
+                name: "glob_files",
+                arguments: JSON.stringify({ pattern: "**/*.cjs" }),
+              },
+            ],
+          },
+          {
+            toolCalls: [
+              {
+                id: "call_glob_6",
+                name: "glob_files",
+                arguments: JSON.stringify({ pattern: "**/*.cts" }),
+              },
+            ],
+          },
+          { content: "Should not keep globbing after the post-mutation cap." },
+        ],
+        createCapabilities({ supportsTools: true }),
+      ),
+    });
+    const originalExecute = deps.tools!.execute.bind(deps.tools);
+    deps.tools = {
+      ...deps.tools!,
+      execute: async (input, options): Promise<ToolResult> => {
+        if (input.toolName === "apply_patch") {
+          return {
+            schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+            callId: input.callId,
+            toolName: input.toolName,
+            status: "succeeded",
+            truncated: false,
+            redacted: false,
+            durationMs: 1,
+            bytesProduced: 24,
+            warnings: [],
+            output: {
+              checkpointId: "ckpt_1",
+              changedFiles: ["src/form.ts"],
+            },
+            audit: {
+              callId: input.callId,
+              toolName: input.toolName,
+              startedAt: "2026-07-25T12:00:00.000Z",
+              endedAt: "2026-07-25T12:00:00.001Z",
+              status: "succeeded",
+              inputPreview: "{}",
+              outputPreview: "{}",
+              bytesProduced: 24,
+              durationMs: 1,
+              truncated: false,
+              redacted: false,
+            },
+          };
+        }
+        return originalExecute(input, options);
+      },
+    };
+
+    const engine = new AgentEnginePipeline(deps);
+    const result = await engine.start(
+      agentEngineStartInputSchema.parse({
+        schemaVersion: 1,
+        request: {
+          sessionId: "sess_post_mutation_glob_cap",
+          mode: "agent",
+          userMessage: "Fix all TypeScript errors",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/workspace",
+      }),
+    ).result;
+
+    expect(result.status).toBe("completed");
+    expect(result.reasonCodes).toContain("mutation_applied");
+    expect(result.reasonCodes).toContain("unfulfilled_execute_recovered");
+    expect(result.reasonCodes).toContain("post_mutation_read_capped");
+    expect(result.answer ?? "").not.toContain(
+      "Should not keep globbing after the post-mutation cap.",
     );
   });
 });

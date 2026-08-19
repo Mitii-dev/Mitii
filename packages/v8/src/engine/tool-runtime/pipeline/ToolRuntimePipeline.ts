@@ -105,11 +105,11 @@ export class ToolRuntimePipeline {
       return preflight.result;
     }
 
-    const { registered, maxOutputBytes } = preflight;
+    const { registered, maxOutputBytes, argumentsValue } = preflight;
 
     try {
       const executed = await registered.execute({
-        arguments: parsed.arguments,
+        arguments: argumentsValue,
         grant: parsed.grant,
         workspaceRoot: parsed.workspaceRoot,
         ports: this.ports,

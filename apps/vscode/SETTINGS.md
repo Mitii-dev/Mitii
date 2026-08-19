@@ -77,6 +77,7 @@ Each mode has its own row. Switching the Ask / Plan / Agent control edits that m
 
 | UI field | Setting | Save / reflect |
 |---|---|---|
+| Working set | `mitii.ui.effort` | Global. `low` / `medium` / `high`. Also in the chat composer (Low / Medium / High). |
 | Default depth | `mitii.ui.modeDefaults.<mode>.depth` | `auto` / `quick` / `deep`. Reflected per mode. |
 | Approval mode | `mitii.ui.modeDefaults.<mode>.approvalMode` | `safe` (ask) / `guided` (approve for me) / `pilot` (full access). |
 | Default model | `mitii.ui.modeDefaults.<mode>.model` | Empty = use the active Provider model. |

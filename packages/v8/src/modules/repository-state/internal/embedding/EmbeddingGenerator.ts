@@ -39,6 +39,9 @@ export class EmbeddingGenerator {
   private readonly options:
     ResolvedEmbeddingGeneratorOptions;
 
+  private readonly vectorCache:
+    EmbeddingGeneratorOptions["vectorCache"];
+
   public get profile() {
     return this.provider.profile;
   }
@@ -63,6 +66,9 @@ export class EmbeddingGenerator {
     this.options =
       this.textPreparer
         .resolveOptions(options);
+
+    this.vectorCache =
+      options.vectorCache;
 
     if (
       this.options
@@ -147,26 +153,15 @@ export class EmbeddingGenerator {
         )[];
 
       try {
-        providerCalls += 1;
+        const embedded =
+          await this.embedBatch(
+            batch,
+            input.abortSignal,
+          );
 
-        vectors =
-          await this.provider
-            .embed(
-              batch.map(
-                (item) =>
-                  item.text,
-              ),
-              {
-                ...(input
-                  .abortSignal
-                  ? {
-                      abortSignal:
-                        input
-                          .abortSignal,
-                    }
-                  : {}),
-              },
-            );
+        vectors = embedded.vectors;
+        providerCalls +=
+          embedded.providerCalls;
       } catch (error) {
         if (
           input.abortSignal
@@ -267,6 +262,132 @@ export class EmbeddingGenerator {
           warnings.length,
       },
     });
+  }
+
+  private async embedBatch(
+    batch: readonly PreparedEmbeddingText[],
+    abortSignal?: AbortSignal,
+  ): Promise<{
+    vectors: readonly (readonly number[])[];
+    providerCalls: number;
+  }> {
+    const ordered:
+      (readonly number[])[] =
+      new Array(batch.length);
+
+    const missingIndexes: number[] = [];
+    const missingTexts: string[] = [];
+
+    for (let index = 0; index < batch.length; index += 1) {
+      const item = batch[index];
+      if (!item) {
+        continue;
+      }
+
+      const cached = await this.readCachedVector(
+        item.chunk.contentHash,
+      );
+
+      if (cached) {
+        ordered[index] = cached;
+        continue;
+      }
+
+      missingIndexes.push(index);
+      missingTexts.push(item.text);
+    }
+
+    if (missingTexts.length === 0) {
+      return {
+        vectors: ordered,
+        providerCalls: 0,
+      };
+    }
+
+    const vectors = await this.provider.embed(
+      missingTexts,
+      abortSignal ? { abortSignal } : {},
+    );
+
+    if (vectors.length !== missingTexts.length) {
+      throw new EmbeddingError(
+        `Embedding provider returned ${vectors.length} vectors for ${missingTexts.length} inputs.`,
+        {
+          operation: "generate",
+          componentId: this.provider.profile.providerId,
+        },
+      );
+    }
+
+    for (let index = 0; index < missingIndexes.length; index += 1) {
+      const batchIndex = missingIndexes[index];
+      const vector = vectors[index];
+      const item = batchIndex === undefined
+        ? undefined
+        : batch[batchIndex];
+
+      if (
+        batchIndex === undefined ||
+        !vector ||
+        !item
+      ) {
+        throw new EmbeddingError(
+          "Embedding provider response did not preserve input order.",
+          {
+            operation: "generate",
+            componentId: this.provider.profile.providerId,
+          },
+        );
+      }
+
+      ordered[batchIndex] = vector;
+      await this.writeCachedVector(
+        item.chunk.contentHash,
+        vector,
+      );
+    }
+
+    return {
+      vectors: ordered,
+      providerCalls: 1,
+    };
+  }
+
+  private async readCachedVector(
+    contentHash: string,
+  ): Promise<readonly number[] | undefined> {
+    if (!this.vectorCache) {
+      return undefined;
+    }
+
+    const cached = await this.vectorCache.get(
+      this.provider.profile.id,
+      contentHash,
+    );
+
+    if (
+      !cached ||
+      cached.length !== this.provider.profile.dimensions
+    ) {
+      return undefined;
+    }
+
+    return cached;
+  }
+
+  private async writeCachedVector(
+    contentHash: string,
+    vector: readonly number[],
+  ): Promise<void> {
+    if (!this.vectorCache) {
+      return;
+    }
+
+    await this.vectorCache.set(
+      this.provider.profile.id,
+      contentHash,
+      vector,
+    );
   }
 
   private createRecord(

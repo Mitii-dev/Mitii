@@ -6,6 +6,7 @@ import type { ExtensionContext } from 'vscode';
 import * as vscode from 'vscode';
 
 import type { MitiiClient } from '@mitii/sdk';
+import { isSecurityConcern, WorkspaceIgnorePolicy } from '@mitii/v8';
 
 import { captureEditorContext } from './context/editorContext.js';
 import { resolveContextToggles } from './contextToggles.js';
@@ -62,6 +63,7 @@ export function activate(context: ExtensionContext): void {
   let client: MitiiClient | undefined;
   let workspaceId = 'vscode_workspace';
   let lastSessionExportPath: string | undefined;
+  let indexAbort: AbortController | undefined;
 
   const workspaceRoot = (): string | undefined =>
     vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -170,97 +172,128 @@ export function activate(context: ExtensionContext): void {
         message: 'Open a workspace folder to index',
       };
     }
-    if (sidebar) {
-      const status = await sidebar.publishIndexSnapshot({ force: true });
-      void vscode.window.showInformationMessage(
-        status.message ?? 'Mitii index updated.',
-      );
-      return status;
-    }
-    const c = await ensureClient();
-    const dir = join(root, '.mitii');
-    mkdirSync(dir, { recursive: true });
-    let fileCount = 0;
-    let truncated = false;
-    let indexMode: IndexStatusSnapshot['indexMode'] = 'full';
-    let fallbackReason: string | undefined;
-    let published;
-    try {
-      const full = await runFullWorkspaceIndex({
-        mitiiDir: dir,
-        workspaceRoot: root,
-        workspaceId,
-        force: true,
-        semanticIndex: await resolveVsCodeSemanticIndexSettings(
-          vscode,
-          context.secrets,
-        ),
-      });
-      fileCount = full.fileCount;
-      truncated = full.truncated;
-      published = await c.publishRepositoryStateFromIndexing(full.indexing, {
-        catalogRevisionByRoot: full.catalogRevisionByRoot,
-        graphRevisionByRoot: full.graphRevisionByRoot,
-        mapRevisionByRoot: full.mapRevisionByRoot,
-      });
-      channel.appendLine(
-        `[index] full code/text/graph/map index stored at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
-      );
-    } catch (error) {
-      indexMode = 'host_snapshot';
-      fallbackReason = error instanceof Error ? error.message : String(error);
-      channel.appendLine(
-        `[index] full index unavailable; falling back to host snapshot: ${fallbackReason}`,
-      );
-      const snapshot = await buildWorkspaceSnapshot({
-        workspaceRoot: root,
-        workspaceId,
-      });
-      fileCount = snapshot.fileCount;
-      truncated = snapshot.truncated;
-      published = await c.publishRepositoryState(snapshot.candidate);
-    }
-    if (published.status === 'published') {
-      writeFileSync(
-        join(dir, 'last-repository-state.json'),
-        `${JSON.stringify(
-          {
-            ...published.descriptor,
-            fileCount,
-            truncated,
-            indexMode,
-          },
-          null,
-          2,
-        )}\n`,
-      );
-      channel.appendLine(
-        `[index] readiness=${published.descriptor.readiness} token=${published.reference.stateToken.slice(0, 16)}… files=${fileCount}`,
-      );
-      void vscode.window.showInformationMessage(
-        `Mitii indexed (${published.descriptor.readiness}).`,
-      );
-      return {
-        fileCount,
-        truncated,
-        readiness: published.descriptor.readiness,
-        stateTokenPreview: published.reference.stateToken.slice(0, 16),
-        lastIndexedAt: published.descriptor.generatedAt,
-        indexMode,
-        message:
-          indexMode === 'host_snapshot'
-            ? `Indexed ${fileCount} files (host snapshot fallback: ${fallbackReason ?? 'full index unavailable'})`
-            : truncated
-              ? `Indexed ${fileCount} files (truncated)`
+
+    indexAbort?.abort();
+    indexAbort = new AbortController();
+    const abortSignal = indexAbort.signal;
+
+    return vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: 'Mitii: Indexing workspace',
+        cancellable: true,
+      },
+      async (progress, token) => {
+        token.onCancellationRequested(() => indexAbort?.abort());
+        const onProgress = (event: {
+          message: string;
+          fileCount?: number;
+        }) => {
+          progress.report({
+            message: event.fileCount
+              ? `${event.message} (${event.fileCount} files)`
+              : event.message,
+          });
+          channel.appendLine(`[index] ${event.message}`);
+        };
+
+        if (sidebar) {
+          const status = await sidebar.publishIndexSnapshot({
+            force: true,
+            abortSignal,
+            onProgress,
+          });
+          if (!abortSignal.aborted) {
+            void vscode.window.showInformationMessage(
+              status.message ?? 'Mitii index updated.',
+            );
+          }
+          return status;
+        }
+        const c = await ensureClient();
+        const dir = join(root, '.mitii');
+        mkdirSync(dir, { recursive: true });
+        let fileCount = 0;
+        let truncated = false;
+        let indexMode: IndexStatusSnapshot['indexMode'] = 'full';
+        let fallbackReason: string | undefined;
+        let published;
+        try {
+          const full = await runFullWorkspaceIndex({
+            mitiiDir: dir,
+            workspaceRoot: root,
+            workspaceId,
+            force: true,
+            abortSignal,
+            onProgress,
+            semanticIndex: await resolveVsCodeSemanticIndexSettings(
+              vscode,
+              context.secrets,
+            ),
+          });
+          fileCount = full.fileCount;
+          truncated = full.truncated;
+          if (full.status === 'cancelled') {
+            return {
+              fileCount,
+              truncated,
+              message: 'Indexing cancelled',
+            };
+          }
+          published = await c.publishRepositoryStateFromIndexing(full.indexing, {
+            catalogRevisionByRoot: full.catalogRevisionByRoot,
+            graphRevisionByRoot: full.graphRevisionByRoot,
+            mapRevisionByRoot: full.mapRevisionByRoot,
+          });
+          channel.appendLine(
+            `[index] full code/text/graph/map index stored at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
+          );
+        } catch (error) {
+          indexMode = 'host_snapshot';
+          fallbackReason = error instanceof Error ? error.message : String(error);
+          channel.appendLine(
+            `[index] full index unavailable; falling back to host snapshot: ${fallbackReason}`,
+          );
+          const snapshot = await buildWorkspaceSnapshot({
+            workspaceRoot: root,
+            workspaceId,
+          });
+          fileCount = snapshot.fileCount;
+          truncated = snapshot.truncated;
+          published = await c.publishRepositoryState(snapshot.candidate);
+        }
+        if (published.status === 'published') {
+          writeFileSync(
+            join(dir, 'last-repository-state.json'),
+            `${JSON.stringify(
+              {
+                ...published.descriptor,
+                fileCount,
+                truncated,
+                indexMode,
+              },
+              null,
+              2,
+            )}\n`,
+          );
+          channel.appendLine(
+            `[index] readiness=${published.descriptor.readiness} token=${published.reference.stateToken.slice(0, 16)}… files=${fileCount}`,
+          );
+        }
+        const status: IndexStatusSnapshot = {
+          fileCount,
+          truncated,
+          message:
+            indexMode === 'host_snapshot'
+              ? `Indexed ${fileCount} files (host snapshot fallback)`
               : `Indexed ${fileCount} files`,
-      };
-    }
-    void vscode.window.showErrorMessage('Mitii index failed.');
-    return {
-      fileCount,
-      truncated,
-      message: 'Index publish failed',
-    };
+        };
+        void vscode.window.showInformationMessage(
+          status.message ?? 'Mitii index updated.',
+        );
+        return status;
+      },
+    );
   };
 
   const openChat = async (): Promise<void> => {
@@ -488,6 +521,11 @@ export function activate(context: ExtensionContext): void {
     vscode.commands.registerCommand('mitii.indexWorkspace', async () => {
       await indexWorkspace();
     }),
+    vscode.commands.registerCommand('mitii.pauseIndexing', () => {
+      indexAbort?.abort();
+      channel.appendLine('[index] pause requested');
+      void vscode.window.showInformationMessage('Mitii indexing paused.');
+    }),
     vscode.commands.registerCommand(
       'mitii.generateCommitMessage',
       generateCommitMessage,
@@ -651,7 +689,59 @@ export function activate(context: ExtensionContext): void {
       if (debugEnabled()) channel.show(true);
     });
 
+  const ignorePolicy = new WorkspaceIgnorePolicy();
+  const pendingIndexPaths = new Set<string>();
+  let saveIndexTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const relativeWorkspacePath = (uri: vscode.Uri): string | undefined => {
+    const root = workspaceRoot();
+    if (!root || uri.scheme !== 'file') return undefined;
+    const relative = vscode.workspace.asRelativePath(uri, false);
+    if (!relative || relative === uri.fsPath) return undefined;
+    return relative.replace(/\\/g, '/');
+  };
+
+  const flushSaveIndex = async (): Promise<void> => {
+    const filePaths = [...pendingIndexPaths];
+    pendingIndexPaths.clear();
+    if (filePaths.length === 0) return;
+    try {
+      const status = await sidebar.publishIndexSnapshot({ filePaths });
+      sidebar.post({ type: 'index.status', index: status });
+      channel.appendLine(
+        `[index] save refresh ${filePaths.join(', ')} ${status.message ?? 'updated'}`,
+      );
+    } catch (error) {
+      channel.appendLine(
+        `[index] save refresh failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  };
+
   context.subscriptions.push(
+    vscode.workspace.onDidSaveTextDocument((document) => {
+      const relativePath = relativeWorkspacePath(document.uri);
+      if (!relativePath) return;
+      if (isSecurityConcern(relativePath)) return;
+      if (
+        ignorePolicy.shouldIgnore({
+          root: workspaceRoot() ?? '',
+          path: document.uri.fsPath,
+          relativePath,
+          kind: 'file',
+          depth: relativePath.split('/').length,
+        })
+      ) {
+        return;
+      }
+      pendingIndexPaths.add(relativePath);
+      if (saveIndexTimer) clearTimeout(saveIndexTimer);
+      saveIndexTimer = setTimeout(() => {
+        void flushSaveIndex();
+      }, 750);
+    }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       const root = workspaceRoot();
       invalidateClient();

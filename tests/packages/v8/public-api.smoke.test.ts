@@ -9,6 +9,7 @@ import {
   EchoLlmPort,
   createWorkspaceIndexRuntime,
   createWorkspaceRetrievalRuntime,
+  isSecurityConcern,
 } from '@mitii/v8';
 
 describe('tests/packages/v8 — public @mitii/v8 consumer smoke', () => {
@@ -51,5 +52,7 @@ describe('tests/packages/v8 — public @mitii/v8 consumer smoke', () => {
   it('exports the workspace index runtime facade', () => {
     expect(typeof createWorkspaceIndexRuntime).toBe('function');
     expect(typeof createWorkspaceRetrievalRuntime).toBe('function');
+    expect(typeof isSecurityConcern).toBe('function');
+    expect(isSecurityConcern('.env')).toBe(true);
   });
 });

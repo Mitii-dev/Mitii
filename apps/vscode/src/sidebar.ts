@@ -1205,6 +1205,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         channel: this.channel,
         mode: engineMode,
         depth: message.depth,
+        effort: message.effort,
         approvalMode: message.approvalMode,
         pinnedPaths: message.pinnedPaths,
         workspaceId: this.getWorkspaceId(),
@@ -1901,6 +1902,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           this.vs.ConfigurationTarget.Global,
         );
       }
+      if (message.ui.effort !== undefined) {
+        await cfg.update(
+          'ui.effort',
+          message.ui.effort,
+          this.vs.ConfigurationTarget.Global,
+        );
+      }
       if (message.ui.modeDefaults) {
         for (const mode of ['ask', 'plan', 'agent'] as const) {
           const defaults = message.ui.modeDefaults[mode];
@@ -2336,11 +2344,19 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     };
     const readModeModel = (mode: 'ask' | 'plan' | 'agent'): string =>
       cfg.get<string>(`ui.modeDefaults.${mode}.model`)?.trim() ?? '';
+    const storedEffort = cfg.get<string>('ui.effort');
+    const effort: UiSettingsSnapshot['effort'] =
+      storedEffort === 'low' ||
+      storedEffort === 'high' ||
+      storedEffort === 'medium'
+        ? storedEffort
+        : 'medium';
     return {
       showReasoning: cfg.get<boolean>('ui.showReasoning') ?? true,
       reasoningPreviewMaxChars:
         cfg.get<number>('ui.reasoningPreviewMaxChars') ?? 8000,
       depth: legacyDepth,
+      effort,
       modeDefaults: {
         ask: {
           depth: readModeDepth('ask'),
@@ -2534,7 +2550,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     return this.lastIndex;
   }
 
-  async publishIndexSnapshot(options: { force?: boolean } = {}): Promise<IndexStatusSnapshot> {
+  async publishIndexSnapshot(options: {
+    force?: boolean;
+    filePaths?: readonly string[];
+    abortSignal?: AbortSignal;
+    onProgress?: Parameters<typeof runFullWorkspaceIndex>[0]['onProgress'];
+  } = {}): Promise<IndexStatusSnapshot> {
     const root = this.effectiveRoot();
     if (!root) {
       return {
@@ -2556,11 +2577,30 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         workspaceRoot: root,
         workspaceId: this.getWorkspaceId(),
         force: options.force === true,
+        ...(options.filePaths?.length ? { filePaths: options.filePaths } : {}),
+        ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
+        ...(options.onProgress ? { onProgress: options.onProgress } : {}),
         semanticIndex: await resolveVsCodeSemanticIndexSettings(
           this.vs,
           this.secrets,
         ),
       });
+      if (full.status === 'cancelled') {
+        this.lastIndex = {
+          fileCount: full.fileCount,
+          truncated: full.truncated,
+          message: 'Indexing cancelled',
+        };
+        return this.lastIndex;
+      }
+      if (full.status === 'skipped') {
+        return {
+          ...this.lastIndex,
+          fileCount: full.fileCount,
+          truncated: full.truncated,
+          message: 'Indexing already in progress',
+        };
+      }
       fileCount = full.fileCount;
       truncated = full.truncated;
       published = await client.publishRepositoryStateFromIndexing(full.indexing, {
@@ -2569,7 +2609,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         mapRevisionByRoot: full.mapRevisionByRoot,
       });
       this.channel.appendLine(
-        `[index] full code/text/graph/map index stored at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
+        `[index] ${options.filePaths?.length ? 'incremental' : 'full'} code/text/graph/map index stored at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
       );
     } catch (error) {
       fallbackReason = error instanceof Error ? error.message : String(error);

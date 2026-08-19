@@ -909,6 +909,22 @@ export function SettingsPanel(props: SettingsPanelProps) {
                       : 'Agent is execution-focused: use tools, edit files, and stop at approval and budget limits.'}
                 </p>
                 <div className="field">
+                  <label htmlFor="effort">Working set</label>
+                  <select
+                    id="effort"
+                    value={ui.effort}
+                    onChange={(e) =>
+                      onSaveUi({
+                        effort: e.target.value as UiSettingsSnapshot['effort'],
+                      })
+                    }
+                  >
+                    <option value="low">Low — fewer loop/repair calls</option>
+                    <option value="medium">Medium — default</option>
+                    <option value="high">High — more loop/repair calls</option>
+                  </select>
+                </div>
+                <div className="field">
                   <label htmlFor="depth">Default depth</label>
                   <select
                     id="depth"

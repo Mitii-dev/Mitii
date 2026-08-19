@@ -8,4 +8,4 @@ export * from "./EmbeddingFactory";
 export * from "./EmbeddingGenerator";
 export * from "./EmbeddingSynchronizer";
 export * from "./EmbeddingTextPreparer";
-export * from "./EmbeddingVectorValidator";
+export * from "./SqliteEmbeddingVectorCache";

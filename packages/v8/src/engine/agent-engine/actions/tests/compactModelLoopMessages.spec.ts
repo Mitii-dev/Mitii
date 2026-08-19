@@ -285,9 +285,19 @@ describe("compactModelLoopMessages", () => {
     expect(result.compacted).toBe(true);
     expect(result.pressure).toBe("hard");
     expect(result.usedTokens).toBeLessThan(before);
-    expect(oldToolCall?.arguments).toContain(
+    expect(JSON.parse(oldToolCall?.arguments ?? "{}")).toEqual({
+      patches: [
+        {
+          path: "src/large.ts",
+          oldText: "[compacted prior patch]",
+          newText: "[compacted prior patch]",
+        },
+      ],
+    });
+    expect(oldToolCall?.arguments).not.toContain(
       "previous_completed_tool_call_arguments_omitted",
     );
+    expect(oldToolCall?.arguments).not.toContain("originalArgumentCharacters");
     expect(recentToolCall?.arguments).toBe(
       JSON.stringify({ path: "src/large.ts" }),
     );
@@ -351,6 +361,65 @@ describe("compactModelLoopMessages", () => {
     expect(oldToolCall?.arguments).not.toContain(
       "previous_completed_tool_call_arguments_omitted",
     );
+  });
+
+  it("keeps compacted apply_patch arguments schema-shaped", () => {
+    const hugeArguments = JSON.stringify({
+      patches: [
+        {
+          path: "src/form.ts",
+          oldText: "a".repeat(8_000),
+          newText: "b".repeat(8_000),
+        },
+      ],
+    });
+    const messages: ModelMessage[] = [
+      { role: "system", content: "system" },
+      { role: "user", content: "fix it" },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "call_old_patch",
+            name: "apply_patch",
+            arguments: hugeArguments,
+          },
+        ],
+      },
+      {
+        role: "tool",
+        toolCallId: "call_old_patch",
+        content: JSON.stringify({
+          status: "succeeded",
+          output: "patched",
+        }),
+      },
+    ];
+
+    const result = compactModelLoopMessages({
+      messages,
+      estimator,
+      budgetTokens: 1_200,
+      recentToolMessagesToKeepFull: 0,
+      minMessagesToKeep: 4,
+    });
+
+    const oldToolCall = result.messages
+      .flatMap((message) => message.toolCalls ?? [])
+      .find((toolCall) => toolCall.id === "call_old_patch");
+
+    expect(result.compacted).toBe(true);
+    expect(JSON.parse(oldToolCall?.arguments ?? "{}")).toEqual({
+      patches: [
+        {
+          path: "src/form.ts",
+          oldText: "[compacted prior patch]",
+          newText: "[compacted prior patch]",
+        },
+      ],
+    });
+    expect(oldToolCall?.arguments).not.toContain("originalArgumentCharacters");
   });
 
   it("caps auto compaction with an absolute token ceiling", () => {

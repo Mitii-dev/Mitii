@@ -1,6 +1,9 @@
 import {
   EmbeddingFactory,
 } from "../internal/embedding/EmbeddingFactory";
+import {
+  SqliteEmbeddingVectorCache,
+} from "../internal/embedding/SqliteEmbeddingVectorCache";
 import type {
   EmbeddingFactoryOptions,
   EmbeddingProvider,
@@ -103,6 +106,9 @@ export async function createWorkspaceIndexRuntime(
                 provider: options.vector!.embeddingProvider,
                 textIndex: textIndex.reader,
                 vectorWriter: lanceVectorIndex.writer,
+                vectorCache: new SqliteEmbeddingVectorCache(
+                  options.textIndexDatabase,
+                ),
               },
               options.vector!.embedding,
             ).synchronizer;

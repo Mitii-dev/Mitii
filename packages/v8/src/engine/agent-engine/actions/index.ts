@@ -85,6 +85,7 @@ export {
   shouldContinueVerificationRepair,
   maxVerificationRepairsForDepth,
   nextStalledRepairCount,
+  reservedVerificationRepairModelCalls,
 } from "./shouldContinueVerificationRepair";
 export type {
   ShouldContinueVerificationRepairInput,

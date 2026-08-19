@@ -51,3 +51,7 @@ legacy/tools-benchmark/fixtures/**/index.html
 legacy/tools-benchmark/fixtures/**/src/index.css
 legacy/tools-benchmark/fixtures/**/src/main.ts
 legacy/tools-benchmark/fixtures/**/src/main.tsx
+
+# Mitii local runtime data
+.mitii-session-export.json
+.mitii-audit-pack.json

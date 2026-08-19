@@ -84,7 +84,7 @@ export const DEFAULT_WINDOW_BUDGET_NUMBERS: Record<string, number> = {
  */
 const MEDIUM_WINDOW_BUDGET_EFFORT = {
   maxUniqueFilesPerCall: 8,
-  maxModelCalls: 40,
+  maxModelCalls: 64,
   compactionAutoMaxTokens: 32_000,
   compactionHardMaxTokens: 40_000,
 } as const;

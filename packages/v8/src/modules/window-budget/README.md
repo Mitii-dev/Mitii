@@ -90,7 +90,7 @@ visiblePlanAffordable     = U >= visiblePlanThreshold
 changeImpactAffordable    = U >= changeImpactThreshold
 maxSkills                 = clamp(maxSkillsBase + U / maxSkillsPerUsable, base, cap)
 maxDiagnosticSteps        = clamp(base + U / perUsable, base, max)
-maxModelCalls             = effort overlay (medium: 40)
+maxModelCalls             = effort overlay (medium: 64)
 ```
 
 Effort also sets compaction ceilings (`autoMaxTokens` / `hardMaxTokens`) and

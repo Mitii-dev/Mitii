@@ -79,7 +79,18 @@ export type {
 export {
   runFullWorkspaceIndex,
 } from './indexing/fullWorkspaceIndex.js';
-export type { FullWorkspaceIndexResult } from './indexing/fullWorkspaceIndex.js';
+export type {
+  FullWorkspaceIndexResult,
+  WorkspaceIndexProgress,
+  WorkspaceIndexProgressStage,
+} from './indexing/fullWorkspaceIndex.js';
+export {
+  IndexLockedError,
+  acquireIndexLock,
+  INDEX_LOCK_FILE,
+  INDEX_LOCK_STALE_MS,
+} from './indexing/indexLock.js';
+export { isSecurityConcern, WorkspaceIgnorePolicy, WS_CONSTANTS } from '@mitii/v8';
 
 export {
   WEB_TREE_SITTER_GRAMMAR_WASM_BY_LANGUAGE,

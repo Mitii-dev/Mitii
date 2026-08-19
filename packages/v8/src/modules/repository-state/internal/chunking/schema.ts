@@ -151,6 +151,7 @@ export const chunkingWarningSchema =
       "invalid_span",
       "duplicate_span_removed",
       "chunks_truncated",
+      "collapsed_parent",
       "cancelled",
     ]),
 

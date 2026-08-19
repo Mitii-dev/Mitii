@@ -46,6 +46,7 @@ import { getProviderPreset, modelsForProvider } from './providerOptions';
 import type {
   ActivityEventPayload,
   AgentUiDepth,
+  AgentUiEffort,
   AgentUiMode,
   ChatThreadSummary,
   CheckpointItemView,
@@ -133,6 +134,7 @@ const DEFAULT_UI: UiSettingsSnapshot = {
   showReasoning: true,
   reasoningPreviewMaxChars: 8000,
   depth: 'auto',
+  effort: 'medium',
   modeDefaults: {
     ask: { depth: 'auto', approvalMode: 'guided', model: '' },
     plan: { depth: 'deep', approvalMode: 'guided', model: '' },
@@ -317,6 +319,9 @@ function toChatTurn(message: ChatMessageView): ChatTurn {
     kind: 'activity' as const,
     event,
   }));
+  const warnings = (message.activity ?? [])
+    .filter((event) => event.kind === 'warning' && event.detail?.trim())
+    .map((event) => event.detail!.trim());
   if (message.text.trim()) {
     segments.push({
       id: uid('seg'),
@@ -330,6 +335,7 @@ function toChatTurn(message: ChatMessageView): ChatTurn {
     role: message.role,
     text: message.text,
     segments,
+    ...(warnings.length ? { warnings } : {}),
     mode: message.mode,
     ...(message.fileChanges ? { fileChanges: message.fileChanges } : {}),
     ...(message.status ? { status: message.status } : {}),
@@ -354,6 +360,7 @@ export function App() {
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('model');
   const [mode, setMode] = useState<AgentUiMode>('ask');
   const [depth, setDepth] = useState<AgentUiDepth>('auto');
+  const [effort, setEffort] = useState<AgentUiEffort>('medium');
   const [approvalMode, setApprovalMode] = useState<ApprovalUiMode>('guided');
   const [prompt, setPrompt] = useState('');
   const [pinned, setPinned] = useState<ContextPin[]>([]);
@@ -558,6 +565,7 @@ export function App() {
         setDepth(currentDefaults.depth);
         setApprovalMode(normalizeApproval(currentDefaults.approvalMode));
       }
+      setEffort(nextUi.effort ?? 'medium');
       setOverrideDraft(msg.workspace.rootOverride ?? '');
       applyTokenUsage(msg.tokenUsage);
       setNotice(msg.notice);
@@ -652,6 +660,7 @@ export function App() {
               mode: msg.mode,
               streaming: true,
               segments: [],
+              warnings: [],
             },
           ]);
           break;
@@ -671,6 +680,12 @@ export function App() {
               t.id === id
                 ? {
                     ...t,
+                    warnings:
+                      msg.event.kind === 'warning' && msg.event.detail?.trim()
+                        ? Array.from(
+                            new Set([...(t.warnings ?? []), msg.event.detail.trim()]),
+                          )
+                        : t.warnings,
                     segments: appendActivitySegment(
                       t.segments,
                       msg.event,
@@ -962,13 +977,14 @@ export function App() {
       prompt: text,
       mode,
       depth,
+      effort,
       approvalMode,
       pinnedPaths: pinned.map((p) => p.path),
     });
     setPrompt('');
     setSuggestLoading(false);
     setSuggestOpen(false);
-  }, [prompt, running, mode, depth, approvalMode, pinned]);
+  }, [prompt, running, mode, depth, effort, approvalMode, pinned]);
 
   const executePendingPlan = useCallback(() => {
     if (running) return;
@@ -985,13 +1001,14 @@ export function App() {
       prompt: 'Implement the pending plan.',
       mode: 'agent',
       depth: agentDefaults.depth,
+      effort,
       approvalMode: agentDefaults.approvalMode,
       pinnedPaths: pinned.map((p) => p.path),
     });
     setPrompt('');
     setSuggestLoading(false);
     setSuggestOpen(false);
-  }, [running, ui, pinned]);
+  }, [running, ui, pinned, effort]);
 
   const onPromptChange = (value: string) => {
     setPrompt(value);
@@ -1221,6 +1238,7 @@ export function App() {
     uiRef.current = next;
     setUi(next);
     if (patch.depth) setDepth(patch.depth);
+    if (patch.effort) setEffort(patch.effort);
     const activeModePatch = patch.modeDefaults?.[settingsModeFor(mode)];
     const activeModeDepth = activeModePatch?.depth;
     if (activeModeDepth) setDepth(activeModeDepth);
@@ -1234,6 +1252,11 @@ export function App() {
         model: activeModeModel,
       }));
     }
+  };
+
+  const changeEffort = (next: AgentUiEffort) => {
+    updateUiDraft({ effort: next });
+    postToHost({ type: 'settings.set', ui: { effort: next } });
   };
 
   const activeProfile = useMemo(
@@ -1445,9 +1468,11 @@ export function App() {
                 mode={mode}
                 approvalMode={approvalMode}
                 depth={depth}
+                effort={effort}
                 onModeChange={changeMode}
                 onApprovalModeChange={changeApprovalMode}
                 onDepthChange={changeDepth}
+                onEffortChange={changeEffort}
               />
             </div>
           </div>
@@ -1618,9 +1643,11 @@ export function App() {
                       mode={mode}
                       approvalMode={approvalMode}
                       depth={depth}
+                      effort={effort}
                       onModeChange={changeMode}
                       onApprovalModeChange={changeApprovalMode}
                       onDepthChange={changeDepth}
+                      onEffortChange={changeEffort}
                     />
                     <div
                       className="composer-dropdown composer-dropdown--model"

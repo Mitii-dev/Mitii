@@ -1,4 +1,5 @@
 import {
+  TEXT_INDEX_DEFAULTS,
   TEXT_INDEX_FTS,
 } from "../../constants";
 
@@ -12,9 +13,43 @@ export class SqliteFts5QueryBuilder {
     request:
       NormalizedTextSearchRequest,
   ): SqliteTextIndexQuery {
+    return this.buildForTable(
+      request,
+      "text_index_fts",
+      this.buildExpression(request),
+    );
+  }
+
+  public buildTrigram(
+    request:
+      NormalizedTextSearchRequest,
+  ): SqliteTextIndexQuery | null {
+    const expression =
+      this.buildTrigramExpression(
+        request,
+      );
+
+    if (!expression) {
+      return null;
+    }
+
+    return this.buildForTable(
+      request,
+      "text_index_fts_trigram",
+      expression,
+    );
+  }
+
+  private buildForTable(
+    request:
+      NormalizedTextSearchRequest,
+    tableName: string,
+    matchExpression: string,
+  ): SqliteTextIndexQuery {
+    const alias = "f";
     const conditions: string[] = [
-      "text_index_fts MATCH ?",
-      "f.workspace = ?",
+      `${tableName} MATCH ?`,
+      `${alias}.workspace = ?`,
     ];
 
     const parameters: unknown[] = [
@@ -26,16 +61,14 @@ export class SqliteFts5QueryBuilder {
         .SNIPPET_ELLIPSIS,
       request
         .snippetTokenCount,
-      this.buildExpression(
-        request,
-      ),
+      matchExpression,
       request.workspace,
     ];
 
     this.addListCondition(
       conditions,
       parameters,
-      "f.root_id",
+      `${alias}.root_id`,
       request.rootIds,
     );
 
@@ -48,7 +81,7 @@ export class SqliteFts5QueryBuilder {
     this.addListCondition(
       conditions,
       parameters,
-      "f.kind",
+      `${alias}.kind`,
       request.kinds,
     );
 
@@ -71,7 +104,7 @@ export class SqliteFts5QueryBuilder {
           c.title AS title,
           c.symbol_local_id AS symbolLocalId,
           snippet(
-            text_index_fts,
+            ${tableName},
             ${TEXT_INDEX_FTS.CONTENT_COLUMN_INDEX},
             ?,
             ?,
@@ -79,16 +112,16 @@ export class SqliteFts5QueryBuilder {
             ?
           ) AS snippet,
           bm25(
-            text_index_fts,
+            ${tableName},
             ${weights}
           ) AS rawRank,
           c.start_line AS startLine,
           c.end_line AS endLine,
           c.content_hash AS contentHash,
           c.token_estimate AS tokenEstimate
-        FROM text_index_fts AS f
+        FROM ${tableName} AS ${alias}
         JOIN text_index_chunks AS c
-          ON c.rowid = f.rowid
+          ON c.rowid = ${alias}.rowid
         WHERE ${conditions.join("\nAND ")}
         ORDER BY
           rawRank ASC,
@@ -129,6 +162,40 @@ export class SqliteFts5QueryBuilder {
             ? `"${term}"*`
             : `"${term}"`,
       )
+      .join(operator);
+  }
+
+  private buildTrigramExpression(
+    request:
+      NormalizedTextSearchRequest,
+  ): string | null {
+    const terms = request.terms.filter(
+      (term) =>
+        term.length >=
+        TEXT_INDEX_DEFAULTS
+          .MINIMUM_TERM_CHARACTERS,
+    );
+
+    if (terms.length === 0) {
+      return null;
+    }
+
+    if (request.mode === "phrase") {
+      const phrase = terms.join(" ");
+      return phrase.length >=
+        TEXT_INDEX_DEFAULTS
+          .MINIMUM_TERM_CHARACTERS
+        ? `"${phrase}"`
+        : null;
+    }
+
+    const operator =
+      request.mode === "all"
+        ? " AND "
+        : " OR ";
+
+    return terms
+      .map((term) => `"${term}"`)
       .join(operator);
   }
 
