@@ -78,7 +78,6 @@ describe("serializeToolResultForModel", () => {
       output: {
         stdout: string;
         compilerErrorQueue?: boolean;
-        repairHint?: string;
       };
     };
     expect(parsed.output.compilerErrorQueue).toBe(true);
@@ -86,6 +85,6 @@ describe("serializeToolResultForModel", () => {
     expect(parsed.output.stdout).toContain("TS2339");
     expect(parsed.output.stdout).toContain("a.tsx:13");
     expect(parsed.output.stdout).toContain("b.tsx:14");
-    expect(parsed.output.repairHint).toContain("error class");
+    expect(parsed.output).not.toHaveProperty("repairHint");
   });
 });

@@ -155,23 +155,12 @@ export function requiresMutationForExecute(input: {
 }
 
 export function buildUnfulfilledExecuteRecoveryMessage(
-  mutationBudget?: MutationBudget,
+  _mutationBudget?: MutationBudget,
 ): string {
-  const preferred =
-    mutationBudget?.preferredBatchSize ??
-    AGENT_ENGINE_THRESHOLDS.defaultPreferredBatchSize;
-  const maxPatches =
-    mutationBudget?.maxPatchesPerCall ??
-    AGENT_ENGINE_THRESHOLDS.defaultMaxPatchesPerCall;
-  const maxFiles =
-    mutationBudget?.maxUniqueFilesPerCall ?? preferred;
-
   return [
     "You described the fix but did not call apply_patch.",
     "Do not repeat the diagnosis or write a report.",
-    `Call apply_patch now for the next batch: at most ${preferred} files (hard max ${maxFiles} unique files, ${maxPatches} patches).`,
-    "Fix a whole error class per turn (same TS code / same root cause across files). Do not spend a turn on a single diagnostic when more of that class remain.",
-    "Leave remaining error classes for later turns.",
+    "Call apply_patch now for the next batch. Use the live working-set mutation budget and compiler/preflight sections.",
     "If a file is still unknown, read it — then patch. Do not end this turn with analysis only.",
   ].join("\n");
 }

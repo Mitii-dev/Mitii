@@ -29,6 +29,7 @@ describe("annotateMutationToolDefinitions", () => {
     expect(tools[0]?.description).toBe("Read a file");
     expect(tools[1]?.description).toContain("Prefer 8 files per call");
     expect(tools[1]?.description).toContain("hard max 8 unique files");
+    expect(tools[1]?.description).toContain("old_text_not_found");
     expect(tools[1]?.description).not.toContain("Prefer 3 files");
   });
 });

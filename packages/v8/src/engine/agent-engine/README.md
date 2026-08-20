@@ -18,13 +18,21 @@ It does not own the policy decision itself. Decision Policy decides the route an
 
 ```text
 agent-engine/
-  pipeline/                 AgentEnginePipeline
+  pipeline/                 Public facade plus cohesive run stages
+    AgentEnginePipeline     start()/resume() orchestration
+    runtime                 deps, events, window policy, run handle
+    executeStart            intake → pin → understand → decide → prompt
+    executeResume           clarification / plan / tool-approval continuation
+    modelToolLoop           model turns, compaction, recovery
+    executeTool             one authorized tool call + grant refresh
+    pinAndDiscovery         repository pin, preflight snapshot, discovery pass
+    verification            gate, repair queue, persist, user summary
   contracts/
     input/                  AgentEngineStartInput, AgentEngineResumeInput
     output/                 AgentRunHandle, AgentRunResult, RunEvent
     ports/                  AgentEngineDependencies
     errors/                 AgentEngineError
-  actions/                  Mapping, prompt slices, output recovery, gates
+  actions/                  Mapping, prompt slices, output recovery, gates, evidence
   adapters/                 In-memory/file checkpoint stores, composition helpers
   internal/                 Checkpoints, event bus, budgets, task-list runtime
   tests/                    Unit and wired engine tests

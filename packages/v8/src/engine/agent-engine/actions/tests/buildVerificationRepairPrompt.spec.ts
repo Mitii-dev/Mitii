@@ -51,7 +51,7 @@ describe("buildVerificationRepairPrompt", () => {
     expect(prompt).not.toContain("full dump");
   });
 
-  it("embeds apply_patch batch caps from the mutation budget", () => {
+  it("defers batch caps to the live working set", () => {
     const prompt = buildVerificationRepairPrompt({
       changedFiles: ["src/a.ts"],
       mutationBudget: {
@@ -60,12 +60,12 @@ describe("buildVerificationRepairPrompt", () => {
         preferredBatchSize: 3,
       },
     });
-    expect(prompt).toContain("8 patches");
-    expect(prompt).toContain("5 unique files");
-    expect(prompt).toContain("3 files");
+    expect(prompt).toContain("live working-set mutation budget");
+    expect(prompt).not.toContain("8 patches");
+    expect(prompt).not.toContain("3 files");
   });
 
-  it("prefers the active batch working set over a wide diagnostic dump", () => {
+  it("caps diagnostics when an active batch exists and defers paths to the working set", () => {
     const prompt = buildVerificationRepairPrompt({
       changedFiles: ["src/a.ts"],
       activeBatch: {
@@ -96,10 +96,8 @@ describe("buildVerificationRepairPrompt", () => {
         durationMs: 1,
       },
     });
-    expect(prompt).toContain("Active batch");
-    expect(prompt).toContain("write: src/a.ts");
-    expect(prompt).toContain("need: src/types.ts");
-    expect(prompt).toContain("Fix only this batch this turn");
+    expect(prompt).toContain("live working-set active batch");
+    expect(prompt).not.toContain("write: src/a.ts");
     expect(prompt).not.toContain("src/file19.ts");
   });
 });

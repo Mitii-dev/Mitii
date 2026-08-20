@@ -32,7 +32,7 @@ describe("resolveLoopTurnOutcome", () => {
     expect(outcome.disposition).toBe("recover_unfulfilled_execute");
     expect(outcome.reasonCode).toBe("unfulfilled_execute_recovered");
     expect(outcome.recoveryMessage).toContain("apply_patch");
-    expect(outcome.recoveryMessage).toContain("3 files");
+    expect(outcome.recoveryMessage).toContain("working-set");
   });
 
   it("exhausts unfulfilled execute after the recovery budget", () => {

@@ -34,6 +34,15 @@ export type { LoopFileReadTracker } from "./isExplorationRereadHeavy";
 export { buildExplorationStallNudge } from "./buildExplorationStallNudge";
 export { buildPreflightDiagnosticRepairInstruction } from "./buildPreflightDiagnosticRepairInstruction";
 export { buildVerificationRepairPrompt } from "./buildVerificationRepairPrompt";
+export { formatVerificationFailureAnswer, formatVerificationEvidence } from "./formatVerificationNarration";
+export { summarizeToolCall } from "./summarizeToolCall";
+export { truncateForEvent } from "./truncateForEvent";
+export {
+  applyExplorationSignal,
+  calculateLoopInputBudgetTokens,
+  clampRunBudget,
+  toRunUsage,
+} from "./windowPolicyRuntime";
 export { shouldCaptureUnconditionalAgentPreflight } from "./shouldCaptureUnconditionalAgentPreflight";
 export {
   decideVerificationGate,
@@ -93,6 +102,50 @@ export {
 } from "./isIncompleteAssistantTurn";
 
 export { recoverLeakedToolCallsFromMarkup } from "./recoverLeakedToolCalls";
+export { formatSkillPromptContent } from "./formatSkillPromptContent";
+export {
+  CONTEXT_READY_VERBOSE_WARNING_CODES,
+  CONTEXT_READY_WARNING_CODES,
+  deriveContextFocusFromUnderstanding,
+  scopeDiscoveredContextPaths,
+} from "./contextFocus";
+export {
+  buildPlanningQuery,
+  buildScopedRepoMapForPlanning,
+  inferDiscoveryTargetKind,
+  inferLanguageFromPaths,
+  isSafeRelativePlanningPath,
+  normalizePlanningPath,
+  toPlanningBuildEvidence,
+  uniqueStrings,
+} from "./planningContext";
+export {
+  buildDiagnosticSummary,
+  buildPreflightVerificationInput,
+  buildSyntheticPreflightGrant,
+  derivePreflightTargets,
+  extractMentionedPaths,
+  resolvePreflightChangeScope,
+  resolveVerificationProjects,
+  uniqueVerificationEvidence,
+} from "./preflightBuild";
+export {
+  allowsTargetedDiscoveryAfterRejectedMutation,
+  buildRejectedMutationRecoveryMessage,
+  buildRejectedToolRecoveryMessage,
+  isTargetedDiscoveryAfterRejectedMutation,
+} from "./rejectedToolRecovery";
+export {
+  createInitialRunEvidence,
+  finalizeRunEvidence,
+  isSuccessfulVerificationToolResult,
+  recordBuildStateDeltaEvidence,
+  recordDiscoveryEvidence,
+  recordPlanEvidence,
+  recordStopEvidence,
+  recordToolEvidence,
+  recordVerificationEvidence,
+} from "./runEvidence";
 export {
   resolveLoopTurnOutcome,
   isUnfulfilledExecute,
