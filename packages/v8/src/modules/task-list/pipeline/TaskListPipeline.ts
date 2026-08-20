@@ -69,9 +69,15 @@ export class TaskListPipeline {
     current: TaskList,
     plan: PlanArtifact,
     maxTasks?: number,
+    completedStepIds?: readonly string[],
   ): TaskListApplyResult {
     try {
-      return refillTaskListFromPlan({ current, plan, maxTasks });
+      return refillTaskListFromPlan({
+        current,
+        plan,
+        maxTasks,
+        completedStepIds,
+      });
     } catch (error) {
       return taskListApplyResultSchema.parse({
         schemaVersion: TASK_LIST_SCHEMA_VERSION,

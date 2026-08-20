@@ -11,7 +11,11 @@ export {
 } from "./actions/SerializeTaskList";
 export {
   collectCompletedTaskPaths,
+  extractDiagnosticCodeHint,
+  itemMentionsAnyPath,
+  normalizeTaskPath,
   taskItemPaths,
+  taskPathsMatch,
 } from "./actions/TaskItemPaths";
 
 export function taskListProgress(taskList: TaskList): {

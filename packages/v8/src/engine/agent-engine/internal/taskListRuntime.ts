@@ -8,9 +8,13 @@ import {
   UPDATE_TODOS_TOOL_NAME,
   WORKING_SET_MARKER,
   collectCompletedTaskPaths,
+  collectConcretePlanStepCandidates,
+  extractDiagnosticCodeHint,
+  itemMentionsAnyPath,
   taskListApplyInputSchema,
   taskListProgress,
   taskItemPaths,
+  taskPathsMatch,
 } from "../../../modules/task-list";
 import type {
   TaskList,
@@ -19,10 +23,12 @@ import type {
 } from "../../../modules/task-list";
 import type { ToolResult } from "../../tool-runtime";
 import { TOOL_RUNTIME_SCHEMA_VERSION, toolResultSchema } from "../../tool-runtime";
+import type { VerificationDiagnostic } from "../../../modules/verification";
 import {
   serializeRecoverabilityWorkingSet,
   type RecoverabilityWorkingSetInput,
 } from "../actions/serializeRecoverabilityWorkingSet";
+import type { RunEvidence } from "../contracts";
 
 const UPDATE_TODOS_ITEM_SCHEMA = {
   type: "object",
@@ -105,6 +111,65 @@ export const UPDATE_TODOS_TOOL_DEFINITION: ModelToolDefinition = {
 export interface TaskListRef {
   current?: TaskList;
   maxTasks?: number;
+  /**
+   * Durable finished plan step ids (sourceRef). Survives desk refill drops so
+   * completed Change/Verify rows never return as pending.
+   */
+  completedPlanStepIds?: string[];
+}
+
+export function ensureCompletedPlanStepIds(ref: TaskListRef): string[] {
+  if (!ref.completedPlanStepIds) {
+    ref.completedPlanStepIds = [];
+  }
+  return ref.completedPlanStepIds;
+}
+
+export function recordCompletedPlanSteps(
+  ref: TaskListRef,
+  items: readonly { id: string; sourceRef?: string }[],
+): string[] {
+  const notebook = ensureCompletedPlanStepIds(ref);
+  const added: string[] = [];
+  for (const item of items) {
+    const stepId = item.sourceRef ?? item.id;
+    if (stepId.length === 0 || notebook.includes(stepId)) {
+      continue;
+    }
+    notebook.push(stepId);
+    added.push(stepId);
+  }
+  return added;
+}
+
+/** PLAN n/total for hosts — independent of the live 8-slot desk. */
+export function planProgressOf(params: {
+  plan?: PlanArtifact;
+  completedPlanStepIds?: readonly string[];
+  evidence?: RunEvidence;
+}): {
+  planCompletedCount: number;
+  planTotalCount: number;
+  completedStepIds: string[];
+} {
+  const fromPlan = params.plan
+    ? collectConcretePlanStepCandidates(params.plan).map(
+        (candidate) => candidate.step.id,
+      )
+    : (params.evidence?.plan?.steps ?? []).map((step) => step.id);
+  const totalIds = [...new Set(fromPlan.filter((id) => id.length > 0))];
+  const completed = [
+    ...new Set(
+      (params.completedPlanStepIds ?? []).filter((id) =>
+        totalIds.length === 0 ? id.length > 0 : totalIds.includes(id),
+      ),
+    ),
+  ];
+  return {
+    planCompletedCount: completed.length,
+    planTotalCount: totalIds.length,
+    completedStepIds: completed,
+  };
 }
 
 const pipeline = new TaskListPipeline();
@@ -404,14 +469,22 @@ export function maybeAutoAdvanceTaskList(params: {
   preToolActiveId?: string;
   toolStatus: ToolResult["status"];
   isMutatingTool: boolean;
-  /** When false, skip the unmatched-active fallback (already advanced this turn). */
+  /** When false, skip advancing (budget already used this turn). */
   allowAdvance?: boolean;
   /** Paths written by this mutation; matching checklist rows complete together. */
   changedFiles?: readonly string[];
   /** Overflow plan steps stream into the live list after rows complete. */
   plan?: PlanArtifact;
   maxTasks?: number;
-}): { advanced: boolean; refilled?: boolean; taskList?: TaskList; warnings: string[] } {
+  /** Engine notebook of finished plan step ids. */
+  taskListRef?: TaskListRef;
+}): {
+  advanced: boolean;
+  refilled?: boolean;
+  taskList?: TaskList;
+  warnings: string[];
+  completedStepIds?: string[];
+} {
   if (!(params.enabled ?? TASK_LIST_POLICY.autoAdvanceOnMutationSuccess)) {
     return { advanced: false, warnings: [] };
   }
@@ -421,21 +494,29 @@ export function maybeAutoAdvanceTaskList(params: {
   if (params.toolStatus !== "succeeded" || !params.isMutatingTool) {
     return { advanced: false, warnings: [] };
   }
+  if (params.allowAdvance === false) {
+    return { advanced: false, warnings: [] };
+  }
 
   const changedFiles = (params.changedFiles ?? []).filter(Boolean);
+  if (changedFiles.length === 0) {
+    // No path evidence — do not invent completion for the active row.
+    return { advanced: false, warnings: [] };
+  }
+
   const matching = params.current.items.filter(
     (item) =>
       item.status !== "done" &&
       item.status !== "skipped" &&
       isMutationAutoAdvanceEligible(item) &&
-      itemMentionsAnyPath(item, changedFiles),
+      itemMentionsAnyPath(item, changedFiles) &&
+      // Diagnostic-coded Change batches wait for verification evidence.
+      extractDiagnosticCodeHint(`${item.title} ${item.detail ?? ""}`) ===
+        undefined,
   );
 
   if (matching.length === 0) {
-    if (params.allowAdvance === false) {
-      return { advanced: false, warnings: [] };
-    }
-    return advanceActiveChecklistItem(params);
+    return { advanced: false, warnings: [] };
   }
 
   const doneIds = new Set(matching.map((item) => item.id));
@@ -461,46 +542,98 @@ export function maybeAutoAdvanceTaskList(params: {
   if (result.status !== "applied" || !result.taskList) {
     return { advanced: false, warnings: result.warnings };
   }
+  const completedStepIds = params.taskListRef
+    ? recordCompletedPlanSteps(params.taskListRef, matching)
+    : matching.map((item) => item.sourceRef ?? item.id);
   return withPlanRefill({
     advanced: result.reasonCodes.includes("task_list_patched"),
     taskList: result.taskList,
     warnings: result.warnings,
     plan: params.plan,
     maxTasks: params.maxTasks,
+    taskListRef: params.taskListRef,
+    completedStepIds,
   });
 }
 
-function advanceActiveChecklistItem(params: {
+/**
+ * After verification, mark diagnostic-coded Change rows done when their
+ * error class is gone on their write paths. Never ticks Verify process rows
+ * from a patch — only from cleared diagnostics evidence.
+ */
+export function completePlanStepsFromDiagnostics(params: {
   current?: TaskList;
-  preToolActiveId?: string;
   plan?: PlanArtifact;
   maxTasks?: number;
-}): { advanced: boolean; refilled?: boolean; taskList?: TaskList; warnings: string[] } {
-  if (!params.current) {
-    return { advanced: false, warnings: [] };
+  taskListRef: TaskListRef;
+  diagnostics?: readonly VerificationDiagnostic[];
+  /** When true, new errors appeared — do not complete diagnostic batches. */
+  newErrorsIntroduced?: boolean;
+}): {
+  advanced: boolean;
+  refilled?: boolean;
+  taskList?: TaskList;
+  warnings: string[];
+  completedStepIds: string[];
+} {
+  if (!params.current || params.current.items.length === 0) {
+    return { advanced: false, warnings: [], completedStepIds: [] };
   }
-  const activeItems = params.current.items.filter(
-    (item) => item.status === "active",
-  );
-  if (activeItems.length !== 1) {
-    return { advanced: false, warnings: [] };
-  }
-  const active = activeItems[0]!;
-  if (params.preToolActiveId && active.id !== params.preToolActiveId) {
-    return { advanced: false, warnings: [] };
-  }
-  if (!isMutationAutoAdvanceEligible(active)) {
-    return { advanced: false, warnings: [] };
+  if (params.newErrorsIntroduced) {
+    return {
+      advanced: false,
+      warnings: [],
+      completedStepIds: [],
+      taskList: params.current,
+    };
   }
 
+  const remainingErrors = (params.diagnostics ?? []).filter(
+    (diagnostic) => diagnostic.severity === "error",
+  );
+  const toComplete = params.current.items.filter((item) => {
+    if (item.status === "done" || item.status === "skipped") {
+      return false;
+    }
+    if (!isMutationAutoAdvanceEligible(item)) {
+      return false;
+    }
+    const code = extractDiagnosticCodeHint(`${item.title} ${item.detail ?? ""}`);
+    if (!code) {
+      return false;
+    }
+    const owned = taskItemPaths(item);
+    if (owned.length === 0) {
+      return false;
+    }
+    const stillFailing = remainingErrors.some((diagnostic) => {
+      const diagnosticCode = normalizeDiagnosticCode(diagnostic.code);
+      if (diagnosticCode !== code) {
+        return false;
+      }
+      return owned.some((path) => taskPathsMatch(path, diagnostic.path));
+    });
+    return !stillFailing;
+  });
+
+  if (toComplete.length === 0) {
+    return {
+      advanced: false,
+      warnings: [],
+      completedStepIds: [],
+      taskList: params.current,
+    };
+  }
+
+  const doneIds = new Set(toComplete.map((item) => item.id));
   const nextPending = params.current.items.find(
     (item) =>
       item.status === "pending" &&
-      item.id !== active.id &&
+      !doneIds.has(item.id) &&
       isMutationAutoAdvanceEligible(item),
   );
   const patchItems = [
-    { id: active.id, status: "done" as const },
+    ...toComplete.map((item) => ({ id: item.id, status: "done" as const })),
     ...(nextPending ? [{ id: nextPending.id, status: "active" as const }] : []),
   ];
   const result = pipeline.apply({
@@ -513,15 +646,44 @@ function advanceActiveChecklistItem(params: {
     },
   });
   if (result.status !== "applied" || !result.taskList) {
-    return { advanced: false, warnings: result.warnings };
+    return {
+      advanced: false,
+      warnings: result.warnings,
+      completedStepIds: [],
+    };
   }
-  return withPlanRefill({
-    advanced: result.reasonCodes.includes("task_list_patched"),
-    taskList: result.taskList,
-    warnings: result.warnings,
-    plan: params.plan,
-    maxTasks: params.maxTasks,
-  });
+  const completedStepIds = recordCompletedPlanSteps(
+    params.taskListRef,
+    toComplete,
+  );
+  return {
+    ...withPlanRefill({
+      advanced: true,
+      taskList: result.taskList,
+      warnings: result.warnings,
+      plan: params.plan,
+      maxTasks: params.maxTasks,
+      taskListRef: params.taskListRef,
+      completedStepIds,
+    }),
+    completedStepIds,
+  };
+}
+
+function normalizeDiagnosticCode(code: string | undefined): string | undefined {
+  if (!code) {
+    return undefined;
+  }
+  const trimmed = code.trim();
+  const ts = trimmed.match(/^TS(\d{4})$/i);
+  if (ts?.[1]) {
+    return `TS${ts[1]}`;
+  }
+  const bare = trimmed.match(/^(\d{4})$/);
+  if (bare?.[1]) {
+    return `TS${bare[1]}`;
+  }
+  return trimmed.toUpperCase();
 }
 
 function withPlanRefill(params: {
@@ -530,22 +692,31 @@ function withPlanRefill(params: {
   warnings: string[];
   plan?: PlanArtifact;
   maxTasks?: number;
+  taskListRef?: TaskListRef;
+  completedStepIds?: string[];
 }): {
   advanced: boolean;
   refilled?: boolean;
   taskList?: TaskList;
   warnings: string[];
+  completedStepIds?: string[];
 } {
   const refilled = maybeRefillTaskListFromPlan({
     current: params.taskList,
     plan: params.plan,
     maxTasks: params.maxTasks,
+    completedPlanStepIds: params.taskListRef
+      ? ensureCompletedPlanStepIds(params.taskListRef)
+      : undefined,
   });
   return {
     advanced: params.advanced,
     ...(refilled.refilled ? { refilled: true } : {}),
     taskList: refilled.taskList ?? params.taskList,
     warnings: params.warnings,
+    ...(params.completedStepIds && params.completedStepIds.length > 0
+      ? { completedStepIds: params.completedStepIds }
+      : {}),
   };
 }
 
@@ -553,6 +724,7 @@ export function maybeRefillTaskListFromPlan(params: {
   current?: TaskList;
   plan?: PlanArtifact;
   maxTasks?: number;
+  completedPlanStepIds?: readonly string[];
 }): { refilled: boolean; taskList?: TaskList } {
   if (!params.current || !params.plan) {
     return { refilled: false, taskList: params.current };
@@ -561,6 +733,7 @@ export function maybeRefillTaskListFromPlan(params: {
     params.current,
     params.plan,
     params.maxTasks,
+    params.completedPlanStepIds,
   );
   if (
     result.status !== "applied" ||
@@ -580,6 +753,7 @@ export function prepareRepairWorkingSet(params: {
   current?: TaskList;
   plan?: PlanArtifact;
   maxTasks?: number;
+  completedPlanStepIds?: readonly string[];
 }): {
   taskList?: TaskList;
   activated: boolean;
@@ -604,6 +778,7 @@ export function prepareRepairWorkingSet(params: {
       current: taskList,
       plan: params.plan,
       maxTasks: params.maxTasks,
+      completedPlanStepIds: params.completedPlanStepIds,
     });
     if (refillResult.refilled && refillResult.taskList) {
       taskList = refillResult.taskList;
@@ -660,24 +835,6 @@ export function prepareRepairWorkingSet(params: {
     refilled,
     ...(activeItem ? { activeItem } : {}),
   };
-}
-
-function itemMentionsAnyPath(
-  item: {
-    title: string;
-    detail?: string;
-    write?: readonly string[];
-    mustRead?: readonly string[];
-    affected?: readonly string[];
-  },
-  paths: readonly string[],
-): boolean {
-  if (paths.length === 0) {
-    return false;
-  }
-  const owned = taskItemPaths(item);
-  const hint = `${item.title} ${item.detail ?? ""} ${owned.join(" ")}`;
-  return paths.some((path) => path.length > 0 && hint.includes(path));
 }
 
 /** Mutation success may only complete concrete change-like checklist rows. */

@@ -67,6 +67,12 @@ export {
   WORKING_SET_MARKER,
   taskListProgress,
   collectCompletedTaskPaths,
+  extractDiagnosticCodeHint,
+  itemMentionsAnyPath,
+  normalizeTaskPath,
   taskItemPaths,
+  taskPathsMatch,
 } from "./serialize";
+
+export { collectConcretePlanStepCandidates } from "./actions/DeriveTaskListFromPlan";
 

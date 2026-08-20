@@ -47,6 +47,8 @@ export interface AgentRunCheckpoint {
   planStrategy?: PlanStrategyDecision;
   /** Live task list at suspension time. */
   taskList?: TaskList;
+  /** Durable finished plan step ids (survives desk refill). */
+  completedPlanStepIds?: string[];
   repoBuildStateBefore?: RepoBuildState;
   repoBuildStateAfter?: RepoBuildState;
   changedFiles: string[];

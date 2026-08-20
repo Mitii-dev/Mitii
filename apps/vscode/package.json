@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.8.51",
+  "version": "2.8.52",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -228,6 +228,11 @@
           "type": "boolean",
           "default": false,
           "description": "Unlock developer options in the Mitii Settings → Developer page (nested debug switches appear after this is enabled)"
+        },
+        "mitii.developer.intensityOverrides": {
+          "type": "boolean",
+          "default": false,
+          "description": "Edit exploration depth and working-set effort separately instead of the clubbed Thoroughness control. Requires mitii.developer.enabled."
         },
         "mitii.debug": {
           "type": "boolean",
@@ -782,7 +787,7 @@
             "deep"
           ],
           "default": "auto",
-          "description": "Default planning depth hint for chat turns"
+          "description": "Legacy global depth fallback. Prefer mitii.ui.modeDefaults.<mode>.thoroughness (or .depth when intensity overrides are on)."
         },
         "mitii.ui.effort": {
           "type": "string",
@@ -792,7 +797,17 @@
             "high"
           ],
           "default": "medium",
-          "description": "Working-set overlay for model/tool/repair caps (Low / Medium / High)"
+          "description": "Working-set overlay for model/tool/repair caps. Set by Thoroughness unless mitii.developer.intensityOverrides is on."
+        },
+        "mitii.ui.modeDefaults.ask.thoroughness": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "medium",
+          "description": "Ask-mode thoroughness (Low/Medium/High). Maps to exploration depth + working-set effort unless intensity overrides are on."
         },
         "mitii.ui.modeDefaults.ask.depth": {
           "type": "string",
@@ -802,7 +817,7 @@
             "deep"
           ],
           "default": "auto",
-          "description": "Default depth for Ask mode"
+          "description": "Ask exploration depth. Driven by thoroughness unless Developer intensity overrides are enabled."
         },
         "mitii.ui.modeDefaults.ask.approvalMode": {
           "type": "string",
@@ -819,6 +834,16 @@
           "default": "",
           "description": "Default model for Ask mode. Empty uses the active provider model."
         },
+        "mitii.ui.modeDefaults.plan.thoroughness": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "high",
+          "description": "Plan-mode thoroughness (Low/Medium/High). Maps to exploration depth + working-set effort unless intensity overrides are on."
+        },
         "mitii.ui.modeDefaults.plan.depth": {
           "type": "string",
           "enum": [
@@ -827,7 +852,7 @@
             "deep"
           ],
           "default": "deep",
-          "description": "Default depth for Plan mode"
+          "description": "Plan exploration depth. Driven by thoroughness unless Developer intensity overrides are enabled."
         },
         "mitii.ui.modeDefaults.plan.approvalMode": {
           "type": "string",
@@ -844,6 +869,16 @@
           "default": "",
           "description": "Default model for Plan mode. Empty uses the active provider model."
         },
+        "mitii.ui.modeDefaults.agent.thoroughness": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "medium",
+          "description": "Agent-mode thoroughness (Low/Medium/High). Maps to exploration depth + working-set effort unless intensity overrides are on."
+        },
         "mitii.ui.modeDefaults.agent.depth": {
           "type": "string",
           "enum": [
@@ -852,7 +887,7 @@
             "deep"
           ],
           "default": "auto",
-          "description": "Default depth for Agent mode"
+          "description": "Agent exploration depth. Driven by thoroughness unless Developer intensity overrides are enabled."
         },
         "mitii.ui.modeDefaults.agent.approvalMode": {
           "type": "string",

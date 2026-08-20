@@ -13,12 +13,15 @@ import {
 /**
  * Stream unused plan steps onto the live list after earlier items complete.
  * Drops oldest done/skipped rows only when the list is at maxTasks and
- * overflow remains. Does not invent work for agent-replaced checklists.
+ * overflow remains. Never re-adds step ids from `completedStepIds` (engine
+ * notebook). Does not invent work for agent-replaced checklists.
  */
 export function refillTaskListFromPlan(params: {
   current: TaskList;
   plan: PlanArtifact;
   maxTasks?: number;
+  /** Durable finished plan step ids — never returned to the desk. */
+  completedStepIds?: readonly string[];
 }): TaskListApplyResult {
   const liveMaxTasks = resolveMaxTasks(params.maxTasks);
   if (params.current.purpose === "discovery") {
@@ -38,13 +41,17 @@ export function refillTaskListFromPlan(params: {
     return unchanged(params.current);
   }
 
+  const completed = new Set(
+    (params.completedStepIds ?? []).filter((id) => id.length > 0),
+  );
   const occupied = new Set(
     params.current.items
       .map((item) => item.sourceRef ?? item.id)
       .filter((id) => id.length > 0),
   );
   const unused = candidates.filter(
-    (candidate) => !occupied.has(candidate.step.id),
+    (candidate) =>
+      !occupied.has(candidate.step.id) && !completed.has(candidate.step.id),
   );
   if (unused.length === 0) {
     return unchanged(params.current);

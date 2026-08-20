@@ -142,6 +142,7 @@ export {
   recordBuildStateDeltaEvidence,
   recordDiscoveryEvidence,
   recordPlanEvidence,
+  markPlanEvidenceStepsDone,
   recordStopEvidence,
   recordToolEvidence,
   recordVerificationEvidence,

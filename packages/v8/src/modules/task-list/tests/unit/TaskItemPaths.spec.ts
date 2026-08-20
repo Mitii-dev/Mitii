@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { collectCompletedTaskPaths, taskItemPaths } from "../../actions/TaskItemPaths";
+import {
+  collectCompletedTaskPaths,
+  extractDiagnosticCodeHint,
+  taskItemPaths,
+  taskPathsMatch,
+} from "../../actions/TaskItemPaths";
 import type { TaskList } from "../../contracts";
 
 describe("taskItemPaths", () => {
@@ -26,6 +31,25 @@ describe("taskItemPaths", () => {
         detail: "Scope: src/widget.test.ts",
       }),
     ).toEqual(["src/widget.ts", "src/widget.test.ts"]);
+  });
+});
+
+describe("taskPathsMatch", () => {
+  it("treats package-prefixed paths as matching shorter write hints", () => {
+    expect(
+      taskPathsMatch("src/Button.tsx", "packages/mui-builder/src/Button.tsx"),
+    ).toBe(true);
+    expect(taskPathsMatch("src/a.ts", "src/b.ts")).toBe(false);
+  });
+});
+
+describe("extractDiagnosticCodeHint", () => {
+  it("pulls TS codes from plan-style titles", () => {
+    expect(extractDiagnosticCodeHint("Change: Fix TS2339 in Form.tsx")).toBe(
+      "TS2339",
+    );
+    expect(extractDiagnosticCodeHint("Fix 2305 in imports")).toBe("TS2305");
+    expect(extractDiagnosticCodeHint("Update src/a.ts")).toBeUndefined();
   });
 });
 

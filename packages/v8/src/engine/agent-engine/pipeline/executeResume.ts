@@ -99,6 +99,7 @@ export async function executeResume(
   const taskListRef: TaskListRef = {
     current: checkpoint.taskList,
     maxTasks: windowPolicy.taskList.maxTasks,
+    completedPlanStepIds: [...(checkpoint.completedPlanStepIds ?? [])],
   };
   const pinnedState = checkpoint.pinnedState;
   const reasonCodes: AgentReasonCode[] = [...checkpoint.reasonCodes];

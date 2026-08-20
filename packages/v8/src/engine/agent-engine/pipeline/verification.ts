@@ -47,7 +47,14 @@ import {
   recordBuildStateDeltaEvidence,
   recordStopEvidence,
   recordVerificationEvidence,
+  markPlanEvidenceStepsDone,
 } from "../actions";
+import {
+  prepareRepairWorkingSet,
+  completePlanStepsFromDiagnostics,
+  planProgressOf,
+  type TaskListRef,
+} from "../internal/taskListRuntime";
 import type {
   EstablishedFact,
   VerificationGateDecision,
@@ -66,10 +73,6 @@ import {
   type AgentLogVerbosity,
 } from "../internal/logVerbosity";
 import { describeCaughtError } from "../internal/describeCaughtError";
-import {
-  prepareRepairWorkingSet,
-  type TaskListRef,
-} from "../internal/taskListRuntime";
 
 import type { AgentEngineRuntime } from "./runtime";
 import { resolveWorkspaceId } from "./runtime";
@@ -208,6 +211,10 @@ export async function finishAfterLoop(
         repoBuildStateBefore,
         repoBuildStateAfter: params.repoBuildStateAfter,
         ...(taskListRef.current ? { taskList: taskListRef.current } : {}),
+        ...(taskListRef.completedPlanStepIds &&
+        taskListRef.completedPlanStepIds.length > 0
+          ? { completedPlanStepIds: [...taskListRef.completedPlanStepIds] }
+          : {}),
       });
 
       const rationale = `Approval required for "${currentOutcome.pendingApproval.toolName}".`;
@@ -388,6 +395,41 @@ export async function finishAfterLoop(
       params.onVerificationRecord?.(record);
     }
 
+    const newErrorsIntroduced =
+      verificationOutcome.comparison?.reasonCodes?.includes(
+        "new_errors_introduced",
+      ) === true;
+    const diagnosticAdvance = completePlanStepsFromDiagnostics({
+      current: taskListRef.current,
+      plan: params.loopContext?.plan,
+      maxTasks: taskListRef.maxTasks,
+      taskListRef,
+      diagnostics: verificationOutcome.verification?.diagnostics,
+      newErrorsIntroduced,
+    });
+    if (diagnosticAdvance.taskList) {
+      taskListRef.current = diagnosticAdvance.taskList;
+    }
+    if (diagnosticAdvance.advanced) {
+      reasonCodes.push("task_list_auto_advanced", "task_list_updated");
+      if (diagnosticAdvance.refilled) {
+        reasonCodes.push("task_list_refilled");
+      }
+      markPlanEvidenceStepsDone(evidence, diagnosticAdvance.completedStepIds);
+      if (diagnosticAdvance.taskList) {
+        runtime.emitTaskListUpdated(
+          bus,
+          runId,
+          diagnosticAdvance.taskList,
+          planProgressOf({
+            plan: params.loopContext?.plan,
+            completedPlanStepIds: taskListRef.completedPlanStepIds,
+          }),
+        );
+        runtime.emitEvidenceUpdated(bus, runId, evidence);
+      }
+    }
+
     if (verificationOutcome.kind === "ok") {
       if (repairAttempts > 0) {
         reasonCodes.push("verification_repair_succeeded");
@@ -432,6 +474,7 @@ export async function finishAfterLoop(
         current: taskListRef.current,
         plan: params.loopContext?.plan,
         maxTasks: taskListRef.maxTasks,
+        completedPlanStepIds: taskListRef.completedPlanStepIds,
       });
       if (repairPrep.refilled) {
         reasonCodes.push("task_list_refilled");
@@ -444,7 +487,15 @@ export async function finishAfterLoop(
         if (repairPrep.activated) {
           reasonCodes.push("verification_repair_batch_activated");
         }
-        runtime.emitTaskListUpdated(bus, runId, repairPrep.taskList);
+        runtime.emitTaskListUpdated(
+          bus,
+          runId,
+          repairPrep.taskList,
+          planProgressOf({
+            plan: params.loopContext?.plan,
+            completedPlanStepIds: taskListRef.completedPlanStepIds,
+          }),
+        );
       }
       currentOutcome.messages.push({
         role: "user",

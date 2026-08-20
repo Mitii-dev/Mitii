@@ -22,7 +22,7 @@ import type {
 } from "../contracts";
 import { AgentEngineError } from "../contracts";
 import { EventBus } from "../internal/EventBus";
-import { progressOf, seedTaskListFromPlan, type TaskListRef } from "../internal/taskListRuntime";
+import { progressOf, planProgressOf, seedTaskListFromPlan, type TaskListRef } from "../internal/taskListRuntime";
 import { DEFAULT_TOOL_DEFINITIONS } from "../policy";
 
 export type AgentEngineResolvedDeps = Required<
@@ -63,7 +63,16 @@ export interface AgentEngineRuntime {
     phase: "started" | "completed",
     reasonCodes?: AgentReasonCode[],
   ): void;
-  emitTaskListUpdated(bus: EventBus, runId: string, taskList: TaskList): void;
+  emitTaskListUpdated(
+    bus: EventBus,
+    runId: string,
+    taskList: TaskList,
+    planProgress?: {
+      planCompletedCount: number;
+      planTotalCount: number;
+      completedStepIds: string[];
+    },
+  ): void;
   emitEvidenceUpdated(
     bus: EventBus,
     runId: string,
@@ -173,6 +182,11 @@ export function createAgentEngineRuntime(
     bus: EventBus,
     runId: string,
     taskList: TaskList,
+    planProgress?: {
+      planCompletedCount: number;
+      planTotalCount: number;
+      completedStepIds: string[];
+    },
   ): void => {
     const progress = progressOf(taskList);
     emit(bus, {
@@ -182,6 +196,13 @@ export function createAgentEngineRuntime(
       completedCount: progress.completedCount,
       totalCount: progress.totalCount,
       ...(progress.activeId ? { activeId: progress.activeId } : {}),
+      ...(planProgress && planProgress.planTotalCount > 0
+        ? {
+            planCompletedCount: planProgress.planCompletedCount,
+            planTotalCount: planProgress.planTotalCount,
+            completedPlanStepIds: planProgress.completedStepIds.slice(0, 80),
+          }
+        : {}),
       taskList,
       at: isoNow(),
     });
@@ -279,7 +300,15 @@ export function createAgentEngineRuntime(
       params.reasonCodes.push("task_list_seeded");
     }
     if (params.taskListRef.current) {
-      emitTaskListUpdated(params.bus, params.runId, params.taskListRef.current);
+      emitTaskListUpdated(
+        params.bus,
+        params.runId,
+        params.taskListRef.current,
+        planProgressOf({
+          plan: params.plan,
+          completedPlanStepIds: params.taskListRef.completedPlanStepIds,
+        }),
+      );
     }
   };
 

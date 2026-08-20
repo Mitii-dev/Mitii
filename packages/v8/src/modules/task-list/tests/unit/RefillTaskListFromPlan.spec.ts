@@ -80,4 +80,27 @@ describe("refillTaskListFromPlan", () => {
       derived.taskList?.items.map((item) => item.id),
     );
   });
+
+  it("skips notebook-completed step ids when streaming overflow", () => {
+    const plan = planWithSteps(10);
+    const derived = pipeline.deriveFromPlan(plan);
+    const live = {
+      ...derived.taskList!,
+      items: derived.taskList!.items.map((item, index) =>
+        index === 0 ? { ...item, status: "done" as const } : item,
+      ),
+    };
+
+    const refilled = pipeline.refillFromPlan(live, plan, undefined, [
+      "step-fix-diagnostic-1",
+      "step-fix-diagnostic-9",
+    ]);
+    expect(refilled.reasonCodes).toContain("task_list_refilled");
+    expect(
+      refilled.taskList?.items.map((item) => item.sourceRef),
+    ).not.toContain("step-fix-diagnostic-9");
+    expect(
+      refilled.taskList?.items.map((item) => item.sourceRef),
+    ).toContain("step-fix-diagnostic-10");
+  });
 });

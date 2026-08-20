@@ -305,6 +305,14 @@ describe("AgentEngine task list", () => {
         }),
         llm,
         taskListAutoAdvance: true,
+        toolResults: {
+          apply_patch: {
+            output: {
+              checkpointId: "ckpt_widget",
+              changedFiles: ["src/widget.ts"],
+            },
+          },
+        },
       }),
     );
 
@@ -355,6 +363,14 @@ describe("AgentEngine task list", () => {
         }),
         llm,
         taskListAutoAdvance: true,
+        toolResults: {
+          apply_patch: {
+            output: {
+              checkpointId: "ckpt_a",
+              changedFiles: ["src/a.ts"],
+            },
+          },
+        },
       }),
     );
 
@@ -408,6 +424,14 @@ describe("AgentEngine task list", () => {
         }),
         llm,
         taskListAutoAdvance: true,
+        toolResults: {
+          apply_patch: {
+            output: {
+              checkpointId: "ckpt_pkg",
+              changedFiles: ["packages/mui-builder/src/Button.tsx"],
+            },
+          },
+        },
       }),
     );
 
@@ -610,6 +634,14 @@ describe("AgentEngine task list", () => {
         }),
         llm,
         taskListAutoAdvance: true,
+        toolResults: {
+          apply_patch: {
+            output: {
+              checkpointId: "ckpt_multi",
+              changedFiles: ["src/a.ts"],
+            },
+          },
+        },
       }),
     );
 

@@ -63,8 +63,11 @@ import {
   isUpdateTodosTool,
   maybeAutoAdvanceTaskList,
   maybeRefillTaskListFromPlan,
+  planProgressOf,
+  recordCompletedPlanSteps,
   type TaskListRef,
 } from "../internal/taskListRuntime";
+import { markPlanEvidenceStepsDone } from "../actions/runEvidence";
 import {
   DEFAULT_MUTATION_TOOL_DEFINITIONS,
 } from "../policy";
@@ -532,11 +535,16 @@ export async function executeOneTool(
         });
     if (applied.ok) {
       let nextList = applied.taskList;
+      if (taskListRef && nextList) {
+        const newlyDone = nextList.items.filter((item) => item.status === "done");
+        recordCompletedPlanSteps(taskListRef, newlyDone);
+      }
       if (nextList && plan) {
         const refilled = maybeRefillTaskListFromPlan({
           current: nextList,
           plan,
           maxTasks: taskListRef?.maxTasks,
+          completedPlanStepIds: taskListRef?.completedPlanStepIds,
         });
         if (refilled.refilled && refilled.taskList) {
           nextList = refilled.taskList;
@@ -556,6 +564,11 @@ export async function executeOneTool(
           source: "agent",
           items: [],
         },
+        planProgressOf({
+          plan,
+          completedPlanStepIds: taskListRef?.completedPlanStepIds,
+          evidence,
+        }),
       );
     }
     toolCache.set(toolCall.id, result);
@@ -683,6 +696,7 @@ export async function executeOneTool(
       changedFiles: output?.changedFiles ?? [],
       plan,
       maxTasks: taskListRef?.maxTasks,
+      taskListRef,
     });
     if (autoAdvanced.warnings.length > 0) {
       warnings.push(...autoAdvanced.warnings);
@@ -697,7 +711,19 @@ export async function executeOneTool(
       if (autoAdvanced.refilled) {
         reasonCodes.push("task_list_refilled");
       }
-      runtime.emitTaskListUpdated(bus, runId, autoAdvanced.taskList);
+      runtime.emitTaskListUpdated(
+        bus,
+        runId,
+        autoAdvanced.taskList,
+        planProgressOf({
+          plan,
+          completedPlanStepIds: taskListRef.completedPlanStepIds,
+          evidence,
+        }),
+      );
+      if (evidence?.plan && autoAdvanced.completedStepIds) {
+        markPlanEvidenceStepsDone(evidence, autoAdvanced.completedStepIds);
+      }
     }
   }
 

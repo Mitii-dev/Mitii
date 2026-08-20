@@ -151,6 +151,22 @@ export function recordPlanEvidence(evidence: RunEvidence, plan: PlanArtifact): v
   });
 }
 
+/** Stamp durable notebook completions onto run-evidence plan steps. */
+export function markPlanEvidenceStepsDone(
+  evidence: RunEvidence | undefined,
+  stepIds: readonly string[],
+): void {
+  if (!evidence?.plan || stepIds.length === 0) {
+    return;
+  }
+  const done = new Set(stepIds);
+  for (const step of evidence.plan.steps) {
+    if (done.has(step.id) && step.status !== "done") {
+      step.status = "done";
+    }
+  }
+}
+
 export function recordToolEvidence(
   evidence: RunEvidence | undefined,
   params: {

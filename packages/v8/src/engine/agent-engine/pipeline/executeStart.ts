@@ -189,6 +189,7 @@ export async function executeStart(
         ? undefined
         : input.taskList,
     maxTasks: windowPolicy.taskList.maxTasks,
+    completedPlanStepIds: [],
   };
   let taskListSynced = false;
   const syncTaskListOnce = () => {
@@ -499,6 +500,10 @@ export async function executeStart(
           repoBuildStateBefore,
           repoBuildStateAfter,
           ...(taskListRef.current ? { taskList: taskListRef.current } : {}),
+          ...(taskListRef.completedPlanStepIds &&
+          taskListRef.completedPlanStepIds.length > 0
+            ? { completedPlanStepIds: [...taskListRef.completedPlanStepIds] }
+            : {}),
         });
       }
       runtime.emit(bus, {
@@ -1044,6 +1049,14 @@ export async function executeStart(
               repoBuildStateBefore,
               repoBuildStateAfter,
               ...(taskListRef.current ? { taskList: taskListRef.current } : {}),
+              ...(taskListRef.completedPlanStepIds &&
+              taskListRef.completedPlanStepIds.length > 0
+                ? {
+                    completedPlanStepIds: [
+                      ...taskListRef.completedPlanStepIds,
+                    ],
+                  }
+                : {}),
             });
           }
           runtime.emit(bus, {

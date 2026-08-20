@@ -184,9 +184,21 @@ export const runEventSchema = z.discriminatedUnion("type", [
       type: z.literal("task_list_updated"),
       runId: z.string().min(1),
       source: z.enum(["plan", "agent", "user", "discovery"]),
+      /** Done rows currently on the live desk (may be 0 after refill drops). */
       completedCount: z.number().int().nonnegative(),
+      /** Live desk size (window, typically ≤ 8). */
       totalCount: z.number().int().nonnegative(),
       activeId: z.string().min(1).optional(),
+      /**
+       * Durable plan-step notebook: finished concrete steps vs plan total.
+       * Independent of the desk window — hosts should show this as PLAN n/N.
+       */
+      planCompletedCount: z.number().int().nonnegative().optional(),
+      planTotalCount: z.number().int().nonnegative().optional(),
+      completedPlanStepIds: z
+        .array(z.string().min(1).max(120))
+        .max(80)
+        .optional(),
       taskList: taskListSchema,
       at: z.string().datetime(),
     })

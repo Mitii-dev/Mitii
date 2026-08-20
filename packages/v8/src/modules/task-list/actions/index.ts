@@ -14,5 +14,12 @@ export {
 } from "./SerializeTaskList";
 export {
   collectCompletedTaskPaths,
+  extractDiagnosticCodeHint,
+  itemMentionsAnyPath,
+  normalizeTaskPath,
   taskItemPaths,
+  taskPathsMatch,
 } from "./TaskItemPaths";
+export {
+  collectConcretePlanStepCandidates,
+} from "./DeriveTaskListFromPlan";
