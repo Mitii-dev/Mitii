@@ -42,4 +42,26 @@ describe("NodeWorkspaceFileSystemAdapter.readTextFilesUnder", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("skips .mitii logs while walking the workspace", async () => {
+    const root = await mkdtemp(join(tmpdir(), "mitii-search-ignore-"));
+    try {
+      await mkdir(join(root, "test"));
+      await mkdir(join(root, ".mitii", "logs"), { recursive: true });
+      await writeFile(join(root, "test", "a.ts"), 'const discount = true;\n');
+      await writeFile(
+        join(root, ".mitii", "logs", "thread.jsonl"),
+        '{"prompt":"discount"}\n',
+      );
+      const adapter = new NodeWorkspaceFileSystemAdapter();
+      const files = await adapter.readTextFilesUnder(root, {
+        workspaceRoot: root,
+        maxFiles: 50,
+        maxFileBytes: 8_192,
+      });
+      expect(files.map((file) => file.relativePath)).toEqual(["test/a.ts"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

@@ -291,4 +291,52 @@ describe("model tool definition single source", () => {
     expect(result.status).toBe("rejected");
     expect(result.reasonCode).toBe("invalid_arguments");
   });
+
+  it("search_files skips .mitii logs", async () => {
+    const fs = new InMemoryFileSystemAdapter(
+      WORKSPACE,
+      directory({
+        test: directory({
+          "a.ts": file('const discount = true;\n'),
+        }),
+        ".mitii": directory({
+          logs: directory({
+            "thread.jsonl": file('{"prompt":"discount"}\n'),
+          }),
+        }),
+      }),
+    );
+    const runtime = new ToolRuntimePipeline({
+      fileSystem: fs,
+      process: new InMemoryProcessAdapter(async () => ({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        cancelled: false,
+        truncated: false,
+      })),
+      diagnostics: new InMemoryDiagnosticsAdapter([]),
+      git: new InMemoryGitAdapter({
+        branch: "main",
+        staged: [],
+        unstaged: [],
+        untracked: [],
+        raw: "",
+      }),
+    });
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "s-ignore-logs",
+      toolName: "search_files",
+      arguments: { query: "discount" },
+      grant: createReadOnlyGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("succeeded");
+    const output = result.output as {
+      matches: Array<{ path: string }>;
+    };
+    expect(output.matches.map((match) => match.path)).toEqual(["test/a.ts"]);
+  });
 });

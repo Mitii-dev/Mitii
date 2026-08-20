@@ -338,7 +338,10 @@ describe("AgentEngine Skills/Memory wiring (Phase 9)", () => {
 
     expect(narrow).toHaveBeenCalledOnce();
     const promptInput = construct.mock.calls[0]![0];
-    expect(promptInput.decision.toolGrant.pathScopes).toEqual(["src/parser"]);
+    expect(promptInput.decision.toolGrant.pathScopes).toEqual(["."]);
+    expect(promptInput.decision.toolGrant.mutationPathScopes).toEqual([
+      "src/parser",
+    ]);
     expect(events.some((event) => event.type === "grant_narrowed")).toBe(true);
   });
 

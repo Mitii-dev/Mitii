@@ -40,8 +40,10 @@ decision-policy/
 ## Technical Details
 
 - Ask and plan modes cannot receive write grants.
+- Agent (and ask) "run the tests / can you test" requests route to `diagnose` with `run_readonly_command`. Implement/fix phrasing still wins over a mention of running tests.
 - Injection scanning never broadens authority.
-- `narrow()` may reduce scope or tighten approval/budgets after discovery; it cannot add authority.
+- `narrow()` may reduce write scope or tighten approval/budgets after discovery; it cannot add authority. Workspace-wide read (`pathScopes: ["."]`) is preserved so config files stay readable.
+- `widen()` may add path/mutation scopes after `path_out_of_scope` or compiler errors; it cannot add tools, effects, or write authority that was not already granted.
 - `narrow()` returns the previous decision when the grant is unchanged.
   Callers MUST emit `grant_narrowed` only when `toolGrantsEquivalent` is false.
 - Mutation profiles are `relaxed`, `standard`, and `tight`. When `windowPolicy` is present, each numeric cap is `min(profile, window)` and `requireBatchedExecution` is OR'd.

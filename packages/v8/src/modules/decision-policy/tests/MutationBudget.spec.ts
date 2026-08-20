@@ -95,6 +95,21 @@ describe("ResolveMutationBudget", () => {
     expect(result.mutationBudget.preferredBatchSize).toBe(1);
     expect(result.mutationBudget.requireBatchedExecution).toBe(true);
   });
+
+  it("selects tight for refactor even when complexity is moderate", () => {
+    const result = resolveMutationBudget({
+      understanding: createUnderstanding({
+        primaryTaskIntent: "refactor",
+        taskAnalysis: {
+          scope: "repository",
+          complexity: "moderate",
+          recommendsPlanning: false,
+        },
+      }),
+    });
+    expect(result.profile).toBe("tight");
+    expect(result.reasonCodes).toContain("mutation_budget_tight");
+  });
 });
 
 describe("DecisionPolicyPipeline mutation budget", () => {

@@ -209,6 +209,34 @@ export function extractCompilerErrorQueue(
     .join("\n");
 }
 
+export function extractOutOfScopePaths(
+  warnings: readonly string[] | undefined,
+): string[] {
+  if (!warnings || warnings.length === 0) {
+    return [];
+  }
+  const paths: string[] = [];
+  const pattern = /Path "([^"]+)" is outside granted pathScopes/g;
+  for (const warning of warnings) {
+    for (const match of warning.matchAll(pattern)) {
+      const value = match[1]?.trim();
+      if (value) {
+        paths.push(value);
+      }
+    }
+  }
+  return paths;
+}
+
+export function extractCompilerErrorPaths(
+  output?: unknown,
+  outputPreview?: string,
+): string[] {
+  return [
+    ...new Set(parseCompilerErrorItems(output, outputPreview).map((item) => item.path)),
+  ];
+}
+
 export function parseCompilerErrorItems(
   output?: unknown,
   outputPreview?: string,

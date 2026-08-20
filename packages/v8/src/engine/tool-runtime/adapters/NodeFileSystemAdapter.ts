@@ -6,6 +6,7 @@ import type {
   WorkspaceFileSystemPort,
   WorkspaceStat,
 } from "../contracts";
+import { shouldSkipSearchWalkEntry } from "../internal/SearchWalkIgnore";
 
 export class NodeWorkspaceFileSystemAdapter implements WorkspaceFileSystemPort {
   public resolve(workspaceRoot: string, relativePath: string): string {
@@ -127,11 +128,24 @@ export class NodeWorkspaceFileSystemAdapter implements WorkspaceFileSystemPort {
           continue;
         }
         const full = path.join(dir, entry.name);
+        const relativePath = path
+          .relative(workspaceRoot, full)
+          .replace(/\\/g, "/");
         const stats = await fs.lstat(full);
         if (stats.isSymbolicLink()) {
           continue;
         }
-        if (stats.isDirectory()) {
+        const isDirectory = stats.isDirectory();
+        if (
+          shouldSkipSearchWalkEntry({
+            name: entry.name,
+            relativePath,
+            isDirectory,
+          })
+        ) {
+          continue;
+        }
+        if (isDirectory) {
           await walk(full);
           continue;
         }

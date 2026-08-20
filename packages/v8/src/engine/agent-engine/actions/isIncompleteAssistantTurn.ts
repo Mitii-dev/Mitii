@@ -78,6 +78,22 @@ export function isDegenerateRepeatedAnswer(content: string): boolean {
     }
   }
 
+  const paragraphs = text
+    .split(/\n{2,}/)
+    .map((part) => part.replace(/\s+/g, " ").trim().toLowerCase())
+    .filter((part) => part.length >= 80);
+  if (paragraphs.length >= 6) {
+    const counts = new Map<string, number>();
+    for (const paragraph of paragraphs) {
+      const key = paragraph.slice(0, 220);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const maxCount = Math.max(0, ...counts.values());
+    if (maxCount >= 3) {
+      return true;
+    }
+  }
+
   const windows: string[] = [];
   const windowSize = 80;
   for (let index = 0; index + windowSize <= Math.min(text.length, 8_000); index += 40) {
@@ -88,6 +104,16 @@ export function isDegenerateRepeatedAnswer(content: string): boolean {
   }
   const uniqueWindows = new Set(windows);
   return uniqueWindows.size <= Math.max(3, Math.floor(windows.length * 0.2));
+}
+
+const PACKAGE_SCRIPT_CLAIM =
+  /\b(?:npm|pnpm|yarn|bun)\s+run\b|\bnpx\s+wdio\b|\bwdio\s+run\b/i;
+
+/**
+ * True when the answer names package scripts without having read the repo.
+ */
+export function claimsPackageScriptsWithoutEvidence(content: string): boolean {
+  return PACKAGE_SCRIPT_CLAIM.test(content);
 }
 
 /**
@@ -203,6 +229,7 @@ export function shouldRecoverIncompleteAssistantTurn(params: {
   content: string;
   toolCallCount: number;
   changedFileCount: number;
+  fileReadCalls?: number;
 }): boolean {
   if (params.toolCallCount > 0) return false;
   if (isEmptyAssistantTurn(params)) return true;
@@ -210,6 +237,12 @@ export function shouldRecoverIncompleteAssistantTurn(params: {
   if (isDegenerateRepeatedAnswer(params.content)) return true;
   if (isUnfinishedInvestigationAnswer(params.content)) return true;
   if (isMidWorkAnalysisDump(params.content)) return true;
+  if (
+    (params.fileReadCalls ?? 0) === 0 &&
+    claimsPackageScriptsWithoutEvidence(params.content)
+  ) {
+    return true;
+  }
   // Defense in depth: blank stored answer after mutations must not complete.
   if (params.content.trim().length === 0 && params.changedFileCount > 0) {
     return true;

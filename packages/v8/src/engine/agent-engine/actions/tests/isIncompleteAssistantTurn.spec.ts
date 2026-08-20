@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   amendMessageWithPriorConversation,
   buildIncompleteAnswerRecoveryMessage,
+  claimsPackageScriptsWithoutEvidence,
   compactRecoveredAssistantContent,
   hasLeakedToolCallMarkup,
   isDegenerateRepeatedAnswer,
@@ -299,6 +300,47 @@ describe("isIncompleteAssistantTurn", () => {
     }).join("\n");
     expect(content.length).toBeGreaterThan(2_000);
     expect(isDegenerateRepeatedAnswer(content)).toBe(false);
+  });
+
+  it("detects repeating prose paragraphs as degenerate", () => {
+    const paragraph =
+      "The Config class in scripts/helpers/config.ts throws an error at import time if required environment variables are missing, and since Tablet.ts imports this config, the tablet and cross test suites will crash immediately if those env vars aren't set.";
+    const content = Array.from({ length: 8 }, () => paragraph).join("\n\n");
+    expect(content.length).toBeGreaterThan(2_000);
+    expect(isDegenerateRepeatedAnswer(content)).toBe(true);
+    expect(
+      shouldRecoverIncompleteAssistantTurn({
+        content,
+        toolCallCount: 0,
+        changedFileCount: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("recovers package-script claims when no files were read", () => {
+    expect(
+      claimsPackageScriptsWithoutEvidence(
+        "From package.json, run `npm run desktop:test` against inventory.spec.ts.",
+      ),
+    ).toBe(true);
+    expect(
+      shouldRecoverIncompleteAssistantTurn({
+        content:
+          "From package.json, run `npm run desktop:test` against inventory.spec.ts.",
+        toolCallCount: 0,
+        changedFileCount: 0,
+        fileReadCalls: 0,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRecoverIncompleteAssistantTurn({
+        content:
+          "From package.json, run `npm run desktop:test` against inventory.spec.ts.",
+        toolCallCount: 0,
+        changedFileCount: 0,
+        fileReadCalls: 2,
+      }),
+    ).toBe(false);
   });
 
   it("builds recovery and fallback answers", () => {

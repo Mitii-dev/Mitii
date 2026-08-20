@@ -5,6 +5,7 @@ import { ChunkingFactory } from '../internal/chunking/ChunkingFactory';
 import { NodeSha256ChunkHasher } from '../internal/chunking/adapters/node/NodeSha256ChunkHasher';
 import { SqliteTextIndexFactory } from '../internal/text-index/adapters/sqlite/SqliteTextIndexFactory';
 import { SqliteTextIndexMigration } from '../internal/text-index/adapters/sqlite/SqliteTextIndexMigration';
+import { TEXT_INDEX_SCHEMA_VERSION } from '../internal/text-index/constants';
 import type {
   SqliteDatabasePort,
   SqliteStatementPort,
@@ -123,7 +124,7 @@ describe('identifier-aware text index FTS', () => {
       };
 
       expect(row).toEqual({
-        schemaVersion: 2,
+        schemaVersion: TEXT_INDEX_SCHEMA_VERSION,
         revision: 6,
       });
     } finally {

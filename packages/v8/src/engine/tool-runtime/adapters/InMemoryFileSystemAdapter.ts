@@ -5,6 +5,7 @@ import type {
   WorkspaceFileSystemPort,
   WorkspaceStat,
 } from "../contracts";
+import { shouldSkipSearchWalkEntry } from "../internal/SearchWalkIgnore";
 
 export interface InMemoryFileNode {
   kind: "file";
@@ -138,7 +139,21 @@ export class InMemoryFileSystemAdapter implements WorkspaceFileSystemPort {
           if (results.length >= options.maxFiles) {
             return;
           }
-          await walk(path.join(abs, name));
+          const childAbs = path.join(abs, name);
+          const relativePath = path
+            .relative(options.workspaceRoot, childAbs)
+            .replace(/\\/g, "/");
+          const child = node.children[name];
+          if (
+            shouldSkipSearchWalkEntry({
+              name,
+              relativePath,
+              isDirectory: child?.kind === "directory",
+            })
+          ) {
+            continue;
+          }
+          await walk(childAbs);
         }
       }
     };

@@ -55,6 +55,7 @@ export const AGENT_REASON_CODES = [
   "understanding_complete",
   "decision_complete",
   "grant_narrowed",
+  "grant_expanded",
   "clarification_suspended",
   "plan_drafted",
   "plan_skipped",

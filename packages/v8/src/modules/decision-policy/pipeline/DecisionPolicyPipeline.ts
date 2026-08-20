@@ -131,6 +131,7 @@ export class DecisionPolicyPipeline {
       previous: previous.toolGrant,
       discoveredPaths: input.discoveredPaths ?? [],
       residualRisk: input.residualRisk,
+      keepWriteWide: previous.planningDepth === "visible",
     });
     const changed = !toolGrantsEquivalent(previous.toolGrant, narrowedGrant);
     if (!changed) {
@@ -163,6 +164,53 @@ export class DecisionPolicyPipeline {
           ...(previous.trace?.signalsUsed ?? []),
           "discovered_paths",
           ...(input.residualRisk ? ["residual_risk"] : []),
+        ]),
+      },
+    });
+  }
+
+  /**
+   * Expand read (and write, when already granted) scopes to include extra
+   * paths after path_out_of_scope or compiler errors outside the current grant.
+   */
+  public widen(input: {
+    previous: ExecutionDecision;
+    extraPaths?: readonly string[];
+  }): ExecutionDecision {
+    const previous = executionDecisionSchema.parse(input.previous);
+    const extraPaths = (input.extraPaths ?? []).filter(
+      (path) => path.trim().length > 0,
+    );
+    if (extraPaths.length === 0) {
+      return previous;
+    }
+    const widenedGrant = widenToolGrant({
+      previous: previous.toolGrant,
+      extraPaths,
+    });
+    if (toolGrantsEquivalent(previous.toolGrant, widenedGrant)) {
+      return previous;
+    }
+    const reasonCodes = uniqueReasonCodes([
+      ...previous.reasonCodes,
+      "grant_expanded",
+    ]);
+    return executionDecisionSchema.parse({
+      ...previous,
+      toolGrant: widenedGrant,
+      reasonCodes,
+      rationale: `${previous.rationale}; grant=expanded`,
+      trace: {
+        ...previous.trace,
+        routePriorityStep:
+          previous.trace?.routePriorityStep ??
+          resolveRoutePriorityStep(previous.reasonCodes),
+        grantProfile: widenedGrant.maximumWorkspaceEffect,
+        mutationProfile: resolveMutationProfile(reasonCodes),
+        clampedByInjection: previous.trace?.clampedByInjection ?? false,
+        signalsUsed: uniqueStrings([
+          ...(previous.trace?.signalsUsed ?? []),
+          "grant_expanded",
         ]),
       },
     });
@@ -323,6 +371,7 @@ function resolveRoutePriorityStep(
     "mode_plan_only",
     "explicit_plan_request",
     "diagnosis_readonly",
+    "verification_run_requested",
     "mutation_execute",
     "workspace_bug_execute",
     "repository_grounded_answer",
@@ -354,25 +403,70 @@ function narrowToolGrant(params: {
   previous: ToolGrant;
   discoveredPaths: readonly string[];
   residualRisk?: "low" | "medium" | "high" | "critical";
+  keepWriteWide?: boolean;
 }): ToolGrant {
   const previous = params.previous;
-  const narrowedScopes = narrowPathScopes(
-    previous.pathScopes,
-    params.discoveredPaths,
-  );
   const highRisk =
     params.residualRisk === "high" || params.residualRisk === "critical";
+  const keepWorkspaceRead = previous.pathScopes.includes(".");
+  const narrowedReadScopes = keepWorkspaceRead
+    ? [...previous.pathScopes]
+    : narrowPathScopes(previous.pathScopes, params.discoveredPaths);
+
+  let mutationPathScopes = previous.mutationPathScopes;
+  if (previous.maximumWorkspaceEffect === "write" && !params.keepWriteWide) {
+    if (previous.mutationPathScopes && previous.mutationPathScopes.length > 0) {
+      mutationPathScopes = narrowPathScopes(
+        previous.mutationPathScopes,
+        params.discoveredPaths,
+      );
+    } else if (params.discoveredPaths.length > 0) {
+      const discoveredWrite = narrowPathScopes(["."], params.discoveredPaths);
+      mutationPathScopes =
+        discoveredWrite.length > 0 ? discoveredWrite : previous.mutationPathScopes;
+    }
+  }
+
   return {
     ...previous,
-    pathScopes: narrowedScopes,
-    mutationPathScopes: previous.mutationPathScopes
-      ? narrowPathScopes(previous.mutationPathScopes, params.discoveredPaths)
-      : previous.mutationPathScopes,
+    pathScopes: narrowedReadScopes,
+    mutationPathScopes,
     approvalMode: highRisk ? "every_mutation" : previous.approvalMode,
     mutationBudget:
       highRisk && previous.mutationBudget
         ? tightenMutationBudget(previous.mutationBudget)
         : previous.mutationBudget,
+  };
+}
+
+function widenToolGrant(params: {
+  previous: ToolGrant;
+  extraPaths: readonly string[];
+}): ToolGrant {
+  const extraScopes = deriveDiscoveredScopes(params.extraPaths);
+  if (extraScopes.length === 0) {
+    return params.previous;
+  }
+
+  const pathScopes = params.previous.pathScopes.includes(".")
+    ? [...params.previous.pathScopes]
+    : uniqueStrings([...params.previous.pathScopes, ...extraScopes]);
+
+  const mutationPathScopes =
+    params.previous.maximumWorkspaceEffect === "write"
+      ? uniqueStrings([
+          ...(params.previous.mutationPathScopes ?? []),
+          ...extraScopes,
+        ])
+      : params.previous.mutationPathScopes;
+
+  return {
+    ...params.previous,
+    pathScopes,
+    mutationPathScopes:
+      mutationPathScopes && mutationPathScopes.length > 0
+        ? mutationPathScopes
+        : params.previous.mutationPathScopes,
   };
 }
 

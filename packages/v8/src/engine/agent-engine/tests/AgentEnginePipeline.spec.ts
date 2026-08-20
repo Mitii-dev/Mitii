@@ -1908,6 +1908,48 @@ describe("AgentEnginePipeline (Phase 7)", () => {
   );
 });
 
+  it("does not capture preflight for a yes/no implementation status question", async () => {
+    let captureCalls = 0;
+    const llm = new ScriptedLlmPort(
+      [{ content: "Headless is configured in wdio.desktop.conf.ts." }],
+      createCapabilities({ supportsTools: false }),
+    );
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        llm,
+        verification: {
+          verify: async () => {
+            throw new Error("post-mutation verification should not run");
+          },
+          captureBuildState: async () => {
+            captureCalls += 1;
+            throw new Error("preflight should not run for a status question");
+          },
+        },
+      }),
+    );
+
+    const result = await engine.start(
+      baseStartInput({
+        request: {
+          sessionId: "sess_headless_question",
+          mode: "agent",
+          userMessage: "is headless implemented ??",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/repo",
+        repositoryState: {
+          reference: { workspaceId: "ws_1", stateToken: "tok_1" },
+          readiness: "ready",
+        },
+      }),
+    ).result;
+
+    expect(captureCalls).toBe(0);
+    expect(result.status).toBe("completed");
+    expect(result.reasonCodes).not.toContain("repo_build_state_before_captured");
+  });
+
 it("injects scoped preflight diagnostics into execute repair prompts", async () => {
   const repoBuildStateBefore = {
     schemaVersion: 1 as const,
@@ -2025,13 +2067,13 @@ it("injects scoped preflight diagnostics into execute repair prompts", async () 
     }),
   ).result;
 
-  const firstSystem = llm.requests[0]?.messages.find(
-    (message) => message.role === "system",
-  )?.content;
-  expect(firstSystem).toContain("Preflight verification already captured 2");
-  expect(firstSystem).toContain("packages/mui-builder/src/Button.tsx:12 TS2322");
-  expect(firstSystem).toContain("call apply_patch");
-  expect(firstSystem).not.toContain("packages/other");
+  const prompt = (llm.requests[0]?.messages ?? [])
+    .map((message) => message.content)
+    .join("\n");
+  expect(prompt).toContain("Preflight verification already captured 2");
+  expect(prompt).toContain("packages/mui-builder/src/Button.tsx:12 TS2322");
+  expect(prompt).toContain("call apply_patch");
+  expect(prompt).not.toContain("packages/other");
 });
 
   it("completes plan mode with the structured plan as the answer", async () => {
@@ -2299,10 +2341,13 @@ it("injects scoped preflight diagnostics into execute repair prompts", async () 
     expect(result.plan?.objective).toBe("Ship conversation carry");
     expect(result.taskList?.items[0]?.status).toBe("active");
     expect(result.reasonCodes).toContain("task_list_seeded");
-    const system = captured[0]?.messages.find((m) => m.role === "system");
-    expect(system?.content).toContain("<approved_plan");
-    expect(system?.content).toContain("Ship conversation carry");
-    expect(system?.content).toContain("<task_list");
+    const prompt = (captured[0]?.messages ?? [])
+      .map((message) => message.content)
+      .join("\n");
+    expect(prompt).toContain("<approved_plan");
+    expect(prompt).toContain("Ship conversation carry");
+    expect(prompt).toContain("## Checklist");
+    expect(prompt).toContain("Pass conversation + plan");
   });
 
   it("keeps a follow_evidence contract on a host-carried concrete repair plan", async () => {

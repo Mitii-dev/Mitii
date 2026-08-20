@@ -42,6 +42,35 @@ describe("verification language discovery", () => {
     );
   });
 
+  it("discovers desktop:test and falls back to tsc when scripts omit typecheck", async () => {
+    const result = await discoverCandidatesForProject({
+      project: project({
+        projectId: "workspace-root",
+        primaryLanguageId: "typescript",
+      }),
+      changedFiles: ["test/specs/a.spec.ts"],
+      manifests: new InMemoryManifestReader({
+        "package.json": JSON.stringify({
+          scripts: {
+            "desktop:test": "wdio run ./wdio.desktop.conf.ts",
+          },
+        }),
+        "tsconfig.json": "{ \"compilerOptions\": { \"strict\": true } }",
+      }),
+    });
+
+    expect(result.candidates.map((c) => c.kind).sort()).toEqual([
+      "test",
+      "typecheck",
+    ]);
+    expect(
+      result.candidates.find((c) => c.kind === "test")?.argv,
+    ).toEqual(["npm", "run", "desktop:test"]);
+    expect(
+      result.candidates.find((c) => c.kind === "typecheck")?.argv,
+    ).toEqual(["npx", "tsc", "--noEmit"]);
+  });
+
   it("discovers Python pytest/mypy/ruff from pyproject evidence", async () => {
     const manifests = new InMemoryManifestReader({
       "pyproject.toml": `

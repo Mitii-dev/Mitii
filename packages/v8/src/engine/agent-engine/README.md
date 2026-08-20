@@ -47,6 +47,8 @@ agent-engine/
 - Tool calls are passed to Tool Runtime with the exact grant from Decision Policy.
 - The engine may narrow authority after discovery but never expands the grant.
   `grant_narrowed` is emitted only when the grant actually changed.
+  After out-of-scope reads or compiler errors, Engine may `widen` the grant
+  and record `grant_expanded`.
 - `usage` reports `fileReadCalls` vs `uniqueFilePathsTouched`. Repeated
   re-reads of the same files emit `exploration_reread_heavy` mid-loop and
   after one nudge stop the spin with `exploration_stall_broken`. Stall
@@ -89,7 +91,7 @@ agent-engine/
 ```text
 intake
 pin                          (whenever a workspace reference resolves — no longer waits on repositoryContextRequired)
-Agent execute only: capture repoBuildStateBefore  (unconditional; synthesized read-only grant, no Decision Policy yet)
+Agent execute only: capture repoBuildStateBefore  (repair/mutation asks; synthesized read-only grant, no Decision Policy yet; never runs test/e2e scripts unless tests evidence is required)
 understand                   (sees a capped preflight-diagnostic hint when errors exist — LLM classifier only, not the rule classifier)
 decide
 [clarification / unsupported-route short-circuits]

@@ -623,4 +623,27 @@ export const DECISION_EVALUATION_CASES: DecisionCaseFixture[] = [
       maximumWorkspaceEffect: "read",
     },
   },
+  {
+    id: "agent_run_tests_misclassified_as_question",
+    category: "diagnosis",
+    mode: "agent",
+    message:
+      "Can you run the tests and see what all are failing and passing ??",
+    understanding: createUnderstanding({
+      primaryTaskIntent: "question",
+      interactionIntent: "question",
+      taskAnalysis: {
+        scope: "unknown",
+        complexity: "simple",
+        risk: "low",
+        recommendsRepositoryDiscovery: false,
+        recommendsVerification: false,
+      },
+    }),
+    expected: {
+      route: "diagnose",
+      maximumWorkspaceEffect: "read",
+      forbidVisiblePlan: true,
+    },
+  },
 ];

@@ -17,6 +17,8 @@ export {
 export {
   extractEstablishedFact,
   extractCompilerErrorQueue,
+  extractCompilerErrorPaths,
+  extractOutOfScopePaths,
   upsertEstablishedFact,
   dropEstablishedFactsForPaths,
 } from "./extractEstablishedFact";
@@ -32,6 +34,7 @@ export type { LoopFileReadTracker } from "./isExplorationRereadHeavy";
 export { buildExplorationStallNudge } from "./buildExplorationStallNudge";
 export { buildPreflightDiagnosticRepairInstruction } from "./buildPreflightDiagnosticRepairInstruction";
 export { buildVerificationRepairPrompt } from "./buildVerificationRepairPrompt";
+export { shouldCaptureUnconditionalAgentPreflight } from "./shouldCaptureUnconditionalAgentPreflight";
 export {
   decideVerificationGate,
   isUserGoalComplete,
@@ -81,6 +84,7 @@ export {
   isUnfinishedInvestigationAnswer,
   isMidWorkAnalysisDump,
   isDegenerateRepeatedAnswer,
+  claimsPackageScriptsWithoutEvidence,
   shouldRecoverIncompleteAssistantTurn,
   synthesizeFallbackAnswer,
   compactRecoveredAssistantContent,

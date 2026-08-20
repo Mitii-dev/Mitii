@@ -8,7 +8,8 @@ Verification gathers evidence after a change. It maps changed files to projects,
 - Maps changed files to affected projects.
 - Reads trusted manifests.
 - Discovers applicable checks.
-- Selects proportional checks for the change scope.
+- Selects proportional checks for the change scope. `test` checks (including
+  `desktop:test` / WDIO) run only when `minimumEvidence` includes `tests`.
 - Executes checks through `VerificationToolExecutorPort`.
 - Normalizes diagnostics and compares against optional baseline diagnostics.
 - Inspects diff/stale-state risk.

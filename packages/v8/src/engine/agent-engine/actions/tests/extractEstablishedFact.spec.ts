@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   dropEstablishedFactsForPaths,
+  extractCompilerErrorPaths,
   extractCompilerErrorQueue,
   extractEstablishedFact,
+  extractOutOfScopePaths,
   upsertEstablishedFact,
 } from "../extractEstablishedFact";
 
@@ -116,5 +118,20 @@ describe("extractEstablishedFact", () => {
 
     expect(facts).toHaveLength(3);
     expect(facts[0]?.id).toBe("read_file:src/2.ts");
+  });
+
+  it("extracts out-of-scope and compiler error paths for grant recovery", () => {
+    expect(
+      extractOutOfScopePaths([
+        'Path "package.json" is outside granted pathScopes.',
+        'Path "test/Desktop/pages/NavigationPage.ts" is outside granted pathScopes.',
+      ]),
+    ).toEqual(["package.json", "test/Desktop/pages/NavigationPage.ts"]);
+
+    expect(
+      extractCompilerErrorPaths(
+        'test/Desktop/pages/NavigationPage.ts(10,7): error TS2415: Class incorrectly extends base class.',
+      ),
+    ).toEqual(["test/Desktop/pages/NavigationPage.ts"]);
   });
 });

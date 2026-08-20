@@ -906,7 +906,8 @@ describe("DecisionPolicyPipeline", () => {
     });
 
     expect(narrowed.reasonCodes).toContain("grant_narrowed");
-    expect(narrowed.toolGrant.pathScopes).toEqual(["src/parser"]);
+    expect(narrowed.toolGrant.pathScopes).toEqual(["."]);
+    expect(narrowed.toolGrant.mutationPathScopes).toEqual(["src/parser"]);
     expect(narrowed.toolGrant.allowedTools).toEqual(
       decision.toolGrant.allowedTools,
     );
@@ -956,8 +957,8 @@ describe("DecisionPolicyPipeline", () => {
       ],
     });
 
-    expect(narrowed.reasonCodes).toContain("grant_narrowed");
-    expect(narrowed.toolGrant.pathScopes).toEqual(["packages/mui-builder"]);
+    expect(narrowed.reasonCodes).not.toContain("grant_narrowed");
+    expect(narrowed.toolGrant.pathScopes).toEqual(["."]);
     expect(narrowed.toolGrant.mutationPathScopes).toEqual([
       "packages/mui-builder",
     ]);
@@ -968,9 +969,9 @@ describe("DecisionPolicyPipeline", () => {
         "packages/mui-builder/src/fields/field-radio/field-radio.tsx",
       ],
     });
-    expect(again.toolGrant.pathScopes).toEqual(["packages/mui-builder"]);
+    expect(again.toolGrant.pathScopes).toEqual(["."]);
     expect(again.reasonCodes.filter((code) => code === "grant_narrowed")).toEqual(
-      ["grant_narrowed"],
+      [],
     );
   });
 
@@ -1034,5 +1035,132 @@ describe("DecisionPolicyPipeline", () => {
       true,
     );
     expect(narrowed.trace?.mutationProfile).toBe("tight");
+  });
+
+  it("routes agent run-tests asks to diagnose with process tools", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message:
+          "Can you run the tests and see what all are failing and passing ??",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "unknown",
+            clarity: "unclear",
+            recommendsRepositoryDiscovery: false,
+            recommendsVerification: false,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("diagnose");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
+    expect(decision.toolGrant.allowedTools).toContain("run_readonly_command");
+    expect(decision.toolGrant.allowedTools).not.toContain("apply_patch");
+    expect(decision.reasonCodes).toContain("verification_run_requested");
+  });
+
+  it("routes ask-mode can-you-test to diagnose instead of direct_answer", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "ask",
+        message: "can you test",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "unknown",
+            recommendsRepositoryDiscovery: false,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("diagnose");
+    expect(decision.toolGrant.allowedTools).toContain("read_file");
+    expect(decision.toolGrant.allowedTools).toContain("run_readonly_command");
+  });
+
+  it("keeps how-to-run questions on repository_answer", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "ask",
+        message: "How do I run the inventory spec?",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "unknown",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("repository_answer");
+    expect(decision.reasonCodes).not.toContain("verification_run_requested");
+  });
+
+  it("does not shrink workspace read scope after discovery on ask routes", () => {
+    const pipeline = new DecisionPolicyPipeline();
+    const decision = pipeline.decide(
+      createInput({
+        mode: "ask",
+        message: "how to run this?",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "single_location",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.toolGrant.pathScopes).toEqual(["."]);
+    const narrowed = pipeline.narrow({
+      previous: decision,
+      discoveredPaths: ["test/specs/Desktop/Smoke/inventory.spec.ts"],
+    });
+    expect(narrowed.toolGrant.pathScopes).toEqual(["."]);
+    expect(narrowed.reasonCodes).not.toContain("grant_narrowed");
+  });
+
+  it("widens mutation scopes when compiler errors land outside the grant", () => {
+    const pipeline = new DecisionPolicyPipeline();
+    const decision = pipeline.decide(
+      createInput({
+        mode: "agent",
+        message: "Fix the null crash in parse.ts",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "bugfix",
+          interactionIntent: "act",
+          taskAnalysis: {
+            scope: "unknown",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+      }),
+    );
+    const narrowed = pipeline.narrow({
+      previous: decision,
+      discoveredPaths: ["src/parser/parse.ts"],
+    });
+    expect(narrowed.toolGrant.mutationPathScopes).toEqual(["src/parser"]);
+
+    const widened = pipeline.widen({
+      previous: narrowed,
+      extraPaths: ["test/Desktop/pages/NavigationPage.ts"],
+    });
+    expect(widened.reasonCodes).toContain("grant_expanded");
+    expect(widened.toolGrant.pathScopes).toEqual(["."]);
+    expect(widened.toolGrant.mutationPathScopes).toEqual([
+      "src/parser",
+      "test/Desktop/pages",
+    ]);
   });
 });

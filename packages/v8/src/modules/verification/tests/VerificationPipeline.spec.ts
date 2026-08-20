@@ -356,6 +356,60 @@ describe("VerificationPipeline", () => {
     expect(comparison.remainingErrorCount).toBe(0);
   });
 
+  it("does not execute desktop:test / WDIO unless tests evidence is required", async () => {
+    const manifests = new InMemoryManifestReader({
+      "package.json": JSON.stringify({
+        scripts: {
+          "desktop:test": "wdio run ./wdio.desktop.conf.ts",
+        },
+      }),
+      "tsconfig.json": "{ \"compilerOptions\": { \"strict\": true } }",
+    });
+    const executed: string[][] = [];
+    const tools = createTools((input) => {
+      if (input.toolName === "run_readonly_command") {
+        const argv = (input.arguments as { argv: string[] }).argv;
+        executed.push(argv);
+        return toolResult({
+          callId: input.callId,
+          toolName: input.toolName,
+          status: "succeeded",
+          output: {
+            argv,
+            exitCode: 0,
+            stdout: "ok",
+            stderr: "",
+            truncated: false,
+          },
+        });
+      }
+      return toolResult({
+        callId: input.callId,
+        toolName: input.toolName,
+        status: "succeeded",
+        output:
+          input.toolName === "read_diagnostics"
+            ? { diagnostics: [] }
+            : { staged: [], unstaged: [], untracked: [], truncated: false },
+      });
+    });
+
+    await new VerificationPipeline({ tools, manifests }).captureBuildState(
+      baseVerificationInput({
+        changeScope: "cross_cutting",
+        verification: {
+          required: true,
+          minimumEvidence: ["diagnostics", "typecheck", "build"],
+          allowUnavailable: true,
+        },
+      }),
+      { phase: "before" },
+    );
+
+    expect(executed.some((argv) => argv.includes("desktop:test"))).toBe(false);
+    expect(executed.some((argv) => argv.includes("wdio"))).toBe(false);
+  });
+
   it("counts remaining errors only against prior error keys", () => {
     const pipeline = new VerificationPipeline({
       tools: {

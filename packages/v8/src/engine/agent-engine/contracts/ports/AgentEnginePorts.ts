@@ -82,6 +82,10 @@ export interface AgentEngineDecisionPort {
     discoveredPaths?: readonly string[];
     residualRisk?: "low" | "medium" | "high" | "critical";
   }): ExecutionDecision;
+  widen?(input: {
+    previous: ExecutionDecision;
+    extraPaths?: readonly string[];
+  }): ExecutionDecision;
 }
 
 export interface AgentEnginePromptPort {

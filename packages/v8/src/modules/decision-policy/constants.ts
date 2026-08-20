@@ -117,7 +117,11 @@ export const DECISION_REASON_CODES = [
   "process_execution_granted",
   "verification_required",
   "verification_not_required",
+  /** Agent/ask asked to run tests or inspect pass/fail — diagnose with process tools. */
+  "verification_run_requested",
   "grant_narrowed",
+  /** Read/write scopes expanded after path_out_of_scope or compiler errors. */
+  "grant_expanded",
   /** Grant expansion included network access (fetch_url/fetch_docs/web_search). */
   "network_access_granted",
   /** A host policy (planApproval: never) suppressed a plan gate risk analysis required. */

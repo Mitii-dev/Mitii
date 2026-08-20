@@ -65,7 +65,19 @@ export const NODE_SCRIPT_CANDIDATES: Record<
   typecheck: ["typecheck", "build:types", "check:types", "tsc"],
   lint: ["lint", "eslint", "check"],
   format: ["format", "format:check", "prettier"],
-  test: ["test", "test:unit", "vitest", "jest"],
+  test: [
+    "test",
+    "test:unit",
+    "test:e2e",
+    "test:desktop",
+    "desktop:test",
+    "tablet:test",
+    "cross:test",
+    "e2e",
+    "wdio",
+    "vitest",
+    "jest",
+  ],
   build: ["build", "compile", "verify"],
 };
 

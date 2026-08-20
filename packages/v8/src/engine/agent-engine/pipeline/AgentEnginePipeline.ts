@@ -108,6 +108,8 @@ import {
   extractEstablishedFact,
   extractFileReadPaths,
   extractMutationTargetPaths,
+  extractCompilerErrorPaths,
+  extractOutOfScopePaths,
   missingMustReadPaths,
   buildMustReadNudgeMessage,
   extractMemoryFileTargets,
@@ -129,6 +131,7 @@ import {
   mergePromptInstructions,
   serializeToolResultForModel,
   shouldRecoverIncompleteAssistantTurn,
+  shouldCaptureUnconditionalAgentPreflight,
   synthesizeFallbackAnswer,
   amendMessageWithPriorConversation,
   resolveLoopTurnOutcome,
@@ -676,11 +679,14 @@ export class AgentEnginePipeline {
       }
 
       // --- Agent-execute preflight snapshot (before Understand) ---
-      // Unconditional for Agent mode: no repair-intent gate, no Decision
-      // Policy grant yet (uses a conservative synthesized read-only grant).
+      // Repair/mutation asks only. Status questions and "run the tests"
+      // must not launch discovered e2e/WDIO scripts before the model runs.
       // Plan mode keeps its repair-intent-gated capture further down, once
       // understanding/decision exist.
-      if (envelope.mode === "agent") {
+      if (
+        envelope.mode === "agent" &&
+        shouldCaptureUnconditionalAgentPreflight(envelope.message)
+      ) {
         const retryRecord = await this.tryLoadVerificationRetry({
           workspaceId: resolveWorkspaceId(input),
           userMessage: extractPrimaryUserMessage(envelope.message),
@@ -1045,8 +1051,9 @@ export class AgentEnginePipeline {
         }
       }
 
-      // Agent mode already captured this unconditionally before Understand.
-      // Only Plan mode (repair-intent-gated) reaches this.
+      // Agent mode already captured this for repair/mutation asks before
+      // Understand. Only Plan mode (repair-intent-gated) reaches this when
+      // the early snapshot was skipped.
       if (!repoBuildStateBefore) {
         repoBuildStateBefore = await this.capturePreflightBuildState({
           runId,
@@ -2727,9 +2734,11 @@ export class AgentEnginePipeline {
    *  - Agent execute, `unconditional: true`, called before Decision Policy
    *    has run (no `decision`/`understanding` yet) — uses a conservative
    *    synthesized read-only grant so errors can inform classification.
+   *    The caller gates this on repair/mutation-shaped asks, not every
+   *    Agent chat.
    *  - Plan mode (repair intent), gated on `decision.reasonCodes` as before,
    *    using the real decision-derived grant. Skipped entirely when the
-   *    unconditional Agent-mode capture already ran.
+   *    Agent-mode capture already ran.
    */
   private async capturePreflightBuildState(params: {
     runId: string;
@@ -3991,6 +4000,7 @@ export class AgentEnginePipeline {
           content: turn.content,
           toolCallCount: 0,
           changedFileCount: changedFiles.length,
+          fileReadCalls: budget.snapshot().fileReadCalls,
         });
         const loopOutcome = resolveLoopTurnOutcome({
           route: decision.route,
@@ -4122,6 +4132,7 @@ export class AgentEnginePipeline {
             content: answer,
             toolCallCount: 0,
             changedFileCount: changedFiles.length,
+            fileReadCalls: budget.snapshot().fileReadCalls,
           }) ||
           (changedFiles.length > 0 &&
             (answer.trim().length === 0 ||
@@ -4197,6 +4208,7 @@ export class AgentEnginePipeline {
         | undefined;
       let successfulToolCount = 0;
       let rejectedToolCount = 0;
+      let extraAuthorityPaths: string[] = [];
       let rejectedTool:
         | {
             toolName: string;
@@ -4297,6 +4309,21 @@ export class AgentEnginePipeline {
             ),
           };
         }
+        if (result?.reasonCode === "path_out_of_scope") {
+          extraAuthorityPaths.push(...extractOutOfScopePaths(result.warnings));
+        }
+        if (
+          result &&
+          (toolCall.name === "run_readonly_command" ||
+            toolCall.name === "run_command")
+        ) {
+          extraAuthorityPaths.push(
+            ...extractCompilerErrorPaths(
+              result.output,
+              result.audit.outputPreview,
+            ),
+          );
+        }
         if (
           mutatingTool &&
           result &&
@@ -4347,6 +4374,7 @@ export class AgentEnginePipeline {
         },
         changedFiles,
         dirtyPaths,
+        extraPaths: extraAuthorityPaths,
         understanding: params.understanding,
         skillsQuery: params.skillsQuery,
         mode: params.mode,
@@ -4717,6 +4745,7 @@ export class AgentEnginePipeline {
     };
     changedFiles: readonly string[];
     dirtyPaths: readonly string[] | undefined;
+    extraPaths?: readonly string[];
     understanding?: RequestUnderstandingResult;
     skillsQuery?: string;
     mode?: "ask" | "plan" | "agent";
@@ -4753,6 +4782,35 @@ export class AgentEnginePipeline {
           truncated:
             narrowed.toolGrant.pathScopes.length > 20 ||
             narrowed.reasonCodes.length > 8
+              ? true
+              : undefined,
+          at: this.isoNow(),
+        });
+      }
+    }
+
+    const extraPaths = [...new Set(params.extraPaths ?? [])].filter(
+      (path) => path.trim().length > 0,
+    );
+    if (this.deps.decision.widen && extraPaths.length > 0) {
+      const previous = params.decisionRef.get();
+      const widened = this.deps.decision.widen({
+        previous,
+        extraPaths,
+      });
+      if (!toolGrantsEquivalent(previous.toolGrant, widened.toolGrant)) {
+        params.decisionRef.set(widened);
+        params.reasonCodes.push("grant_expanded");
+        this.emit(params.bus, {
+          type: "grant_narrowed",
+          runId: params.runId,
+          maximumWorkspaceEffect: widened.toolGrant.maximumWorkspaceEffect,
+          approvalMode: widened.toolGrant.approvalMode,
+          pathScopes: widened.toolGrant.pathScopes.slice(0, 20),
+          reasonCodes: widened.reasonCodes.slice(-8),
+          truncated:
+            widened.toolGrant.pathScopes.length > 20 ||
+            widened.reasonCodes.length > 8
               ? true
               : undefined,
           at: this.isoNow(),

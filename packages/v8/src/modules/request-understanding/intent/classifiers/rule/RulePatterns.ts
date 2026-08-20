@@ -34,7 +34,7 @@ const INTENT_PATTERNS: IntentRule[] = [
   {
     intent: "test",
     pattern:
-      /\b(?:write|add|create|generate|run|improve)\b.*\b(?:tests?|unit tests?|integration tests?|e2e tests?|test coverage|test suite)\b/i,
+      /\b(?:write|add|create|generate|run|execute|improve)\b.*\b(?:tests?|testes|unit tests?|integration tests?|e2e tests?|test coverage|test suite)\b|\b(?:which|what)\s+tests?\s+(?:are\s+)?(?:failing|passing|failed|passed)\b|\bcan you test\b/i,
     confidence: 0.86,
   },
   {

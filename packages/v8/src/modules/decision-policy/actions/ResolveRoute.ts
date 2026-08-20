@@ -86,7 +86,8 @@ export function resolveRoute(params: {
     };
   }
 
-  // Mutation must win over question-shaped phrasing ("Can you implement…?").
+  // Mutation must win over question-shaped phrasing ("Can you implement…?")
+  // and over "run tests" mentions that are part of a feature request.
   // Previously interactionIntent=question short-circuited to repository_answer
   // and stripped apply_patch even in agent mode.
   if (
@@ -98,6 +99,18 @@ export function resolveRoute(params: {
     reasonCodes.push("mutation_execute");
     return {
       route: "execute",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
+  // "Run the tests / what is failing" must not fall through to direct_answer
+  // (zero tools). Diagnose grants run_readonly_command.
+  if (looksLikeAgentVerificationRequest(message)) {
+    reasonCodes.push("verification_run_requested");
+    reasonCodes.push("diagnosis_readonly");
+    return {
+      route: "diagnose",
       runDisposition: "continue",
       reasonCodes,
     };
@@ -168,6 +181,16 @@ function resolveAskRoute(params: {
     };
   }
 
+  if (looksLikeAgentVerificationRequest(message)) {
+    reasonCodes.push("verification_run_requested");
+    reasonCodes.push("diagnosis_readonly");
+    return {
+      route: "diagnose",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
   if (
     needsRepositoryGrounding(taskAnalysis, message) ||
     primary === "docs" ||
@@ -228,6 +251,10 @@ function requiresClarification(
     looksLikeAgentMutationRequest(message) &&
     !isBareAmbiguousMutationAsk(message)
   ) {
+    return false;
+  }
+
+  if (looksLikeAgentVerificationRequest(message)) {
     return false;
   }
 
@@ -328,6 +355,59 @@ function isExplicitReadOnlyRequest(message: string): boolean {
 }
 
 /**
+ * Run/inspect the workspace test suite — not "how do I run tests" and not
+ * "write new tests".
+ */
+export function looksLikeAgentVerificationRequest(message: string): boolean {
+  if (isExplicitPlanRequest(message)) {
+    return false;
+  }
+
+  // "Implement X so I can run tests" is a write request, not a test-run ask.
+  if (looksLikeAgentMutationRequest(message)) {
+    return false;
+  }
+
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (text.length === 0) {
+    return false;
+  }
+
+  if (
+    /^(?:how\s+(?:do|does|did|can|should|would|to)|what\s+(?:is|are)\s+(?:the\s+)?(?:command|script|npm))/i.test(
+      text,
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    /\b(?:write|add|create|generate|implement)\b[\s\S]{0,48}\btests?\b/i.test(
+      text,
+    ) &&
+    !/\b(?:run|execute|launch)\b/i.test(text)
+  ) {
+    return false;
+  }
+
+  return (
+    /\b(?:run|execute|launch)\b[\s\S]{0,80}\b(?:the\s+)?(?:tests?|testes|specs?|suite|e2e|wdio)\b/i.test(
+      text,
+    ) ||
+    /\b(?:which|what)\s+tests?\s+(?:are\s+)?(?:failing|passing|failed|passed)\b/i.test(
+      text,
+    ) ||
+    /\b(?:failing|passing)\s+and\s+(?:passing|failing)\b/i.test(text) ||
+    /\b(?:npm|pnpm|yarn|bun)\s+run\s+\S*test/i.test(text) ||
+    /\bwdio\s+run\b/i.test(text) ||
+    /^(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+)?test(?:\s|$|\?)/i.test(
+      text,
+    ) ||
+    /\bcan you test\b/i.test(text)
+  );
+}
+
+/**
  * Agent-mode safety net when understanding classifies an implementation ask
  * as a "question" (common with "Can you implement…?").
  */
@@ -395,7 +475,7 @@ function looksLikeWorkspaceGroundedRequest(message: string): boolean {
   }
 
   if (
-    /\b(?:test cases?|specs?|page objects?|how to run|architecture|redundant code|working tree|file map|source files?)\b/i.test(
+    /\b(?:test cases?|specs?|page objects?|how to run|can you test|architecture|redundant code|working tree|file map|source files?)\b/i.test(
       text,
     )
   ) {

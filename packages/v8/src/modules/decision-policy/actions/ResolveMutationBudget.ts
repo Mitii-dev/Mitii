@@ -28,7 +28,7 @@ export function resolveMutationBudget(params: {
   windowPolicy?: WindowPolicy;
 }): MutationBudgetResolution {
   const { understanding, windowPolicy } = params;
-  const profile = selectProfile(understanding.taskAnalysis);
+  const profile = selectProfile(understanding);
   const reasonCode = profileToReasonCode(profile);
   const profileBudget = { ...MUTATION_BUDGET_PROFILES[profile] };
   const mutationBudget = windowPolicy
@@ -74,8 +74,9 @@ function mergeMutationBudget(
 }
 
 function selectProfile(
-  taskAnalysis: RequestUnderstandingResult["taskAnalysis"],
+  understanding: RequestUnderstandingResult,
 ): MutationBudgetProfile {
+  const taskAnalysis = understanding.taskAnalysis;
   const estimatedMax = taskAnalysis.estimatedFilesAffected?.maximum;
   const largeFileSpan =
     typeof estimatedMax === "number" &&
@@ -91,7 +92,9 @@ function selectProfile(
     taskAnalysis.complexity === "complex" ||
     taskAnalysis.complexity === "very_complex";
 
+  const primary = understanding.intent.classification.primaryTaskIntent;
   if (
+    primary === "refactor" ||
     largeFileSpan ||
     (tightScope && tightComplexity) ||
     taskAnalysis.recommendsPlanning

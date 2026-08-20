@@ -98,6 +98,47 @@ export async function discoverNodeChecks(params: {
     }
   }
 
+  if (!candidates.some((candidate) => candidate.kind === "typecheck")) {
+    const tsconfigPath = joinRoot(params.project.rootPath, "tsconfig.json");
+    const tsconfig = await params.manifests.readText(tsconfigPath);
+    if (tsconfig) {
+      const argv = ["npx", "tsc", "--noEmit"];
+      candidates.push({
+        checkId: `${params.project.projectId}:typecheck:tsc`,
+        kind: "typecheck",
+        projectId: params.project.projectId,
+        label: `npx tsc --noEmit (${params.project.projectId})`,
+        evidenceSource: `manifest:${tsconfigPath}`,
+        languageId: params.project.primaryLanguageId,
+        toolName: "run_readonly_command",
+        toolArguments: { argv },
+        argv,
+      });
+    }
+  }
+
+  if (!candidates.some((candidate) => candidate.kind === "test")) {
+    const inferred = Object.keys(scripts).find(
+      (name) =>
+        /(?:^|:)test(?:$|:)/i.test(name) &&
+        !PLACEHOLDER_TEST_SCRIPT.test(scripts[name] ?? ""),
+    );
+    if (inferred) {
+      const argv = packageManagerArgv(pm, inferred, params.project.rootPath);
+      candidates.push({
+        checkId: `${params.project.projectId}:test:${inferred}`,
+        kind: "test",
+        projectId: params.project.projectId,
+        label: `${pm} ${inferred} (${params.project.projectId})`,
+        evidenceSource: `manifest:${pkgPath}#scripts.${inferred}`,
+        languageId: params.project.primaryLanguageId,
+        toolName: "run_readonly_command",
+        toolArguments: { argv },
+        argv,
+      });
+    }
+  }
+
   if (candidates.length === 0) {
     warnings.push(
       `package.json at "${pkgPath}" for project "${params.project.projectId}" has no discoverable typecheck/lint/test/build scripts.`,
