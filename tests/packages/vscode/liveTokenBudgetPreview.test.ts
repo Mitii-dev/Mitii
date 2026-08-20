@@ -31,6 +31,7 @@ describe('live token budget preview', () => {
       expect(live.systemTokens).toBe(host.systemTokens);
       expect(live.maxUniqueFilesPerCall).toBe(host.maxUniqueFilesPerCall);
       expect(live.maxVerificationChecks).toBe(host.maxVerificationChecks);
+      expect(live.maxTasks).toBe(host.maxTasks);
     }
   });
 

@@ -8,6 +8,7 @@ import {
   inferPlanStrategyFromArtifact,
   planningInputSchema,
   serializePlanForPrompt,
+  serializePlanText,
 } from "../index";
 import type { LlmPort, ModelCapabilities } from "../../model-gateway";
 
@@ -393,6 +394,346 @@ describe("PlanningPipeline", () => {
     );
   });
 
+  it("splits a same-code diagnostic class into capped write batches", async () => {
+    const files = Array.from(
+      { length: 8 },
+      (_, index) => `packages/mui-builder/src/file${index + 1}.ts`,
+    );
+    const result = await pipeline.plan(
+      baseInput({
+        query: "Fix all the ts errors in packages/mui-builder",
+        maxFilesPerBatch: 3,
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+          interactionIntent: "plan",
+          scope: "package",
+          complexity: "simple",
+          risk: "low",
+          clarity: "clear",
+          targets: [
+            {
+              kind: "folder",
+              value: "packages/mui-builder",
+              explicit: true,
+            },
+          ],
+          constraints: [],
+          requestedOutcomes: ["Fix all TypeScript errors"],
+          recommendsPlanning: true,
+          recommendsVerification: true,
+          changeImpact: ["code"],
+        },
+        buildEvidence: {
+          phase: "before",
+          summary: "8 error(s); failed checks: typecheck",
+          failedChecks: ["typecheck"],
+          diagnostics: files.map((path) => ({
+            path,
+            severity: "error",
+            message: "Type 'number' is not assignable to type 'string'.",
+            startLine: 1,
+            source: "tsc",
+            code: "TS2322",
+          })),
+        },
+      }),
+    );
+
+    const changeSteps =
+      result.plan?.phases.find((phase) => phase.name === "Change")?.steps ?? [];
+    expect(result.strategy?.strategy).toBe("follow_evidence");
+    expect(changeSteps).toHaveLength(3);
+    expect(changeSteps.map((step) => step.targetRefs.length)).toEqual([
+      3, 3, 2,
+    ]);
+    expect(changeSteps.every((step) => step.targetRefs.length <= 3)).toBe(
+      true,
+    );
+    expect(changeSteps[0]?.targetRefs).toEqual(files.slice(0, 3));
+    expect(changeSteps[0]?.intent).toContain("(1/3)");
+    expect(changeSteps[1]?.intent).toContain("(2/3)");
+    expect(changeSteps[2]?.intent).toContain("(3/3)");
+    expect(changeSteps.map((step) => step.id)).toEqual([
+      "step-fix-diagnostic-1",
+      "step-fix-diagnostic-2",
+      "step-fix-diagnostic-3",
+    ]);
+  });
+
+  it("keeps overflow diagnostic batches on the plan when maxDiagnosticSteps is smaller than the split", async () => {
+    const files = Array.from(
+      { length: 8 },
+      (_, index) => `packages/mui-builder/src/file${index + 1}.ts`,
+    );
+    const result = await pipeline.plan(
+      baseInput({
+        query: "Fix all the ts errors in packages/mui-builder",
+        maxFilesPerBatch: 3,
+        maxDiagnosticSteps: 2,
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+          interactionIntent: "plan",
+          scope: "package",
+          complexity: "simple",
+          risk: "low",
+          clarity: "clear",
+          targets: [
+            {
+              kind: "folder",
+              value: "packages/mui-builder",
+              explicit: true,
+            },
+          ],
+          constraints: [],
+          requestedOutcomes: ["Fix all TypeScript errors"],
+          recommendsPlanning: true,
+          recommendsVerification: true,
+          changeImpact: ["code"],
+        },
+        buildEvidence: {
+          phase: "before",
+          summary: "8 error(s); failed checks: typecheck",
+          failedChecks: ["typecheck"],
+          diagnostics: files.map((path) => ({
+            path,
+            severity: "error",
+            message: "Type 'number' is not assignable to type 'string'.",
+            startLine: 1,
+            source: "tsc",
+            code: "TS2322",
+          })),
+        },
+      }),
+    );
+
+    const changeSteps =
+      result.plan?.phases.find((phase) => phase.name === "Change")?.steps ?? [];
+    expect(changeSteps).toHaveLength(3);
+    expect(changeSteps.map((step) => step.targetRefs)).toEqual([
+      files.slice(0, 3),
+      files.slice(3, 6),
+      files.slice(6, 8),
+    ]);
+  });
+
+  it("keeps more diagnostic batches on the plan than the live task list can show", async () => {
+    const files = Array.from(
+      { length: 12 },
+      (_, index) => `packages/mui-builder/src/file${index + 1}.ts`,
+    );
+    const result = await pipeline.plan(
+      baseInput({
+        query: "Fix all the ts errors in packages/mui-builder",
+        maxFilesPerBatch: 1,
+        maxDiagnosticSteps: 2,
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+          interactionIntent: "plan",
+          scope: "package",
+          complexity: "simple",
+          risk: "low",
+          clarity: "clear",
+          targets: [
+            {
+              kind: "folder",
+              value: "packages/mui-builder",
+              explicit: true,
+            },
+          ],
+          constraints: [],
+          requestedOutcomes: ["Fix all TypeScript errors"],
+          recommendsPlanning: true,
+          recommendsVerification: true,
+          changeImpact: ["code"],
+        },
+        buildEvidence: {
+          phase: "before",
+          summary: "12 error(s); failed checks: typecheck",
+          failedChecks: ["typecheck"],
+          diagnostics: files.map((path) => ({
+            path,
+            severity: "error",
+            message: "Type 'number' is not assignable to type 'string'.",
+            startLine: 1,
+            source: "tsc",
+            code: "TS2322",
+          })),
+        },
+      }),
+    );
+
+    const changeSteps =
+      result.plan?.phases.find((phase) => phase.name === "Change")?.steps ?? [];
+    expect(changeSteps).toHaveLength(12);
+    expect(changeSteps.every((step) => step.targetRefs.length === 1)).toBe(
+      true,
+    );
+  });
+
+  it("annotates follow_evidence change steps from hop-1 impact reports", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        query: "Fix all the ts errors in packages/mui-builder",
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+          interactionIntent: "plan",
+          scope: "package",
+          complexity: "simple",
+          risk: "low",
+          clarity: "clear",
+          targets: [
+            {
+              kind: "folder",
+              value: "packages/mui-builder",
+              explicit: true,
+            },
+          ],
+          constraints: [],
+          requestedOutcomes: ["Fix all TypeScript errors"],
+          recommendsPlanning: true,
+          recommendsVerification: true,
+          changeImpact: ["code"],
+        },
+        buildEvidence: {
+          phase: "before",
+          summary: "1 error(s); failed checks: typecheck",
+          failedChecks: ["typecheck"],
+          diagnostics: [
+            {
+              path: "packages/mui-builder/src/Button.tsx",
+              severity: "error",
+              message: "Type 'number' is not assignable to type 'string'.",
+              startLine: 42,
+              source: "tsc",
+              code: "TS2322",
+            },
+          ],
+        },
+        impactReports: [
+          {
+            seedPath: "packages/mui-builder/src/Button.tsx",
+            mustRead: [
+              "packages/mui-builder/src/Button.tsx",
+              "packages/mui-builder/src/types.ts",
+            ],
+            affected: ["packages/mui-builder/src/Button.test.tsx"],
+          },
+        ],
+      }),
+    );
+
+    const changeSteps =
+      result.plan?.phases.find((phase) => phase.name === "Change")?.steps ?? [];
+    const verifySteps =
+      result.plan?.phases.find((phase) => phase.name === "Verify")?.steps ?? [];
+
+    expect(result.strategy?.strategy).toBe("follow_evidence");
+    expect(result.reasonCodes).toContain("plan_working_set_applied");
+    expect(changeSteps[0]?.mustRead).toEqual([
+      "packages/mui-builder/src/types.ts",
+    ]);
+    expect(changeSteps[0]?.affected).toEqual([
+      "packages/mui-builder/src/Button.test.tsx",
+    ]);
+    expect(serializePlanText(result.plan!)).toContain(
+      "need: packages/mui-builder/src/types.ts",
+    );
+    expect(verifySteps.some((step) => step.mustRead || step.affected)).toBe(
+      false,
+    );
+  });
+
+  it("annotates discover_and_plan change steps from hop-1 impact reports", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        discoveryBrief: {
+          schemaVersion: 1,
+          objective: "Add retry around the payment client",
+          filesRead: [
+            {
+              path: "src/payments/client.ts",
+              reason: "Outbound payment entrypoint",
+            },
+          ],
+          targets: [
+            {
+              kind: "file",
+              value: "src/payments/client.ts",
+              reason: "Observed call site",
+              explicit: false,
+            },
+          ],
+          proposedChangeSurfaces: [
+            {
+              path: "src/payments/client.ts",
+              actionHint: "Change",
+              riskLevel: "medium",
+              evidence: "Retries are missing around createCharge",
+            },
+          ],
+          discoveredConstraints: [],
+          verificationHints: [],
+          openQuestions: [],
+          confidence: "high",
+        },
+        strategyOverride: {
+          schemaVersion: 1,
+          strategy: "discover_and_plan",
+          rationale: "Discovery already identified concrete targets.",
+          skipDiscover: true,
+          useBuildEvidence: false,
+        },
+        impactReports: [
+          {
+            seedPath: "src/payments/client.ts",
+            mustRead: ["src/payments/client.ts", "src/payments/types.ts"],
+            affected: ["src/payments/client.test.ts"],
+          },
+        ],
+      }),
+    );
+
+    const changeSteps =
+      result.plan?.phases.find((phase) => phase.name === "Change")?.steps ?? [];
+    expect(result.strategy?.strategy).toBe("discover_and_plan");
+    expect(result.reasonCodes).toContain("plan_working_set_applied");
+    expect(changeSteps[0]?.mustRead).toEqual(["src/payments/types.ts"]);
+    expect(changeSteps[0]?.affected).toEqual(["src/payments/client.test.ts"]);
+  });
+
+  it("does not annotate plan_from_ask steps even when impact reports are present", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        strategyOverride: {
+          schemaVersion: 1,
+          strategy: "plan_from_ask",
+          rationale: "Host override for a prose-first plan.",
+          skipDiscover: true,
+          useBuildEvidence: false,
+        },
+        impactReports: [
+          {
+            seedPath: "src/auth",
+            mustRead: ["src/auth/types.ts"],
+            affected: ["src/app.ts"],
+          },
+        ],
+      }),
+    );
+
+    expect(result.strategy?.strategy).toBe("plan_from_ask");
+    expect(result.reasonCodes).not.toContain("plan_working_set_applied");
+    expect(
+      result.plan?.phases
+        .flatMap((phase) => phase.steps)
+        .some((step) => (step.mustRead?.length ?? 0) > 0),
+    ).toBe(false);
+  });
+
   it("does not let out-of-scope build diagnostics hijack a feature plan", async () => {
     const result = await pipeline.plan(
       baseInput({
@@ -513,6 +854,7 @@ describe("PlanningPipeline", () => {
     const text = serializePlanForPrompt(result.plan!);
     expect(text).toContain('trust="instruction"');
     expect(text).toContain("Objective:");
+    expect(text).toContain("write:");
     const answer = formatPlanAsAnswer(result.plan!);
     expect(answer).toContain("Plan:");
     expect(answer).toContain("Acceptance:");

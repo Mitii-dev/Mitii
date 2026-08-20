@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  CHANGE_IMPACT_DIRECTIONS,
   CHANGE_IMPACT_EDGE_TYPES,
   CHANGE_IMPACT_POLICY,
   CHANGE_IMPACT_STATUSES,
@@ -187,6 +188,7 @@ export const analyzeChangeImpactInputSchema = z
       .max(CHANGE_IMPACT_POLICY.maximumAffectedNodesCap)
       .optional(),
     includePackages: z.boolean().optional(),
+    direction: z.enum(CHANGE_IMPACT_DIRECTIONS).optional(),
     edgeTypes: z
       .array(z.enum(CHANGE_IMPACT_EDGE_TYPES))
       .min(1)

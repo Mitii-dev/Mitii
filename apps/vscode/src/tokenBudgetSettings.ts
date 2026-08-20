@@ -762,6 +762,7 @@ export function toTokenBudgetPreview(
     maxPatchPayloadCharacters: policy.mutation.maxPatchPayloadCharacters,
     requireBatchedExecution: policy.mutation.requireBatchedExecution,
     maxDiagnosticSteps: policy.planning.maxDiagnosticSteps,
+    maxTasks: policy.taskList.maxTasks,
     maxSkills: policy.skills.maxSkills,
     maxVerificationChecks: policy.maxVerificationChecks,
     visiblePlanAffordable: policy.planning.visiblePlanAffordable,

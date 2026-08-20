@@ -89,6 +89,14 @@ export const windowPolicySkillsSchema = z
 
 export type WindowPolicySkills = z.infer<typeof windowPolicySkillsSchema>;
 
+export const windowPolicyTaskListSchema = z
+  .object({
+    maxTasks: z.number().int().positive(),
+  })
+  .strict();
+
+export type WindowPolicyTaskList = z.infer<typeof windowPolicyTaskListSchema>;
+
 /**
  * Derived allocation for one advertised context window.
  * Consumers read named fields; they must not re-derive ratios.
@@ -108,6 +116,7 @@ export const windowPolicySchema = z
     planning: windowPolicyPlanningSchema,
     run: windowPolicyRunSchema,
     skills: windowPolicySkillsSchema,
+    taskList: windowPolicyTaskListSchema,
     maxVerificationChecks: z.number().int().positive(),
     resolvedPolicy: windowBudgetPolicySchema,
     reasonCodes: z.array(windowBudgetReasonCodeSchema),

@@ -53,6 +53,11 @@ function planWithSteps(stepCount: number): PlanArtifact {
 describe("deriveTaskListFromPlan", () => {
   const pipeline = new TaskListPipeline();
 
+  it("respects a window-scaled live task cap above the default", () => {
+    const result = pipeline.deriveFromPlan(planWithSteps(24), 12);
+    expect(result.taskList?.items).toHaveLength(12);
+  });
+
   it("activates the first derived task and leaves the rest pending", () => {
     const result = pipeline.deriveFromPlan(planWithSteps(24));
     expect(result.status).toBe("applied");
@@ -233,6 +238,59 @@ describe("deriveTaskListFromPlan", () => {
     ]);
     expect(result.taskList?.items[0]?.detail).toContain("Scope: src/widget.ts");
     expect(result.taskList?.items[0]?.sourceRef).toBe("change-widget");
+    expect(result.taskList?.items[0]?.write).toEqual(["src/widget.ts"]);
+  });
+
+  it("copies every plan step targetRef onto the derived write list", () => {
+    const plan = planWithSteps(1);
+    plan.phases[0] = {
+      ...plan.phases[0]!,
+      name: "Change",
+      steps: [
+        {
+          id: "fix-login",
+          intent: "Fix TS2322 in Login.ts",
+          targetRefs: ["src/auth/Login.ts", "src/auth/types.ts", "src/auth/Login.ts"],
+          actionSummary: "Align the login payload type",
+          expectedOutcome: "TS2322 is gone",
+          riskLevel: "low",
+        },
+      ],
+    };
+    const result = pipeline.deriveFromPlan(plan);
+    expect(result.taskList?.items[0]?.write).toEqual([
+      "src/auth/Login.ts",
+      "src/auth/types.ts",
+    ]);
+    expect(result.taskList?.items[0]?.detail).toContain(
+      "Scope: src/auth/Login.ts, src/auth/types.ts",
+    );
+  });
+
+  it("copies plan step mustRead and affected onto the derived task item", () => {
+    const plan = planWithSteps(1);
+    plan.phases[0] = {
+      ...plan.phases[0]!,
+      name: "Change",
+      steps: [
+        {
+          id: "fix-login",
+          intent: "Fix TS2322 in Login.ts",
+          targetRefs: ["src/auth/Login.ts"],
+          mustRead: ["src/auth/types.ts", "src/auth/Login.ts"],
+          affected: ["src/auth/LoginForm.tsx"],
+          actionSummary: "Align the login payload type",
+          expectedOutcome: "TS2322 is gone",
+          riskLevel: "low",
+        },
+      ],
+    };
+    const result = pipeline.deriveFromPlan(plan);
+    expect(result.taskList?.items[0]?.write).toEqual(["src/auth/Login.ts"]);
+    expect(result.taskList?.items[0]?.mustRead).toEqual(["src/auth/types.ts"]);
+    expect(result.taskList?.items[0]?.affected).toEqual([
+      "src/auth/LoginForm.tsx",
+    ]);
   });
 
   it("falls back to deferred discovery when no preferred work exists", () => {

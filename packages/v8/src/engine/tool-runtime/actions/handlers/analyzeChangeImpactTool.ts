@@ -11,7 +11,7 @@ export const analyzeChangeImpactTool: RegisteredTool = {
     name: "analyze_change_impact",
     effects: ["workspace_read"],
     description:
-      "Estimate what depends on a file or symbol if it changes. Walks callers, importers, references, and package dependents in the repository graph. Use for blast-radius and 'what breaks if I change X' questions; respect truncation and reasonCodes.",
+      "Estimate what depends on a file or symbol, or what that file depends on. Default direction is dependents (who breaks if this changes). Set direction=dependencies for hop-bounded imports. Walks callers, importers, references, and package edges in the repository graph. Respect truncation and reasonCodes.",
     inputSchema: analyzeChangeImpactInputSchema,
     outputSchema: analyzeChangeImpactOutputSchema,
     modelInputSchema: {
@@ -38,6 +38,12 @@ export const analyzeChangeImpactTool: RegisteredTool = {
         maximumHops: { type: "integer", minimum: 1, maximum: 6 },
         maximumAffectedNodes: { type: "integer", minimum: 1, maximum: 200 },
         includePackages: { type: "boolean" },
+        direction: {
+          type: "string",
+          enum: ["dependents", "dependencies"],
+          description:
+            "dependents = who breaks if this changes (default). dependencies = what this file imports / depends on.",
+        },
         edgeTypes: {
           type: "array",
           items: {

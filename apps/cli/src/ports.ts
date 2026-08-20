@@ -164,6 +164,9 @@ export function createCliClient(options: {
   const fileSystem = new NodeWorkspaceFileSystemAdapter();
   const search = createOptionalSearchPort(env);
   const git = new NodeGitAdapter();
+  const repoGraphs = createHostRepositoryGraphPort({
+    workspaceRoot: options.cwd,
+  });
   const tools = new ToolRuntimePipeline({
     fileSystem,
     process: new NodeProcessAdapter(),
@@ -172,9 +175,7 @@ export function createCliClient(options: {
     codeNavigation: createHostCodeNavigationPort({
       workspaceRoot: options.cwd,
     }),
-    repoGraphs: createHostRepositoryGraphPort({
-      workspaceRoot: options.cwd,
-    }),
+    repoGraphs,
     ...(search ? { search } : {}),
   });
   const verification = new VerificationPipeline({
@@ -216,6 +217,7 @@ export function createCliClient(options: {
     enableInMemoryCheckpoints: false,
     checkpointStore: createWorkspaceCheckpointStore(options.cwd),
     tools,
+    repoGraphs,
     verification,
     taskListAutoAdvance: env.MITII_TASK_LIST_AUTO_ADVANCE !== '0',
     skillsCatalog: createFileSystemSkillsCatalog({

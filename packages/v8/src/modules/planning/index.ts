@@ -17,9 +17,12 @@ export {
   DEFAULT_MAX_OPEN_QUESTIONS,
 } from "./defaults";
 
+export { PLANNING_WORKING_SET_POLICY } from "./policy";
+
 export { PlanningPipeline } from "./pipeline/PlanningPipeline";
 export {
   compileDiscoveryBrief,
+  collectDiscoveryImpactSeedPaths,
   formatPlanAsAnswer,
   inferPlanStrategyFromArtifact,
   serializePlanForPrompt,
@@ -39,6 +42,7 @@ export {
   explorationDepthSchema,
   planningScopedRepoMapSchema,
   planningBuildEvidenceSchema,
+  planningImpactReportSchema,
   DISCOVERY_OBSERVATION_LIMITS,
   discoveryBriefSchema,
   discoveryObservationSchema,
@@ -66,6 +70,7 @@ export type {
   ExplorationDepth,
   PlanningScopedRepoMap,
   PlanningBuildEvidence,
+  PlanningImpactReport,
   DiscoveryBrief,
   DiscoveryObservation,
   DiscoveryFileRef,

@@ -8,6 +8,7 @@ import {
   DEFAULT_MAX_STEPS_PER_PHASE,
   DEFAULT_PLAN_CHARACTERS_PER_TOKEN,
 } from "../defaults";
+import { PLANNING_WORKING_SET_POLICY } from "../policy";
 
 export interface CompactPlanResult {
   plan: PlanArtifact;
@@ -37,10 +38,14 @@ export function compactPlan(params: {
     return { plan, usedTokens, compacted, reasonCodes };
   }
 
-  // Drop alternatives first, then trim phases/steps.
-  if (plan.alternatives.length > 0) {
-    plan = { ...plan, alternatives: [] };
-    compacted = true;
+  // Drop recoverable prose first so step targetRefs still fit the budget.
+  plan = dropPlanProse(plan);
+  compacted = true;
+  serialized = serializePlanText(plan);
+  usedTokens = estimateTokens(serialized, charactersPerToken);
+  if (usedTokens <= params.budgetTokens) {
+    reasonCodes.push("plan_compacted");
+    return { plan, usedTokens, compacted, reasonCodes };
   }
 
   if (plan.phases.length > DEFAULT_MAX_PLAN_PHASES) {
@@ -48,42 +53,46 @@ export function compactPlan(params: {
       ...plan,
       phases: plan.phases.slice(0, DEFAULT_MAX_PLAN_PHASES),
     };
-    compacted = true;
   }
 
   plan = {
     ...plan,
     phases: plan.phases.map((phase) => ({
       ...phase,
-      steps: phase.steps.slice(0, DEFAULT_MAX_STEPS_PER_PHASE).map((step) => ({
-        ...step,
-        actionSummary: truncate(step.actionSummary, 240),
-        expectedOutcome: truncate(step.expectedOutcome, 160),
-        intent: truncate(step.intent, 160),
-      })),
+      steps: capCompactedPhaseSteps(phase.steps).map((step) => {
+        const diagnostic = isDiagnosticBatchStep(step.id);
+        return {
+          ...step,
+          actionSummary: truncate(step.actionSummary, diagnostic ? 80 : 240),
+          expectedOutcome: truncate(step.expectedOutcome, diagnostic ? 80 : 160),
+          intent: truncate(step.intent, 160),
+        };
+      }),
       purpose: truncate(phase.purpose, 200),
-      successCriteria: phase.successCriteria.slice(0, 4),
+      successCriteria: phase.successCriteria.slice(0, 2),
     })),
-    assumptions: plan.assumptions.slice(0, 4).map((a) => truncate(a, 200)),
-    openQuestions: plan.openQuestions.slice(0, 3).map((q) => truncate(q, 200)),
-    risks: plan.risks.slice(0, 4).map((risk) => ({
-      ...risk,
-      summary: truncate(risk.summary, 200),
-      mitigation: risk.mitigation
-        ? truncate(risk.mitigation, 160)
-        : undefined,
-    })),
-    rollback: plan.rollback ? truncate(plan.rollback, 280) : undefined,
   };
-  compacted = true;
 
   serialized = serializePlanText(plan);
   usedTokens = estimateTokens(serialized, charactersPerToken);
-  if (compacted) {
-    reasonCodes.push("plan_compacted");
-  }
+  reasonCodes.push("plan_compacted");
 
   return { plan, usedTokens, compacted, reasonCodes };
+}
+
+function dropPlanProse(plan: PlanArtifact): PlanArtifact {
+  return {
+    ...plan,
+    alternatives: [],
+    rollback: undefined,
+    assumptions: plan.assumptions.slice(0, 2).map((item) => truncate(item, 160)),
+    openQuestions: plan.openQuestions.slice(0, 2).map((item) => truncate(item, 160)),
+    risks: plan.risks.slice(0, 2).map((risk) => ({
+      ...risk,
+      summary: truncate(risk.summary, 160),
+      mitigation: risk.mitigation ? truncate(risk.mitigation, 120) : undefined,
+    })),
+  };
 }
 
 export function serializePlanText(plan: PlanArtifact): string {
@@ -121,6 +130,17 @@ export function serializePlanText(plan: PlanArtifact): string {
       lines.push(
         `   ${phaseIndex + 1}.${stepIndex + 1}. ${step.intent}: ${step.actionSummary}`,
       );
+      if (step.targetRefs.length > 0) {
+        lines.push(
+          `       write: ${step.targetRefs.slice(0, 8).join(", ")}`,
+        );
+      }
+      if (step.mustRead && step.mustRead.length > 0) {
+        lines.push(`       need: ${step.mustRead.join(", ")}`);
+      }
+      if (step.affected && step.affected.length > 0) {
+        lines.push(`       affected: ${step.affected.join(", ")}`);
+      }
       if (step.expectedOutcome) {
         lines.push(`       Done when: ${step.expectedOutcome}`);
       }
@@ -251,6 +271,24 @@ export function inferPlanStrategyFromArtifact(
 
 function estimateTokens(text: string, charactersPerToken: number): number {
   return Math.max(1, Math.ceil(text.length / charactersPerToken));
+}
+
+function isDiagnosticBatchStep(id: string): boolean {
+  return id.startsWith("step-fix-diagnostic-");
+}
+
+function capCompactedPhaseSteps<T extends { id: string }>(steps: readonly T[]): T[] {
+  const diagnostic = steps.filter((step) => isDiagnosticBatchStep(step.id));
+  const other = steps.filter((step) => !isDiagnosticBatchStep(step.id));
+  const keptDiagnostic = diagnostic.slice(
+    0,
+    PLANNING_WORKING_SET_POLICY.maxBatchesOnPlan,
+  );
+  const remaining = Math.max(0, 20 - keptDiagnostic.length);
+  return [
+    ...keptDiagnostic,
+    ...other.slice(0, Math.min(DEFAULT_MAX_STEPS_PER_PHASE, remaining)),
+  ];
 }
 
 function truncate(value: string, max: number): string {

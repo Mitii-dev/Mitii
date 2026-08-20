@@ -21,6 +21,12 @@ export const AGENT_ENGINE_THRESHOLDS = {
    */
   maxUnfulfilledExecuteRecoveries: 1,
   /**
+   * One withheld mutation when the active task's mustRead files are not yet
+   * in this-loop reads or established facts. A second attempt proceeds so
+   * this does not fight unfulfilled_execute recovery.
+   */
+  maxMustReadNudges: 1,
+  /**
    * Extra grace turns after the first-mutation nudge when the model keeps
    * reading files instead of patching. Kept separate from text-only
    * unfulfilled execute so essays / rejected-tool loops do not get looser.

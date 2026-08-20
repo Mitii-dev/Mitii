@@ -73,6 +73,7 @@ export async function executeAnalyzeChangeImpact(params: {
     ...(typeof input.includePackages === "boolean"
       ? { includePackages: input.includePackages }
       : {}),
+    ...(input.direction ? { direction: input.direction } : {}),
   } satisfies ChangeImpactInput);
 
   const parsed = changeImpactResultSchema.parse(result);

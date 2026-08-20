@@ -56,8 +56,10 @@ describe("deriveWindowPolicy", () => {
       contextWindowTokens: 200_000,
     });
     expect(at30k.mutation.maxUniqueFilesPerCall).toBe(7);
+    expect(at30k.taskList.maxTasks).toBe(8);
     expect(at30k.maximumOutputTokens).toBe(10_240);
     expect(at200k.mutation.maxUniqueFilesPerCall).toBe(8);
+    expect(at200k.taskList.maxTasks).toBeGreaterThanOrEqual(10);
     expect(at200k.reasonCodes).toContain("mutation_effort_capped");
     expect(at200k.reasonCodes).toContain("effort_medium");
     expect(at200k.compaction.autoMaxTokens).toBe(32_000);

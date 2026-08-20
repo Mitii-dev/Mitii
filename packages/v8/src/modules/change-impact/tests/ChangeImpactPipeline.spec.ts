@@ -80,6 +80,57 @@ describe("ChangeImpactPipeline", () => {
     });
   });
 
+  it("walks forward import dependencies for file seeds", () => {
+    const graph = createGraph({
+      nodes: [
+        fileNode("file:core", "src/core.ts"),
+        fileNode("file:types", "src/types.ts"),
+        fileNode("file:consumer", "src/consumer.ts"),
+      ],
+      edges: [
+        edge("e1", "imports", "file:core", "file:types", 4, 2),
+        edge("e2", "imports", "file:consumer", "file:core", 3, 1),
+      ],
+    });
+
+    const result = new ChangeImpactPipeline().analyze({
+      schemaVersion: CHANGE_IMPACT_SCHEMA_VERSION,
+      seed: { kind: "file", relativePath: "src/core.ts" },
+      direction: "dependencies",
+      repoGraph: graph,
+      maximumHops: 1,
+      includePackages: false,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.direction).toBe("dependencies");
+    expect(result.affected.map((node) => node.relativePath)).toEqual([
+      "src/types.ts",
+    ]);
+    expect(result.affectedFiles.map((file) => file.relativePath)).not.toContain(
+      "src/consumer.ts",
+    );
+  });
+
+  it("reports no_dependencies when the seed imports nothing", () => {
+    const graph = createGraph({
+      nodes: [fileNode("file:core", "src/core.ts")],
+      edges: [],
+    });
+
+    const result = new ChangeImpactPipeline().analyze({
+      schemaVersion: CHANGE_IMPACT_SCHEMA_VERSION,
+      seed: { kind: "file", relativePath: "src/core.ts" },
+      direction: "dependencies",
+      repoGraph: graph,
+      includePackages: false,
+    });
+
+    expect(result.status).toBe("empty");
+    expect(result.reasonCodes).toContain("no_dependencies");
+    expect(result.reasonCodes).not.toContain("no_dependents");
+  });
+
   it("reports package dependents when requested", () => {
     const graph = createGraph({
       nodes: [

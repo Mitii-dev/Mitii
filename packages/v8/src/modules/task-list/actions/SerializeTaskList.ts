@@ -54,9 +54,73 @@ export function serializeTaskListForPrompt(taskList: TaskList): string {
   ];
   for (const item of taskList.items) {
     lines.push(`- [${STATUS_MARK[item.status]}] ${item.id}: ${item.title}`);
+    if (item.status === "active") {
+      for (const line of activeWorkingSetLines(item)) {
+        lines.push(line);
+      }
+    }
   }
   lines.push("</task_list>");
   return lines.join("\n");
+}
+
+export const WORKING_SET_MARKER = '<working_set trust="instruction">';
+
+/**
+ * Checklist rows only (no outer wrapper). Used by the unified recoverability
+ * block and the legacy loop serializer.
+ */
+export function serializeWorkingSetChecklistLines(taskList?: TaskList): string[] {
+  if (!taskList || taskList.items.length === 0) {
+    return [];
+  }
+  const lines = [
+    "Live checklist. Active row is the current batch — load its write files before patching.",
+  ];
+  for (const item of taskList.items) {
+    const suffix =
+      item.status === "active"
+        ? activeWorkingSetLines(item)
+            .map((line) => line.trim())
+            .join(" ")
+        : "";
+    lines.push(
+      `- [${STATUS_MARK[item.status]}] ${item.id}: ${item.title}${
+        suffix ? ` ${suffix}` : ""
+      }`,
+    );
+  }
+  return lines;
+}
+
+/**
+ * Trailing live table for the model loop. Compaction may drop this; Engine
+ * re-upserts it at the end of messages before each model call.
+ */
+export function serializeWorkingSetForLoop(taskList?: TaskList): string | undefined {
+  const checklist = serializeWorkingSetChecklistLines(taskList);
+  if (checklist.length === 0) {
+    return undefined;
+  }
+  return [
+    WORKING_SET_MARKER,
+    ...checklist,
+    "</working_set>",
+  ].join("\n");
+}
+
+function activeWorkingSetLines(item: TaskItem): string[] {
+  const lines: string[] = [];
+  if (item.write && item.write.length > 0) {
+    lines.push(`  write: ${item.write.join(", ")}`);
+  }
+  if (item.mustRead && item.mustRead.length > 0) {
+    lines.push(`  need: ${item.mustRead.join(", ")}`);
+  }
+  if (item.affected && item.affected.length > 0) {
+    lines.push(`  affected: ${item.affected.join(", ")}`);
+  }
+  return lines;
 }
 
 /**

@@ -208,6 +208,9 @@ export async function createVscodeClient(
         languageServer: createVsCodeCodeNavigationPort(vs, workspaceRoot),
       })
     : undefined;
+  const repoGraphs = workspaceRoot
+    ? createHostRepositoryGraphPort({ workspaceRoot })
+    : undefined;
   const tools = workspaceRoot && fileSystem
     ? new ToolRuntimePipeline(
         {
@@ -218,7 +221,7 @@ export async function createVscodeClient(
           diagnostics: new VscodeDiagnosticsPort(vs, workspaceRoot),
           ...(search ? { search } : {}),
           ...(codeNavigation ? { codeNavigation } : {}),
-          repoGraphs: createHostRepositoryGraphPort({ workspaceRoot }),
+          ...(repoGraphs ? { repoGraphs } : {}),
         },
         { registry: mcpManager.createRegistry() },
       )
@@ -270,6 +273,7 @@ export async function createVscodeClient(
     repositoryState,
     repositoryContext,
     tools,
+    ...(repoGraphs ? { repoGraphs } : {}),
     verification,
     toolDefinitions,
     enableInMemoryCheckpoints: false,

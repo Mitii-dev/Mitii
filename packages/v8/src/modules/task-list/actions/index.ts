@@ -1,5 +1,6 @@
 export { applyTaskListUpdate, isTerminalTaskStatus } from "./ApplyTaskListUpdate";
 export { deriveTaskListFromPlan } from "./DeriveTaskListFromPlan";
+export { refillTaskListFromPlan } from "./RefillTaskListFromPlan";
 export {
   createDiscoveryTaskList,
   isDiscoveryTaskList,
@@ -8,4 +9,10 @@ export {
   parseTaskListMarkdown,
   serializeTaskListForPrompt,
   serializeTaskListMarkdown,
+  serializeWorkingSetForLoop,
+  WORKING_SET_MARKER,
 } from "./SerializeTaskList";
+export {
+  collectCompletedTaskPaths,
+  taskItemPaths,
+} from "./TaskItemPaths";

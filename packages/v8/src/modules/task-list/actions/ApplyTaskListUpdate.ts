@@ -1,9 +1,8 @@
 import { TASK_LIST_SCHEMA_VERSION } from "../constants";
 import {
   DEFAULT_MAX_TASK_TITLE_CHARS,
-  DEFAULT_MAX_TASKS,
 } from "../defaults";
-import { TASK_LIST_POLICY } from "../policy";
+import { resolveMaxTasks, TASK_LIST_POLICY } from "../policy";
 import type {
   TaskItem,
   TaskItemStatus,
@@ -43,6 +42,7 @@ export function applyTaskListUpdate(
       input.source,
       input.purpose,
       input.title,
+      input.maxTasks,
     );
     if (!built.ok) {
       return parsedResult({
@@ -129,16 +129,16 @@ function buildItems(
   source: TaskList["source"],
   purpose?: TaskList["purpose"],
   title?: string,
+  maxTasks?: number,
 ):
   | { ok: true; taskList: TaskList; warnings: string[] }
   | { ok: false; warnings: string[] } {
+  const liveMaxTasks = resolveMaxTasks(maxTasks);
   const warnings: string[] = [];
   const used = new Set<string>();
   const items: TaskItem[] = [];
 
-  for (const [index, draft] of drafts
-    .slice(0, TASK_LIST_POLICY.maxTasks)
-    .entries()) {
+  for (const [index, draft] of drafts.slice(0, liveMaxTasks).entries()) {
     const title = draft.title.trim().slice(0, DEFAULT_MAX_TASK_TITLE_CHARS);
     if (!title) {
       warnings.push(`Skipped empty task title at index ${index}.`);
@@ -168,7 +168,7 @@ function buildItems(
     source,
     ...(purpose ? { purpose } : {}),
     ...(title ? { title } : {}),
-    items: items.slice(0, DEFAULT_MAX_TASKS),
+    items: items.slice(0, liveMaxTasks),
   };
   const validated = taskListSchema.safeParse(taskList);
   if (!validated.success) {
@@ -216,9 +216,25 @@ function sameList(left: TaskList, right: TaskList): boolean {
       item.title === other.title &&
       item.status === other.status &&
       item.detail === other.detail &&
-      item.sourceRef === other.sourceRef
+      item.sourceRef === other.sourceRef &&
+      samePathList(item.write, other.write) &&
+      samePathList(item.mustRead, other.mustRead) &&
+      samePathList(item.affected, other.affected)
     );
   });
+}
+
+function samePathList(
+  left: readonly string[] | undefined,
+  right: readonly string[] | undefined,
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right || left.length !== right.length) {
+    return left === undefined && right === undefined;
+  }
+  return left.every((path, index) => path === right[index]);
 }
 
 function parsedResult(value: {

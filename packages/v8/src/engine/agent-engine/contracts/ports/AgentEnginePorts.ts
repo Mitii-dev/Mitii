@@ -43,6 +43,7 @@ import type {
   ToolExecuteOptions,
   ToolInvocationInput,
   ToolResult,
+  RepositoryGraphPort,
 } from "../../../tool-runtime";
 import type {
   RepoBuildState,
@@ -169,6 +170,12 @@ export interface AgentEngineDependencies {
   tools?: AgentEngineToolRuntimePort;
   verification?: AgentEngineVerificationPort;
   checkpointStore?: AgentEngineRunCheckpointStorePort;
+  /**
+   * Optional published RepoGraph port. When present, follow_evidence and
+   * discover_and_plan collect hop-1 mustRead/affected reports before drafting.
+   * Omitting leaves those fields empty.
+   */
+  repoGraphs?: RepositoryGraphPort;
   /** Defaults to policy DEFAULT_TOOL_DEFINITIONS when omitted. */
   toolDefinitions?: readonly ModelToolDefinition[];
   /**

@@ -5,6 +5,7 @@ export {
   explorationDepthSchema,
   planningScopedRepoMapSchema,
   planningBuildEvidenceSchema,
+  planningImpactReportSchema,
 } from "./input/PlanningInput";
 export type {
   PlanningInput,
@@ -14,6 +15,7 @@ export type {
   ExplorationDepth,
   PlanningScopedRepoMap,
   PlanningBuildEvidence,
+  PlanningImpactReport,
 } from "./input/PlanningInput";
 
 export {

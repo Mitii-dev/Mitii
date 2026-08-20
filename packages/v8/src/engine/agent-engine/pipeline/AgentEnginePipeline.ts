@@ -23,6 +23,7 @@ import {
   DEFAULT_PLAN_CHARACTERS_PER_TOKEN,
   PLANNING_SCHEMA_VERSION,
   compileDiscoveryBrief,
+  collectDiscoveryImpactSeedPaths,
   formatPlanAsAnswer,
   inferPlanStrategyFromArtifact,
   planningInputSchema,
@@ -71,6 +72,7 @@ import {
   TOOL_RUNTIME_SCHEMA_VERSION,
   fingerprintToolCall,
   isPatchTargetedDiscoveryReason,
+  toolResultSchema,
 } from "../../tool-runtime";
 import type { ToolApprovalToken, ToolResult } from "../../tool-runtime";
 import {
@@ -94,17 +96,20 @@ import {
   buildClarificationPayload,
   buildExplorationStallNudge,
   buildIncompleteAnswerRecoveryMessage,
-  buildMutationBudgetInstruction,
   buildOutputTruncationRecovery,
   buildPreflightDiagnosticRepairInstruction,
   buildVerificationRepairPrompt,
   clampTurnMaximumOutputTokens,
   compactModelLoopMessages,
+  stubToolResultsForCompletedPaths,
   decideVerificationGate,
   estimateModelMessagesTokens,
   dropEstablishedFactsForPaths,
   extractEstablishedFact,
   extractFileReadPaths,
+  extractMutationTargetPaths,
+  missingMustReadPaths,
+  buildMustReadNudgeMessage,
   extractMemoryFileTargets,
   filterToolDefinitions,
   isExplorationRereadHeavy,
@@ -116,6 +121,7 @@ import {
   isEmptyAssistantTurn,
   isTransitionalAssistantAnswer,
   compactRecoveredAssistantContent,
+  collectPlanningImpactReports,
   selectUserFacingLoopAnswer,
   mapContextToPromptSlice,
   mapUnderstandingToPlanningEvidence,
@@ -179,15 +185,18 @@ import {
 import { describeCaughtError } from "../internal/describeCaughtError";
 import type { PendingApprovalState } from "../internal/RunCheckpoint";
 import {
-  appendTaskListToPlanText,
   applyUpdateTodosArguments,
   attachTaskListTool,
   buildUpdateTodosToolResult,
   canonicalizeUpdateTodosToolName,
   isUpdateTodosTool,
   maybeAutoAdvanceTaskList,
+  maybeRefillTaskListFromPlan,
+  prepareRepairWorkingSet,
   progressOf,
   seedTaskListFromPlan,
+  upsertTrailingWorkingSet,
+  collectCompletedTaskPaths,
   type TaskListRef,
 } from "../internal/taskListRuntime";
 import {
@@ -324,6 +333,7 @@ export class AgentEnginePipeline {
       | "checkpointStore"
       | "toolDefinitions"
       | "taskListAutoAdvance"
+      | "repoGraphs"
     >;
 
   constructor(dependencies: AgentEngineDependencies) {
@@ -354,6 +364,7 @@ export class AgentEnginePipeline {
       tools: dependencies.tools,
       verification: dependencies.verification,
       checkpointStore: dependencies.checkpointStore,
+      repoGraphs: dependencies.repoGraphs,
       toolDefinitions: dependencies.toolDefinitions,
       taskListAutoAdvance: dependencies.taskListAutoAdvance,
       clock: dependencies.clock ?? { now: () => new Date() },
@@ -520,6 +531,7 @@ export class AgentEnginePipeline {
         input.request.mode === "ask" || planSource === "resume_approval"
           ? undefined
           : input.taskList,
+      maxTasks: windowPolicy.taskList.maxTasks,
     };
     let taskListSynced = false;
     const syncTaskListOnce = () => {
@@ -1251,6 +1263,7 @@ export class AgentEnginePipeline {
             contextReviewed.length > 0 ? contextReviewed : undefined,
           budgetTokens: windowPolicy.planning.budgetTokens,
           maxDiagnosticSteps: windowPolicy.planning.maxDiagnosticSteps,
+          maxFilesPerBatch: windowPolicy.mutation.preferredBatchSize,
         };
         const planningInput = planningInputSchema.parse(planningInputCandidate);
 
@@ -1290,10 +1303,29 @@ export class AgentEnginePipeline {
           strategyOverride = { ...strategyDecision, skipDiscover: true };
         }
 
+        let impactReports = planningInput.impactReports;
+        const impactSeedPaths =
+          strategyOverride.strategy === "follow_evidence"
+            ? (planningInput.buildEvidence?.diagnostics ?? [])
+                .filter((diagnostic) => diagnostic.severity === "error")
+                .map((diagnostic) => diagnostic.path)
+            : strategyOverride.strategy === "discover_and_plan" && discoveryBrief
+              ? collectDiscoveryImpactSeedPaths(discoveryBrief)
+              : [];
+        if (impactSeedPaths.length > 0) {
+          impactReports = await collectPlanningImpactReports({
+            repoGraphs: this.deps.repoGraphs,
+            seedPaths: impactSeedPaths,
+          });
+        }
+
         const planningResult = await this.deps.planning.plan({
           ...planningInput,
           discoveryBrief,
           strategyOverride,
+          ...(impactReports && impactReports.length > 0
+            ? { impactReports }
+            : {}),
         });
 
         if (planningResult.plan) {
@@ -1438,37 +1470,7 @@ export class AgentEnginePipeline {
         decision.toolGrant.mutationBudget,
       );
 
-      planText = appendTaskListToPlanText(planText, taskListRef.current);
-
-      const mutationBudgetRule = buildMutationBudgetInstruction(
-        decision.toolGrant.mutationBudget,
-      );
-      const preflightDiagnosticRule =
-        repoBuildStateBefore && repoBuildStateBefore.summary.errorCount > 0
-          ? buildPreflightDiagnosticRepairInstruction({
-              diagnostics: repoBuildStateBefore.diagnostics,
-              totalErrorCount: repoBuildStateBefore.summary.errorCount,
-              pathScopes: decision.toolGrant.pathScopes,
-              maxDiagnostics: windowPolicy.planning.maxDiagnosticSteps,
-              maxChars:
-                windowPolicy.sections.planTokens *
-                DEFAULT_PLAN_CHARACTERS_PER_TOKEN,
-            })
-          : undefined;
-      const projectRules = [
-        ...(input.instructions?.projectRules ?? []),
-        ...(mutationBudgetRule ? [mutationBudgetRule] : []),
-        ...(preflightDiagnosticRule
-          ? [
-              {
-                id: "mitii.preflight_diagnostics",
-                title: "Preflight diagnostic repair targets",
-                priority: 95,
-                content: preflightDiagnosticRule,
-              },
-            ]
-          : []),
-      ];
+      const projectRules = [...(input.instructions?.projectRules ?? [])];
       const hostInstructions: PromptInstructions | undefined =
         projectRules.length > 0
           ? {
@@ -1582,6 +1584,7 @@ export class AgentEnginePipeline {
         repoBuildStateBefore,
         logVerbosity: input.logVerbosity,
         reserveVerificationRepairModelCalls: true,
+        plan: runPlan,
       });
 
       return await this.finishAfterLoop({
@@ -1620,6 +1623,7 @@ export class AgentEnginePipeline {
           memoryFacts,
           selectedSkillIds: selectedSkills?.map((block) => block.id) ?? [],
           establishedFacts,
+          plan: runPlan,
         },
       });
     } catch (error) {
@@ -1664,7 +1668,6 @@ export class AgentEnginePipeline {
     }
 
     const requestId = checkpoint.requestId;
-    const taskListRef: TaskListRef = { current: checkpoint.taskList };
     const decision = input.approvalMode
       ? {
           ...checkpoint.decision,
@@ -1677,6 +1680,11 @@ export class AgentEnginePipeline {
     const startInput = input.approvalMode
       ? { ...checkpoint.input, approvalMode: input.approvalMode }
       : checkpoint.input;
+    const windowPolicy = this.resolveWindowPolicy(startInput);
+    const taskListRef: TaskListRef = {
+      current: checkpoint.taskList,
+      maxTasks: windowPolicy.taskList.maxTasks,
+    };
     const pinnedState = checkpoint.pinnedState;
     const reasonCodes: AgentReasonCode[] = [...checkpoint.reasonCodes];
     const warnings: string[] = [...checkpoint.warnings];
@@ -1689,7 +1697,6 @@ export class AgentEnginePipeline {
         : 0;
     const excludedWaitMs =
       (checkpoint.excludedWaitMs ?? 0) + suspensionWaitMs;
-    const windowPolicy = this.resolveWindowPolicy(startInput);
     const resumeBudgetClamp = this.clampRunBudget(
       agentRunBudgetSchema.parse(startInput.budget ?? {}),
       windowPolicy,
@@ -1998,6 +2005,7 @@ export class AgentEnginePipeline {
         // Approval resume already passed any pre-mutation gates.
         changeImpactGate: { required: false, satisfied: true },
         windowPolicy,
+        plan: checkpoint.plan,
       });
 
       if (toolOutcome.kind === "approval_required") {
@@ -2060,6 +2068,7 @@ export class AgentEnginePipeline {
         repoBuildStateBefore: checkpoint.repoBuildStateBefore,
         logVerbosity: startInput.logVerbosity,
         reserveVerificationRepairModelCalls: true,
+        plan: checkpoint.plan,
       });
 
       return await this.finishAfterLoop({
@@ -2097,6 +2106,7 @@ export class AgentEnginePipeline {
         windowPolicy,
         loopContext: {
           establishedFacts,
+          plan: checkpoint.plan,
         },
       });
     } catch (error) {
@@ -2165,6 +2175,7 @@ export class AgentEnginePipeline {
       memoryFacts?: readonly { id: string; content: string }[];
       selectedSkillIds?: string[];
       establishedFacts: EstablishedFact[];
+      plan?: PlanArtifact;
     };
   }): Promise<AgentRunResult> {
     const {
@@ -2458,6 +2469,24 @@ export class AgentEnginePipeline {
       if (canRepair) {
         repairAttempts += 1;
         reasonCodes.push("verification_repair_attempted");
+        const repairPrep = prepareRepairWorkingSet({
+          current: taskListRef.current,
+          plan: params.loopContext?.plan,
+          maxTasks: taskListRef.maxTasks,
+        });
+        if (repairPrep.refilled) {
+          reasonCodes.push("task_list_refilled");
+        }
+        if (repairPrep.taskList) {
+          taskListRef.current = repairPrep.taskList;
+          if (repairPrep.refilled || repairPrep.activated) {
+            reasonCodes.push("task_list_updated");
+          }
+          if (repairPrep.activated) {
+            reasonCodes.push("verification_repair_batch_activated");
+          }
+          this.emitTaskListUpdated(bus, runId, repairPrep.taskList);
+        }
         currentOutcome.messages.push({
           role: "user",
           content: buildVerificationRepairPrompt({
@@ -2465,6 +2494,16 @@ export class AgentEnginePipeline {
             comparison: verificationOutcome.comparison,
             changedFiles: loopChangedFiles,
             mutationBudget: decision.toolGrant.mutationBudget,
+            ...(repairPrep.activeItem
+              ? {
+                  activeBatch: {
+                    title: repairPrep.activeItem.title,
+                    write: repairPrep.activeItem.write,
+                    mustRead: repairPrep.activeItem.mustRead,
+                    affected: repairPrep.activeItem.affected,
+                  },
+                }
+              : {}),
           }),
         });
         currentOutcome = await this.runModelToolLoop({
@@ -2494,6 +2533,7 @@ export class AgentEnginePipeline {
           evidence,
           windowPolicy,
           logVerbosity: input.logVerbosity,
+          plan: params.loopContext?.plan,
         });
         if (
           currentOutcome.kind === "completed" ||
@@ -3497,6 +3537,7 @@ export class AgentEnginePipeline {
      * remaining-error verification can start after a productive loop.
      */
     reserveVerificationRepairModelCalls?: boolean;
+    plan?: PlanArtifact;
   }): Promise<ToolLoopOutcome> {
     const {
       runId,
@@ -3530,6 +3571,9 @@ export class AgentEnginePipeline {
     let explorationStallNudges = 0;
     const loopFileReads = createLoopFileReadTracker();
     let rejectedMutationRecoveries = 0;
+    const mustReadNudgeBudget = {
+      remaining: AGENT_ENGINE_THRESHOLDS.maxMustReadNudges,
+    };
     let rejectedToolRecoveries = 0;
     let readOnlyToolTurnsWithoutMutation = 0;
     let readOnlyToolTurnsAfterMutation = 0;
@@ -3630,6 +3674,18 @@ export class AgentEnginePipeline {
         params.request,
         params.windowPolicy,
       );
+      const completedTaskPaths = collectCompletedTaskPaths(taskListRef.current);
+      if (completedTaskPaths.length > 0) {
+        const stubbed = stubToolResultsForCompletedPaths({
+          messages,
+          paths: completedTaskPaths,
+          maxChars: params.windowPolicy.compaction.compactedToolResultChars,
+        });
+        if (stubbed.stubbed) {
+          messages.splice(0, messages.length, ...stubbed.messages);
+          reasonCodes.push("completed_task_results_stubbed");
+        }
+      }
       const compaction = compactModelLoopMessages({
         messages,
         estimator: this.tokenEstimator,
@@ -3654,6 +3710,7 @@ export class AgentEnginePipeline {
         autoMaxTokens: params.windowPolicy.compaction.autoMaxTokens,
         hardMaxTokens: params.windowPolicy.compaction.hardMaxTokens,
         preservePrefix: true,
+        skipEstablishedFactsReinject: true,
       });
       if (
         compaction.pressure === "warn" &&
@@ -3719,6 +3776,25 @@ export class AgentEnginePipeline {
           });
         }
       }
+
+      upsertTrailingWorkingSet(messages, {
+        taskList: taskListRef.current,
+        mutationBudget: grant.mutationBudget,
+        preflightDiagnostics: buildPreflightDiagnosticRepairInstruction({
+          diagnostics: params.repoBuildStateBefore?.diagnostics ?? [],
+          totalErrorCount:
+            params.repoBuildStateBefore?.summary.errorCount ?? 0,
+          pathScopes: grant.pathScopes,
+          maxDiagnostics: params.windowPolicy.planning.maxDiagnosticSteps,
+          maxChars: Math.min(
+            params.windowPolicy.compaction.establishedFactReinjectChars,
+            2_400,
+          ),
+        }),
+        establishedFacts,
+        maxEstablishedFactChars:
+          params.windowPolicy.compaction.establishedFactReinjectChars,
+      });
 
       const turnRequest: ModelRequest = {
         ...params.request,
@@ -4170,6 +4246,8 @@ export class AgentEnginePipeline {
         establishedFacts,
         windowPolicy: params.windowPolicy,
         loopFileReads,
+        mustReadNudgeBudget,
+        plan: params.plan,
       });
 
         if (outcome.kind === "approval_required") {
@@ -4223,7 +4301,8 @@ export class AgentEnginePipeline {
           mutatingTool &&
           result &&
           result.status !== "succeeded" &&
-          result.reasonCode !== "approval_required"
+          result.reasonCode !== "approval_required" &&
+          result.reasonCode !== "must_read_incomplete"
         ) {
           rejectedMutation = {
             toolName: toolCall.name,
@@ -4775,6 +4854,9 @@ export class AgentEnginePipeline {
     establishedFacts?: EstablishedFact[];
     windowPolicy: WindowPolicy;
     loopFileReads?: LoopFileReadTracker;
+    /** One withheld mutation when active-task mustRead files are not loaded. */
+    mustReadNudgeBudget?: { remaining: number };
+    plan?: PlanArtifact;
   }): Promise<ToolCallOutcome> {
     const {
       runId,
@@ -4801,6 +4883,8 @@ export class AgentEnginePipeline {
       establishedFacts,
       windowPolicy,
       loopFileReads,
+      mustReadNudgeBudget,
+      plan,
     } = params;
 
     const toolCall: ModelToolCall = {
@@ -4900,10 +4984,89 @@ export class AgentEnginePipeline {
       );
     }
 
+    if (
+      mutatingToolNames.has(toolCall.name) &&
+      (mustReadNudgeBudget?.remaining ?? 0) > 0
+    ) {
+      const mutationPaths = extractMutationTargetPaths(
+        toolCall.name,
+        argumentsValue,
+      );
+      const missing = missingMustReadPaths({
+        taskList: taskListRef?.current,
+        mutationPaths,
+        loopFileReads,
+        establishedFacts,
+      });
+      if (missing.length > 0) {
+        mustReadNudgeBudget!.remaining -= 1;
+        reasonCodes.push("must_read_nudged");
+        const message = buildMustReadNudgeMessage({
+          missing,
+          mutationPaths,
+        });
+        warnings.push(message);
+        const now = this.isoNow();
+        const result = toolResultSchema.parse({
+          schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+          callId: toolCall.id,
+          toolName: toolCall.name,
+          status: "rejected",
+          reasonCode: "must_read_incomplete",
+          output: {
+            missingMustRead: missing,
+            write: mutationPaths,
+            message,
+          },
+          truncated: false,
+          redacted: false,
+          durationMs: 0,
+          bytesProduced: 0,
+          warnings: [message],
+          audit: {
+            callId: toolCall.id,
+            toolName: toolCall.name,
+            startedAt: now,
+            endedAt: now,
+            status: "rejected",
+            reasonCode: "must_read_incomplete",
+            inputPreview: toolCall.name,
+            outputPreview: message,
+            bytesProduced: 0,
+            durationMs: 0,
+            truncated: false,
+            redacted: false,
+          },
+        });
+        toolCache.set(toolCall.id, result);
+        this.emit(bus, {
+          type: "tool_completed",
+          runId,
+          callId: toolCall.id,
+          toolName: toolCall.name,
+          status: result.status,
+          ...(summary ? { summary } : {}),
+          ...toolCompletionDiagnostics(result),
+          at: this.isoNow(),
+        });
+        return {
+          kind: "message",
+          message: {
+            role: "tool",
+            toolCallId: toolCall.id,
+            content: serializeToolResultForModel(result, {
+              maxContentChars: windowPolicy.compaction.toolResultContentChars,
+            }),
+          },
+        };
+      }
+    }
+
     if (isUpdateTodosTool(toolCall.name)) {
       const applied = applyUpdateTodosArguments({
         current: taskListRef?.current,
         argumentsValue,
+        maxTasks: taskListRef?.maxTasks,
       });
       const result = applied.ok
         ? buildUpdateTodosToolResult({
@@ -4919,15 +5082,27 @@ export class AgentEnginePipeline {
             warnings: [applied.message],
           });
       if (applied.ok) {
+        let nextList = applied.taskList;
+        if (nextList && plan) {
+          const refilled = maybeRefillTaskListFromPlan({
+            current: nextList,
+            plan,
+            maxTasks: taskListRef?.maxTasks,
+          });
+          if (refilled.refilled && refilled.taskList) {
+            nextList = refilled.taskList;
+            reasonCodes.push("task_list_refilled");
+          }
+        }
         if (taskListRef) {
-          taskListRef.current = applied.taskList;
+          taskListRef.current = nextList;
         }
         reasonCodes.push("task_list_updated");
         // Always emit, including clear/empty, so hosts can drop a stale checklist.
         this.emitTaskListUpdated(
           bus,
           runId,
-          applied.taskList ?? {
+          nextList ?? {
             schemaVersion: 1,
             source: "agent",
             items: [],
@@ -5057,6 +5232,8 @@ export class AgentEnginePipeline {
         toolStatus: result.status,
         isMutatingTool: mutatingToolNames.has(toolCall.name),
         changedFiles: output?.changedFiles ?? [],
+        plan,
+        maxTasks: taskListRef?.maxTasks,
       });
       if (autoAdvanced.warnings.length > 0) {
         warnings.push(...autoAdvanced.warnings);
@@ -5068,6 +5245,9 @@ export class AgentEnginePipeline {
           taskListAutoAdvanceBudget.remaining - 1,
         );
         reasonCodes.push("task_list_auto_advanced", "task_list_updated");
+        if (autoAdvanced.refilled) {
+          reasonCodes.push("task_list_refilled");
+        }
         this.emitTaskListUpdated(bus, runId, autoAdvanced.taskList);
       }
     }

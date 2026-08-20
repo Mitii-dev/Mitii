@@ -67,6 +67,7 @@ export const PLANNING_REASON_CODES = [
   "plan_discovery_insufficient",
   "plan_drafted_from_discovery",
   "plan_discovery_draft_failed_fallback",
+  "plan_working_set_applied",
 ] as const;
 
 export const PLANNING_ERROR_CODES = [

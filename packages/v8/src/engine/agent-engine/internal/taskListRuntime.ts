@@ -1,13 +1,16 @@
-import type { ModelToolDefinition } from "../../../modules/model-gateway";
+import type { ModelMessage, ModelToolDefinition } from "../../../modules/model-gateway";
 import type { PlanArtifact } from "../../../modules/planning";
 import {
+  MAX_TASKS_CAP,
   TASK_LIST_POLICY,
   TaskListPipeline,
   UPDATE_TODOS_TOOL_ALIASES,
   UPDATE_TODOS_TOOL_NAME,
-  serializeTaskListGuidance,
+  WORKING_SET_MARKER,
+  collectCompletedTaskPaths,
   taskListApplyInputSchema,
   taskListProgress,
+  taskItemPaths,
 } from "../../../modules/task-list";
 import type {
   TaskList,
@@ -16,6 +19,10 @@ import type {
 } from "../../../modules/task-list";
 import type { ToolResult } from "../../tool-runtime";
 import { TOOL_RUNTIME_SCHEMA_VERSION, toolResultSchema } from "../../tool-runtime";
+import {
+  serializeRecoverabilityWorkingSet,
+  type RecoverabilityWorkingSetInput,
+} from "../actions/serializeRecoverabilityWorkingSet";
 
 const UPDATE_TODOS_ITEM_SCHEMA = {
   type: "object",
@@ -57,7 +64,7 @@ const UPDATE_TODOS_ITEM_SCHEMA = {
 export const UPDATE_TODOS_TOOL_DEFINITION: ModelToolDefinition = {
   name: UPDATE_TODOS_TOOL_NAME,
   description:
-    "Create or update the live working checklist for this run (max 8 items). " +
+    `Create or update the live working checklist for this run (max ${MAX_TASKS_CAP} items; often 8 on small windows). ` +
     "If this is a multi-step run and the list is empty after the first read/diagnose tool turn, " +
     "call update_todos with type=replace and concrete titles naming a file, failure, or user-visible behavior. " +
     "Pass checklist rows as items (preferred) or todos; each row needs title (or content). " +
@@ -79,14 +86,14 @@ export const UPDATE_TODOS_TOOL_DEFINITION: ModelToolDefinition = {
       },
       items: {
         type: "array",
-        maxItems: 8,
+        maxItems: MAX_TASKS_CAP,
         description:
           "Checklist items. Prefer concrete file/failure titles over vague process labels.",
         items: UPDATE_TODOS_ITEM_SCHEMA,
       },
       todos: {
         type: "array",
-        maxItems: 8,
+        maxItems: MAX_TASKS_CAP,
         description: "Alias for items (accepted for compatibility).",
         items: UPDATE_TODOS_ITEM_SCHEMA,
       },
@@ -97,6 +104,7 @@ export const UPDATE_TODOS_TOOL_DEFINITION: ModelToolDefinition = {
 
 export interface TaskListRef {
   current?: TaskList;
+  maxTasks?: number;
 }
 
 const pipeline = new TaskListPipeline();
@@ -176,7 +184,7 @@ export function seedTaskListFromPlan(params: {
   ) {
     return { seeded: false, source: "plan" };
   }
-  const derived = pipeline.deriveFromPlan(params.plan);
+  const derived = pipeline.deriveFromPlan(params.plan, params.taskListRef.maxTasks);
   if (derived.status !== "applied" || !derived.taskList) {
     return { seeded: false, source: "plan" };
   }
@@ -187,6 +195,7 @@ export function seedTaskListFromPlan(params: {
 export function applyUpdateTodosArguments(params: {
   current?: TaskList;
   argumentsValue: unknown;
+  maxTasks?: number;
 }):
   | { ok: true; taskList?: TaskList; warnings: string[] }
   | { ok: false; message: string } {
@@ -216,6 +225,7 @@ export function applyUpdateTodosArguments(params: {
     schemaVersion: 1,
     current: params.current,
     source: "agent",
+    ...(params.maxTasks !== undefined ? { maxTasks: params.maxTasks } : {}),
     operation:
       type === "clear"
         ? { type: "clear" }
@@ -398,7 +408,10 @@ export function maybeAutoAdvanceTaskList(params: {
   allowAdvance?: boolean;
   /** Paths written by this mutation; matching checklist rows complete together. */
   changedFiles?: readonly string[];
-}): { advanced: boolean; taskList?: TaskList; warnings: string[] } {
+  /** Overflow plan steps stream into the live list after rows complete. */
+  plan?: PlanArtifact;
+  maxTasks?: number;
+}): { advanced: boolean; refilled?: boolean; taskList?: TaskList; warnings: string[] } {
   if (!(params.enabled ?? TASK_LIST_POLICY.autoAdvanceOnMutationSuccess)) {
     return { advanced: false, warnings: [] };
   }
@@ -448,17 +461,21 @@ export function maybeAutoAdvanceTaskList(params: {
   if (result.status !== "applied" || !result.taskList) {
     return { advanced: false, warnings: result.warnings };
   }
-  return {
+  return withPlanRefill({
     advanced: result.reasonCodes.includes("task_list_patched"),
     taskList: result.taskList,
     warnings: result.warnings,
-  };
+    plan: params.plan,
+    maxTasks: params.maxTasks,
+  });
 }
 
 function advanceActiveChecklistItem(params: {
   current?: TaskList;
   preToolActiveId?: string;
-}): { advanced: boolean; taskList?: TaskList; warnings: string[] } {
+  plan?: PlanArtifact;
+  maxTasks?: number;
+}): { advanced: boolean; refilled?: boolean; taskList?: TaskList; warnings: string[] } {
   if (!params.current) {
     return { advanced: false, warnings: [] };
   }
@@ -498,21 +515,168 @@ function advanceActiveChecklistItem(params: {
   if (result.status !== "applied" || !result.taskList) {
     return { advanced: false, warnings: result.warnings };
   }
-  return {
+  return withPlanRefill({
     advanced: result.reasonCodes.includes("task_list_patched"),
     taskList: result.taskList,
     warnings: result.warnings,
+    plan: params.plan,
+    maxTasks: params.maxTasks,
+  });
+}
+
+function withPlanRefill(params: {
+  advanced: boolean;
+  taskList: TaskList;
+  warnings: string[];
+  plan?: PlanArtifact;
+  maxTasks?: number;
+}): {
+  advanced: boolean;
+  refilled?: boolean;
+  taskList?: TaskList;
+  warnings: string[];
+} {
+  const refilled = maybeRefillTaskListFromPlan({
+    current: params.taskList,
+    plan: params.plan,
+    maxTasks: params.maxTasks,
+  });
+  return {
+    advanced: params.advanced,
+    ...(refilled.refilled ? { refilled: true } : {}),
+    taskList: refilled.taskList ?? params.taskList,
+    warnings: params.warnings,
+  };
+}
+
+export function maybeRefillTaskListFromPlan(params: {
+  current?: TaskList;
+  plan?: PlanArtifact;
+  maxTasks?: number;
+}): { refilled: boolean; taskList?: TaskList } {
+  if (!params.current || !params.plan) {
+    return { refilled: false, taskList: params.current };
+  }
+  const result = pipeline.refillFromPlan(
+    params.current,
+    params.plan,
+    params.maxTasks,
+  );
+  if (
+    result.status !== "applied" ||
+    !result.taskList ||
+    !result.reasonCodes.includes("task_list_refilled")
+  ) {
+    return { refilled: false, taskList: params.current };
+  }
+  return { refilled: true, taskList: result.taskList };
+}
+
+/**
+ * Before a verification-repair loop, stream overflow plan batches if the live
+ * list is all terminal, then activate the next concrete pending batch.
+ */
+export function prepareRepairWorkingSet(params: {
+  current?: TaskList;
+  plan?: PlanArtifact;
+  maxTasks?: number;
+}): {
+  taskList?: TaskList;
+  activated: boolean;
+  refilled: boolean;
+  activeItem?: TaskList["items"][number];
+} {
+  if (!params.current || params.current.items.length === 0) {
+    return { taskList: params.current, activated: false, refilled: false };
+  }
+  if (params.current.purpose === "discovery") {
+    return { taskList: params.current, activated: false, refilled: false };
+  }
+
+  let taskList = params.current;
+  let refilled = false;
+
+  const allTerminal = taskList.items.every(
+    (item) => item.status === "done" || item.status === "skipped",
+  );
+  if (allTerminal && params.plan) {
+    const refillResult = maybeRefillTaskListFromPlan({
+      current: taskList,
+      plan: params.plan,
+      maxTasks: params.maxTasks,
+    });
+    if (refillResult.refilled && refillResult.taskList) {
+      taskList = refillResult.taskList;
+      refilled = true;
+    }
+  }
+
+  const activeEligible = taskList.items.filter(
+    (item) =>
+      item.status === "active" && isMutationAutoAdvanceEligible(item),
+  );
+  if (activeEligible.length === 1) {
+    return {
+      taskList,
+      activated: false,
+      refilled,
+      activeItem: activeEligible[0],
+    };
+  }
+
+  const nextPending = taskList.items.find(
+    (item) =>
+      item.status === "pending" && isMutationAutoAdvanceEligible(item),
+  );
+  if (!nextPending) {
+    const fallbackActive = taskList.items.find((item) => item.status === "active");
+    return {
+      taskList,
+      activated: false,
+      refilled,
+      ...(fallbackActive ? { activeItem: fallbackActive } : {}),
+    };
+  }
+
+  const demoteActive = taskList.items
+    .filter((item) => item.status === "active")
+    .map((item) => ({ id: item.id, status: "pending" as const }));
+  const result = pipeline.apply({
+    schemaVersion: 1,
+    current: taskList,
+    source: taskList.source,
+    operation: {
+      type: "patch",
+      items: [...demoteActive, { id: nextPending.id, status: "active" }],
+    },
+  });
+  if (result.status !== "applied" || !result.taskList) {
+    return { taskList, activated: false, refilled };
+  }
+  const activeItem = result.taskList.items.find((item) => item.status === "active");
+  return {
+    taskList: result.taskList,
+    activated: true,
+    refilled,
+    ...(activeItem ? { activeItem } : {}),
   };
 }
 
 function itemMentionsAnyPath(
-  item: { title: string; detail?: string },
+  item: {
+    title: string;
+    detail?: string;
+    write?: readonly string[];
+    mustRead?: readonly string[];
+    affected?: readonly string[];
+  },
   paths: readonly string[],
 ): boolean {
   if (paths.length === 0) {
     return false;
   }
-  const hint = `${item.title} ${item.detail ?? ""}`;
+  const owned = taskItemPaths(item);
+  const hint = `${item.title} ${item.detail ?? ""} ${owned.join(" ")}`;
   return paths.some((path) => path.length > 0 && hint.includes(path));
 }
 
@@ -520,6 +684,9 @@ function itemMentionsAnyPath(
 export function isMutationAutoAdvanceEligible(item: {
   title: string;
   detail?: string;
+  write?: readonly string[];
+  mustRead?: readonly string[];
+  affected?: readonly string[];
 }): boolean {
   const title = item.title.trim();
   if (TASK_LIST_POLICY.autoAdvanceBlockedTitle.test(title)) {
@@ -528,19 +695,39 @@ export function isMutationAutoAdvanceEligible(item: {
   if (TASK_LIST_POLICY.deferredIntent.test(title)) {
     return false;
   }
-  const hint = `${title} ${item.detail ?? ""}`;
+  const hint = `${title} ${item.detail ?? ""} ${taskItemPaths(item).join(" ")}`;
   // Package-wide mega-objectives without a file must not burn through on one patch.
   return TASK_LIST_POLICY.autoAdvanceConcreteFileHint.test(hint);
 }
 
-export function appendTaskListToPlanText(
-  planText: string | undefined,
-  taskList?: TaskList,
-): string | undefined {
-  const taskText = serializeTaskListGuidance(taskList);
-  const combined = [planText?.trim(), taskText.trim()].filter(Boolean).join("\n\n");
-  return combined.length > 0 ? combined : undefined;
+/**
+ * Keep a live recoverability block at the end of the loop transcript so
+ * compaction can drop it and the next turn can restore it without rewriting
+ * the system prefix.
+ */
+export function upsertTrailingWorkingSet(
+  messages: ModelMessage[],
+  input?: RecoverabilityWorkingSetInput,
+): void {
+  const content = serializeRecoverabilityWorkingSet(input ?? {});
+  const existing = messages.findIndex(
+    (message) =>
+      message.role === "user" && message.content.includes(WORKING_SET_MARKER),
+  );
+  if (!content) {
+    if (existing >= 0) {
+      messages.splice(existing, 1);
+    }
+    return;
+  }
+  const next: ModelMessage = { role: "user", content };
+  if (existing >= 0) {
+    messages.splice(existing, 1);
+  }
+  messages.push(next);
 }
+
+export { collectCompletedTaskPaths };
 
 export function progressOf(taskList: TaskList) {
   return taskListProgress(taskList);

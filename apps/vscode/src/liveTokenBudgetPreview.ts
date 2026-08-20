@@ -66,6 +66,9 @@ export const DEFAULT_WINDOW_BUDGET_NUMBERS: Record<string, number> = {
   diagnosticStepsBase: 2,
   diagnosticStepsPerUsable: 20_000,
   diagnosticStepsMax: 8,
+  maxTasksBase: 8,
+  maxTasksPerUsable: 25_000,
+  maxTasksCap: 12,
   maxModelCallsPerUsable: 2_500,
   maxModelCallsMin: 48,
   maxModelCallsMax: 96,
@@ -361,6 +364,12 @@ export function deriveLiveTokenBudgetPreview(
     policyNumber(policy, 'diagnosticStepsBase'),
     policyNumber(policy, 'diagnosticStepsMax'),
   );
+  const maxTasks = clampInt(
+    policyNumber(policy, 'maxTasksBase') +
+      Math.floor(usableInputTokens / policyNumber(policy, 'maxTasksPerUsable')),
+    policyNumber(policy, 'maxTasksBase'),
+    policyNumber(policy, 'maxTasksCap'),
+  );
   const maxModelCalls = MEDIUM_WINDOW_BUDGET_EFFORT.maxModelCalls;
   const maxSkills = clampInt(
     policyNumber(policy, 'maxSkillsBase') +
@@ -495,6 +504,7 @@ export function deriveLiveTokenBudgetPreview(
       maximumOutputTokens <
       policyNumber(policy, 'requireBatchedBelowOutputTokens'),
     maxDiagnosticSteps,
+    maxTasks,
     maxSkills,
     maxVerificationChecks,
     visiblePlanAffordable: usableInputTokens >= visiblePlanThreshold,

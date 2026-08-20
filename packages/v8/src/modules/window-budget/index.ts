@@ -43,6 +43,7 @@ export type {
   WindowPolicyPlanning,
   WindowPolicyRun,
   WindowPolicySkills,
+  WindowPolicyTaskList,
   WindowBudgetReasonCode,
   WindowBudgetErrorCode,
 } from "./contracts";

@@ -5,7 +5,14 @@ export {
   serializeTaskListForPrompt,
   serializeTaskListGuidance,
   serializeTaskListMarkdown,
+  serializeWorkingSetForLoop,
+  serializeWorkingSetChecklistLines,
+  WORKING_SET_MARKER,
 } from "./actions/SerializeTaskList";
+export {
+  collectCompletedTaskPaths,
+  taskItemPaths,
+} from "./actions/TaskItemPaths";
 
 export function taskListProgress(taskList: TaskList): {
   completedCount: number;

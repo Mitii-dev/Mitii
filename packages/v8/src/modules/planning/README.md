@@ -14,6 +14,7 @@ Planning creates structured plans when policy or user mode calls for visible pla
 - Incorporates optional skill hints, process hints, reviewed context, and prior plans.
 - Validates required plan sections, including stripping a stray Discover/Inspect/Explore phase if a `discoveryBrief` is present (discovery already ran; a model-drafted plan must not repeat it).
 - Compacts the plan to a token budget.
+- For `follow_evidence` and `discover_and_plan`, compiles Engine-supplied hop-1 `mustRead`/`affected` onto Change steps (`impactReports`). The model draft does not invent those paths.
 - Serializes plan artifacts for user answers or prompt injection, including a strategy-aware execution contract.
 
 ## Structure

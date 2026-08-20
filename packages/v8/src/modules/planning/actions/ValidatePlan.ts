@@ -10,6 +10,7 @@ import {
   DEFAULT_MAX_PLAN_PHASES,
   DEFAULT_MAX_STEPS_PER_PHASE,
 } from "../defaults";
+import { PLANNING_WORKING_SET_POLICY } from "../policy";
 
 export interface ValidatePlanResult {
   plan: PlanArtifact;
@@ -126,14 +127,15 @@ export function validatePlan(params: {
 
   plan = {
     ...plan,
-    phases: plan.phases.map((phase) =>
-      phase.steps.length > DEFAULT_MAX_STEPS_PER_PHASE
+    phases: plan.phases.map((phase) => {
+      const maxSteps = maxStepsForPhase(phase.name);
+      return phase.steps.length > maxSteps
         ? {
             ...phase,
-            steps: phase.steps.slice(0, DEFAULT_MAX_STEPS_PER_PHASE),
+            steps: phase.steps.slice(0, maxSteps),
           }
-        : phase,
-    ),
+        : phase;
+    }),
   };
 
   reasonCodes.push("plan_validated");
@@ -147,6 +149,13 @@ export function validatePlan(params: {
 
 function unique(codes: readonly PlanningReasonCode[]): PlanningReasonCode[] {
   return [...new Set(codes)];
+}
+
+function maxStepsForPhase(name: string): number {
+  if (/change|implement|fix|build|apply/i.test(name)) {
+    return PLANNING_WORKING_SET_POLICY.maxBatchesOnPlan;
+  }
+  return DEFAULT_MAX_STEPS_PER_PHASE;
 }
 
 function isDiscoverNamedPhase(phase: { name: string }): boolean {

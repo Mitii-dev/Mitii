@@ -4,6 +4,7 @@ import {
   applyTaskListUpdate,
   createDiscoveryTaskList,
   deriveTaskListFromPlan,
+  refillTaskListFromPlan,
 } from "../actions";
 import type { TaskList } from "../contracts";
 import { TASK_LIST_SCHEMA_VERSION } from "../constants";
@@ -44,9 +45,12 @@ export class TaskListPipeline {
     return createDiscoveryTaskList(title);
   }
 
-  public deriveFromPlan(plan: PlanArtifact): TaskListApplyResult {
+  public deriveFromPlan(
+    plan: PlanArtifact,
+    maxTasks?: number,
+  ): TaskListApplyResult {
     try {
-      return deriveTaskListFromPlan(plan);
+      return deriveTaskListFromPlan(plan, maxTasks);
     } catch (error) {
       return taskListApplyResultSchema.parse({
         schemaVersion: TASK_LIST_SCHEMA_VERSION,
@@ -55,6 +59,27 @@ export class TaskListPipeline {
           error instanceof Error
             ? error.message
             : "Failed to derive a task list from the plan.",
+        ],
+        reasonCodes: ["task_list_invalid"],
+      });
+    }
+  }
+
+  public refillFromPlan(
+    current: TaskList,
+    plan: PlanArtifact,
+    maxTasks?: number,
+  ): TaskListApplyResult {
+    try {
+      return refillTaskListFromPlan({ current, plan, maxTasks });
+    } catch (error) {
+      return taskListApplyResultSchema.parse({
+        schemaVersion: TASK_LIST_SCHEMA_VERSION,
+        status: "rejected",
+        warnings: [
+          error instanceof Error
+            ? error.message
+            : "Failed to refill the task list from the plan.",
         ],
         reasonCodes: ["task_list_invalid"],
       });

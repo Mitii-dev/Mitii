@@ -7,7 +7,7 @@ export const CHANGE_IMPACT_STATUSES = [
   "unavailable",
 ] as const;
 
-export const CHANGE_IMPACT_DIRECTIONS = ["dependents"] as const;
+export const CHANGE_IMPACT_DIRECTIONS = ["dependents", "dependencies"] as const;
 
 export const CHANGE_IMPACT_EDGE_TYPES = [
   "calls",
@@ -20,6 +20,7 @@ export const CHANGE_IMPACT_EDGE_TYPES = [
 export const CHANGE_IMPACT_REASON_CODES = [
   "impact_resolved",
   "no_dependents",
+  "no_dependencies",
   "seed_unresolved",
   "seed_ambiguous",
   "graph_unavailable",

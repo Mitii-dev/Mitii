@@ -13,7 +13,7 @@ import {
 import { RequestUnderstandingPipeline } from "../../../modules/request-understanding";
 import { SkillsPipeline } from "../../../modules/skills";
 import type { SkillsCatalogPort } from "../../../modules/skills";
-import type { ToolRuntimePipeline } from "../../tool-runtime";
+import type { RepositoryGraphPort, ToolRuntimePipeline } from "../../tool-runtime";
 import type { VerificationPipeline } from "../../../modules/verification";
 
 import type {
@@ -33,6 +33,12 @@ export interface ComposeReadOnlyAgentEngineOptions {
   repositoryState?: RepositoryStatePipeline;
   repositoryContext?: RepositoryContextPipeline;
   tools?: ToolRuntimePipeline;
+  /**
+   * Optional published RepoGraph port used by follow_evidence planning to
+   * collect hop-1 mustRead/affected reports. Hosts should pass the same
+   * port already wired into ToolRuntime.
+   */
+  repoGraphs?: RepositoryGraphPort;
   /** Enables verification-gated completion for mutation routes (Phase 8). */
   verification?: VerificationPipeline;
   /** Required to suspend/resume mutation approvals across process turns. */
@@ -104,6 +110,7 @@ export function composeReadOnlyAgentEngine(
     repositoryState: options.repositoryState,
     repositoryContext: options.repositoryContext,
     tools: options.tools,
+    repoGraphs: options.repoGraphs,
     verification: options.verification,
     checkpointStore: options.checkpointStore,
     toolDefinitions: options.toolDefinitions,

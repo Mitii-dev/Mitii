@@ -1,6 +1,21 @@
 import type { MutationBudget } from "../../../modules/decision-policy";
 import type { PromptInstructionBlock } from "../../../modules/prompt-construction";
 
+export function buildMutationBudgetWorkingSetLines(
+  budget: MutationBudget | undefined,
+): string | undefined {
+  if (!budget) {
+    return undefined;
+  }
+  const batchHint = budget.requireBatchedExecution
+    ? `Batched execution required. At most ${budget.preferredBatchSize} files per apply_patch turn.`
+    : `Prefer at most ${budget.preferredBatchSize} files per apply_patch turn.`;
+  return [
+    batchHint,
+    `Hard limits per apply_patch call: ≤${budget.maxPatchesPerCall} patches, ≤${budget.maxUniqueFilesPerCall} unique files, ≤${budget.maxPatchPayloadCharacters} characters of oldText+newText.`,
+  ].join("\n");
+}
+
 /**
  * Trusted project-rule instruction that teaches the model to batch mutations
  * under the Decision Policy mutationBudget.

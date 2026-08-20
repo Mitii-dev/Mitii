@@ -34,6 +34,10 @@ export const planStepSchema = z
     expectedOutcome: z.string().min(1).max(500),
     verification: z.string().min(1).max(500).optional(),
     riskLevel: planStepRiskLevelSchema.default("low"),
+    /** Files to load before writing this step. Optional; filled from graph dependencies. */
+    mustRead: z.array(z.string().min(1).max(500)).max(8).optional(),
+    /** Files likely to break after this write. Optional; filled from graph dependents. */
+    affected: z.array(z.string().min(1).max(500)).max(8).optional(),
   })
   .strict();
 

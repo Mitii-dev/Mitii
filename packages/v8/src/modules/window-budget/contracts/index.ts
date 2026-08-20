@@ -17,6 +17,7 @@ export {
   windowPolicyPlanningSchema,
   windowPolicyRunSchema,
   windowPolicySkillsSchema,
+  windowPolicyTaskListSchema,
   windowBudgetReasonCodeSchema,
 } from "./output/WindowPolicy";
 export type {
@@ -27,6 +28,7 @@ export type {
   WindowPolicyPlanning,
   WindowPolicyRun,
   WindowPolicySkills,
+  WindowPolicyTaskList,
   WindowBudgetReasonCode,
 } from "./output/WindowPolicy";
 

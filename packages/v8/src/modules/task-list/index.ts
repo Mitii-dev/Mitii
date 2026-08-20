@@ -12,13 +12,16 @@ export {
 
 export {
   DEFAULT_MAX_TASKS,
+  MAX_TASKS_CAP,
   DEFAULT_MIN_TASKS,
   DEFAULT_MAX_TASK_TITLE_CHARS,
   DEFAULT_MAX_TASK_DETAIL_CHARS,
   DEFAULT_MAX_TASK_ID_CHARS,
+  DEFAULT_MAX_TASK_PATHS,
+  DEFAULT_MAX_TASK_PATH_CHARS,
 } from "./defaults";
 
-export { TASK_LIST_POLICY } from "./policy";
+export { TASK_LIST_POLICY, resolveMaxTasks } from "./policy";
 
 export { TaskListPipeline } from "./pipeline/TaskListPipeline";
 
@@ -59,5 +62,11 @@ export {
   serializeTaskListForPrompt,
   serializeTaskListGuidance,
   serializeTaskListMarkdown,
+  serializeWorkingSetForLoop,
+  serializeWorkingSetChecklistLines,
+  WORKING_SET_MARKER,
   taskListProgress,
+  collectCompletedTaskPaths,
+  taskItemPaths,
 } from "./serialize";
+

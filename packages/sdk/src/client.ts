@@ -19,6 +19,7 @@ import type {
   ToolRuntimePipeline,
   VerificationPipeline,
   WorkspaceIndexingPipelineResult,
+  RepositoryGraphPort,
 } from '@mitii/v8';
 
 import {
@@ -45,6 +46,11 @@ export interface CreateMitiiClientOptions {
   repositoryState?: RepositoryStatePipelineType;
   repositoryContext?: RepositoryContextPipeline;
   tools?: ToolRuntimePipeline;
+  /**
+   * Optional published RepoGraph port. When set, follow_evidence planning
+   * annotates Change steps with hop-1 mustRead/affected paths.
+   */
+  repoGraphs?: RepositoryGraphPort;
   verification?: VerificationPipeline;
   /** Enables clarification/approval resume across process turns. */
   checkpointStore?: ComposeReadOnlyAgentEngineOptions['checkpointStore'];
@@ -114,6 +120,7 @@ export class MitiiClient {
       repositoryState,
       repositoryContext: options.repositoryContext,
       tools: options.tools,
+      repoGraphs: options.repoGraphs,
       verification: options.verification,
       checkpointStore,
       skillsCatalog: options.skillsCatalog,

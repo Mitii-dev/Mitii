@@ -16,7 +16,7 @@ import type {
 import { isRepairIntentTaxonomy } from "../../decision-policy";
 import { PLANNING_SCHEMA_VERSION } from "../constants";
 import { DEFAULT_MAX_STEPS_PER_PHASE } from "../defaults";
-import { PLANNING_PROCESS_META_STEP } from "../policy";
+import { PLANNING_PROCESS_META_STEP, PLANNING_WORKING_SET_POLICY } from "../policy";
 import { filterBuildEvidenceToAskScope } from "../internal/evidenceScope";
 
 /**
@@ -66,7 +66,7 @@ export function draftPlan(
     buildEvidence: scopedBuildEvidence,
     skipDiscover: input.strategy?.skipDiscover ?? false,
     discoveryBrief: input.discoveryBrief,
-    maxDiagnosticSteps: input.maxDiagnosticSteps,
+    maxFilesPerBatch: input.maxFilesPerBatch,
   });
 
   return {
@@ -233,7 +233,7 @@ function buildPhases(params: {
   buildEvidence?: PlanningBuildEvidence;
   skipDiscover?: boolean;
   discoveryBrief?: DiscoveryBrief;
-  maxDiagnosticSteps?: number;
+  maxFilesPerBatch?: number;
 }): PlanPhase[] {
   const {
     evidence,
@@ -271,11 +271,11 @@ function buildPhases(params: {
           processHints,
           buildEvidence,
           discoveryBrief,
-          maxDiagnosticSteps: params.maxDiagnosticSteps,
+          maxFilesPerBatch: params.maxFilesPerBatch,
         }),
         buildEvidence,
         evidence.risk,
-        params.maxDiagnosticSteps,
+        params.maxFilesPerBatch,
       ),
       discoveryBrief,
       evidence.risk,
@@ -317,7 +317,7 @@ function buildPhases(params: {
       processHints,
       buildEvidence,
       discoveryBrief,
-      params.maxDiagnosticSteps,
+      params.maxFilesPerBatch,
     ),
   });
 
@@ -452,7 +452,7 @@ function buildSkillHintPhases(params: {
   processHints: readonly string[];
   buildEvidence?: PlanningBuildEvidence;
   discoveryBrief?: DiscoveryBrief;
-  maxDiagnosticSteps?: number;
+  maxFilesPerBatch?: number;
 }): PlanPhase[] {
   const phases: PlanPhase[] = [];
   const shortObjective = clipPhrase(params.objective, 80);
@@ -513,7 +513,7 @@ function buildSkillHintPhases(params: {
         params.processHints,
         params.buildEvidence,
         params.discoveryBrief,
-        params.maxDiagnosticSteps,
+        params.maxFilesPerBatch,
       ),
     });
   }
@@ -586,12 +586,12 @@ function injectDiagnosticStepsIntoChangePhase(
   phases: PlanPhase[],
   buildEvidence: PlanningBuildEvidence | undefined,
   risk: PlanStep["riskLevel"],
-  maxDiagnosticSteps?: number,
+  maxFilesPerBatch?: number,
 ): PlanPhase[] {
   const diagnosticSteps = buildDiagnosticChangeSteps(
     buildEvidence,
     risk,
-    maxDiagnosticSteps,
+    maxFilesPerBatch,
   );
   if (diagnosticSteps.length === 0) {
     return phases;
@@ -608,10 +608,7 @@ function injectDiagnosticStepsIntoChangePhase(
       );
       return {
         ...phase,
-        steps: [...diagnosticSteps, ...retained].slice(
-          0,
-          maxDiagnosticSteps ?? DEFAULT_MAX_STEPS_PER_PHASE,
-        ),
+        steps: mergeDiagnosticChangeSteps(diagnosticSteps, retained),
       };
     });
   }
@@ -631,10 +628,7 @@ function injectDiagnosticStepsIntoChangePhase(
     successCriteria: [
       "Reported diagnostics are resolved without unrelated edits.",
     ],
-    steps: diagnosticSteps.slice(
-      0,
-      maxDiagnosticSteps ?? DEFAULT_MAX_STEPS_PER_PHASE,
-    ),
+    steps: mergeDiagnosticChangeSteps(diagnosticSteps, []),
   };
 
   const next = [...phases];
@@ -891,7 +885,7 @@ function buildChangeSteps(
   processHints: readonly string[],
   buildEvidence?: PlanningBuildEvidence,
   discoveryBrief?: DiscoveryBrief,
-  maxDiagnosticSteps?: number,
+  maxFilesPerBatch?: number,
 ): PlanStep[] {
   const scope = scopeLabel(targetRefs);
   const shortObjective = clipPhrase(objective, 80);
@@ -906,7 +900,7 @@ function buildChangeSteps(
   const diagnosticSteps = buildDiagnosticChangeSteps(
     buildEvidence,
     evidence.risk,
-    maxDiagnosticSteps,
+    maxFilesPerBatch,
   );
   const discoveryFailed =
     discoveryBrief !== undefined &&
@@ -1007,10 +1001,19 @@ function discoverySurfaceStep(
   );
 }
 
+function chunkList<T>(items: readonly T[], size: number): T[][] {
+  const batchSize = Math.max(1, Math.floor(size));
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    chunks.push([...items.slice(i, i + batchSize)]);
+  }
+  return chunks;
+}
+
 function buildDiagnosticChangeSteps(
   buildEvidence: PlanningBuildEvidence | undefined,
   risk: PlanStep["riskLevel"],
-  maxDiagnosticSteps?: number,
+  maxFilesPerBatch?: number,
 ): PlanStep[] {
   const diagnostics = (buildEvidence?.diagnostics ?? []).filter(
     (diag) => diag.severity === "error",
@@ -1019,32 +1022,65 @@ function buildDiagnosticChangeSteps(
     return [];
   }
 
-  return groupDiagnosticsByCode(diagnostics)
-    .slice(0, maxDiagnosticSteps ?? DEFAULT_MAX_STEPS_PER_PHASE)
-    .map(({ code, paths, diagnostics: classDiagnostics }, index) => {
-      const primary = classDiagnostics[0]!;
-      const codeLabel = code || "diagnostic";
-      const fileNote =
-        paths.length === 1
-          ? paths[0]!
-          : `${paths[0]!} +${paths.length - 1} files`;
-      const countNote =
-        classDiagnostics.length === 1
-          ? `the reported ${codeLabel} diagnostic`
-          : `all ${classDiagnostics.length} ${codeLabel} diagnostics`;
-      return step(
-        `step-fix-diagnostic-${index + 1}`,
-        clipPhrase(`Fix ${codeLabel} in ${fileNote}`, 200),
-        paths,
-        clipPhrase(
-          `Address ${countNote} in a single batch (same root cause). ${primary.message}`,
-          1_000,
-        ),
-        `${codeLabel} diagnostics are resolved or reduced without introducing new errors.`,
-        risk,
-        buildEvidence?.failedChecks?.join(", "),
+  const batchSize =
+    maxFilesPerBatch ?? PLANNING_WORKING_SET_POLICY.maxWritePerBatch;
+  const steps: PlanStep[] = [];
+
+  for (const group of groupDiagnosticsByCode(diagnostics)) {
+    const pathChunks = chunkList(group.paths, batchSize);
+    for (const [chunkIndex, chunkPaths] of pathChunks.entries()) {
+      const chunkPathSet = new Set(chunkPaths);
+      const chunkDiagnostics = group.diagnostics.filter((item) =>
+        chunkPathSet.has(item.path.trim()),
       );
-    });
+      const primary = chunkDiagnostics[0] ?? group.diagnostics[0]!;
+      const codeLabel = group.code || "diagnostic";
+      const fileNote =
+        chunkPaths.length === 1
+          ? chunkPaths[0]!
+          : `${chunkPaths[0]!} +${chunkPaths.length - 1} files`;
+      const batchNote =
+        pathChunks.length > 1
+          ? ` (${chunkIndex + 1}/${pathChunks.length})`
+          : "";
+      const countNote =
+        chunkDiagnostics.length === 1
+          ? `the reported ${codeLabel} diagnostic`
+          : `${chunkDiagnostics.length} ${codeLabel} diagnostics`;
+      const batchScope =
+        pathChunks.length > 1
+          ? `in this batch of ${chunkPaths.length} (same root cause; remaining files of this class stay on later steps)`
+          : "in a single batch (same root cause)";
+      steps.push(
+        step(
+          `step-fix-diagnostic-${steps.length + 1}`,
+          clipPhrase(`Fix ${codeLabel} in ${fileNote}${batchNote}`, 200),
+          chunkPaths,
+          clipPhrase(
+            `Address ${countNote} ${batchScope}. ${primary.message}`,
+            1_000,
+          ),
+          `${codeLabel} diagnostics are resolved or reduced without introducing new errors.`,
+          risk,
+          buildEvidence?.failedChecks?.join(", "),
+        ),
+      );
+    }
+  }
+
+  return steps.slice(0, PLANNING_WORKING_SET_POLICY.maxBatchesOnPlan);
+}
+
+function mergeDiagnosticChangeSteps(
+  diagnosticSteps: readonly PlanStep[],
+  retained: readonly PlanStep[],
+): PlanStep[] {
+  const diagnostics = diagnosticSteps.slice(
+    0,
+    PLANNING_WORKING_SET_POLICY.maxBatchesOnPlan,
+  );
+  const remaining = Math.max(0, 20 - diagnostics.length);
+  return [...diagnostics, ...retained.slice(0, remaining)];
 }
 
 function groupDiagnosticsByCode(

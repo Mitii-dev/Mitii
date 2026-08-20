@@ -9,8 +9,10 @@ import {
 import {
   DEFAULT_MAX_TASK_DETAIL_CHARS,
   DEFAULT_MAX_TASK_ID_CHARS,
+  DEFAULT_MAX_TASK_PATH_CHARS,
+  DEFAULT_MAX_TASK_PATHS,
   DEFAULT_MAX_TASK_TITLE_CHARS,
-  DEFAULT_MAX_TASKS,
+  MAX_TASKS_CAP,
 } from "../../defaults";
 
 export const taskItemStatusSchema = z.enum(TASK_ITEM_STATUSES);
@@ -26,6 +28,11 @@ export type TaskItemStatus =
 export type TaskListSource = "plan" | "agent" | "user" | "discovery";
 export type TaskListPurpose = "discovery" | "execution";
 
+const taskItemPathSchema = z
+  .string()
+  .min(1)
+  .max(DEFAULT_MAX_TASK_PATH_CHARS);
+
 export const taskItemSchema = z
   .object({
     id: z.string().min(1).max(DEFAULT_MAX_TASK_ID_CHARS),
@@ -34,6 +41,12 @@ export const taskItemSchema = z
     detail: z.string().min(1).max(DEFAULT_MAX_TASK_DETAIL_CHARS).optional(),
     /** Optional plan step/phase id this task was derived from. */
     sourceRef: z.string().min(1).max(DEFAULT_MAX_TASK_ID_CHARS).optional(),
+    /** Files this row intends to change. Copied from plan step targetRefs. */
+    write: z.array(taskItemPathSchema).max(DEFAULT_MAX_TASK_PATHS).optional(),
+    /** Files to load before writing. Filled from hop-1 graph dependencies. */
+    mustRead: z.array(taskItemPathSchema).max(DEFAULT_MAX_TASK_PATHS).optional(),
+    /** Files likely to break after the write. Filled from hop-1 dependents. */
+    affected: z.array(taskItemPathSchema).max(DEFAULT_MAX_TASK_PATHS).optional(),
   })
   .strict();
 
@@ -43,6 +56,9 @@ export interface TaskItem {
   status: TaskItemStatus;
   detail?: string;
   sourceRef?: string;
+  write?: string[];
+  mustRead?: string[];
+  affected?: string[];
 }
 
 /**
@@ -56,7 +72,7 @@ export const taskListObjectSchema = z
     source: taskListSourceSchema,
     purpose: taskListPurposeSchema.optional(),
     title: z.string().min(1).max(DEFAULT_MAX_TASK_TITLE_CHARS).optional(),
-    items: z.array(taskItemSchema).max(DEFAULT_MAX_TASKS),
+    items: z.array(taskItemSchema).max(MAX_TASKS_CAP),
   })
   .strict();
 

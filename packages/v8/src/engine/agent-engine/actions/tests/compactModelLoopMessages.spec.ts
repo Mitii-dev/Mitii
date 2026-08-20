@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { CharacterTokenEstimator } from "../../../../modules/prompt-construction";
 import {
   compactModelLoopMessages,
+  stubToolResultsForCompletedPaths,
   estimateModelMessagesTokens,
   resolveCompactionPressure,
   resolveCompactionThresholds,
@@ -442,5 +443,49 @@ describe("compactModelLoopMessages", () => {
     });
     expect(thresholds.autoTokens).toBe(thresholds.hardTokens);
     expect(thresholds.autoTokens).toBe(40_000);
+  });
+
+  it("stubs completed-task file-read bodies without waiting for compaction", () => {
+    const fileBody = "x".repeat(2_000);
+    const messages: ModelMessage[] = [
+      { role: "system", content: "system" },
+      { role: "user", content: "fix login" },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "read_login",
+            name: "read_file",
+            arguments: JSON.stringify({ path: "src/auth/Login.ts" }),
+          },
+        ],
+      },
+      {
+        role: "tool",
+        toolCallId: "read_login",
+        content: JSON.stringify({
+          status: "succeeded",
+          toolName: "read_file",
+          output: fileBody,
+        }),
+      },
+    ];
+
+    const result = stubToolResultsForCompletedPaths({
+      messages,
+      paths: ["src/auth/Login.ts"],
+      maxChars: 400,
+    });
+
+    expect(result.stubbed).toBe(true);
+    const tool = result.messages.find((message) => message.role === "tool");
+    const parsed = JSON.parse(tool?.content ?? "{}") as {
+      compacted?: boolean;
+      reason?: string;
+    };
+    expect(parsed.compacted).toBe(true);
+    expect(parsed.reason).toBe("completed_task_file_body_stubbed");
+    expect(tool?.content.length).toBeLessThan(fileBody.length);
   });
 });

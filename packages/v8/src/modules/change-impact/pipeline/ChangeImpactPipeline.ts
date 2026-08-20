@@ -45,9 +45,10 @@ interface ImpactAdjacencyEdge {
 }
 
 /**
- * Answers "what depends on this change seed?" over a published RepoGraph.
- * The graph builder records dependency flow from dependent to dependency, so
- * impact traversal walks configured edge types in reverse.
+ * Answers blast-radius questions over a published RepoGraph.
+ * Edges are recorded dependent → dependency. `dependents` walks them in
+ * reverse (who points at the seed). `dependencies` walks them forward
+ * (what the seed imports / depends on).
  */
 export class ChangeImpactPipeline {
   public analyze(input: ChangeImpactParsedInput | unknown): ChangeImpactResult {
@@ -120,13 +121,14 @@ export class ChangeImpactPipeline {
       });
     }
 
-    const walk = this.walkDependents({
+    const walk = this.walkImpact({
       graph,
       seedNodeIds: resolvedSeeds.map((seed) => seed.node.id),
       edgeTypes: parsed.edgeTypes,
       maximumHops: parsed.maximumHops,
       maximumAffectedNodes: parsed.maximumAffectedNodes,
       nodeById,
+      reverse: parsed.direction !== "dependencies",
     });
     truncated = walk.truncated;
     for (const code of walk.reasonCodes) {
@@ -152,7 +154,11 @@ export class ChangeImpactPipeline {
     if (affected.length > 0 || packagesAffected.length > 0) {
       reasonCodes.add("impact_resolved");
     } else {
-      reasonCodes.add("no_dependents");
+      reasonCodes.add(
+        parsed.direction === "dependencies"
+          ? "no_dependencies"
+          : "no_dependents",
+      );
     }
 
     const status =
@@ -277,13 +283,14 @@ export class ChangeImpactPipeline {
     return seeds;
   }
 
-  private walkDependents(params: {
+  private walkImpact(params: {
     graph: RepoGraph;
     seedNodeIds: readonly string[];
     edgeTypes: readonly ChangeImpactEdgeType[];
     maximumHops: number;
     maximumAffectedNodes: number;
     nodeById: ReadonlyMap<string, RepoGraphNode>;
+    reverse: boolean;
   }): {
     visits: WalkVisit[];
     truncated: boolean;
@@ -310,6 +317,7 @@ export class ChangeImpactPipeline {
     graph: RepoGraph;
     edgeTypes: readonly ChangeImpactEdgeType[];
     nodeById: ReadonlyMap<string, RepoGraphNode>;
+    reverse: boolean;
   }): ReadonlyMap<string, readonly ImpactAdjacencyEdge[]> {
     const edgeTypes = new Set<ChangeImpactEdgeType>(params.edgeTypes);
     const adjacency = new Map<string, ImpactAdjacencyEdge[]>();
@@ -325,9 +333,15 @@ export class ChangeImpactPipeline {
         continue;
       }
       const impactEdge = edge as ChangeImpactEdge;
-      const neighbors = adjacency.get(impactEdge.toNodeId) ?? [];
-      neighbors.push({ nodeId: impactEdge.fromNodeId, edge: impactEdge });
-      adjacency.set(impactEdge.toNodeId, neighbors);
+      const fromId = params.reverse
+        ? impactEdge.toNodeId
+        : impactEdge.fromNodeId;
+      const toId = params.reverse
+        ? impactEdge.fromNodeId
+        : impactEdge.toNodeId;
+      const neighbors = adjacency.get(fromId) ?? [];
+      neighbors.push({ nodeId: toId, edge: impactEdge });
+      adjacency.set(fromId, neighbors);
     }
 
     for (const neighbors of adjacency.values()) {

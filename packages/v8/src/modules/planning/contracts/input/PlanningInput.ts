@@ -99,6 +99,16 @@ export type ExplorationDepth = z.infer<typeof explorationDepthSchema>;
 export type PlanningScopedRepoMap = z.infer<typeof planningScopedRepoMapSchema>;
 export type PlanningBuildEvidence = z.infer<typeof planningBuildEvidenceSchema>;
 
+export const planningImpactReportSchema = z
+  .object({
+    seedPath: z.string().min(1).max(1_000),
+    mustRead: z.array(z.string().min(1).max(500)).max(8).default([]),
+    affected: z.array(z.string().min(1).max(500)).max(8).default([]),
+  })
+  .strict();
+
+export type PlanningImpactReport = z.infer<typeof planningImpactReportSchema>;
+
 /**
  * Boundary input for Planning.
  *
@@ -141,8 +151,21 @@ export const planningInputSchema = z
       .int()
       .positive()
       .default(DEFAULT_PLANNING_BUDGET_TOKENS),
-    /** Window-derived cap for diagnostic change steps. */
+    /**
+     * Window-derived live-list hint. Overflow diagnostic batches stay on
+     * the plan (up to working-set maxBatchesOnPlan); this does not drop them.
+     */
     maxDiagnosticSteps: z.number().int().positive().optional(),
+    /**
+     * Write-file cap per diagnostic Change step. Engine passes the window
+     * mutation preferredBatchSize so one error class becomes several batches.
+     */
+    maxFilesPerBatch: z.number().int().positive().max(48).optional(),
+    /**
+     * Engine-collected hop-1 graph reports. Used only for follow_evidence
+     * working-set annotation. Planning never walks the graph itself.
+     */
+    impactReports: z.array(planningImpactReportSchema).max(40).optional(),
   })
   .strict();
 

@@ -4,7 +4,7 @@ import { TASK_LIST_SCHEMA_VERSION } from "../../constants";
 import {
   DEFAULT_MAX_TASK_ID_CHARS,
   DEFAULT_MAX_TASK_TITLE_CHARS,
-  DEFAULT_MAX_TASKS,
+  MAX_TASKS_CAP,
 } from "../../defaults";
 import {
   taskItemStatusSchema,
@@ -50,13 +50,13 @@ export const taskListOperationSchema = z.discriminatedUnion("type", [
       items: z
         .array(taskListDraftItemSchema)
         .min(1)
-        .max(DEFAULT_MAX_TASKS),
+        .max(MAX_TASKS_CAP),
     })
     .strict(),
   z
     .object({
       type: z.literal("patch"),
-      items: z.array(taskListPatchItemSchema).min(1).max(DEFAULT_MAX_TASKS),
+      items: z.array(taskListPatchItemSchema).min(1).max(MAX_TASKS_CAP),
     })
     .strict(),
   z
@@ -73,6 +73,7 @@ export const taskListApplyInputSchema = z
     source: taskListSourceSchema,
     purpose: taskListPurposeSchema.optional(),
     title: z.string().min(1).max(DEFAULT_MAX_TASK_TITLE_CHARS).optional(),
+    maxTasks: z.number().int().positive().max(MAX_TASKS_CAP).optional(),
     operation: taskListOperationSchema,
   })
   .strict();

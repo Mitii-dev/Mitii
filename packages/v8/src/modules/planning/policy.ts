@@ -27,3 +27,25 @@ export const DISCOVERED_PLAN_POLICY = {
   maxRepoEntries: 40,
   maxDiagnostics: 16,
 } as const;
+
+/**
+ * Hop-1 working-set annotation for follow_evidence only.
+ * Engine walks the graph; Planning only compiles these caps onto Change steps.
+ */
+export const PLANNING_WORKING_SET_POLICY = {
+  maxMustRead: 5,
+  maxAffected: 5,
+  maximumHops: 1,
+  maximumAffectedNodes: 5,
+  maxReports: 16,
+  /** Write files per diagnostic Change step. Engine may pass the window cap. */
+  maxWritePerBatch: 7,
+  /**
+   * Diagnostic batches kept on the PlanArtifact. The live task list is
+   * smaller; leftover batches stream in as earlier items complete.
+   * Must stay within planPhaseSchema.steps.max (20).
+   */
+  maxBatchesOnPlan: 16,
+  dependencyEdgeTypes: ["imports", "depends_on"] as const,
+  dependentEdgeTypes: ["imports", "calls", "references"] as const,
+} as const;

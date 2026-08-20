@@ -15,6 +15,9 @@ export type { DraftPlanFromDiscoveryResult } from "./DraftPlanFromDiscovery";
 export { applyDiscoveredPlanDraft } from "./ApplyDiscoveredPlanDraft";
 export { validatePlan } from "./ValidatePlan";
 export type { ValidatePlanResult } from "./ValidatePlan";
+export { applyPlanWorkingSets } from "./ApplyPlanWorkingSets";
+export type { ApplyPlanWorkingSetsResult } from "./ApplyPlanWorkingSets";
+export { collectDiscoveryImpactSeedPaths } from "./collectDiscoveryImpactSeedPaths";
 export {
   compactPlan,
   serializePlanText,

@@ -205,6 +205,12 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     policy.diagnosticStepsBase,
     policy.diagnosticStepsMax,
   );
+  const maxTasks = clampInt(
+    policy.maxTasksBase +
+      Math.floor(usableInputTokens / policy.maxTasksPerUsable),
+    policy.maxTasksBase,
+    policy.maxTasksCap,
+  );
   const maxModelCalls = overlay.maxModelCalls;
   const maxSkills = clampInt(
     policy.maxSkillsBase +
@@ -281,6 +287,9 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     skills: {
       budgetTokens: skillsTokens,
       maxSkills,
+    },
+    taskList: {
+      maxTasks,
     },
     maxVerificationChecks,
     resolvedPolicy: policy,

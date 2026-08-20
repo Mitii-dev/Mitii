@@ -5,6 +5,8 @@ import {
   serializeTaskListForPrompt,
   serializeTaskListGuidance,
   serializeTaskListMarkdown,
+  serializeWorkingSetForLoop,
+  WORKING_SET_MARKER,
   taskListSchema,
 } from "../../index";
 
@@ -54,6 +56,55 @@ describe("serializeTaskList", () => {
     expect(prompt).toContain("Keep exactly one item active");
     expect(prompt).toContain("prefer patch by id");
     expect(prompt).toContain("Skip update_todos only for trivial single-step work");
+  });
+
+  it("expands write/need/affected only on the active row", () => {
+    const withPaths = taskListSchema.parse({
+      schemaVersion: 1,
+      source: "plan",
+      items: [
+        {
+          id: "a",
+          title: "Fix Login.ts",
+          status: "done",
+          write: ["src/auth/Login.ts"],
+        },
+        {
+          id: "b",
+          title: "Fix types.ts",
+          status: "active",
+          write: ["src/auth/types.ts"],
+          mustRead: ["src/auth/Login.ts"],
+          affected: ["src/auth/Login.test.ts"],
+        },
+        { id: "c", title: "Verify", status: "pending" },
+      ],
+    });
+    const prompt = serializeTaskListForPrompt(withPaths);
+    expect(prompt).toContain("write: src/auth/types.ts");
+    expect(prompt).toContain("need: src/auth/Login.ts");
+    expect(prompt).toContain("affected: src/auth/Login.test.ts");
+    expect(prompt).toContain("a: Fix Login.ts");
+    expect(prompt).not.toMatch(/a: Fix Login\.ts\n {2}write:/);
+  });
+
+  it("serializes a trailing working-set table with the live marker", () => {
+    const withPaths = taskListSchema.parse({
+      schemaVersion: 1,
+      source: "plan",
+      items: [
+        {
+          id: "b",
+          title: "Fix types.ts",
+          status: "active",
+          write: ["src/auth/types.ts"],
+        },
+      ],
+    });
+    const block = serializeWorkingSetForLoop(withPaths);
+    expect(block).toContain(WORKING_SET_MARKER);
+    expect(block).toContain("write: src/auth/types.ts");
+    expect(serializeWorkingSetForLoop(undefined)).toBeUndefined();
   });
 
   it("asks agent to create concrete tasks when no list exists", () => {

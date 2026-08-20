@@ -23,6 +23,7 @@ export const TASK_LIST_REASON_CODES = [
   "task_list_patched",
   "task_list_cleared",
   "task_list_derived",
+  "task_list_refilled",
   "task_list_unchanged",
   "task_list_invalid",
   "task_list_empty",

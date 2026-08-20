@@ -21,8 +21,16 @@ export function buildVerificationRepairPrompt(params: {
     maxUniqueFilesPerCall: number;
     preferredBatchSize: number;
   };
+  /** Live checklist row to repair against instead of a wide error dump. */
+  activeBatch?: {
+    title: string;
+    write?: readonly string[];
+    mustRead?: readonly string[];
+    affected?: readonly string[];
+  };
 }): string {
-  const maxDiagnostics = params.maxDiagnostics ?? DEFAULT_MAX_DIAGNOSTICS;
+  const maxDiagnostics =
+    params.activeBatch !== undefined ? 8 : (params.maxDiagnostics ?? DEFAULT_MAX_DIAGNOSTICS);
   const diagnostics = (params.verification?.diagnostics ?? [])
     .filter((diagnostic) => diagnostic.severity === "error")
     .slice(0, maxDiagnostics)
@@ -53,8 +61,11 @@ export function buildVerificationRepairPrompt(params: {
       ? `apply_patch hard limits this turn: at most ${budget.preferredBatchSize} files, ${budget.maxUniqueFilesPerCall} unique files, ${budget.maxPatchesPerCall} patches. Remaining errors go on the next turn.`
       : "Prefer minimal patches. Then stop so verification can run again.";
 
+  const activeBatchLines = formatActiveBatchLines(params.activeBatch);
+
   return [
     "Verification failed. Call apply_patch now for the next remaining-error batch.",
+    ...(activeBatchLines.length > 0 ? activeBatchLines : []),
     "Group remaining errors by code/message and fix each class across its files this turn. Do not stop after the first diagnostic.",
     "Do not write a report or re-read the whole repository. Remaining error classes go on later turns.",
     batch,
@@ -66,4 +77,36 @@ export function buildVerificationRepairPrompt(params: {
   ]
     .filter((line): line is string => Boolean(line))
     .join("\n");
+}
+
+function formatActiveBatchLines(
+  activeBatch?: {
+    title: string;
+    write?: readonly string[];
+    mustRead?: readonly string[];
+    affected?: readonly string[];
+  },
+): string[] {
+  if (!activeBatch) {
+    return [];
+  }
+  const parts: string[] = [];
+  if (activeBatch.write && activeBatch.write.length > 0) {
+    parts.push(`write: ${activeBatch.write.join(", ")}`);
+  }
+  if (activeBatch.mustRead && activeBatch.mustRead.length > 0) {
+    parts.push(`need: ${activeBatch.mustRead.join(", ")}`);
+  }
+  if (activeBatch.affected && activeBatch.affected.length > 0) {
+    parts.push(`affected: ${activeBatch.affected.join(", ")}`);
+  }
+  if (parts.length === 0) {
+    return [
+      `Active batch: ${activeBatch.title}. Fix only this slice this turn.`,
+    ];
+  }
+  return [
+    `Active batch (${activeBatch.title}): ${parts.join("; ")}.`,
+    "Fix only this batch this turn. Load need files before patching write files.",
+  ];
 }

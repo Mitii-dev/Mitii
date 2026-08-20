@@ -1,4 +1,15 @@
-import { DEFAULT_MAX_TASKS } from "./defaults";
+import { DEFAULT_MAX_TASKS, MAX_TASKS_CAP } from "./defaults";
+
+/**
+ * Resolve the live checklist cap. Window policy may raise it above the default
+ * on large contexts, but never above MAX_TASKS_CAP.
+ */
+export function resolveMaxTasks(maxTasks?: number): number {
+  if (maxTasks === undefined) {
+    return DEFAULT_MAX_TASKS;
+  }
+  return Math.min(Math.max(DEFAULT_MAX_TASKS, Math.floor(maxTasks)), MAX_TASKS_CAP);
+}
 
 /**
  * Decision thresholds for the live task list.

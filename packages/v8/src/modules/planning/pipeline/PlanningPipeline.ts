@@ -1,5 +1,6 @@
 import {
   applyDiscoveredPlanDraft,
+  applyPlanWorkingSets,
   compactPlan,
   compileDiscoveryBrief,
   draftPlan,
@@ -40,6 +41,7 @@ export interface PlanStrategyResolution {
  *   → draft generic PlanArtifact from dimensions (+ optional skills/hints)
  *   → discover_and_plan only: one model draft call over discovery evidence
  *   → validate required sections
+   *   → follow_evidence / discover_and_plan: compile hop-1 mustRead/affected onto Change steps
  *   → compact to budget
  *   → return planning result
  *
@@ -142,8 +144,14 @@ export class PlanningPipeline {
       });
     }
 
-    const compacted = compactPlan({
+    const annotated = applyPlanWorkingSets({
       plan: validated.plan,
+      input: parsed,
+      strategy: strategy.decision,
+    });
+
+    const compacted = compactPlan({
+      plan: annotated.plan,
       budgetTokens: parsed.budgetTokens,
     });
 
@@ -152,6 +160,7 @@ export class PlanningPipeline {
       ...strategy.reasonCodes,
       ...draftReasonCodes,
       ...validated.reasonCodes,
+      ...annotated.reasonCodes,
       ...compacted.reasonCodes,
     ]);
 
@@ -187,6 +196,7 @@ export class PlanningPipeline {
 
 export {
   compileDiscoveryBrief,
+  collectDiscoveryImpactSeedPaths,
   formatPlanAsAnswer,
   inferPlanStrategyFromArtifact,
   serializePlanForPrompt,

@@ -228,8 +228,13 @@ describe("AgentEngine task list", () => {
     const system = captured[0]?.messages.find(
       (message) => message.role === "system",
     );
-    expect(system?.content).toContain("No live working list yet");
-    expect(system?.content).toContain("update_todos");
+    const workingSet = captured[0]?.messages.find(
+      (message) =>
+        message.role === "user" &&
+        message.content.includes('<working_set trust="instruction">'),
+    );
+    expect(workingSet?.content).toContain("No live checklist yet");
+    expect(workingSet?.content).toContain("update_todos");
     expect(system?.content).toContain("Skip rediscovery");
     expect(system?.content).not.toMatch(/Diagnose the problem/i);
     expect(system?.content).not.toMatch(/\[ \] .*: Restate the goal/);

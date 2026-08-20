@@ -10,6 +10,11 @@ export type {
 } from "./buildClarificationPayload";
 export { extractFileReadPaths } from "./extractFileReadPaths";
 export {
+  extractMutationTargetPaths,
+  missingMustReadPaths,
+  buildMustReadNudgeMessage,
+} from "./assertBatchReads";
+export {
   extractEstablishedFact,
   extractCompilerErrorQueue,
   upsertEstablishedFact,
@@ -38,6 +43,7 @@ export { extractMemoryFileTargets } from "./extractMemoryFileTargets";
 export { deriveSkillRepoEvidence } from "./deriveSkillRepoEvidence";
 export type { SkillRepoEvidence } from "./deriveSkillRepoEvidence";
 export { mapUnderstandingToPlanningEvidence } from "./mapUnderstandingToPlanningEvidence";
+export { collectPlanningImpactReports } from "./collectPlanningImpactReports";
 export { mergePromptInstructions } from "./mergePromptInstructions";
 export { filterToolDefinitions } from "./filterToolDefinitions";
 export { annotateMutationToolDefinitions } from "./annotateMutationToolDefinitions";
@@ -47,10 +53,15 @@ export {
   isCompleteToolCall,
 } from "./buildOutputTruncationRecovery";
 export type { TruncationRecoveryPlan } from "./buildOutputTruncationRecovery";
-export { buildMutationBudgetInstruction } from "./buildMutationBudgetInstruction";
+export { buildMutationBudgetInstruction, buildMutationBudgetWorkingSetLines } from "./buildMutationBudgetInstruction";
+export {
+  serializeRecoverabilityWorkingSet,
+} from "./serializeRecoverabilityWorkingSet";
+export type { RecoverabilityWorkingSetInput } from "./serializeRecoverabilityWorkingSet";
 export { estimateMutationPayloadCharacters } from "./estimateMutationPayloadCharacters";
 export {
   compactModelLoopMessages,
+  stubToolResultsForCompletedPaths,
   estimateModelMessageTokens,
   estimateModelMessagesTokens,
   resolveCompactionPressure,

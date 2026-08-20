@@ -27,6 +27,7 @@ export default defineConfig({
       'packages/v8/src/modules/memory/**/*.spec.ts',
       'packages/v8/src/modules/planning/**/*.spec.ts',
       'packages/v8/src/modules/task-list/**/*.spec.ts',
+      'packages/v8/src/modules/change-impact/**/*.spec.ts',
       'packages/v8/src/modules/prompt-construction/**/*.spec.ts',
       'packages/v8/src/modules/repository-context/tests/**/*.spec.ts',
       'packages/v8/src/modules/window-budget/**/*.spec.ts',

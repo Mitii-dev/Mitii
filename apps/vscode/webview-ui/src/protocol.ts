@@ -263,6 +263,7 @@ export interface TokenBudgetPreview {
   maxPatchPayloadCharacters: number;
   requireBatchedExecution: boolean;
   maxDiagnosticSteps: number;
+  maxTasks: number;
   maxSkills: number;
   maxVerificationChecks: number;
   visiblePlanAffordable: boolean;

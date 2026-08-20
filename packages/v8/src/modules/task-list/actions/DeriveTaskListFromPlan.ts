@@ -3,9 +3,10 @@ import type { PlanArtifact } from "../../planning";
 import { TASK_LIST_SCHEMA_VERSION } from "../constants";
 import {
   DEFAULT_MAX_TASK_DETAIL_CHARS,
+  DEFAULT_MAX_TASK_PATHS,
   DEFAULT_MAX_TASK_TITLE_CHARS,
 } from "../defaults";
-import { TASK_LIST_POLICY } from "../policy";
+import { resolveMaxTasks, TASK_LIST_POLICY } from "../policy";
 import type { TaskItem, TaskListApplyResult } from "../contracts";
 import { taskListApplyResultSchema, taskListSchema } from "../contracts";
 
@@ -16,27 +17,12 @@ import { taskListApplyResultSchema, taskListSchema } from "../contracts";
  * Only concrete file-scoped steps become live checklist rows (empty is OK).
  * Does not execute or mark completion.
  */
-export function deriveTaskListFromPlan(plan: PlanArtifact): TaskListApplyResult {
-  const preferred: PlanStepCandidate[] = [];
-  const deferred: PlanStepCandidate[] = [];
-
-  for (const phase of plan.phases) {
-    for (const step of phase.steps) {
-      if (isProcessMetaStep(step.intent, step.actionSummary)) {
-        continue;
-      }
-      if (isPreferredStep(phase.name, step.intent)) {
-        preferred.push({ phase, step });
-      } else {
-        deferred.push({ phase, step });
-      }
-    }
-  }
-
-  const selected =
-    preferred.length > 0
-      ? preferred.slice(0, TASK_LIST_POLICY.maxTasks)
-      : deferred.slice(0, TASK_LIST_POLICY.maxTasks);
+export function deriveTaskListFromPlan(
+  plan: PlanArtifact,
+  maxTasks?: number,
+): TaskListApplyResult {
+  const liveMaxTasks = resolveMaxTasks(maxTasks);
+  const selected = collectConcretePlanStepCandidates(plan).slice(0, liveMaxTasks);
   const items: TaskItem[] = [];
   for (const { phase, step } of selected) {
     const item = buildTaskItem({
@@ -101,7 +87,43 @@ function isConcreteDisplayItem(
   return TASK_LIST_POLICY.concreteDisplayHint.test(hint);
 }
 
-type PlanStepCandidate = {
+/**
+ * Ordered concrete plan steps for the live checklist.
+ * Plans may contain more steps than maxTasks; overflow is refilled later.
+ */
+export function collectConcretePlanStepCandidates(
+  plan: PlanArtifact,
+): PlanStepCandidate[] {
+  const preferred: PlanStepCandidate[] = [];
+  const deferred: PlanStepCandidate[] = [];
+
+  for (const phase of plan.phases) {
+    for (const step of phase.steps) {
+      if (isProcessMetaStep(step.intent, step.actionSummary)) {
+        continue;
+      }
+      const candidate = { phase, step };
+      const preview = buildTaskItem({
+        phaseName: phase.name,
+        step,
+        index: 0,
+        existing: [],
+      });
+      if (!isConcreteDisplayItem(preview, step.targetRefs)) {
+        continue;
+      }
+      if (isPreferredStep(phase.name, step.intent)) {
+        preferred.push(candidate);
+      } else {
+        deferred.push(candidate);
+      }
+    }
+  }
+
+  return preferred.length > 0 ? preferred : deferred;
+}
+
+export type PlanStepCandidate = {
   phase: PlanArtifact["phases"][number];
   step: PlanArtifact["phases"][number]["steps"][number];
 };
@@ -116,7 +138,7 @@ function isPreferredStep(phaseName: string, intent: string): boolean {
   );
 }
 
-function buildTaskItem(params: {
+export function buildTaskItem(params: {
   phaseName: string;
   step: PlanArtifact["phases"][number]["steps"][number];
   index: number;
@@ -127,9 +149,19 @@ function buildTaskItem(params: {
     DEFAULT_MAX_TASK_TITLE_CHARS,
   );
   const detailParts = [
-    params.step.targetRefs[0] ? `Scope: ${params.step.targetRefs[0]}` : undefined,
+    params.step.targetRefs.length > 0
+      ? `Scope: ${params.step.targetRefs.slice(0, DEFAULT_MAX_TASK_PATHS).join(", ")}`
+      : undefined,
     params.step.actionSummary,
   ].filter(Boolean);
+  const write = uniquePaths(params.step.targetRefs).slice(0, DEFAULT_MAX_TASK_PATHS);
+  const writeSet = new Set(write);
+  const mustRead = uniquePaths(params.step.mustRead ?? [])
+    .filter((path) => !writeSet.has(path))
+    .slice(0, DEFAULT_MAX_TASK_PATHS);
+  const affected = uniquePaths(params.step.affected ?? [])
+    .filter((path) => !writeSet.has(path) && !mustRead.includes(path))
+    .slice(0, DEFAULT_MAX_TASK_PATHS);
   return {
     id: uniqueId(params.step.id || `task-${params.index + 1}`, params.existing),
     title: title.trim() || `Step ${params.index + 1}`,
@@ -143,7 +175,24 @@ function buildTaskItem(params: {
         }
       : {}),
     sourceRef: params.step.id,
+    ...(write.length > 0 ? { write } : {}),
+    ...(mustRead.length > 0 ? { mustRead } : {}),
+    ...(affected.length > 0 ? { affected } : {}),
   };
+}
+
+function uniquePaths(paths: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const path of paths) {
+    const normalized = path.trim();
+    if (normalized.length === 0 || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    unique.push(normalized);
+  }
+  return unique;
 }
 
 function uniqueId(raw: string, existing: readonly TaskItem[]): string {

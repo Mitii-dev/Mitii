@@ -73,6 +73,7 @@ export const AGENT_REASON_CODES = [
   "task_list_seeded",
   "task_list_updated",
   "task_list_auto_advanced",
+  "task_list_refilled",
   "repo_build_state_before_captured",
   "repo_build_state_after_captured",
   "repo_build_state_errors_cleared",
@@ -103,6 +104,7 @@ export const AGENT_REASON_CODES = [
   "exploration_stall_broken",
   "tool_result_deduped",
   "established_facts_reinjected",
+  "completed_task_results_stubbed",
   "context_retrieved",
   "context_skipped",
   "prompt_constructed",
@@ -113,6 +115,7 @@ export const AGENT_REASON_CODES = [
   "incomplete_answer_fallback",
   "unfulfilled_execute_recovered",
   "unfulfilled_execute_exhausted",
+  "must_read_nudged",
   "tools_executed",
   "mutation_applied",
   "mutation_rolled_back",
@@ -120,6 +123,7 @@ export const AGENT_REASON_CODES = [
   "verification_failed",
   "verification_repair_attempted",
   "verification_repair_succeeded",
+  "verification_repair_batch_activated",
   /** First mutate loop stopped early so remaining model calls can repair. */
   "verification_repair_budget_reserved",
   /** Post-mutation glob/read streak capped so verification can run. */
