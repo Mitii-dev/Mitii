@@ -112,6 +112,7 @@ import {
   readTokenBudgetSettings,
   tokenBudgetResetKeys,
 } from './tokenBudgetSettings.js';
+import { normalizeIntensitySettings } from './thoroughness.js';
 import {
   clearMemoriesForWorkspace,
   commitMemoryForWorkspace,
@@ -1881,6 +1882,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           this.vs.ConfigurationTarget.Global,
         );
       }
+      if (message.ui.intensityOverrides !== undefined) {
+        await cfg.update(
+          'developer.intensityOverrides',
+          message.ui.intensityOverrides,
+          this.vs.ConfigurationTarget.Global,
+        );
+      }
       if (message.ui.debugLogging !== undefined) {
         await cfg.update(
           'debug',
@@ -1913,6 +1921,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         for (const mode of ['ask', 'plan', 'agent'] as const) {
           const defaults = message.ui.modeDefaults[mode];
           if (!defaults) continue;
+          if (defaults.thoroughness !== undefined) {
+            await cfg.update(
+              `ui.modeDefaults.${mode}.thoroughness`,
+              defaults.thoroughness,
+              this.vs.ConfigurationTarget.Workspace,
+            );
+          }
           if (defaults.depth !== undefined) {
             await cfg.update(
               `ui.modeDefaults.${mode}.depth`,
@@ -2322,10 +2337,25 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const legacyDepth =
       (cfg.get<string>('ui.depth') as UiSettingsSnapshot['depth']) ?? 'auto';
     const legacyApproval = cfg.get<string>('safety.approvalMode') ?? 'guided';
-    const defaultModeSettings: UiSettingsSnapshot['modeDefaults'] = {
-      ask: { depth: 'auto', approvalMode: 'guided', model: '' },
-      plan: { depth: 'deep', approvalMode: 'guided', model: '' },
-      agent: { depth: 'auto', approvalMode: 'safe', model: '' },
+    const defaultModeSettings = {
+      ask: {
+        thoroughness: 'medium' as const,
+        depth: 'auto' as const,
+        approvalMode: 'guided',
+        model: '',
+      },
+      plan: {
+        thoroughness: 'high' as const,
+        depth: 'deep' as const,
+        approvalMode: 'guided',
+        model: '',
+      },
+      agent: {
+        thoroughness: 'medium' as const,
+        depth: 'auto' as const,
+        approvalMode: 'safe',
+        model: '',
+      },
     };
     const readModeDepth = (
       mode: 'ask' | 'plan' | 'agent',
@@ -2335,6 +2365,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       ) as UiSettingsSnapshot['depth']) ??
       defaultModeSettings[mode].depth ??
       legacyDepth;
+    const readModeThoroughness = (
+      mode: 'ask' | 'plan' | 'agent',
+    ): UiSettingsSnapshot['modeDefaults']['ask']['thoroughness'] | undefined => {
+      const value = cfg.get<string>(`ui.modeDefaults.${mode}.thoroughness`);
+      return value === 'low' || value === 'medium' || value === 'high'
+        ? value
+        : undefined;
+    };
     const readModeApproval = (mode: 'ask' | 'plan' | 'agent'): string => {
       const configured = cfg.get<string>(
         `ui.modeDefaults.${mode}.approvalMode`,
@@ -2351,29 +2389,39 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       storedEffort === 'medium'
         ? storedEffort
         : 'medium';
-    return {
-      showReasoning: cfg.get<boolean>('ui.showReasoning') ?? true,
-      reasoningPreviewMaxChars:
-        cfg.get<number>('ui.reasoningPreviewMaxChars') ?? 8000,
-      depth: legacyDepth,
+    const normalized = normalizeIntensitySettings({
       effort,
+      intensityOverrides:
+        cfg.get<boolean>('developer.intensityOverrides') === true,
       modeDefaults: {
         ask: {
           depth: readModeDepth('ask'),
+          thoroughness: readModeThoroughness('ask'),
           approvalMode: readModeApproval('ask'),
           model: readModeModel('ask'),
         },
         plan: {
           depth: readModeDepth('plan'),
+          thoroughness: readModeThoroughness('plan'),
           approvalMode: readModeApproval('plan'),
           model: readModeModel('plan'),
         },
         agent: {
           depth: readModeDepth('agent'),
+          thoroughness: readModeThoroughness('agent'),
           approvalMode: readModeApproval('agent'),
           model: readModeModel('agent'),
         },
       },
+    });
+    return {
+      showReasoning: cfg.get<boolean>('ui.showReasoning') ?? true,
+      reasoningPreviewMaxChars:
+        cfg.get<number>('ui.reasoningPreviewMaxChars') ?? 8000,
+      depth: legacyDepth,
+      effort: normalized.effort,
+      intensityOverrides: normalized.intensityOverrides,
+      modeDefaults: normalized.modeDefaults,
       contextToggles: resolveContextToggles(cfg),
       approvalMode: legacyApproval,
       runBudget: readRunBudgetSettings(this.vs),

@@ -18,19 +18,31 @@
   --mitii-muted: var(--vscode-descriptionForeground, color-mix(in srgb, var(--vscode-foreground) 65%, transparent));
   --mitii-danger: var(--vscode-errorForeground, #e06c75);
   --mitii-ok: var(--vscode-testing-iconPassed, #89b86c);
-  --mitii-warn: var(--vscode-charts-orange, #d19a66);
+  --mitii-warn: color-mix(
+    in srgb,
+    var(--vscode-charts-orange, #d19a66) 58%,
+    var(--vscode-foreground) 42%
+  );
+  --mitii-warn-soft: #c9b27a;
   --mitii-radius: 4px;
   --mitii-radius-lg: 8px;
   --mitii-space-x: 0px;
   --mitii-font-ui: var(
     --vscode-font-family,
-    "Inter",
     "Segoe UI",
     -apple-system,
     BlinkMacSystemFont,
     sans-serif
   );
-  --mitii-font-mono: var(
+  --mitii-font-tool: var(
+    --vscode-font-family,
+    "Segoe UI Semibold",
+    "Segoe UI",
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif
+  );
+  --mitii-font-file: var(
     --vscode-editor-font-family,
     "SFMono-Regular",
     Consolas,
@@ -38,6 +50,9 @@
     Menlo,
     monospace
   );
+  --mitii-font-thinking: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --mitii-font-mono: var(--mitii-font-file);
+  --mitii-chat-fg: var(--vscode-editor-foreground, var(--vscode-foreground));
   --mitii-shadow-soft: 0 10px 30px color-mix(in srgb, #000 18%, transparent);
   --mitii-shadow-tight: 0 2px 10px color-mix(in srgb, #000 14%, transparent);
   color-scheme: light dark;
@@ -128,6 +143,31 @@ input:focus-visible {
   min-width: 0;
 }
 
+.shell-header__profile {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 120px;
+  height: 22px;
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--mitii-panel) 72%, transparent);
+  color: var(--mitii-text);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 0 6px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shell-header__profile:hover,
+.shell-header__profile:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--mitii-accent) 40%, var(--mitii-border));
+  background: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--mitii-text) 6%, transparent));
+}
+
 .brand {
   display: flex;
   flex-direction: column;
@@ -212,13 +252,27 @@ input:focus-visible {
 
 .chat-view {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   background:
     linear-gradient(
       180deg,
       color-mix(in srgb, var(--mitii-panel) 98%, var(--mitii-accent) 2%),
       var(--mitii-panel) 180px
     );
+}
+
+.chat-view .composer-dock {
+  overflow: visible;
+  z-index: 80;
+}
+
+.chat-view:has(.approval-card) .messages {
+  position: relative;
+  z-index: 200;
+}
+
+.chat-view:has(.approval-card) .composer-dock {
+  z-index: 40;
 }
 
 .messages {
@@ -229,12 +283,13 @@ input:focus-visible {
   overflow: auto;
   overscroll-behavior: contain;
   scroll-padding: 12px 0;
-  padding: 18px 16px 8px;
+  padding: 16px 14px 10px;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 18px;
   scrollbar-width: thin;
   background: transparent;
+  color: var(--mitii-chat-fg);
 }
 
 .empty-state {
@@ -269,7 +324,7 @@ input:focus-visible {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
   max-width: 100%;
   padding: 0 2px;
 }
@@ -284,33 +339,40 @@ input:focus-visible {
 
 .turn--suspended {
   overflow: visible;
-  z-index: 80;
+  z-index: 400;
+  position: relative;
 }
 
 .bubble {
   border-radius: 0;
-  line-height: 1.58;
+  line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
+  color: var(--mitii-chat-fg);
 }
 
 .bubble.user {
   align-self: flex-end;
   max-width: min(88%, 640px);
-  padding: 9px 13px;
-  border: 1px solid color-mix(in srgb, var(--mitii-accent) 18%, var(--mitii-border));
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--mitii-accent) 8%, var(--mitii-panel));
-  color: var(--mitii-text);
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--mitii-accent) 16%, var(--mitii-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--mitii-accent) 6%, var(--mitii-panel));
+  color: var(--mitii-chat-fg);
+  font-size: 13px;
   font-weight: 450;
-  box-shadow: 0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset;
+  line-height: 1.55;
+  letter-spacing: 0.005em;
+  box-shadow: none;
 }
 
 .bubble.assistant {
   align-self: stretch;
-  padding: 2px 0 4px;
+  padding: 2px 0 2px;
   background: transparent;
   border: 0;
+  color: var(--mitii-chat-fg);
+  font-size: 13px;
 }
 
 .bubble.streaming::after {
@@ -359,19 +421,20 @@ input:focus-visible {
 }
 
 .run-warning-banner {
-  margin: 0 0 10px;
-  padding: 9px 11px;
+  margin: 0 0 8px;
+  padding: 8px 10px;
   border-radius: var(--mitii-radius-lg);
-  border: 1px solid color-mix(in srgb, var(--mitii-warn) 42%, var(--mitii-border));
-  background: color-mix(in srgb, var(--mitii-warn) 12%, var(--mitii-panel) 88%);
-  color: var(--mitii-text);
-  box-shadow: 0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset;
+  border: 1px solid color-mix(in srgb, var(--mitii-warn-soft) 28%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-warn-soft) 6%, var(--mitii-panel) 94%);
+  color: var(--mitii-chat-fg);
+  box-shadow: none;
 }
 
 .run-warning-banner strong {
   display: inline-block;
   margin-bottom: 4px;
-  color: var(--mitii-warn);
+  color: color-mix(in srgb, var(--mitii-warn-soft) 72%, var(--mitii-chat-fg));
+  font-weight: 600;
 }
 
 .run-warning-banner__list {
@@ -385,12 +448,12 @@ input:focus-visible {
 
 .timeline {
   list-style: none;
-  margin: 8px 0 12px;
-  padding: 3px 0 3px 22px;
+  margin: 6px 0 12px;
+  padding: 2px 0 2px 18px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  border-left: 1px solid var(--mitii-border-soft);
+  gap: 16px;
+  border-left: 1px solid color-mix(in srgb, var(--mitii-border-soft) 80%, transparent);
   width: 100%;
 }
 
@@ -399,71 +462,63 @@ input:focus-visible {
   display: flex;
   align-items: baseline;
   min-width: 0;
+  padding: 1px 0;
 }
 
 .timeline__row--tool {
   align-items: flex-start;
-  padding: 7px 10px;
-  border: 1px solid color-mix(in srgb, var(--mitii-border) 80%, transparent);
-  border-radius: 6px;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--mitii-panel-raised) 92%, transparent),
-      color-mix(in srgb, var(--mitii-panel) 96%, transparent)
-    );
-  box-shadow:
-    0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset,
-    0 4px 14px color-mix(in srgb, #000 7%, transparent);
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .timeline__row--thinking-active {
   align-items: flex-start;
-  padding: 7px 10px;
-  border: 1px solid color-mix(in srgb, var(--mitii-accent) 18%, var(--mitii-border));
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--mitii-accent) 4%, var(--mitii-panel));
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .timeline__marker {
   position: absolute;
-  left: -26.5px;
-  top: 0.62em;
-  width: 6px;
-  height: 6px;
+  left: -21.5px;
+  top: 0.55em;
+  width: 5px;
+  height: 5px;
   border-radius: 999px;
-  background: var(--mitii-border);
+  background: color-mix(in srgb, var(--mitii-border) 88%, transparent);
   box-shadow: 0 0 0 3px var(--mitii-panel);
-  transition: background 200ms ease;
+  transition: background 160ms ease;
 }
 
 .timeline__row--done .timeline__marker {
-  background: var(--mitii-ok);
+  background: color-mix(in srgb, var(--mitii-ok) 78%, var(--mitii-border));
 }
 
 .timeline__row--active .timeline__marker {
   background: var(--mitii-accent);
   box-shadow:
     0 0 0 3px var(--mitii-panel),
-    0 0 0 5px color-mix(in srgb, var(--mitii-accent) 22%, transparent);
-  animation: timeline-pulse 1.4s ease-in-out infinite;
+    0 0 0 4px color-mix(in srgb, var(--mitii-accent) 16%, transparent);
+  animation: timeline-pulse 1.6s ease-in-out infinite;
 }
 
 .timeline__row--warn .timeline__marker {
-  background: var(--mitii-warn);
+  background: color-mix(in srgb, var(--mitii-warn-soft) 70%, var(--mitii-muted));
 }
 
 .timeline__row--tool .timeline__marker {
-  top: 14px;
+  top: 0.55em;
 }
 
 .timeline__row--thinking-active .timeline__marker {
-  top: 14px;
-  background: var(--mitii-accent);
-  box-shadow:
-    0 0 0 3px var(--mitii-panel),
-    0 0 0 5px color-mix(in srgb, var(--mitii-accent) 16%, transparent);
-  animation: timeline-pulse 1.4s ease-in-out infinite;
+  top: 0.55em;
+  background: color-mix(in srgb, var(--mitii-accent) 70%, var(--mitii-muted));
+  box-shadow: 0 0 0 3px var(--mitii-panel);
+  animation: timeline-pulse 1.6s ease-in-out infinite;
 }
 
 @keyframes timeline-pulse {
@@ -482,33 +537,37 @@ input:focus-visible {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 12px;
-  line-height: 1.55;
-  color: var(--mitii-text);
+  line-height: 1.45;
+  color: var(--mitii-chat-fg);
 }
 
 .timeline__row-text--muted {
-  color: var(--mitii-muted);
+  color: color-mix(in srgb, var(--mitii-chat-fg) 72%, var(--mitii-muted));
 }
 
 .timeline__thinking-label {
   display: inline-flex;
   align-items: center;
   min-height: 18px;
-  color: color-mix(in srgb, var(--mitii-text) 76%, var(--mitii-muted));
-  font-size: 11px;
-  font-weight: 650;
+  color: color-mix(in srgb, var(--mitii-chat-fg) 68%, var(--mitii-muted));
+  font-family: var(--mitii-font-thinking);
+  font-size: 12px;
+  font-weight: 500;
+  font-style: italic;
+  letter-spacing: 0.01em;
 }
 
 .timeline__thinking-preview {
   display: -webkit-box;
-  -webkit-line-clamp: 4;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
-  max-height: calc(4 * 1.45em);
-  margin: 5px 0 0;
+  max-height: calc(3 * 1.45em);
+  margin: 4px 0 0;
   overflow: hidden;
-  color: color-mix(in srgb, var(--mitii-text) 78%, var(--mitii-muted));
-  font-family: var(--mitii-font-mono);
-  font-size: 10.5px;
+  color: color-mix(in srgb, var(--mitii-chat-fg) 62%, var(--mitii-muted));
+  font-family: var(--mitii-font-thinking);
+  font-size: 11.5px;
+  font-style: italic;
   line-height: 1.45;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -517,29 +576,28 @@ input:focus-visible {
 .timeline__row-title {
   display: inline-flex;
   align-items: center;
-  margin-right: 3px;
-  padding: 1px 5px;
-  border-radius: 5px;
-  font-weight: 650;
-  font-size: 11px;
-  font-family: var(--mitii-font-mono);
-  background: color-mix(in srgb, var(--mitii-text) 5%, transparent);
-  color: color-mix(in srgb, var(--mitii-text) 86%, var(--mitii-muted));
-  border: 1px solid color-mix(in srgb, var(--mitii-border-soft) 64%, transparent);
-  transition:
-    background 200ms ease,
-    color 200ms ease;
+  margin-right: 6px;
+  padding: 0;
+  border-radius: 0;
+  font-weight: 600;
+  font-size: 12px;
+  font-family: var(--mitii-font-tool);
+  letter-spacing: 0.01em;
+  background: transparent;
+  color: var(--mitii-chat-fg);
+  border: 0;
+  transition: color 160ms ease;
 }
 
 .timeline__row--tool .timeline__row-title {
-  background: color-mix(in srgb, var(--mitii-text) 5%, transparent);
-  border-color: color-mix(in srgb, var(--mitii-border) 86%, transparent);
-  color: color-mix(in srgb, var(--mitii-text) 90%, var(--mitii-muted));
+  background: transparent;
+  border-color: transparent;
+  color: var(--mitii-chat-fg);
 }
 
 .timeline__row--tool.timeline__row--active .timeline__row-title {
-  background: color-mix(in srgb, var(--mitii-accent) 14%, transparent);
-  border-color: color-mix(in srgb, var(--mitii-accent) 30%, var(--mitii-border));
+  background: transparent;
+  border-color: transparent;
   color: var(--mitii-accent);
 }
 
@@ -547,75 +605,77 @@ input:focus-visible {
   padding: 0;
   background: transparent;
   border: 0;
-  font-weight: 600;
-  color: var(--mitii-muted);
+  font-weight: 500;
+  font-family: var(--mitii-font-ui);
+  font-style: normal;
+  color: color-mix(in srgb, var(--mitii-chat-fg) 70%, var(--mitii-muted));
 }
 
 .timeline__row--done .timeline__row-title {
-  background: color-mix(in srgb, var(--mitii-ok) 15%, transparent);
-  color: color-mix(in srgb, var(--mitii-ok) 82%, var(--mitii-text));
+  background: transparent;
+  color: var(--mitii-chat-fg);
 }
 
 .timeline__row--active .timeline__row-title {
-  background: color-mix(in srgb, var(--mitii-accent) 15%, transparent);
+  background: transparent;
   color: var(--mitii-accent);
 }
 
 .timeline__row--warn .timeline__row-title {
-  background: color-mix(in srgb, var(--mitii-warn) 18%, transparent);
-  color: var(--mitii-warn);
+  background: transparent;
+  color: color-mix(in srgb, var(--mitii-warn-soft) 68%, var(--mitii-chat-fg));
+  font-weight: 600;
 }
 
 .timeline__row--tool.timeline__row--done .timeline__row-title {
-  background: color-mix(in srgb, var(--mitii-text) 5%, transparent);
-  border-color: color-mix(in srgb, var(--mitii-border) 86%, transparent);
-  color: color-mix(in srgb, var(--mitii-text) 90%, var(--mitii-muted));
+  background: transparent;
+  border-color: transparent;
+  color: var(--mitii-chat-fg);
 }
 
 .timeline__row-detail {
-  display: inline-block;
-  margin: 5px 0 0;
-  padding: 0 5px;
-  border: 1px solid var(--mitii-border-soft);
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--mitii-text) 4%, transparent);
-  color: var(--mitii-muted);
-  font-family: var(--mitii-font-mono);
-  font-size: 10.5px;
-  line-height: 1.6;
-}
-
-.timeline__row--tool .timeline__row-detail {
-  display: block;
+  display: inline-flex;
+  align-items: baseline;
   max-width: 100%;
+  margin: 0;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 82%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 82%, #000 18%);
+  color: var(--vscode-terminal-foreground, var(--mitii-chat-fg));
+  font-family: var(--mitii-font-file);
+  font-size: 11.5px;
+  line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: color-mix(in srgb, var(--mitii-surface) 72%, transparent);
+}
+
+.timeline__row--tool .timeline__row-detail {
+  display: inline-flex;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 82%, #000 18%);
 }
 
 .timeline__command {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  margin-top: 6px;
-  padding: 7px 9px;
-  border: 1px solid color-mix(in srgb, var(--mitii-border) 82%, transparent);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--mitii-panel-raised) 86%, #000 14%);
-  color: var(--vscode-terminal-foreground, var(--mitii-text));
-  box-shadow:
-    0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset,
-    0 6px 16px color-mix(in srgb, #000 10%, transparent);
+  margin-top: 4px;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--mitii-chat-fg);
+  box-shadow: none;
 }
 
 .timeline__command-prompt {
   flex: 0 0 auto;
-  color: var(--vscode-terminal-ansiGreen, var(--mitii-ok));
-  font-family: var(--mitii-font-mono);
+  color: color-mix(in srgb, var(--mitii-ok) 70%, var(--mitii-muted));
+  font-family: var(--mitii-font-file);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .timeline__command code {
@@ -624,9 +684,9 @@ input:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: inherit;
-  font-family: var(--mitii-font-mono);
-  font-size: 11px;
-  line-height: 1.5;
+  font-family: var(--mitii-font-file);
+  font-size: 11.5px;
+  line-height: 1.45;
 }
 
 .live-status {
@@ -634,9 +694,9 @@ input:focus-visible {
   align-items: center;
   gap: 8px;
   max-width: 100%;
-  margin: 8px 0 2px 1px;
+  margin: 6px 0 2px 1px;
   padding: 2px 0;
-  color: var(--mitii-muted);
+  color: color-mix(in srgb, var(--mitii-chat-fg) 78%, var(--mitii-muted));
   font-size: 12px;
   font-weight: 500;
 }
@@ -797,7 +857,7 @@ input:focus-visible {
   position: relative;
   z-index: 40;
   border-top: 1px solid var(--mitii-border-soft);
-  padding: 6px;
+  padding: 8px;
   background:
     linear-gradient(
       180deg,
@@ -822,54 +882,25 @@ input:focus-visible {
 .composer-footer {
   display: grid;
   gap: 4px;
-  padding: 5px 2px 2px;
-  border-top: 1px solid var(--mitii-border-soft);
+  padding: 4px 2px 0;
+  border-top: 0;
   overflow: visible;
   position: relative;
-  z-index: 2;
+  z-index: 60;
   background: transparent;
+  min-width: 0;
 }
 
 .composer-dropdown-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px 8px;
+  gap: 2px 6px;
   min-width: 0;
   padding: 0;
-}
-
-.composer-dropdown-row--with-model {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px 8px;
-  padding: 0;
-}
-
-.composer-dropdown-row--with-model > .composer-dropdown-row {
-  display: flex;
-  flex-wrap: wrap;
-  flex: 1 1 196px;
-  min-width: 0;
-  gap: 4px 8px;
-  padding: 0;
-}
-
-.composer-dropdown-row--with-model .composer-dropdown--model {
-  flex: 0 1 150px;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.composer-dropdown-row--with-model > .composer-dropdown--model,
-.composer-dropdown-row--with-model > .model-custom-input {
-  display: none;
-}
-
-.composer-dropdown-row--with-model .model-custom-input {
-  flex: 1 1 132px;
+  overflow: visible;
+  position: relative;
+  z-index: 2;
 }
 
 .composer-utility-row {
@@ -879,6 +910,9 @@ input:focus-visible {
   gap: 8px;
   min-width: 0;
   flex-wrap: nowrap;
+  overflow: visible;
+  position: relative;
+  z-index: 1;
 }
 
 .composer-left {
@@ -888,6 +922,7 @@ input:focus-visible {
   gap: 6px;
   min-width: 0;
   flex: 1;
+  overflow: visible;
 }
 
 .composer-left .composer-dropdown--profile {
@@ -956,25 +991,31 @@ input:focus-visible {
   min-width: 0;
   flex: 0 1 auto;
   --composer-control-color: var(--mitii-accent);
+  z-index: 1;
+  overflow: visible;
+}
+
+.composer-dropdown:has(.composer-dropdown__button[aria-expanded='true']) {
+  z-index: 220;
 }
 
 .composer-dropdown__button {
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  gap: 5px;
+  gap: 4px;
   width: auto;
-  height: 26px;
+  height: 22px;
   min-width: 0;
   max-width: 100%;
-  padding: 0 18px 0 5px;
+  padding: 0 14px 0 4px;
   border: 1px solid var(--mitii-border-soft);
-  border-radius: 6px;
+  border-radius: 5px;
   background: color-mix(in srgb, var(--mitii-panel-raised) 88%, transparent);
   color: var(--mitii-text);
   font: inherit;
-  font-size: 11px;
-  font-weight: 650;
+  font-size: 10.5px;
+  font-weight: 600;
   cursor: pointer;
   position: relative;
 }
@@ -1050,9 +1091,9 @@ input:focus-visible {
 }
 
 .composer-dropdown__icon {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
   background: color-mix(in srgb, var(--mitii-text) 5%, transparent);
 }
 
@@ -1063,8 +1104,8 @@ input:focus-visible {
 
 .composer-dropdown__icon svg,
 .composer-dropdown__option-icon svg {
-  width: 13px;
-  height: 13px;
+  width: 11px;
+  height: 11px;
 }
 
 .composer-dropdown__option-dot {
@@ -1083,9 +1124,9 @@ input:focus-visible {
 
 .composer-dropdown__menu {
   position: absolute;
-  bottom: calc(100% + 7px);
+  bottom: calc(100% + 6px);
   left: 0;
-  z-index: 120;
+  z-index: 300;
   display: grid;
   gap: 1px;
   width: max(210px, 100%);
@@ -1095,6 +1136,7 @@ input:focus-visible {
   border-radius: 6px;
   background: var(--vscode-quickInput-background, var(--mitii-panel));
   box-shadow: var(--mitii-shadow-soft);
+  pointer-events: auto;
 }
 
 @media (max-width: 360px) {
@@ -1174,15 +1216,15 @@ input:focus-visible {
 .composer-dropdown__option--warning .composer-dropdown__option-text small,
 .composer-dropdown__option--warning .composer-dropdown__option-icon,
 .composer-dropdown__option--warning .composer-dropdown__option-check {
-  color: #e8b84a;
+  color: var(--mitii-warn-soft);
 }
 
 .composer-dropdown__option--warning .composer-dropdown__option-text small {
-  color: color-mix(in srgb, #e8b84a 78%, var(--mitii-muted));
+  color: color-mix(in srgb, var(--mitii-warn-soft) 62%, var(--mitii-muted));
 }
 
 .composer-dropdown__button--warning {
-  color: #e8b84a;
+  color: color-mix(in srgb, var(--mitii-warn-soft) 78%, var(--mitii-text));
 }
 
 .composer-dropdown__option-check {
@@ -1219,39 +1261,34 @@ input:focus-visible {
 
 .composer-box {
   position: relative;
-  border: 1px solid var(--mitii-border-soft);
+  --composer-mode-color: var(--mitii-accent);
+  border: 1px solid color-mix(in srgb, var(--composer-mode-color) 42%, var(--mitii-border));
   border-radius: var(--mitii-radius-lg);
-  background: color-mix(
-    in srgb,
-    var(--vscode-input-background, var(--mitii-panel)) 86%,
-    #000 14%
-  );
-  box-shadow:
-    var(--mitii-shadow-tight),
-    0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset;
+  background: var(--vscode-input-background, var(--mitii-panel));
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   overflow: visible;
 }
 
 .composer-box:focus-within {
-  border-color: color-mix(in srgb, var(--mitii-accent) 62%, var(--mitii-border));
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--mitii-accent) 24%, transparent),
-    var(--mitii-shadow-tight);
+  border-color: color-mix(in srgb, var(--composer-mode-color) 72%, var(--mitii-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--composer-mode-color) 18%, transparent);
 }
 
 .composer-box textarea {
   width: 100%;
-  min-height: 46px;
-  max-height: 108px;
-  resize: vertical;
+  min-height: 36px;
+  max-height: 36px;
+  height: 36px;
+  resize: none;
   border: 0;
   outline: none;
   background: transparent;
-  padding: 9px 10px;
-  line-height: 1.45;
-  color: var(--vscode-input-foreground, var(--mitii-text));
+  padding: 8px 10px;
+  line-height: 1.35;
+  color: var(--vscode-input-foreground, var(--mitii-chat-fg));
+  overflow-y: hidden;
 }
 
 .composer-box textarea::placeholder {
@@ -1261,10 +1298,11 @@ input:focus-visible {
 .composer-actions {
   position: static;
   display: flex;
-  gap: 6px;
+  gap: 4px;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
+  flex: 0 0 auto;
 }
 
 .depth-select {
@@ -1426,7 +1464,7 @@ select.depth-select {
 
 .approval-card {
   position: relative;
-  z-index: 140;
+  z-index: 450;
 }
 
 .card h3 {
@@ -3262,43 +3300,98 @@ select.depth-select {
 .markdown-message {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  line-height: 1.45;
-  color: var(--mitii-text);
+  gap: 10px;
+  line-height: 1.62;
+  color: var(--mitii-chat-fg);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.005em;
 }
 
 .markdown-message p {
   margin: 0;
+  color: var(--mitii-chat-fg);
 }
 
 .markdown-message h2,
 .markdown-message h3,
 .markdown-message h4 {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--mitii-chat-fg);
 }
 
 .markdown-message ul,
 .markdown-message ol {
   margin: 0;
-  padding-left: 1.2em;
+  padding-left: 1.25em;
+  color: var(--mitii-chat-fg);
+}
+
+.markdown-message li + li {
+  margin-top: 4px;
 }
 
 .markdown-message blockquote {
   margin: 0;
   padding-left: 10px;
-  border-left: 2px solid color-mix(in srgb, var(--mitii-accent) 70%, transparent);
-  color: var(--mitii-muted);
+  border-left: 2px solid color-mix(in srgb, var(--mitii-accent) 55%, transparent);
+  color: color-mix(in srgb, var(--mitii-chat-fg) 78%, var(--mitii-muted));
 }
 
 .md-inline-code {
-  font-family: var(--mitii-font-mono);
-  font-size: 11px;
-  padding: 1px 4px;
+  font-family: var(--mitii-font-file);
+  font-size: 11.5px;
+  padding: 1px 5px;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--mitii-accent) 10%, var(--mitii-panel));
-  border: 1px solid color-mix(in srgb, var(--mitii-accent) 16%, transparent);
+  background: color-mix(in srgb, var(--mitii-panel-raised) 82%, #000 18%);
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 78%, transparent);
+  color: var(--mitii-chat-fg);
+}
+
+.md-file-link {
+  border: 0;
+  background: transparent;
+  color: var(--mitii-accent);
+  font-family: var(--mitii-font-file);
+  font-size: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+button.md-file-link.md-inline-code {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  max-width: 100%;
+  vertical-align: baseline;
+  font-family: var(--mitii-font-file);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-decoration: none;
+  border-radius: 5px;
+  padding: 2px 7px 2px 6px;
+  color: var(--vscode-terminal-foreground, var(--mitii-chat-fg));
+  background: color-mix(in srgb, var(--mitii-panel-raised) 78%, #000 22%);
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 82%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset;
+}
+
+button.md-file-link.md-inline-code::before {
+  content: '$';
+  flex: 0 0 auto;
+  color: var(--vscode-terminal-ansiGreen, var(--mitii-ok));
+  font-weight: 700;
+}
+
+button.md-file-link.md-inline-code:hover {
+  background: color-mix(in srgb, var(--mitii-panel-raised) 68%, #000 32%);
+  border-color: color-mix(in srgb, var(--mitii-accent) 34%, var(--mitii-border));
+  color: var(--mitii-chat-fg);
 }
 
 .md-code-card,
@@ -4109,13 +4202,13 @@ select.depth-select {
 .context-panel__label {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
   margin-bottom: 5px;
   color: var(--mitii-muted);
   font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
+  font-weight: 600;
+  text-transform: none;
 }
 
 .context-panel__label span:last-child {
@@ -4516,29 +4609,4 @@ select.depth-select {
 
 .diff-del {
   color: var(--vscode-charts-red, #f87171);
-}
-
-.md-file-link {
-  border: 0;
-  background: transparent;
-  color: var(--mitii-accent);
-  font: inherit;
-  padding: 0;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-button.md-file-link.md-inline-code {
-  font-family: var(--mitii-font-mono);
-  font-size: 0.92em;
-  text-decoration: none;
-  border-radius: 4px;
-  padding: 0 4px;
-  background: color-mix(in srgb, var(--mitii-accent) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--mitii-accent) 28%, transparent);
-}
-
-button.md-file-link.md-inline-code:hover {
-  background: color-mix(in srgb, var(--mitii-accent) 18%, transparent);
 }

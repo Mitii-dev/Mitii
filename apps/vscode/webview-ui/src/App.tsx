@@ -15,10 +15,8 @@ import { HistoryPanel } from './components/HistoryPanel';
 import { IconButton } from './components/IconButton';
 import {
   IconChat,
-  IconCheck,
   IconCopy,
   IconHistory,
-  IconModel,
   IconPlus,
   IconSend,
   IconSettings,
@@ -48,6 +46,7 @@ import type {
   AgentUiDepth,
   AgentUiEffort,
   AgentUiMode,
+  AgentUiThoroughness,
   ChatThreadSummary,
   CheckpointItemView,
   ContextToggles,
@@ -78,6 +77,12 @@ import { modeColor } from './modeColors';
 import { TokenMeter } from './TokenMeter';
 import { resolveDisplayedAssistantText } from './assistantDisplay';
 import type { ChatMessageView } from './protocol';
+import {
+  inferThoroughness,
+  resolveRunIntensity,
+  thoroughnessFromDepth,
+  thoroughnessUiPatch,
+} from './thoroughness';
 
 const EMPTY_TOKEN_USAGE: TokenUsageSnapshot = {
   sessionTotal: 0,
@@ -135,10 +140,26 @@ const DEFAULT_UI: UiSettingsSnapshot = {
   reasoningPreviewMaxChars: 8000,
   depth: 'auto',
   effort: 'medium',
+  intensityOverrides: false,
   modeDefaults: {
-    ask: { depth: 'auto', approvalMode: 'guided', model: '' },
-    plan: { depth: 'deep', approvalMode: 'guided', model: '' },
-    agent: { depth: 'auto', approvalMode: 'safe', model: '' },
+    ask: {
+      thoroughness: 'medium',
+      depth: 'auto',
+      approvalMode: 'guided',
+      model: '',
+    },
+    plan: {
+      thoroughness: 'high',
+      depth: 'deep',
+      approvalMode: 'guided',
+      model: '',
+    },
+    agent: {
+      thoroughness: 'medium',
+      depth: 'auto',
+      approvalMode: 'safe',
+      model: '',
+    },
   },
   contextToggles: DEFAULT_CONTEXT_TOGGLES,
   approvalMode: 'guided',
@@ -158,8 +179,15 @@ function modeDefaultsFromUi(ui: UiSettingsSnapshot, mode: AgentUiMode) {
   const settingsMode = settingsModeFor(mode);
   const fallback = DEFAULT_UI.modeDefaults[settingsMode];
   const current = ui.modeDefaults?.[settingsMode];
+  const depth = current?.depth ?? ui.depth ?? fallback.depth;
+  const thoroughness =
+    current?.thoroughness ??
+    inferThoroughness(depth, ui.effort) ??
+    thoroughnessFromDepth(depth) ??
+    fallback.thoroughness;
   return {
-    depth: current?.depth ?? ui.depth ?? fallback.depth,
+    thoroughness,
+    depth,
     approvalMode:
       current?.approvalMode ?? ui.approvalMode ?? fallback.approvalMode,
     model: current?.model ?? fallback.model,
@@ -313,14 +341,35 @@ function uid(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
+/** Operational budget/context notices — not actionable UI warnings. */
+function isNoiseWarning(detail: string): boolean {
+  return /context (file|item) limit prevented|context token budget prevented|default token estimate was used|leftover context was smaller|turn output tokens reduced/i.test(
+    detail,
+  );
+}
+
 function toChatTurn(message: ChatMessageView): ChatTurn {
-  const segments: TurnSegment[] = (message.activity ?? []).map((event) => ({
-    id: uid('seg'),
-    kind: 'activity' as const,
-    event,
-  }));
+  const segments: TurnSegment[] = (message.activity ?? [])
+    .filter(
+      (event) =>
+        !(
+          event.kind === 'warning' &&
+          event.detail?.trim() &&
+          isNoiseWarning(event.detail)
+        ),
+    )
+    .map((event) => ({
+      id: uid('seg'),
+      kind: 'activity' as const,
+      event,
+    }));
   const warnings = (message.activity ?? [])
-    .filter((event) => event.kind === 'warning' && event.detail?.trim())
+    .filter(
+      (event) =>
+        event.kind === 'warning' &&
+        event.detail?.trim() &&
+        !isNoiseWarning(event.detail),
+    )
     .map((event) => event.detail!.trim());
   if (message.text.trim()) {
     segments.push({
@@ -361,6 +410,8 @@ export function App() {
   const [mode, setMode] = useState<AgentUiMode>('ask');
   const [depth, setDepth] = useState<AgentUiDepth>('auto');
   const [effort, setEffort] = useState<AgentUiEffort>('medium');
+  const [thoroughness, setThoroughness] =
+    useState<AgentUiThoroughness>('medium');
   const [approvalMode, setApprovalMode] = useState<ApprovalUiMode>('guided');
   const [prompt, setPrompt] = useState('');
   const [pinned, setPinned] = useState<ContextPin[]>([]);
@@ -393,8 +444,6 @@ export function App() {
     null,
   );
   const [customModel, setCustomModel] = useState(false);
-  const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [index, setIndex] = useState<IndexStatusSnapshot>({
     fileCount: 0,
     truncated: false,
@@ -426,8 +475,6 @@ export function App() {
   const lastSearchId = useRef('');
   const messagesRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const modelMenuRef = useRef<HTMLDivElement>(null);
-  const profileMenuRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const forceScrollToBottomRef = useRef(false);
   const lastTurnCountRef = useRef(0);
@@ -562,10 +609,19 @@ export function App() {
       if (!hydratedModeDefaults.current || modeDefaultsChanged) {
         hydratedModeDefaults.current = true;
         const currentDefaults = modeDefaultsFromUi(nextUi, modeRef.current);
-        setDepth(currentDefaults.depth);
+        const intensity = resolveRunIntensity({
+          intensityOverrides: nextUi.intensityOverrides === true,
+          thoroughness: currentDefaults.thoroughness,
+          depth: currentDefaults.depth,
+          effort: nextUi.effort,
+        });
+        setThoroughness(intensity.thoroughness);
+        setDepth(intensity.depth);
+        setEffort(intensity.effort);
         setApprovalMode(normalizeApproval(currentDefaults.approvalMode));
+      } else {
+        setEffort(nextUi.effort ?? 'medium');
       }
-      setEffort(nextUi.effort ?? 'medium');
       setOverrideDraft(msg.workspace.rootOverride ?? '');
       applyTokenUsage(msg.tokenUsage);
       setNotice(msg.notice);
@@ -673,6 +729,14 @@ export function App() {
           // "Preparing tool" is a transient placeholder immediately superseded
           // by "Running <tool>" a moment later — drop it, it adds noise without signal.
           if (msg.event.kind === 'tool' && msg.event.title === 'Preparing tool') {
+            break;
+          }
+          // Budget/context operational notices — hide from banner and timeline.
+          if (
+            msg.event.kind === 'warning' &&
+            msg.event.detail?.trim() &&
+            isNoiseWarning(msg.event.detail)
+          ) {
             break;
           }
           setTurns((prev) =>
@@ -972,27 +1036,42 @@ export function App() {
     if (!text || running) return;
     stickToBottomRef.current = true;
     forceScrollToBottomRef.current = true;
+    const defaults = modeDefaultsFromUi(ui, mode);
+    const intensity = resolveRunIntensity({
+      intensityOverrides: ui.intensityOverrides === true,
+      thoroughness: defaults.thoroughness,
+      depth: defaults.depth,
+      effort: ui.effort,
+    });
     postToHost({
       type: 'ask',
       prompt: text,
       mode,
-      depth,
-      effort,
+      depth: intensity.depth,
+      effort: intensity.effort,
       approvalMode,
       pinnedPaths: pinned.map((p) => p.path),
     });
     setPrompt('');
     setSuggestLoading(false);
     setSuggestOpen(false);
-  }, [prompt, running, mode, depth, effort, approvalMode, pinned]);
+  }, [prompt, running, mode, ui, approvalMode, pinned]);
 
   const executePendingPlan = useCallback(() => {
     if (running) return;
     stickToBottomRef.current = true;
     forceScrollToBottomRef.current = true;
     const agentDefaults = modeDefaultsFromUi(ui, 'agent');
+    const intensity = resolveRunIntensity({
+      intensityOverrides: ui.intensityOverrides === true,
+      thoroughness: agentDefaults.thoroughness,
+      depth: agentDefaults.depth,
+      effort: ui.effort,
+    });
     setMode('agent');
-    setDepth(agentDefaults.depth);
+    setThoroughness(intensity.thoroughness);
+    setDepth(intensity.depth);
+    setEffort(intensity.effort);
     setApprovalMode(normalizeApproval(agentDefaults.approvalMode));
     const nextModel = agentDefaults.model?.trim();
     if (nextModel) saveModel(nextModel);
@@ -1000,15 +1079,15 @@ export function App() {
       type: 'ask',
       prompt: 'Implement the pending plan.',
       mode: 'agent',
-      depth: agentDefaults.depth,
-      effort,
+      depth: intensity.depth,
+      effort: intensity.effort,
       approvalMode: agentDefaults.approvalMode,
       pinnedPaths: pinned.map((p) => p.path),
     });
     setPrompt('');
     setSuggestLoading(false);
     setSuggestOpen(false);
-  }, [running, ui, pinned, effort]);
+  }, [running, ui, pinned]);
 
   const onPromptChange = (value: string) => {
     setPrompt(value);
@@ -1180,42 +1259,6 @@ export function App() {
     });
   };
 
-  useEffect(() => {
-    if (!modelMenuOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!modelMenuRef.current?.contains(event.target as Node)) {
-        setModelMenuOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setModelMenuOpen(false);
-    };
-    window.addEventListener('pointerdown', onPointerDown);
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [modelMenuOpen]);
-
-  useEffect(() => {
-    if (!profileMenuOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!profileMenuRef.current?.contains(event.target as Node)) {
-        setProfileMenuOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setProfileMenuOpen(false);
-    };
-    window.addEventListener('pointerdown', onPointerDown);
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [profileMenuOpen]);
-
   const changeApprovalMode = (next: ApprovalUiMode) => {
     setApprovalMode(next);
   };
@@ -1223,14 +1266,31 @@ export function App() {
   const changeMode = (next: AgentUiMode) => {
     setMode(next);
     const defaults = modeDefaultsFromUi(ui, next);
-    setDepth(defaults.depth);
+    const intensity = resolveRunIntensity({
+      intensityOverrides: ui.intensityOverrides === true,
+      thoroughness: defaults.thoroughness,
+      depth: defaults.depth,
+      effort: ui.effort,
+    });
+    setThoroughness(intensity.thoroughness);
+    setDepth(intensity.depth);
+    setEffort(intensity.effort);
     setApprovalMode(normalizeApproval(defaults.approvalMode));
     const nextModel = defaults.model?.trim();
     if (nextModel) saveModel(nextModel);
   };
 
-  const changeDepth = (next: AgentUiDepth) => {
-    setDepth(next);
+  const changeThoroughness = (next: AgentUiThoroughness) => {
+    const settingsMode = settingsModeFor(mode);
+    const patch = thoroughnessUiPatch({
+      mode: settingsMode,
+      thoroughness: next,
+    });
+    updateUiDraft(patch);
+    postToHost({ type: 'settings.set', ui: patch });
+    setThoroughness(next);
+    setDepth(patch.modeDefaults[settingsMode]!.depth);
+    setEffort(patch.effort);
   };
 
   const updateUiDraft = (patch: UiSettingsPatch) => {
@@ -1242,6 +1302,9 @@ export function App() {
     const activeModePatch = patch.modeDefaults?.[settingsModeFor(mode)];
     const activeModeDepth = activeModePatch?.depth;
     if (activeModeDepth) setDepth(activeModeDepth);
+    if (activeModePatch?.thoroughness) {
+      setThoroughness(activeModePatch.thoroughness);
+    }
     if (activeModePatch?.approvalMode) {
       setApprovalMode(normalizeApproval(activeModePatch.approvalMode));
     }
@@ -1252,11 +1315,6 @@ export function App() {
         model: activeModeModel,
       }));
     }
-  };
-
-  const changeEffort = (next: AgentUiEffort) => {
-    updateUiDraft({ effort: next });
-    postToHost({ type: 'settings.set', ui: { effort: next } });
   };
 
   const activeProfile = useMemo(
@@ -1446,6 +1504,19 @@ export function App() {
             onRefresh={() => postToHost({ type: 'index.refresh' })}
             onOpenSettings={() => navigate('settings', 'workspace')}
           />
+          <select
+            className="shell-header__profile"
+            aria-label="Profile"
+            title={`Profile: ${selectedProfileLabel}`}
+            value={activeProfileId}
+            onChange={(e) => switchProfile(e.target.value)}
+          >
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.name}
+              </option>
+            ))}
+          </select>
         </div>
       </header>
 
@@ -1467,12 +1538,14 @@ export function App() {
               <ComposerControls
                 mode={mode}
                 approvalMode={approvalMode}
-                depth={depth}
-                effort={effort}
+                thoroughness={thoroughness}
+                intensityCustom={
+                  ui.intensityOverrides === true &&
+                  inferThoroughness(depth, effort) === undefined
+                }
                 onModeChange={changeMode}
                 onApprovalModeChange={changeApprovalMode}
-                onDepthChange={changeDepth}
-                onEffortChange={changeEffort}
+                onThoroughnessChange={changeThoroughness}
               />
             </div>
           </div>
@@ -1560,7 +1633,14 @@ export function App() {
                   onOpenPlanFile={openFile}
                 />
               ) : null}
-              <div className="composer-box">
+              <div
+                className="composer-box"
+                style={
+                  {
+                    '--composer-mode-color': currentModeColor,
+                  } as CSSProperties
+                }
+              >
                 <ContextPanel
                   pins={pinned}
                   modeColor={currentModeColor}
@@ -1603,6 +1683,7 @@ export function App() {
                   </div>
                 ) : null}
                 <textarea
+                  rows={1}
                   value={prompt}
                   placeholder={`Message Mitii… type @ for context (${suggestQuery ? `filter: ${suggestQuery}` : 'files'})`}
                   onChange={(e) => onPromptChange(e.target.value)}
@@ -1638,186 +1719,23 @@ export function App() {
                   }}
                 />
                 <div className="composer-footer">
-                  <div className="composer-dropdown-row--with-model">
+                  <div className="composer-dropdown-row">
                     <ComposerControls
                       mode={mode}
                       approvalMode={approvalMode}
-                      depth={depth}
-                      effort={effort}
+                      thoroughness={thoroughness}
+                      intensityCustom={
+                        ui.intensityOverrides === true &&
+                        inferThoroughness(depth, effort) === undefined
+                      }
                       onModeChange={changeMode}
                       onApprovalModeChange={changeApprovalMode}
-                      onDepthChange={changeDepth}
-                      onEffortChange={changeEffort}
+                      onThoroughnessChange={changeThoroughness}
                     />
-                    <div
-                      className="composer-dropdown composer-dropdown--model"
-                      ref={modelMenuRef}
-                      style={
-                        {
-                          '--composer-control-color': '#38bdf8',
-                        } as CSSProperties
-                      }
-                    >
-                      <button
-                        type="button"
-                        className="composer-dropdown__button composer-dropdown__button--link"
-                        aria-haspopup="listbox"
-                        aria-expanded={modelMenuOpen}
-                        aria-label="Model"
-                        title={`Model: ${selectedModelLabel}`}
-                        onClick={() => setModelMenuOpen((open) => !open)}
-                      >
-                        <span className="composer-dropdown__value">
-                          <span className="composer-dropdown__icon" aria-hidden>
-                            <IconModel />
-                          </span>
-                          <span>{selectedModelLabel}</span>
-                        </span>
-                        <span className="composer-dropdown__chevron" aria-hidden>
-                          ▾
-                        </span>
-                      </button>
-                      {modelMenuOpen ? (
-                        <div
-                          className="composer-dropdown__menu"
-                          role="listbox"
-                          aria-label="Model"
-                        >
-                          {modelOptions.map((id) => {
-                            const selectedOption =
-                              !selectedModelIsCustom && id === provider.model;
-                            return (
-                              <button
-                                key={id}
-                                type="button"
-                                className={[
-                                  'composer-dropdown__option',
-                                  selectedOption
-                                    ? 'composer-dropdown__option--selected'
-                                    : '',
-                                ]
-                                  .filter(Boolean)
-                                  .join(' ')}
-                                style={
-                                  {
-                                    '--composer-option-color': '#38bdf8',
-                                  } as CSSProperties
-                                }
-                                role="option"
-                                aria-selected={selectedOption}
-                                title={`Use ${id}`}
-                                onClick={() => {
-                                  setCustomModel(false);
-                                  setModelMenuOpen(false);
-                                  saveModel(id);
-                                }}
-                              >
-                                <span
-                                  className="composer-dropdown__option-icon"
-                                  aria-hidden
-                                >
-                                  <IconModel />
-                                </span>
-                                <span className="composer-dropdown__option-text">
-                                  <span>{id}</span>
-                                  <small>Use this model</small>
-                                </span>
-                                {selectedOption ? (
-                                  <span
-                                    className="composer-dropdown__option-check"
-                                    aria-hidden
-                                  >
-                                    <IconCheck />
-                                  </span>
-                                ) : (
-                                  <span
-                                    className="composer-dropdown__option-check"
-                                    aria-hidden
-                                  />
-                                )}
-                              </button>
-                            );
-                          })}
-                          <button
-                            type="button"
-                            className={[
-                              'composer-dropdown__option',
-                              selectedModelIsCustom
-                                ? 'composer-dropdown__option--selected'
-                                : '',
-                            ]
-                              .filter(Boolean)
-                              .join(' ')}
-                            role="option"
-                            aria-selected={selectedModelIsCustom}
-                            title="Enter a custom model id"
-                            onClick={() => {
-                              setCustomModel(true);
-                              setModelMenuOpen(false);
-                            }}
-                          >
-                            <span
-                              className="composer-dropdown__option-icon"
-                              aria-hidden
-                            >
-                              <IconModel />
-                            </span>
-                            <span className="composer-dropdown__option-text">
-                              <span>Custom model</span>
-                              <small>Type a model id manually</small>
-                            </span>
-                            {selectedModelIsCustom ? (
-                              <span
-                                className="composer-dropdown__option-check"
-                                aria-hidden
-                              >
-                                <IconCheck />
-                              </span>
-                            ) : (
-                              <span
-                                className="composer-dropdown__option-check"
-                                aria-hidden
-                              />
-                            )}
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                    {selectedModelIsCustom ? (
-                      <input
-                        className="model-custom-input"
-                        value={provider.model}
-                        placeholder="model id"
-                        onChange={(e) =>
-                          updateProvider((p) => ({
-                            ...p,
-                            model: e.target.value,
-                          }))
-                        }
-                        onBlur={() => {
-                          const model = providerRef.current.model.trim();
-                          if (model) saveModel(model);
-                        }}
-                        title="Custom model id"
-                      />
-                    ) : null}
                   </div>
                   <div className="composer-utility-row">
                     <div className="composer-left">
                       <TokenMeter usage={tokenUsage} placement="above" />
-                      <select
-                        className="composer-link-select"
-                        aria-label="Profile"
-                        title={`Profile: ${selectedProfileLabel}`}
-                        value={activeProfileId}
-                        onChange={(e) => switchProfile(e.target.value)}
-                      >
-                        {profiles.map((profile) => (
-                          <option key={profile.id} value={profile.id}>
-                            {profile.name}
-                          </option>
-                        ))}
-                      </select>
                       <select
                         className="composer-link-select composer-link-select--model"
                         aria-label="Model"
@@ -1859,96 +1777,6 @@ export function App() {
                           title="Custom model id"
                         />
                       ) : null}
-                      <div
-                        className="composer-dropdown composer-dropdown--profile"
-                        ref={profileMenuRef}
-                        style={
-                          {
-                            '--composer-control-color': '#22c55e',
-                          } as CSSProperties
-                        }
-                      >
-                        <button
-                          type="button"
-                          className="composer-dropdown__button composer-dropdown__button--link"
-                          aria-haspopup="listbox"
-                          aria-expanded={profileMenuOpen}
-                          aria-label="Profile"
-                          title={`Profile: ${selectedProfileLabel}`}
-                          onClick={() => setProfileMenuOpen((open) => !open)}
-                        >
-                          <span className="composer-dropdown__value">
-                            <span className="composer-dropdown__icon" aria-hidden>
-                              <IconSettings />
-                            </span>
-                            <span>{selectedProfileLabel}</span>
-                          </span>
-                          <span className="composer-dropdown__chevron" aria-hidden>
-                            ▾
-                          </span>
-                        </button>
-                        {profileMenuOpen ? (
-                          <div
-                            className="composer-dropdown__menu"
-                            role="listbox"
-                            aria-label="Profile"
-                          >
-                            {profiles.map((profile) => {
-                              const selectedOption =
-                                profile.id === activeProfileId;
-                              return (
-                                <button
-                                  key={profile.id}
-                                  type="button"
-                                  className={[
-                                    'composer-dropdown__option',
-                                    selectedOption
-                                      ? 'composer-dropdown__option--selected'
-                                      : '',
-                                  ]
-                                    .filter(Boolean)
-                                    .join(' ')}
-                                  role="option"
-                                  aria-selected={selectedOption}
-                                  title={`Use ${profile.name}`}
-                                  onClick={() => {
-                                    setProfileMenuOpen(false);
-                                    switchProfile(profile.id);
-                                  }}
-                                >
-                                  <span
-                                    className="composer-dropdown__option-icon"
-                                    aria-hidden
-                                  >
-                                    <IconSettings />
-                                  </span>
-                                  <span className="composer-dropdown__option-text">
-                                    <span>{profile.name}</span>
-                                    <small>
-                                      {profile.provider.preset ??
-                                        profile.provider.type}{' '}
-                                      · {profile.provider.model}
-                                    </small>
-                                  </span>
-                                  {selectedOption ? (
-                                    <span
-                                      className="composer-dropdown__option-check"
-                                      aria-hidden
-                                    >
-                                      <IconCheck />
-                                    </span>
-                                  ) : (
-                                    <span
-                                      className="composer-dropdown__option-check"
-                                      aria-hidden
-                                    />
-                                  )}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        ) : null}
-                      </div>
                     </div>
                     <div className="composer-actions">
                       <IconButton

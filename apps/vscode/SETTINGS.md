@@ -77,12 +77,19 @@ Each mode has its own row. Switching the Ask / Plan / Agent control edits that m
 
 | UI field | Setting | Save / reflect |
 |---|---|---|
-| Working set | `mitii.ui.effort` | Global. `low` / `medium` / `high`. Also in the chat composer (Low / Medium / High). |
-| Default depth | `mitii.ui.modeDefaults.<mode>.depth` | `auto` / `quick` / `deep`. Reflected per mode. |
+| Thoroughness | `mitii.ui.modeDefaults.<mode>.thoroughness` | Per mode. `low` / `medium` / `high`. Also in the chat composer. Maps to exploration depth + working-set effort unless Developer intensity overrides are on. |
 | Approval mode | `mitii.ui.modeDefaults.<mode>.approvalMode` | `safe` (ask) / `guided` (approve for me) / `pilot` (full access). |
 | Default model | `mitii.ui.modeDefaults.<mode>.model` | Empty = use the active Provider model. |
 | Show reasoning stream | `mitii.ui.showReasoning` | Global, not per mode. |
 | Reasoning preview chars | `mitii.ui.reasoningPreviewMaxChars` | 500–50000. Reflected as the saved integer. |
+
+Thoroughness mapping (when overrides are off):
+
+| Thoroughness | Exploration depth | Working set (effort) |
+|---|---|---|
+| Low | `quick` | `low` |
+| Medium | `auto` | `medium` |
+| High | `deep` | `high` |
 
 ### Run budget
 
@@ -143,13 +150,23 @@ Leave this off unless you need it. Options are grouped so the page stays scannab
 
 | UI field | Setting | Save / reflect |
 |---|---|---|
-| Enable developer settings | `mitii.developer.enabled` | Unlocks Logging and Token budget editors. |
+| Enable developer settings | `mitii.developer.enabled` | Unlocks Logging, Intensity, and Token budget editors. |
 
 ### Logging
 
 | UI field | Setting | Save / reflect |
 |---|---|---|
 | Debug logging | `mitii.debug` | When on, Mitii shows the Output channel and prints verbose stacks. Locked until Access is enabled. |
+
+### Intensity
+
+Leave off unless you need an edge case (for example quick planning with a high repair budget). When overrides are off, Modes → Thoroughness owns both axes.
+
+| UI field | Setting | Save / reflect |
+|---|---|---|
+| Unlock intensity overrides | `mitii.developer.intensityOverrides` | When on, composer Thoroughness shows Custom until you pick a clubbed level. |
+| Working set (effort) | `mitii.ui.effort` | `low` / `medium` / `high`. Editable only while overrides are on. |
+| Ask / Plan / Agent depth | `mitii.ui.modeDefaults.<mode>.depth` | `auto` / `quick` / `deep`. Editable only while overrides are on. |
 
 ### Token budget
 

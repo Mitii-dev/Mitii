@@ -1,26 +1,17 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
-import type { AgentUiDepth, AgentUiEffort, AgentUiMode } from '../protocol';
+import type {
+  AgentUiMode,
+  AgentUiThoroughness,
+} from '../protocol';
 import { MODE_COLORS } from '../modeColors';
 import {
-  normalizeApproval,
-  type ApprovalUiMode,
-} from '../approvalPresets';
-import {
-  IconAgent,
   IconAsk,
-  IconAskApproval,
+  IconAgent,
   IconApproveForMe,
+  IconAskApproval,
   IconCheck,
-  IconDepthAuto,
   IconDepthDeep,
-  IconDepthQuick,
   IconEffortHigh,
   IconEffortLow,
   IconEffortMedium,
@@ -29,11 +20,12 @@ import {
   IconReview,
 } from './Icons';
 
-export type { ApprovalUiMode };
-export { normalizeApproval };
-export { MODE_COLORS };
+export type ApprovalUiMode = 'safe' | 'guided' | 'pilot';
 
-type ComposerSelectId = 'mode' | 'approval' | 'depth' | 'effort';
+function normalizeApproval(value: string): ApprovalUiMode {
+  if (value === 'safe' || value === 'pilot') return value;
+  return 'guided';
+}
 
 interface ComposerOption<T extends string> {
   id: T;
@@ -41,7 +33,6 @@ interface ComposerOption<T extends string> {
   description: string;
   color: string;
   icon: ReactNode;
-  /** Emphasize as a high-privilege / warning choice. */
   warning?: boolean;
 }
 
@@ -63,14 +54,14 @@ const MODES: ComposerOption<AgentUiMode>[] = [
   {
     id: 'agent',
     label: 'Agent',
-    description: 'Implement with controlled execution',
+    description: 'Implement changes with controlled execution',
     color: MODE_COLORS.agent,
     icon: <IconAgent />,
   },
   {
     id: 'review',
     label: 'Review',
-    description: 'Inspect diffs and report findings',
+    description: 'Inspect working-tree diffs and report findings',
     color: MODE_COLORS.review,
     icon: <IconReview />,
   },
@@ -80,74 +71,52 @@ const APPROVAL_OPTIONS: ComposerOption<ApprovalUiMode>[] = [
   {
     id: 'safe',
     label: 'Ask for approval',
-    description: 'Always ask before edits, commands, and network use',
-    color: 'var(--mitii-text)',
+    description: 'Pause before mutations and plan execution',
+    color: '#38bdf8',
     icon: <IconAskApproval />,
   },
   {
     id: 'guided',
     label: 'Approve for me',
-    description: 'Approve tool use automatically; keep plan checkpoints',
-    color: 'var(--mitii-text)',
+    description: 'Auto-approve routine mutations; pause on risk',
+    color: '#22c55e',
     icon: <IconApproveForMe />,
   },
   {
     id: 'pilot',
     label: 'Full access',
     description: 'Unrestricted access to tools, network, and workspace files',
-    color: '#e8b84a',
+    color: '#c9b27a',
     icon: <IconFullAccess />,
     warning: true,
   },
 ];
 
-const DEPTH_OPTIONS: ComposerOption<AgentUiDepth>[] = [
-  {
-    id: 'auto',
-    label: 'Auto',
-    description: 'Let Mitii choose depth',
-    color: '#38bdf8',
-    icon: <IconDepthAuto />,
-  },
-  {
-    id: 'quick',
-    label: 'Quick',
-    description: 'Fast, lighter context',
-    color: '#22c55e',
-    icon: <IconDepthQuick />,
-  },
-  {
-    id: 'deep',
-    label: 'Deep',
-    description: 'Broader retrieval and reasoning',
-    color: '#a78bfa',
-    icon: <IconDepthDeep />,
-  },
-];
-
-const EFFORT_OPTIONS: ComposerOption<AgentUiEffort>[] = [
+const THOROUGHNESS_OPTIONS: ComposerOption<AgentUiThoroughness>[] = [
   {
     id: 'low',
     label: 'Low',
-    description: 'Fewer model/tool calls; no remaining-error repairs',
+    description: 'Quick look, lighter context, fewer loop/repair calls',
     color: '#94a3b8',
     icon: <IconEffortLow />,
   },
   {
     id: 'medium',
     label: 'Medium',
-    description: 'Default working set for most tasks',
+    description: 'Balanced depth and working set for most tasks',
     color: '#38bdf8',
     icon: <IconEffortMedium />,
   },
   {
     id: 'high',
     label: 'High',
-    description: 'More model/tool calls and remaining-error repairs',
+    description: 'Deep exploration, broader retrieval, more repairs',
     color: '#f59e0b',
     icon: <IconEffortHigh />,
   },
 ];
+
+type ComposerSelectId = 'mode' | 'approval' | 'thoroughness';
 
 export const MODE_HINT: Record<AgentUiMode, string> = {
   ask: 'Explore and answer — read-only.',
@@ -159,24 +128,23 @@ export const MODE_HINT: Record<AgentUiMode, string> = {
 interface ComposerControlsProps {
   mode: AgentUiMode;
   approvalMode: string;
-  depth: AgentUiDepth;
-  effort: AgentUiEffort;
+  thoroughness: AgentUiThoroughness;
+  /** When true, thoroughness picker shows Custom until the user picks a level. */
+  intensityCustom?: boolean;
   onModeChange: (mode: AgentUiMode) => void;
   onApprovalModeChange: (mode: ApprovalUiMode) => void;
-  onDepthChange: (depth: AgentUiDepth) => void;
-  onEffortChange: (effort: AgentUiEffort) => void;
+  onThoroughnessChange: (thoroughness: AgentUiThoroughness) => void;
   includeReview?: boolean;
 }
 
 export function ComposerControls({
   mode,
   approvalMode,
-  depth,
-  effort,
+  thoroughness,
+  intensityCustom = false,
   onModeChange,
   onApprovalModeChange,
-  onDepthChange,
-  onEffortChange,
+  onThoroughnessChange,
   includeReview = true,
 }: ComposerControlsProps) {
   const [openSelect, setOpenSelect] = useState<ComposerSelectId | null>(null);
@@ -188,10 +156,20 @@ export function ComposerControls({
   const activeApproval =
     APPROVAL_OPTIONS.find((o) => o.id === normalizeApproval(approvalMode)) ??
     APPROVAL_OPTIONS[1]!;
-  const activeDepth =
-    DEPTH_OPTIONS.find((o) => o.id === depth) ?? DEPTH_OPTIONS[0]!;
-  const activeEffort =
-    EFFORT_OPTIONS.find((o) => o.id === effort) ?? EFFORT_OPTIONS[1]!;
+  const activeThoroughness =
+    THOROUGHNESS_OPTIONS.find((o) => o.id === thoroughness) ??
+    THOROUGHNESS_OPTIONS[1]!;
+  const thoroughnessSelected: ComposerOption<AgentUiThoroughness> =
+    intensityCustom
+      ? {
+          id: thoroughness,
+          label: 'Custom',
+          description:
+            'Developer intensity overrides are on — pick a level to reset',
+          color: '#a78bfa',
+          icon: <IconDepthDeep />,
+        }
+      : activeThoroughness;
 
   useEffect(() => {
     if (!openSelect) return;
@@ -203,9 +181,13 @@ export function ComposerControls({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpenSelect(null);
     };
-    window.addEventListener('pointerdown', onPointerDown);
+    // Use capture:false and defer so the opening click doesn't race-close.
+    const timer = window.setTimeout(() => {
+      window.addEventListener('pointerdown', onPointerDown);
+    }, 0);
     window.addEventListener('keydown', onKeyDown);
     return () => {
+      window.clearTimeout(timer);
       window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('keydown', onKeyDown);
     };
@@ -260,7 +242,9 @@ export function ComposerControls({
         {isOpen ? (
           <div className="composer-dropdown__menu" role="listbox" aria-label={label}>
             {options.map((option) => {
-              const selectedOption = option.id === value;
+                  const selectedOption =
+                    option.id === value &&
+                    !(id === 'thoroughness' && intensityCustom);
               return (
                 <button
                   key={option.id}
@@ -327,21 +311,15 @@ export function ComposerControls({
         onChange: onApprovalModeChange,
       })}
       {renderDropdown({
-        id: 'depth',
-        label: 'Depth',
-        value: depth,
-        selected: activeDepth,
-        options: DEPTH_OPTIONS,
-        onChange: onDepthChange,
-      })}
-      {renderDropdown({
-        id: 'effort',
-        label: 'Effort',
-        value: effort,
-        selected: activeEffort,
-        options: EFFORT_OPTIONS,
-        onChange: onEffortChange,
+        id: 'thoroughness',
+        label: 'Thoroughness',
+        value: thoroughness,
+        selected: thoroughnessSelected,
+        options: THOROUGHNESS_OPTIONS,
+        onChange: onThoroughnessChange,
       })}
     </div>
   );
 }
+
+export { normalizeApproval };

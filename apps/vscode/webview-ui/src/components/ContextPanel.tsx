@@ -49,7 +49,6 @@ export function ContextPanel({
       }
     >
       <div className="context-panel__label">
-        <span>Context</span>
         <span>{pins.length} pinned</span>
       </div>
       <div className="pins">

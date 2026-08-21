@@ -429,6 +429,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0];
   const modeDefault =
     ui.modeDefaults?.[modeSettingsTab] ?? {
+      thoroughness: 'medium' as const,
       depth: ui.depth,
       approvalMode: ui.approvalMode,
       model: provider.model,
@@ -909,40 +910,49 @@ export function SettingsPanel(props: SettingsPanelProps) {
                       : 'Agent is execution-focused: use tools, edit files, and stop at approval and budget limits.'}
                 </p>
                 <div className="field">
-                  <label htmlFor="effort">Working set</label>
+                  <label htmlFor="thoroughness">Thoroughness</label>
                   <select
-                    id="effort"
-                    value={ui.effort}
-                    onChange={(e) =>
+                    id="thoroughness"
+                    value={modeDefault.thoroughness ?? 'medium'}
+                    disabled={ui.intensityOverrides === true}
+                    onChange={(e) => {
+                      const thoroughness = e.target
+                        .value as 'low' | 'medium' | 'high';
+                      const depth =
+                        thoroughness === 'low'
+                          ? 'quick'
+                          : thoroughness === 'high'
+                            ? 'deep'
+                            : 'auto';
+                      const effort = thoroughness;
                       onSaveUi({
-                        effort: e.target.value as UiSettingsSnapshot['effort'],
-                      })
-                    }
-                  >
-                    <option value="low">Low — fewer loop/repair calls</option>
-                    <option value="medium">Medium — default</option>
-                    <option value="high">High — more loop/repair calls</option>
-                  </select>
-                </div>
-                <div className="field">
-                  <label htmlFor="depth">Default depth</label>
-                  <select
-                    id="depth"
-                    value={modeDefault.depth}
-                    onChange={(e) =>
-                      onSaveUi({
+                        intensityOverrides: false,
+                        effort,
                         modeDefaults: {
-                          [modeSettingsTab]: {
-                            depth: e.target.value as UiSettingsSnapshot['depth'],
-                          },
+                          [modeSettingsTab]: { thoroughness, depth },
                         },
-                      })
-                    }
+                      });
+                    }}
                   >
-                    <option value="auto">Auto</option>
-                    <option value="quick">Quick</option>
-                    <option value="deep">Deep</option>
+                    <option value="low">
+                      Low — quick look, fewer loop/repair calls
+                    </option>
+                    <option value="medium">Medium — default balance</option>
+                    <option value="high">
+                      High — deep look, more loop/repair calls
+                    </option>
                   </select>
+                  {ui.intensityOverrides ? (
+                    <p className="field-hint">
+                      Developer intensity overrides are on. Edit depth and
+                      working set under Developer, or turn overrides off.
+                    </p>
+                  ) : (
+                    <p className="field-hint">
+                      Sets exploration depth and working-set effort together for
+                      this mode.
+                    </p>
+                  )}
                 </div>
                 <div className="field">
                   <label htmlFor="approval">Approval mode</label>
@@ -1165,6 +1175,90 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     stacks on failures (
                     <span className="mono">mitii.debug</span>).
                   </p>
+                </div>
+              </SettingsSection>
+
+              <SettingsSection
+                title="Intensity"
+                description="Split exploration depth and working-set effort. Leave off to use Modes → Thoroughness."
+              >
+                <div
+                  className={`developer-options${
+                    ui.developerEnabled ? '' : ' is-locked'
+                  }`}
+                >
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={ui.intensityOverrides === true}
+                      disabled={!ui.developerEnabled}
+                      onChange={(e) =>
+                        onSaveUi({ intensityOverrides: e.target.checked })
+                      }
+                    />
+                    Unlock intensity overrides
+                  </label>
+                  <p className="field-hint">
+                    When on, composer Thoroughness shows Custom until you pick a
+                    clubbed level again.
+                  </p>
+                  <div className="field">
+                    <label htmlFor="dev-effort">Working set (effort)</label>
+                    <select
+                      id="dev-effort"
+                      value={ui.effort}
+                      disabled={
+                        !ui.developerEnabled || ui.intensityOverrides !== true
+                      }
+                      onChange={(e) =>
+                        onSaveUi({
+                          effort: e.target
+                            .value as UiSettingsSnapshot['effort'],
+                        })
+                      }
+                    >
+                      <option value="low">Low — fewer loop/repair calls</option>
+                      <option value="medium">Medium — default</option>
+                      <option value="high">
+                        High — more loop/repair calls
+                      </option>
+                    </select>
+                  </div>
+                  {(
+                    [
+                      ['ask', 'Ask depth'],
+                      ['plan', 'Plan depth'],
+                      ['agent', 'Agent depth'],
+                    ] as const
+                  ).map(([modeKey, label]) => (
+                    <div className="field" key={modeKey}>
+                      <label htmlFor={`dev-depth-${modeKey}`}>{label}</label>
+                      <select
+                        id={`dev-depth-${modeKey}`}
+                        value={
+                          ui.modeDefaults?.[modeKey]?.depth ?? ui.depth
+                        }
+                        disabled={
+                          !ui.developerEnabled ||
+                          ui.intensityOverrides !== true
+                        }
+                        onChange={(e) =>
+                          onSaveUi({
+                            modeDefaults: {
+                              [modeKey]: {
+                                depth: e.target
+                                  .value as UiSettingsSnapshot['depth'],
+                              },
+                            },
+                          })
+                        }
+                      >
+                        <option value="auto">Auto</option>
+                        <option value="quick">Quick</option>
+                        <option value="deep">Deep</option>
+                      </select>
+                    </div>
+                  ))}
                 </div>
               </SettingsSection>
 

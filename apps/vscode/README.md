@@ -53,6 +53,7 @@ For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code Secr
 | `mitii.workspace.rootPathOverride` | Only when no folder is open |
 | `mitii.mcp` | MCP server config (disabled by default) |
 | `mitii.ui.showReasoning` | Show streamed reasoning when available |
+| `mitii.ui.modeDefaults.<mode>.thoroughness` | Low / Medium / High run intensity per mode |
 
 All product settings use the `mitii.*` prefix. Full field reference, save/reflect behavior, and UI map: [SETTINGS.md](./SETTINGS.md).
 

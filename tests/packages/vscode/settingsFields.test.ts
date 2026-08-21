@@ -50,6 +50,7 @@ const BASE_UI: UiSettingsSnapshot = {
   reasoningPreviewMaxChars: 8000,
   depth: 'auto',
   effort: 'medium',
+  intensityOverrides: false,
   modeDefaults: DEFAULT_MODE_DEFAULTS,
   contextToggles: DEFAULT_CONTEXT_TOGGLES,
   approvalMode: 'guided',
@@ -311,22 +312,52 @@ describe('provider connection fields', () => {
 });
 
 describe('modes fields', () => {
-  it('saves per-mode depth, approval, and model and reflects them', () => {
+  it('saves per-mode thoroughness, approval, and model and reflects them', () => {
     const next = applyUiPatch(BASE_UI, {
       modeDefaults: {
-        ask: { depth: 'quick', approvalMode: 'safe', model: 'qwen3.5:9b' },
-        plan: { depth: 'deep', approvalMode: 'guided', model: 'qwen3-coder:30b' },
-        agent: { depth: 'auto', approvalMode: 'pilot', model: 'qwen3.5:latest' },
+        ask: {
+          thoroughness: 'low',
+          depth: 'quick',
+          approvalMode: 'safe',
+          model: 'qwen3.5:9b',
+        },
+        plan: {
+          thoroughness: 'high',
+          depth: 'deep',
+          approvalMode: 'guided',
+          model: 'qwen3-coder:30b',
+        },
+        agent: {
+          thoroughness: 'medium',
+          depth: 'auto',
+          approvalMode: 'pilot',
+          model: 'qwen3.5:latest',
+        },
       },
     });
     const reflected = reflectUiAfterSave(next);
     expect(reflected.modeDefaults.ask).toEqual({
+      thoroughness: 'low',
       depth: 'quick',
       approvalMode: 'safe',
       model: 'qwen3.5:9b',
     });
     expect(reflected.modeDefaults.plan.model).toBe('qwen3-coder:30b');
     expect(reflected.modeDefaults.agent.approvalMode).toBe('pilot');
+  });
+
+  it('persists developer intensity overrides', () => {
+    const next = applyUiPatch(BASE_UI, {
+      intensityOverrides: true,
+      effort: 'high',
+      modeDefaults: {
+        ask: { depth: 'quick' },
+      },
+    });
+    expect(next.intensityOverrides).toBe(true);
+    expect(next.effort).toBe('high');
+    expect(next.modeDefaults.ask.depth).toBe('quick');
+    expect(next.modeDefaults.ask.thoroughness).toBe('medium');
   });
 
   it('saves reasoning toggles and preview length', () => {

@@ -6,6 +6,8 @@
 export type AgentUiMode = 'ask' | 'plan' | 'agent' | 'review';
 export type AgentUiDepth = 'auto' | 'quick' | 'deep';
 export type AgentUiEffort = 'low' | 'medium' | 'high';
+/** Clubbed customer control → maps to depth + effort unless intensity overrides. */
+export type AgentUiThoroughness = 'low' | 'medium' | 'high';
 export type UiNav = 'chat' | 'history' | 'settings' | 'skills';
 export type SettingsTab =
   | 'workspace'
@@ -196,6 +198,11 @@ export interface UiSettingsSnapshot {
   runBudget: RunBudgetSettingsSnapshot;
   /** Master gate for Settings → Developer options. */
   developerEnabled: boolean;
+  /**
+   * When true, Modes/composer thoroughness is ignored and depth + effort are
+   * edited separately under Developer → Intensity.
+   */
+  intensityOverrides: boolean;
   /** Maps to mitii.debug (verbose Output channel / stacks). */
   debugLogging: boolean;
   /** Window-proportional token budget tunables (Debug → developer). */
@@ -203,6 +210,8 @@ export interface UiSettingsSnapshot {
 }
 
 export interface ModeDefaultSettingsSnapshot {
+  /** Customer-facing Low / Medium / High for this mode. */
+  thoroughness: AgentUiThoroughness;
   depth: AgentUiDepth;
   approvalMode: string;
   model?: string;
