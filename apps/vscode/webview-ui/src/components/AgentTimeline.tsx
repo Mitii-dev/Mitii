@@ -7,6 +7,11 @@ interface AgentTimelineProps {
   endAt?: number;
 }
 
+interface FileListDetail {
+  paths: string[];
+  more?: number;
+}
+
 function formatDuration(ms: number): string {
   const seconds = Math.max(1, Math.round(ms / 1000));
   return seconds < 60 ? `${seconds}s` : `${Math.round(seconds / 60)}m`;
@@ -98,6 +103,111 @@ function formatToolTitle(item: ActivityEventPayload): string {
   return spaced ? spaced[0]!.toUpperCase() + spaced.slice(1) : item.title;
 }
 
+function looksLikePath(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 260) return false;
+  if (/\s{2,}/.test(trimmed)) return false;
+  if (/^(block|retrieved|selected|dropped|status)=/i.test(trimmed)) return false;
+  return (
+    trimmed.includes('/') ||
+    trimmed.includes('\\') ||
+    /\.[A-Za-z0-9]{1,12}$/.test(trimmed) ||
+    trimmed.startsWith('@') ||
+    trimmed === '.gitignore' ||
+    trimmed.startsWith('.')
+  );
+}
+
+function parseMoreSuffix(value: string): { text: string; more?: number } {
+  const match = /(?:^|\s)(?:·\s*)?\+(\d+)\s+more\s*$/i.exec(value);
+  if (!match) return { text: value.trim() };
+  return {
+    text: value.slice(0, match.index).trim().replace(/[·,]\s*$/, '').trim(),
+    more: Number(match[1]),
+  };
+}
+
+function parseFileListDetail(
+  item: ActivityEventPayload,
+): FileListDetail | undefined {
+  const detail = item.detail?.trim();
+  if (!detail) return undefined;
+
+  const pathEq = /^path=(.+)$/s.exec(detail);
+  if (pathEq?.[1]) {
+    const path = pathEq[1].replace(/\s+startLine=\d+.*$/, '').trim();
+    return path ? { paths: [path] } : undefined;
+  }
+
+  const pathsEq = /^paths=(.+)$/s.exec(detail);
+  if (pathsEq?.[1]) {
+    const raw = pathsEq[1].trim();
+    const plus = /\+(\d+)$/.exec(raw);
+    const body = plus ? raw.slice(0, plus.index).replace(/,\s*$/, '') : raw;
+    const paths = body
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (!paths.length) return undefined;
+    return {
+      paths,
+      more: plus ? Number(plus[1]) : undefined,
+    };
+  }
+
+  const isFileContext =
+    item.kind === 'context' ||
+    /^Read(\s+\d+)?\s+files?/i.test(item.title) ||
+    /^Read\s+@/i.test(item.title);
+
+  if (!isFileContext) return undefined;
+
+  if (detail.includes('\n')) {
+    const lines = detail
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const moreLine = lines.find((line) => /^\+\d+\s+more$/i.test(line));
+    const paths = lines.filter((line) => !/^\+\d+\s+more$/i.test(line));
+    if (!paths.length || !paths.every(looksLikePath)) return undefined;
+    return {
+      paths,
+      more: moreLine ? Number(/^\+(\d+)/.exec(moreLine)?.[1]) : undefined,
+    };
+  }
+
+  const { text, more } = parseMoreSuffix(detail);
+  const paths = text
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (paths.length < 1 || !paths.every(looksLikePath)) return undefined;
+  return { paths, more };
+}
+
+function FileListBox({ paths, more }: FileListDetail) {
+  return (
+    <div className="timeline__files" role="group" aria-label="Files">
+      {paths.map((path, index) => (
+        <div key={`${path}-${index}`} className="timeline__files-row">
+          <span className="timeline__files-prompt" aria-hidden="true">
+            {index === 0 ? '$' : ' '}
+          </span>
+          <code className="timeline__files-path">{path.replace(/^@/, '')}</code>
+        </div>
+      ))}
+      {more && more > 0 ? (
+        <div className="timeline__files-row">
+          <span className="timeline__files-prompt" aria-hidden="true">
+            {' '}
+          </span>
+          <span className="timeline__files-more">+{more} more</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function AgentTimeline({
   events,
   streaming = false,
@@ -111,6 +221,7 @@ export function AgentTimeline({
         const isActiveThinking =
           streaming && index === events.length - 1 && item.kind === 'thinking';
         const preview = isActiveThinking ? thinkingPreview(item.detail) : '';
+        const files = !isCommandEvent(item) ? parseFileListDetail(item) : undefined;
         return (
           <li
             key={item.id}
@@ -118,7 +229,7 @@ export function AgentTimeline({
               item.kind === 'tool' ? ' timeline__row--tool' : ''
             }${isActiveThinking ? ' timeline__row--thinking-active' : ''}${
               isCommandEvent(item) ? ' timeline__row--command' : ''
-            }`}
+            }${files ? ' timeline__row--files' : ''}`}
           >
             <span className="timeline__marker" aria-hidden="true" />
             {item.kind === 'thinking' ? (
@@ -148,6 +259,8 @@ export function AgentTimeline({
                     </span>
                     <code>{commandText(item.detail)}</code>
                   </span>
+                ) : files ? (
+                  <FileListBox paths={files.paths} more={files.more} />
                 ) : item.detail ? (
                   <>
                     {' '}

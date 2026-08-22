@@ -140,6 +140,15 @@ export const planningInputSchema = z
     processHints: z.array(z.string().min(1).max(120)).max(16).optional(),
     /** Already-reviewed context refs from repository context / discovery. */
     contextReviewed: z.array(planContextRefSchema).max(40).optional(),
+    /**
+     * Engine-collected file paths already known before discovery (context,
+     * explicit targets, prior-turn path hints). Strategy may skip rediscovery
+     * when these are present; discovery should read them first.
+     */
+    knownPathHints: z
+      .array(z.string().min(1).max(1_000))
+      .max(16)
+      .optional(),
     /** Structured evidence from a prior read-only discovery pass. */
     discoveryBrief: discoveryBriefSchema.optional(),
     /** User-edited or previously approved plan to revise/validate. */

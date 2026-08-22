@@ -20,9 +20,11 @@ import type {
   PlanStrategyDecision,
   PlanningInput,
   PlanningLlmPort,
+  PlanningParsedInput,
   PlanningReasonCode,
   PlanningResult,
 } from "../contracts";
+import { isThinDiscoveryBrief } from "../internal/discoveredPlanPrompt";
 import type { z } from "zod";
 
 export interface PlanStrategyResolution {
@@ -41,7 +43,7 @@ export interface PlanStrategyResolution {
  *   → draft generic PlanArtifact from dimensions (+ optional skills/hints)
  *   → discover_and_plan only: one model draft call over discovery evidence
  *   → validate required sections
-   *   → follow_evidence / discover_and_plan: compile hop-1 mustRead/affected onto Change steps
+ *   → follow_evidence / discover_and_plan: compile hop-1 mustRead/affected onto Change steps
  *   → compact to budget
  *   → return planning result
  *
@@ -92,8 +94,9 @@ export class PlanningPipeline {
     }
 
     const strategy = resolvePlanStrategy({ input: parsed });
+    const draftInput = prepareDraftInput(parsed, strategy.decision);
     let drafted = draftPlan({
-      ...parsed,
+      ...draftInput,
       strategy: strategy.decision,
     });
 
@@ -104,21 +107,28 @@ export class PlanningPipeline {
       parsed.discoveryBrief &&
       this.deps.llm
     ) {
-      const discovered = await draftPlanFromDiscovery({
-        input: parsed,
-        discoveryBrief: parsed.discoveryBrief,
-        llm: this.deps.llm,
-      });
-      if (discovered.ok) {
-        drafted = applyDiscoveredPlanDraft({
-          skeleton: drafted,
-          draft: discovered.draft,
-          input: parsed,
-        });
-        draftReasonCodes.push("plan_drafted_from_discovery");
+      if (isThinDiscoveryBrief(parsed.discoveryBrief)) {
+        draftReasonCodes.push("plan_discovery_draft_skipped_thin_brief");
+        draftWarnings.push(
+          "Discovery evidence was thin; kept the deterministic plan skeleton instead of a model draft.",
+        );
       } else {
-        draftWarnings.push(discovered.warning);
-        draftReasonCodes.push("plan_discovery_draft_failed_fallback");
+        const discovered = await draftPlanFromDiscovery({
+          input: parsed,
+          discoveryBrief: parsed.discoveryBrief,
+          llm: this.deps.llm,
+        });
+        if (discovered.ok) {
+          drafted = applyDiscoveredPlanDraft({
+            skeleton: drafted,
+            draft: discovered.draft,
+            input: parsed,
+          });
+          draftReasonCodes.push("plan_drafted_from_discovery");
+        } else {
+          draftWarnings.push(discovered.warning);
+          draftReasonCodes.push("plan_discovery_draft_failed_fallback");
+        }
       }
     }
 
@@ -202,6 +212,27 @@ export {
   serializePlanForPrompt,
   serializePlanText,
 } from "../actions";
+
+/**
+ * When discovery evidence is thin, drop process skills so they cannot invent
+ * README/docs steps without file evidence.
+ */
+function prepareDraftInput(
+  parsed: PlanningParsedInput,
+  strategy: PlanStrategyDecision,
+): PlanningParsedInput {
+  if (
+    strategy.strategy === "discover_and_plan" &&
+    parsed.discoveryBrief &&
+    isThinDiscoveryBrief(parsed.discoveryBrief)
+  ) {
+    return {
+      ...parsed,
+      skills: [],
+    };
+  }
+  return parsed;
+}
 
 function unique(codes: readonly PlanningReasonCode[]): PlanningReasonCode[] {
   return [...new Set(codes)];

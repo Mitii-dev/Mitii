@@ -63,6 +63,8 @@ import {
   extractMentionedPaths,
   buildPlanningQuery,
   buildScopedRepoMapForPlanning,
+  collectPreferredPlanningPaths,
+  extractPriorPathHints,
   toPlanningBuildEvidence,
   CONTEXT_READY_VERBOSE_WARNING_CODES,
   CONTEXT_READY_WARNING_CODES,
@@ -74,6 +76,7 @@ import {
   recordPlanEvidence,
   formatSkillPromptContent,
 } from "../actions";
+import { applyPlanModeDiscoveryContract } from "../actions/planDiscoveryContract";
 import type {
   EstablishedFact,
 } from "../actions";
@@ -902,6 +905,17 @@ export async function executeStart(
           kind: "file" as const,
           ref: block.relativePath,
         }));
+      const planningEvidence = mapUnderstandingToPlanningEvidence(understanding);
+      const priorPathHints = extractPriorPathHints(input.conversation);
+      const knownPathHints = collectPreferredPlanningPaths({
+        evidenceTargets: planningEvidence.targets,
+        contextPaths,
+        priorPathHints,
+        query: buildPlanningQuery(
+          extractPrimaryUserMessage(envelope.message),
+          input.conversation,
+        ),
+      });
       const planningInputCandidate: PlanningInput = {
         schemaVersion: PLANNING_SCHEMA_VERSION,
         query: buildPlanningQuery(
@@ -912,7 +926,7 @@ export async function executeStart(
         route: decision.route,
         planningDepth: decision.planningDepth,
         explorationDepth: input.explorationDepth,
-        evidence: mapUnderstandingToPlanningEvidence(understanding),
+        evidence: planningEvidence,
         scopedRepoMap: buildScopedRepoMapForPlanning(contextPaths),
         buildEvidence: repoBuildStateBefore
           ? toPlanningBuildEvidence(repoBuildStateBefore)
@@ -927,6 +941,7 @@ export async function executeStart(
         processHints: [],
         contextReviewed:
           contextReviewed.length > 0 ? contextReviewed : undefined,
+        ...(knownPathHints.length > 0 ? { knownPathHints } : {}),
         budgetTokens: windowPolicy.planning.budgetTokens,
         maxDiagnosticSteps: windowPolicy.planning.maxDiagnosticSteps,
         maxFilesPerBatch: windowPolicy.mutation.preferredBatchSize,
@@ -936,9 +951,21 @@ export async function executeStart(
       // Engine owns strategy — rules only, no strategy LLM. Planning just
       // drafts against whatever strategyOverride Engine hands it.
       const strategyDecision = resolvePlanStrategyRules(planningInput);
-      let strategyOverride: PlanStrategyDecision = strategyDecision;
+      const planContract = applyPlanModeDiscoveryContract({
+        mode: envelope.mode,
+        explorationDepth: input.explorationDepth,
+        query: planningInput.query,
+        conversation: input.conversation ?? [],
+        strategy: strategyDecision,
+      });
+      let strategyOverride: PlanStrategyDecision = planContract.strategy;
+      if (planContract.applied) {
+        reasonCodes.push("plan_mode_discovery_required");
+      }
       let discoveryBrief = planningInput.discoveryBrief;
-      if (strategyDecision.strategy === "discover_and_plan") {
+      // Use the post-contract strategy — Plan mode may have upgraded
+      // clarify/plan_from_ask to discover_and_plan.
+      if (strategyOverride.strategy === "discover_and_plan") {
         const discovery = await runDiscoveryPass(runtime, {
           runId,
           query: planningInput.query,
@@ -956,6 +983,7 @@ export async function executeStart(
           warnings,
           taskListRef,
           windowPolicy,
+          preferredPaths: knownPathHints,
         });
         discoveryBrief = discovery.brief;
         recordDiscoveryEvidence(runEvidence, {
@@ -965,8 +993,8 @@ export async function executeStart(
         });
         runtime.emitEvidenceUpdated(bus, runId, runEvidence);
         // Discovery already looked; Planning must not run a second
-        // Discover phase. Keep the rules' own rationale/confidence.
-        strategyOverride = { ...strategyDecision, skipDiscover: true };
+        // Discover phase. Keep the selected strategy's rationale/confidence.
+        strategyOverride = { ...strategyOverride, skipDiscover: true };
       }
 
       let impactReports = planningInput.impactReports;

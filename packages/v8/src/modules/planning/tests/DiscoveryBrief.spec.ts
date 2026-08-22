@@ -110,6 +110,28 @@ describe("DiscoveryBrief contract", () => {
     expect(compiled.openQuestions.length).toBeGreaterThan(0);
   });
 
+  it("treats read project config modules as change surfaces", () => {
+    const compiled = compileDiscoveryBrief({
+      schemaVersion: 1,
+      objective: "Add headless Chrome args to desktop tests",
+      filesRead: [
+        {
+          path: "test/shared/config/testConfig.ts",
+          reason: "Preferred seed path",
+        },
+        {
+          path: "wdio.desktop.conf.ts",
+          reason: "Preferred seed path",
+        },
+      ],
+    });
+    expect(compiled.proposedChangeSurfaces.map((item) => item.path)).toEqual([
+      "test/shared/config/testConfig.ts",
+      "wdio.desktop.conf.ts",
+    ]);
+    expect(compiled.confidence).toBe("high");
+  });
+
   it("exposes compileDiscovery on the Planning facade", () => {
     const pipeline = new PlanningPipeline();
     const brief = pipeline.compileDiscovery({

@@ -15,6 +15,12 @@ import type {
 const FILE_LIKE = /\.\w{1,16}$/;
 const TEST_LIKE = /(?:\.test|\.spec|\/tests?\/|\/__tests__\/)/i;
 const CONFIG_LIKE = /(?:^|\/)(?:.*\.)?(?:config|rc|toml|ya?ml|json|env)(?:$|\.)/i;
+/** Lockfiles / tooling noise — never promote to change surfaces from listing. */
+const NOISE_CONFIG =
+  /(?:^|\/)(?:package-lock\.json|pnpm-lock\.yaml|yarn\.lock|composer\.lock|Cargo\.lock|\.mitii\/)/i;
+/** Package/tsconfig manifests — only surfaces when explicitly targeted. */
+const MANIFEST_CONFIG =
+  /(?:^|\/)(?:package\.json|tsconfig[\w.-]*\.json)$/i;
 
 /**
  * Compile host-neutral discovery observations into a durable DiscoveryBrief.
@@ -51,7 +57,11 @@ export function compileDiscoveryBrief(
     })),
   ]);
 
-  const proposedChangeSurfaces = inferChangeSurfaces(filesRead, searchFiles);
+  const proposedChangeSurfaces = inferChangeSurfaces({
+    filesRead,
+    searchFiles,
+    explicitTargets: parsed.explicitTargets,
+  });
   const verificationHints = uniqueHints([
     ...parsed.verificationHints,
     ...inferVerificationHints(filesRead),
@@ -80,21 +90,73 @@ export function compileDiscoveryBrief(
   });
 }
 
-function inferChangeSurfaces(
-  filesRead: readonly DiscoveryFileRef[],
-  searchFiles: readonly { path: string; reason: string }[],
-): DiscoveryChangeSurface[] {
-  const candidates = uniqueByPath([
-    ...filesRead.map((file) => ({ path: file.path, reason: file.reason })),
-    ...searchFiles,
-  ]).filter(
-    (item) =>
-      FILE_LIKE.test(item.path) &&
-      !TEST_LIKE.test(item.path) &&
-      !CONFIG_LIKE.test(item.path),
+function inferChangeSurfaces(params: {
+  filesRead: readonly DiscoveryFileRef[];
+  searchFiles: readonly { path: string; reason: string }[];
+  explicitTargets: readonly DiscoveryTarget[];
+}): DiscoveryChangeSurface[] {
+  const explicitPaths = new Set(
+    params.explicitTargets
+      .filter(
+        (target) =>
+          target.kind === "file" ||
+          target.kind === "config" ||
+          target.kind === "test" ||
+          FILE_LIKE.test(target.value),
+      )
+      .map((target) => normalizePath(target.value))
+      .filter(Boolean),
   );
+  const readPaths = new Set(params.filesRead.map((file) => file.path));
 
-  return candidates.slice(0, 16).map((item) => ({
+  const ranked = uniqueByPath([
+    ...params.filesRead.map((file) => ({
+      path: file.path,
+      reason: file.reason,
+      fromRead: true,
+    })),
+    ...params.searchFiles.map((hit) => ({
+      path: hit.path,
+      reason: hit.reason,
+      fromRead: false,
+    })),
+  ]).filter((item) => {
+    if (!FILE_LIKE.test(item.path) || TEST_LIKE.test(item.path)) {
+      return false;
+    }
+    if (NOISE_CONFIG.test(item.path)) {
+      return false;
+    }
+    const isConfig = CONFIG_LIKE.test(item.path);
+    if (!isConfig) {
+      return true;
+    }
+    // Manifests (package.json / tsconfig) are not edit surfaces unless targeted.
+    if (MANIFEST_CONFIG.test(item.path) && !explicitPaths.has(item.path)) {
+      return false;
+    }
+    // Other config modules are first-class when read or explicitly targeted
+    // (e.g. test/shared/config/testConfig.ts).
+    if (item.fromRead || explicitPaths.has(item.path)) {
+      return true;
+    }
+    return /(?:^|\/)[\w.-]*config[\w.-]*\.\w{1,16}$/i.test(item.path);
+  });
+
+  // Prefer actually-read paths, then explicit, then search hits.
+  ranked.sort((left, right) => {
+    const leftScore =
+      (readPaths.has(left.path) ? 4 : 0) +
+      (explicitPaths.has(left.path) ? 2 : 0) +
+      (left.fromRead ? 1 : 0);
+    const rightScore =
+      (readPaths.has(right.path) ? 4 : 0) +
+      (explicitPaths.has(right.path) ? 2 : 0) +
+      (right.fromRead ? 1 : 0);
+    return rightScore - leftScore;
+  });
+
+  return ranked.slice(0, 16).map((item) => ({
     path: item.path,
     actionHint: "Change",
     riskLevel: "low",
@@ -150,18 +212,21 @@ function inferConfidence(params: {
   surfaces: readonly DiscoveryChangeSurface[];
   targets: readonly DiscoveryTarget[];
 }): DiscoveryBrief["confidence"] {
-  const sourceReads = params.filesRead.filter(
-    (file) => !CONFIG_LIKE.test(file.path) && !TEST_LIKE.test(file.path),
+  const productiveReads = params.filesRead.filter(
+    (file) => !NOISE_CONFIG.test(file.path) && !TEST_LIKE.test(file.path),
   ).length;
-  // Config/test reads never count as change surfaces. High confidence
-  // requires at least one real source surface plus a source file read.
-  if (params.surfaces.length >= 2 && sourceReads >= 2) {
+  // Config reads count when they produced a change surface (config features).
+  if (params.surfaces.length >= 2 && productiveReads >= 2) {
     return "high";
   }
-  if (params.surfaces.length >= 1 && sourceReads >= 1) {
+  if (params.surfaces.length >= 1 && productiveReads >= 1) {
     return "medium";
   }
-  if (params.targets.some((target) => target.explicit && FILE_LIKE.test(target.value))) {
+  if (
+    params.targets.some(
+      (target) => target.explicit && FILE_LIKE.test(target.value),
+    )
+  ) {
     return "medium";
   }
   return "low";

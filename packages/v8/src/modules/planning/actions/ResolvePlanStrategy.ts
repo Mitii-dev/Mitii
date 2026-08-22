@@ -39,6 +39,12 @@ export function resolvePlanStrategy(params: {
   }
 
   const decision = resolvePlanStrategyRules(params.input);
+  const knownPathsShortCircuit =
+    decision.strategy === "plan_from_ask" &&
+    params.input.explorationDepth !== "deep" &&
+    params.input.explorationDepth !== "quick" &&
+    hasKnownFileSurfaces(params.input) &&
+    !isRepairIntent(params.input);
   return {
     decision,
     source: "rules",
@@ -46,6 +52,9 @@ export function resolvePlanStrategy(params: {
     reasonCodes: [
       strategyReasonCode(decision.strategy),
       "plan_strategy_rules",
+      ...(knownPathsShortCircuit
+        ? (["plan_strategy_known_paths"] as const)
+        : []),
       ...(hasOutOfScopeBuildEvidence(params.input, decision)
         ? (["plan_build_evidence_out_of_scope"] as const)
         : []),
@@ -133,6 +142,28 @@ export function resolvePlanStrategyRules(
     );
   }
 
+  // Deep always rediscovers. Auto/quick (quick already returned) may skip
+  // discovery when Engine already supplied concrete file paths from context,
+  // explicit targets, or prior-turn hints — avoid README wander on follow-ups.
+  if (
+    input.explorationDepth !== "deep" &&
+    hasKnownFileSurfaces(input) &&
+    !repair
+  ) {
+    return sanitizeStrategy(
+      {
+        schemaVersion: 1,
+        strategy: "plan_from_ask",
+        rationale:
+          "Known file surfaces from context or prior turns are enough to draft without rediscovery.",
+        skipDiscover: true,
+        useBuildEvidence: false,
+        confidence: 0.8,
+      },
+      input,
+    );
+  }
+
   if (hasWideScope(input)) {
     return sanitizeStrategy(
       {
@@ -155,6 +186,23 @@ export function resolvePlanStrategyRules(
       useBuildEvidence: false,
     },
     input,
+  );
+}
+
+function hasKnownFileSurfaces(input: PlanningParsedInput): boolean {
+  const hints = (input.knownPathHints ?? []).filter(
+    (path) => path.trim().length > 0 && /\.\w{1,16}$/.test(path.trim()),
+  );
+  if (hints.length >= 1) {
+    return true;
+  }
+  return input.evidence.targets.some(
+    (target) =>
+      target.explicit &&
+      (target.kind === "file" ||
+        target.kind === "config" ||
+        target.kind === "test" ||
+        /\.\w{1,16}$/.test(target.value)),
   );
 }
 

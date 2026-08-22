@@ -23,7 +23,10 @@ import {
   toDiscoveryObservation,
 } from "../internal/discoveryPass";
 
-function planStartInput(userMessage: string) {
+function planStartInput(
+  userMessage: string,
+  options: { explorationDepth?: "auto" | "quick" | "deep" } = {},
+) {
   return {
     schemaVersion: 1 as const,
     request: {
@@ -33,6 +36,9 @@ function planStartInput(userMessage: string) {
       workspace: { workspaceId: "ws_1" },
     },
     workspaceRoot: "/repo",
+    ...(options.explorationDepth
+      ? { explorationDepth: options.explorationDepth }
+      : {}),
   };
 }
 
@@ -180,7 +186,7 @@ describe("AgentEngine discovery (discover_and_plan)", () => {
     expect(parsed.notes[0]).toContain("omitted 40 search hit");
   });
 
-  it("skips discovery for a small one-file plan_from_ask task (engine rules resolve strategy — no strategy LLM)", async () => {
+  it("skips discovery for a Quick-depth narrow plan ask", async () => {
     let planningCalls = 0;
     let captured: PlanningInput | undefined;
     const llm = new ScriptedLlmPort(
@@ -248,6 +254,7 @@ describe("AgentEngine discovery (discover_and_plan)", () => {
     const handle = engine.start(
       planStartInput(
         "In src/LoginForm.tsx, show a loading label on Sign in.",
+        { explorationDepth: "quick" },
       ),
     );
     const events: Array<{ type: string }> = [];
@@ -267,6 +274,104 @@ describe("AgentEngine discovery (discover_and_plan)", () => {
     expect(result.taskList?.purpose).toBe("execution");
     expect(result.taskList?.source).toBe("plan");
     expect(result.reasonCodes).not.toContain("discovery_started");
+  });
+
+  it("runs discovery when Plan-mode contract upgrades clarify to discover_and_plan", async () => {
+    const captured: PlanningInput[] = [];
+    const llm = new ScriptedLlmPort(
+      [
+        {
+          content: "",
+          toolCalls: [
+            {
+              id: "read_1",
+              name: "read_file",
+              arguments: JSON.stringify({
+                path: "test/shared/config/testConfig.ts",
+              }),
+            },
+          ],
+        },
+        { content: "Found the capabilities config." },
+      ],
+      createCapabilities({ supportsTools: true }),
+    );
+
+    const plan = executionPlan(
+      "Implement headless tests",
+      "test/shared/config/testConfig.ts",
+    );
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "plan",
+          planningDepth: "visible",
+          planGate: "none",
+          repositoryContextRequired: false,
+          toolGrant: createReadOnlyGrant(),
+          reasonCodes: ["mode_plan_only"],
+        }),
+        understanding: createUnderstanding({
+          taskAnalysis: {
+            ...createUnderstanding().taskAnalysis,
+            scope: "unknown",
+            complexity: "simple",
+            clarity: "unclear",
+            recommendsPlanning: true,
+            targets: [],
+          },
+        }),
+        llm,
+        planning: {
+          plan: async (input) => {
+            captured.push(input);
+            return {
+              schemaVersion: PLANNING_SCHEMA_VERSION,
+              status: "validated",
+              plan,
+              warnings: [],
+              reasonCodes: ["plan_drafted", "plan_discovery_applied"],
+              usedTokens: 20,
+              budgetTokens: 1_200,
+              durationMs: 1,
+              strategy: {
+                schemaVersion: 1,
+                strategy: "discover_and_plan",
+                rationale: "plan mode discovery contract",
+                skipDiscover: true,
+                useBuildEvidence: false,
+              },
+            };
+          },
+        },
+      }),
+    );
+
+    const handle = engine.start(
+      planStartInput(
+        "Can youplean implementing the headless in this",
+      ),
+    );
+    const events: Array<{ type: string }> = [];
+    for await (const event of handle.events) {
+      events.push(event);
+    }
+    const result = await handle.result;
+
+    expect(result.status).toBe("completed");
+    expect(result.reasonCodes).toContain("plan_mode_discovery_required");
+    expect(result.reasonCodes).toContain("discovery_started");
+    expect(
+      result.reasonCodes.includes("discovery_completed") ||
+        result.reasonCodes.includes("discovery_failed"),
+    ).toBe(true);
+    expect(events.some((event) => event.type === "discovery_started")).toBe(
+      true,
+    );
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.strategyOverride?.strategy).toBe("discover_and_plan");
+    expect(captured[0]?.strategyOverride?.skipDiscover).toBe(true);
+    expect(captured[0]?.discoveryBrief).toBeDefined();
   });
 
   it("skips discovery for a real in-scope repair (engine rules resolve follow_evidence from actual preflight diagnostics)", async () => {

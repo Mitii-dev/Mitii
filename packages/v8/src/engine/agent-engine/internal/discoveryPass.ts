@@ -181,6 +181,15 @@ export function recordDiscoveryToolUse(params: {
     );
     return;
   }
+  // list_directory / read_git_status / navigation: count the tool call but do
+  // not promote directory children into change-surface searchHits.
+  if (
+    toolName === "list_directory" ||
+    toolName === "read_git_status" ||
+    toolName === "file_metadata"
+  ) {
+    return;
+  }
   for (const path of paths) {
     pushCappedUniqueByPath(
       collector.searchHits,
@@ -228,22 +237,60 @@ export function toDiscoveryObservation(params: {
   };
 }
 
+export function hasDiscoveryReadPath(
+  collector: DiscoveryObservationCollector,
+  path: string,
+): boolean {
+  const normalized = normalizeDiscoveryPath(path);
+  if (!normalized) {
+    return false;
+  }
+  return collector.filesRead.some(
+    (file) => normalizeDiscoveryPath(file.path) === normalized,
+  );
+}
+
 export function buildDiscoveryPrompt(params: {
   query: string;
   objective: string;
+  preferredPaths?: readonly string[];
+  shapedDiscovery?: {
+    preferredPathsLabel?: string;
+    discoverySystemHint?: string;
+  };
 }): { system: string; user: string } {
+  const preferred = (params.preferredPaths ?? [])
+    .map((path) => path.trim())
+    .filter((path) => path.length > 0)
+    .slice(0, 8);
+  const defaultPreferredLabel =
+    "Preferred paths (read these first; do not start at README.md or package.json unless listed):";
+  const preferredBlock =
+    preferred.length > 0
+      ? [
+          params.shapedDiscovery?.preferredPathsLabel ?? defaultPreferredLabel,
+          ...preferred.map((path) => `- ${path}`),
+        ].join("\n")
+      : undefined;
   return {
     system: [
       "You are doing a bounded read-only discovery pass.",
       "Find the concrete files, symbols, and verification checks for the request.",
       "Use only read/search tools. Do not mutate files, run writes, or draft a plan.",
+      "When preferred paths are listed, read those first before exploring elsewhere.",
+      params.shapedDiscovery?.discoverySystemHint,
       "Stop after you have identified the smallest change surfaces.",
-    ].join(" "),
+    ]
+      .filter((part): part is string => Boolean(part))
+      .join(" "),
     user: [
       `Request: ${params.query}`,
       `Objective: ${params.objective}`,
+      preferredBlock,
       "Read the most relevant entrypoints and nearby tests, then stop.",
-    ].join("\n"),
+    ]
+      .filter((part): part is string => Boolean(part))
+      .join("\n"),
   };
 }
 
@@ -341,6 +388,15 @@ function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined;
+}
+
+function normalizeDiscoveryPath(value: string): string {
+  return value
+    .trim()
+    .replace(/^@+/, "")
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/\/+$/, "");
 }
 
 function pushCapped<T>(

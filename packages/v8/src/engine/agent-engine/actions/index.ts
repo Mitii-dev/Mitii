@@ -109,16 +109,41 @@ export {
   deriveContextFocusFromUnderstanding,
   scopeDiscoveredContextPaths,
 } from "./contextFocus";
+export { applyPlanModeDiscoveryContract } from "./planDiscoveryContract";
 export {
   buildPlanningQuery,
   buildScopedRepoMapForPlanning,
+  collectPreferredPlanningPaths,
+  extractPriorPathHints,
   inferDiscoveryTargetKind,
   inferLanguageFromPaths,
+  isPlanningFollowUp,
   isSafeRelativePlanningPath,
   normalizePlanningPath,
   toPlanningBuildEvidence,
   uniqueStrings,
 } from "./planningContext";
+export {
+  apiBackendDiscoveryProfile,
+  authDiscoveryProfile,
+  browserTestRunnerDiscoveryProfile,
+  buildConfigDiscoveryProfile,
+  cappedGlobPatterns,
+  cappedSearchQueries,
+  ciCdDiscoveryProfile,
+  collectShapedDiscoveryHits,
+  createShapedDiscoveryProfile,
+  databaseDiscoveryProfile,
+  extractGlobPathsFromToolOutput,
+  extractSearchPathsFromToolOutput,
+  frontendComponentDiscoveryProfile,
+  matchesBrowserTestRunnerQuery,
+  rankPathsForShapedDiscovery,
+  resolveShapedDiscoveryProfile,
+  selectShapedDiscoverySeeds,
+  SHAPED_DISCOVERY_PROFILES,
+} from "./shapedDiscovery";
+export type { CreateShapedDiscoveryProfileInput, PathScoreRule, ShapedDiscoveryProfile } from "./shapedDiscovery";
 export {
   buildDiagnosticSummary,
   buildPreflightVerificationInput,

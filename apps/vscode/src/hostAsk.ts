@@ -309,21 +309,28 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         (path: unknown): path is string =>
           typeof path === 'string' && path.trim().length > 0,
       );
-      const pathPreview = paths.slice(0, 6).join(', ');
-      const more =
-        paths.length > 6 ? ` · +${paths.length - 6} more` : '';
+      const previewPaths = paths.slice(0, 6);
+      const moreCount = Math.max(0, paths.length - previewPaths.length);
+      const pathDetail = previewPaths.length
+        ? [
+            ...previewPaths,
+            moreCount > 0 ? `+${moreCount} more` : undefined,
+          ]
+            .filter(Boolean)
+            .join('\n')
+        : undefined;
       return {
         id,
         at,
         kind: 'context',
         title:
           paths.length === 1
-            ? `Read @${paths[0]}`
+            ? 'Read file'
             : paths.length > 1
               ? `Read ${paths.length} files`
               : 'Read repository context',
-        detail: pathPreview
-          ? `${pathPreview}${more}`
+        detail: pathDetail
+          ? pathDetail
           : `${event.blockCount} block(s) · retrieved ${event.retrievedCandidates} · selected ${event.selectedItems} · dropped ${event.droppedBlocks} · ${event.status}`,
         status: event.status,
       };

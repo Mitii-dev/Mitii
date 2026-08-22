@@ -1,5 +1,6 @@
 import type {
   ExecutionDecision,
+  ToolGrant,
 } from "../../../modules/decision-policy";
 import {
   buildVerificationGrant,
@@ -38,6 +39,12 @@ import {
   buildSyntheticPreflightGrant,
   inferDiscoveryTargetKind,
 } from "../actions";
+import {
+  collectShapedDiscoveryHits,
+  rankPathsForShapedDiscovery,
+  resolveShapedDiscoveryProfile,
+  selectShapedDiscoverySeeds,
+} from "../actions/shapedDiscovery";
 import type {
   AgentEngineStartInput,
   AgentReasonCode,
@@ -49,6 +56,7 @@ import {
   createDiscoveryObservationCollector,
   createDiscoveryTaskList,
   discoveryBudgetRemaining,
+  hasDiscoveryReadPath,
   isDiscoveryToolAllowed,
   recordDiscoveryToolUse,
   toDiscoveryObservation,
@@ -264,6 +272,7 @@ export async function runDiscoveryPass(
   warnings: string[];
   taskListRef: TaskListRef;
   windowPolicy: WindowPolicy;
+  preferredPaths?: readonly string[];
 }): Promise<{
   brief: DiscoveryBrief;
   failed: boolean;
@@ -284,6 +293,7 @@ export async function runDiscoveryPass(
     warnings,
     taskListRef,
     windowPolicy,
+    preferredPaths = [],
   } = params;
 
   runtime.emitStage(bus, runId, "discovery", "started");
@@ -325,10 +335,82 @@ export async function runDiscoveryPass(
         runtime.deps.toolDefinitions ?? DEFAULT_TOOL_DEFINITIONS,
       supportsTools: true,
     }).filter((tool) => isDiscoveryToolAllowed(tool.name));
-    const prompt = buildDiscoveryPrompt({ query, objective });
+
+    // Deterministic shaped-discovery preflight + preferred-path pre-read.
+    const shapedProfile = resolveShapedDiscoveryProfile(query);
+    const rankedPreferred = shapedProfile
+      ? rankPathsForShapedDiscovery(shapedProfile, preferredPaths)
+      : preferredPaths;
+    const globHits = shapedProfile
+      ? await collectShapedDiscoveryHits({
+          profile: shapedProfile,
+          shouldContinue: () =>
+            discoveryBudgetRemaining(collector) &&
+            collector.searches < DISCOVERY_PASS_POLICY.maxSearches &&
+            !signal.aborted,
+          executeTool: async (toolName, argumentsValue) => {
+            const result = await executeDiscoveryToolCall(runtime, {
+              runId,
+              bus,
+              budget,
+              collector,
+              grant,
+              workspaceRoot: workspaceRoot!,
+              pinnedState,
+              windowPolicy,
+              toolName,
+              argumentsValue,
+            });
+            return result?.output;
+          },
+        })
+      : [];
+    const shapedSeeds = shapedProfile
+      ? selectShapedDiscoverySeeds(shapedProfile, globHits, rankedPreferred)
+      : [];
+    const seeds = [
+      ...shapedSeeds,
+      ...rankedPreferred.filter((path) => !shapedSeeds.includes(path)),
+    ]
+      .map((path) => path.trim())
+      .filter((path) => path.length > 0 && path.includes("."))
+      .slice(0, Math.min(6, DISCOVERY_PASS_POLICY.maxFileReads));
+    for (const seedPath of seeds) {
+      if (!discoveryBudgetRemaining(collector) || signal.aborted) {
+        break;
+      }
+      if (hasDiscoveryReadPath(collector, seedPath)) {
+        continue;
+      }
+      await executeDiscoveryToolCall(runtime, {
+        runId,
+        bus,
+        budget,
+        collector,
+        grant,
+        workspaceRoot: workspaceRoot!,
+        pinnedState,
+        windowPolicy,
+        toolName: "read_file",
+        argumentsValue: { path: seedPath },
+      });
+    }
+
+    const prompt = buildDiscoveryPrompt({
+      query,
+      objective,
+      preferredPaths: seeds,
+      shapedDiscovery: shapedProfile,
+    });
     const messages: ModelMessage[] = [
       { role: "system", content: prompt.system },
-      { role: "user", content: prompt.user },
+      {
+        role: "user",
+        content:
+          seeds.length > 0
+            ? `${prompt.user}\n\nAlready pre-read: ${seeds.join(", ")}. Continue only if more surfaces are needed.`
+            : prompt.user,
+      },
     ];
 
     let turn = 0;
@@ -389,6 +471,22 @@ export async function runDiscoveryPass(
           );
         }
         const summary = summarizeToolCall(toolCall.name, argumentsValue);
+        const readPath =
+          typeof (argumentsValue as { path?: unknown }).path === "string"
+            ? (argumentsValue as { path: string }).path
+            : undefined;
+        if (
+          readPath &&
+          (toolCall.name === "read_file" || toolCall.name === "read_many_files") &&
+          hasDiscoveryReadPath(collector, readPath)
+        ) {
+          messages.push({
+            role: "tool",
+            toolCallId: toolCall.id,
+            content: `Already read during discovery: ${readPath}`,
+          });
+          continue;
+        }
         runtime.emit(bus, {
           type: "tool_started",
           runId,
@@ -483,4 +581,70 @@ export async function runDiscoveryPass(
     );
   }
   return { brief, failed, collector };
+}
+
+async function executeDiscoveryToolCall(
+  runtime: AgentEngineRuntime,
+  params: {
+    runId: string;
+    bus: EventBus;
+    budget: RunBudgetTracker;
+    collector: ReturnType<typeof createDiscoveryObservationCollector>;
+    grant: ToolGrant;
+    workspaceRoot: string;
+    pinnedState: RepositoryStateReference | undefined;
+    windowPolicy: WindowPolicy;
+    toolName: string;
+    argumentsValue: Record<string, unknown>;
+    callIdPrefix?: string;
+  },
+): Promise<{ status: string; output?: unknown } | undefined> {
+  const callId = `${params.callIdPrefix ?? "discovery"}-${params.collector.toolCalls + 1}`;
+  const summary = summarizeToolCall(params.toolName, params.argumentsValue);
+  runtime.emit(params.bus, {
+    type: "tool_started",
+    runId: params.runId,
+    callId,
+    toolName: params.toolName,
+    ...(summary ? { summary } : {}),
+    at: runtime.isoNow(),
+  });
+  params.budget.recordToolCall();
+  const result = runtime.deps.tools
+    ? await runtime.deps.tools.execute({
+        schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+        callId,
+        toolName: params.toolName,
+        arguments: params.argumentsValue,
+        grant: params.grant,
+        workspaceRoot: params.workspaceRoot,
+        pinnedState: params.pinnedState,
+      })
+    : undefined;
+  const status = result?.status ?? "failed";
+  recordDiscoveryToolUse({
+    collector: params.collector,
+    toolName: params.toolName,
+    argumentsValue: params.argumentsValue,
+    resultOutput: result?.output,
+    status,
+  });
+  runtime.emit(params.bus, {
+    type: "tool_completed",
+    runId: params.runId,
+    callId,
+    toolName: params.toolName,
+    status,
+    ...(summary ? { summary } : {}),
+    at: runtime.isoNow(),
+  });
+  runtime.emit(params.bus, {
+    type: "discovery_progress",
+    runId: params.runId,
+    filesRead: params.collector.fileReads,
+    searches: params.collector.searches,
+    ...(summary ? { summary } : {}),
+    at: runtime.isoNow(),
+  });
+  return result ? { status: result.status, output: result.output } : undefined;
 }

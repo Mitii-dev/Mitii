@@ -1,6 +1,5 @@
 import type {
   DiscoveryBrief,
-  DiscoveryChangeSurface,
   PlanArtifact,
   PlanChangeImpact,
   PlanContextRef,
@@ -16,8 +15,20 @@ import type {
 import { isRepairIntentTaxonomy } from "../../decision-policy";
 import { PLANNING_SCHEMA_VERSION } from "../constants";
 import { DEFAULT_MAX_STEPS_PER_PHASE } from "../defaults";
-import { PLANNING_PROCESS_META_STEP, PLANNING_WORKING_SET_POLICY } from "../policy";
+import { PLANNING_PROCESS_META_STEP } from "../policy";
 import { filterBuildEvidenceToAskScope } from "../internal/evidenceScope";
+import {
+  buildDiagnosticChangeSteps,
+  mergeDiagnosticChangeSteps,
+} from "./draftDiagnosticSteps";
+import { buildDiscoveryChangeSteps } from "./draftDiscoverySurfaces";
+import {
+  clipPhrase,
+  normalizePhaseName,
+  slugify,
+  step,
+  uniqueStrings,
+} from "./draftPlanShared";
 
 /**
  * Draft a generic PlanArtifact from task dimensions and optional hints.
@@ -692,19 +703,6 @@ function hasPhase(phases: readonly PlanPhase[], name: string): boolean {
   return phases.some((phase) => normalizePhaseName(phase.name) === normalized);
 }
 
-function normalizePhaseName(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, "");
-}
-
-function slugify(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-  return slug || "skill-phase";
-}
-
 function toTitleCase(value: string): string {
   return value
     .trim()
@@ -973,147 +971,6 @@ function buildChangeSteps(
   return steps;
 }
 
-function buildDiscoveryChangeSteps(
-  discoveryBrief: DiscoveryBrief | undefined,
-  risk: PlanStep["riskLevel"],
-): PlanStep[] {
-  const surfaces = discoveryBrief?.proposedChangeSurfaces ?? [];
-  if (surfaces.length === 0) {
-    return [];
-  }
-  return surfaces.slice(0, DEFAULT_MAX_STEPS_PER_PHASE).map((surface, index) =>
-    discoverySurfaceStep(surface, index, risk),
-  );
-}
-
-function discoverySurfaceStep(
-  surface: DiscoveryChangeSurface,
-  index: number,
-  risk: PlanStep["riskLevel"],
-): PlanStep {
-  return step(
-    `step-change-surface-${index + 1}`,
-    clipPhrase(`${surface.actionHint} ${surface.path}`, 200),
-    [surface.path],
-    clipPhrase(surface.evidence, 1_000),
-    `The requested change on ${surface.path} is applied without unrelated edits.`,
-    surface.riskLevel === "low" ? risk : surface.riskLevel,
-  );
-}
-
-function chunkList<T>(items: readonly T[], size: number): T[][] {
-  const batchSize = Math.max(1, Math.floor(size));
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += batchSize) {
-    chunks.push([...items.slice(i, i + batchSize)]);
-  }
-  return chunks;
-}
-
-function buildDiagnosticChangeSteps(
-  buildEvidence: PlanningBuildEvidence | undefined,
-  risk: PlanStep["riskLevel"],
-  maxFilesPerBatch?: number,
-): PlanStep[] {
-  const diagnostics = (buildEvidence?.diagnostics ?? []).filter(
-    (diag) => diag.severity === "error",
-  );
-  if (diagnostics.length === 0) {
-    return [];
-  }
-
-  const batchSize =
-    maxFilesPerBatch ?? PLANNING_WORKING_SET_POLICY.maxWritePerBatch;
-  const steps: PlanStep[] = [];
-
-  for (const group of groupDiagnosticsByCode(diagnostics)) {
-    const pathChunks = chunkList(group.paths, batchSize);
-    for (const [chunkIndex, chunkPaths] of pathChunks.entries()) {
-      const chunkPathSet = new Set(chunkPaths);
-      const chunkDiagnostics = group.diagnostics.filter((item) =>
-        chunkPathSet.has(item.path.trim()),
-      );
-      const primary = chunkDiagnostics[0] ?? group.diagnostics[0]!;
-      const codeLabel = group.code || "diagnostic";
-      const fileNote =
-        chunkPaths.length === 1
-          ? chunkPaths[0]!
-          : `${chunkPaths[0]!} +${chunkPaths.length - 1} files`;
-      const batchNote =
-        pathChunks.length > 1
-          ? ` (${chunkIndex + 1}/${pathChunks.length})`
-          : "";
-      const countNote =
-        chunkDiagnostics.length === 1
-          ? `the reported ${codeLabel} diagnostic`
-          : `${chunkDiagnostics.length} ${codeLabel} diagnostics`;
-      const batchScope =
-        pathChunks.length > 1
-          ? `in this batch of ${chunkPaths.length} (same root cause; remaining files of this class stay on later steps)`
-          : "in a single batch (same root cause)";
-      steps.push(
-        step(
-          `step-fix-diagnostic-${steps.length + 1}`,
-          clipPhrase(`Fix ${codeLabel} in ${fileNote}${batchNote}`, 200),
-          chunkPaths,
-          clipPhrase(
-            `Address ${countNote} ${batchScope}. ${primary.message}`,
-            1_000,
-          ),
-          `${codeLabel} diagnostics are resolved or reduced without introducing new errors.`,
-          risk,
-          buildEvidence?.failedChecks?.join(", "),
-        ),
-      );
-    }
-  }
-
-  return steps.slice(0, PLANNING_WORKING_SET_POLICY.maxBatchesOnPlan);
-}
-
-function mergeDiagnosticChangeSteps(
-  diagnosticSteps: readonly PlanStep[],
-  retained: readonly PlanStep[],
-): PlanStep[] {
-  const diagnostics = diagnosticSteps.slice(
-    0,
-    PLANNING_WORKING_SET_POLICY.maxBatchesOnPlan,
-  );
-  const remaining = Math.max(0, 20 - diagnostics.length);
-  return [...diagnostics, ...retained.slice(0, remaining)];
-}
-
-function groupDiagnosticsByCode(
-  diagnostics: readonly NonNullable<PlanningBuildEvidence["diagnostics"]>[number][],
-): Array<{
-  code: string;
-  paths: string[];
-  diagnostics: NonNullable<PlanningBuildEvidence["diagnostics"]>;
-}> {
-  const byCode = new Map<
-    string,
-    NonNullable<PlanningBuildEvidence["diagnostics"]>
-  >();
-  for (const diagnostic of diagnostics) {
-    const code = diagnostic.code?.trim() || diagnostic.path.trim() || "unknown";
-    const existing = byCode.get(code);
-    if (existing) {
-      if (existing.length < 24) {
-        existing.push(diagnostic);
-      }
-    } else {
-      byCode.set(code, [diagnostic]);
-    }
-  }
-  return [...byCode.entries()]
-    .map(([code, grouped]) => ({
-      code,
-      paths: [...new Set(grouped.map((item) => item.path.trim()).filter(Boolean))],
-      diagnostics: grouped,
-    }))
-    .sort((left, right) => right.diagnostics.length - left.diagnostics.length);
-}
-
 function buildVerifySteps(
   evidence: PlanningTaskEvidence,
   objective: string,
@@ -1318,26 +1175,6 @@ function resolveChangeImpact(
   return uniqueStrings(inferred) as PlanChangeImpact[];
 }
 
-function step(
-  id: string,
-  intent: string,
-  targetRefs: readonly string[],
-  actionSummary: string,
-  expectedOutcome: string,
-  riskLevel: PlanStep["riskLevel"],
-  verification?: string,
-): PlanStep {
-  return {
-    id,
-    intent,
-    targetRefs: [...targetRefs],
-    actionSummary,
-    expectedOutcome,
-    verification,
-    riskLevel,
-  };
-}
-
 function acceptanceCriteria(
   evidence: PlanningTaskEvidence,
   objective: string,
@@ -1513,14 +1350,4 @@ function normalizePhraseKey(value: string): string {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function clipPhrase(value: string, max: number): string {
-  const trimmed = value.trim().replace(/\s+/g, " ");
-  if (trimmed.length <= max) return trimmed;
-  return `${trimmed.slice(0, Math.max(0, max - 1))}…`;
-}
-
-function uniqueStrings(values: readonly string[]): string[] {
-  return [...new Set(values.map((v) => v.trim()).filter((v) => v.length > 0))];
 }

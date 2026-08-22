@@ -7,10 +7,11 @@ Planning creates structured plans when policy or user mode calls for visible pla
 - Validates `PlanningInput`.
 - Blocks planning when `planningDepth` is `none`.
 - Resolves plan strategy with a deterministic rule table: `follow_evidence`, `discover_and_plan`, `plan_from_ask`, or `clarify` — no strategy LLM call, ever. A host/test-supplied `strategyOverride` always wins (sanitized).
-- Compiles a generic `DiscoveryBrief` from read-only observations when the engine ran a discovery pass.
+- When Engine supplies `knownPathHints` (context paths, explicit file targets, or prior-turn path hints) and exploration is not `deep`, strategy prefers `plan_from_ask` so follow-ups like "plan the above" do not rediscover from README.
+- Compiles a generic `DiscoveryBrief` from read-only observations when the engine ran a discovery pass. Project config modules that were actually read become change surfaces; package/tsconfig manifests and directory listings do not.
 - Drafts a generic structured plan from task dimensions and optional discovery evidence.
 - Uses in-scope preflight build diagnostics for repair plans without letting unrelated errors redefine the user ask.
-- For `discover_and_plan` only: one model call turns already-gathered discovery evidence into Change+Verify steps (never a second Discover phase — discovery already ran). Falls back to the deterministic discovery skeleton if that call fails or returns nothing usable.
+- For `discover_and_plan` only: one model call turns already-gathered discovery evidence into Change+Verify steps (never a second Discover phase — discovery already ran). Skips that call when the brief is thin (`confidence: low` or no change surfaces) and falls back to the deterministic discovery skeleton if the call fails or returns nothing usable.
 - Incorporates optional skill hints, process hints, reviewed context, and prior plans.
 - Validates required plan sections, including stripping a stray Discover/Inspect/Explore phase if a `discoveryBrief` is present (discovery already ran; a model-drafted plan must not repeat it).
 - Compacts the plan to a token budget.
@@ -23,6 +24,9 @@ Planning creates structured plans when policy or user mode calls for visible pla
 planning/
   pipeline/                 PlanningPipeline
   actions/                  Resolve strategy (rules), draft, draft-from-discovery, apply-discovered-draft, validate, compact, serialize, format
+    draftPlanShared.ts      Shared step/clip helpers
+    draftDiagnosticSteps.ts Diagnostic-class Change batches
+    draftDiscoverySurfaces.ts Discovery-surface Change steps
   internal/                 Discovered-plan prompt and evidence scoping
   contracts/
     input/                  PlanningInput, DiscoveryBrief
@@ -46,12 +50,14 @@ planning/
 
 - The public facade methods are async `PlanningPipeline.plan` and `PlanningPipeline.resolveStrategy` (test/host helper — normal runs let Engine call `resolvePlanStrategyRules` directly before deciding whether to run discovery), plus `compileDiscovery`.
 - Strategy rule table (`resolvePlanStrategyRules`, always resolves — no LLM, no fallback branch):
-  1. clarity `unclear`/`ambiguous` -> `clarify`
+  1. clarity `unclear`/`ambiguous` -> `clarify` (Engine may upgrade cold Plan-mode asks to `discover_and_plan` via `applyPlanModeDiscoveryContract`)
   2. repair intent plus in-scope diagnostics -> `follow_evidence`
   3. repair + broad "fix all …" / package-wide verification ask -> `follow_evidence` (do not rediscover)
   4. `explorationDepth === "quick"` -> `plan_from_ask`
-  5. Deep/Auto and wide scope/complexity (or `recommendsPlanning`, itself folded from understanding's `recommendsPlanning` OR `recommendsRepositoryDiscovery`) -> `discover_and_plan`
-  6. else -> `plan_from_ask`
+  5. Auto (not deep) with `knownPathHints` / explicit file targets -> `plan_from_ask` (skip rediscovery; Plan-mode follow-ups only when Engine contract keeps this)
+  6. Deep/Auto and wide scope/complexity (or `recommendsPlanning`, itself folded from understanding's `recommendsPlanning` OR `recommendsRepositoryDiscovery`) -> `discover_and_plan`
+  7. else -> `plan_from_ask`
+- Engine `applyPlanModeDiscoveryContract`: cold Plan-mode asks (no prior thread) and shaped-discovery profile matches force `discover_and_plan` before the discovery loop unless exploration is `quick` or strategy is `follow_evidence`. Follow-up Plan asks with `plan_from_ask` are preserved.
 - Repair detection uses a single shared predicate (`decision-policy`'s `isRepairIntentTaxonomy`), not words like `error` in the user sentence. The same predicate backs Decision Policy's preflight-capture gate and `DraftPlan`'s Discover/Change step wording, so all three cannot drift out of sync.
 - Engine owns strategy selection — it calls `resolvePlanStrategyRules` itself (not a port method) before deciding whether to run a discovery pass, then calls `planning.plan({ strategyOverride })`. Planning never runs a second classifier.
 - `follow_evidence` and `plan_from_ask` skip discovery entirely (`skipDiscover: true`). `discover_and_plan` runs Engine's bounded read-only discovery loop first; Planning then receives `discoveryBrief` and `skipDiscover: true` and either runs its one model call (see below) or falls back to the deterministic discovery skeleton.

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import type {
   AgentUiMode,
@@ -190,6 +190,53 @@ export function ComposerControls({
       window.clearTimeout(timer);
       window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [openSelect]);
+
+  useLayoutEffect(() => {
+    if (!openSelect || !rootRef.current) return;
+    const dropdown = rootRef.current.querySelector<HTMLElement>(
+      `.composer-dropdown--${openSelect}`,
+    );
+    const button = dropdown?.querySelector<HTMLElement>(
+      '.composer-dropdown__button[aria-expanded="true"]',
+    );
+    const menu = dropdown?.querySelector<HTMLElement>('.composer-dropdown__menu');
+    if (!button || !menu) return;
+
+    const margin = 8;
+    const gap = 6;
+    const buttonRect = button.getBoundingClientRect();
+    const menuWidth = menu.offsetWidth;
+    const menuHeight = menu.offsetHeight;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let left = buttonRect.left + buttonRect.width / 2 - menuWidth / 2;
+    left = Math.max(margin, Math.min(left, viewportWidth - menuWidth - margin));
+
+    let top = buttonRect.top - menuHeight - gap;
+    if (top < margin) {
+      top = buttonRect.bottom + gap;
+    }
+    top = Math.max(margin, Math.min(top, viewportHeight - menuHeight - margin));
+
+    menu.style.position = 'fixed';
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    menu.style.bottom = 'auto';
+    menu.style.right = 'auto';
+    menu.style.transform = 'none';
+    menu.style.zIndex = '1000';
+
+    return () => {
+      menu.style.position = '';
+      menu.style.left = '';
+      menu.style.top = '';
+      menu.style.bottom = '';
+      menu.style.right = '';
+      menu.style.transform = '';
+      menu.style.zIndex = '';
     };
   }, [openSelect]);
 

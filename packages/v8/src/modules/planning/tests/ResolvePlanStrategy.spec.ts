@@ -173,4 +173,43 @@ describe("resolvePlanStrategyRules", () => {
     expect(decision.strategy).toBe("plan_from_ask");
     expect(decision.useBuildEvidence).toBe(false);
   });
+
+  it("skips rediscovery when knownPathHints already name file surfaces", () => {
+    const decision = resolvePlanStrategyRules(
+      input({
+        explorationDepth: "auto",
+        query: "can you plan the above for implementation",
+        evidence: {
+          ...input().evidence,
+          primaryIntent: "feature",
+          scope: "multi_file",
+          complexity: "simple",
+          recommendsPlanning: true,
+          targets: [],
+        },
+        buildEvidence: undefined,
+        knownPathHints: ["test/shared/config/testConfig.ts"],
+      }),
+    );
+
+    expect(decision.strategy).toBe("plan_from_ask");
+    expect(decision.skipDiscover).toBe(true);
+  });
+
+  it("still rediscovers on deep exploration even with knownPathHints", () => {
+    const decision = resolvePlanStrategyRules(
+      input({
+        explorationDepth: "deep",
+        evidence: {
+          ...input().evidence,
+          primaryIntent: "feature",
+          scope: "multi_file",
+        },
+        buildEvidence: undefined,
+        knownPathHints: ["src/auth/session.ts"],
+      }),
+    );
+
+    expect(decision.strategy).toBe("discover_and_plan");
+  });
 });

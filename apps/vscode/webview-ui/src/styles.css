@@ -50,7 +50,17 @@
     Menlo,
     monospace
   );
-  --mitii-font-thinking: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --mitii-font-thinking: var(
+    --vscode-editor-font-family,
+    "SF Mono",
+    "Cascadia Code",
+    "Cascadia Mono",
+    "JetBrains Mono",
+    Menlo,
+    Consolas,
+    "Liberation Mono",
+    monospace
+  );
   --mitii-font-mono: var(--mitii-font-file);
   --mitii-chat-fg: var(--vscode-editor-foreground, var(--vscode-foreground));
   --mitii-shadow-soft: 0 10px 30px color-mix(in srgb, #000 18%, transparent);
@@ -266,13 +276,41 @@ input:focus-visible {
   z-index: 80;
 }
 
-.chat-view:has(.approval-card) .messages {
-  position: relative;
-  z-index: 200;
+/* Keep approval cards above the composer dock and its upward menus. */
+.chat-view:has(.approval-card) {
+  isolation: isolate;
 }
 
-.chat-view:has(.approval-card) .composer-dock {
-  z-index: 40;
+.chat-view:has(.approval-card) .messages {
+  position: relative;
+  z-index: 500;
+  padding-bottom: 18px;
+  scroll-padding-bottom: 24px;
+}
+
+.chat-view:has(.approval-card) .composer-dock,
+.chat-view:has(.approval-card) .composer-footer,
+.chat-view:has(.approval-card) .composer-dropdown,
+.chat-view:has(.approval-card) .token-popover,
+.chat-view:has(.approval-card) .token-popover__panel,
+.chat-view:has(.approval-card) .suggest-pop {
+  z-index: 1;
+}
+
+/* Keep open composer menus above approval cards and the message scroller. */
+.chat-view:has(.approval-card) .composer-dock:has(.composer-dropdown__button[aria-expanded='true']) {
+  z-index: 620;
+}
+
+.chat-view:has(.approval-card)
+  .composer-dropdown:has(.composer-dropdown__button[aria-expanded='true']) {
+  z-index: 621;
+}
+
+.chat-view:has(.approval-card)
+  .composer-dropdown:has(.composer-dropdown__button[aria-expanded='true'])
+  .composer-dropdown__menu {
+  z-index: 622;
 }
 
 .messages {
@@ -339,7 +377,7 @@ input:focus-visible {
 
 .turn--suspended {
   overflow: visible;
-  z-index: 400;
+  z-index: 510;
   position: relative;
 }
 
@@ -448,11 +486,11 @@ input:focus-visible {
 
 .timeline {
   list-style: none;
-  margin: 6px 0 12px;
+  margin: 6px 0 10px;
   padding: 2px 0 2px 18px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   border-left: 1px solid color-mix(in srgb, var(--mitii-border-soft) 80%, transparent);
   width: 100%;
 }
@@ -465,7 +503,9 @@ input:focus-visible {
   padding: 1px 0;
 }
 
-.timeline__row--tool {
+.timeline__row--tool,
+.timeline__row--files,
+.timeline__row--command {
   align-items: flex-start;
   padding: 2px 0;
   border: 0;
@@ -551,10 +591,11 @@ input:focus-visible {
   min-height: 18px;
   color: color-mix(in srgb, var(--mitii-chat-fg) 68%, var(--mitii-muted));
   font-family: var(--mitii-font-thinking);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
-  font-style: italic;
-  letter-spacing: 0.01em;
+  font-style: normal;
+  letter-spacing: 0.02em;
+  font-variant-ligatures: none;
 }
 
 .timeline__thinking-preview {
@@ -562,15 +603,21 @@ input:focus-visible {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   max-height: calc(3 * 1.45em);
-  margin: 4px 0 0;
+  margin: 5px 0 0;
+  padding: 6px 8px;
   overflow: hidden;
-  color: color-mix(in srgb, var(--mitii-chat-fg) 62%, var(--mitii-muted));
+  color: color-mix(in srgb, var(--mitii-chat-fg) 70%, var(--mitii-muted));
   font-family: var(--mitii-font-thinking);
-  font-size: 11.5px;
-  font-style: italic;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 400;
   line-height: 1.45;
+  letter-spacing: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 70%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 88%, #000 12%);
 }
 
 .timeline__row-title {
@@ -638,13 +685,13 @@ input:focus-visible {
   align-items: baseline;
   max-width: 100%;
   margin: 0;
-  padding: 1px 6px;
-  border: 1px solid color-mix(in srgb, var(--mitii-border) 82%, transparent);
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 78%, transparent);
   border-radius: 4px;
-  background: color-mix(in srgb, var(--mitii-panel-raised) 82%, #000 18%);
+  background: color-mix(in srgb, var(--mitii-panel-raised) 88%, #000 12%);
   color: var(--vscode-terminal-foreground, var(--mitii-chat-fg));
   font-family: var(--mitii-font-file);
-  font-size: 11.5px;
+  font-size: 11px;
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -661,13 +708,13 @@ input:focus-visible {
   align-items: baseline;
   gap: 6px;
   min-width: 0;
-  margin-top: 4px;
-  padding: 4px 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--mitii-chat-fg);
-  box-shadow: none;
+  margin-top: 5px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 72%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 86%, #000 14%);
+  color: var(--vscode-terminal-foreground, var(--mitii-chat-fg));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
 }
 
 .timeline__command-prompt {
@@ -689,16 +736,65 @@ input:focus-visible {
   line-height: 1.45;
 }
 
+.timeline__files {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 5px;
+  padding: 6px 0;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 72%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 86%, #000 14%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
+  font-family: var(--mitii-font-file);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--vscode-terminal-foreground, var(--mitii-chat-fg));
+}
+
+.timeline__files-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 1px 8px;
+}
+
+.timeline__files-prompt {
+  flex: 0 0 auto;
+  width: 0.7em;
+  color: color-mix(in srgb, var(--mitii-ok) 68%, var(--mitii-muted));
+  font-weight: 600;
+  user-select: none;
+}
+
+.timeline__files-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+}
+
+.timeline__files-more {
+  color: color-mix(in srgb, var(--mitii-chat-fg) 58%, var(--mitii-muted));
+  font-style: normal;
+}
+
 .live-status {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   max-width: 100%;
-  margin: 6px 0 2px 1px;
-  padding: 2px 0;
-  color: color-mix(in srgb, var(--mitii-chat-fg) 78%, var(--mitii-muted));
-  font-size: 12px;
+  margin: 8px 0 4px 1px;
+  padding: 4px 0;
+  color: color-mix(in srgb, var(--mitii-chat-fg) 74%, var(--mitii-muted));
+  font-family: var(--mitii-font-thinking);
+  font-size: 11.5px;
   font-weight: 500;
+  letter-spacing: 0.01em;
 }
 
 .live-status__dot {
@@ -857,16 +953,16 @@ input:focus-visible {
   position: relative;
   z-index: 40;
   border-top: 1px solid var(--mitii-border-soft);
-  padding: 8px;
+  padding: 10px 10px 12px;
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--mitii-surface) 94%, transparent),
+      color-mix(in srgb, var(--mitii-surface) 96%, transparent),
       var(--mitii-surface)
     );
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   overflow: visible;
   flex-shrink: 0;
 }
@@ -881,9 +977,9 @@ input:focus-visible {
 
 .composer-footer {
   display: grid;
-  gap: 4px;
-  padding: 4px 2px 0;
-  border-top: 0;
+  gap: 6px;
+  padding: 6px 4px 2px;
+  border-top: 1px solid color-mix(in srgb, var(--mitii-border-soft) 80%, transparent);
   overflow: visible;
   position: relative;
   z-index: 60;
@@ -1145,30 +1241,21 @@ input:focus-visible {
   }
 }
 
-.composer-dropdown--approval .composer-dropdown__menu,
 .composer-dropdown--depth .composer-dropdown__menu,
 .composer-dropdown--effort .composer-dropdown__menu,
 .composer-dropdown--profile .composer-dropdown__menu,
-.composer-dropdown--model .composer-dropdown__menu {
+.composer-dropdown--model .composer-dropdown__menu,
+.composer-dropdown--thoroughness .composer-dropdown__menu {
   left: auto;
   right: 0;
 }
 
-@media (max-width: 360px) {
-  .composer-dropdown--approval .composer-dropdown__menu,
-  .composer-dropdown--depth .composer-dropdown__menu,
-  .composer-dropdown--effort .composer-dropdown__menu,
-  .composer-dropdown--profile .composer-dropdown__menu,
-  .composer-dropdown--model .composer-dropdown__menu {
-    right: auto;
-    left: 0;
-  }
-}
-
 .composer-dropdown--approval .composer-dropdown__menu {
-  width: max(300px, 100%);
-  max-width: min(360px, calc(100vw - 24px));
-  z-index: 160;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: min(360px, calc(100vw - 16px));
+  max-width: min(360px, calc(100vw - 16px));
 }
 
 .composer-dropdown--model .composer-dropdown__menu {
@@ -1262,18 +1349,20 @@ input:focus-visible {
 .composer-box {
   position: relative;
   --composer-mode-color: var(--mitii-accent);
-  border: 1px solid color-mix(in srgb, var(--composer-mode-color) 42%, var(--mitii-border));
+  border: 1px solid color-mix(in srgb, var(--composer-mode-color) 36%, var(--mitii-border));
   border-radius: var(--mitii-radius-lg);
   background: var(--vscode-input-background, var(--mitii-panel));
-  box-shadow: none;
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset;
   display: flex;
   flex-direction: column;
   overflow: visible;
 }
 
 .composer-box:focus-within {
-  border-color: color-mix(in srgb, var(--composer-mode-color) 72%, var(--mitii-border));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--composer-mode-color) 18%, transparent);
+  border-color: color-mix(in srgb, var(--composer-mode-color) 68%, var(--mitii-border));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--composer-mode-color) 16%, transparent),
+    0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset;
 }
 
 .composer-box textarea {
@@ -1446,14 +1535,14 @@ select.depth-select {
 }
 
 .card {
-  border: 1px solid color-mix(in srgb, var(--mitii-border) 76%, var(--mitii-accent) 24%);
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 70%, var(--mitii-accent) 30%);
   border-radius: var(--mitii-radius-lg);
   margin: 8px 0 12px;
-  padding: 12px;
+  padding: 12px 14px;
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--mitii-panel) 94%, var(--mitii-accent) 6%),
+      color-mix(in srgb, var(--mitii-panel) 92%, var(--mitii-accent) 8%),
       var(--mitii-panel)
     );
   display: flex;
@@ -1463,8 +1552,13 @@ select.depth-select {
 }
 
 .approval-card {
-  position: relative;
-  z-index: 450;
+  position: sticky;
+  bottom: 10px;
+  z-index: 520;
+  isolation: isolate;
+  box-shadow:
+    var(--mitii-shadow-tight),
+    0 0 0 1px color-mix(in srgb, var(--mitii-accent) 18%, transparent);
 }
 
 .card h3 {
