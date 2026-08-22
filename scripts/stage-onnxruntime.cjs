@@ -8,14 +8,46 @@
  * VSIXs stay per-target; WASM is the cross-platform fallback.
  */
 const { cpSync, existsSync, mkdirSync, rmSync } = require('node:fs');
-const { dirname, join, resolve } = require('node:path');
+const { dirname, join, parse } = require('node:path');
 const { createRequire } = require('node:module');
 
 const PACKAGES = ['onnxruntime-node', 'onnxruntime-common', 'onnxruntime-web'];
 
+function packageRootFromEntry(entryPath, packageName) {
+  let dir = dirname(entryPath);
+  const { root } = parse(dir);
+  while (dir !== root) {
+    const manifest = join(dir, 'package.json');
+    if (existsSync(manifest)) {
+      try {
+        if (require(manifest).name === packageName) {
+          return dir;
+        }
+      } catch {
+        // continue walking
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    dir = parent;
+  }
+  return undefined;
+}
+
 function resolveFrom(moduleId, packageName) {
+  const req = createRequire(moduleId);
+  // Prefer package.json when exported (onnxruntime-node). Packages with a
+  // restrictive "exports" map (onnxruntime-web) reject package.json and need
+  // a walk up from the resolved entry.
   try {
-    return dirname(createRequire(moduleId).resolve(`${packageName}/package.json`));
+    return dirname(req.resolve(`${packageName}/package.json`));
+  } catch {
+    // fall through
+  }
+  try {
+    return packageRootFromEntry(req.resolve(packageName), packageName);
   } catch {
     return undefined;
   }
