@@ -192,8 +192,13 @@ step('benchmark example points at apps/cli', () => {
   );
   const args = cfg.agent?.args ?? [];
   const joined = args.join(' ');
-  if (!joined.includes('apps/cli/bin/mitii.js')) {
-    throw new Error(`benchmark example must use apps/cli/bin/mitii.js, got: ${joined}`);
+  const usesCli =
+    joined.includes('apps/cli/bin/mitii.js') ||
+    joined.includes('tests/benchmark/scripts/mitii-benchmark-agent.mjs');
+  if (!usesCli) {
+    throw new Error(
+      `benchmark example must use apps/cli/bin/mitii.js or mitii-benchmark-agent.mjs, got: ${joined}`,
+    );
   }
   if (joined.includes('dist/cli.js') && !joined.includes('apps/cli')) {
     throw new Error('benchmark example still points at legacy root dist/cli.js');

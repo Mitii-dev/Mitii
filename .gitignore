@@ -55,3 +55,5 @@ legacy/tools-benchmark/fixtures/**/src/main.tsx
 # Mitii local runtime data
 .mitii-session-export.json
 .mitii-audit-pack.json
+
+.pnpm-store/

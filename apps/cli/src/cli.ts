@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline';
 
 import type {
   AgentMode,
+  MitiiClient,
   MitiiConversationMessage,
   TaskList,
 } from '@mitii/sdk';
@@ -338,6 +339,16 @@ async function runAsk(options: {
     io.writeStderr(`[mitii] provider=${ports.providerLabel} mode=${mode}\n`);
   }
 
+  // Each CLI invocation uses a fresh in-memory repository-state store.
+  // Index in a prior process only writes `.mitii/` on disk; ask must publish
+  // into this process or agent runs fail with state_unavailable.
+  await ensurePublishedRepositoryState({
+    client,
+    workspaceId: ports.workspaceId,
+    cwd: options.cwd,
+    io,
+  });
+
   const projectRules = await loadProjectRules({
     workspaceRoot: options.cwd,
   });
@@ -363,6 +374,57 @@ async function runAsk(options: {
   });
   reportOutcome(io, options.json, outcome);
   return { code: outcome.exitCode, mode, outcome };
+}
+
+async function ensurePublishedRepositoryState(options: {
+  client: MitiiClient;
+  workspaceId: string;
+  cwd: string;
+  io: SessionIo;
+}): Promise<void> {
+  if (await options.client.getLatestRepositoryState(options.workspaceId)) {
+    return;
+  }
+
+  try {
+    const config = loadMitiiHostConfig(options.cwd);
+    const full = await runFullWorkspaceIndex({
+      cwd: options.cwd,
+      workspaceId: options.workspaceId,
+      force: true,
+      semanticIndex: resolveCliSemanticIndexSettings({
+        env: process.env,
+        config,
+      }),
+    });
+    const published = await options.client.publishRepositoryStateFromIndexing(
+      full.indexing,
+      {
+        catalogRevisionByRoot: full.catalogRevisionByRoot,
+        graphRevisionByRoot: full.graphRevisionByRoot,
+        mapRevisionByRoot: full.mapRevisionByRoot,
+      },
+    );
+    if (published.status === 'published') {
+      persistLatestRepositoryState(options.cwd, published.descriptor);
+    }
+  } catch (error) {
+    const detail =
+      error instanceof Error ? error.message : String(error);
+    options.io.writeStderr(
+      `[mitii] auto-index for ask falling back to host snapshot: ${detail}\n`,
+    );
+    const snapshot = await buildWorkspaceSnapshot({
+      workspaceRoot: options.cwd,
+      workspaceId: options.workspaceId,
+    });
+    const published = await options.client.publishRepositoryState(
+      snapshot.candidate,
+    );
+    if (published.status === 'published') {
+      persistLatestRepositoryState(options.cwd, published.descriptor);
+    }
+  }
 }
 
 async function runIndex(options: {

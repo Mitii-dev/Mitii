@@ -105,8 +105,14 @@ Arguments are passed without a shell, so the prompt is not reparsed as a shell
 command.
 
 If `benchmark.config.json` is absent, the runner uses
-`benchmark.config.example.json`. Its default paths assume this directory is
-installed as `tools/benchmark` inside the Mitii repository.
+`benchmark.config.example.json`. The default config runs Mitii via
+`scripts/mitii-benchmark-agent.mjs` (indexes the isolated workspace, calls
+`apps/cli` as `ask --mode {mode}`, rewrites JSON → JSONL for verifiers).
+`agent.cwd` is `../..` (Mitii repo root relative to this package).
+
+For a real agent-mode score, set a provider key (`MITII_API_KEY` /
+`ANTHROPIC_API_KEY` / …) and do **not** pass `--echo`. Echo is only for
+wiring smoke tests; it will not create the files Agent cases check for.
 
 ## Validate before a run
 
