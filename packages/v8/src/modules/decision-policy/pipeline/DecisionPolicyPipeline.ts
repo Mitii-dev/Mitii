@@ -416,9 +416,12 @@ function narrowToolGrant(params: {
   let mutationPathScopes = previous.mutationPathScopes;
   if (previous.maximumWorkspaceEffect === "write" && !params.keepWriteWide) {
     if (previous.mutationPathScopes && previous.mutationPathScopes.length > 0) {
-      mutationPathScopes = narrowPathScopes(
+      mutationPathScopes = preserveWorkspaceRootMutationScope(
         previous.mutationPathScopes,
-        params.discoveredPaths,
+        narrowPathScopes(
+          previous.mutationPathScopes,
+          params.discoveredPaths,
+        ),
       );
     } else if (params.discoveredPaths.length > 0) {
       const discoveredWrite = narrowPathScopes(["."], params.discoveredPaths);
@@ -468,6 +471,19 @@ function widenToolGrant(params: {
         ? mutationPathScopes
         : params.previous.mutationPathScopes,
   };
+}
+
+function preserveWorkspaceRootMutationScope(
+  previousScopes: readonly string[],
+  narrowedScopes: readonly string[],
+): string[] {
+  const hadWorkspaceRoot = previousScopes.some(
+    (scope) => normalizeScope(scope) === ".",
+  );
+  if (!hadWorkspaceRoot) {
+    return [...narrowedScopes];
+  }
+  return uniqueStrings([".", ...narrowedScopes]);
 }
 
 function narrowPathScopes(

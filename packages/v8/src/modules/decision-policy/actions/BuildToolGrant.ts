@@ -49,7 +49,10 @@ export function buildToolGrant(params: {
     (toolId) => toolId !== "analyze_change_impact" || changeImpactAffordable,
   );
   const pathScopes = resolvePathScopes(understanding);
-  const mutationPathScopes = resolveMutationPathScopes(understanding);
+  const mutationPathScopes = resolveMutationPathScopes(
+    understanding,
+    params.message,
+  );
   const commandRules = [
     {
       prefixes: [...DEFAULT_AGENT_READONLY_COMMAND_PREFIXES],
@@ -282,6 +285,7 @@ function resolvePathScopes(
 
 function resolveMutationPathScopes(
   understanding: RequestUnderstandingResult,
+  message?: string,
 ): string[] | undefined {
   const scopes = new Set<string>();
   for (const target of understanding.taskAnalysis.targets) {
@@ -296,10 +300,26 @@ function resolveMutationPathScopes(
       scopes.add(parentDirectoryScope(target.value));
     }
   }
+  if (message && looksLikeWorkspaceRootMutation(message)) {
+    scopes.add(".");
+  }
   if (scopes.size === 0) {
     return undefined;
   }
   return [...scopes].sort((left, right) => left.localeCompare(right));
+}
+
+/** User asked to create or edit at the repository/workspace root. */
+export function looksLikeWorkspaceRootMutation(message: string): boolean {
+  return (
+    /\b(?:in|at|to)\s+(?:the\s+)?(?:project|repo(?:sitory)?|workspace)\s+root\b/i.test(
+      message,
+    ) ||
+    /\b(?:project|repo(?:sitory)?|workspace)\s+root\b/i.test(message) ||
+    /\broot\s+of\s+(?:the\s+)?(?:project|repo(?:sitory)?|workspace)\b/i.test(
+      message,
+    )
+  );
 }
 
 function normalizeScopePath(value: string): string {
