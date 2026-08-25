@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.8.58" src="https://img.shields.io/badge/version-2.8.58-111111">
+  <img alt="Version 2.8.59" src="https://img.shields.io/badge/version-2.8.59-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
 
@@ -132,12 +132,15 @@ The plan remains the execution contract. Task lists are a derived progress view,
 
 ```bash
 pnpm run build:cli
+node apps/cli/bin/mitii.js --help
+node apps/cli/bin/mitii.js setup --provider ollama --yes
+node apps/cli/bin/mitii.js session
 node apps/cli/bin/mitii.js ask "Summarize the authentication flow" --echo
 node apps/cli/bin/mitii.js index --cwd /path/to/project
 node apps/cli/bin/mitii.js status --json
 ```
 
-See [apps/cli/README.md](apps/cli/README.md) for `ask`, `session`, `index`, `status`, and `export-session`. Daemon / `mitii serve` is deferred.
+New users: `mitii setup` writes non-secret provider config, then set an API key in the environment and run `mitii session` (dotted MITII banner + REPL). See [apps/cli/README.md](apps/cli/README.md) for `setup`, `ask`, `session`, `index`, `status`, and `export-session`. Daemon / `mitii serve` is deferred.
 
 ### SDK
 

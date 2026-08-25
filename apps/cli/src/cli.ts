@@ -12,8 +12,9 @@ import type {
 } from '@mitii/sdk';
 import { loadProjectRules } from '@mitii/host';
 
+import { formatSessionHeader } from './banner.js';
 import { CLI_HELP } from './help.js';
-import { createCliClient } from './ports.js';
+import { createCliClient, resolveCliPorts } from './ports.js';
 import {
   buildSessionExport,
   formatContextInspection,
@@ -27,6 +28,7 @@ import {
   type SessionIo,
 } from './session.js';
 import { nextCliSessionCarry } from './sessionCarry.js';
+import { runSetup } from './setup.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { loadMitiiHostConfig } from './config.js';
@@ -45,7 +47,9 @@ export interface ParsedCliArgs {
     | 'status'
     | 'export-session'
     | 'session'
-    | 'unknown';
+    | 'setup'
+    | 'unknown'
+    | 'error';
   prompt?: string;
   cwd?: string;
   json?: boolean;
@@ -55,7 +59,27 @@ export interface ParsedCliArgs {
   exportPath?: string;
   mode?: AgentMode;
   unknownCommand?: string;
+  errorMessage?: string;
+  setupProvider?: string;
+  setupModel?: string;
+  setupBaseUrl?: string;
+  setupGlobal?: boolean;
+  setupShow?: boolean;
+  setupTest?: boolean;
+  setupYes?: boolean;
   rest: string[];
+}
+
+function takeValue(
+  args: string[],
+  index: number,
+  flag: string,
+): { value: string; next: number } | { error: string } {
+  const value = args[index + 1];
+  if (!value || value.startsWith('-')) {
+    return { error: `mitii: ${flag} requires a value` };
+  }
+  return { value, next: index + 1 };
 }
 
 export function parseCliArgs(argv: string[]): ParsedCliArgs {
@@ -67,14 +91,25 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   let autoApproval: 'approved' | 'denied' | undefined;
   let exportPath: string | undefined;
   let mode: AgentMode | undefined;
+  let setupProvider: string | undefined;
+  let setupModel: string | undefined;
+  let setupBaseUrl: string | undefined;
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i]!;
     if (arg === '--help' || arg === '-h') {
       return { command: 'help', rest: [] };
     }
+    if (arg === '--version' || arg === '-v') {
+      return { command: 'version', rest: [] };
+    }
     if (arg === '--cwd') {
-      cwd = args[++i];
+      const taken = takeValue(args, i, '--cwd');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      cwd = taken.value;
+      i = taken.next;
       continue;
     }
     if (arg === '--json') {
@@ -86,7 +121,12 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       continue;
     }
     if (arg === '--clarify') {
-      autoClarify = args[++i];
+      const taken = takeValue(args, i, '--clarify');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      autoClarify = taken.value;
+      i = taken.next;
       continue;
     }
     if (arg === '--approve') {
@@ -98,18 +138,80 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       continue;
     }
     if (arg === '--out') {
-      exportPath = args[++i];
+      const taken = takeValue(args, i, '--out');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      exportPath = taken.value;
+      i = taken.next;
       continue;
     }
     if (arg === '--mode') {
-      const value = args[++i];
-      if (value === 'ask' || value === 'plan' || value === 'agent') {
-        mode = value;
+      const taken = takeValue(args, i, '--mode');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
       }
+      if (taken.value === 'ask' || taken.value === 'plan' || taken.value === 'agent') {
+        mode = taken.value;
+      } else {
+        return {
+          command: 'error',
+          errorMessage: `mitii: --mode must be ask, plan, or agent (got "${taken.value}")`,
+          rest: [],
+        };
+      }
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--provider') {
+      const taken = takeValue(args, i, '--provider');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      setupProvider = taken.value;
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--model') {
+      const taken = takeValue(args, i, '--model');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      setupModel = taken.value;
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--base-url') {
+      const taken = takeValue(args, i, '--base-url');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      setupBaseUrl = taken.value;
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--global') {
+      flags.add('global');
+      continue;
+    }
+    if (arg === '--show') {
+      flags.add('show');
+      continue;
+    }
+    if (arg === '--test') {
+      flags.add('test');
+      continue;
+    }
+    if (arg === '--yes' || arg === '-y') {
+      flags.add('yes');
       continue;
     }
     if (arg.startsWith('-')) {
-      continue;
+      return {
+        command: 'error',
+        errorMessage: `mitii: unknown option "${arg}"\nTry "mitii --help" for usage.`,
+        rest: [],
+      };
     }
     positionals.push(arg);
   }
@@ -117,6 +219,21 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   const [command = 'help', ...rest] = positionals;
   if (command === 'help') return { command: 'help', rest: [] };
   if (command === 'version') return { command: 'version', rest: [] };
+  if (command === 'setup') {
+    return {
+      command: 'setup',
+      cwd,
+      mode,
+      setupProvider,
+      setupModel,
+      setupBaseUrl,
+      setupGlobal: flags.has('global'),
+      setupShow: flags.has('show'),
+      setupTest: flags.has('test'),
+      setupYes: flags.has('yes'),
+      rest,
+    };
+  }
   if (command === 'index' || command === 'status' || command === 'session') {
     return {
       command,
@@ -612,16 +729,36 @@ async function runSession(options: {
       rl.question(q, (answer) => resolve(answer));
     });
 
+  const ports = resolveCliPorts({
+    cwd: options.cwd,
+    forceEcho: options.forceEcho,
+  });
+  const mode = options.mode ?? ports.defaultMode;
+  const config = loadMitiiHostConfig(options.cwd);
+  const hasConfiguredProvider =
+    (Boolean(config.provider) && config.provider !== 'echo') ||
+    (Boolean(config.providerPreset) && config.providerPreset !== 'echo');
+  options.io.writeStderr(
+    formatSessionHeader({
+      cwd: options.cwd,
+      providerLabel: ports.providerLabel,
+      mode,
+      version: readPackageVersion(),
+      isEcho: ports.providerLabel === 'echo' || options.forceEcho,
+      showSetupHint:
+        ports.providerLabel === 'echo' &&
+        !options.forceEcho &&
+        !hasConfiguredProvider,
+    }),
+  );
+
   let conversation: MitiiConversationMessage[] = [];
   let taskList: TaskList | undefined;
-  options.io.writeStderr(
-    '[mitii] interactive session — empty line or Ctrl-D to exit; Ctrl-C cancels a run\n',
-  );
   try {
     for (;;) {
       const prompt = (await ask('mitii> ')).trim();
       if (!prompt) break;
-      const { code, mode, outcome } = await runAsk({
+      const { code, mode: runMode, outcome } = await runAsk({
         prompt,
         cwd: options.cwd,
         json: false,
@@ -633,7 +770,7 @@ async function runSession(options: {
       });
       if (outcome) {
         const next = nextCliSessionCarry({
-          mode,
+          mode: runMode,
           conversation,
           taskList,
           prompt,
@@ -729,6 +866,22 @@ export async function main(
         mode: parsed.mode,
         io: sessionIo,
       });
+    case 'setup':
+      return runSetup({
+        cwd,
+        global: parsed.setupGlobal === true,
+        show: parsed.setupShow === true,
+        provider: parsed.setupProvider,
+        model: parsed.setupModel,
+        baseUrl: parsed.setupBaseUrl,
+        mode: parsed.mode,
+        test: parsed.setupTest === true,
+        yes: parsed.setupYes === true,
+        io: sessionIo,
+      });
+    case 'error':
+      sessionIo.writeStderr(`${parsed.errorMessage ?? 'mitii: invalid arguments'}\n`);
+      return 2;
     case 'unknown':
       sessionIo.writeStderr(
         `mitii: unknown command "${parsed.unknownCommand ?? ''}"\n\n`,
