@@ -30,6 +30,7 @@ legacy/tools-benchmark/results/
 # Solid benchmark (under tests/benchmark only)
 tests/benchmark/results/
 tests/benchmark/reports/
+tests/benchmark/.workspaces/
 tests/benchmark/benchmark.config.json
 tests/benchmark/fixtures/**/.mitii/
 tests/benchmark/fixtures/**/.next/

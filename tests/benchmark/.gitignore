@@ -2,6 +2,7 @@
 benchmark.config.json
 reports/
 results/
+.workspaces/
 *.log
 .DS_Store
 

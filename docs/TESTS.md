@@ -38,7 +38,8 @@ Start here:
    (fixtures install & cleanup, model setup, run options, reports)
 
 ```bash
-pnpm benchmark:fixtures
+pnpm benchmark:fixtures   # install fixture deps
+pnpm benchmark:reset      # wipe + reinstall all fixtures
 pnpm benchmark:validate
 pnpm benchmark:frontend
 ```

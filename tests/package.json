@@ -9,7 +9,9 @@
     "benchmark:backend": "pnpm --filter @mitii/solid-benchmark benchmark:backend",
     "benchmark:cicd": "pnpm --filter @mitii/solid-benchmark benchmark:cicd",
     "benchmark:testing": "pnpm --filter @mitii/solid-benchmark benchmark:testing",
-    "benchmark:validate": "pnpm --filter @mitii/solid-benchmark validate"
+    "benchmark:validate": "pnpm --filter @mitii/solid-benchmark validate",
+    "benchmark:fixtures": "pnpm --filter @mitii/solid-benchmark fixtures:install",
+    "benchmark:reset": "pnpm --filter @mitii/solid-benchmark fixtures:reset"
   },
   "engines": {
     "node": ">=20"

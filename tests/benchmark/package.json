@@ -16,6 +16,7 @@
     "generate:frontend": "node scripts/generate-frontend-cases.mjs",
     "migrate:domains": "node scripts/migrate-to-domains.mjs",
     "fixtures:install": "node scripts/install-fixtures.mjs",
+    "fixtures:reset": "node scripts/reset-fixtures.mjs",
     "test": "node --test tests/*.test.mjs"
   },
   "engines": {

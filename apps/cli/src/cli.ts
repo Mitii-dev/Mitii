@@ -25,6 +25,7 @@ import {
 import {
   createDefaultSessionIo,
   driveRun,
+  serializeCliJson,
   type SessionIo,
 } from './session.js';
 import { nextCliSessionCarry } from './sessionCarry.js';
@@ -627,26 +628,22 @@ async function runIndex(options: {
   }
   if (options.json) {
     options.io.writeStdout(
-      `${JSON.stringify(
-        {
-          published,
-          fileCount,
-          truncated,
-          indexMode,
-          ...(indexingDiagnostics ? { indexing: indexingDiagnostics } : {}),
-          ...(published.status === 'published'
-            ? {
-                capabilitySummary: summarizeRepositoryCapabilities(
-                  published.descriptor,
-                ),
-              }
-            : {}),
-          ...(databasePath ? { databasePath } : {}),
-          ...(vectorIndex ? { vectorIndex } : {}),
-        },
-        null,
-        2,
-      )}\n`,
+      `${serializeCliJson({
+        published,
+        fileCount,
+        truncated,
+        indexMode,
+        ...(indexingDiagnostics ? { indexing: indexingDiagnostics } : {}),
+        ...(published.status === 'published'
+          ? {
+              capabilitySummary: summarizeRepositoryCapabilities(
+                published.descriptor,
+              ),
+            }
+          : {}),
+        ...(databasePath ? { databasePath } : {}),
+        ...(vectorIndex ? { vectorIndex } : {}),
+      })}\n`,
     );
   } else if (published.status === 'published') {
     options.io.writeStdout(
@@ -685,16 +682,12 @@ async function runStatus(options: {
     loadPersistedRepositoryState(options.cwd);
   if (options.json) {
     options.io.writeStdout(
-      `${JSON.stringify(
-        {
-          latest,
-          ...(latest
-            ? { capabilitySummary: summarizeRepositoryCapabilities(latest) }
-            : {}),
-        },
-        null,
-        2,
-      )}\n`,
+      `${serializeCliJson({
+        latest,
+        ...(latest
+          ? { capabilitySummary: summarizeRepositoryCapabilities(latest) }
+          : {}),
+      })}\n`,
     );
     return latest ? 0 : 1;
   }

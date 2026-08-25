@@ -3,7 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { AGENT_ENGINE_SCHEMA_VERSION } from '@mitii/sdk';
 import type { AgentRunResult } from '@mitii/sdk';
 
-import { buildResumeInput } from '../src/session.js';
+import {
+  buildResumeInput,
+  CLI_JSON_MAX_STRING_CHARS,
+  serializeCliJson,
+} from '../src/session.js';
 import { parseCliArgs } from '../src/cli.js';
 
 function suspendedClarification(): AgentRunResult {
@@ -121,5 +125,22 @@ describe('CLI parseCliArgs Phase 15 flags', () => {
 
     const denied = parseCliArgs(['node', 'mitii', 'ask', 'patch', '--deny']);
     expect(denied.autoApproval).toBe('denied');
+  });
+});
+
+describe('serializeCliJson', () => {
+  it('truncates long strings so --json stays bounded and parseable', () => {
+    const huge = 'x'.repeat(CLI_JSON_MAX_STRING_CHARS + 500);
+    const encoded = serializeCliJson({
+      result: { stdout: huge, status: 'completed' },
+      events: [{ type: 'stage_completed' }],
+    });
+    const parsed = JSON.parse(encoded) as {
+      result: { stdout: string; status: string };
+    };
+    expect(parsed.result.status).toBe('completed');
+    expect(parsed.result.stdout.length).toBeLessThan(huge.length);
+    expect(parsed.result.stdout).toContain('[truncated');
+    expect(encoded.length).toBeLessThan(huge.length);
   });
 });

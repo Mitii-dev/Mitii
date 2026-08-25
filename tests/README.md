@@ -40,6 +40,9 @@ All commands assume the **Mitii repo root** unless noted.
 # 1) Install fixture dependencies (once, or after fixture changes)
 pnpm benchmark:fixtures
 
+#    To wipe node_modules / lockfiles / build outputs and reinstall everything:
+#    pnpm benchmark:reset
+
 # 2) Configure a real model (Ollama, Anthropic, OpenAI-compatible, …)
 #    See tests/benchmark/README.md → “Configure a model”
 node apps/cli/bin/mitii.js setup --show
@@ -54,7 +57,7 @@ pnpm --filter @mitii/solid-benchmark benchmark -- \
   --config tests/benchmark/benchmark.config.json
 ```
 
-For the full step-by-step (fixtures, cleanup, model setup, filters, reports,
+For the full step-by-step (fixtures, reset/cleanup, model setup, filters, reports,
 troubleshooting), open:
 
 **[tests/benchmark/README.md](./benchmark/README.md)**
@@ -67,6 +70,7 @@ From repo root (`pnpm`) or via `tests/package.json`:
 |---|---|
 | `pnpm benchmark:validate` | Validate all domain case files |
 | `pnpm benchmark:fixtures` | Install `node_modules` inside each fixture |
+| `pnpm benchmark:reset` | Wipe fixture installs/build outputs, then reinstall all |
 | `pnpm benchmark:frontend` | Run the frontend domain |
 | `pnpm benchmark:backend` | Run the backend domain |
 | `pnpm benchmark:cicd` | Run the CI/CD domain |
@@ -77,7 +81,7 @@ Equivalent from `tests/benchmark`:
 
 ```bash
 cd tests/benchmark
-npm run fixtures:install
+npm run fixtures:install   # or: npm run fixtures:reset
 npm run validate
 npm run benchmark -- --suite frontend --limit 3
 ```

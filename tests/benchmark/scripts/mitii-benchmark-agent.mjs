@@ -8,19 +8,25 @@
  * - JSONL events including type "end" / "done"
  * - real workspace mutations in agent mode
  *
- * Current CLI emits one pretty-printed JSON blob ({ result, events }) and uses
+ * Current CLI emits one JSON blob ({ result, events }) and uses
  * `ask --mode <mode>` rather than a positional mode command. This adapter
  * indexes the isolated workspace, invokes the CLI, and rewrites output to JSONL.
+ *
+ * Important: always emit `end` with a synchronous write so a following
+ * process.exit() cannot drop the marker when stdout is buffered/large.
  *
  * Usage (placeholders already substituted by the runner):
  *   node mitii-benchmark-agent.mjs --mode <mode> --prompt <prompt> --cwd <workspace> [--echo]
  */
 import { spawn } from 'node:child_process';
+import { writeSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const mitiiBin = resolve(repoRoot, 'apps/cli/bin/mitii.js');
+/** Cap per-line payload so the harness does not drown in nested CLI dumps. */
+const MAX_EVENT_LINE_CHARS = 8_000;
 
 const options = parseArgs(process.argv.slice(2));
 if (!options.mode || !options.prompt || !options.cwd) {
@@ -35,6 +41,7 @@ const index = await runMitii(['index', '--cwd', options.cwd, '--json'], {
 });
 if (index.exitCode !== 0) {
   process.stderr.write(index.stderr || index.stdout || 'mitii index failed\n');
+  writeJsonLine({ type: 'end', ok: false, stage: 'index' });
   process.exit(index.exitCode || 1);
 }
 
@@ -95,41 +102,58 @@ function runMitii(args, { inheritStdout }) {
   });
 }
 
+/**
+ * Synchronous stdout write so process.exit cannot drop the trailing end event.
+ */
+function writeJsonLine(value) {
+  const line =
+    typeof value === 'string' ? value : JSON.stringify(value ?? null);
+  const clipped =
+    line.length > MAX_EVENT_LINE_CHARS
+      ? `${line.slice(0, MAX_EVENT_LINE_CHARS)}…[truncated ${line.length} chars]`
+      : line;
+  writeSync(1, `${clipped}\n`);
+}
+
 function emitBenchmarkStdout(raw) {
   const text = String(raw ?? '').trim();
   if (!text) {
-    process.stdout.write(`${JSON.stringify({ type: 'end', ok: false })}\n`);
+    writeJsonLine({ type: 'end', ok: false, reason: 'empty_cli_stdout' });
     return;
   }
 
   let payload;
   try {
     payload = JSON.parse(text);
-  } catch {
-    // Non-JSON CLI output: pass through and still emit end for the verifier.
-    process.stdout.write(`${text}\n`);
-    process.stdout.write(`${JSON.stringify({ type: 'end' })}\n`);
+  } catch (error) {
+    // Do not dump multi‑tens‑of‑KB truncated CLI blobs into the harness —
+    // that used to hide/race the end marker. Keep a compact breadcrumb instead.
+    writeJsonLine({
+      type: 'cli_json_parse_error',
+      bytes: Buffer.byteLength(text, 'utf8'),
+      message: error instanceof Error ? error.message : String(error),
+    });
+    writeJsonLine({ type: 'end', ok: false, reason: 'cli_json_parse_error' });
     return;
   }
 
   const events = Array.isArray(payload.events) ? payload.events : [];
   for (const event of events) {
     if (event && typeof event === 'object') {
-      process.stdout.write(`${JSON.stringify(event)}\n`);
+      writeJsonLine(event);
     }
   }
 
   const answer =
     typeof payload.result?.answer === 'string' ? payload.result.answer.trim() : '';
   if (answer) {
-    process.stdout.write(`${answer}\n`);
+    writeJsonLine(answer);
   }
 
-  process.stdout.write(
-    `${JSON.stringify({
-      type: 'end',
-      result: payload.result ?? null,
-      status: payload.result?.status ?? null,
-    })}\n`,
-  );
+  writeJsonLine({
+    type: 'end',
+    status: payload.result?.status ?? null,
+    route: payload.result?.route ?? null,
+    ok: payload.result?.status === 'completed' || payload.result?.status === 'suspended',
+  });
 }

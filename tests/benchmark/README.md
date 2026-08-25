@@ -19,7 +19,7 @@ HTTP responses, workspace changed/unchanged. **No LLM grades another LLM.**
 2. [Folder layout](#2-folder-layout)
 3. [One-time setup](#3-one-time-setup)
 4. [Install fixtures](#4-install-fixtures)
-5. [Clean up fixtures](#5-clean-up-fixtures)
+5. [Reset and clean up fixtures](#5-reset-and-clean-up-fixtures)
 6. [Configure a model](#6-configure-a-model)
 7. [Validate the suite](#7-validate-the-suite)
 8. [Run the benchmark](#8-run-the-benchmark)
@@ -57,9 +57,11 @@ tests/benchmark/
 │   ├── cicd/cases/{easy,medium,hard}.jsonl
 │   └── testing/cases/{easy,medium,hard}.jsonl
 ├── fixtures/                 # pinned baseline repos (copied per case)
+├── .workspaces/<runId>/      # live case copies (gitignored; deleted unless --keep-workspaces)
 ├── src/                      # runner, verifiers, reports, CLI
 ├── scripts/
 │   ├── install-fixtures.mjs  # npm/pnpm install in every fixture
+│   ├── reset-fixtures.mjs    # wipe installs + .workspaces, reinstall
 │   └── mitii-benchmark-agent.mjs
 ├── reports/runs/<runId>/     # live + final reports (gitignored)
 ├── benchmark.config.example.json
@@ -177,38 +179,72 @@ npm install --ignore-scripts
 
 Repeat for other fixtures as needed (`react-vite`, `next-app`, `node-express`, …).
 
-### When to reinstall
+### When to reinstall or reset
 
-- After pulling fixture `package.json` changes
-- After deleting `node_modules` (cleanup)
-- When agent cases fail checks with “module not found” inside the workspace
+| Situation | Command |
+|---|---|
+| First setup / missing `node_modules` | `pnpm benchmark:fixtures` |
+| Fixture `package.json` changed after a pull | `pnpm benchmark:reset` |
+| Corrupt installs, stale locks, leftover `.next` / `dist` | `pnpm benchmark:reset` |
+| Checks fail with “module not found” | `pnpm benchmark:reset` (or `pnpm benchmark:fixtures` if you only need install) |
 
 ---
 
-## 5. Clean up fixtures
+## 5. Reset and clean up fixtures
 
-Fixture installs and run artifacts can grow large. Safe cleanup options:
+Fixture installs and run artifacts can grow large. Prefer the reset script unless
+you intentionally want a partial cleanup.
 
-### A. Remove fixture `node_modules` (keep source)
+### Recommended — reset all fixtures
+
+From the **repo root**:
 
 ```bash
-# from repo root
+pnpm benchmark:reset
+```
+
+Same action via the benchmark package:
+
+```bash
+pnpm --filter @mitii/solid-benchmark fixtures:reset
+
+# or
+cd tests/benchmark && npm run fixtures:reset
+```
+
+`fixtures:reset` walks every folder under `fixtures/` that has a `package.json`
+and:
+
+1. Deletes `node_modules`, `dist`, `.next`, `coverage`, and `.mitii`
+2. Deletes generated lockfiles (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`)
+3. Deletes leftover **case workspaces** under `tests/benchmark/.workspaces/`  
+   (and any legacy `${TMPDIR}/mitii-solid-benchmark/` from older runs).  
+   This is where agent file edits live; each case copies a fixture there — it
+   does not mutate `fixtures/` source
+4. Reinstalls deps (`npm install --ignore-scripts`, or `pnpm install` for the
+   `pnpm-workspace.yaml` monorepo fixture)
+
+Fixture **source** files under `fixtures/` are left as-is (committed baseline +
+any local edits you made). To also delete written run reports:
+
+```bash
+pnpm --filter @mitii/solid-benchmark fixtures:reset -- --reports
+# or: cd tests/benchmark && npm run fixtures:reset -- --reports
+```
+
+### Manual cleanup (optional)
+
+Use these only when you need a single step. Otherwise run `pnpm benchmark:reset`.
+
+**A. Remove fixture `node_modules` (keep source)**
+
+```bash
 find tests/benchmark/fixtures -type d -name node_modules -prune -exec rm -rf {} +
 ```
 
-Or per fixture:
+Then reinstall: `pnpm benchmark:fixtures`.
 
-```bash
-rm -rf tests/benchmark/fixtures/frontend-app/node_modules
-rm -rf tests/benchmark/fixtures/react-vite/node_modules
-# …
-```
-
-Then reinstall when you need to run again: `pnpm benchmark:fixtures`.
-
-### B. Remove generated lockfiles (optional)
-
-Lockfiles under fixtures are also gitignored. To delete them:
+**B. Remove generated lockfiles**
 
 ```bash
 find tests/benchmark/fixtures \
@@ -216,7 +252,7 @@ find tests/benchmark/fixtures \
   -delete
 ```
 
-### C. Remove build outputs inside fixtures
+**C. Remove build outputs inside fixtures**
 
 ```bash
 find tests/benchmark/fixtures \
@@ -224,21 +260,22 @@ find tests/benchmark/fixtures \
   -exec rm -rf {} +
 ```
 
-### D. Remove benchmark reports
+**D. Remove benchmark reports**
 
 ```bash
 rm -rf tests/benchmark/reports
+# or include in reset: npm run fixtures:reset -- --reports
 ```
 
 Reports are regenerated on the next run.
 
-### E. Temp case workspaces
+**E. Case workspaces**
 
-By default the runner deletes temp workspaces after the run.
-If you used `--keep-workspaces`, remove leftovers under your OS temp dir, e.g.:
+Also cleared by `pnpm benchmark:reset`. Manual equivalent:
 
 ```bash
-# macOS / Linux typical location
+rm -rf tests/benchmark/.workspaces
+# legacy OS temp (older runs only)
 rm -rf "${TMPDIR:-/tmp}/mitii-solid-benchmark"
 ```
 
@@ -430,7 +467,7 @@ pnpm --filter @mitii/solid-benchmark benchmark -- \
   --config tests/benchmark/benchmark.config.json
 ```
 
-Temp dirs are kept under the OS temp folder (`mitii-solid-benchmark/…`).
+Temp dirs are kept under `tests/benchmark/.workspaces/<runId>/` (gitignored).
 
 ### Concurrency
 
@@ -504,13 +541,13 @@ cd tests/benchmark && npm run list -- --suite testing
 ## 11. How a single case runs
 
 1. **Load** the case from `suites/<domain>/cases/<difficulty>.jsonl`
-2. **Copy** `fixtures/<fixture>` → temp workspace; link `node_modules`
+2. **Copy** `fixtures/<fixture>` → `tests/benchmark/.workspaces/<runId>/<case-id>/`; link `node_modules`
 3. **Preconditions** — fixture still in the expected baseline state (or fail fast)
 4. **Agent** — `mitii-benchmark-agent.mjs` indexes the workspace and runs
    `mitii ask --mode … --approve`
 5. **Checks** — deterministic verifiers (`file_*`, `command`, `http`, …)
 6. **Report** — write `cases/<id>.md` + refresh live `summary.md`
-7. **Cleanup** — delete temp workspace unless `--keep-workspaces`
+7. **Cleanup** — delete `.workspaces/<runId>/` unless `--keep-workspaces`
 
 ---
 
@@ -519,7 +556,8 @@ cd tests/benchmark && npm run list -- --suite testing
 | Symptom | Likely cause | What to try |
 |---|---|---|
 | Echo / empty / stub answers | Model not configured | `mitii setup --show`, set provider/model, re-test with `mitii ask` |
-| `module not found` in checks | Fixtures not installed | `pnpm benchmark:fixtures` |
+| `module not found` in checks | Fixtures not installed or stale | `pnpm benchmark:reset` (or `pnpm benchmark:fixtures`) |
+| Corrupt fixture installs / flaky builds | Stale `node_modules`, locks, or `.next` | `pnpm benchmark:reset` |
 | Suite validation failed | Bad/missing case or fixture | `npm run validate -- --suite <domain>` and read errors |
 | Agent timeout | Slow model / hard case | Raise `timeoutMs` in `benchmark.config.json` |
 | Build check fails after agent | Model didn’t finish the task | Open the per-case report; re-run with `--keep-workspaces` |
@@ -544,15 +582,18 @@ check types: [docs/CHECK_REFERENCE.md](./docs/CHECK_REFERENCE.md).
 
 ## Package scripts cheat sheet
 
-| Script | Action |
-|---|---|
-| `npm run fixtures:install` | Install all fixture deps |
-| `npm run validate` | Validate cases |
-| `npm run suites` | List domains + counts |
-| `npm run list` | List cases (add filters) |
-| `npm run benchmark` | Run (`--suite`, `--limit`, …) |
-| `npm run benchmark:frontend` | Shortcut `--suite frontend` |
-| `npm run test` | Harness meta-tests (no LLM) |
+From **`tests/benchmark`** (`npm run …`) or monorepo **root** (`pnpm …`):
 
-From monorepo root, the same actions are available as
-`pnpm benchmark:*` / `pnpm --filter @mitii/solid-benchmark …`.
+| Root (`pnpm`) | Package (`npm run`) | Action |
+|---|---|---|
+| `pnpm benchmark:fixtures` | `fixtures:install` | Install all fixture deps |
+| `pnpm benchmark:reset` | `fixtures:reset` | Wipe fixtures + temp run workspaces, reinstall |
+| `pnpm benchmark:validate` | `validate` | Validate cases |
+| — | `suites` | List domains + counts |
+| — | `list` | List cases (add filters) |
+| `pnpm benchmark` | `benchmark` | Run (`--suite`, `--limit`, …) |
+| `pnpm benchmark:frontend` | `benchmark:frontend` | Shortcut `--suite frontend` |
+| — | `test` | Harness meta-tests (no LLM) |
+
+You can also call package scripts with
+`pnpm --filter @mitii/solid-benchmark <script>`.

@@ -16,6 +16,25 @@ import {
 
 import { formatTaskList } from './runReport.js';
 
+/** Keep --json payloads parseable; nested tool dumps can otherwise balloon. */
+export const CLI_JSON_MAX_STRING_CHARS = 8_000;
+
+/**
+ * Compact JSON for CLI --json output. Long strings are truncated so consumers
+ * (benchmark adapter, scripts) always receive valid, bounded JSON.
+ */
+export function serializeCliJson(value: unknown): string {
+  return JSON.stringify(value, (_key, current) => {
+    if (
+      typeof current === 'string' &&
+      current.length > CLI_JSON_MAX_STRING_CHARS
+    ) {
+      return `${current.slice(0, CLI_JSON_MAX_STRING_CHARS)}…[truncated ${current.length} chars]`;
+    }
+    return current;
+  });
+}
+
 export interface SessionIo {
   writeStdout: (chunk: string) => void;
   writeStderr: (chunk: string) => void;
@@ -293,9 +312,7 @@ export async function driveRun(
   }
 
   if (json) {
-    options.io.writeStdout(
-      `${JSON.stringify({ result, events }, null, 2)}\n`,
-    );
+    options.io.writeStdout(`${serializeCliJson({ result, events })}\n`);
   } else {
     if (result.answer && !events.some((e) => e.type === 'model_delta')) {
       options.io.writeStdout(`${result.answer}\n`);

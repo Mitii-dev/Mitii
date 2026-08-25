@@ -1,14 +1,18 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, symlinkSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { runProcess, substitute } from './process.mjs';
 import { snapshotTree } from './snapshot.mjs';
 import { verifyCheck } from './verifiers.mjs';
 
+/** In-repo case workspaces (gitignored): tests/benchmark/.workspaces/<runId>/ */
+export function defaultWorkRoot(rootDir, runId) {
+  return join(rootDir, '.workspaces', runId);
+}
+
 export async function runCases(cases, rootDir, config, options = {}) {
   const runId = `${new Date().toISOString().replaceAll(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}`;
-  const workRoot = options.workRoot ?? join(tmpdir(), 'mitii-solid-benchmark', runId);
+  const workRoot = options.workRoot ?? defaultWorkRoot(rootDir, runId);
   mkdirSync(workRoot, { recursive: true });
   const results = new Array(cases.length);
   let next = 0;
