@@ -1,0 +1,21 @@
+# Local benchmark config and run output
+benchmark.config.json
+reports/
+results/
+*.log
+.DS_Store
+
+# Fixture install / build artifacts (never commit)
+fixtures/**/node_modules/
+fixtures/**/package-lock.json
+fixtures/**/pnpm-lock.yaml
+fixtures/**/yarn.lock
+fixtures/**/bun.lockb
+fixtures/**/dist/
+fixtures/**/.next/
+fixtures/**/coverage/
+fixtures/**/.turbo/
+fixtures/**/.vite/
+fixtures/**/.cache/
+fixtures/**/.mitii/
+fixtures/**/*.tsbuildinfo

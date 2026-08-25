@@ -211,4 +211,4 @@ The footer is always visible.
 
 ## Tests
 
-Field-level edit → save → reflect coverage lives in `tests/packages/vscode/settingsFields.test.ts`.
+Field-level edit → save → reflect coverage lives in `apps/vscode/tests/settingsFields.test.ts`.

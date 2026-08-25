@@ -6,19 +6,15 @@
     "noEmit": true
   },
   "include": [
-    "tests/architecture/**/*.ts",
-    "tests/packages/**/*.ts",
-    "tests/contract/**/*.ts",
-    "tests/integration/**/*.ts",
-    "tests/e2e/**/*.ts",
-    "tests/setup.ts"
+    "vitest.setup.ts",
+    "packages/v8/tests/**/*.ts",
+    "packages/sdk/tests/**/*.ts",
+    "apps/vscode/tests/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
     "legacy",
-    "packages",
-    "apps",
     "tests/benchmark"
   ]
 }

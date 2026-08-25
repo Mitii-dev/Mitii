@@ -1,0 +1,22 @@
+{
+  "id": "frontend",
+  "name": "Frontend Agent Benchmark",
+  "description": "UI, React/Next, styling, a11y, responsive, and client-side feature work.",
+  "caseFiles": [
+    "easy.jsonl",
+    "medium.jsonl",
+    "hard.jsonl"
+  ],
+  "expectedCounts": {
+    "easy": 144,
+    "medium": 80,
+    "hard": 52,
+    "total": 276
+  },
+  "gates": {
+    "easy": 0.9,
+    "medium": 0.8,
+    "hard": 0.7,
+    "overall": 0.8
+  }
+}

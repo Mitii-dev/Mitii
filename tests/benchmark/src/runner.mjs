@@ -109,10 +109,13 @@ function baseResult(testCase, run) {
     id: testCase.id,
     familyId: testCase.familyId,
     variant: testCase.variant,
+    suite: testCase.suite ?? null,
+    category: testCase.category ?? null,
     difficulty: testCase.difficulty,
     mode: testCase.mode,
     capability: testCase.capability,
     fixture: testCase.fixture,
+    prompt: testCase.prompt,
     ...run,
   };
 }

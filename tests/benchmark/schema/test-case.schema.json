@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mitii.local/schemas/solid-benchmark-case.schema.json",
-  "title": "Mitii Solid Benchmark Case",
+  "title": "Mitii Domain Benchmark Case",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -29,6 +29,13 @@
     "variant": {
       "type": "integer",
       "minimum": 1
+    },
+    "suite": {
+      "enum": ["frontend", "backend", "cicd", "testing"]
+    },
+    "category": {
+      "type": ["string", "null"],
+      "minLength": 1
     },
     "difficulty": {
       "enum": ["easy", "medium", "hard"]

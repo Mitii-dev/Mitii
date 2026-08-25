@@ -1,7 +1,62 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 
-export function buildReport(results, config, startedAt, finishedAt) {
+export function createRunReporter(options = {}) {
+  const runId = options.runId ?? new Date().toISOString().replaceAll(/[:.]/g, '-');
+  const runDir = options.runDir;
+  const casesDir = join(runDir, 'cases');
+  mkdirSync(casesDir, { recursive: true });
+  const startedAt = options.startedAt ?? new Date();
+  const collected = [];
+
+  return {
+    runId,
+    runDir,
+    casesDir,
+    record(result, index, total) {
+      collected[index] = result;
+      const casePaths = writeCaseReport(result, casesDir, {
+        index,
+        total,
+        runId,
+      });
+      const partial = buildReport(
+        collected.filter(Boolean),
+        options.config,
+        startedAt,
+        new Date(),
+        {
+          partial: collected.filter(Boolean).length < total,
+          expectedTotal: options.expectedTotal ?? total,
+          expectedByDifficulty: options.expectedByDifficulty,
+          suite: options.suite,
+        }
+      );
+      const summaryPaths = writeReport(partial, join(runDir, 'summary.json'), {
+        live: true,
+        completed: collected.filter(Boolean).length,
+        total,
+      });
+      return { casePaths, summaryPaths, report: partial };
+    },
+    finalize(results) {
+      const finishedAt = new Date();
+      const report = buildReport(results, options.config, startedAt, finishedAt, {
+        partial: false,
+        expectedTotal: options.expectedTotal ?? results.length,
+        expectedByDifficulty: options.expectedByDifficulty,
+        suite: options.suite,
+      });
+      const summaryPaths = writeReport(report, join(runDir, 'summary.json'));
+      if (options.latestPath) {
+        writeReport(report, options.latestPath);
+      }
+      return { report, summaryPaths, runDir };
+    },
+  };
+}
+
+export function buildReport(results, config, startedAt, finishedAt, meta = {}) {
   const difficulties = {};
   for (const difficulty of ['easy', 'medium', 'hard']) {
     const selected = results.filter((result) => result.difficulty === difficulty);
@@ -12,57 +67,162 @@ export function buildReport(results, config, startedAt, finishedAt) {
     ['ask', 'plan', 'agent'].map((mode) => [mode, summarize(results.filter((result) => result.mode === mode))])
   );
   const byCapability = {};
+  const bySuite = {};
+  const byCategory = {};
   for (const result of results) {
     byCapability[result.capability] ??= [];
     byCapability[result.capability].push(result);
+    const suiteId = result.suite ?? 'unknown';
+    bySuite[suiteId] ??= [];
+    bySuite[suiteId].push(result);
+    if (result.category) {
+      byCategory[result.category] ??= [];
+      byCategory[result.category].push(result);
+    }
   }
   for (const key of Object.keys(byCapability)) byCapability[key] = summarize(byCapability[key]);
+  for (const key of Object.keys(bySuite)) bySuite[key] = summarize(bySuite[key]);
+  for (const key of Object.keys(byCategory)) byCategory[key] = summarize(byCategory[key]);
 
+  const gates = config.gates ?? {};
   const gateResults = {
-    easy: difficulties.easy.total ? difficulties.easy.familyScore >= config.gates.easy : null,
-    medium: difficulties.medium.total ? difficulties.medium.familyScore >= config.gates.medium : null,
-    hard: difficulties.hard.total ? difficulties.hard.familyScore >= config.gates.hard : null,
-    overall: results.length === 1500 ? overall.familyScore >= config.gates.overall : null,
+    easy: difficulties.easy.total && gates.easy != null ? difficulties.easy.familyScore >= gates.easy : null,
+    medium:
+      difficulties.medium.total && gates.medium != null ? difficulties.medium.familyScore >= gates.medium : null,
+    hard: difficulties.hard.total && gates.hard != null ? difficulties.hard.familyScore >= gates.hard : null,
+    overall:
+      gates.overall != null && !meta.partial && results.length === (meta.expectedTotal ?? results.length)
+        ? overall.familyScore >= gates.overall
+        : null,
   };
+
   const selectedDifficulties = ['easy', 'medium', 'hard'].filter(
     (difficulty) => difficulties[difficulty].total > 0
   );
+  const expectedByDifficulty = meta.expectedByDifficulty ?? null;
   const completeSelection =
+    Boolean(expectedByDifficulty) &&
     selectedDifficulties.length > 0 &&
-    selectedDifficulties.every((difficulty) => difficulties[difficulty].total === 500);
-  const applicableGates = selectedDifficulties.map((difficulty) => gateResults[difficulty]);
-  if (gateResults.overall !== null) applicableGates.push(gateResults.overall);
-  const signal = completeSelection
-    ? (applicableGates.every(Boolean) ? 'GO' : 'NO-GO')
-    : 'PARTIAL';
+    selectedDifficulties.every(
+      (difficulty) => difficulties[difficulty].total === expectedByDifficulty[difficulty]
+    ) &&
+    results.length === (meta.expectedTotal ?? results.length);
+
+  let signal = 'PARTIAL';
+  if (meta.partial) {
+    signal = 'RUNNING';
+  } else if (completeSelection) {
+    const applicableGates = selectedDifficulties.map((difficulty) => gateResults[difficulty]);
+    if (gateResults.overall !== null) applicableGates.push(gateResults.overall);
+    signal = applicableGates.every(Boolean) ? 'GO' : 'NO-GO';
+  } else if (!meta.partial && results.length > 0 && gateResults.overall !== null) {
+    signal = gateResults.overall ? 'GO' : 'NO-GO';
+  } else if (!meta.partial && results.length > 0) {
+    signal = overall.failed === 0 ? 'GO' : 'NO-GO';
+  }
 
   return {
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
+    suite: meta.suite ?? 'all',
     signal,
     completeSelection,
-    gates: config.gates,
+    partial: Boolean(meta.partial),
+    expectedTotal: meta.expectedTotal ?? results.length,
+    completed: results.length,
+    gates,
     gateResults,
     overall,
     difficulties,
     byMode,
     byCapability,
+    bySuite,
+    byCategory,
     results,
   };
 }
 
-export function writeReport(report, path) {
+export function writeCaseReport(result, casesDir, meta = {}) {
+  mkdirSync(casesDir, { recursive: true });
+  const safeId = String(result.id).replaceAll(/[^\w.-]+/g, '_');
+  const jsonPath = join(casesDir, `${safeId}.json`);
+  const markdownPath = join(casesDir, `${safeId}.md`);
+  const payload = {
+    runId: meta.runId ?? null,
+    index: meta.index ?? null,
+    total: meta.total ?? null,
+    status: result.passed ? 'PASS' : 'FAIL',
+    ...result,
+  };
+  writeFileSync(jsonPath, `${JSON.stringify(payload, null, 2)}\n`);
+  writeFileSync(markdownPath, renderCaseMarkdown(payload));
+  return { json: jsonPath, markdown: markdownPath };
+}
+
+export function writeReport(report, path, liveMeta = null) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`);
   const markdownPath = path.replace(/\.json$/i, '.md');
+  writeFileSync(markdownPath, renderSummaryMarkdown(report, liveMeta));
+  return { json: path, markdown: markdownPath };
+}
+
+function renderCaseMarkdown(result) {
+  const lines = [
+    `# Case ${result.id}`,
+    '',
+    `**Status:** ${result.status}`,
+    `**Suite:** ${result.suite ?? 'n/a'}`,
+    `**Mode:** ${result.mode}`,
+    `**Fixture:** ${result.fixture}`,
+    `**Capability:** ${result.capability}`,
+    `**Duration:** ${result.durationMs ?? 0}ms`,
+    '',
+    '## Checks',
+    '',
+  ];
+  for (const check of result.checks ?? []) {
+    lines.push(`- ${check.passed ? 'PASS' : 'FAIL'} \`${check.type}\`${check.details ? ` — ${escapeMd(check.details).slice(0, 200)}` : ''}`);
+  }
+  if (result.error) {
+    lines.push('', `## Error`, '', escapeMd(result.error));
+  }
+  if (result.preconditions?.length) {
+    lines.push('', '## Preconditions', '');
+    for (const check of result.preconditions) {
+      lines.push(`- ${check.passed ? 'PASS' : 'FAIL'} \`${check.type}\``);
+    }
+  }
+  lines.push('');
+  return `${lines.join('\n')}\n`;
+}
+
+function renderSummaryMarkdown(report, liveMeta) {
   const rows = ['easy', 'medium', 'hard'].map((difficulty) => {
     const item = report.difficulties[difficulty];
-    const gate = report.gateResults[difficulty] === null ? 'N/A' : report.gateResults[difficulty] ? 'PASS' : 'FAIL';
+    const gate =
+      report.gateResults[difficulty] === null ? 'N/A' : report.gateResults[difficulty] ? 'PASS' : 'FAIL';
     return `| ${difficulty} | ${item.passed}/${item.total} | ${(item.caseScore * 100).toFixed(1)}% | ${(item.familyScore * 100).toFixed(1)}% | ${gate} |`;
   });
-  const markdown = `# Benchmark Result\n\n## Signal: ${report.signal}\n\n| Difficulty | Passed | Case score | Family-weighted score | Gate |\n|---|---:|---:|---:|---:|\n${rows.join('\n')}\n\nOverall family-weighted score: **${(report.overall.familyScore * 100).toFixed(1)}%**.\n`;
-  writeFileSync(markdownPath, markdown);
-  return { json: path, markdown: markdownPath };
+  const live =
+    liveMeta != null
+      ? `\n_Live progress: ${liveMeta.completed}/${liveMeta.total} case reports written._\n`
+      : '';
+  const categoryRows = Object.entries(report.byCategory ?? {})
+    .map(([name, item]) => `| ${name} | ${item.passed}/${item.total} | ${(item.caseScore * 100).toFixed(1)}% |`)
+    .join('\n');
+  return `# Benchmark Result
+
+## Signal: ${report.signal}
+${live}
+| Difficulty | Passed | Case score | Family-weighted score | Gate |
+|---|---:|---:|---:|---:|
+${rows.join('\n')}
+
+Overall family-weighted score: **${(report.overall.familyScore * 100).toFixed(1)}%**.
+
+${categoryRows ? `## Categories\n\n| Category | Passed | Case score |\n|---|---:|---:|\n${categoryRows}\n` : ''}
+`;
 }
 
 function summarize(results) {
@@ -82,4 +242,8 @@ function summarize(results) {
     caseScore: results.length ? passed / results.length : 0,
     familyScore: familyRates.length ? familyRates.reduce((a, b) => a + b, 0) / familyRates.length : 0,
   };
+}
+
+function escapeMd(value) {
+  return String(value).replaceAll('|', '\\|').replaceAll('\n', ' ');
 }

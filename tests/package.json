@@ -2,11 +2,13 @@
   "name": "@mitii/tests",
   "version": "1.0.0",
   "private": true,
-  "description": "Consumer test orchestrator for architecture, package smoke, and solid benchmark.",
+  "description": "Benchmark entrypoint only. Package/architecture tests live next to their packages.",
   "scripts": {
-    "test": "cd .. && vitest run tests/architecture tests/packages",
-    "architecture": "cd .. && vitest run tests/architecture",
     "benchmark": "pnpm --filter @mitii/solid-benchmark benchmark",
+    "benchmark:frontend": "pnpm --filter @mitii/solid-benchmark benchmark:frontend",
+    "benchmark:backend": "pnpm --filter @mitii/solid-benchmark benchmark:backend",
+    "benchmark:cicd": "pnpm --filter @mitii/solid-benchmark benchmark:cicd",
+    "benchmark:testing": "pnpm --filter @mitii/solid-benchmark benchmark:testing",
     "benchmark:validate": "pnpm --filter @mitii/solid-benchmark validate"
   },
   "engines": {

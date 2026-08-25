@@ -1,13 +1,20 @@
 {
   "name": "@mitii/solid-benchmark",
-  "version": "1.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
-  "description": "Fixed, deterministic coding-agent benchmark with 500 Easy, 500 Medium, and 500 Hard cases",
+  "description": "Domain-first coding-agent benchmark: frontend/backend/cicd/testing × easy/medium/hard with per-case reporting",
   "scripts": {
     "validate": "node src/cli.mjs validate",
     "list": "node src/cli.mjs list",
+    "suites": "node src/cli.mjs suites",
     "benchmark": "node src/cli.mjs run",
+    "benchmark:frontend": "node src/cli.mjs run --suite frontend",
+    "benchmark:backend": "node src/cli.mjs run --suite backend",
+    "benchmark:cicd": "node src/cli.mjs run --suite cicd",
+    "benchmark:testing": "node src/cli.mjs run --suite testing",
+    "generate:frontend": "node scripts/generate-frontend-cases.mjs",
+    "migrate:domains": "node scripts/migrate-to-domains.mjs",
     "fixtures:install": "node scripts/install-fixtures.mjs",
     "test": "node --test tests/*.test.mjs"
   },

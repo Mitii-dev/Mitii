@@ -1,18 +1,19 @@
 {
-  "id": "easy-0501-your-case-name-v1",
-  "familyId": "your-case-name",
+  "id": "fe-0501-your-case-name-v1",
+  "familyId": "fe-your-case-name",
   "variant": 1,
-  "difficulty": "easy",
+  "suite": "frontend",
+  "category": "ui-components",
+  "difficulty": "medium",
   "mode": "agent",
-  "capability": "bugfix",
-  "fixture": "node-express",
-  "prompt": "Fix the specific problem described here.",
-  "rationale": "Explain what capability this case isolates.",
+  "capability": "feature",
+  "fixture": "frontend-app",
+  "prompt": "Implement the specific frontend change described here.",
+  "rationale": "Explain which verification depths this case covers.",
   "preconditions": [
     {
-      "type": "file_contains",
-      "path": "src/routes/users.js",
-      "value": "known broken text"
+      "type": "file_exists",
+      "path": "package.json"
     }
   ],
   "checks": [
@@ -21,14 +22,28 @@
       "equals": 0
     },
     {
-      "type": "file_not_contains",
-      "path": "src/routes/users.js",
-      "value": "known broken text"
+      "type": "output_not_empty"
+    },
+    {
+      "type": "jsonl_event",
+      "event": "end"
+    },
+    {
+      "type": "workspace_changed"
+    },
+    {
+      "type": "file_exists",
+      "path": "src/components/Example.tsx"
+    },
+    {
+      "type": "file_contains",
+      "path": "src/components/Example.tsx",
+      "value": "export"
     },
     {
       "type": "command",
-      "command": "npm test",
-      "timeoutMs": 120000
+      "command": "npm run build",
+      "timeoutMs": 180000
     }
   ]
 }

@@ -14,11 +14,9 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: [
-      'tests/architecture/**/*.test.ts',
-      'tests/packages/**/*.test.ts',
-      'tests/contract/**/*.test.ts',
-      'tests/integration/**/*.test.ts',
-      'tests/e2e/**/*.test.ts',
+      'packages/v8/tests/**/*.test.ts',
+      'packages/sdk/tests/**/*.test.ts',
+      'apps/vscode/tests/**/*.test.ts',
       // Vitest-owned @mitii/v8 suites only (node:test specs stay on disk).
       'packages/v8/src/engine/**/*.spec.ts',
       'packages/v8/src/modules/decision-policy/**/*.spec.ts',
@@ -45,7 +43,7 @@ export default defineConfig({
       'packages/v8/src/modules/repository-state/pipeline/ws-indexing-pipeline/tests/FileProcessorStatFreshness.spec.ts',
       'packages/host/src/**/*.spec.ts',
     ],
-    setupFiles: ['./tests/setup.ts'],
+    setupFiles: ['./vitest.setup.ts'],
     exclude: ['**/node_modules/**', 'legacy/**', 'tests/benchmark/**'],
   },
 });

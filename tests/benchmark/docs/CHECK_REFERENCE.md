@@ -31,6 +31,15 @@
 
 The command runs inside the isolated case workspace after the agent finishes.
 
+## Per-case reporting
+
+Every finished case immediately writes:
+
+- `reports/runs/<runId>/cases/<id>.json`
+- `reports/runs/<runId>/cases/<id>.md`
+
+and refreshes `reports/runs/<runId>/summary.md` (live progress). A final copy is also written to `--output` / `<suite>-latest.json`.
+
 ## HTTP check
 
 ```json
