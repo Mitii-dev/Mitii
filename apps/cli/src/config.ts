@@ -4,6 +4,14 @@ import { dirname, join } from 'node:path';
 
 import { isHostProviderType, type HostProviderType } from '@mitii/host';
 
+import {
+  parseLoopPolicyConfig,
+  serializeLoopPolicyConfig,
+  type MitiiLoopPolicyConfig,
+} from './loopPolicy.js';
+
+export type { MitiiLoopPolicyConfig };
+
 export interface MitiiHostConfig {
   provider?: HostProviderType;
   /** Preset id: ollama | openai | openrouter | deepseek | azure-openai | anthropic | gemini | ... */
@@ -17,6 +25,11 @@ export interface MitiiHostConfig {
   /** Never read API keys from config files — env / SecretStorage only. */
   workspaceId?: string;
   defaultMode?: 'ask' | 'plan' | 'agent';
+  /**
+   * Optional lab loop/stall overrides (power users / benchmarks).
+   * Leave unset or enabled:false for shipped window-band standards.
+   */
+  loopPolicy?: MitiiLoopPolicyConfig;
 }
 
 export function projectConfigPath(cwd: string = process.cwd()): string {
@@ -80,6 +93,7 @@ function parseConfigObject(raw: Record<string, unknown>): MitiiHostConfig {
       safe.defaultMode === 'agent'
         ? safe.defaultMode
         : undefined,
+    loopPolicy: parseLoopPolicyConfig(safe.loopPolicy),
   };
 }
 
@@ -130,6 +144,9 @@ export function saveMitiiHostConfig(
     : {};
 
   const merged: MitiiHostConfig = { ...existing, ...config };
+  if (config.loopPolicy === undefined && existing.loopPolicy) {
+    merged.loopPolicy = existing.loopPolicy;
+  }
   const payload: Record<string, unknown> = {};
   if (merged.provider) payload.provider = merged.provider;
   if (merged.providerPreset) payload.providerPreset = merged.providerPreset;
@@ -143,6 +160,8 @@ export function saveMitiiHostConfig(
   }
   if (merged.workspaceId) payload.workspaceId = merged.workspaceId;
   if (merged.defaultMode) payload.defaultMode = merged.defaultMode;
+  const loopPolicyPayload = serializeLoopPolicyConfig(merged.loopPolicy);
+  if (loopPolicyPayload) payload.loopPolicy = loopPolicyPayload;
 
   writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
   return path;

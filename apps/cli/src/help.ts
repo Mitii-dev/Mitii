@@ -41,6 +41,10 @@ Options:
   --approve / --deny Non-interactive approval resume
   --out <file>       Session export path (export-session)
   --mode <mode>      ask | plan | agent
+  --loop-policy-json <json>
+                     Lab: one-off threshold overrides for this run
+                     (merged on the active window band; see README)
+  --no-loop-policy   Ignore config loopPolicy for this run
   --provider <id>    setup: ollama | anthropic | gemini | openai | …
   --model <id>       setup: model id
   --base-url <url>   setup: OpenAI-compatible base URL
@@ -54,9 +58,12 @@ Signals:
 
 Config (no secrets):
   .mitii/config.json or ~/.mitii/config.json
-  Fields: provider, providerPreset, model, baseUrl, workspaceId, defaultMode
+  Fields: provider, providerPreset, model, baseUrl, workspaceId, defaultMode,
+          loopPolicy (optional lab: { enabled, thresholds })
   provider: echo | openai-compatible | anthropic | gemini
   API keys never go in config files — use env vars
+  Permanent window bands live in @mitii/v8 policy/loopPolicyBands.ts
+  loopPolicy lab overrides merge after the band (same as VS Code Developer)
 
 Environment:
   MITII_PROVIDER                   echo | openai-compatible | anthropic | gemini

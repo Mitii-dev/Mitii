@@ -33,6 +33,7 @@ import { runSetup } from './setup.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { loadMitiiHostConfig } from './config.js';
+import { resolveCliLoopPolicyThresholds } from './loopPolicy.js';
 import { resolveCliSemanticIndexSettings } from './semanticIndex.js';
 import {
   loadPersistedRepositoryState,
@@ -68,6 +69,10 @@ export interface ParsedCliArgs {
   setupShow?: boolean;
   setupTest?: boolean;
   setupYes?: boolean;
+  /** One-off loop-policy threshold JSON (lab). Implies overrides for this run. */
+  loopPolicyJson?: string;
+  /** Force window-band standards even if config enables loopPolicy. */
+  noLoopPolicy?: boolean;
   rest: string[];
 }
 
@@ -95,6 +100,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   let setupProvider: string | undefined;
   let setupModel: string | undefined;
   let setupBaseUrl: string | undefined;
+  let loopPolicyJson: string | undefined;
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i]!;
@@ -162,6 +168,19 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
         };
       }
       i = taken.next;
+      continue;
+    }
+    if (arg === '--loop-policy-json') {
+      const taken = takeValue(args, i, '--loop-policy-json');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      loopPolicyJson = taken.value;
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--no-loop-policy') {
+      flags.add('no-loop-policy');
       continue;
     }
     if (arg === '--provider') {
@@ -242,6 +261,8 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       json: flags.has('json'),
       forceEcho: flags.has('echo'),
       mode,
+      loopPolicyJson,
+      noLoopPolicy: flags.has('no-loop-policy'),
       rest,
     };
   }
@@ -254,6 +275,8 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       forceEcho: flags.has('echo'),
       exportPath,
       mode,
+      loopPolicyJson,
+      noLoopPolicy: flags.has('no-loop-policy'),
       rest,
     };
   }
@@ -268,6 +291,8 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       autoClarify,
       autoApproval,
       mode,
+      loopPolicyJson,
+      noLoopPolicy: flags.has('no-loop-policy'),
       rest,
     };
   }
@@ -441,6 +466,8 @@ async function runAsk(options: {
   mode?: AgentMode;
   conversation?: MitiiConversationMessage[];
   taskList?: TaskList;
+  loopPolicyJson?: string;
+  noLoopPolicy?: boolean;
   io?: SessionIo;
 }): Promise<{
   code: number;
@@ -470,6 +497,24 @@ async function runAsk(options: {
   const projectRules = await loadProjectRules({
     workspaceRoot: options.cwd,
   });
+  const hostConfig = loadMitiiHostConfig(options.cwd);
+  let loopPolicyThresholds;
+  try {
+    loopPolicyThresholds = resolveCliLoopPolicyThresholds({
+      config: hostConfig.loopPolicy,
+      flagJson: options.loopPolicyJson,
+      disabled: options.noLoopPolicy === true,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    io.writeStderr(`${message}\n`);
+    return { code: 2, mode };
+  }
+  if (loopPolicyThresholds && !options.json) {
+    io.writeStderr(
+      `[mitii] loopPolicy lab overrides active (${Object.keys(loopPolicyThresholds).join(', ')})\n`,
+    );
+  }
   const outcome = await driveRun({
     client,
     start: {
@@ -482,6 +527,9 @@ async function runAsk(options: {
         : {}),
       ...(mode !== 'ask' && options.taskList
         ? { taskList: options.taskList }
+        : {}),
+      ...(loopPolicyThresholds
+        ? { loopPolicy: { thresholds: loopPolicyThresholds } }
         : {}),
     },
     json: options.json,
@@ -711,6 +759,8 @@ async function runSession(options: {
   cwd: string;
   forceEcho: boolean;
   mode?: AgentMode;
+  loopPolicyJson?: string;
+  noLoopPolicy?: boolean;
   io: SessionIo;
 }): Promise<number> {
   const rl = createInterface({
@@ -759,6 +809,8 @@ async function runSession(options: {
         mode: options.mode,
         conversation,
         taskList,
+        loopPolicyJson: options.loopPolicyJson,
+        noLoopPolicy: options.noLoopPolicy,
         io: options.io,
       });
       if (outcome) {
@@ -811,6 +863,8 @@ export async function main(
         autoClarify: parsed.autoClarify,
         autoApproval: parsed.autoApproval,
         mode: parsed.mode,
+        loopPolicyJson: parsed.loopPolicyJson,
+        noLoopPolicy: parsed.noLoopPolicy === true,
         io: sessionIo,
       });
       return code;
@@ -840,6 +894,8 @@ export async function main(
         json: true,
         forceEcho: parsed.forceEcho === true,
         mode: parsed.mode,
+        loopPolicyJson: parsed.loopPolicyJson,
+        noLoopPolicy: parsed.noLoopPolicy === true,
         io: sessionIo,
       });
       if (outcome && parsed.exportPath) {
@@ -857,6 +913,8 @@ export async function main(
         cwd,
         forceEcho: parsed.forceEcho === true,
         mode: parsed.mode,
+        loopPolicyJson: parsed.loopPolicyJson,
+        noLoopPolicy: parsed.noLoopPolicy === true,
         io: sessionIo,
       });
     case 'setup':

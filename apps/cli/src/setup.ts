@@ -12,6 +12,7 @@ import {
   saveMitiiHostConfig,
   type MitiiHostConfig,
 } from './config.js';
+import { formatLoopPolicySummary } from './loopPolicy.js';
 import type { SessionIo } from './session.js';
 
 export interface SetupOptions {
@@ -63,6 +64,7 @@ function formatConfigSummary(
     `  model      ${config.model ?? '(preset default)'}`,
     `  baseUrl    ${config.baseUrl ?? '(preset default)'}`,
     `  mode       ${config.defaultMode ?? 'ask'}`,
+    formatLoopPolicySummary(config.loopPolicy),
   ].filter(Boolean) as string[];
   return `${lines.join('\n')}\n`;
 }

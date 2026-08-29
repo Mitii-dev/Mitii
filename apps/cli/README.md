@@ -88,10 +88,45 @@ Set with `--mode <mode>` or `defaultMode` in config.
 | `--approve` / `--deny` | Non-interactive approval resume |
 | `--out <file>` | Session export path (`export-session`) |
 | `--mode <mode>` | `ask` \| `plan` \| `agent` |
+| `--loop-policy-json <json>` | Lab: one-off threshold overrides for this run |
+| `--no-loop-policy` | Ignore config `loopPolicy` for this run |
 
 Unknown options error out (they are not silently ignored).
 
 `SIGINT` cancels the active run via `run.cancel()`.
+
+### Loop / stall policy (lab)
+
+By default the CLI uses **window-band standards** from the model context window
+(`compact` &lt; 50k, `standard` &lt; 100k, `wide` ≥ 100k). Permanent ship values live in
+`@mitii/v8` → `policy/loopPolicyBands.ts`.
+
+Optional lab overrides (same merge as VS Code Developer → Custom loop policy):
+
+```json
+{
+  "provider": "ollama",
+  "model": "qwen3-coder:30b",
+  "loopPolicy": {
+    "enabled": true,
+    "thresholds": {
+      "maxReadOnlyToolTurnsBeforeMutationNudge": 14,
+      "maxRejectedMutationRecoveries": 5
+    }
+  }
+}
+```
+
+```bash
+# One-off override (merged on top of config when enabled)
+mitii ask "Fix types" --mode agent \
+  --loop-policy-json '{"maxRejectedMutationRecoveries":5}'
+
+# Force shipped bands only for this run
+mitii ask "Fix types" --mode agent --no-loop-policy
+```
+
+Leave `loopPolicy` unset (or `"enabled": false`) for deploy / normal use.
 
 ### Setup options
 
