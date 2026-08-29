@@ -547,7 +547,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.answer).not.toContain("Let me analyze the remaining errors");
   });
 
-  it("exhausts a single unfulfilled-execute recovery then fails without edits", async () => {
+  it("exhausts unfulfilled-execute recoveries then fails without edits", async () => {
     const engine = new AgentEnginePipeline(
       createStubDependencies({
         decision: createDecision({
@@ -573,6 +573,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
         llm: new ScriptedLlmPort([
           { content: "Here are all the TypeScript errors I found." },
           { content: "Here is the same diagnosis again without patches." },
+          { content: "Still no apply_patch after the second recovery." },
         ]),
       }),
     );
@@ -2175,6 +2176,9 @@ it("injects scoped preflight diagnostics into execute repair prompts", async () 
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/repo",
+        // Skip Plan discovery so this fixture exercises structured-plan
+        // completion without model turns.
+        explorationDepth: "quick",
       }),
     ).result;
 

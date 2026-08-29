@@ -518,6 +518,8 @@ export function App() {
   const listModelsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hydratedModeDefaults = useRef(false);
   const readySentRef = useRef(false);
+  /** Paths the user removed; skip auto-re-pin while the file stays open. */
+  const dismissedAutoPinsRef = useRef(new Set<string>());
 
   const updateProvider = (
     next:
@@ -917,6 +919,11 @@ export function App() {
         case 'editorPin':
           setPinned((prev) => {
             const source = msg.source ?? 'auto';
+            if (source === 'user') {
+              dismissedAutoPinsRef.current.delete(msg.path);
+            } else if (dismissedAutoPinsRef.current.has(msg.path)) {
+              return prev;
+            }
             const existing = prev.find((p) => p.path === msg.path);
             if (existing) {
               // Promote auto → user when explicitly pinned again as user.
@@ -939,13 +946,21 @@ export function App() {
           break;
         case 'syncAutoPins': {
           const open = new Set(msg.paths);
+          // Allow auto-pin again after the file is closed and reopened.
+          for (const path of [...dismissedAutoPinsRef.current]) {
+            if (!open.has(path)) dismissedAutoPinsRef.current.delete(path);
+          }
           setPinned((prev) => {
             const kept = prev.filter(
               (p) => p.source === 'user' || open.has(p.path),
             );
             const known = new Set(kept.map((p) => p.path));
             const additions = msg.paths
-              .filter((path) => !known.has(path))
+              .filter(
+                (path) =>
+                  !known.has(path) &&
+                  !dismissedAutoPinsRef.current.has(path),
+              )
               .map((path) => ({ path, source: 'auto' as const }));
             return [...kept, ...additions];
           });
@@ -1162,6 +1177,7 @@ export function App() {
   const insertMention = (path: string) => {
     const replaced = prompt.replace(/@([\w./_-]*)$/, `@${path} `);
     setPrompt(replaced);
+    dismissedAutoPinsRef.current.delete(path);
     setPinned((prev) => {
       const existing = prev.find((p) => p.path === path);
       if (existing) {
@@ -1706,18 +1722,25 @@ export function App() {
                 <ContextPanel
                   pins={pinned}
                   modeColor={currentModeColor}
-                  onRemove={(path) =>
-                    setPinned((prev) => prev.filter((x) => x.path !== path))
-                  }
-                  onClear={() => setPinned([])}
+                  onRemove={(path) => {
+                    dismissedAutoPinsRef.current.add(path);
+                    setPinned((prev) => prev.filter((x) => x.path !== path));
+                  }}
+                  onClear={() => {
+                    for (const pin of pinned) {
+                      dismissedAutoPinsRef.current.add(pin.path);
+                    }
+                    setPinned([]);
+                  }}
                   onPick={() => postToHost({ type: 'pickContextPath' })}
-                  onKeep={(path) =>
+                  onKeep={(path) => {
+                    dismissedAutoPinsRef.current.delete(path);
                     setPinned((prev) =>
                       prev.map((p) =>
                         p.path === path ? { ...p, source: 'user' } : p,
                       ),
-                    )
-                  }
+                    );
+                  }}
                 />
                 {suggestOpen ? (
                   <div className="suggest-pop" role="listbox">

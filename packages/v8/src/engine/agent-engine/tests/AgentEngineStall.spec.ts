@@ -428,6 +428,44 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       ),
     });
 
+    const originalExecute = deps.tools!.execute.bind(deps.tools);
+    deps.tools = {
+      ...deps.tools!,
+      execute: async (input, options) => {
+        if (input.toolName === "apply_patch") {
+          return {
+            schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+            callId: input.callId,
+            toolName: input.toolName,
+            status: "succeeded",
+            truncated: false,
+            redacted: false,
+            durationMs: 1,
+            bytesProduced: 24,
+            warnings: [],
+            output: {
+              checkpointId: "ckpt_after_grace",
+              changedFiles: ["src/form.ts"],
+            },
+            audit: {
+              callId: input.callId,
+              toolName: input.toolName,
+              startedAt: "2026-07-25T12:00:00.000Z",
+              endedAt: "2026-07-25T12:00:00.001Z",
+              status: "succeeded",
+              inputPreview: "{}",
+              outputPreview: "{}",
+              bytesProduced: 24,
+              durationMs: 1,
+              truncated: false,
+              redacted: false,
+            },
+          };
+        }
+        return originalExecute(input, options);
+      },
+    };
+
     const engine = new AgentEnginePipeline(deps);
     const result = await engine.start(
       agentEngineStartInputSchema.parse({
@@ -981,13 +1019,13 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     ).toBeGreaterThanOrEqual(2);
   });
 
-  it("recovers once then fails when mutation runs only call rejected read tools", async () => {
+  it("recovers then fails when mutation runs only call rejected read tools", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
         route: "execute",
         toolGrant: createReadOnlyGrant({
           maximumWorkspaceEffect: "write",
-          allowedTools: ["read_file", "glob_files", "apply_patch"],
+          allowedTools: ["read_file", "glob_files", "list_directory", "apply_patch"],
           allowedEffects: ["workspace_read", "workspace_write"],
           approvalMode: "never",
         }),
@@ -1013,6 +1051,15 @@ describe("AgentEnginePipeline stall and read dedup", () => {
               },
             ],
           },
+          {
+            toolCalls: [
+              {
+                id: "call_bad_list",
+                name: "list_directory",
+                arguments: JSON.stringify({}),
+              },
+            ],
+          },
           { content: "Should not be reached after rejected read drift." },
         ],
         stallCapabilities({ supportsTools: true }),
@@ -1027,6 +1074,11 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           status: "rejected",
           reasonCode: "invalid_arguments",
           warnings: ["pattern is required"],
+        },
+        list_directory: {
+          status: "rejected",
+          reasonCode: "invalid_arguments",
+          warnings: ["path is required"],
         },
       },
     });
@@ -1050,7 +1102,8 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.error?.message).toContain("rejected tools");
     expect(result.reasonCodes).toContain("tool_failed");
     expect(result.reasonCodes).toContain("unfulfilled_execute_exhausted");
-    expect(result.usage.modelCalls).toBe(2);
+    // Two recoveries (maxUnfulfilledExecuteRecoveries: 2), then fail on the third rejected turn.
+    expect(result.usage.modelCalls).toBe(3);
     expect(result.answer ?? "").not.toContain("Should not be reached");
   });
 

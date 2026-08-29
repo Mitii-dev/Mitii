@@ -623,17 +623,17 @@ input:focus-visible {
 .timeline__row-title {
   display: inline-flex;
   align-items: center;
-  margin-right: 6px;
+  margin-right: 8px;
   padding: 0;
   border-radius: 0;
   font-weight: 600;
   font-size: 12px;
   font-family: var(--mitii-font-tool);
-  letter-spacing: 0.01em;
+  letter-spacing: 0.012em;
   background: transparent;
   color: var(--mitii-chat-fg);
   border: 0;
-  transition: color 160ms ease;
+  transition: color 180ms ease;
 }
 
 .timeline__row--tool .timeline__row-title {
@@ -786,15 +786,15 @@ input:focus-visible {
 .live-status {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   max-width: 100%;
-  margin: 8px 0 4px 1px;
-  padding: 4px 0;
-  color: color-mix(in srgb, var(--mitii-chat-fg) 74%, var(--mitii-muted));
+  margin: 10px 0 6px 1px;
+  padding: 6px 0;
+  color: color-mix(in srgb, var(--mitii-chat-fg) 72%, var(--mitii-muted));
   font-family: var(--mitii-font-thinking);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.015em;
 }
 
 .live-status__dot {
@@ -1009,6 +1009,16 @@ input:focus-visible {
   overflow: visible;
   position: relative;
   z-index: 1;
+}
+
+/* Token details panel opens upward over the mode/access/depth controls. */
+.composer-footer:has(.token-popover__panel) .composer-dropdown-row {
+  z-index: 1;
+  pointer-events: none;
+}
+
+.composer-footer:has(.token-popover__panel) .composer-utility-row {
+  z-index: 5;
 }
 
 .composer-left {
@@ -2708,6 +2718,10 @@ select.depth-select {
   z-index: 50;
 }
 
+.token-popover:has(.token-popover__panel) {
+  z-index: 120;
+}
+
 .token-chip {
   display: inline-flex;
   align-items: center;
@@ -2774,7 +2788,7 @@ select.depth-select {
   box-shadow:
     0 1px 0 color-mix(in srgb, #fff 3%, transparent) inset,
     0 14px 34px color-mix(in srgb, #000 28%, transparent);
-  z-index: 100;
+  z-index: 200;
 }
 
 .token-popover__panel--wide {

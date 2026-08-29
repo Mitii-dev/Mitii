@@ -94,6 +94,14 @@ describe("AgentEngine must-read nudge", () => {
           reasonCodes: ["mutation_execute"],
         }),
         llm,
+        toolResults: {
+          apply_patch: {
+            output: {
+              checkpointId: "ckpt_session",
+              changedFiles: ["src/auth/session.ts"],
+            },
+          },
+        },
       }),
     );
 
@@ -160,6 +168,14 @@ describe("AgentEngine must-read nudge", () => {
           reasonCodes: ["mutation_execute"],
         }),
         llm,
+        toolResults: {
+          apply_patch: {
+            output: {
+              checkpointId: "ckpt_session",
+              changedFiles: ["src/auth/session.ts"],
+            },
+          },
+        },
       }),
     );
 

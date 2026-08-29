@@ -681,7 +681,8 @@ describe("AgentEngine task list", () => {
           planningDepth: "none",
           repositoryContextRequired: false,
           toolGrant: createWriteGrant(),
-          reasonCodes: ["mutation_execute"],
+          // Alias coverage only — do not require a workspace mutation.
+          reasonCodes: ["execute_route"],
         }),
         llm,
       }),
@@ -724,7 +725,8 @@ describe("AgentEngine task list", () => {
           planningDepth: "none",
           repositoryContextRequired: false,
           toolGrant: createWriteGrant(),
-          reasonCodes: ["mutation_execute"],
+          // Alias coverage only — do not require a workspace mutation.
+          reasonCodes: ["execute_route"],
         }),
         llm,
       }),
@@ -800,6 +802,14 @@ describe("AgentEngine task list", () => {
           ],
         }),
         llm,
+        toolResults: {
+          apply_patch: {
+            output: {
+              checkpointId: "ckpt_impact",
+              changedFiles: ["src/core.ts"],
+            },
+          },
+        },
       }),
     );
 
