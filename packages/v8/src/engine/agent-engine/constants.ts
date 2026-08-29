@@ -161,6 +161,8 @@ export const AGENT_REASON_CODES = [
   "plan_gate_suppressed_by_policy",
   /** Plan mode contract upgraded strategy to discover_and_plan before discovery. */
   "plan_mode_discovery_required",
+  /** Plan mode discovery finished without file-backed evidence; strategy fell back to clarify. */
+  "plan_mode_discovery_insufficient",
   /** Grant expansion included network access (fetch_url/fetch_docs/web_search). */
   "network_access_granted",
   /** One or more values in an emitted event array were truncated for size; see truncated flag. */

@@ -111,9 +111,27 @@ const PACKAGE_SCRIPT_CLAIM =
 
 /**
  * True when the answer names package scripts without having read the repo.
+ * Short unverified claims are suspicious; long how-to guides that mention
+ * `npx wdio` / `npm run` as instructions are not incomplete turns.
  */
 export function claimsPackageScriptsWithoutEvidence(content: string): boolean {
   return PACKAGE_SCRIPT_CLAIM.test(content);
+}
+
+/** Substantial instructional answers (copy-paste guides) with fences or steps. */
+export function looksLikeInstructionalAnswer(content: string): boolean {
+  const text = content.trim();
+  const fenceCount = (text.match(/```/g) ?? []).length;
+  if (fenceCount >= 2 && text.length >= 400) {
+    return true;
+  }
+  if (text.length < 600) {
+    return false;
+  }
+  return (
+    /^#{1,3}\s+/m.test(text) &&
+    /\b(?:change|step|file|replace|find|edit|apply)\b/i.test(text)
+  );
 }
 
 /**
@@ -239,7 +257,8 @@ export function shouldRecoverIncompleteAssistantTurn(params: {
   if (isMidWorkAnalysisDump(params.content)) return true;
   if (
     (params.fileReadCalls ?? 0) === 0 &&
-    claimsPackageScriptsWithoutEvidence(params.content)
+    claimsPackageScriptsWithoutEvidence(params.content) &&
+    !looksLikeInstructionalAnswer(params.content)
   ) {
     return true;
   }

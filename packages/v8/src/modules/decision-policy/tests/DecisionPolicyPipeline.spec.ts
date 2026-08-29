@@ -543,6 +543,50 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.allowedTools).toContain("search_files");
   });
 
+  it("routes ask follow-ups about implementing prior findings to repository_answer", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "ask",
+        message: "If I have to implement it ?? what shoudl i do ?",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "unknown",
+            clarity: "unclear",
+            recommendsRepositoryDiscovery: false,
+            recommendsVerification: false,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("repository_answer");
+    expect(decision.reasonCodes).toContain("repository_grounded_answer");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
+  });
+
+  it("routes ask follow-ups about running headless on linux to repository_answer", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "ask",
+        message: "Can I make headless and run in linux ??",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "unknown",
+            recommendsRepositoryDiscovery: false,
+            recommendsVerification: false,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("repository_answer");
+    expect(decision.toolGrant.allowedTools).toContain("read_file");
+  });
+
   it("routes ask-mode API design requests to repository_answer even when classified as a question", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({

@@ -38,6 +38,7 @@ import {
   buildPreflightVerificationInput,
   buildSyntheticPreflightGrant,
   inferDiscoveryTargetKind,
+  extractFileReadPaths,
 } from "../actions";
 import {
   collectShapedDiscoveryHits,
@@ -45,6 +46,9 @@ import {
   resolveShapedDiscoveryProfile,
   selectShapedDiscoverySeeds,
 } from "../actions/shapedDiscovery";
+import {
+  isPlanDiscoveryEvidenceSufficient,
+} from "../actions/planDiscoveryQuality";
 import type {
   AgentEngineStartInput,
   AgentReasonCode,
@@ -56,6 +60,10 @@ import {
   createDiscoveryObservationCollector,
   createDiscoveryTaskList,
   discoveryBudgetRemaining,
+  discoveryCanModelTurn,
+  discoveryCanReadMore,
+  formatDiscoveryPreReadEvidence,
+  extractDiscoveryReadText,
   hasDiscoveryReadPath,
   isDiscoveryToolAllowed,
   recordDiscoveryToolUse,
@@ -273,6 +281,8 @@ export async function runDiscoveryPass(
   taskListRef: TaskListRef;
   windowPolicy: WindowPolicy;
   preferredPaths?: readonly string[];
+  /** Plan mode (non-quick): require file-backed discovery before treating pass as success. */
+  qualityFloor?: boolean;
 }): Promise<{
   brief: DiscoveryBrief;
   failed: boolean;
@@ -294,6 +304,7 @@ export async function runDiscoveryPass(
     taskListRef,
     windowPolicy,
     preferredPaths = [],
+    qualityFloor = false,
   } = params;
 
   runtime.emitStage(bus, runId, "discovery", "started");
@@ -368,21 +379,37 @@ export async function runDiscoveryPass(
     const shapedSeeds = shapedProfile
       ? selectShapedDiscoverySeeds(shapedProfile, globHits, rankedPreferred)
       : [];
+    // Quality floor: if scoring filtered every hit, still try top ranked paths.
+    const qualityFallbackSeeds =
+      qualityFloor && shapedSeeds.length === 0 && shapedProfile
+        ? rankPathsForShapedDiscovery(shapedProfile, globHits).slice(0, 4)
+        : [];
     const seeds = [
       ...shapedSeeds,
-      ...rankedPreferred.filter((path) => !shapedSeeds.includes(path)),
+      ...qualityFallbackSeeds.filter((path) => !shapedSeeds.includes(path)),
+      ...rankedPreferred.filter(
+        (path) =>
+          !shapedSeeds.includes(path) && !qualityFallbackSeeds.includes(path),
+      ),
     ]
       .map((path) => path.trim())
       .filter((path) => path.length > 0 && path.includes("."))
       .slice(0, Math.min(6, DISCOVERY_PASS_POLICY.maxFileReads));
+    const preReadByPath = new Map<string, string>();
+    const perFileChars = Math.min(
+      4_000,
+      windowPolicy.compaction.toolResultContentChars,
+    );
     for (const seedPath of seeds) {
-      if (!discoveryBudgetRemaining(collector) || signal.aborted) {
+      // Do not gate seed reads on search budget — shaped preflight often
+      // spends the search allotment before any file is opened.
+      if (!discoveryCanReadMore(collector) || signal.aborted) {
         break;
       }
       if (hasDiscoveryReadPath(collector, seedPath)) {
         continue;
       }
-      await executeDiscoveryToolCall(runtime, {
+      const seedResult = await executeDiscoveryToolCall(runtime, {
         runId,
         bus,
         budget,
@@ -394,6 +421,15 @@ export async function runDiscoveryPass(
         toolName: "read_file",
         argumentsValue: { path: seedPath },
       });
+      if (seedResult?.status === "succeeded") {
+        const text = extractDiscoveryReadText(seedResult.output);
+        if (text.length > 0) {
+          preReadByPath.set(
+            seedPath.replace(/\\/g, "/").replace(/^\.\//, ""),
+            text.slice(0, perFileChars),
+          );
+        }
+      }
     }
 
     const prompt = buildDiscoveryPrompt({
@@ -402,27 +438,51 @@ export async function runDiscoveryPass(
       preferredPaths: seeds,
       shapedDiscovery: shapedProfile,
     });
+    const qualityFloorNudge =
+      "Plan quality floor: before finishing, read at least one concrete source/config file that discovery identified.";
+    const preReadEvidence = formatDiscoveryPreReadEvidence(
+      [...preReadByPath.entries()].map(([path, content]) => ({ path, content })),
+      {
+        maxCharsPerFile: perFileChars,
+        maxTotalChars: Math.min(
+          16_000,
+          windowPolicy.compaction.toolResultContentChars * 4,
+        ),
+      },
+    );
+    const preReadPaths = [...preReadByPath.keys()];
+    const userParts = [prompt.user];
+    if (preReadEvidence.length > 0) {
+      userParts.push(
+        preReadEvidence,
+        `Contents above were already read for: ${preReadPaths.join(", ")}. Do not call read_file again for those paths unless you need a different line range that is not covered. Continue only if more surfaces are needed.`,
+      );
+    } else if (seeds.length > 0) {
+      userParts.push(
+        `Already pre-read: ${seeds.join(", ")}. Continue only if more surfaces are needed.`,
+      );
+    }
+    if (qualityFloor && collector.fileReads === 0) {
+      userParts.push(qualityFloorNudge);
+    }
     const messages: ModelMessage[] = [
       { role: "system", content: prompt.system },
-      {
-        role: "user",
-        content:
-          seeds.length > 0
-            ? `${prompt.user}\n\nAlready pre-read: ${seeds.join(", ")}. Continue only if more surfaces are needed.`
-            : prompt.user,
-      },
+      { role: "user", content: userParts.join("\n\n") },
     ];
 
     let turn = 0;
+    let qualityFloorNudged = false;
     for (; turn < DISCOVERY_PASS_POLICY.maxModelTurns; turn += 1) {
       if (signal.aborted) {
         stopReason = "aborted";
         break;
       }
-      if (!discoveryBudgetRemaining(collector) || !budget.canStartModelCall()) {
+      if (!discoveryCanModelTurn(collector) || !budget.canStartModelCall()) {
         stopReason = "budget_exhausted";
         break;
       }
+      const needsForcedTools =
+        qualityFloor && collector.fileReads === 0 && tools.length > 0;
       budget.recordModelCall();
       const turnResult = await consumeModelTurn(runtime, {
         llm: runtime.deps.llm,
@@ -432,7 +492,11 @@ export async function runDiscoveryPass(
           temperature: 0,
           maximumOutputTokens: 800,
           stream: false,
-          toolChoice: tools.length > 0 ? "auto" : "none",
+          toolChoice: needsForcedTools
+            ? "required"
+            : tools.length > 0
+              ? "auto"
+              : "none",
         },
         runId,
         signal,
@@ -446,6 +510,23 @@ export async function runDiscoveryPass(
         isDiscoveryToolAllowed(call.name),
       );
       if (toolCalls.length === 0) {
+        if (
+          qualityFloor &&
+          collector.fileReads === 0 &&
+          !qualityFloorNudged &&
+          turn + 1 < DISCOVERY_PASS_POLICY.maxModelTurns
+        ) {
+          qualityFloorNudged = true;
+          messages.push({
+            role: "assistant",
+            content: turnResult.content,
+          });
+          messages.push({
+            role: "user",
+            content: qualityFloorNudge,
+          });
+          continue;
+        }
         // Model chose to stop calling tools — a natural finish.
         break;
       }
@@ -454,6 +535,7 @@ export async function runDiscoveryPass(
         content: turnResult.content,
         toolCalls,
       });
+      let executedFreshTool = false;
       for (const toolCall of toolCalls) {
         if (!discoveryBudgetRemaining(collector) || signal.aborted) {
           break;
@@ -475,18 +557,25 @@ export async function runDiscoveryPass(
           typeof (argumentsValue as { path?: unknown }).path === "string"
             ? (argumentsValue as { path: string }).path
             : undefined;
+        const normalizedReadPath = readPath
+          ? readPath.replace(/\\/g, "/").replace(/^\.\//, "")
+          : undefined;
         if (
-          readPath &&
+          normalizedReadPath &&
           (toolCall.name === "read_file" || toolCall.name === "read_many_files") &&
-          hasDiscoveryReadPath(collector, readPath)
+          hasDiscoveryReadPath(collector, normalizedReadPath)
         ) {
+          const cached = preReadByPath.get(normalizedReadPath);
           messages.push({
             role: "tool",
             toolCallId: toolCall.id,
-            content: `Already read during discovery: ${readPath}`,
+            content: cached
+              ? `Already read during discovery (cached content for ${normalizedReadPath}):\n${cached}`
+              : `Already read during discovery: ${normalizedReadPath}. Content was provided in <pre_read_evidence>; do not re-read it.`,
           });
           continue;
         }
+        executedFreshTool = true;
         runtime.emit(bus, {
           type: "tool_started",
           runId,
@@ -515,6 +604,17 @@ export async function runDiscoveryPass(
           resultOutput: result?.output,
           status,
         });
+        const readPaths = extractFileReadPaths(toolCall.name, argumentsValue);
+        if (readPaths && status === "succeeded") {
+          budget.recordFileRead(readPaths);
+          const text = extractDiscoveryReadText(result?.output);
+          if (text.length > 0 && readPaths[0]) {
+            preReadByPath.set(
+              readPaths[0].replace(/\\/g, "/").replace(/^\.\//, ""),
+              text.slice(0, perFileChars),
+            );
+          }
+        }
         runtime.emit(bus, {
           type: "tool_completed",
           runId,
@@ -542,6 +642,10 @@ export async function runDiscoveryPass(
             : "Tool runtime unavailable.",
         });
       }
+      // All tool calls were redundant re-reads — stop instead of another empty turn.
+      if (!executedFreshTool && collector.fileReads > 0) {
+        break;
+      }
     }
     if (stopReason === "natural" && turn >= DISCOVERY_PASS_POLICY.maxModelTurns) {
       stopReason = "turn_cap";
@@ -558,8 +662,9 @@ export async function runDiscoveryPass(
       constraints: evidence.constraints ?? [],
     }),
   );
-  const failed =
-    brief.confidence === "low" && brief.proposedChangeSurfaces.length === 0;
+  const failed = qualityFloor
+    ? !isPlanDiscoveryEvidenceSufficient(brief)
+    : brief.confidence === "low" && brief.proposedChangeSurfaces.length === 0;
   reasonCodes.push(failed ? "discovery_failed" : "discovery_completed");
   runtime.emit(bus, {
     type: "discovery_completed",
@@ -577,7 +682,9 @@ export async function runDiscoveryPass(
   ]);
   if (failed) {
     warnings.push(
-      "Discovery did not identify a concrete change surface. The plan lists open questions instead of invented file tasks.",
+      qualityFloor
+        ? "Plan discovery did not gather file-backed change surfaces. Ask clarifying questions instead of inventing a hollow plan."
+        : "Discovery did not identify a concrete change surface. The plan lists open questions instead of invented file tasks.",
     );
   }
   return { brief, failed, collector };
@@ -629,6 +736,10 @@ async function executeDiscoveryToolCall(
     resultOutput: result?.output,
     status,
   });
+  const readPaths = extractFileReadPaths(params.toolName, params.argumentsValue);
+  if (readPaths && status === "succeeded") {
+    params.budget.recordFileRead(readPaths);
+  }
   runtime.emit(params.bus, {
     type: "tool_completed",
     runId: params.runId,

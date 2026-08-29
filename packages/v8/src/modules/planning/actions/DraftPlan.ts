@@ -195,6 +195,15 @@ function buildOpenQuestions(
   if (discoveryBrief && discoveryBrief.confidence === "low") {
     return uniqueStrings(discoveryBrief.openQuestions).slice(0, 5);
   }
+  // File-backed discovery already grounded the ask — keep only discovery's
+  // own open questions, not generic clarity/scope templates from understanding.
+  if (
+    discoveryBrief &&
+    discoveryBrief.confidence !== "low" &&
+    discoveryBrief.proposedChangeSurfaces.length > 0
+  ) {
+    return uniqueStrings(discoveryBrief.openQuestions).slice(0, 5);
+  }
   const questions: string[] = [...(discoveryBrief?.openQuestions ?? [])];
   const scope = scopeLabel(evidence.targets.map((t) => t.value));
   if (evidence.clarity === "unclear" || evidence.clarity === "partially_clear") {

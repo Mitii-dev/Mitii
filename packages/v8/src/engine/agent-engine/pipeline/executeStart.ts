@@ -77,6 +77,11 @@ import {
   formatSkillPromptContent,
 } from "../actions";
 import { applyPlanModeDiscoveryContract } from "../actions/planDiscoveryContract";
+import {
+  clarifyAfterInsufficientPlanDiscovery,
+  isPlanDiscoveryEvidenceSufficient,
+  requiresPlanDiscoveryQualityFloor,
+} from "../actions/planDiscoveryQuality";
 import type {
   EstablishedFact,
 } from "../actions";
@@ -964,6 +969,10 @@ export async function executeStart(
         reasonCodes.push("plan_mode_discovery_required");
       }
       let discoveryBrief = planningInput.discoveryBrief;
+      const planQualityFloor = requiresPlanDiscoveryQualityFloor({
+        mode: envelope.mode,
+        explorationDepth: input.explorationDepth,
+      });
       // Use the post-contract strategy — Plan mode may have upgraded
       // clarify/plan_from_ask to discover_and_plan.
       if (strategyOverride.strategy === "discover_and_plan") {
@@ -985,6 +994,7 @@ export async function executeStart(
           taskListRef,
           windowPolicy,
           preferredPaths: knownPathHints,
+          qualityFloor: planQualityFloor,
         });
         discoveryBrief = discovery.brief;
         recordDiscoveryEvidence(runEvidence, {
@@ -996,6 +1006,15 @@ export async function executeStart(
         // Discovery already looked; Planning must not run a second
         // Discover phase. Keep the selected strategy's rationale/confidence.
         strategyOverride = { ...strategyOverride, skipDiscover: true };
+        if (
+          planQualityFloor &&
+          !isPlanDiscoveryEvidenceSufficient(discovery.brief)
+        ) {
+          reasonCodes.push("plan_mode_discovery_insufficient");
+          strategyOverride = clarifyAfterInsufficientPlanDiscovery(
+            strategyOverride.confidence,
+          );
+        }
       }
 
       let impactReports = planningInput.impactReports;

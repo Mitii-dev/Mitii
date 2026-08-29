@@ -13,8 +13,10 @@ import { TaskListPipeline } from "../../../modules/task-list";
 export const DISCOVERY_PASS_POLICY = {
   maxModelTurns: 2,
   maxFileReads: 8,
-  maxSearches: 4,
-  maxToolCalls: 10,
+  // Shaped preflight alone uses up to 3 globs + 1 search. Keep headroom so
+  // seed reads + model discovery turns are not starved after preflight.
+  maxSearches: 10,
+  maxToolCalls: 14,
 } as const;
 
 const DISCOVERY_TOOL_IDS = new Set<string>([
@@ -212,6 +214,32 @@ export function discoveryBudgetRemaining(
   );
 }
 
+/** Seed file reads must not be blocked just because search budget is spent. */
+export function discoveryCanReadMore(
+  collector: DiscoveryObservationCollector,
+): boolean {
+  return (
+    collector.toolCalls < DISCOVERY_PASS_POLICY.maxToolCalls &&
+    collector.fileReads < DISCOVERY_PASS_POLICY.maxFileReads
+  );
+}
+
+/**
+ * Model discovery may continue while any useful budget remains (reads or
+ * searches), so shaped preflight exhausting searches does not skip the model.
+ */
+export function discoveryCanModelTurn(
+  collector: DiscoveryObservationCollector,
+): boolean {
+  if (collector.toolCalls >= DISCOVERY_PASS_POLICY.maxToolCalls) {
+    return false;
+  }
+  return (
+    collector.fileReads < DISCOVERY_PASS_POLICY.maxFileReads ||
+    collector.searches < DISCOVERY_PASS_POLICY.maxSearches
+  );
+}
+
 export function toDiscoveryObservation(params: {
   objective: string;
   collector: DiscoveryObservationCollector;
@@ -250,6 +278,74 @@ export function hasDiscoveryReadPath(
   );
 }
 
+/** Cap for injecting deterministic seed-read bodies into the discovery prompt. */
+const DISCOVERY_PRE_READ_MAX_CHARS_PER_FILE = 4_000;
+const DISCOVERY_PRE_READ_MAX_TOTAL_CHARS = 16_000;
+
+/**
+ * Format seed-read file bodies so the discovery model sees content, not only
+ * path names (avoids "Already pre-read" re-read loops).
+ */
+export function formatDiscoveryPreReadEvidence(
+  entries: readonly { path: string; content: string }[],
+  options?: { maxCharsPerFile?: number; maxTotalChars?: number },
+): string {
+  const maxPerFile =
+    options?.maxCharsPerFile ?? DISCOVERY_PRE_READ_MAX_CHARS_PER_FILE;
+  const maxTotal =
+    options?.maxTotalChars ?? DISCOVERY_PRE_READ_MAX_TOTAL_CHARS;
+  const blocks: string[] = [];
+  let used = 0;
+  for (const entry of entries) {
+    const path = entry.path.trim();
+    if (!path || used >= maxTotal) {
+      break;
+    }
+    const remaining = maxTotal - used;
+    const budget = Math.min(maxPerFile, remaining);
+    let body = entry.content;
+    let truncated = false;
+    if (body.length > budget) {
+      body = body.slice(0, Math.max(0, budget - 20));
+      truncated = true;
+    }
+    const block = truncated
+      ? `### ${path}\n${body}\n…(truncated)`
+      : `### ${path}\n${body}`;
+    blocks.push(block);
+    used += block.length;
+  }
+  if (blocks.length === 0) {
+    return "";
+  }
+  return [
+    "<pre_read_evidence trust=\"workspace-read\">",
+    ...blocks,
+    "</pre_read_evidence>",
+  ].join("\n");
+}
+
+export function extractDiscoveryReadText(output: unknown): string {
+  if (typeof output === "string") {
+    return output;
+  }
+  if (!output || typeof output !== "object") {
+    return "";
+  }
+  const record = output as Record<string, unknown>;
+  for (const key of ["content", "text", "data"] as const) {
+    const value = record[key];
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+  }
+  try {
+    return JSON.stringify(output);
+  } catch {
+    return "";
+  }
+}
+
 export function buildDiscoveryPrompt(params: {
   query: string;
   objective: string;
@@ -278,6 +374,7 @@ export function buildDiscoveryPrompt(params: {
       "Find the concrete files, symbols, and verification checks for the request.",
       "Use only read/search tools. Do not mutate files, run writes, or draft a plan.",
       "When preferred paths are listed, read those first before exploring elsewhere.",
+      "If <pre_read_evidence> is present, those file bodies are already available — do not re-read them.",
       params.shapedDiscovery?.discoverySystemHint,
       "Stop after you have identified the smallest change surfaces.",
     ]

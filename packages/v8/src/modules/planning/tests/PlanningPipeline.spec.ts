@@ -1273,6 +1273,83 @@ describe("PlanningPipeline", () => {
     expect(result.reasonCodes).toContain("plan_discovery_insufficient");
   });
 
+  it("suppresses generic clarity/scope open questions when discovery is file-backed", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        evidence: {
+          primaryIntent: "feature",
+          secondaryIntents: [],
+          interactionIntent: "plan",
+          scope: "unknown",
+          complexity: "simple",
+          risk: "low",
+          clarity: "unclear",
+          targets: [],
+          constraints: [],
+          requestedOutcomes: [
+            "Plan to implement headless for desktop and tablet",
+          ],
+          recommendsPlanning: true,
+          recommendsVerification: true,
+          changeImpact: ["code"],
+        },
+        processHints: [],
+        discoveryBrief: {
+          schemaVersion: 1,
+          objective: "Plan to implement headless for desktop and tablet",
+          filesRead: [
+            {
+              path: "test/shared/config/testConfig.ts",
+              reason: "Preferred seed path",
+            },
+            {
+              path: "wdio.desktop.conf.ts",
+              reason: "Preferred seed path",
+            },
+          ],
+          targets: [],
+          proposedChangeSurfaces: [
+            {
+              path: "test/shared/config/testConfig.ts",
+              actionHint: "Change",
+              riskLevel: "low",
+              evidence: "Preferred seed path",
+            },
+            {
+              path: "wdio.desktop.conf.ts",
+              actionHint: "Change",
+              riskLevel: "low",
+              evidence: "Preferred seed path",
+            },
+          ],
+          discoveredConstraints: [],
+          verificationHints: [],
+          openQuestions: [],
+          confidence: "high",
+        },
+        strategyOverride: {
+          schemaVersion: 1,
+          strategy: "discover_and_plan",
+          rationale: "Plan mode discovery",
+          skipDiscover: true,
+          useBuildEvidence: false,
+        },
+      }),
+    );
+
+    expect(result.plan?.openQuestions ?? []).toEqual([]);
+    expect(
+      (result.plan?.openQuestions ?? []).some((q) =>
+        /which outcome is in scope/i.test(q),
+      ),
+    ).toBe(false);
+    expect(
+      (result.plan?.openQuestions ?? []).some((q) =>
+        /modules or packages are in scope/i.test(q),
+      ),
+    ).toBe(false);
+  });
+
   it("classifies strategy without drafting a plan", async () => {
     const classified = await pipeline.resolveStrategy(
       baseInput({

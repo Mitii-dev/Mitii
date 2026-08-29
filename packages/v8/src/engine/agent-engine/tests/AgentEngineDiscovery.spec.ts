@@ -372,6 +372,7 @@ describe("AgentEngine discovery (discover_and_plan)", () => {
     expect(captured[0]?.strategyOverride?.strategy).toBe("discover_and_plan");
     expect(captured[0]?.strategyOverride?.skipDiscover).toBe(true);
     expect(captured[0]?.discoveryBrief).toBeDefined();
+    expect(result.reasonCodes).not.toContain("plan_mode_discovery_insufficient");
   });
 
   it("skips discovery for a real in-scope repair (engine rules resolve follow_evidence from actual preflight diagnostics)", async () => {
@@ -774,5 +775,78 @@ describe("AgentEngine discovery (discover_and_plan)", () => {
     expect(modelCalls).toBe(0);
     expect(captured?.strategyOverride?.strategy).toBe("plan_from_ask");
     expect(result.reasonCodes).not.toContain("discovery_started");
+  });
+
+  it("falls back to clarify when Plan quality floor discovery has no file evidence", async () => {
+    const captured: PlanningInput[] = [];
+    const llm = new ScriptedLlmPort(
+      [
+        { content: "No files found." },
+        { content: "Still nothing useful." },
+      ],
+      createCapabilities({ supportsTools: true }),
+    );
+    const clarifyPlan = executionPlan(
+      "Clarify headless scope",
+      "test/shared/config/testConfig.ts",
+    );
+
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "plan",
+          planningDepth: "visible",
+          planGate: "none",
+          repositoryContextRequired: false,
+          toolGrant: createReadOnlyGrant(),
+          reasonCodes: ["mode_plan_only"],
+        }),
+        understanding: createUnderstanding({
+          taskAnalysis: {
+            ...createUnderstanding().taskAnalysis,
+            scope: "unknown",
+            complexity: "simple",
+            clarity: "unclear",
+            recommendsPlanning: true,
+            targets: [],
+          },
+        }),
+        llm,
+        planning: {
+          plan: async (input) => {
+            captured.push(input);
+            return {
+              schemaVersion: PLANNING_SCHEMA_VERSION,
+              status: "validated",
+              plan: clarifyPlan,
+              warnings: [],
+              reasonCodes: ["plan_drafted", "plan_strategy_clarify"],
+              usedTokens: 10,
+              budgetTokens: 1_200,
+              durationMs: 1,
+              strategy: input.strategyOverride,
+            };
+          },
+        },
+      }),
+    );
+
+    const handle = engine.start(
+      planStartInput("Can you plan for implementing headless test cases", {
+        explorationDepth: "deep",
+      }),
+    );
+    for await (const _event of handle.events) {
+      // drain
+    }
+    const result = await handle.result;
+
+    expect(result.status).toBe("completed");
+    expect(result.reasonCodes).toContain("plan_mode_discovery_required");
+    expect(result.reasonCodes).toContain("plan_mode_discovery_insufficient");
+    expect(result.reasonCodes).toContain("discovery_failed");
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.strategyOverride?.strategy).toBe("clarify");
+    expect(captured[0]?.strategyOverride?.skipDiscover).toBe(true);
   });
 });

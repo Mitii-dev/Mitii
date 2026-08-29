@@ -58,6 +58,7 @@ planning/
   6. Deep/Auto and wide scope/complexity (or `recommendsPlanning`, itself folded from understanding's `recommendsPlanning` OR `recommendsRepositoryDiscovery`) -> `discover_and_plan`
   7. else -> `plan_from_ask`
 - Engine `applyPlanModeDiscoveryContract`: cold Plan-mode asks (no prior thread) and shaped-discovery profile matches force `discover_and_plan` before the discovery loop unless exploration is `quick` or strategy is `follow_evidence`. Follow-up Plan asks with `plan_from_ask` are preserved.
+- Engine **Plan quality floor** (Plan mode, not `quick`): after the discovery pass, if evidence is not file-backed and non-thin (`filesRead ≥ 1`, change surfaces present, confidence not `low`), Engine emits `plan_mode_discovery_insufficient` and overrides strategy to `clarify` before calling `planning.plan`. Planning then drafts clarifying open questions instead of inventing Change steps. When evidence is sufficient, strategy stays `discover_and_plan` and the one-shot discovery draft call can run. Drafting also suppresses generic clarity/scope open-question templates when the discovery brief is already medium/high with change surfaces.
 - Repair detection uses a single shared predicate (`decision-policy`'s `isRepairIntentTaxonomy`), not words like `error` in the user sentence. The same predicate backs Decision Policy's preflight-capture gate and `DraftPlan`'s Discover/Change step wording, so all three cannot drift out of sync.
 - Engine owns strategy selection — it calls `resolvePlanStrategyRules` itself (not a port method) before deciding whether to run a discovery pass, then calls `planning.plan({ strategyOverride })`. Planning never runs a second classifier.
 - `follow_evidence` and `plan_from_ask` skip discovery entirely (`skipDiscover: true`). `discover_and_plan` runs Engine's bounded read-only discovery loop first; Planning then receives `discoveryBrief` and `skipDiscover: true` and either runs its one model call (see below) or falls back to the deterministic discovery skeleton.
@@ -85,7 +86,7 @@ planning/
 - `discover_and_plan`'s model draft call failing keeps the deterministic discovery skeleton (`plan_discovery_draft_failed_fallback`).
 - Out-of-scope diagnostics are ignored (`plan_build_evidence_out_of_scope`).
 - Low-confidence discovery keeps open questions and does not invent file-scoped tasks (`plan_discovery_insufficient`).
-
+- Engine Plan quality floor with insufficient discovery overrides to `clarify` (`plan_mode_discovery_insufficient` on the engine run) before Planning drafts — see agent-engine README.
 ## Genericness Strategy
 
 Strategy, drafting, and diagnostic scoping use intent taxonomy, explicit targets, and a scoped repo map. They do not hard-code a language, package manager, workspace layout, or host.
@@ -102,10 +103,10 @@ Does not own plan approval UI, tool execution, route authority, task-list persis
 pnpm exec vitest run packages/v8/src/modules/planning
 ```
 
-Related engine coverage checks async planning, task-list alignment, discovery, and the repair-queue behavior:
+Related engine coverage checks async planning, task-list alignment, discovery, Plan quality floor, and the repair-queue behavior:
 
 ```bash
-pnpm exec vitest run packages/v8/src/engine/agent-engine/tests/AgentEngineTaskList.spec.ts packages/v8/src/engine/agent-engine/tests/AgentEnginePipeline.spec.ts packages/v8/src/engine/agent-engine/tests/AgentEngineDiscovery.spec.ts packages/v8/src/engine/agent-engine/tests/AgentEngineRepairQueue.spec.ts
+pnpm exec vitest run packages/v8/src/engine/agent-engine/tests/AgentEngineTaskList.spec.ts packages/v8/src/engine/agent-engine/tests/AgentEnginePipeline.spec.ts packages/v8/src/engine/agent-engine/tests/AgentEngineDiscovery.spec.ts packages/v8/src/engine/agent-engine/tests/AgentEngineRepairQueue.spec.ts packages/v8/src/engine/agent-engine/actions/tests/planDiscoveryQuality.spec.ts packages/v8/src/engine/agent-engine/actions/tests/planDiscoveryContract.spec.ts packages/v8/src/engine/agent-engine/internal/tests/discoveryPassBudget.spec.ts
 ```
 
 ## Example Flow

@@ -120,6 +120,7 @@ verification gate + repair queue (see below)
 ```
 
 - Strategy is resolved by Engine, not Planning: `resolvePlanStrategyRules` (a pure function) runs before deciding whether to invoke discovery, then `applyPlanModeDiscoveryContract` upgrades cold Plan-mode asks (and shaped-discovery profile matches) to `discover_and_plan` unless exploration is `quick` or strategy is `follow_evidence`. Follow-up Plan asks that already resolved to `plan_from_ask` are left unchanged. Only `discover_and_plan` triggers Engine's bounded read-only discovery loop (max two model turns, file/search budget, no mutation tools) — it emits `discovery_started` / `discovery_progress` / `discovery_completed`, shows a temporary discovery task list, then calls Planning with `DiscoveryBrief` and `skipDiscover: true`. Discovery is seeded with preferred paths from explicit targets, retrieved context paths, and prior-turn path hints (deterministic pre-read before the model loop). Planning either runs its own one-shot Change+Verify draft call or falls back to the deterministic discovery skeleton. The discovery list is replaced by the plan-derived execution checklist. There is exactly one understanding LLM call and, for `discover_and_plan`, at most one additional plan-drafting call — never a second strategy classifier.
+- **Plan discovery quality floor** (Plan mode, `explorationDepth !== "quick"`): discovery runs with `qualityFloor`. Shaped preflight may fall back to top-ranked glob hits when seed scoring filters everything; seed reads are not blocked by a spent search budget; the model loop nudges / forces tools until at least one file is read or the turn budget ends. Seed-read file bodies are injected as `<pre_read_evidence>` so the discovery model does not burn turns on `Already read` stubs; redundant re-reads of those paths return cached content and end the loop when no fresh tool ran. Evidence is sufficient only when the brief has ≥1 file read, ≥1 proposed change surface, and non-low confidence (`isPlanDiscoveryEvidenceSufficient`). Insufficient evidence emits `plan_mode_discovery_insufficient` / `discovery_failed` and replaces `strategyOverride` with `clarify` so Planning asks open questions instead of shipping a hollow Change plan. Thoroughness Low (`quick`) remains the escape hatch and does not apply the floor. Discovery `read_file` calls increment `usage.fileReadCalls` / unique paths.
 - The resulting `planStrategy` is stored on the run result and plan-approval checkpoint. Hosts that carry an approved plan SHOULD also carry `approvedPlanStrategy`; otherwise the engine infers a conservative strategy from the artifact.
 
 ### Verification gate (repair while errors drop)
@@ -145,6 +146,21 @@ Does not own intent classification, route authority, grant enforcement internals
 ```bash
 pnpm exec vitest run packages/v8/src/engine/agent-engine
 ```
+
+Focused discovery / Plan-quality coverage:
+
+```bash
+pnpm exec vitest run \
+  packages/v8/src/engine/agent-engine/tests/AgentEngineDiscovery.spec.ts \
+  packages/v8/src/engine/agent-engine/actions/tests/planDiscoveryContract.spec.ts \
+  packages/v8/src/engine/agent-engine/actions/tests/planDiscoveryQuality.spec.ts \
+  packages/v8/src/engine/agent-engine/internal/tests/discoveryPassBudget.spec.ts
+```
+
+- `planDiscoveryContract` — cold Plan asks force `discover_and_plan`; `quick` / Agent mode do not.
+- `planDiscoveryQuality` — quality-floor predicates and clarify fallback decision.
+- `discoveryPassBudget` — shaped preflight must not starve seed reads / model turns.
+- `AgentEngineDiscovery` — wired discovery loop; insufficient Plan evidence → `plan_mode_discovery_insufficient` + `clarify`.
 
 ## Example Flow
 

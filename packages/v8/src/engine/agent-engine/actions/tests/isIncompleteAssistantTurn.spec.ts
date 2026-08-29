@@ -12,6 +12,7 @@ import {
   isPseudoToolRequestAnswer,
   isTransitionalAssistantAnswer,
   isUnfinishedInvestigationAnswer,
+  looksLikeInstructionalAnswer,
   selectUserFacingLoopAnswer,
   shouldRecoverIncompleteAssistantTurn,
   synthesizeFallbackAnswer,
@@ -339,6 +340,44 @@ describe("isIncompleteAssistantTurn", () => {
         toolCallCount: 0,
         changedFileCount: 0,
         fileReadCalls: 2,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not recover long how-to guides that mention npx wdio without file reads", () => {
+    const guide = [
+      "Here are the exact changes to make. Apply them as-is:",
+      "",
+      "## Change 1 — `test/shared/config/testConfig.ts`",
+      "",
+      "```ts",
+      'capabilities: { browserName: "chrome", "goog:chromeOptions": { args: ["--headless=new"] } },',
+      "```",
+      "",
+      "## Change 2 — `test/shared/session/Desktop.ts`",
+      "",
+      "```ts",
+      'args: [`--user-data-dir=${profileDir}`, "--headless=new"],',
+      "```",
+      "",
+      "## Verify",
+      "",
+      "```bash",
+      "HEADLESS=true npx wdio run wdio.desktop.conf.ts --spec test/specs/Desktop/Smoke/login.spec.ts",
+      "```",
+      "",
+      "Expected: no browser window opens, the spec completes.",
+      "That's the complete implementation. Two files, fully backward-compatible.",
+    ].join("\n");
+
+    expect(looksLikeInstructionalAnswer(guide)).toBe(true);
+    expect(claimsPackageScriptsWithoutEvidence(guide)).toBe(true);
+    expect(
+      shouldRecoverIncompleteAssistantTurn({
+        content: guide,
+        toolCallCount: 0,
+        changedFileCount: 0,
+        fileReadCalls: 0,
       }),
     ).toBe(false);
   });

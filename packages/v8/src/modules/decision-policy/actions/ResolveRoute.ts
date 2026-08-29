@@ -489,6 +489,29 @@ function looksLikeWorkspaceGroundedRequest(message: string): boolean {
     return true;
   }
 
+  // Follow-ups about implementing / enabling something already under discussion
+  // ("If I have to implement it?", "make headless and run in linux").
+  if (
+    /\b(?:implement|enable|add|configure|set\s*up|turn\s+on|apply)\b[\s\S]{0,48}\b(?:it|this|that|them|headless|support|feature|change|fix|patch)\b/i.test(
+      text,
+    ) ||
+    /\b(?:how\s+(?:do|can|should)\s+i|what\s+should\s+i\s+do|how\s+to|how\s+can\s+i)\b/i.test(
+      text,
+    ) ||
+    /\b(?:make|get)\s+(?:it|this|that|headless)\b[\s\S]{0,48}\b(?:work|run|supported|enabled)\b/i.test(
+      text,
+    ) ||
+    /\b(?:make|enable|run)\s+headless\b/i.test(text) ||
+    /\b(?:run|running|execute|executing)\b[\s\S]{0,40}\b(?:on|in)\s+(?:linux|ubuntu|debian|docker|ci|ci\/cd|github\s+actions)\b/i.test(
+      text,
+    ) ||
+    /\b(?:on|in)\s+(?:linux|ubuntu|debian|docker|ci|ci\/cd|github\s+actions)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+
   if (
     /\b(?:test cases?|specs?|page objects?|how to run|can you test|architecture|redundant code|working tree|file map|source files?)\b/i.test(
       text,
