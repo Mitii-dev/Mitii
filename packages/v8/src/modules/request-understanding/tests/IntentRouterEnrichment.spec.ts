@@ -122,6 +122,42 @@ describe("IntentRouter enrichment", () => {
     expect(result.classification.confidence).toBe(1);
   });
 
+  it("preserves high-confidence implementation follow-ups as actions", async () => {
+    const provider = new StaticLlmPort({
+      interactionIntent: "act",
+      primaryTaskIntent: "feature",
+      secondaryTaskIntents: ["schema"],
+      confidence: 0.92,
+      alternatives: [{ intent: "schema", confidence: 0.1 }],
+      needsClarification: false,
+      reason: "The user explicitly asks to start the implementation.",
+    });
+    const router = new IntentRouter(provider, {
+      ruleClassifier: {
+        classifyMessage: () => ({
+          interactionIntent: "question",
+          primaryTaskIntent: "question",
+          secondaryTaskIntents: [],
+          confidence: 0.8,
+          alternatives: [],
+          needsClarification: false,
+          reason: "Conservative heuristic fallback.",
+        }),
+      },
+    });
+
+    const result = await router.classify({
+      mode: "agent",
+      userMessage: "STart the implemnetation",
+    });
+
+    expect(result.classification.primaryTaskIntent).toBe("feature");
+    expect(result.classification.interactionIntent).toBe("act");
+    expect(result.status).toBe("accepted");
+    expect(result.recommendsClarification).toBe(false);
+    expect(result.diagnostics.interactionConflict).toBe(false);
+  });
+
   it("preserves optional taskHints from the LLM classification", async () => {
     const provider = new StaticLlmPort({
       interactionIntent: "act",

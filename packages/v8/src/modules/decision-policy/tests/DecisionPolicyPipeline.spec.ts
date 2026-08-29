@@ -906,6 +906,30 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.allowedTools).toContain("run_command");
   });
 
+  it("routes start-implementation follow-ups to execute even with stale question intent", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "STart the implemnetation",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            clarity: "unclear",
+            scope: "unknown",
+            complexity: "simple",
+            risk: "low",
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.runDisposition).toBe("continue");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(decision.toolGrant.allowedTools).toContain("apply_patch");
+  });
+
   it("does not clarify clear agent implement asks even when understanding is soft-ambiguous", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({

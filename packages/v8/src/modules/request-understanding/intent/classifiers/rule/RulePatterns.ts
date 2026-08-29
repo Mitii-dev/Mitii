@@ -10,7 +10,7 @@ const INTENT_PATTERNS: IntentRule[] = [
   {
     intent: "feature",
     pattern:
-      /\b(?:implement|add|build|create|design|develop|write)\b.*\b(?:api|endpoint|route|controller|service|new feature|capability|integration|functionality)\b|\bi\s+need\s+(?:an?\s+|the\s+)?(?:api|endpoint|route)\b/i,
+      /\b(?:start\s+(?:the\s+)?implem(?:entation|netation)|implement|add|build|create|design|develop|write)\b.*\b(?:api|endpoint|route|controller|service|new feature|capability|integration|functionality|implem(?:entation|netation))\b|\bi\s+need\s+(?:an?\s+|the\s+)?(?:api|endpoint|route)\b/i,
     confidence: 0.86,
   },
   {
@@ -148,7 +148,7 @@ const QUESTION_PATTERN =
  * Explicit modification language.
  */
 const ACT_PATTERN =
-  /\b(?:fix|resolve|repair|patch|correct|implement|add|build|create|design|develop|write|update|modify|remove|delete|refactor|restructure|optimize|migrate|convert|rewrite|configure|install|upgrade|format|generate|scaffold|bootstrap|apply)\b|\bi\s+need\s+(?:an?\s+|the\s+)?(?:api|endpoint|route)\b/i;
+  /\b(?:start\s+(?:the\s+)?implem(?:entation|netation)|fix|resolve|repair|patch|correct|implement|add|build|create|design|develop|write|update|modify|remove|delete|refactor|restructure|optimize|migrate|convert|rewrite|configure|install|upgrade|format|generate|scaffold|bootstrap|apply)\b|\bi\s+need\s+(?:an?\s+|the\s+)?(?:api|endpoint|route)\b/i;
 
 /**
  * Read-only investigation language.

@@ -554,7 +554,7 @@ function looksLikeAgentMutationRequest(message: string): boolean {
   }
 
   return (
-    /(?:^|\b)(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|let(?:'s|\s+us)\s+)?(?:implement|build|create|design|develop|write|add|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|generate|scaffold|install|upgrade)\b/i.test(
+    /(?:^|\b)(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|let(?:'s|\s+us)\s+)?(?:start\s+(?:the\s+)?implem(?:entation|netation)|implement|build|create|design|develop|write|add|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|generate|scaffold|install|upgrade)\b/i.test(
       text,
     ) ||
     // Seeded bugfix phrasing: "X uses Y. Change it to Z." / "says Foo. Fix it to Bar."
