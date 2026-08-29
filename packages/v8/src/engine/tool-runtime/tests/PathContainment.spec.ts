@@ -22,12 +22,14 @@ function createAliasedRootFileSystem(params: {
   directories?: ReadonlySet<string>;
   escapes?: ReadonlyMap<string, string>;
 }): WorkspaceFileSystemPort {
+  // Resolve roots so Windows drive-letter absolutization matches path.resolve()
+  // on children (e.g. `\var\...` → `C:\var\...`).
+  const logicalRoot = path.resolve(params.logicalRoot);
+  const physicalRoot = path.resolve(params.physicalRoot);
   const {
-    logicalRoot,
-    physicalRoot,
     files = new Set(["app/layout.tsx"]),
     directories = new Set(["", "app"]),
-    escapes = new Map([["escape", "/etc/passwd"]]),
+    escapes = new Map([["escape", path.resolve("/etc/passwd")]]),
   } = params;
 
   const toRelative = (absolutePath: string): string | null => {
@@ -92,15 +94,11 @@ function createAliasedRootFileSystem(params: {
 
 describe("PathContainment.resolveContainedPath", () => {
   it("allows files when logical workspace root aliases to a different realpath", async () => {
-    const logicalRoot = path.join(path.sep, "var", "folders", "xx", "T", "ws");
-    const physicalRoot = path.join(
-      path.sep,
-      "private",
-      "var",
-      "folders",
-      "xx",
-      "T",
-      "ws",
+    const logicalRoot = path.resolve(
+      path.join(path.sep, "var", "folders", "xx", "T", "ws"),
+    );
+    const physicalRoot = path.resolve(
+      path.join(path.sep, "private", "var", "folders", "xx", "T", "ws"),
     );
     const fileSystem = createAliasedRootFileSystem({ logicalRoot, physicalRoot });
 
@@ -116,15 +114,11 @@ describe("PathContainment.resolveContainedPath", () => {
   });
 
   it("allows creating files under an aliased workspace root", async () => {
-    const logicalRoot = path.join(path.sep, "var", "folders", "xx", "T", "ws");
-    const physicalRoot = path.join(
-      path.sep,
-      "private",
-      "var",
-      "folders",
-      "xx",
-      "T",
-      "ws",
+    const logicalRoot = path.resolve(
+      path.join(path.sep, "var", "folders", "xx", "T", "ws"),
+    );
+    const physicalRoot = path.resolve(
+      path.join(path.sep, "private", "var", "folders", "xx", "T", "ws"),
     );
     const fileSystem = createAliasedRootFileSystem({ logicalRoot, physicalRoot });
 
@@ -141,15 +135,11 @@ describe("PathContainment.resolveContainedPath", () => {
   });
 
   it("still rejects symlink targets that leave the workspace", async () => {
-    const logicalRoot = path.join(path.sep, "var", "folders", "xx", "T", "ws");
-    const physicalRoot = path.join(
-      path.sep,
-      "private",
-      "var",
-      "folders",
-      "xx",
-      "T",
-      "ws",
+    const logicalRoot = path.resolve(
+      path.join(path.sep, "var", "folders", "xx", "T", "ws"),
+    );
+    const physicalRoot = path.resolve(
+      path.join(path.sep, "private", "var", "folders", "xx", "T", "ws"),
     );
     const fileSystem = createAliasedRootFileSystem({ logicalRoot, physicalRoot });
 

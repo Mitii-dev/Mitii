@@ -1,4 +1,4 @@
-import { looksLikeAgentVerificationRequest } from "../../../modules/decision-policy/actions";
+import { looksLikeAgentVerificationRequest } from "../../../modules/decision-policy";
 import { WORKSPACE_BUG_FAILURE_LANGUAGE } from "../../../modules/decision-policy/patterns";
 import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
 

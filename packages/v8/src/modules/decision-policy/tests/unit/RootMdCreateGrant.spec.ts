@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { isPathWithinScopes } from "../../../../engine/tool-runtime/internal/PathContainment";
 import { TaskTargetExtractor } from "../../../request-understanding/task-analyzer/analyzer/TaskTargetExtractor";
 import { DecisionPolicyPipeline } from "../../pipeline/DecisionPolicyPipeline";
 import { createInput, createUnderstanding } from "../fixtures/decisionCases";
+import { isPathWithinScopes } from "../helpers/pathScopes";
 
 const PROMPT =
   "Create me an md file with breif explaination about this project, Create the md file in the root of the project";

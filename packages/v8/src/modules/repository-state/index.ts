@@ -37,14 +37,16 @@ export type {
   WorkspaceRetrievalRuntimeVectorOptions,
 } from "./adapters";
 
-export { WorkspaceIgnorePolicy } from "./internal/workspace/utils/ws-ignore-policy/WorkspaceIgnorePolicy";
-export { isSecurityConcern } from "./internal/workspace/utils/ws-ignore-policy/isSecurityConcern";
-export { WS_CONSTANTS } from "./internal/workspace/constants";
+export {
+  WorkspaceIgnorePolicy,
+  isSecurityConcern,
+  WS_CONSTANTS,
+} from "./ignorePolicy";
 export type {
   WorkspaceIgnoreDecision,
   WorkspaceIgnorePolicyOptions,
   WorkspaceIgnoreReason,
-} from "./internal/workspace/types";
+} from "./ignorePolicy";
 
 export {
   splitCodeIdentifier,

@@ -74,5 +74,5 @@ export {
   taskPathsMatch,
 } from "./serialize";
 
-export { collectConcretePlanStepCandidates } from "./actions/DeriveTaskListFromPlan";
+export { collectConcretePlanStepCandidates } from "./planStepCandidates";
 
