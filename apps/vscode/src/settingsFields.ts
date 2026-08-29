@@ -261,6 +261,28 @@ export function reflectUiAfterSave(stored: UiSettingsSnapshot): UiSettingsSnapsh
   };
 }
 
+/**
+ * Keep the active chat mode's approval preset aligned with the composer value
+ * before persisting. Otherwise Save can write a stale modeDefaults.approvalMode
+ * (Agent defaults to `safe`) and overwrite Full access after reload.
+ */
+export function withActiveModeApproval(params: {
+  ui: UiSettingsSnapshot;
+  mode: 'ask' | 'plan' | 'agent' | 'review';
+  approvalMode: string;
+}): UiSettingsSnapshot {
+  const settingsMode =
+    params.mode === 'plan' || params.mode === 'agent' ? params.mode : 'ask';
+  const approvalMode =
+    params.approvalMode === 'builder' ? 'guided' : params.approvalMode;
+  return applyUiPatch(params.ui, {
+    approvalMode,
+    modeDefaults: {
+      [settingsMode]: { approvalMode },
+    },
+  });
+}
+
 export function applyTokenBudgetPolicyField(
   policy: Record<string, number>,
   key: string,

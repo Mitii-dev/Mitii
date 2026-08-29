@@ -111,6 +111,8 @@ export const DECISION_REASON_CODES = [
   "mutation_execute",
   /** Workspace-grounded bug report promoted to execute (may still be diagnose-first). */
   "workspace_bug_execute",
+  /** Agent reported a runtime symptom (loading/hang) — diagnose with tools, not tool-less chat. */
+  "workspace_symptom_diagnose",
   "mutation_budget_relaxed",
   "mutation_budget_standard",
   "mutation_budget_tight",

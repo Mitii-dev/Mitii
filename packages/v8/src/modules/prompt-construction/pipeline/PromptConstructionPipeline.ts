@@ -7,6 +7,7 @@ import {
   resolveDynamicOutputTokens,
   serializeRepositoryContext,
   serializeTools,
+  truncateKeepingEnds,
   updateSectionBudget,
 } from "../actions";
 import { CharacterTokenEstimator } from "../internal/CharacterTokenEstimator";
@@ -97,6 +98,7 @@ export class PromptConstructionPipeline {
       budgetTokens: systemBudget,
       planText: parsed.planText,
     });
+    let systemContent = system.content;
 
     provenance.push({
       blockId: "system:core",
@@ -215,10 +217,38 @@ export class PromptConstructionPipeline {
       omittedTokens: toolsResult.omittedTokens,
     });
 
+    // Keep "Allowed tools:" prose aligned with schemas actually attached.
+    // Otherwise models refuse apply_patch when the grant lists it but budget
+    // packing previously dropped the definition (or vice versa after resume).
+    if (toolsResult.tools && toolsResult.tools.length > 0) {
+      const allowedLine = `Allowed tools: ${toolsResult.tools
+        .map((tool) => tool.name)
+        .join(", ")}.`;
+      systemContent = systemContent.replace(
+        /Allowed tools: [^\n]+/,
+        allowedLine,
+      );
+    }
+
+    const conversationBudget = sectionAlloc("conversation");
+    const rawUserRequest = wrapUserRequest(parsed.userMessage);
+    const rawUserRequestTokens = this.estimator.estimate(rawUserRequest);
+    const reservedUserTokens = Math.min(
+      rawUserRequestTokens,
+      Math.max(
+        PROMPT_CONSTRUCTION_THRESHOLDS.minimumUserRequestTokens,
+        Math.floor(
+          conversationBudget *
+            PROMPT_CONSTRUCTION_THRESHOLDS.userRequestConversationShare,
+        ),
+      ),
+    );
+    const historyBudget = Math.max(0, conversationBudget - reservedUserTokens);
+
     const conversationResult = compactConversation({
       messages: parsed.conversation,
       estimator: this.estimator,
-      budgetTokens: sectionAlloc("conversation"),
+      budgetTokens: historyBudget,
       minTurns: DEFAULT_MIN_CONVERSATION_TURNS,
     });
     if (conversationResult.compacted) {
@@ -320,11 +350,46 @@ export class PromptConstructionPipeline {
       }
     }
 
-    const userRequest = wrapUserRequest(parsed.userMessage);
-    const userRequestTokens = this.estimator.estimate(userRequest);
-    const userContent = [repositoryContent, userRequest]
-      .filter((part) => part.length > 0)
-      .join("\n\n");
+    // Reclaim unused history reservation for the current request, then cap to
+    // whatever remains in the global input budget after required sections.
+    const usedBeforeUser = sections
+      .filter((entry) => entry.section !== "output_reserve")
+      .reduce((sum, entry) => sum + entry.usedTokens, 0);
+    const conversationSlotForUser = Math.max(
+      PROMPT_CONSTRUCTION_THRESHOLDS.minimumUserRequestTokens,
+      conversationBudget - conversationResult.usedTokens,
+    );
+    const globalSlotForUser = Math.max(
+      PROMPT_CONSTRUCTION_THRESHOLDS.minimumUserRequestTokens,
+      allocation.inputBudgetTokens -
+        usedBeforeUser -
+        conversationResult.usedTokens,
+    );
+    const userRequestBudget = Math.min(
+      conversationSlotForUser,
+      globalSlotForUser,
+    );
+    const truncatedUser = truncateKeepingEnds(
+      rawUserRequest,
+      userRequestBudget,
+      this.estimator,
+    );
+    const userRequest = truncatedUser.content;
+    const userRequestTokens = truncatedUser.usedTokens;
+    if (truncatedUser.truncatedTokens > 0) {
+      reasonCodes.push("user_request_truncated");
+      omissions.push({
+        section: "conversation",
+        reason: "budget",
+        detail:
+          "Current user request truncated to fit the input budget (large paste).",
+        tokens: truncatedUser.truncatedTokens,
+        source: "user_request",
+      });
+      warnings.push(
+        "Current user request was truncated to fit the prompt input budget; the beginning and end were retained.",
+      );
+    }
 
     provenance.push({
       blockId: "user:request",
@@ -335,19 +400,84 @@ export class PromptConstructionPipeline {
 
     sections = updateSectionBudget(sections, "conversation", {
       usedTokens: conversationResult.usedTokens + userRequestTokens,
-      omittedTokens: conversationResult.omittedTokens,
-      truncatedTokens: conversationResult.truncatedTokens,
+      omittedTokens:
+        conversationResult.omittedTokens +
+        (truncatedUser.truncatedTokens > 0 ? truncatedUser.truncatedTokens : 0),
+      truncatedTokens:
+        conversationResult.truncatedTokens + truncatedUser.truncatedTokens,
     });
 
+    const userContent = [repositoryContent, userRequest]
+      .filter((part) => part.length > 0)
+      .join("\n\n");
+
     const messages: ModelMessage[] = [
-      { role: "system", content: system.content },
+      { role: "system", content: systemContent },
       ...conversationResult.messages,
       { role: "user", content: userContent },
     ];
 
-    const recomputedUsed = sections
+    let recomputedUsed = sections
       .filter((entry) => entry.section !== "output_reserve")
       .reduce((sum, entry) => sum + entry.usedTokens, 0);
+
+    // Last-resort fit: shrink the current user request further rather than
+    // blocking the run when a large paste still overflows.
+    if (
+      recomputedUsed > allocation.inputBudgetTokens &&
+      userRequestTokens > PROMPT_CONSTRUCTION_THRESHOLDS.minimumUserRequestTokens
+    ) {
+      const overflow = recomputedUsed - allocation.inputBudgetTokens;
+      const emergencyBudget = Math.max(
+        PROMPT_CONSTRUCTION_THRESHOLDS.minimumUserRequestTokens,
+        userRequestTokens - overflow,
+      );
+      const emergency = truncateKeepingEnds(
+        rawUserRequest,
+        emergencyBudget,
+        this.estimator,
+      );
+      if (emergency.usedTokens < userRequestTokens) {
+        const fittedUserContent = [repositoryContent, emergency.content]
+          .filter((part) => part.length > 0)
+          .join("\n\n");
+        messages[messages.length - 1] = {
+          role: "user",
+          content: fittedUserContent,
+        };
+        const reclaimed = userRequestTokens - emergency.usedTokens;
+        sections = updateSectionBudget(sections, "conversation", {
+          usedTokens: conversationResult.usedTokens + emergency.usedTokens,
+          omittedTokens:
+            conversationResult.omittedTokens + emergency.truncatedTokens,
+          truncatedTokens:
+            conversationResult.truncatedTokens + emergency.truncatedTokens,
+        });
+        recomputedUsed = Math.max(0, recomputedUsed - reclaimed);
+        if (!reasonCodes.includes("user_request_truncated")) {
+          reasonCodes.push("user_request_truncated");
+        }
+        if (
+          !omissions.some(
+            (item) =>
+              item.section === "conversation" && item.source === "user_request",
+          )
+        ) {
+          omissions.push({
+            section: "conversation",
+            reason: "budget",
+            detail:
+              "Current user request truncated to fit the input budget (large paste).",
+            tokens: emergency.truncatedTokens,
+            source: "user_request",
+          });
+        }
+        warnings.push(
+          "Current user request was further truncated so prompt construction could stay within the input budget.",
+        );
+      }
+    }
+
     const dynamicOutput = resolveDynamicOutputTokens({
       contextWindowTokens: allocation.contextWindowTokens,
       configuredOutputTokens: parsed.capabilities.maximumOutputTokens,

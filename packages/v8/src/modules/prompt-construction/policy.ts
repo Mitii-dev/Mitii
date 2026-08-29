@@ -24,6 +24,19 @@ export const PROMPT_CONSTRUCTION_THRESHOLDS = {
   /** Soft minimum tokens retained for the current user request. */
   minimumUserRequestTokens: 64,
 
+  /**
+   * Share of the conversation section reserved for the current user request
+   * before history is compacted. Large pastes (JSON dumps, logs) must not
+   * append unbounded on top of a full history budget.
+   */
+  userRequestConversationShare: 0.75,
+
+  /**
+   * When truncating an oversized user request, keep this fraction of the
+   * retained characters from the end (ask/error often trails a large paste).
+   */
+  userRequestTailKeepRatio: 0.7,
+
   /** When compacting conversation, truncate older tool results to this many chars. */
   compactedToolResultCharacters: 400,
 

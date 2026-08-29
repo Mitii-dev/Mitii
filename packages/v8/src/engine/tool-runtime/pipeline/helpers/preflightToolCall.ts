@@ -9,6 +9,7 @@ import {
 import type { ToolInvocationInput, ToolResult } from "../../contracts";
 import { assertApprovalSatisfied } from "../../internal/mutation/assertApprovalSatisfied";
 import { coerceArgumentsToSchema } from "../../internal/CoerceArgumentsToSchema";
+import { normalizeApplyPatchArguments } from "../../internal/normalizeApplyPatchArguments";
 import { fingerprintToolCall } from "../../internal/mutation";
 import type { SessionBudget } from "../../internal/SessionBudget";
 import { SessionBudgetError } from "../../internal/SessionBudget";
@@ -130,8 +131,12 @@ export function preflightToolCall(params: {
     onShadowAuthorize: options.onShadowAuthorize,
   });
 
+  const rawArguments =
+    parsed.toolName === "apply_patch"
+      ? normalizeApplyPatchArguments(parsed.arguments)
+      : parsed.arguments;
   const argumentsValue = coerceArgumentsToSchema(
-    parsed.arguments,
+    rawArguments,
     registered.definition.inputSchema,
   );
 
@@ -248,10 +253,16 @@ function extractMutationPaths(
   const args = argumentsValue as Record<string, unknown>;
 
   if (toolName === "apply_patch") {
-    if (!("patches" in args) || !Array.isArray(args.patches)) {
+    const normalized = normalizeApplyPatchArguments(argumentsValue);
+    if (
+      !normalized ||
+      typeof normalized !== "object" ||
+      !("patches" in normalized) ||
+      !Array.isArray((normalized as { patches: unknown }).patches)
+    ) {
       return [];
     }
-    return (args.patches as Array<{ path?: unknown }>)
+    return ((normalized as { patches: Array<{ path?: unknown }> }).patches)
       .map((patch) => (typeof patch.path === "string" ? patch.path : undefined))
       .filter((path): path is string => typeof path === "string");
   }

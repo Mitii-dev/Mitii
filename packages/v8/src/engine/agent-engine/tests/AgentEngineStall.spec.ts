@@ -300,6 +300,12 @@ describe("AgentEnginePipeline stall and read dedup", () => {
               readPathCall("call_read_after_second_grace", "src/final-3.ts"),
             ],
           },
+          {
+            content: "Ignoring the blocker ask; reading again.",
+            toolCalls: [
+              readPathCall("call_read_after_blocker_ask", "src/final-4.ts"),
+            ],
+          },
           { content: "Should not be reached after read-only execute drift." },
         ],
         stallCapabilities({ supportsTools: true }),
@@ -327,6 +333,66 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.error?.code).toBe("no_mutation_performed");
     expect(result.error?.message).toContain("continued reading");
     expect(result.answer ?? "").not.toContain("Should not be reached");
+  });
+
+  it("completes with a clear blocker after the final no-tools recovery ask", async () => {
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        toolGrant: createReadOnlyGrant({
+          maximumWorkspaceEffect: "write",
+          allowedTools: ["read_file", "apply_patch"],
+          allowedEffects: ["workspace_read", "workspace_write"],
+          approvalMode: "never",
+        }),
+        reasonCodes: ["mutation_execute"],
+      }),
+      llm: new ScriptedLlmPort(
+        [
+          ...Array.from({ length: 6 }, (_, index) => ({
+            toolCalls: [
+              readPathCall(`call_read_${index}`, `src/file-${index}.ts`),
+            ],
+          })),
+          {
+            content: "One more read.",
+            toolCalls: [readPathCall("call_read_after_nudge", "src/final.ts")],
+          },
+          {
+            content: "Grace read 1.",
+            toolCalls: [readPathCall("call_read_grace_1", "src/final-2.ts")],
+          },
+          {
+            content: "Grace read 2.",
+            toolCalls: [readPathCall("call_read_grace_2", "src/final-3.ts")],
+          },
+          {
+            content:
+              "Blocker: cannot fix this in the workspace. Stripo.init requires API credentials and config params that are not present in this repo.",
+          },
+        ],
+        stallCapabilities({ supportsTools: true }),
+      ),
+    });
+
+    const engine = new AgentEnginePipeline(deps);
+    const result = await engine.start(
+      agentEngineStartInputSchema.parse({
+        schemaVersion: 1,
+        request: {
+          sessionId: "sess_mutation_blocker_accepted",
+          mode: "agent",
+          userMessage: "Fix all TypeScript errors",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/workspace",
+      }),
+    ).result;
+
+    expect(result.status).not.toBe("failed");
+    expect(result.error?.code).not.toBe("no_mutation_performed");
+    expect(result.answer ?? "").toMatch(/Blocker:/i);
+    expect(result.reasonCodes).toContain("unfulfilled_execute_recovered");
   });
 
   it("succeeds if the model mutates during the grace turn after the first-mutation nudge", async () => {

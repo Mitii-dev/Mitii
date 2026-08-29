@@ -9,6 +9,7 @@ import { AGENT_ENGINE_THRESHOLDS } from "../policy";
 import type { AgentReasonCode } from "../contracts";
 import type { AgentEngineThresholds } from "./resolveAgentEngineThresholds";
 
+import { isClearMutationBlocker } from "./isClearMutationBlocker";
 import { shouldRecoverIncompleteAssistantTurn } from "./isIncompleteAssistantTurn";
 
 export const LOOP_TURN_DISPOSITIONS = [
@@ -134,8 +135,13 @@ export function isUnfulfilledExecute(input: {
   if (!MUTATION_INTENT_SET.has(input.primaryTaskIntent)) {
     return false;
   }
-  // Any text-only stop on execute+write+mutation is unfulfilled: the model
-  // described work instead of calling apply_patch.
+  // Recovery copy invites "stop with a clear blocker" when a workspace edit
+  // cannot proceed (missing config, credentials, external dependency, etc.).
+  if (isClearMutationBlocker(input.content)) {
+    return false;
+  }
+  // Any other text-only stop on execute+write+mutation is unfulfilled: the
+  // model described work instead of calling apply_patch.
   return true;
 }
 

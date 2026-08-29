@@ -192,6 +192,7 @@ export async function runModelToolLoop(
   let afterMutationReadOnlyNudges = 0;
   let awaitingReadOnlyMutationRetry = false;
   let readOnlyMutationRetryAttempts = 0;
+  let mutationBlockerAsked = false;
   let awaitingRejectedMutationRetry:
     | {
         allowTargetedDiscovery: boolean;
@@ -1040,6 +1041,20 @@ export async function runModelToolLoop(
       awaitingReadOnlyMutationRetry &&
       !attemptedMutatingTool
     ) {
+      if (mutationBlockerAsked) {
+        reasonCodes.push("unfulfilled_execute_exhausted");
+        return {
+          kind: "failed",
+          answer: answer || undefined,
+          extraReasons: [],
+          error: {
+            code: "no_mutation_performed",
+            message:
+              "The model continued reading after being told to apply the required workspace edit.",
+          },
+        };
+      }
+
       if (
         readOnlyMutationRetryAttempts <
           thresholds.maxReadOnlyMutationRetryAttempts &&
@@ -1055,6 +1070,20 @@ export async function runModelToolLoop(
         });
         warnings.push(
           "Model kept reading after the first-mutation nudge; granting another bounded chance before failing the run.",
+        );
+        continue;
+      }
+
+      if (budget.canStartModelCall()) {
+        mutationBlockerAsked = true;
+        reasonCodes.push("unfulfilled_execute_recovered");
+        messages.push({
+          role: "user",
+          content:
+            "Do not call any tools on this turn. Either call apply_patch/delete_file/move_file with a bounded change, or stop with a clear blocker explaining why no workspace edit can fix this (missing config, credentials, external API, or similar). Searching or reading again will fail the run.",
+        });
+        warnings.push(
+          "Read-only drift exhausted; requesting a mutation or an explicit blocker with no further discovery tools.",
         );
         continue;
       }
@@ -1164,6 +1193,7 @@ export async function runModelToolLoop(
       awaitingReadOnlyMutationRetry = false;
       readOnlyToolTurnsWithoutMutation = 0;
       readOnlyMutationRetryAttempts = 0;
+      mutationBlockerAsked = false;
       if (succeededMutatingTool) {
         readOnlyToolTurnsAfterMutation = 0;
         resetLoopFileReadTracker(loopFileReads);

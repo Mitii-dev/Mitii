@@ -198,6 +198,7 @@ export {
   requiresMutationForExecute,
   buildUnfulfilledExecuteRecoveryMessage,
 } from "./resolveLoopTurnOutcome";
+export { isClearMutationBlocker } from "./isClearMutationBlocker";
 export {
   shouldContinueVerificationRepair,
   maxVerificationRepairsForDepth,

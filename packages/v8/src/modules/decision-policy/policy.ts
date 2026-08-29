@@ -5,6 +5,11 @@
 export const DECISION_POLICY_THRESHOLDS = {
   /** Below this intent confidence, material ambiguity tends toward clarification. */
   lowIntentConfidence: 0.45,
+  /**
+   * When understanding already set needsClarification, still ask if confidence
+   * is below this (covers investigate-vs-fix forks around ~0.6).
+   */
+  clarifyWhenFlaggedBelowConfidence: 0.75,
   /** Above this margin, competing intents are treated as clear enough to proceed. */
   minimumIntentMargin: 0.12,
   /** Estimated file count above which multi-file work gets an internal plan. */

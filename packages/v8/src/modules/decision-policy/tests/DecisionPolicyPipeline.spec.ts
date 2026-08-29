@@ -668,6 +668,50 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.reasonCodes).toContain("process_execution_granted");
   });
 
+  it("routes pasted console runtime dumps without a fix ask to diagnose", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message:
+          "main.5773c013a841b85b4e93.js:97 Please, specify correct config params:  \nObject\nIs\t@\tmain.5773c013a841b85b4e93.js:97",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "bugfix",
+          interactionIntent: "act",
+          taskAnalysis: {
+            scope: "multi_file",
+            complexity: "moderate",
+            risk: "low",
+            clarity: "clear",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("diagnose");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
+    expect(decision.toolGrant.allowedTools).not.toContain("apply_patch");
+    expect(decision.reasonCodes).toContain("diagnosis_readonly");
+    expect(decision.reasonCodes).not.toContain("mutation_execute");
+  });
+
+  it("still executes when a console dump is paired with an explicit fix ask", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message:
+          "main.5773c013a841b85b4e93.js:97 Please, specify correct config params\nObject\nPlease fix this error",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "bugfix",
+          interactionIntent: "act",
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.reasonCodes).toContain("mutation_execute");
+  });
+
   it("still routes agent how-to implement questions to repository_answer", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({
@@ -888,6 +932,65 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.route).toBe("execute");
     expect(decision.runDisposition).toBe("continue");
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+  });
+
+  it("clarifies investigate-vs-fix forks even when the message looks actionable", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message:
+          "Shouws loading... I am running did npx server Can you look into this?",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "diagnose",
+          interactionIntent: "act",
+          confidence: 0.6,
+          confidenceMargin: 0.05,
+          needsClarification: true,
+          recommendsClarification: true,
+          alternatives: [
+            { intent: "diagnose", confidence: 0.55 },
+            { intent: "bugfix", confidence: 0.5 },
+          ],
+          ambiguityQuestion:
+            "Should I investigate the loading hang, or apply a fix?",
+          taskAnalysis: {
+            clarity: "unclear",
+            recommendsTaskClarification: true,
+            scope: "unknown",
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("clarify");
+    expect(decision.runDisposition).toBe("clarification_required");
+    expect(decision.reasonCodes).toContain("clarification_material");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("none");
+  });
+
+  it("diagnoses agent loading/server symptoms instead of tool-less direct_answer", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "Shouws loading... I am running did npx server",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          confidence: 0.7,
+          taskAnalysis: {
+            clarity: "unclear",
+            scope: "unknown",
+            recommendsRepositoryDiscovery: false,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("diagnose");
+    expect(decision.runDisposition).toBe("continue");
+    expect(decision.reasonCodes).toContain("workspace_symptom_diagnose");
+    expect(decision.toolGrant.maximumWorkspaceEffect).not.toBe("none");
+    expect(decision.toolGrant.allowedTools).toContain("read_file");
   });
 
   it("routes agent past-tense follow-ups about prior work to repository_answer", () => {
@@ -1125,6 +1228,35 @@ describe("DecisionPolicyPipeline", () => {
       true,
     );
     expect(narrowed.trace?.mutationProfile).toBe("tight");
+  });
+
+  it("keeps host never approval when residual risk is elevated", () => {
+    const pipeline = new DecisionPolicyPipeline();
+    const decision = pipeline.decide(
+      createInput({
+        mode: "agent",
+        message: "Fix src/parser/parse.ts",
+        approvalMode: "never",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "bugfix",
+          interactionIntent: "act",
+          taskAnalysis: {
+            risk: "low",
+            targets: [
+              { kind: "file", value: "src/parser/parse.ts", explicit: true },
+            ],
+          },
+        }),
+      }),
+    );
+
+    expect(decision.toolGrant.approvalMode).toBe("never");
+    const narrowed = pipeline.narrow({
+      previous: decision,
+      discoveredPaths: ["src/parser/parse.ts"],
+      residualRisk: "high",
+    });
+    expect(narrowed.toolGrant.approvalMode).toBe("never");
   });
 
   it("routes agent run-tests asks to diagnose with process tools", () => {

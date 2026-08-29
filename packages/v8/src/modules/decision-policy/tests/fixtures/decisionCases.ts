@@ -46,6 +46,8 @@ export function createUnderstanding(
     needsClarification?: boolean;
     recommendsClarification?: boolean;
     status?: RequestUnderstandingResult["intent"]["status"];
+    alternatives?: RequestUnderstandingResult["intent"]["classification"]["alternatives"];
+    ambiguityQuestion?: string;
     taskAnalysis?: Partial<RequestUnderstandingResult["taskAnalysis"]>;
   } = {},
 ): RequestUnderstandingResult {
@@ -61,9 +63,16 @@ export function createUnderstanding(
         primaryTaskIntent: primary,
         secondaryTaskIntents: [],
         confidence: overrides.confidence ?? 0.9,
-        alternatives: [],
+        alternatives: overrides.alternatives ?? [],
         needsClarification: overrides.needsClarification ?? false,
         reason: "Fixture classification.",
+        ...(overrides.ambiguityQuestion
+          ? {
+              taskHints: {
+                ambiguityQuestion: overrides.ambiguityQuestion,
+              },
+            }
+          : {}),
       },
       scores: [
         {

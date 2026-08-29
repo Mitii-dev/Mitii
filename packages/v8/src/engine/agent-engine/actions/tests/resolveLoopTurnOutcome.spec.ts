@@ -91,4 +91,35 @@ describe("resolveLoopTurnOutcome", () => {
     expect(content.length).toBeGreaterThan(2_000);
     expect(isDegenerateRepeatedAnswer(content)).toBe(true);
   });
+
+  it("treats a clear mutation blocker as a fulfilled text-only stop", () => {
+    const blocker =
+      "Blocker: cannot fix this with a workspace edit. Stripo.init requires API credentials and config params that are not in this repository.";
+    expect(
+      isUnfulfilledExecute({
+        route: "execute",
+        maximumWorkspaceEffect: "write",
+        primaryTaskIntent: "bugfix",
+        toolCallCount: 0,
+        changedFileCount: 0,
+        content: blocker,
+      }),
+    ).toBe(false);
+
+    const outcome = resolveLoopTurnOutcome({
+      route: "execute",
+      maximumWorkspaceEffect: "write",
+      primaryTaskIntent: "bugfix",
+      toolCallCount: 0,
+      changedFileCount: 0,
+      content: blocker,
+      recoveries: {
+        truncation: 0,
+        incompleteAnswer: 0,
+        unfulfilledExecute: 0,
+      },
+    });
+    expect(outcome.disposition).toBe("complete_answer");
+    expect(outcome.reasonCode).toBe("answer_produced");
+  });
 });

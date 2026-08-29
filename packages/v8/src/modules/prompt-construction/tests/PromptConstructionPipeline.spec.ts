@@ -350,4 +350,65 @@ describe("PromptConstructionPipeline", () => {
     expect(result.reasonCodes).toContain("within_provider_limits");
     expect(result.status).not.toBe("blocked");
   });
+
+  it("truncates a huge pasted user request instead of blocking the prompt", () => {
+    const hugeConfig = JSON.stringify(
+      {
+        baseSourcePath: "http://localhost:3000",
+        helpLinks: Object.fromEntries(
+          Array.from({ length: 400 }, (_, index) => [
+            `key_${index}`,
+            `https://example.com/help/${index}/${"x".repeat(60)}`,
+          ]),
+        ),
+        youtubeApiKey: "AIzaSyC5LyOtxFHTATPLJuzNFjKfp68BOkvcbrs",
+        projectId: "1",
+      },
+      null,
+      2,
+    );
+    const ask = "Please, specify correct config params:";
+    const userMessage = `${hugeConfig}\n\n${ask}`;
+    expect(userMessage.length).toBeGreaterThan(30_000);
+
+    const longHistory = Array.from({ length: 12 }, (_, index) => ({
+      role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
+      content: `Prior turn ${index}: ${"context ".repeat(80)}`,
+    }));
+
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        userMessage,
+        conversation: longHistory,
+        capabilities: createCapabilities({
+          contextWindowTokens: 8_192,
+          maximumOutputTokens: 2_048,
+        }),
+        repositoryContext: {
+          stateToken: "st_prompt_1",
+          blocks: [
+            {
+              id: "block_1",
+              relativePath: "index.html",
+              content: "<html><body>Loading...</body></html>",
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(result.status).not.toBe("blocked");
+    expect(result.budget.withinLimits).toBe(true);
+    expect(result.reasonCodes).toContain("user_request_truncated");
+    expect(result.reasonCodes).toContain("within_provider_limits");
+    expect(result.reasonCodes).not.toContain("blocked_required_overflow");
+
+    const userContent =
+      [...result.request.messages]
+        .reverse()
+        .find((message) => message.role === "user")?.content ?? "";
+    expect(userContent).toContain(ask);
+    expect(userContent).toContain("…[truncated for context budget]");
+    expect(userContent.length).toBeLessThan(userMessage.length);
+  });
 });

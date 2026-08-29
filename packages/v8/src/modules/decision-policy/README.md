@@ -41,6 +41,8 @@ decision-policy/
 
 - Ask and plan modes cannot receive write grants.
 - Agent (and ask) "run the tests / can you test" requests route to `diagnose` with `run_readonly_command`. Implement/fix phrasing still wins over a mention of running tests.
+- Agent clarify gate: clear "implement/fix …" asks still execute when understanding only has soft ambiguity. Material forks (diagnose vs mutation alternatives, investigate-vs-fix ambiguity questions, or `needsClarification` with confidence below 0.75) route to `clarify` instead of guessing.
+- Soft workspace symptoms (stuck loading / hang with server or localhost) route to `diagnose` in Agent mode — never tool-less `direct_answer`.
 - Injection scanning never broadens authority.
 - `narrow()` may reduce write scope or tighten approval/budgets after discovery; it cannot add authority. Workspace-wide read (`pathScopes: ["."]`) is preserved so config files stay readable.
 - `widen()` may add path/mutation scopes after `path_out_of_scope` or compiler errors; it cannot add tools, effects, or write authority that was not already granted.

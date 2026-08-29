@@ -5,6 +5,7 @@ import {
   MAX_APPLY_PATCH_PATCHES,
 } from "../defaults";
 import type { ToolReasonCode } from "../contracts";
+import { normalizeApplyPatchArguments } from "../internal/normalizeApplyPatchArguments";
 
 export class MutationBatchValidationError extends Error {
   public readonly reasonCode: ToolReasonCode;
@@ -86,15 +87,16 @@ function resolveBudget(grant: ToolGrant): MutationBudget {
 function extractPatches(
   argumentsValue: unknown,
 ): Array<{ path?: unknown; oldText?: unknown; newText?: unknown }> | null {
+  const normalized = normalizeApplyPatchArguments(argumentsValue);
   if (
-    !argumentsValue ||
-    typeof argumentsValue !== "object" ||
-    !("patches" in argumentsValue) ||
-    !Array.isArray((argumentsValue as { patches: unknown }).patches)
+    !normalized ||
+    typeof normalized !== "object" ||
+    !("patches" in normalized) ||
+    !Array.isArray((normalized as { patches: unknown }).patches)
   ) {
     return null;
   }
-  return (argumentsValue as {
+  return (normalized as {
     patches: Array<{ path?: unknown; oldText?: unknown; newText?: unknown }>;
   }).patches;
 }

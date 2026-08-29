@@ -86,6 +86,18 @@ export function resolveRoute(params: {
     };
   }
 
+  // Pasted console/runtime dumps without an explicit fix/implement ask should
+  // diagnose first. Otherwise understanding often labels them bugfix+act and
+  // the execute loop fails with no_mutation_performed after endless searching.
+  if (looksLikePastedRuntimeErrorDump(message)) {
+    reasonCodes.push("diagnosis_readonly");
+    return {
+      route: "diagnose",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
   // Mutation must win over question-shaped phrasing ("Can you implement…?")
   // and over "run tests" mentions that are part of a feature request.
   // Previously interactionIntent=question short-circuited to repository_answer
@@ -120,6 +132,19 @@ export function resolveRoute(params: {
     reasonCodes.push("workspace_bug_execute");
     return {
       route: "execute",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
+  // Agent mode must not collapse workspace symptoms into tool-less chat.
+  // Prefer read-only diagnosis over direct_answer when the user reports
+  // loading/hang/server issues without an explicit "fix it".
+  if (looksLikeWorkspaceRuntimeSymptom(message)) {
+    reasonCodes.push("workspace_symptom_diagnose");
+    reasonCodes.push("diagnosis_readonly");
+    return {
+      route: "diagnose",
       runDisposition: "continue",
       reasonCodes,
     };
@@ -244,21 +269,24 @@ function requiresClarification(
     return false;
   }
 
-  // Agent mode: clear actionable mutation asks should execute even when
-  // understanding marks soft ambiguity (avoids stalling "implement X" work).
-  if (
-    mode === "agent" &&
-    looksLikeAgentMutationRequest(message) &&
-    !isBareAmbiguousMutationAsk(message)
-  ) {
-    return false;
-  }
-
   if (looksLikeAgentVerificationRequest(message)) {
     return false;
   }
 
   const { intent, taskAnalysis } = understanding;
+  const materialFork = isMaterialCapabilityFork(understanding);
+
+  // Agent mode: clear actionable mutation asks should execute even when
+  // understanding marks soft ambiguity (avoids stalling "implement X" work).
+  // Do NOT skip when alternatives fork read vs write (investigate vs fix).
+  if (
+    mode === "agent" &&
+    looksLikeAgentMutationRequest(message) &&
+    !isBareAmbiguousMutationAsk(message) &&
+    !materialFork
+  ) {
+    return false;
+  }
 
   if (intent.status === "clarification_required") {
     return true;
@@ -289,6 +317,60 @@ function requiresClarification(
     taskAnalysis.clarity === "unclear" &&
     intent.confidenceMargin < DECISION_POLICY_THRESHOLDS.minimumIntentMargin &&
     intent.classification.alternatives.length > 0
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Clarify when the fork changes what the agent is allowed to do (read vs write)
+ * or confidence is too low to guess. Clear "implement X" asks with soft
+ * ambiguity flags are not material forks.
+ */
+function isMaterialCapabilityFork(
+  understanding: RequestUnderstandingResult,
+): boolean {
+  const { intent } = understanding;
+  const classification = intent.classification;
+  const flagged =
+    intent.status === "clarification_required" ||
+    intent.recommendsClarification ||
+    classification.needsClarification;
+  if (!flagged) {
+    return false;
+  }
+
+  const intents = new Set<string>([
+    classification.primaryTaskIntent,
+    ...classification.alternatives.map((alternative) => alternative.intent),
+  ]);
+  const hasDiagnoseSide = [...intents].some(
+    (value) => isDiagnosisIntent(value) || value === "question",
+  );
+  const hasMutateSide = [...intents].some((value) => isMutationIntent(value));
+  if (hasDiagnoseSide && hasMutateSide) {
+    return true;
+  }
+
+  const ambiguityQuestion =
+    classification.taskHints?.ambiguityQuestion?.trim() ?? "";
+  if (
+    ambiguityQuestion.length > 0 &&
+    /\b(?:investigate|diagnos(?:e|is)|look\s+into|explain)\b/i.test(
+      ambiguityQuestion,
+    ) &&
+    /\b(?:fix|implement|patch|change|edit)\b/i.test(ambiguityQuestion)
+  ) {
+    return true;
+  }
+
+  // Medium/low confidence with an explicit clarify flag — ask instead of
+  // collapsing to a tool-less answer or a guessed write grant.
+  if (
+    classification.confidence <
+      DECISION_POLICY_THRESHOLDS.clarifyWhenFlaggedBelowConfidence
   ) {
     return true;
   }
@@ -446,6 +528,76 @@ function looksLikeAgentMutationRequest(message: string): boolean {
       text,
     )
   );
+}
+
+/**
+ * Soft runtime symptoms (stuck loading, hang after starting a server) that
+ * are not strong enough for workspace_bug_execute, but must not become
+ * tool-less direct_answer in Agent mode.
+ */
+function looksLikeWorkspaceRuntimeSymptom(message: string): boolean {
+  if (looksLikeAgentMutationRequest(message) || isExplicitPlanRequest(message)) {
+    return false;
+  }
+
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (text.length < 8) {
+    return false;
+  }
+
+  const hasSymptom =
+    /\b(?:loading\.{0,3}|spinner|hang(?:s|ing)?|stuck|blank\s+page|splash|never\s+(?:finishes|loads|renders)|keeps?\s+loading)\b/i.test(
+      text,
+    ) ||
+    /\b(?:not\s+loading|won'?t\s+load|doesn'?t\s+load|fail(?:s|ed)?\s+to\s+load)\b/i.test(
+      text,
+    );
+
+  if (!hasSymptom) {
+    return false;
+  }
+
+  const hasWorkspaceAnchor =
+    /\b(?:server|localhost|npx|http|https|page|ui|app|browser|preview|vite|next|webpack|dev\s*server)\b/i.test(
+      text,
+    ) ||
+    /\bhttps?:\/\/localhost(?::\d+)?\//i.test(text);
+
+  return hasWorkspaceAnchor;
+}
+
+/**
+ * Chrome/Node-style console dumps pasted without "please fix". These need
+ * diagnosis (and often config guidance), not a forced write grant.
+ */
+function looksLikePastedRuntimeErrorDump(message: string): boolean {
+  if (looksLikeAgentMutationRequest(message) || isExplicitPlanRequest(message)) {
+    return false;
+  }
+
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (text.length < 12) {
+    return false;
+  }
+
+  const hasFileLine =
+    /\b[\w./@+-]+\.(?:js|jsx|ts|tsx|mjs|cjs|vue|svelte|css):\d+(?::\d+)?\b/i.test(
+      text,
+    );
+  if (!hasFileLine) {
+    return false;
+  }
+
+  const hasStackFrame =
+    /\t@\t/.test(text) ||
+    /\n\s+at\s+\S+/.test(text) ||
+    /\bIs\t@\t/.test(text) ||
+    /\b@\s+[\w./+-]+\.(?:js|jsx|ts|tsx|mjs|cjs):\d+/i.test(text);
+  const hasConsoleObjectDump = /\bObject\b/.test(text);
+  const multiLine = text.split(/\n/).filter((line) => line.trim().length > 0)
+    .length >= 2;
+
+  return hasStackFrame || hasConsoleObjectDump || multiLine;
 }
 
 /**

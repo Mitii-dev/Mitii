@@ -47,6 +47,7 @@ export const PROMPT_REASON_CODES = [
   "repository_not_required",
   "repository_wrapped_untrusted",
   "conversation_compacted",
+  "user_request_truncated",
   "blocked_required_overflow",
 ] as const;
 

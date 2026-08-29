@@ -374,6 +374,7 @@ function resolveRoutePriorityStep(
     "verification_run_requested",
     "mutation_execute",
     "workspace_bug_execute",
+    "workspace_symptom_diagnose",
     "repository_grounded_answer",
     "direct_knowledge_answer",
   ];
@@ -434,7 +435,14 @@ function narrowToolGrant(params: {
     ...previous,
     pathScopes: narrowedReadScopes,
     mutationPathScopes,
-    approvalMode: highRisk ? "every_mutation" : previous.approvalMode,
+    // Host "never" (Full access / guided auto-approve) must survive residual
+    // risk elevation; otherwise apply_patch keeps demanding approval.
+    approvalMode:
+      previous.approvalMode === "never"
+        ? "never"
+        : highRisk
+          ? "every_mutation"
+          : previous.approvalMode,
     mutationBudget:
       highRisk && previous.mutationBudget
         ? tightenMutationBudget(previous.mutationBudget)

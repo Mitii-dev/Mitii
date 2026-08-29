@@ -13,6 +13,7 @@ Prompt Construction builds the provider-neutral `ModelRequest` that is sent thro
 - Injects selected skill and memory instruction blocks.
 - Includes optional approved plan text.
 - Adds filtered tool definitions.
+- Write-critical tools (`apply_patch`, delete/move, `run_command`, `update_todos`) pack first and are never dropped for tools-section budget when the grant already allows them. "Allowed tools:" prose is rewritten to match the schemas actually attached.
 - Reports budget, provenance, omissions, warnings, and reason codes.
 
 ## Structure
@@ -54,8 +55,10 @@ prompt-construction/
 - For example, a 30k context window with a 12k prompt and a 6k planning
   reserve resolves to `floor((30k - 12k) * 0.95)` = 17.1k output tokens,
   not the 6k reserve. A 10k-free turn can write about 10k tokens.
-- If the assembled prompt consumes more than the planned input budget, output is
-  reduced to fit the remaining context window instead of forcing a truncation.
+- If the assembled prompt would exceed the planned input budget, the current
+  user request is truncated (keeping both ends) and conversation history is
+  compacted first so large pastes do not block the run. Blocking remains only
+  when required system/tool sections alone cannot fit.
 - Sections can be omitted or truncated with explicit reason codes.
 - Tool definitions are supplied after Agent Engine filters them by grant.
 

@@ -99,6 +99,50 @@ describe("filesystem mutation tools", () => {
     expect(result.warnings.join(" ")).toContain("patches.0.newText");
   });
 
+  it("accepts flat path/oldText/newText by wrapping into patches[]", async () => {
+    const { fs, runtime } = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "p-flat",
+      toolName: "apply_patch",
+      arguments: {
+        path: "src/a.ts",
+        oldText: "const x = 1;\n",
+        newText: "const x = 2;\n",
+      },
+      grant: createWriteGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("succeeded");
+    expect((await fs.readFile(`${WORKSPACE}/src/a.ts`)).content).toBe(
+      "const x = 2;\n",
+    );
+  });
+
+  it("accepts stringified patches arrays from mis-encoded model calls", async () => {
+    const { fs, runtime } = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "p-string-patches",
+      toolName: "apply_patch",
+      arguments: {
+        patches: JSON.stringify([
+          {
+            path: "src/a.ts",
+            oldText: "const x = 1;\n",
+            newText: "const x = 3;\n",
+          },
+        ]),
+      },
+      grant: createWriteGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("succeeded");
+    expect((await fs.readFile(`${WORKSPACE}/src/a.ts`)).content).toBe(
+      "const x = 3;\n",
+    );
+  });
+
   it("deletes a file and rolls it back", async () => {
     const { fs, runtime } = createRuntime();
 

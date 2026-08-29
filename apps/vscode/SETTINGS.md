@@ -78,7 +78,7 @@ Each mode has its own row. Switching the Ask / Plan / Agent control edits that m
 | UI field | Setting | Save / reflect |
 |---|---|---|
 | Thoroughness | `mitii.ui.modeDefaults.<mode>.thoroughness` | Per mode. `low` / `medium` / `high`. Also in the chat composer. Maps to exploration depth + working-set effort unless Developer intensity overrides are on. |
-| Approval mode | `mitii.ui.modeDefaults.<mode>.approvalMode` | `safe` (ask) / `guided` (approve for me) / `pilot` (full access). |
+| Approval mode | `mitii.ui.modeDefaults.<mode>.approvalMode` | `safe` (ask) / `guided` (approve for me) / `pilot` (full access). Composer changes also update the active mode default and `mitii.safety.approvalMode` immediately so Save cannot restore Agent’s default `safe`. |
 | Default model | `mitii.ui.modeDefaults.<mode>.model` | Empty = use the active Provider model. |
 | Show reasoning stream | `mitii.ui.showReasoning` | Global, not per mode. |
 | Reasoning preview chars | `mitii.ui.reasoningPreviewMaxChars` | 500–50000. Reflected as the saved integer. |

@@ -23,6 +23,7 @@ import {
   settingsIconTooltip,
   shouldPostWebviewReady,
   tokenLimitDraftAfterHostEcho,
+  withActiveModeApproval,
 } from '../src/settingsFields';
 import {
   defaultTokenBudgetSettings,
@@ -360,6 +361,20 @@ describe('modes fields', () => {
       model: 'qwen3.5:9b',
     });
     expect(reflected.modeDefaults.plan.model).toBe('qwen3-coder:30b');
+    expect(reflected.modeDefaults.agent.approvalMode).toBe('pilot');
+  });
+
+  it('syncs composer Full access into the active mode default before save', () => {
+    const synced = withActiveModeApproval({
+      ui: BASE_UI,
+      mode: 'agent',
+      approvalMode: 'pilot',
+    });
+    expect(synced.approvalMode).toBe('pilot');
+    expect(synced.modeDefaults.agent.approvalMode).toBe('pilot');
+    // Other modes stay untouched.
+    expect(synced.modeDefaults.ask.approvalMode).toBe('guided');
+    const reflected = reflectUiAfterSave(synced);
     expect(reflected.modeDefaults.agent.approvalMode).toBe('pilot');
   });
 

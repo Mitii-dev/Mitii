@@ -36,10 +36,26 @@ export function coerceArgumentsToSchema(
   }
 
   if (unwrapped instanceof z.ZodArray) {
-    if (!Array.isArray(value)) {
+    let arrayValue = value;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed.length === 0) {
+        return value;
+      }
+      try {
+        const parsed: unknown = JSON.parse(trimmed);
+        if (!Array.isArray(parsed)) {
+          return value;
+        }
+        arrayValue = parsed;
+      } catch {
+        return value;
+      }
+    }
+    if (!Array.isArray(arrayValue)) {
       return value;
     }
-    return value.map((item) =>
+    return arrayValue.map((item) =>
       coerceArgumentsToSchema(item, unwrapped.element),
     );
   }

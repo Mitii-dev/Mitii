@@ -31,6 +31,7 @@ import {
   normalizeApproval,
   type ApprovalUiMode,
 } from './components/ComposerControls';
+import { approvalModeUiPatch } from './approvalPresets';
 import { OnboardingPanel } from './components/OnboardingPanel';
 import { PendingPlanBanner } from './components/PendingPlanBanner';
 import { PlanFollowStrip } from './components/PlanPanel';
@@ -1312,7 +1313,14 @@ export function App() {
   };
 
   const changeApprovalMode = (next: ApprovalUiMode) => {
-    setApprovalMode(next);
+    const patch = approvalModeUiPatch({ mode, approvalMode: next });
+    updateUiDraft(patch);
+    postToHost({
+      type: 'settings.set',
+      ui: patch,
+      approvalMode: patch.approvalMode,
+    });
+    setApprovalMode(patch.approvalMode);
   };
 
   const changeMode = (next: AgentUiMode) => {
@@ -1427,7 +1435,12 @@ export function App() {
 
   const saveAllSettings = () => {
     (document.activeElement as HTMLElement | null)?.blur?.();
-    const latestUi = uiRef.current;
+    const latestUi = mergeUiPatch(
+      uiRef.current,
+      approvalModeUiPatch({ mode, approvalMode }),
+    );
+    uiRef.current = latestUi;
+    setUi(latestUi);
     const profile = activeProfile ?? {
       id: activeProfileId || 'default',
       name: 'Default',
@@ -1438,10 +1451,7 @@ export function App() {
     postToHost({
       type: 'settings.set',
       provider: snapshotProvider(),
-      ui: {
-        ...latestUi,
-        approvalMode,
-      },
+      ui: latestUi,
       workspaceRootOverride: overrideDraft.trim() || null,
       mcp,
       approvalMode,

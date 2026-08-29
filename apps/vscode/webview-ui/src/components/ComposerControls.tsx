@@ -6,6 +6,10 @@ import type {
 } from '../protocol';
 import { MODE_COLORS } from '../modeColors';
 import {
+  normalizeApproval,
+  type ApprovalUiMode,
+} from '../approvalPresets';
+import {
   IconAsk,
   IconAgent,
   IconApproveForMe,
@@ -20,12 +24,8 @@ import {
   IconReview,
 } from './Icons';
 
-export type ApprovalUiMode = 'safe' | 'guided' | 'pilot';
-
-function normalizeApproval(value: string): ApprovalUiMode {
-  if (value === 'safe' || value === 'pilot') return value;
-  return 'guided';
-}
+export type { ApprovalUiMode };
+export { normalizeApproval };
 
 interface ComposerOption<T extends string> {
   id: T;
@@ -368,5 +368,3 @@ export function ComposerControls({
     </div>
   );
 }
-
-export { normalizeApproval };
