@@ -50,6 +50,11 @@ for (const name of packages) {
   }
   if ((result.status ?? 1) !== 0) {
     console.error(`Failed to publish ${name}`);
+    if (hasToken) {
+      console.error(
+        'If npm reported EOTP in CI, replace NPM_TOKEN with a granular token that has bypass 2FA enabled, or configure npm trusted publishing for this workflow.',
+      );
+    }
     process.exit(result.status ?? 1);
   }
 }

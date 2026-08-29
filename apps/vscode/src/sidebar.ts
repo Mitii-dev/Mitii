@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type * as vscode from 'vscode';
@@ -884,6 +885,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         await this.handleReviewFileChange(message.runId, message.path);
         return;
       }
+      case 'reviewWorkspaceFile': {
+        await this.handleReviewWorkspaceFile(message.path);
+        return;
+      }
       case 'dismissFileChanges': {
         this.fileChangeSnapshots.delete(message.runId);
         return;
@@ -993,6 +998,33 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       before ?? '',
       after,
     );
+  }
+
+  private async handleReviewWorkspaceFile(path: string): Promise<void> {
+    const root = this.effectiveRoot();
+    if (!root) return;
+    const normalized = path.replace(/\\/g, '/').replace(/^\.\//, '');
+    const currentPath = normalized.includes(' -> ')
+      ? normalized.split(' -> ').pop()!.trim()
+      : normalized;
+    const abs = join(root, currentPath);
+    let before = '';
+    let after = '';
+    try {
+      before = execFileSync('git', ['show', `HEAD:${currentPath}`], {
+        cwd: root,
+        encoding: 'utf8',
+        maxBuffer: 20 * 1024 * 1024,
+      });
+    } catch {
+      before = '';
+    }
+    try {
+      after = existsSync(abs) ? readFileSync(abs, 'utf8') : '';
+    } catch {
+      after = '';
+    }
+    await showPatchDiffPreview(this.vs, root, currentPath, before, after);
   }
 
   private async showInlineDiffForApproval(approvalId: string): Promise<void> {
@@ -2144,7 +2176,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       const root = this.effectiveRoot();
       const secret = await this.secrets.get('mitii.provider.apiKey');
       const currentProvider = await this.readProvider();
-      const profilesFile = readProfiles(root, currentProvider, hashSecret(secret));
+      const profilesFile = readProfiles(
+        root,
+        currentProvider,
+        hashSecret(secret),
+        this.readUi(),
+      );
+      const currentUi = this.readUi();
       const savedProfile: SettingsProfileView = {
         ...message.profile,
         provider: {
@@ -2161,6 +2199,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
             message.profile.provider.maximumOutputTokens,
         },
         hasSecret: Boolean(secret),
+        ui: currentUi,
         secretHash: hashSecret(secret),
       };
       writeProfiles(root, upsertProfile(profilesFile, savedProfile));
@@ -2235,12 +2274,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
 
   private async handleProfileSwitch(id: string): Promise<void> {
     const currentProvider = await this.readProvider();
+    const currentUi = this.readUi();
     const secret = await this.secrets.get('mitii.provider.apiKey');
     const secretHash = hashSecret(secret);
     let profilesFile = readProfiles(
       this.effectiveRoot(),
       currentProvider,
       secretHash,
+      currentUi,
     );
     if (profilesFile.activeProfileId === id) {
       await this.sendBootstrap();
@@ -2261,14 +2302,24 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           id: outgoing.id,
           name: outgoing.name,
           secretHash,
+          ui: currentUi,
         }),
       );
     }
-    await this.writeProviderSettings(profile.provider);
     writeProfiles(this.effectiveRoot(), {
       activeProfileId: profile.id,
       profiles: profilesFile.profiles,
     });
+    if (profile.ui) {
+      await this.handleSettingsSet({
+        type: 'settings.set',
+        provider: profile.provider,
+        ui: profile.ui,
+        approvalMode: profile.ui.approvalMode,
+      });
+      return;
+    }
+    await this.writeProviderSettings(profile.provider);
     await this.sendBootstrap();
   }
 
@@ -2826,8 +2877,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       );
     }
     const provider = await this.readProvider();
+    const ui = this.readUi();
     const secretHash = hashSecret(await this.secrets.get('mitii.provider.apiKey'));
-    const profilesFile = readProfiles(this.effectiveRoot(), provider, secretHash);
+    const profilesFile = readProfiles(
+      this.effectiveRoot(),
+      provider,
+      secretHash,
+      ui,
+    );
     this.post({
       type: 'bootstrap',
       workspace: this.readWorkspace(),
@@ -2838,7 +2895,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       mcp: readMcpSettings(this.vs, this.effectiveRoot()),
       mcpRuntimeStatus: this.mcpRuntimeStatus(),
       mcpStore: readMcpStoreCatalog(this.effectiveRoot()),
-      ui: this.readUi(),
+      ui,
       tokenUsage: this.tokenUsage,
       notice: getWorkspaceTrustSnapshot(this.vs),
       onboardingRequired: !onboardingCompleted,

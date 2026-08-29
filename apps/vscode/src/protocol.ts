@@ -111,6 +111,7 @@ export interface SettingsProfileView {
     | 'maximumOutputTokens'
   >;
   hasSecret: boolean;
+  ui?: UiSettingsSnapshot;
   /** SHA-256 fingerprint only. Raw secrets stay out of settings and profiles. */
   secretHash?: string;
   updatedAt?: string;
@@ -619,6 +620,7 @@ export type WebviewToHostMessage =
   | { type: 'openFile'; path: string; line?: number; column?: number }
   | { type: 'undoFileChanges'; runId: string }
   | { type: 'reviewFileChange'; runId: string; path: string }
+  | { type: 'reviewWorkspaceFile'; path: string }
   | { type: 'dismissFileChanges'; runId: string }
   /** Drop the active thread's pending plan without starting a run. */
   | { type: 'clearPendingPlan' };

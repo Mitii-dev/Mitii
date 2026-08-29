@@ -1,5 +1,5 @@
 # Tag release: multi-platform VSIX + GitHub Release + Marketplace (+ Open VSX) + npm.
-# Requires secrets: NPM_TOKEN, VSCE_PAT. Optional: OVSX_PAT.
+# Requires secrets: VSCE_PAT. Optional: NPM_TOKEN, OVSX_PAT.
 name: Release
 
 on:
@@ -105,4 +105,7 @@ jobs:
 
   npm:
     uses: ./.github/workflows/npm-publish.yml
+    permissions:
+      contents: read
+      id-token: write
     secrets: inherit

@@ -75,6 +75,7 @@ interface MessageListProps {
   onReviewFileChange: (runId: string, path: string) => void;
   onReviewAllFileChanges: (changes: RunFileChangesView) => void;
   onDismissFileChanges: (runId: string) => void;
+  showWarnings?: boolean;
   containerRef: RefObject<HTMLDivElement>;
   onScroll: () => void;
   bottomRef: RefObject<HTMLDivElement>;
@@ -101,6 +102,7 @@ export function MessageList({
   onReviewFileChange,
   onReviewAllFileChanges,
   onDismissFileChanges,
+  showWarnings = false,
   containerRef,
   onScroll,
   bottomRef,
@@ -155,7 +157,7 @@ export function MessageList({
                   ) : null}
                 </div>
               ) : null}
-              {turn.warnings?.length ? (
+              {showWarnings && turn.warnings?.length ? (
                 <div className="run-warning-banner" role="alert">
                   <strong>Warning</strong>
                   <ul className="run-warning-banner__list">
@@ -166,7 +168,14 @@ export function MessageList({
                 </div>
               ) : null}
               {(() => {
-                const groups = groupSegments(turn.segments);
+                const visibleSegments = showWarnings
+                  ? turn.segments
+                  : turn.segments.filter(
+                      (segment) =>
+                        segment.kind !== 'activity' ||
+                        segment.event.kind !== 'warning',
+                    );
+                const groups = groupSegments(visibleSegments);
                 const lastIndex = groups.length - 1;
                 const lastGroup = groups[lastIndex];
                 const showLiveStatus =

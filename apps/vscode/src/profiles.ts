@@ -2,7 +2,11 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { ProviderSettingsSnapshot, SettingsProfileView } from './protocol.js';
+import type {
+  ProviderSettingsSnapshot,
+  SettingsProfileView,
+  UiSettingsSnapshot,
+} from './protocol.js';
 
 const PROFILES_FILE = 'profiles.json';
 const DEFAULT_PROFILE_ID = 'default';
@@ -46,7 +50,12 @@ export function hashSecret(value: string | undefined): string | undefined {
 
 export function profileFromProvider(
   provider: ProviderSettingsSnapshot,
-  options: { id?: string; name?: string; secretHash?: string } = {},
+  options: {
+    id?: string;
+    name?: string;
+    secretHash?: string;
+    ui?: UiSettingsSnapshot;
+  } = {},
 ): SettingsProfileView {
   const preset = provider.preset ?? provider.type;
   return {
@@ -61,6 +70,7 @@ export function profileFromProvider(
       maximumOutputTokens: provider.maximumOutputTokens,
     },
     hasSecret: provider.hasApiKey,
+    ...(options.ui ? { ui: options.ui } : {}),
     secretHash: options.secretHash,
     updatedAt: new Date().toISOString(),
   };
@@ -115,6 +125,10 @@ function normalizeProfile(
       ),
     },
     hasSecret: Boolean(obj.hasSecret),
+    ui:
+      obj.ui && typeof obj.ui === 'object'
+        ? (obj.ui as UiSettingsSnapshot)
+        : undefined,
     secretHash: typeof obj.secretHash === 'string' ? obj.secretHash : undefined,
     updatedAt:
       typeof obj.updatedAt === 'string'
@@ -127,11 +141,13 @@ export function readProfiles(
   workspaceRoot: string | undefined,
   fallbackProvider: ProviderSettingsSnapshot,
   secretHash?: string,
+  ui?: UiSettingsSnapshot,
 ): ProfilesFile {
   const fallbackProfile = profileFromProvider(fallbackProvider, {
     id: DEFAULT_PROFILE_ID,
     name: 'Default',
     secretHash,
+    ui,
   });
   if (!workspaceRoot) {
     return {
@@ -165,6 +181,7 @@ export function readProfiles(
       { activeProfileId, profiles },
       fallbackProvider,
       secretHash,
+      ui,
     );
   } catch {
     return {
@@ -178,6 +195,7 @@ export function reconcileActiveProfileWithProvider(
   profilesFile: ProfilesFile,
   provider: ProviderSettingsSnapshot,
   secretHash?: string,
+  ui?: UiSettingsSnapshot,
 ): ProfilesFile {
   return {
     activeProfileId: profilesFile.activeProfileId,
@@ -187,6 +205,7 @@ export function reconcileActiveProfileWithProvider(
             id: profile.id,
             name: profile.name,
             secretHash,
+            ui: ui ?? profile.ui,
           })
         : profile,
     ),

@@ -36,7 +36,7 @@ function thinkingPreview(detail: string | undefined): string {
     .split(/\r?\n/)
     .map((line) => line.trimEnd())
     .filter(Boolean)
-    .slice(-4)
+    .slice(-10)
     .join('\n');
 }
 

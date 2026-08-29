@@ -17,6 +17,8 @@ import {
   IconChat,
   IconCopy,
   IconHistory,
+  IconCheck,
+  IconModel,
   IconPlus,
   IconSend,
   IconSettings,
@@ -187,6 +189,55 @@ const DEFAULT_UI: UiSettingsSnapshot = {
 };
 
 type SettingsMode = 'ask' | 'plan' | 'agent';
+
+function hydrateUiSnapshot(
+  raw: Partial<UiSettingsSnapshot> | undefined,
+): UiSettingsSnapshot {
+  return {
+    ...DEFAULT_UI,
+    ...(raw ?? {}),
+    modeDefaults: {
+      ...DEFAULT_UI.modeDefaults,
+      ...(raw?.modeDefaults ?? {}),
+    },
+    contextToggles: {
+      ...DEFAULT_CONTEXT_TOGGLES,
+      ...(raw?.contextToggles ?? {}),
+    },
+    runBudget: {
+      ...DEFAULT_RUN_BUDGET,
+      ...(raw?.runBudget ?? {}),
+    },
+    tokenBudget: {
+      ...DEFAULT_TOKEN_BUDGET,
+      ...(raw?.tokenBudget ?? {}),
+      policy: {
+        ...DEFAULT_TOKEN_BUDGET.policy,
+        ...(raw?.tokenBudget?.policy ?? {}),
+      },
+      fields: raw?.tokenBudget?.fields?.length
+        ? raw.tokenBudget.fields
+        : DEFAULT_TOKEN_BUDGET.fields,
+      preview: raw?.tokenBudget?.preview ?? DEFAULT_TOKEN_BUDGET.preview,
+    },
+    loopPolicy: {
+      ...DEFAULT_LOOP_POLICY,
+      ...(raw?.loopPolicy ?? {}),
+      thresholds: {
+        ...DEFAULT_LOOP_POLICY.thresholds,
+        ...(raw?.loopPolicy?.thresholds ?? {}),
+      },
+      bandThresholds: {
+        ...DEFAULT_LOOP_POLICY.bandThresholds,
+        ...(raw?.loopPolicy?.bandThresholds ?? {}),
+      },
+      band: raw?.loopPolicy?.band ?? DEFAULT_LOOP_POLICY.band,
+      fields: raw?.loopPolicy?.fields?.length
+        ? raw.loopPolicy.fields
+        : DEFAULT_LOOP_POLICY.fields,
+    },
+  };
+}
 
 function settingsModeFor(mode: AgentUiMode): SettingsMode {
   return mode === 'plan' || mode === 'agent' ? mode : 'ask';
@@ -458,6 +509,116 @@ function mergeModelOptions(
   return [...set];
 }
 
+interface ModelQuickSelectProps {
+  label: string;
+  value: string;
+  custom: boolean;
+  options: string[];
+  onSelect: (value: string) => void;
+  onCustomMode: () => void;
+  onDraftChange: (value: string) => void;
+  onCommitCustom: () => void;
+}
+
+function ModelQuickSelect({
+  label,
+  value,
+  custom,
+  options,
+  onSelect,
+  onCustomMode,
+  onDraftChange,
+  onCommitCustom,
+}: ModelQuickSelectProps) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    const timer = window.setTimeout(() => {
+      window.addEventListener('pointerdown', onPointerDown);
+    }, 0);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="model-quick-select" ref={rootRef}>
+      <button
+        type="button"
+        className="model-quick-select__trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title={`Model: ${label}`}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <IconModel />
+        <span>{label}</span>
+      </button>
+      {open ? (
+        <div className="model-quick-select__menu" role="listbox" aria-label="Model">
+          {options.map((id) => {
+            const selected = !custom && id === value;
+            return (
+              <button
+                key={id}
+                type="button"
+                className={`model-quick-select__option${selected ? ' is-selected' : ''}`}
+                role="option"
+                aria-selected={selected}
+                onClick={() => {
+                  onSelect(id);
+                  setOpen(false);
+                }}
+              >
+                <span className="model-quick-select__option-text">{id}</span>
+                <span className="model-quick-select__check" aria-hidden>
+                  {selected ? <IconCheck /> : null}
+                </span>
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            className={`model-quick-select__option${custom ? ' is-selected' : ''}`}
+            role="option"
+            aria-selected={custom}
+            onClick={() => {
+              onCustomMode();
+              setOpen(false);
+            }}
+          >
+            <span className="model-quick-select__option-text">Custom model</span>
+            <span className="model-quick-select__check" aria-hidden>
+              {custom ? <IconCheck /> : null}
+            </span>
+          </button>
+        </div>
+      ) : null}
+      {custom ? (
+        <input
+          className="model-custom-input model-custom-input--inline"
+          value={value}
+          placeholder="model id"
+          onChange={(event) => onDraftChange(event.target.value)}
+          onBlur={onCommitCustom}
+          title="Custom model id"
+        />
+      ) : null}
+    </div>
+  );
+}
+
 export function App() {
   const [nav, setNav] = useState<UiNav>('chat');
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('model');
@@ -628,52 +789,7 @@ export function App() {
       setMcp(msg.mcp);
       setMcpStore(msg.mcpStore ?? []);
       setMcpRuntimeStatus(msg.mcpRuntimeStatus);
-      const nextUi = {
-        ...DEFAULT_UI,
-        ...msg.ui,
-        modeDefaults: {
-          ...DEFAULT_UI.modeDefaults,
-          ...msg.ui.modeDefaults,
-        },
-        contextToggles: {
-          ...DEFAULT_CONTEXT_TOGGLES,
-          ...msg.ui.contextToggles,
-        },
-        runBudget: {
-          ...DEFAULT_RUN_BUDGET,
-          ...msg.ui.runBudget,
-        },
-        tokenBudget: {
-          ...DEFAULT_TOKEN_BUDGET,
-          ...msg.ui.tokenBudget,
-          policy: {
-            ...DEFAULT_TOKEN_BUDGET.policy,
-            ...(msg.ui.tokenBudget?.policy ?? {}),
-          },
-          fields:
-            msg.ui.tokenBudget?.fields?.length
-              ? msg.ui.tokenBudget.fields
-              : DEFAULT_TOKEN_BUDGET.fields,
-          preview: msg.ui.tokenBudget?.preview ?? DEFAULT_TOKEN_BUDGET.preview,
-        },
-        loopPolicy: {
-          ...DEFAULT_LOOP_POLICY,
-          ...msg.ui.loopPolicy,
-          thresholds: {
-            ...DEFAULT_LOOP_POLICY.thresholds,
-            ...(msg.ui.loopPolicy?.thresholds ?? {}),
-          },
-          bandThresholds: {
-            ...DEFAULT_LOOP_POLICY.bandThresholds,
-            ...(msg.ui.loopPolicy?.bandThresholds ?? {}),
-          },
-          band: msg.ui.loopPolicy?.band ?? DEFAULT_LOOP_POLICY.band,
-          fields:
-            msg.ui.loopPolicy?.fields?.length
-              ? msg.ui.loopPolicy.fields
-              : DEFAULT_LOOP_POLICY.fields,
-        },
-      };
+      const nextUi = hydrateUiSnapshot(msg.ui);
       const previousUi = uiRef.current;
       uiRef.current = nextUi;
       setUi(nextUi);
@@ -1306,6 +1422,17 @@ export function App() {
     const before = providerRef.current;
     updateProvider(next);
     const after = providerRef.current;
+    if (after.model.trim() !== before.model.trim()) {
+      const nextUi = clearStaleModeModelDefaultsAfterProviderModelChange({
+        ui: uiRef.current,
+        previousProviderModel: before.model,
+        nextProviderModel: after.model,
+      });
+      if (nextUi !== uiRef.current) {
+        uiRef.current = nextUi;
+        setUi(nextUi);
+      }
+    }
     if (after.type !== before.type) {
       requestListedModels(after.type, after.baseUrl, true);
     } else if (after.baseUrl !== before.baseUrl) {
@@ -1400,6 +1527,7 @@ export function App() {
     setApprovalMode(normalizeApproval(defaults.approvalMode));
     const nextModel = defaults.model?.trim();
     if (nextModel) saveModel(nextModel, { clearStaleModeDefaults: false });
+    if (next === 'review') postToHost({ type: 'refreshReviewDiff' });
   };
 
   const changeThoroughness = (next: AgentUiThoroughness) => {
@@ -1468,6 +1596,22 @@ export function App() {
       hasApiKey: profile.hasSecret,
       availableModels: prev.availableModels,
     }));
+    if (profile.ui) {
+      const nextUi = hydrateUiSnapshot(profile.ui);
+      uiRef.current = nextUi;
+      setUi(nextUi);
+      const defaults = modeDefaultsFromUi(nextUi, modeRef.current);
+      const intensity = resolveRunIntensity({
+        intensityOverrides: nextUi.intensityOverrides === true,
+        thoroughness: defaults.thoroughness,
+        depth: defaults.depth,
+        effort: nextUi.effort,
+      });
+      setThoroughness(intensity.thoroughness);
+      setDepth(intensity.depth);
+      setEffort(intensity.effort);
+      setApprovalMode(normalizeApproval(defaults.approvalMode));
+    }
   };
 
   const switchProfile = (id: string) => {
@@ -1485,6 +1629,7 @@ export function App() {
       name: trimmed,
       provider: snapshotProvider(),
       hasSecret: provider.hasApiKey,
+      ui: uiRef.current,
     };
     setProfiles((prev) => [...prev, nextProfile]);
     applyProfileLocally(nextProfile);
@@ -1664,6 +1809,10 @@ export function App() {
             <ReviewPanel
               review={review}
               onRefresh={() => postToHost({ type: 'refreshReviewDiff' })}
+              onOpenFile={openFile}
+              onOpenDiff={(path) =>
+                postToHost({ type: 'reviewWorkspaceFile', path })
+              }
             />
             <div className="composer-dock">
               <ComposerControls
@@ -1742,6 +1891,7 @@ export function App() {
               onReviewFileChange={reviewFileChange}
               onReviewAllFileChanges={reviewAllFileChanges}
               onDismissFileChanges={dismissFileChanges}
+              showWarnings={ui.developerEnabled === true}
               containerRef={messagesRef}
               onScroll={onMessagesScroll}
               bottomRef={bottomRef}
@@ -1874,47 +2024,24 @@ export function App() {
                   <div className="composer-utility-row">
                     <div className="composer-left">
                       <TokenMeter usage={tokenUsage} placement="above" />
-                      <select
-                        className="composer-link-select composer-link-select--model"
-                        aria-label="Model"
-                        title={`Model: ${selectedModelLabel}`}
-                        value={
-                          selectedModelIsCustom ? '__custom__' : provider.model
-                        }
-                        onChange={(e) => {
-                          if (e.target.value === '__custom__') {
-                            setCustomModel(true);
-                            return;
-                          }
+                      <ModelQuickSelect
+                        label={selectedModelLabel}
+                        value={provider.model}
+                        custom={selectedModelIsCustom}
+                        options={modelOptions}
+                        onSelect={(model) => {
                           setCustomModel(false);
-                          saveModel(e.target.value);
+                          saveModel(model);
                         }}
-                      >
-                        {modelOptions.map((id) => (
-                          <option key={id} value={id}>
-                            {id}
-                          </option>
-                        ))}
-                        <option value="__custom__">Custom…</option>
-                      </select>
-                      {selectedModelIsCustom ? (
-                        <input
-                          className="model-custom-input model-custom-input--inline"
-                          value={provider.model}
-                          placeholder="model id"
-                          onChange={(e) =>
-                            updateProvider((p) => ({
-                              ...p,
-                              model: e.target.value,
-                            }))
-                          }
-                          onBlur={() => {
-                            const model = providerRef.current.model.trim();
-                            if (model) saveModel(model);
-                          }}
-                          title="Custom model id"
-                        />
-                      ) : null}
+                        onCustomMode={() => setCustomModel(true)}
+                        onDraftChange={(model) =>
+                          updateProvider((p) => ({ ...p, model }))
+                        }
+                        onCommitCustom={() => {
+                          const model = providerRef.current.model.trim();
+                          if (model) saveModel(model);
+                        }}
+                      />
                     </div>
                     <div className="composer-actions">
                       <IconButton
