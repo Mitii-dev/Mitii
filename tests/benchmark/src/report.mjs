@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { writeRunHtml, writeRunsIndex } from './html-report.mjs';
 
 export function createRunReporter(options = {}) {
   const runId = options.runId ?? new Date().toISOString().replaceAll(/[:.]/g, '-');
@@ -36,6 +37,7 @@ export function createRunReporter(options = {}) {
         live: true,
         completed: collected.filter(Boolean).length,
         total,
+        runId,
       });
       return { casePaths, summaryPaths, report: partial };
     },
@@ -47,13 +49,24 @@ export function createRunReporter(options = {}) {
         expectedByDifficulty: options.expectedByDifficulty,
         suite: options.suite,
       });
-      const summaryPaths = writeReport(report, join(runDir, 'summary.json'));
+      const summaryPaths = writeReport(report, join(runDir, 'summary.json'), { runId });
       if (options.latestPath) {
-        writeReport(report, options.latestPath);
+        writeReport(report, options.latestPath, { runId });
+      }
+      const reportRoot = dirname(runDir);
+      if (basenameSafe(reportRoot) === 'runs') {
+        writeRunsIndex(dirname(reportRoot));
+      } else {
+        writeRunsIndex(reportRoot);
       }
       return { report, summaryPaths, runDir };
     },
   };
+}
+
+function basenameSafe(path) {
+  const parts = path.replaceAll('\\', '/').split('/');
+  return parts[parts.length - 1] || '';
 }
 
 export function buildReport(results, config, startedAt, finishedAt, meta = {}) {
@@ -165,7 +178,19 @@ export function writeReport(report, path, liveMeta = null) {
   writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`);
   const markdownPath = path.replace(/\.json$/i, '.md');
   writeFileSync(markdownPath, renderSummaryMarkdown(report, liveMeta));
-  return { json: path, markdown: markdownPath };
+  const htmlPath = path.replace(/\.json$/i, '.html');
+  const live =
+    liveMeta?.live
+      ? { completed: liveMeta.completed, total: liveMeta.total }
+      : null;
+  writeRunHtml(report, htmlPath, {
+    runId: liveMeta?.runId,
+    live,
+    indexHref: /[/\\]runs[/\\][^/\\]+[/\\]summary\.html$/i.test(htmlPath)
+      ? '../../index.html'
+      : 'index.html',
+  });
+  return { json: path, markdown: markdownPath, html: htmlPath };
 }
 
 function renderCaseMarkdown(result) {
@@ -214,7 +239,7 @@ function renderSummaryMarkdown(report, liveMeta) {
     return `| ${difficulty} | ${item.passed}/${item.total} | ${(item.caseScore * 100).toFixed(1)}% | ${(item.familyScore * 100).toFixed(1)}% | ${gate} |`;
   });
   const live =
-    liveMeta != null
+    liveMeta?.live
       ? `\n_Live progress: ${liveMeta.completed}/${liveMeta.total} case reports written._\n`
       : '';
   const categoryRows = Object.entries(report.byCategory ?? {})

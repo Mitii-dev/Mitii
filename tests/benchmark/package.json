@@ -13,6 +13,8 @@
     "benchmark:backend": "node src/cli.mjs run --suite backend",
     "benchmark:cicd": "node src/cli.mjs run --suite cicd",
     "benchmark:testing": "node src/cli.mjs run --suite testing",
+    "view": "node src/cli.mjs view",
+    "view:open": "node src/cli.mjs view --open",
     "generate:frontend": "node scripts/write-frontend-core.mjs",
     "migrate:domains": "node scripts/migrate-to-domains.mjs",
     "fixtures:install": "node scripts/install-fixtures.mjs",

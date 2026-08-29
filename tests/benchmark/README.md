@@ -488,19 +488,31 @@ pnpm --filter @mitii/solid-benchmark benchmark -- \
 Reports are written **after every case**, then refreshed at the end.
 
 ```text
-tests/benchmark/reports/runs/<runId>/
-├── summary.json          # live + final aggregate (includes usageTotals)
-├── summary.md
-└── cases/
-    ├── <case-id>.json    # PASS/FAIL, checks, durationMs, usage, stderr slice
-    └── <case-id>.md
+tests/benchmark/reports/
+├── index.html            # Run Viewer: all runs
+└── runs/<runId>/
+    ├── summary.json      # live + final aggregate (includes usageTotals)
+    ├── summary.md
+    ├── summary.html      # Run Viewer for this run
+    └── cases/
+        ├── <case-id>.json
+        └── <case-id>.md
 ```
 
 Per-case markdown includes **Duration** and **Tokens / usage** (from the agent `end` event when the CLI provides `result.usage`).
 
+Open the HTML Run Viewer anytime:
+
+```bash
+pnpm --filter @mitii/solid-benchmark view -- --open
+# or one run:
+pnpm --filter @mitii/solid-benchmark view -- --run <runId> --open
+```
+
 Also updated when the run finishes:
 
 - `tests/benchmark/reports/frontend-latest.md` (or `backend-…`, `latest` for `--suite all`)
+- `tests/benchmark/reports/index.html`
 
 Console output looks like:
 
