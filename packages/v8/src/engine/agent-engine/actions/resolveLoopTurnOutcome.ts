@@ -35,6 +35,10 @@ export interface ResolveLoopTurnOutcomeInput {
   finishReason?: string;
   truncated: boolean;
   mutationBudget?: MutationBudget;
+  /** Optional grant/decision reason codes (e.g. mutation_execute). */
+  reasonCodes?: readonly string[];
+  /** Cumulative file reads this run — used for repository_answer grounding. */
+  fileReadCalls?: number;
   recoveries: {
     truncation: number;
     incompleteAnswer: number;
@@ -85,10 +89,25 @@ export function resolveLoopTurnOutcome(
     return recoverOrExhaustUnfulfilled(input);
   }
 
+  if (needsWorkspaceGroundingRecovery(input)) {
+    const maxIncomplete =
+      input.thresholds?.maxIncompleteAnswerRecoveries ??
+      AGENT_ENGINE_THRESHOLDS.maxIncompleteAnswerRecoveries;
+    if (input.recoveries.incompleteAnswer < maxIncomplete) {
+      return {
+        disposition: "recover_incomplete_narration",
+        reasonCode: "incomplete_answer_recovered",
+        recoveryMessage:
+          "You claimed the workspace/files were unavailable, but this is a repository question. Call read_file, search_files, or glob_files now and answer from the file contents. Do not guess.",
+      };
+    }
+  }
+
   const incomplete = shouldRecoverIncompleteAssistantTurn({
     content: input.content,
     toolCallCount: 0,
     changedFileCount: input.changedFileCount,
+    fileReadCalls: input.fileReadCalls,
   });
   if (incomplete) {
     const maxIncomplete =
@@ -119,6 +138,7 @@ export function isUnfulfilledExecute(input: {
   toolCallCount: number;
   changedFileCount: number;
   content: string;
+  reasonCodes?: readonly string[];
 }): boolean {
   if (input.toolCallCount > 0) {
     return false;
@@ -132,7 +152,7 @@ export function isUnfulfilledExecute(input: {
   if (input.changedFileCount > 0) {
     return false;
   }
-  if (!MUTATION_INTENT_SET.has(input.primaryTaskIntent)) {
+  if (!requiresMutationIntent(input.primaryTaskIntent, input.reasonCodes)) {
     return false;
   }
   // Recovery copy invites "stop with a clear blocker" when a workspace edit
@@ -143,6 +163,61 @@ export function isUnfulfilledExecute(input: {
   // Any other text-only stop on execute+write+mutation is unfulfilled: the
   // model described work instead of calling apply_patch.
   return true;
+}
+
+function requiresMutationIntent(
+  primaryTaskIntent: string,
+  reasonCodes?: readonly string[],
+): boolean {
+  if (MUTATION_INTENT_SET.has(primaryTaskIntent)) {
+    return true;
+  }
+  // Docs create/update on execute+write still requires a patch even though
+  // "docs" is also an answer taxonomy for explain-docs asks.
+  if (primaryTaskIntent === "docs") {
+    return true;
+  }
+  return reasonCodes?.includes("mutation_execute") === true;
+}
+
+/** Model claimed it cannot see the repo despite repository_answer/diagnose. */
+export function claimsMissingWorkspaceContext(content: string): boolean {
+  const text = content.trim();
+  if (text.length < 24) {
+    return false;
+  }
+  return (
+    /\b(?:don'?t|do not|cannot|can'?t)\s+have\b[\s\S]{0,60}\b(?:repository|workspace|files?|context)\b/i.test(
+      text,
+    ) ||
+    /\bno\s+(?:repository|workspace)\s+(?:files?|context|code)\b/i.test(text) ||
+    /\b(?:can'?t|cannot)\s+identify\b/i.test(text) ||
+    /\bwithout\s+(?:access to|any)\s+(?:the\s+)?(?:repository|workspace|files?|code)\b/i.test(
+      text,
+    )
+  );
+}
+
+function needsWorkspaceGroundingRecovery(input: {
+  route: ExecutionRoute;
+  toolCallCount: number;
+  fileReadCalls?: number;
+  content: string;
+}): boolean {
+  if (input.toolCallCount > 0) {
+    return false;
+  }
+  if ((input.fileReadCalls ?? 0) > 0) {
+    return false;
+  }
+  if (
+    input.route !== "repository_answer" &&
+    input.route !== "diagnose" &&
+    input.route !== "direct_answer"
+  ) {
+    return false;
+  }
+  return claimsMissingWorkspaceContext(input.content);
 }
 
 export function requiresMutationForExecute(input: {
@@ -160,9 +235,10 @@ export function requiresMutationForExecute(input: {
   if (input.reasonCodes?.includes("mutation_execute")) {
     return true;
   }
-  return input.primaryTaskIntent
-    ? MUTATION_INTENT_SET.has(input.primaryTaskIntent)
-    : false;
+  if (!input.primaryTaskIntent) {
+    return false;
+  }
+  return requiresMutationIntent(input.primaryTaskIntent, input.reasonCodes);
 }
 
 export function buildUnfulfilledExecuteRecoveryMessage(

@@ -46,12 +46,43 @@ describe("resolveLoopTurnOutcome", () => {
       recoveries: {
         truncation: 0,
         incompleteAnswer: 0,
-        unfulfilledExecute: 1,
+        unfulfilledExecute: 2,
       },
     });
 
     expect(outcome.disposition).toBe("complete_answer");
     expect(outcome.reasonCode).toBe("unfulfilled_execute_exhausted");
+  });
+
+  it("treats a clear mutation blocker as a fulfilled text-only stop", () => {
+    const blocker =
+      "Blocker: cannot fix this with a workspace edit. Stripo.init requires API credentials and config params that are not in this repository.";
+    expect(
+      isUnfulfilledExecute({
+        route: "execute",
+        maximumWorkspaceEffect: "write",
+        primaryTaskIntent: "bugfix",
+        toolCallCount: 0,
+        changedFileCount: 0,
+        content: blocker,
+      }),
+    ).toBe(false);
+
+    const outcome = resolveLoopTurnOutcome({
+      route: "execute",
+      maximumWorkspaceEffect: "write",
+      primaryTaskIntent: "bugfix",
+      toolCallCount: 0,
+      changedFileCount: 0,
+      content: blocker,
+      recoveries: {
+        truncation: 0,
+        incompleteAnswer: 0,
+        unfulfilledExecute: 0,
+      },
+    });
+    expect(outcome.disposition).toBe("complete_answer");
+    expect(outcome.reasonCode).toBe("answer_produced");
   });
 
   it("does not force patches on repository_answer analysis", () => {
@@ -92,34 +123,50 @@ describe("resolveLoopTurnOutcome", () => {
     expect(isDegenerateRepeatedAnswer(content)).toBe(true);
   });
 
-  it("treats a clear mutation blocker as a fulfilled text-only stop", () => {
-    const blocker =
-      "Blocker: cannot fix this with a workspace edit. Stripo.init requires API credentials and config params that are not in this repository.";
+  it("treats docs execute+write text-only as unfulfilled", () => {
     expect(
       isUnfulfilledExecute({
         route: "execute",
         maximumWorkspaceEffect: "write",
-        primaryTaskIntent: "bugfix",
+        primaryTaskIntent: "docs",
         toolCallCount: 0,
         changedFileCount: 0,
-        content: blocker,
+        content: "I will document the App Router under docs/routing.md.",
       }),
-    ).toBe(false);
+    ).toBe(true);
+  });
 
+  it("treats mutation_execute reason codes as requiring a patch", () => {
+    expect(
+      isUnfulfilledExecute({
+        route: "execute",
+        maximumWorkspaceEffect: "write",
+        primaryTaskIntent: "question",
+        reasonCodes: ["mutation_execute"],
+        toolCallCount: 0,
+        changedFileCount: 0,
+        content: "Change role status to alert in the component.",
+      }),
+    ).toBe(true);
+  });
+
+  it("recovers repository answers that claim missing workspace context", () => {
     const outcome = resolveLoopTurnOutcome({
-      route: "execute",
-      maximumWorkspaceEffect: "write",
-      primaryTaskIntent: "bugfix",
+      route: "repository_answer",
+      maximumWorkspaceEffect: "read",
+      primaryTaskIntent: "question",
       toolCallCount: 0,
       changedFileCount: 0,
-      content: blocker,
+      fileReadCalls: 0,
+      content:
+        "I don't have any repository files or workspace context available in this conversation, so I can't identify the heading.",
       recoveries: {
         truncation: 0,
         incompleteAnswer: 0,
         unfulfilledExecute: 0,
       },
     });
-    expect(outcome.disposition).toBe("complete_answer");
-    expect(outcome.reasonCode).toBe("answer_produced");
+    expect(outcome.disposition).toBe("recover_incomplete_narration");
+    expect(outcome.recoveryMessage).toContain("read_file");
   });
 });

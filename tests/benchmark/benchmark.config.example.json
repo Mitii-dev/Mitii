@@ -23,7 +23,9 @@
       "node_modules",
       "dist",
       ".next",
-      "coverage"
+      "coverage",
+      "tsconfig.tsbuildinfo",
+      "*.tsbuildinfo"
     ]
   },
   "gates": {

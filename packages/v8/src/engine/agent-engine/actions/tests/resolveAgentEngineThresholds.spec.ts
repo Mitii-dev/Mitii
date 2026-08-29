@@ -35,7 +35,7 @@ describe("resolveAgentEngineThresholds", () => {
 
   it("keeps rejected-mutation recoveries independent of unfulfilled-execute", () => {
     expect(AGENT_ENGINE_THRESHOLDS.maxRejectedMutationRecoveries).toBe(3);
-    expect(AGENT_ENGINE_THRESHOLDS.maxUnfulfilledExecuteRecoveries).toBe(1);
+    expect(AGENT_ENGINE_THRESHOLDS.maxUnfulfilledExecuteRecoveries).toBe(2);
     expect(
       AGENT_ENGINE_THRESHOLDS.maxRejectedMutationRecoveries,
     ).toBeGreaterThan(AGENT_ENGINE_THRESHOLDS.maxUnfulfilledExecuteRecoveries);

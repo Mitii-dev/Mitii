@@ -533,7 +533,8 @@ const bugfixes = [
     slug: 'alert-role',
     fixture: 'react-vite',
     category: 'a11y',
-    prompt: 'Alert uses role="status". Change it to role="alert".',
+    prompt:
+      'In src/components/Alert.tsx, change role="status" to role="alert". Do not only explain ARIA — edit the file.',
     rationale: 'Seeded a11y role bug.',
     preconditions: [{ type: 'file_contains', path: 'src/components/Alert.tsx', value: 'role="status"' }],
     checks: [
@@ -624,7 +625,7 @@ const bugfixes = [
     fixture: 'next-app',
     category: 'docs',
     prompt:
-      'docs/loading-indicator.md claims the spinner uses border-blue-500. Update that doc line to say border-green-500 instead (docs-only fix; do not change loading.tsx unless required).',
+      'Edit docs/loading-indicator.md only: replace border-blue-500 with border-green-500. Do not change app/loading.tsx.',
     rationale: 'Doc/source drift fix focused on docs file.',
     preconditions: [
       { type: 'file_contains', path: 'docs/loading-indicator.md', value: 'border-blue-500' },
@@ -643,7 +644,8 @@ const bugfixes = [
     slug: 'frontend-app-heading-typo',
     fixture: 'frontend-app',
     category: 'copy',
-    prompt: 'The App heading says "Benchmrk". Fix it to "Benchmark".',
+    prompt:
+      'In src/App.tsx, fix the h1 typo: change "Benchmrk" to "Benchmark".',
     rationale: 'Seeded typo in frontend-app App.tsx.',
     preconditions: [{ type: 'file_contains', path: 'src/App.tsx', value: 'Benchmrk' }],
     checks: [
@@ -893,7 +895,8 @@ const docsCases = [
     slug: 'next-routing-docs',
     fixture: 'next-app',
     category: 'docs',
-    prompt: 'Create docs/routing.md explaining that routes live under the app/ directory (App Router).',
+    prompt:
+      'Create the file docs/routing.md that explains routes live under the app/ directory (App Router). Use apply_patch to add the file.',
     rationale: 'Routing docs file.',
     preconditions: [{ type: 'file_not_exists', path: 'docs/routing.md' }],
     checks: [
@@ -1057,7 +1060,8 @@ const retrievalCases = [
     slug: 'next-loading-file',
     fixture: 'next-app',
     category: 'retrieval',
-    prompt: 'Which file implements the App Router loading UI for this project?',
+    prompt:
+      'Read the Next.js App Router files and answer: which file implements the loading UI? Quote the path (e.g. app/loading.tsx).',
     rationale: 'Path retrieval.',
     checks: [
       ...baseAgent,
@@ -1070,7 +1074,8 @@ const retrievalCases = [
     slug: 'next-home-heading',
     fixture: 'next-app',
     category: 'retrieval',
-    prompt: 'What is the home page h1 text?',
+    prompt:
+      'Read app/page.tsx and quote the exact home page h1 text.',
     rationale: 'Copy retrieval.',
     checks: [
       ...baseAgent,

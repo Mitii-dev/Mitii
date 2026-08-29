@@ -23,7 +23,7 @@ export const AGENT_ENGINE_THRESHOLDS = {
    * Max nudges when execute+write+mutation intent ends on a text-only
    * diagnosis instead of apply_patch.
    */
-  maxUnfulfilledExecuteRecoveries: 1,
+  maxUnfulfilledExecuteRecoveries: 2,
   /**
    * Max recoveries after apply_patch/delete_file/move_file is rejected
    * (e.g. old_text_not_found). Kept separate from text-only unfulfilled

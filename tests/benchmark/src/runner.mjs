@@ -164,7 +164,15 @@ function baseResult(testCase, run) {
 
 function shouldIgnore(source, ignoredNames) {
   const normalized = source.replaceAll('\\', '/');
-  return ignoredNames.some((name) => normalized.split('/').includes(name));
+  const parts = normalized.split('/');
+  return ignoredNames.some((name) => {
+    if (parts.includes(name)) return true;
+    if (typeof name === 'string' && name.startsWith('*.')) {
+      const suffix = name.slice(1);
+      return parts.some((part) => part.endsWith(suffix));
+    }
+    return false;
+  });
 }
 
 function linkFixtureDependencies(sourceRoot, workspaceRoot) {

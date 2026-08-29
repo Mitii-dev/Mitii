@@ -611,6 +611,8 @@ export async function runModelToolLoop(
         finishReason: turn.finishReason,
         truncated,
         mutationBudget: grant.mutationBudget,
+        reasonCodes: decision.reasonCodes,
+        fileReadCalls: budget.snapshot().fileReadCalls,
         recoveries: {
           truncation: truncationRecoveries,
           incompleteAnswer: incompleteAnswerRecoveries,
@@ -685,7 +687,8 @@ export async function runModelToolLoop(
           },
         };
       } else if (
-        incompleteAssistantTurn &&
+        (incompleteAssistantTurn ||
+          loopOutcome.disposition === "recover_incomplete_narration") &&
         incompleteAnswerRecoveries <
           thresholds.maxIncompleteAnswerRecoveries &&
         budget.canStartModelCall()
@@ -696,10 +699,12 @@ export async function runModelToolLoop(
           content: turn.content,
           toolCallCount: 0,
         });
-        const recoveryContent = buildIncompleteAnswerRecoveryMessage({
-          changedFiles,
-          emptyTurn,
-        });
+        const recoveryContent =
+          loopOutcome.recoveryMessage ??
+          buildIncompleteAnswerRecoveryMessage({
+            changedFiles,
+            emptyTurn,
+          });
         if (turn.content.trim().length > 0) {
           messages.push({
             role: "assistant",
