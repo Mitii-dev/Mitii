@@ -95,11 +95,17 @@ export {
   windowBudgetPolicySchema,
   windowBudgetPolicyOverridesSchema,
   windowPolicySchema,
+  AGENT_ENGINE_THRESHOLDS,
+  resolveAgentEngineThresholds,
+  agentEngineThresholdsSchema,
+  agentEngineThresholdsOverridesSchema,
 } from '@mitii/v8';
 export type {
   LlmPort,
   AgentEngineStartInput,
   AgentEngineResumeInput,
+  AgentEngineThresholds,
+  AgentEngineThresholdsOverrides,
   ComposeReadOnlyAgentEngineOptions,
   PublishRepositoryStateInput,
   PublishRepositoryStateResult,

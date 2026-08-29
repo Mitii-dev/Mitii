@@ -7,6 +7,7 @@ import type {
 
 import { AGENT_ENGINE_THRESHOLDS } from "../policy";
 import type { AgentReasonCode } from "../contracts";
+import type { AgentEngineThresholds } from "./resolveAgentEngineThresholds";
 
 import { shouldRecoverIncompleteAssistantTurn } from "./isIncompleteAssistantTurn";
 
@@ -38,6 +39,10 @@ export interface ResolveLoopTurnOutcomeInput {
     incompleteAnswer: number;
     unfulfilledExecute: number;
   };
+  thresholds?: Pick<
+    AgentEngineThresholds,
+    "maxIncompleteAnswerRecoveries" | "maxUnfulfilledExecuteRecoveries"
+  >;
 }
 
 export interface ResolveLoopTurnOutcome {
@@ -85,10 +90,10 @@ export function resolveLoopTurnOutcome(
     changedFileCount: input.changedFileCount,
   });
   if (incomplete) {
-    if (
-      input.recoveries.incompleteAnswer <
-      AGENT_ENGINE_THRESHOLDS.maxIncompleteAnswerRecoveries
-    ) {
+    const maxIncomplete =
+      input.thresholds?.maxIncompleteAnswerRecoveries ??
+      AGENT_ENGINE_THRESHOLDS.maxIncompleteAnswerRecoveries;
+    if (input.recoveries.incompleteAnswer < maxIncomplete) {
       return {
         disposition: "recover_incomplete_narration",
         reasonCode: "incomplete_answer_recovered",
@@ -169,10 +174,10 @@ function recoverOrExhaustUnfulfilled(
   input: ResolveLoopTurnOutcomeInput,
   truncatedReason?: AgentReasonCode,
 ): ResolveLoopTurnOutcome {
-  if (
-    input.recoveries.unfulfilledExecute <
-    AGENT_ENGINE_THRESHOLDS.maxUnfulfilledExecuteRecoveries
-  ) {
+  const maxUnfulfilled =
+    input.thresholds?.maxUnfulfilledExecuteRecoveries ??
+    AGENT_ENGINE_THRESHOLDS.maxUnfulfilledExecuteRecoveries;
+  if (input.recoveries.unfulfilledExecute < maxUnfulfilled) {
     return {
       disposition: "recover_unfulfilled_execute",
       reasonCode: truncatedReason ?? "unfulfilled_execute_recovered",

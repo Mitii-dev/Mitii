@@ -1,5 +1,6 @@
 import { findLocalModelPreset } from './modelPresets.js';
 import { TOKEN_BUDGET_FIELDS } from './tokenBudgetSettings.js';
+import { LOOP_POLICY_FIELDS } from './loopPolicySettings.js';
 import type {
   ContextToggles,
   ModeDefaultSettingsSnapshot,
@@ -217,6 +218,17 @@ export function applyUiPatch(
           preview: base.tokenBudget.preview,
         }
       : base.tokenBudget,
+    loopPolicy: patch.loopPolicy
+      ? {
+          ...base.loopPolicy,
+          ...patch.loopPolicy,
+          thresholds: {
+            ...base.loopPolicy.thresholds,
+            ...(patch.loopPolicy.thresholds ?? {}),
+          },
+          fields: base.loopPolicy.fields,
+        }
+      : base.loopPolicy,
   };
 }
 
@@ -712,6 +724,34 @@ export const SETTINGS_FIELDS: readonly SettingsFieldSpec[] = [
         page: 'developer',
         tab: 'debug',
         setting: `tokenBudget.${field.key}`,
+        label: field.label,
+        kind: field.kind === 'int' ? 'int' : 'number',
+        reflect: 'raw',
+        sample:
+          field.kind === 'ratio'
+            ? Math.min(field.max ?? 1, Math.max(field.min, 0.2))
+            : Math.max(field.min, field.step),
+        min: field.min,
+        max: field.max,
+      }) satisfies SettingsFieldSpec,
+  ),
+  {
+    id: 'loopPolicy.enabled',
+    page: 'developer',
+    tab: 'debug',
+    setting: 'loopPolicy.enabled',
+    label: 'Custom loop policy',
+    kind: 'boolean',
+    reflect: 'raw',
+    sample: true,
+  },
+  ...LOOP_POLICY_FIELDS.map(
+    (field) =>
+      ({
+        id: `loopPolicy.${field.key}`,
+        page: 'developer',
+        tab: 'debug',
+        setting: `loopPolicy.${field.key}`,
         label: field.label,
         kind: field.kind === 'int' ? 'int' : 'number',
         reflect: 'raw',

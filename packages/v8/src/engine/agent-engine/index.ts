@@ -27,6 +27,16 @@ export {
   DEFAULT_TOOL_DEFINITIONS,
 } from "./policy";
 
+export {
+  resolveAgentEngineThresholds,
+  agentEngineThresholdsSchema,
+  agentEngineThresholdsOverridesSchema,
+} from "./actions/resolveAgentEngineThresholds";
+export type {
+  AgentEngineThresholds,
+  AgentEngineThresholdsOverrides,
+} from "./actions/resolveAgentEngineThresholds";
+
 export { AgentEnginePipeline } from "./pipeline/AgentEnginePipeline";
 export type { AgentEnginePipelineDependencies } from "./pipeline/AgentEnginePipeline";
 

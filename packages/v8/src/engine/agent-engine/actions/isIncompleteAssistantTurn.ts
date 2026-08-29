@@ -316,7 +316,10 @@ export function synthesizeFallbackAnswer(params: {
  * Keep mid-work analysis out of the live transcript so leftover output
  * tokens stay available for apply_patch instead of another essay.
  */
-export function compactRecoveredAssistantContent(content: string): string {
+export function compactRecoveredAssistantContent(
+  content: string,
+  maxRecoveredAnalysisChars: number = AGENT_ENGINE_THRESHOLDS.maxRecoveredAnalysisChars,
+): string {
   const text = content.trim();
   if (text.length === 0) {
     return text;
@@ -328,7 +331,7 @@ export function compactRecoveredAssistantContent(content: string): string {
   if (!dump) {
     return text;
   }
-  const maxChars = AGENT_ENGINE_THRESHOLDS.maxRecoveredAnalysisChars;
+  const maxChars = maxRecoveredAnalysisChars;
   if (text.length <= maxChars) {
     return text;
   }

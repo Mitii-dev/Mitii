@@ -30,7 +30,19 @@ export {
   resetLoopFileReadTracker,
   snapshotLoopFileReads,
 } from "./isExplorationRereadHeavy";
-export type { LoopFileReadTracker } from "./isExplorationRereadHeavy";
+export type {
+  LoopFileReadTracker,
+  ExplorationRereadThresholds,
+} from "./isExplorationRereadHeavy";
+export {
+  resolveAgentEngineThresholds,
+  agentEngineThresholdsSchema,
+  agentEngineThresholdsOverridesSchema,
+} from "./resolveAgentEngineThresholds";
+export type {
+  AgentEngineThresholds,
+  AgentEngineThresholdsOverrides,
+} from "./resolveAgentEngineThresholds";
 export { buildExplorationStallNudge } from "./buildExplorationStallNudge";
 export { buildPreflightDiagnosticRepairInstruction } from "./buildPreflightDiagnosticRepairInstruction";
 export { buildVerificationRepairPrompt } from "./buildVerificationRepairPrompt";

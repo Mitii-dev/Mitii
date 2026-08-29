@@ -14,6 +14,7 @@ import {
   taskListSchema,
   WINDOW_BUDGET_EFFORTS,
   windowBudgetPolicyOverridesSchema,
+  agentEngineThresholdsOverridesSchema,
 } from '@mitii/v8';
 import type {
   AgentEngineResumeInput,
@@ -104,6 +105,16 @@ export const mitiiStartInputSchema = z
       .object({
         policy: windowBudgetPolicyOverridesSchema.optional(),
         effort: z.enum(WINDOW_BUDGET_EFFORTS).optional(),
+      })
+      .strict()
+      .optional(),
+    /**
+     * Optional host overrides for Agent Engine loop/stall thresholds.
+     * When omitted, shipped working standards apply.
+     */
+    loopPolicy: z
+      .object({
+        thresholds: agentEngineThresholdsOverridesSchema.optional(),
       })
       .strict()
       .optional(),
@@ -209,6 +220,7 @@ export function toAgentEngineStartInput(
     dirtyPaths: parsed.dirtyPaths,
     explorationDepth: parsed.explorationDepth,
     windowBudget: parsed.windowBudget,
+    loopPolicy: parsed.loopPolicy,
     logVerbosity: parsed.logVerbosity,
     instructions:
       parsed.projectRules && parsed.projectRules.length > 0

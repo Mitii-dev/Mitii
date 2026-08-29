@@ -39,6 +39,7 @@ import {
 } from './runReport.js';
 import { openSessionLog } from './sessionLog.js';
 import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
+import { readLoopPolicyThresholdOverrides } from './loopPolicySettings.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import { findLocalModelPreset } from './modelPresets.js';
 import {
@@ -1155,6 +1156,7 @@ export async function runAskInOutputChannel(options: {
       : [];
     const runStartedAt = new Date().toISOString();
     const windowBudgetPolicy = readTokenBudgetPolicyOverrides(cfg);
+    const loopPolicyThresholds = readLoopPolicyThresholdOverrides(cfg);
     const effort =
       options.effort === 'low' ||
       options.effort === 'high' ||
@@ -1176,6 +1178,9 @@ export async function runAskInOutputChannel(options: {
               ...(effort ? { effort } : {}),
             },
           }
+        : {}),
+      ...(loopPolicyThresholds
+        ? { loopPolicy: { thresholds: loopPolicyThresholds } }
         : {}),
       ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
       ...(pinnedPaths.length > 0 ? { pinnedPaths } : {}),

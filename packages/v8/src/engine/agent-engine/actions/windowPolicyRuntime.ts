@@ -4,7 +4,11 @@ import type { WindowPolicy } from "../../../modules/window-budget";
 
 import type { AgentReasonCode } from "../contracts";
 import { agentRunBudgetSchema } from "../contracts";
-import { isExplorationRereadHeavy } from "./isExplorationRereadHeavy";
+import { AGENT_ENGINE_THRESHOLDS } from "../policy";
+import {
+  isExplorationRereadHeavy,
+  type ExplorationRereadThresholds,
+} from "./isExplorationRereadHeavy";
 
 export function calculateLoopInputBudgetTokens(params: {
   request: ModelRequest;
@@ -58,8 +62,9 @@ export function applyExplorationSignal(
   },
   reasonCodes: AgentReasonCode[],
   warnings: string[],
+  thresholds: ExplorationRereadThresholds = AGENT_ENGINE_THRESHOLDS,
 ): void {
-  if (!isExplorationRereadHeavy(snapshot)) {
+  if (!isExplorationRereadHeavy(snapshot, thresholds)) {
     return;
   }
   if (!reasonCodes.includes("exploration_reread_heavy")) {

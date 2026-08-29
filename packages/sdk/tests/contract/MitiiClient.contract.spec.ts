@@ -256,6 +256,29 @@ describe('MitiiClient contract (Phase 12)', () => {
     expect(engineInput.windowBudget?.effort).toBe('high');
   });
 
+  it('maps loopPolicy threshold overrides onto engine start input', () => {
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'fix it',
+        loopPolicy: {
+          thresholds: {
+            explorationRereadMinCalls: 24,
+            explorationRereadRatio: 3,
+            maxExplorationStallNudges: 3,
+          },
+        },
+      },
+      { mode: 'agent', sessionId: 'sess_test' },
+    );
+    expect(engineInput.loopPolicy?.thresholds?.explorationRereadMinCalls).toBe(
+      24,
+    );
+    expect(engineInput.loopPolicy?.thresholds?.explorationRereadRatio).toBe(3);
+    expect(engineInput.loopPolicy?.thresholds?.maxExplorationStallNudges).toBe(
+      3,
+    );
+  });
+
   it('rejects resume without approval or clarificationAnswer', () => {
     const parsed = mitiiResumeInputSchema.safeParse({
       schemaVersion: 1,

@@ -86,6 +86,7 @@ import {
 import {
   AGENT_ENGINE_THRESHOLDS,
 } from "../policy";
+import type { AgentEngineThresholds } from "../actions/resolveAgentEngineThresholds";
 
 import type { AgentEngineRuntime } from "./runtime";
 import type {
@@ -143,6 +144,11 @@ export async function runModelToolLoop(
    */
   reserveVerificationRepairModelCalls?: boolean;
   plan?: PlanArtifact;
+  /**
+   * Resolved loop/stall thresholds (working standards + optional host overrides).
+   * When omitted, shipped `AGENT_ENGINE_THRESHOLDS` apply.
+   */
+  thresholds?: AgentEngineThresholds;
 }): Promise<ToolLoopOutcome> {
   const {
     runId,
@@ -162,6 +168,7 @@ export async function runModelToolLoop(
     evidence,
     logVerbosity,
   } = params;
+  const thresholds = params.thresholds ?? AGENT_ENGINE_THRESHOLDS;
   let decision = params.decision;
   let grant = decision.toolGrant;
   let selectedSkillIds = [...(params.selectedSkillIds ?? [])];
@@ -177,7 +184,7 @@ export async function runModelToolLoop(
   const loopFileReads = createLoopFileReadTracker();
   let rejectedMutationRecoveries = 0;
   const mustReadNudgeBudget = {
-    remaining: AGENT_ENGINE_THRESHOLDS.maxMustReadNudges,
+    remaining: thresholds.maxMustReadNudges,
   };
   let rejectedToolRecoveries = 0;
   let readOnlyToolTurnsWithoutMutation = 0;
@@ -230,6 +237,7 @@ export async function runModelToolLoop(
             maxModelCalls: budget.maxModelCalls(),
             maxVerificationRepairs:
               params.windowPolicy.run.maxVerificationRepairs,
+            thresholds,
           })
         : 0;
     const reserveForThisTurn =
@@ -505,6 +513,7 @@ export async function runModelToolLoop(
           params.understanding?.intent.classification.primaryTaskIntent,
         reasonCodes: decision.reasonCodes,
       }),
+      thresholds,
     });
 
     if (recovery?.shouldRecover) {
@@ -519,7 +528,10 @@ export async function runModelToolLoop(
       }
       messages.push({
         role: "assistant",
-        content: compactRecoveredAssistantContent(recovery.assistantContent),
+        content: compactRecoveredAssistantContent(
+          recovery.assistantContent,
+          thresholds.maxRecoveredAnalysisChars,
+        ),
       });
       messages.push(recovery.recoveryMessage);
       runtime.emit(bus, {
@@ -603,6 +615,7 @@ export async function runModelToolLoop(
           incompleteAnswer: incompleteAnswerRecoveries,
           unfulfilledExecute: unfulfilledExecuteRecoveries,
         },
+        thresholds,
       });
       if (
         incompleteAssistantTurn &&
@@ -628,7 +641,7 @@ export async function runModelToolLoop(
       if (
         loopOutcome.disposition === "recover_unfulfilled_execute" &&
         unfulfilledExecuteRecoveries <
-          AGENT_ENGINE_THRESHOLDS.maxUnfulfilledExecuteRecoveries &&
+          thresholds.maxUnfulfilledExecuteRecoveries &&
         budget.canStartModelCall()
       ) {
         unfulfilledExecuteRecoveries += 1;
@@ -636,7 +649,7 @@ export async function runModelToolLoop(
         if (turn.content.trim().length > 0) {
           messages.push({
             role: "assistant",
-            content: compactRecoveredAssistantContent(turn.content),
+            content: compactRecoveredAssistantContent(turn.content, thresholds.maxRecoveredAnalysisChars),
           });
         }
         messages.push({
@@ -673,7 +686,7 @@ export async function runModelToolLoop(
       } else if (
         incompleteAssistantTurn &&
         incompleteAnswerRecoveries <
-          AGENT_ENGINE_THRESHOLDS.maxIncompleteAnswerRecoveries &&
+          thresholds.maxIncompleteAnswerRecoveries &&
         budget.canStartModelCall()
       ) {
         incompleteAnswerRecoveries += 1;
@@ -689,7 +702,7 @@ export async function runModelToolLoop(
         if (turn.content.trim().length > 0) {
           messages.push({
             role: "assistant",
-            content: compactRecoveredAssistantContent(turn.content),
+            content: compactRecoveredAssistantContent(turn.content, thresholds.maxRecoveredAnalysisChars),
           });
         }
         messages.push({
@@ -1029,7 +1042,7 @@ export async function runModelToolLoop(
     ) {
       if (
         readOnlyMutationRetryAttempts <
-          AGENT_ENGINE_THRESHOLDS.maxReadOnlyMutationRetryAttempts &&
+          thresholds.maxReadOnlyMutationRetryAttempts &&
         budget.canStartModelCall()
       ) {
         readOnlyMutationRetryAttempts += 1;
@@ -1070,7 +1083,7 @@ export async function runModelToolLoop(
       reasonCodes.push("tool_failed");
       if (
         rejectedToolRecoveries <
-          AGENT_ENGINE_THRESHOLDS.maxUnfulfilledExecuteRecoveries &&
+          thresholds.maxUnfulfilledExecuteRecoveries &&
         budget.canStartModelCall()
       ) {
         rejectedToolRecoveries += 1;
@@ -1105,13 +1118,13 @@ export async function runModelToolLoop(
       reasonCodes.push("tool_failed");
       if (
         rejectedMutationRecoveries <
-          AGENT_ENGINE_THRESHOLDS.maxUnfulfilledExecuteRecoveries &&
+          thresholds.maxUnfulfilledExecuteRecoveries &&
         budget.canStartModelCall()
       ) {
         rejectedMutationRecoveries += 1;
         const maxTargetedDiscoveryToolCalls =
           grant.mutationBudget?.maxUniqueFilesPerCall ??
-          AGENT_ENGINE_THRESHOLDS.defaultPreferredBatchSize;
+          thresholds.defaultPreferredBatchSize;
         const allowTargetedDiscovery =
           allowsTargetedDiscoveryAfterRejectedMutation(rejectedMutation);
         awaitingRejectedMutationRetry = {
@@ -1124,6 +1137,7 @@ export async function runModelToolLoop(
           content: buildRejectedMutationRecoveryMessage({
             ...rejectedMutation,
             maxTargetedDiscoveryToolCalls,
+            defaultPreferredBatchSize: thresholds.defaultPreferredBatchSize,
           }),
         });
         warnings.push(
@@ -1163,7 +1177,7 @@ export async function runModelToolLoop(
       readOnlyToolTurnsWithoutMutation += 1;
       if (
         readOnlyToolTurnsWithoutMutation >=
-        AGENT_ENGINE_THRESHOLDS.maxReadOnlyToolTurnsBeforeMutationNudge
+        thresholds.maxReadOnlyToolTurnsBeforeMutationNudge
       ) {
         if (budget.canStartModelCall()) {
           awaitingReadOnlyMutationRetry = true;
@@ -1200,11 +1214,11 @@ export async function runModelToolLoop(
       readOnlyToolTurnsAfterMutation += 1;
       if (
         readOnlyToolTurnsAfterMutation >=
-        AGENT_ENGINE_THRESHOLDS.maxReadOnlyToolTurnsAfterMutationNudge
+        thresholds.maxReadOnlyToolTurnsAfterMutationNudge
       ) {
         if (
           afterMutationReadOnlyNudges <
-            AGENT_ENGINE_THRESHOLDS.maxReadOnlyToolTurnsAfterMutationNudges &&
+            thresholds.maxReadOnlyToolTurnsAfterMutationNudges &&
           budget.canStartModelCall()
         ) {
           afterMutationReadOnlyNudges += 1;
@@ -1238,11 +1252,11 @@ export async function runModelToolLoop(
     }
 
     const loopUsageSnap = snapshotLoopFileReads(loopFileReads);
-    if (isExplorationRereadHeavy(loopUsageSnap)) {
-      applyExplorationSignal(loopUsageSnap, reasonCodes, warnings);
+    if (isExplorationRereadHeavy(loopUsageSnap, thresholds)) {
+      applyExplorationSignal(loopUsageSnap, reasonCodes, warnings, thresholds);
       if (
         explorationStallNudges <
-        AGENT_ENGINE_THRESHOLDS.maxExplorationStallNudges
+        thresholds.maxExplorationStallNudges
       ) {
         explorationStallNudges += 1;
         if (logVerbosityAtLeast(logVerbosity, "verbose")) {

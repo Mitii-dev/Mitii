@@ -150,7 +150,7 @@ Leave this off unless you need it. Options are grouped so the page stays scannab
 
 | UI field | Setting | Save / reflect |
 |---|---|---|
-| Enable developer settings | `mitii.developer.enabled` | Unlocks Logging, Intensity, and Token budget editors. |
+| Enable developer settings | `mitii.developer.enabled` | Unlocks Logging, Intensity, Token budget, and Loop / stall policy editors. |
 
 ### Logging
 
@@ -182,6 +182,18 @@ Changing the context window already scales the built-in defaults. Use Simple sli
 | Advanced | `mitii.tokenBudget.<key>` | Core ratios and clamps. Hidden “run cap” keys stay owned by Modes → Run budget. |
 | Module split | Live preview | Stacked bar of output, tools, repository, conversation, plan, skills, and system as percent of the current window. |
 | Reset budgets to defaults | Clears `mitii.tokenBudget.*` | Same action as Provider → Token limits. Restores window-scaled defaults. |
+
+### Loop / stall policy
+
+Working standards ship in Agent Engine (`AGENT_ENGINE_THRESHOLDS`). Enable this only to lab-test exploration stall and recovery knobs. Leave off (or Reset) for deploy.
+
+| UI field | Setting | Save / reflect |
+|---|---|---|
+| Custom loop policy | `mitii.loopPolicy.enabled` | When off, Engine uses shipped standards. |
+| Simple: min re-read calls / ratio / stall nudges | `mitii.loopPolicy.explorationReread*` / `maxExplorationStallNudges` | Exploration stall breaker. |
+| Simple: read/mutate pressure | `mitii.loopPolicy.maxReadOnly*` | How long execute may explore before requiring a patch. |
+| Advanced | `mitii.loopPolicy.<key>` | Truncation, unfulfilled-execute, must-read, verification repair, batch fallbacks. |
+| Reset loop policy to standards | Clears `mitii.loopPolicy.*` | Restores shipped working standards. |
 
 ### Diagnostics
 

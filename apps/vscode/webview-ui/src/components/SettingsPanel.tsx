@@ -46,6 +46,7 @@ import {
 import { NumberField } from './NumberField';
 import { TokenBudgetAllocation } from './TokenBudgetAllocation';
 import { TokenBudgetEditor } from './TokenBudgetEditor';
+import { LoopPolicyEditor } from './LoopPolicyEditor';
 
 interface SettingsPanelProps {
   tab: SettingsTab;
@@ -95,6 +96,7 @@ interface SettingsPanelProps {
   onToggleContext: (source: keyof ContextToggles, enabled: boolean) => void;
   onSaveAll: () => void;
   onResetTokenBudget: () => void;
+  onResetLoopPolicy: () => void;
   saving: boolean;
 }
 
@@ -353,6 +355,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     onToggleContext,
     onSaveAll,
     onResetTokenBudget,
+    onResetLoopPolicy,
     saving,
   } = props;
   const [modeSettingsTab, setModeSettingsTab] =
@@ -1316,6 +1319,57 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     <summary>Derived counts</summary>
                     <TokenBudgetPreviewTable preview={livePreview} />
                   </details>
+                </div>
+              </SettingsSection>
+
+              <SettingsSection
+                title="Loop / stall policy"
+                description="Working standards ship in Agent Engine. Turn this on only to lab-test exploration stall and recovery knobs. Reset clears overrides for deploy."
+              >
+                <div
+                  className={`developer-options${
+                    ui.developerEnabled ? '' : ' is-locked'
+                  }`}
+                >
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={ui.loopPolicy.enabled}
+                      disabled={!ui.developerEnabled}
+                      onChange={(e) =>
+                        onSaveUi({
+                          loopPolicy: { enabled: e.target.checked },
+                        })
+                      }
+                    />
+                    Custom loop policy
+                  </label>
+                  <p className="field-hint">
+                    {ui.loopPolicy.enabled
+                      ? 'Overrides apply to Agent runs. Leave off to use shipped working standards.'
+                      : 'Leave off for deploy defaults. Editing a field turns this on.'}
+                  </p>
+                  <div className="row">
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      onClick={onResetLoopPolicy}
+                      disabled={!ui.developerEnabled}
+                    >
+                      Reset loop policy to standards
+                    </button>
+                  </div>
+                  <LoopPolicyEditor
+                    fields={ui.loopPolicy.fields}
+                    thresholds={ui.loopPolicy.thresholds}
+                    customEnabled={ui.loopPolicy.enabled}
+                    disabled={!ui.developerEnabled}
+                    onThresholdsChange={(patch) =>
+                      onSaveUi({
+                        loopPolicy: { enabled: true, thresholds: patch },
+                      })
+                    }
+                  />
                 </div>
               </SettingsSection>
 

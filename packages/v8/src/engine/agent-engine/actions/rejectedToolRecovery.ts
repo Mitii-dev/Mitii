@@ -21,6 +21,7 @@ export function buildRejectedMutationRecoveryMessage(params: {
   warnings: readonly string[];
   summary?: string;
   maxTargetedDiscoveryToolCalls?: number;
+  defaultPreferredBatchSize?: number;
 }): string {
   const reason = params.reasonCode ? ` (${params.reasonCode})` : "";
   const warnings =
@@ -41,6 +42,7 @@ export function buildRejectedMutationRecoveryMessage(params: {
   if (allowTargetedDiscovery) {
     const max =
       params.maxTargetedDiscoveryToolCalls ??
+      params.defaultPreferredBatchSize ??
       AGENT_ENGINE_THRESHOLDS.defaultPreferredBatchSize;
     instructions.push(
       `If the rejection indicates stale oldText or a missing patch path, you may use at most ${max} targeted read/list/search call(s) for exact stale patch files or their parent directories.`,

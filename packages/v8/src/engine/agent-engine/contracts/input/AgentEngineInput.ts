@@ -31,6 +31,7 @@ import {
   DEFAULT_MAX_TOOL_CALLS,
   DEFAULT_MAX_WALL_TIME_MS,
 } from "../../defaults";
+import { agentEngineThresholdsOverridesSchema } from "../../actions/resolveAgentEngineThresholds";
 
 const agentApprovalModeSchema = z.enum(APPROVAL_MODES);
 
@@ -126,6 +127,16 @@ export const agentEngineStartInputSchema = z
       .object({
         policy: windowBudgetPolicyOverridesSchema.optional(),
         effort: z.enum(WINDOW_BUDGET_EFFORTS).optional(),
+      })
+      .strict()
+      .optional(),
+    /**
+     * Optional host overrides for loop/stall thresholds (developer lab).
+     * When omitted, shipped `AGENT_ENGINE_THRESHOLDS` apply.
+     */
+    loopPolicy: z
+      .object({
+        thresholds: agentEngineThresholdsOverridesSchema.optional(),
       })
       .strict()
       .optional(),

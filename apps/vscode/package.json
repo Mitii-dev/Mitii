@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.8.61",
+  "version": "2.8.62",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -655,6 +655,120 @@
           "default": 16,
           "minimum": 1,
           "description": "Ceiling for verification checks."
+        },
+        "mitii.loopPolicy.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use custom Agent Engine loop/stall thresholds from mitii.loopPolicy.* instead of shipped working standards. Requires developer settings."
+        },
+        "mitii.loopPolicy.explorationRereadMinCalls": {
+          "type": "number",
+          "default": 8,
+          "minimum": 1,
+          "description": "Stall check starts after this many file-read calls in the current loop."
+        },
+        "mitii.loopPolicy.explorationRereadRatio": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "description": "Trip when file-read calls ≥ unique paths × this ratio."
+        },
+        "mitii.loopPolicy.maxExplorationStallNudges": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "description": "Mid-loop nudges before exploration_stall_broken."
+        },
+        "mitii.loopPolicy.maxReadOnlyToolTurnsBeforeMutationNudge": {
+          "type": "number",
+          "default": 6,
+          "minimum": 1,
+          "description": "Read/search turns before requiring apply_patch in execute mode."
+        },
+        "mitii.loopPolicy.maxReadOnlyMutationRetryAttempts": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "description": "Extra read-only turns after the first-mutation nudge."
+        },
+        "mitii.loopPolicy.maxReadOnlyToolTurnsAfterMutationNudge": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "description": "Non-mutating turns allowed after the first successful mutation."
+        },
+        "mitii.loopPolicy.maxReadOnlyToolTurnsAfterMutationNudges": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "description": "Post-mutation read nudges before stopping the first loop."
+        },
+        "mitii.loopPolicy.maxTruncationRecoveries": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "description": "Retries after finishReason=length with incomplete tools."
+        },
+        "mitii.loopPolicy.maxIncompleteAnswerRecoveries": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "description": "Nudges for empty or transitional narration with no tools."
+        },
+        "mitii.loopPolicy.maxUnfulfilledExecuteRecoveries": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "description": "Nudges when execute ends on diagnosis instead of apply_patch."
+        },
+        "mitii.loopPolicy.maxRejectedMutationRecoveries": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "description": "Retries after apply_patch/delete_file/move_file is rejected (e.g. stale oldText)."
+        },
+        "mitii.loopPolicy.maxMustReadNudges": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "description": "Times to withhold a mutation when mustRead paths are not loaded."
+        },
+        "mitii.loopPolicy.verificationRepairModelCallReserveRatio": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of maxModelCalls reserved for verification repair."
+        },
+        "mitii.loopPolicy.maxVerificationRepairAttempts": {
+          "type": "number",
+          "default": 8,
+          "minimum": 0,
+          "description": "Fallback remaining-error repair cap when Window Policy is absent."
+        },
+        "mitii.loopPolicy.maxStalledVerificationRepairs": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "description": "Stop repairing after this many consecutive non-improving verifies."
+        },
+        "mitii.loopPolicy.defaultPreferredBatchSize": {
+          "type": "number",
+          "default": 8,
+          "minimum": 1,
+          "description": "Fallback preferred mutation batch size."
+        },
+        "mitii.loopPolicy.defaultMaxPatchesPerCall": {
+          "type": "number",
+          "default": 16,
+          "minimum": 1,
+          "description": "Fallback hard patch cap per apply_patch call."
+        },
+        "mitii.loopPolicy.maxRecoveredAnalysisChars": {
+          "type": "number",
+          "default": 480,
+          "minimum": 64,
+          "description": "Max characters kept from mid-work analysis dumps in the transcript."
         },
         "mitii.provider.type": {
           "type": "string",

@@ -29,6 +29,10 @@ import {
   TOKEN_BUDGET_FIELDS,
   tokenBudgetResetKeys,
 } from '../src/tokenBudgetSettings';
+import {
+  LOOP_POLICY_FIELDS,
+  loopPolicyResetKeys,
+} from '../src/loopPolicySettings';
 import type {
   ProviderSettingsSnapshot,
   UiSettingsSnapshot,
@@ -99,6 +103,11 @@ const BASE_UI: UiSettingsSnapshot = {
       runBudgetMaxModelCalls: 64,
       runBudgetMaxToolCalls: 128,
     },
+  },
+  loopPolicy: {
+    enabled: false,
+    thresholds: {},
+    fields: [...LOOP_POLICY_FIELDS],
   },
 };
 
@@ -435,6 +444,18 @@ describe('developer fields', () => {
     expect(next.tokenBudget.fields).toBe(BASE_UI.tokenBudget.fields);
   });
 
+  it('saves custom loop-policy gate and threshold patch', () => {
+    const next = applyUiPatch(BASE_UI, {
+      loopPolicy: {
+        enabled: true,
+        thresholds: { explorationRereadMinCalls: 24 },
+      },
+    });
+    expect(next.loopPolicy.enabled).toBe(true);
+    expect(next.loopPolicy.thresholds.explorationRereadMinCalls).toBe(24);
+    expect(next.loopPolicy.fields).toBe(BASE_UI.loopPolicy.fields);
+  });
+
   it.each(
     TOKEN_BUDGET_FIELDS.filter((field) => !field.hiddenFromDebug).map(
       (field) => [field.key, field] as const,
@@ -572,6 +593,15 @@ describe('window-scaled token budget defaults', () => {
       expect(keys).toContain(`tokenBudget.${field.key}`);
     }
     expect(keys).toHaveLength(TOKEN_BUDGET_FIELDS.length + 1);
+  });
+
+  it('lists every loop-policy key so Reset can clear them', () => {
+    const keys = loopPolicyResetKeys();
+    expect(keys).toContain('loopPolicy.enabled');
+    for (const field of LOOP_POLICY_FIELDS) {
+      expect(keys).toContain(`loopPolicy.${field.key}`);
+    }
+    expect(keys).toHaveLength(LOOP_POLICY_FIELDS.length + 1);
   });
 
   it('marks high-level budget fields as simple and the rest as advanced', () => {

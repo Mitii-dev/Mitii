@@ -207,6 +207,8 @@ export interface UiSettingsSnapshot {
   debugLogging: boolean;
   /** Window-proportional token budget tunables (Debug → developer). */
   tokenBudget: TokenBudgetSettingsSnapshot;
+  /** Agent Engine loop/stall threshold tunables (Debug → developer). */
+  loopPolicy: LoopPolicySettingsSnapshot;
 }
 
 export interface ModeDefaultSettingsSnapshot {
@@ -289,10 +291,16 @@ export interface TokenBudgetSettingsSnapshot {
   preview: TokenBudgetPreview;
 }
 
+export interface LoopPolicySettingsSnapshot {
+  enabled: boolean;
+  thresholds: Record<string, number>;
+  fields: TokenBudgetFieldDescriptor[];
+}
+
 export type UiSettingsPatch = Partial<
   Omit<
     UiSettingsSnapshot,
-    'contextToggles' | 'runBudget' | 'modeDefaults' | 'tokenBudget'
+    'contextToggles' | 'runBudget' | 'modeDefaults' | 'tokenBudget' | 'loopPolicy'
   > & {
     contextToggles?: Partial<ContextToggles>;
     runBudget?: Partial<RunBudgetSettingsSnapshot>;
@@ -302,6 +310,10 @@ export type UiSettingsPatch = Partial<
     tokenBudget?: {
       enabled?: boolean;
       policy?: Record<string, number>;
+    };
+    loopPolicy?: {
+      enabled?: boolean;
+      thresholds?: Record<string, number>;
     };
   }
 >;
@@ -569,6 +581,7 @@ export type WebviewToHostMessage =
   | { type: 'settings.setApiKey' }
   | { type: 'settings.clearApiKey' }
   | { type: 'settings.resetTokenBudget' }
+  | { type: 'settings.resetLoopPolicy' }
   | { type: 'profile.switch'; id: string }
   | {
       type: 'provider.testConnection';

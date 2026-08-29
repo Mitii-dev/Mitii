@@ -1,4 +1,5 @@
 import { AGENT_ENGINE_THRESHOLDS } from "../policy";
+import type { AgentEngineThresholds } from "./resolveAgentEngineThresholds";
 
 export type VerificationRepairStopReason =
   | "continue"
@@ -14,6 +15,10 @@ export interface ShouldContinueVerificationRepairInput {
   canStartModelCall: boolean;
   /** Window-effort cap. When 0, never start a repair loop. */
   maxAttempts?: number;
+  thresholds?: Pick<
+    AgentEngineThresholds,
+    "maxStalledVerificationRepairs" | "maxVerificationRepairAttempts"
+  >;
 }
 
 /**
@@ -24,27 +29,28 @@ export interface ShouldContinueVerificationRepairInput {
 export function shouldContinueVerificationRepair(
   input: ShouldContinueVerificationRepairInput,
 ): { continue: boolean; reason: VerificationRepairStopReason } {
+  const thresholds = input.thresholds ?? AGENT_ENGINE_THRESHOLDS;
   if (!input.canStartModelCall) {
     return { continue: false, reason: "budget" };
   }
 
   if (input.explorationDepth === "quick") {
-    const quickCap = maxVerificationRepairsForDepth("quick");
+    const quickCap = maxVerificationRepairsForDepth("quick", thresholds);
     if (input.repairAttempts >= quickCap) {
       return { continue: false, reason: "quick_cap" };
     }
   }
 
   const maxAttempts =
-    input.maxAttempts ?? maxVerificationRepairsForDepth(input.explorationDepth);
+    input.maxAttempts ??
+    maxVerificationRepairsForDepth(input.explorationDepth, thresholds);
   if (input.repairAttempts >= maxAttempts) {
     return { continue: false, reason: "max_attempts" };
   }
 
   if (
     input.repairAttempts > 0 &&
-    input.consecutiveStalledRepairs >=
-      AGENT_ENGINE_THRESHOLDS.maxStalledVerificationRepairs
+    input.consecutiveStalledRepairs >= thresholds.maxStalledVerificationRepairs
   ) {
     return { continue: false, reason: "stalled" };
   }
@@ -54,11 +60,15 @@ export function shouldContinueVerificationRepair(
 
 export function maxVerificationRepairsForDepth(
   explorationDepth?: "auto" | "quick" | "deep",
+  thresholds: Pick<
+    AgentEngineThresholds,
+    "maxVerificationRepairAttempts"
+  > = AGENT_ENGINE_THRESHOLDS,
 ): number {
   if (explorationDepth === "quick") {
     return 1;
   }
-  return AGENT_ENGINE_THRESHOLDS.maxVerificationRepairAttempts;
+  return thresholds.maxVerificationRepairAttempts;
 }
 
 /**
@@ -69,14 +79,18 @@ export function maxVerificationRepairsForDepth(
 export function reservedVerificationRepairModelCalls(input: {
   maxModelCalls: number;
   maxVerificationRepairs: number;
+  thresholds?: Pick<
+    AgentEngineThresholds,
+    "verificationRepairModelCallReserveRatio"
+  >;
 }): number {
   if (input.maxVerificationRepairs <= 0 || input.maxModelCalls <= 1) {
     return 0;
   }
-  const byShare = Math.floor(
-    input.maxModelCalls *
-      AGENT_ENGINE_THRESHOLDS.verificationRepairModelCallReserveRatio,
-  );
+  const ratio =
+    input.thresholds?.verificationRepairModelCallReserveRatio ??
+    AGENT_ENGINE_THRESHOLDS.verificationRepairModelCallReserveRatio;
+  const byShare = Math.floor(input.maxModelCalls * ratio);
   const reserved = Math.min(
     input.maxVerificationRepairs,
     Math.max(1, byShare),

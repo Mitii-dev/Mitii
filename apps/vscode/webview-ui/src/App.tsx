@@ -66,6 +66,7 @@ import type {
   SettingsProfileView,
   SkillCatalogItem,
   TokenBudgetSettingsSnapshot,
+  LoopPolicySettingsSnapshot,
   TokenUsageSnapshot,
   UiSettingsPatch,
   UiNav,
@@ -135,6 +136,12 @@ const DEFAULT_TOKEN_BUDGET: TokenBudgetSettingsSnapshot = {
   }),
 };
 
+const DEFAULT_LOOP_POLICY: LoopPolicySettingsSnapshot = {
+  enabled: false,
+  thresholds: {},
+  fields: [],
+};
+
 const DEFAULT_UI: UiSettingsSnapshot = {
   showReasoning: true,
   reasoningPreviewMaxChars: 8000,
@@ -167,6 +174,7 @@ const DEFAULT_UI: UiSettingsSnapshot = {
   developerEnabled: false,
   debugLogging: false,
   tokenBudget: DEFAULT_TOKEN_BUDGET,
+  loopPolicy: DEFAULT_LOOP_POLICY,
 };
 
 type SettingsMode = 'ask' | 'plan' | 'agent';
@@ -236,6 +244,17 @@ function mergeUiPatch(
           preview: base.tokenBudget.preview,
         }
       : base.tokenBudget,
+    loopPolicy: patch.loopPolicy
+      ? {
+          ...base.loopPolicy,
+          ...patch.loopPolicy,
+          thresholds: {
+            ...base.loopPolicy.thresholds,
+            ...(patch.loopPolicy.thresholds ?? {}),
+          },
+          fields: base.loopPolicy.fields,
+        }
+      : base.loopPolicy,
   };
 }
 
@@ -596,6 +615,18 @@ export function App() {
               ? msg.ui.tokenBudget.fields
               : DEFAULT_TOKEN_BUDGET.fields,
           preview: msg.ui.tokenBudget?.preview ?? DEFAULT_TOKEN_BUDGET.preview,
+        },
+        loopPolicy: {
+          ...DEFAULT_LOOP_POLICY,
+          ...msg.ui.loopPolicy,
+          thresholds: {
+            ...DEFAULT_LOOP_POLICY.thresholds,
+            ...(msg.ui.loopPolicy?.thresholds ?? {}),
+          },
+          fields:
+            msg.ui.loopPolicy?.fields?.length
+              ? msg.ui.loopPolicy.fields
+              : DEFAULT_LOOP_POLICY.fields,
         },
       };
       const previousUi = uiRef.current;
@@ -1901,6 +1932,9 @@ export function App() {
           onSaveAll={saveAllSettings}
           onResetTokenBudget={() =>
             postToHost({ type: 'settings.resetTokenBudget' })
+          }
+          onResetLoopPolicy={() =>
+            postToHost({ type: 'settings.resetLoopPolicy' })
           }
           saving={settingsSaving}
         />

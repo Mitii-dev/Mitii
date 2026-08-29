@@ -62,7 +62,8 @@ agent-engine/
   after one nudge stop the spin with `exploration_stall_broken`. Stall
   detection uses paths read in the current loop (reset after a successful
   mutation) so verification repair can re-read known error files without
-  aborting.
+  aborting. Hosts may pass `loopPolicy.thresholds` (partial overrides of
+  `AGENT_ENGINE_THRESHOLDS`) for lab tweaks; omit for shipped standards.
 - Identical read-only tool+args reuse the prior result (`tool_result_deduped`).
   Mutations invalidate that content cache.
 - Auto/hard compaction reinjects mid-run observations as well as pre-run

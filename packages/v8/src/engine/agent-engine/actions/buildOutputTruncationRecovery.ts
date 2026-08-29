@@ -2,6 +2,7 @@ import type { ModelMessage, ModelToolCall } from "../../../modules/model-gateway
 import type { MutationBudget } from "../../../modules/decision-policy";
 
 import { AGENT_ENGINE_THRESHOLDS } from "../policy";
+import type { AgentEngineThresholds } from "./resolveAgentEngineThresholds";
 
 export interface TruncationRecoveryPlan {
   /** Whether the Engine should discard tool calls and continue with a nudge. */
@@ -31,15 +32,20 @@ export function buildOutputTruncationRecovery(params: {
    * a mutation batch, not as essay continuation.
    */
   requireMutation?: boolean;
+  thresholds?: Pick<
+    AgentEngineThresholds,
+    | "maxTruncationRecoveries"
+    | "defaultPreferredBatchSize"
+    | "defaultMaxPatchesPerCall"
+  >;
 }): TruncationRecoveryPlan | null {
+  const thresholds = params.thresholds ?? AGENT_ENGINE_THRESHOLDS;
   const truncated = params.finishReason === "length";
   if (!truncated) {
     return null;
   }
 
-  if (
-    params.recoveryAttempt >= AGENT_ENGINE_THRESHOLDS.maxTruncationRecoveries
-  ) {
+  if (params.recoveryAttempt >= thresholds.maxTruncationRecoveries) {
     return null;
   }
 
@@ -61,12 +67,12 @@ export function buildOutputTruncationRecovery(params: {
     if (params.requireMutation) {
       const preferred = escalatePreferredBatchSize(
         params.mutationBudget?.preferredBatchSize ??
-          AGENT_ENGINE_THRESHOLDS.defaultPreferredBatchSize,
+          thresholds.defaultPreferredBatchSize,
         params.recoveryAttempt,
       );
       const maxPatches = escalateMaxPatches(
         params.mutationBudget?.maxPatchesPerCall ??
-          AGENT_ENGINE_THRESHOLDS.defaultMaxPatchesPerCall,
+          thresholds.defaultMaxPatchesPerCall,
         params.recoveryAttempt,
       );
       return {
@@ -104,12 +110,12 @@ export function buildOutputTruncationRecovery(params: {
 
   const preferred = escalatePreferredBatchSize(
     params.mutationBudget?.preferredBatchSize ??
-      AGENT_ENGINE_THRESHOLDS.defaultPreferredBatchSize,
+      thresholds.defaultPreferredBatchSize,
     params.recoveryAttempt,
   );
   const maxPatches = escalateMaxPatches(
     params.mutationBudget?.maxPatchesPerCall ??
-      AGENT_ENGINE_THRESHOLDS.defaultMaxPatchesPerCall,
+      thresholds.defaultMaxPatchesPerCall,
     params.recoveryAttempt,
   );
 

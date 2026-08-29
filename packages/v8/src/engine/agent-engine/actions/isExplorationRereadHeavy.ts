@@ -1,4 +1,5 @@
 import { AGENT_ENGINE_THRESHOLDS } from "../policy";
+import type { AgentEngineThresholds } from "./resolveAgentEngineThresholds";
 
 /**
  * File reads observed in the current model/tool loop (or since the last
@@ -43,24 +44,31 @@ export function snapshotLoopFileReads(tracker: LoopFileReadTracker): {
   };
 }
 
+export type ExplorationRereadThresholds = Pick<
+  AgentEngineThresholds,
+  "explorationRereadMinCalls" | "explorationRereadRatio"
+>;
+
 /**
  * True when file reads substantially exceed unique paths — the
  * re-read-in-circles pattern. Shared by post-run labeling and the
  * mid-loop stall breaker.
  */
-export function isExplorationRereadHeavy(snapshot: {
-  fileReadCalls: number;
-  uniqueFilePathsTouched: number;
-}): boolean {
+export function isExplorationRereadHeavy(
+  snapshot: {
+    fileReadCalls: number;
+    uniqueFilePathsTouched: number;
+  },
+  thresholds: ExplorationRereadThresholds = AGENT_ENGINE_THRESHOLDS,
+): boolean {
   if (
-    snapshot.fileReadCalls < AGENT_ENGINE_THRESHOLDS.explorationRereadMinCalls ||
+    snapshot.fileReadCalls < thresholds.explorationRereadMinCalls ||
     snapshot.uniqueFilePathsTouched <= 0
   ) {
     return false;
   }
   return (
     snapshot.fileReadCalls >=
-    snapshot.uniqueFilePathsTouched *
-      AGENT_ENGINE_THRESHOLDS.explorationRereadRatio
+    snapshot.uniqueFilePathsTouched * thresholds.explorationRereadRatio
   );
 }

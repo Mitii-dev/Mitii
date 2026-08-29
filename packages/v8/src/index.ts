@@ -441,11 +441,19 @@ export {
   AGENT_ENGINE_SCHEMA_VERSION,
   AGENT_LOG_VERBOSITIES,
   DEFAULT_AGENT_LOG_VERBOSITY,
+  AGENT_ENGINE_THRESHOLDS,
+  resolveAgentEngineThresholds,
+  agentEngineThresholdsSchema,
+  agentEngineThresholdsOverridesSchema,
   composeReadOnlyAgentEngine,
   InMemoryRunCheckpointStore,
   FileRunCheckpointStore,
   AgentEngineError,
   DEFAULT_TOOL_DEFINITIONS,
+} from "./engine/agent-engine";
+export type {
+  AgentEngineThresholds,
+  AgentEngineThresholdsOverrides,
 } from "./engine/agent-engine";
 export type {
   AgentEngineStartInput,

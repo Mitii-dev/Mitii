@@ -112,6 +112,11 @@ import {
   readTokenBudgetSettings,
   tokenBudgetResetKeys,
 } from './tokenBudgetSettings.js';
+import {
+  LOOP_POLICY_FIELDS,
+  loopPolicyResetKeys,
+  readLoopPolicySettings,
+} from './loopPolicySettings.js';
 import { normalizeIntensitySettings } from './thoroughness.js';
 import {
   clearMemoriesForWorkspace,
@@ -812,6 +817,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         return;
       case 'settings.resetTokenBudget':
         await this.resetTokenBudgetToDefaults();
+        return;
+      case 'settings.resetLoopPolicy':
+        await this.resetLoopPolicyToDefaults();
         return;
       case 'provider.testConnection':
         await this.handleTestConnection(message);
@@ -2011,6 +2019,32 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           }
         }
       }
+      if (message.ui.loopPolicy) {
+        if (message.ui.loopPolicy.enabled !== undefined) {
+          await cfg.update(
+            'loopPolicy.enabled',
+            message.ui.loopPolicy.enabled,
+            this.vs.ConfigurationTarget.Workspace,
+          );
+        }
+        if (message.ui.loopPolicy.thresholds) {
+          for (const field of LOOP_POLICY_FIELDS) {
+            const value = message.ui.loopPolicy.thresholds[field.key];
+            if (typeof value !== 'number' || !Number.isFinite(value)) {
+              continue;
+            }
+            const bounded = Math.max(
+              field.min,
+              Math.min(field.max ?? Number.POSITIVE_INFINITY, value),
+            );
+            await cfg.update(
+              `loopPolicy.${field.key}`,
+              field.kind === 'int' ? Math.floor(bounded) : bounded,
+              this.vs.ConfigurationTarget.Workspace,
+            );
+          }
+        }
+      }
       if (message.ui.contextToggles) {
         for (const [key, value] of Object.entries(message.ui.contextToggles)) {
           if (value === undefined) continue;
@@ -2120,6 +2154,15 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const cfg = this.vs.workspace.getConfiguration('mitii');
     const target = this.configurationTarget();
     for (const key of tokenBudgetResetKeys()) {
+      await cfg.update(key, undefined, target);
+    }
+    await this.sendBootstrap();
+  }
+
+  private async resetLoopPolicyToDefaults(): Promise<void> {
+    const cfg = this.vs.workspace.getConfiguration('mitii');
+    const target = this.configurationTarget();
+    for (const key of loopPolicyResetKeys()) {
       await cfg.update(key, undefined, target);
     }
     await this.sendBootstrap();
@@ -2432,6 +2475,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         resolveContextWindow(this.vs),
         cfg.get<number>('provider.maximumOutputTokens'),
       ),
+      loopPolicy: readLoopPolicySettings(cfg),
     };
   }
 
