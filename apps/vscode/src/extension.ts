@@ -648,7 +648,11 @@ export function activate(context: ExtensionContext): void {
         type: 'syncAutoPins',
         paths: snap.openTabRelPaths,
       });
-      debugLog(`[mitii] document closed → syncAutoPins (${snap.openTabRelPaths.length})`);
+      if (snap.openTabRelPaths.length > 0) {
+        debugLog(
+          `[mitii] document closed -> syncAutoPins (${snap.openTabRelPaths.length})`,
+        );
+      }
     }),
     vscode.window.onDidChangeVisibleTextEditors(() => {
       const root = workspaceRoot();

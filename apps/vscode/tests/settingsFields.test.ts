@@ -6,6 +6,7 @@ import {
   applyProviderTokenLimits,
   applyTokenBudgetPolicyField,
   applyUiPatch,
+  clearStaleModeModelDefaultsAfterProviderModelChange,
   DEFAULT_CONTEXT_TOGGLES,
   DEFAULT_CONTEXT_WINDOW,
   DEFAULT_MODE_DEFAULTS,
@@ -25,6 +26,10 @@ import {
   tokenLimitDraftAfterHostEcho,
   withActiveModeApproval,
 } from '../src/settingsFields';
+import {
+  profileFromProvider,
+  reconcileActiveProfileWithProvider,
+} from '../src/profiles';
 import {
   defaultTokenBudgetSettings,
   TOKEN_BUDGET_FIELDS,
@@ -326,6 +331,80 @@ describe('provider connection fields', () => {
     expect(next.preset).toBe('anthropic');
     expect(next.baseUrl).toBe('https://api.anthropic.com');
     expect(next.model).toBe('claude-sonnet-4-5');
+  });
+
+  it('clears stale mode-default models when the active provider model changes', () => {
+    const ui = applyUiPatch(BASE_UI, {
+      modeDefaults: {
+        ask: { model: 'old-model' },
+        plan: { model: 'old-model' },
+        agent: { model: 'intentional-agent-model' },
+      },
+    });
+    const next = clearStaleModeModelDefaultsAfterProviderModelChange({
+      ui,
+      previousProviderModel: 'old-model',
+      nextProviderModel: 'new-model',
+    });
+    expect(next.modeDefaults.ask.model).toBe('');
+    expect(next.modeDefaults.plan.model).toBe('');
+    expect(next.modeDefaults.agent.model).toBe('intentional-agent-model');
+  });
+
+  it('keeps mode-default models when the provider model has not changed', () => {
+    const ui = applyUiPatch(BASE_UI, {
+      modeDefaults: {
+        ask: { model: 'same-model' },
+      },
+    });
+    const next = clearStaleModeModelDefaultsAfterProviderModelChange({
+      ui,
+      previousProviderModel: 'same-model',
+      nextProviderModel: 'same-model',
+    });
+    expect(next).toBe(ui);
+    expect(next.modeDefaults.ask.model).toBe('same-model');
+  });
+});
+
+describe('profile settings', () => {
+  it('keeps the active profile provider aligned with effective VS Code settings', () => {
+    const oldProvider = {
+      ...BASE_PROVIDER,
+      model: 'old-model',
+      baseUrl: 'http://old.example/v1',
+    };
+    const currentProvider = {
+      ...BASE_PROVIDER,
+      model: 'new-model',
+      baseUrl: 'http://new.example/v1',
+    };
+    const profilesFile = {
+      activeProfileId: 'default',
+      profiles: [
+        profileFromProvider(oldProvider, {
+          id: 'default',
+          name: 'Default',
+          secretHash: 'old-secret',
+        }),
+        profileFromProvider(oldProvider, {
+          id: 'secondary',
+          name: 'Secondary',
+        }),
+      ],
+    };
+
+    const reconciled = reconcileActiveProfileWithProvider(
+      profilesFile,
+      currentProvider,
+      'new-secret',
+    );
+
+    expect(reconciled.activeProfileId).toBe('default');
+    expect(reconciled.profiles[0]?.provider.model).toBe('new-model');
+    expect(reconciled.profiles[0]?.provider.baseUrl).toBe('http://new.example/v1');
+    expect(reconciled.profiles[0]?.secretHash).toBe('new-secret');
+    expect(reconciled.profiles[1]?.provider.model).toBe('old-model');
   });
 });
 

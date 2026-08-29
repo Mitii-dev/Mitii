@@ -283,6 +283,27 @@ export function withActiveModeApproval(params: {
   });
 }
 
+export function clearStaleModeModelDefaultsAfterProviderModelChange(params: {
+  ui: UiSettingsSnapshot;
+  previousProviderModel: string;
+  nextProviderModel: string;
+}): UiSettingsSnapshot {
+  const previous = params.previousProviderModel.trim();
+  const next = params.nextProviderModel.trim();
+  if (!previous || previous === next) return params.ui;
+  let changed = false;
+  const modeDefaults = { ...params.ui.modeDefaults };
+  for (const mode of ['ask', 'plan', 'agent'] as const) {
+    if ((modeDefaults[mode].model ?? '').trim() !== previous) continue;
+    changed = true;
+    modeDefaults[mode] = {
+      ...modeDefaults[mode],
+      model: '',
+    };
+  }
+  return changed ? { ...params.ui, modeDefaults } : params.ui;
+}
+
 export function applyTokenBudgetPolicyField(
   policy: Record<string, number>,
   key: string,
@@ -427,6 +448,36 @@ export const SETTINGS_FIELDS: readonly SettingsFieldSpec[] = [
     sample: 30000,
     min: 0,
     max: 240000,
+  },
+  {
+    id: 'semanticIndex.source',
+    page: 'workspace',
+    tab: 'workspace',
+    setting: 'semanticIndex.source',
+    label: 'Embedding source',
+    kind: 'enum',
+    reflect: 'raw',
+    sample: 'disabled',
+  },
+  {
+    id: 'semanticIndex.backend',
+    page: 'workspace',
+    tab: 'workspace',
+    setting: 'semanticIndex.backend',
+    label: 'Embedding backend',
+    kind: 'enum',
+    reflect: 'raw',
+    sample: 'disabled',
+  },
+  {
+    id: 'semanticIndex.enabled',
+    page: 'workspace',
+    tab: 'workspace',
+    setting: 'semanticIndex.enabled',
+    label: 'Semantic indexing enabled',
+    kind: 'boolean',
+    reflect: 'raw',
+    sample: false,
   },
   {
     id: 'ui.modeDefaults.ask.thoroughness',

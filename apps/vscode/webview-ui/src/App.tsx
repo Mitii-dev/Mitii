@@ -272,6 +272,27 @@ function mergeUiPatch(
   };
 }
 
+function clearStaleModeModelDefaultsAfterProviderModelChange(params: {
+  ui: UiSettingsSnapshot;
+  previousProviderModel: string;
+  nextProviderModel: string;
+}): UiSettingsSnapshot {
+  const previous = params.previousProviderModel.trim();
+  const next = params.nextProviderModel.trim();
+  if (!previous || previous === next) return params.ui;
+  let changed = false;
+  const modeDefaults = { ...params.ui.modeDefaults };
+  for (const mode of ['ask', 'plan', 'agent'] as const) {
+    if ((modeDefaults[mode].model ?? '').trim() !== previous) continue;
+    changed = true;
+    modeDefaults[mode] = {
+      ...modeDefaults[mode],
+      model: '',
+    };
+  }
+  return changed ? { ...params.ui, modeDefaults } : params.ui;
+}
+
 /** Tool titles switch from "Running X" (started) to plain "X" (completed) — normalize so both merge into one row. */
 function activityMergeKey(event: { kind: string; title: string }): string {
   if (event.kind === 'tool') {
@@ -515,6 +536,8 @@ export function App() {
   const modeRef = useRef<AgentUiMode>(mode);
   const uiRef = useRef<UiSettingsSnapshot>(ui);
   const providerRef = useRef<ProviderSettingsSnapshot>(provider);
+  const indexRef = useRef<IndexStatusSnapshot>(index);
+  const savedProviderModelRef = useRef(provider.model);
   const listModelsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hydratedModeDefaults = useRef(false);
   const readySentRef = useRef(false);
@@ -599,6 +622,7 @@ export function App() {
           ? Math.max(0, Math.floor(msg.provider.maximumOutputTokens))
           : 0,
       });
+      savedProviderModelRef.current = msg.provider.model ?? '';
       setProfiles(msg.profiles ?? []);
       setActiveProfileId(msg.activeProfileId ?? 'default');
       setMcp(msg.mcp);
@@ -716,6 +740,10 @@ export function App() {
   useEffect(() => {
     uiRef.current = ui;
   }, [ui]);
+
+  useEffect(() => {
+    indexRef.current = index;
+  }, [index]);
 
   const markSuspensionResumed = useCallback((runId: string) => {
     setRunning(true);
@@ -1142,7 +1170,7 @@ export function App() {
     setEffort(intensity.effort);
     setApprovalMode(normalizeApproval(agentDefaults.approvalMode));
     const nextModel = agentDefaults.model?.trim();
-    if (nextModel) saveModel(nextModel);
+    if (nextModel) saveModel(nextModel, { clearStaleModeDefaults: false });
     postToHost({
       type: 'ask',
       prompt: 'Implement the pending plan.',
@@ -1320,11 +1348,29 @@ export function App() {
     ? provider.model.trim() || 'Custom model'
     : provider.model || 'Select model';
 
-  const saveModel = (model: string) => {
+  const saveModel = (
+    model: string,
+    options: { clearStaleModeDefaults?: boolean } = {},
+  ) => {
+    const previousModel = savedProviderModelRef.current;
     updateProvider((p) => ({ ...p, model }));
+    let uiPatch: UiSettingsPatch | undefined;
+    if (options.clearStaleModeDefaults !== false) {
+      const nextUi = clearStaleModeModelDefaultsAfterProviderModelChange({
+        ui: uiRef.current,
+        previousProviderModel: previousModel,
+        nextProviderModel: model,
+      });
+      if (nextUi !== uiRef.current) {
+        uiRef.current = nextUi;
+        setUi(nextUi);
+        uiPatch = { modeDefaults: nextUi.modeDefaults };
+      }
+    }
     postToHost({
       type: 'settings.set',
       provider: { model },
+      ui: uiPatch,
     });
   };
 
@@ -1353,7 +1399,7 @@ export function App() {
     setEffort(intensity.effort);
     setApprovalMode(normalizeApproval(defaults.approvalMode));
     const nextModel = defaults.model?.trim();
-    if (nextModel) saveModel(nextModel);
+    if (nextModel) saveModel(nextModel, { clearStaleModeDefaults: false });
   };
 
   const changeThoroughness = (next: AgentUiThoroughness) => {
@@ -1415,6 +1461,7 @@ export function App() {
 
   const applyProfileLocally = (profile: SettingsProfileView) => {
     setActiveProfileId(profile.id);
+    savedProviderModelRef.current = profile.provider.model ?? '';
     updateProvider((prev) => ({
       ...prev,
       ...profile.provider,
@@ -1451,29 +1498,35 @@ export function App() {
 
   const saveAllSettings = () => {
     (document.activeElement as HTMLElement | null)?.blur?.();
-    const latestUi = mergeUiPatch(
-      uiRef.current,
-      approvalModeUiPatch({ mode, approvalMode }),
-    );
+    const latestProvider = snapshotProvider();
+    const latestUi = clearStaleModeModelDefaultsAfterProviderModelChange({
+      ui: mergeUiPatch(
+        uiRef.current,
+        approvalModeUiPatch({ mode, approvalMode }),
+      ),
+      previousProviderModel: savedProviderModelRef.current,
+      nextProviderModel: latestProvider.model,
+    });
     uiRef.current = latestUi;
     setUi(latestUi);
     const profile = activeProfile ?? {
       id: activeProfileId || 'default',
       name: 'Default',
-      provider: snapshotProvider(),
+      provider: latestProvider,
       hasSecret: provider.hasApiKey,
     };
     setSettingsSaving(true);
     postToHost({
       type: 'settings.set',
-      provider: snapshotProvider(),
+      provider: latestProvider,
       ui: latestUi,
       workspaceRootOverride: overrideDraft.trim() || null,
+      workspaceMaximumIndexFiles: indexRef.current.maximumIndexFiles ?? 0,
       mcp,
       approvalMode,
       profile: {
         ...profile,
-        provider: snapshotProvider(),
+        provider: latestProvider,
       },
     });
     setTokenUsage((prev) => ({
@@ -1958,6 +2011,20 @@ export function App() {
           index={index}
           onReindex={() => postToHost({ type: 'index.reindex' })}
           onRefreshIndex={() => postToHost({ type: 'index.refresh' })}
+          onMaximumIndexFilesChange={(value) => {
+            const maximumIndexFiles = Math.max(
+              0,
+              Math.min(240000, Math.floor(value)),
+            );
+            indexRef.current = {
+              ...indexRef.current,
+              maximumIndexFiles,
+            };
+            setIndex((current) => ({
+              ...current,
+              maximumIndexFiles,
+            }));
+          }}
           onEmbeddingSourceChange={(source: SemanticIndexSource) => {
             setIndex((current) => ({
               ...current,

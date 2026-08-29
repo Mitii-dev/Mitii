@@ -159,6 +159,7 @@ export type SemanticIndexSource =
 export interface IndexStatusSnapshot {
   fileCount: number;
   truncated: boolean;
+  maximumIndexFiles?: number;
   scanCompleteness?: string;
   cleanupAllowed?: boolean;
   rootCount?: number;
@@ -592,6 +593,7 @@ export type WebviewToHostMessage =
       workspaceRootOverride?: string | null;
       mcp?: McpSettings;
       approvalMode?: string;
+      workspaceMaximumIndexFiles?: number;
       profile?: SettingsProfileView;
       semanticIndex?: {
         source?: SemanticIndexSource;

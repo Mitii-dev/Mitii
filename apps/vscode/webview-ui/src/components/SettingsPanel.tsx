@@ -84,6 +84,7 @@ interface SettingsPanelProps {
   index: IndexStatusSnapshot;
   onReindex: () => void;
   onRefreshIndex: () => void;
+  onMaximumIndexFilesChange: (value: number) => void;
   onEmbeddingSourceChange: (source: SemanticIndexSource) => void;
   memories: MemoryItemView[];
   onAddMemory: (text: string) => void;
@@ -343,6 +344,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     index,
     onReindex,
     onRefreshIndex,
+    onMaximumIndexFilesChange,
     onEmbeddingSourceChange,
     memories,
     onAddMemory,
@@ -800,6 +802,20 @@ export function SettingsPanel(props: SettingsPanelProps) {
                             : 'LanceDB stores vectors; it is not an embedding source.'}
                   </p>
                 </div>
+                <NumberField
+                  id="maximum-index-files"
+                  label="Maximum index files"
+                  min={0}
+                  max={240000}
+                  value={index.maximumIndexFiles ?? 0}
+                  onCommit={onMaximumIndexFilesChange}
+                  hint="0 uses the default limit"
+                  footer={
+                    <p className="field-hint">
+                      0 uses the default limit. Reindex after changing this.
+                    </p>
+                  }
+                />
                 <KeyValueList
                   rows={[
                     { label: 'Indexed items', value: index.fileCount },

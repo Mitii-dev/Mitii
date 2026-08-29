@@ -7,7 +7,7 @@ import type { ProviderSettingsSnapshot, SettingsProfileView } from './protocol.j
 const PROFILES_FILE = 'profiles.json';
 const DEFAULT_PROFILE_ID = 'default';
 
-interface ProfilesFile {
+export interface ProfilesFile {
   activeProfileId: string;
   profiles: SettingsProfileView[];
 }
@@ -156,16 +156,41 @@ export function readProfiles(
     if (profiles.length === 0) profiles.push(fallbackProfile);
     const activeProfileIdRaw =
       typeof raw.activeProfileId === 'string' ? raw.activeProfileId : '';
-    const activeProfileId = profiles.some((profile) => profile.id === activeProfileIdRaw)
+    const activeProfileId = profiles.some(
+      (profile) => profile.id === activeProfileIdRaw,
+    )
       ? activeProfileIdRaw
       : profiles[0]!.id;
-    return { activeProfileId, profiles };
+    return reconcileActiveProfileWithProvider(
+      { activeProfileId, profiles },
+      fallbackProvider,
+      secretHash,
+    );
   } catch {
     return {
       activeProfileId: fallbackProfile.id,
       profiles: [fallbackProfile],
     };
   }
+}
+
+export function reconcileActiveProfileWithProvider(
+  profilesFile: ProfilesFile,
+  provider: ProviderSettingsSnapshot,
+  secretHash?: string,
+): ProfilesFile {
+  return {
+    activeProfileId: profilesFile.activeProfileId,
+    profiles: profilesFile.profiles.map((profile) =>
+      profile.id === profilesFile.activeProfileId
+        ? profileFromProvider(provider, {
+            id: profile.id,
+            name: profile.name,
+            secretHash,
+          })
+        : profile,
+    ),
+  };
 }
 
 export function writeProfiles(
