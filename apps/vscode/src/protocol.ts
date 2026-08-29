@@ -205,6 +205,11 @@ export interface UiSettingsSnapshot {
   intensityOverrides: boolean;
   /** Maps to mitii.debug (verbose Output channel / stacks). */
   debugLogging: boolean;
+  /**
+   * Maps to mitii.debug.modelIo — sanitized request/response JSONL under
+   * .mitii/logs/. Requires developerEnabled.
+   */
+  modelIoLogging: boolean;
   /** Window-proportional token budget tunables (Debug → developer). */
   tokenBudget: TokenBudgetSettingsSnapshot;
   /** Agent Engine loop/stall threshold tunables (Debug → developer). */
@@ -325,6 +330,8 @@ export type UiSettingsPatch = Partial<
     loopPolicy?: {
       enabled?: boolean;
       thresholds?: Record<string, number>;
+      bandThresholds?: Record<string, number>;
+      band?: LoopPolicyBandSnapshot;
     };
   }
 >;

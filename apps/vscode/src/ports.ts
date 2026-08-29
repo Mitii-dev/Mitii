@@ -44,6 +44,10 @@ import { createVsCodeMemoryStore } from './memoryStore.js';
 import { createVsCodeCodeNavigationPort } from './codeNavigation.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
 import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
+import {
+  isModelIoLoggingEnabled,
+  wrapLlmPortForModelIo,
+} from './modelIoLog.js';
 
 const DEFAULT_CONTEXT_WINDOW = 32_768;
 
@@ -148,10 +152,21 @@ export async function resolveVscodePorts(
   });
   const presetId = cfg.get<string>('provider.preset') ?? providerType;
 
+  const modelIoEnabled = isModelIoLoggingEnabled(
+    cfg.get<boolean>('developer.enabled') ?? false,
+    cfg.get<boolean>('debug.modelIo') ?? false,
+  );
+
   if (providerType === 'echo') {
     return {
-      understandingLlm: new LocalUnderstandingLlmPort(),
-      runLlm: createHostLlmPorts({ type: 'echo', model: 'echo' }).runLlm,
+      understandingLlm: wrapLlmPortForModelIo(
+        new LocalUnderstandingLlmPort(),
+        modelIoEnabled,
+      ),
+      runLlm: wrapLlmPortForModelIo(
+        createHostLlmPorts({ type: 'echo', model: 'echo' }).runLlm,
+        modelIoEnabled,
+      ),
       providerLabel: 'echo',
       workspaceId,
     };
@@ -172,8 +187,11 @@ export async function resolveVscodePorts(
     },
   });
   return {
-    understandingLlm: ports.understandingLlm,
-    runLlm: ports.runLlm,
+    understandingLlm: wrapLlmPortForModelIo(
+      ports.understandingLlm,
+      modelIoEnabled,
+    ),
+    runLlm: wrapLlmPortForModelIo(ports.runLlm, modelIoEnabled),
     providerLabel: ports.providerLabel,
     workspaceId,
   };

@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.8.63",
+  "version": "2.8.64",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -69,6 +69,7 @@
     "onCommand:mitii.generateCommitMessage",
     "onCommand:mitii.exportSessionLog",
     "onCommand:mitii.exportAuditPack",
+    "onCommand:mitii.exportShareableDiagnostic",
     "onCommand:mitii.openSessionLog",
     "onCommand:mitii.generateChangelog",
     "onCommand:mitii.prepareRelease",
@@ -122,6 +123,11 @@
       {
         "command": "mitii.exportAuditPack",
         "title": "Mitii: Export Audit Pack",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.exportShareableDiagnostic",
+        "title": "Mitii: Export Shareable Diagnostic",
         "category": "Mitii"
       },
       {
@@ -239,6 +245,11 @@
           "type": "boolean",
           "default": false,
           "description": "Enable debug logging in the Mitii Output channel (auto-shows the channel; includes stack traces on failures). Requires mitii.developer.enabled in Settings → Developer."
+        },
+        "mitii.developer.modelIo": {
+          "type": "boolean",
+          "default": false,
+          "description": "When developer settings are enabled, write sanitized model request/response bodies to a separate *-model-io.jsonl under .mitii/logs/. Large and may include workspace content — keep local. Use Mitii: Export Shareable Diagnostic for a redacted one-file paste for online help."
         },
         "mitii.tokenBudget.enabled": {
           "type": "boolean",
@@ -805,7 +816,7 @@
         },
         "mitii.provider.model": {
           "type": "string",
-          "default": "qwen3-coder:30b",
+          "default": "",
           "description": "Model id (for example gpt-4o-mini, claude-sonnet-4-5, gemini-2.5-flash, deepseek-chat)."
         },
         "mitii.provider.contextWindow": {

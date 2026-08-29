@@ -31,7 +31,7 @@ Local runtime data for this workspace. Safe to gitignore.
 
 | Path | Purpose |
 |------|---------|
-| \`logs/\` | Session JSONL logs |
+| \`logs/\` | Session JSONL logs (+ optional \`*-model-io.jsonl\` when developer model I/O logging is on) |
 | \`checkpoints/\` | Saved run checkpoints |
 | \`verification/\` | Durable before/after verification records for retry |
 | \`plans/\` | Timestamped plan artifacts (\`MM-DD-YYYY-HH-MM-id-slug.json\`) |
@@ -39,7 +39,7 @@ Local runtime data for this workspace. Safe to gitignore.
 | \`skills/\` | Workspace skill playbooks |
 | \`rules/\` | Project methodology rules |
 | \`diff-preview/\` | Temporary diff preview files |
-| \`audit/\` | Audit pack exports |
+| \`audit/\` | Audit pack + shareable diagnostic exports |
 | \`mcp.json\` | MCP install list (off by default; add from Settings store) |
 | \`profiles.json\` | Local model/provider profiles with secret fingerprints only |
 | \`last-repository-state.json\` | Last published index descriptor |

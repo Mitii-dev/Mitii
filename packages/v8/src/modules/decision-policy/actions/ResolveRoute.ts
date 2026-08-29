@@ -459,7 +459,7 @@ function looksLikeWorkspaceGroundedRequest(message: string): boolean {
   }
 
   if (
-    /\b(?:this|the|current)\s+(?:project|repo|repository|codebase|workspace|code)\b/i.test(
+    /\b(?:this|the|current)\s+(?:project|repo|repository|codebase|workspace|code|suite|framework|app|application)\b/i.test(
       text,
     )
   ) {
@@ -467,7 +467,22 @@ function looksLikeWorkspaceGroundedRequest(message: string): boolean {
   }
 
   if (
-    /\b(?:in|across|throughout|within|of|on)\s+(?:this|the|current)\s+(?:project|repo|repository|codebase|workspace)\b/i.test(
+    /\b(?:in|across|throughout|within|of|on|for)\s+(?:this|the|current)\s+(?:project|repo|repository|codebase|workspace|suite|framework|app|application)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+
+  // Deictic workspace asks without an explicit noun:
+  // "Is headless supported in this?", "does this support X", "configured here?"
+  if (
+    /\b(?:in|for|within|across|throughout|on|with)\s+this\b/i.test(text) ||
+    /\b(?:in|for|within)\s+here\b/i.test(text) ||
+    /\b(?:supported|configured|enabled|available|implemented)\s+(?:in|for|by|on)\s+(?:this|here)\b/i.test(
+      text,
+    ) ||
+    /\b(?:does|is|can|will)\s+(?:this|it)\s+(?:support|have|use|enable|include|allow|offer)\b/i.test(
       text,
     )
   ) {

@@ -22,6 +22,7 @@ import {
   findLatestSessionLog,
   writeSessionExport,
 } from './sessionLog.js';
+import { writeShareableDiagnostic } from './shareableDiagnostic.js';
 import { MitiiSidebarProvider } from './sidebar.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
@@ -444,6 +445,40 @@ export function activate(context: ExtensionContext): void {
     void vscode.window.showInformationMessage(`Exported audit pack to ${outPath}`);
   };
 
+  const exportShareableDiagnostic = async (): Promise<void> => {
+    const root = workspaceRoot();
+    const cfg = vscode.workspace.getConfiguration('mitii');
+    const written = writeShareableDiagnostic({
+      workspaceRoot: root,
+      fallbackDir: context.globalStorageUri.fsPath,
+      meta: {
+        providerType: cfg.get<string>('provider.type') ?? undefined,
+        model: cfg.get<string>('provider.model') ?? undefined,
+        baseUrl: cfg.get<string>('provider.baseUrl') ?? undefined,
+        developerEnabled: cfg.get<boolean>('developer.enabled') ?? false,
+        modelIoEnabled: cfg.get<boolean>('debug.modelIo') ?? false,
+        contextWindowTokens: (() => {
+          const raw = cfg.get<number>('provider.contextWindow');
+          return typeof raw === 'number' && Number.isFinite(raw) && raw > 0
+            ? Math.floor(raw)
+            : undefined;
+        })(),
+      },
+    });
+    channel.appendLine(`[shareable] wrote ${written.path}`);
+    if (written.sources.sessionLogPath) {
+      channel.appendLine(`[shareable] session ${written.sources.sessionLogPath}`);
+    }
+    if (written.sources.modelIoLogPath) {
+      channel.appendLine(`[shareable] model-io ${written.sources.modelIoLogPath}`);
+    }
+    const doc = await vscode.workspace.openTextDocument(written.path);
+    await vscode.window.showTextDocument(doc);
+    void vscode.window.showInformationMessage(
+      `Shareable diagnostic ready — copy from ${written.path}`,
+    );
+  };
+
   const openSessionLog = async (): Promise<void> => {
     const root = workspaceRoot();
     const candidate =
@@ -534,6 +569,10 @@ export function activate(context: ExtensionContext): void {
       await exportSession();
     }),
     vscode.commands.registerCommand('mitii.exportAuditPack', exportAudit),
+    vscode.commands.registerCommand(
+      'mitii.exportShareableDiagnostic',
+      exportShareableDiagnostic,
+    ),
     vscode.commands.registerCommand('mitii.openSessionLog', openSessionLog),
     vscode.commands.registerCommand('mitii.generateChangelog', async () => {
       await generateDocAsk(
@@ -644,11 +683,13 @@ export function activate(context: ExtensionContext): void {
           event.affectsConfiguration('mitii.provider') ||
           event.affectsConfiguration('mitii.mcp') ||
           event.affectsConfiguration('mitii.ui.contextToggles.memory') ||
-          event.affectsConfiguration('mitii.agent.taskListAutoAdvance')
+          event.affectsConfiguration('mitii.agent.taskListAutoAdvance') ||
+          event.affectsConfiguration('mitii.debug.modelIo') ||
+          event.affectsConfiguration('mitii.developer.enabled')
         ) {
           invalidateClient();
           channel.appendLine(
-            '[mitii] provider/mcp/memory/agent settings changed; client will recompose',
+            '[mitii] provider/mcp/memory/agent/debug settings changed; client will recompose',
           );
         }
         void (async () => {

@@ -19,6 +19,13 @@ const DEFAULT_IGNORED_DIRECTORY_NAMES = new Set<string>([
   "coverage",
   "out",
 
+  // Test / report artifacts (often huge; crowd out source in file maps)
+  "allure-results",
+  "allure-report",
+  "test-results",
+  "playwright-report",
+  "mochawesome-report",
+
   ".next",
   ".nuxt",
   ".output",

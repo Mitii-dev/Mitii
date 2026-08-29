@@ -1904,6 +1904,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           this.vs.ConfigurationTarget.Global,
         );
       }
+      if (message.ui.modelIoLogging !== undefined) {
+        await cfg.update(
+          'debug.modelIo',
+          message.ui.modelIoLogging,
+          this.vs.ConfigurationTarget.Global,
+        );
+      }
       if (message.ui.reasoningPreviewMaxChars !== undefined) {
         await cfg.update(
           'ui.reasoningPreviewMaxChars',
@@ -2470,6 +2477,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       runBudget: readRunBudgetSettings(this.vs),
       developerEnabled: cfg.get<boolean>('developer.enabled') ?? false,
       debugLogging: cfg.get<boolean>('debug') ?? false,
+      modelIoLogging: cfg.get<boolean>('debug.modelIo') ?? false,
       tokenBudget: readTokenBudgetSettings(
         cfg,
         resolveContextWindow(this.vs),

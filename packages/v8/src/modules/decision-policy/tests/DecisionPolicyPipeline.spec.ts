@@ -497,6 +497,52 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.repositoryContextRequired).toBe(true);
   });
 
+  it("routes deictic 'in this' capability asks to repository_answer", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "ask",
+        message: "Is headless supported in this ?",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "unknown",
+            clarity: "unclear",
+            recommendsRepositoryDiscovery: false,
+            recommendsVerification: false,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("repository_answer");
+    expect(decision.reasonCodes).toContain("repository_grounded_answer");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
+    expect(decision.toolGrant.allowedTools).toContain("read_file");
+    expect(decision.repositoryContextRequired).toBe(true);
+  });
+
+  it("routes 'does this support' asks to repository_answer", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "ask",
+        message: "Does this support parallel tablet runs?",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "unknown",
+            recommendsRepositoryDiscovery: false,
+            recommendsVerification: false,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("repository_answer");
+    expect(decision.toolGrant.allowedTools).toContain("search_files");
+  });
+
   it("routes ask-mode API design requests to repository_answer even when classified as a question", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({

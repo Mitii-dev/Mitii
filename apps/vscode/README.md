@@ -42,6 +42,7 @@ For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code Secr
 | **Mitii: Generate Commit Message** | SCM commit helper |
 | **Mitii: Export Session Log** | Export session JSON |
 | **Mitii: Export Audit Pack** | Redacted audit bundle |
+| **Mitii: Export Shareable Diagnostic** | One redacted markdown file for pasting into online chat help |
 
 ## Settings (common)
 

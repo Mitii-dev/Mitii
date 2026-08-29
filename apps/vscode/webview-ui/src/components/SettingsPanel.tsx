@@ -1155,7 +1155,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
               <SettingsSection
                 title="Logging"
-                description="Verbose stacks in the Mitii Output channel."
+                description="Verbose stacks and optional model request/response dumps."
               >
                 <div
                   className={`developer-options${
@@ -1177,6 +1177,26 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     When on, Mitii shows the Output channel and prints verbose
                     stacks on failures (
                     <span className="mono">mitii.debug</span>).
+                  </p>
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={ui.modelIoLogging === true}
+                      disabled={!ui.developerEnabled}
+                      onChange={(e) =>
+                        onSaveUi({ modelIoLogging: e.target.checked })
+                      }
+                    />
+                    Log model I/O
+                  </label>
+                  <p className="field-hint">
+                    Writes sanitized messages in / assistant out to a separate{' '}
+                    <span className="mono">*-model-io.jsonl</span> under{' '}
+                    <span className="mono">.mitii/logs/</span> (
+                    <span className="mono">mitii.debug.modelIo</span>). Keep
+                    local — may include workspace content. Use command{' '}
+                    <span className="mono">Mitii: Export Shareable Diagnostic</span>{' '}
+                    for a redacted one-file paste for online help.
                   </p>
                 </div>
               </SettingsSection>

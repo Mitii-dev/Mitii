@@ -61,6 +61,7 @@ const BASE_UI: UiSettingsSnapshot = {
   runBudget: DEFAULT_RUN_BUDGET,
   developerEnabled: false,
   debugLogging: false,
+  modelIoLogging: false,
   tokenBudget: {
     enabled: false,
     policy: {},
@@ -443,10 +444,12 @@ describe('developer fields', () => {
     const next = applyUiPatch(BASE_UI, {
       developerEnabled: true,
       debugLogging: true,
+      modelIoLogging: true,
       tokenBudget: { enabled: true },
     });
     expect(next.developerEnabled).toBe(true);
     expect(next.debugLogging).toBe(true);
+    expect(next.modelIoLogging).toBe(true);
     expect(next.tokenBudget.enabled).toBe(true);
     expect(next.tokenBudget.fields).toBe(BASE_UI.tokenBudget.fields);
   });

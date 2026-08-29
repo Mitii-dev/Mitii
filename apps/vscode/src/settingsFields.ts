@@ -713,6 +713,16 @@ export const SETTINGS_FIELDS: readonly SettingsFieldSpec[] = [
     sample: true,
   },
   {
+    id: 'debug.modelIo',
+    page: 'developer',
+    tab: 'debug',
+    setting: 'debug.modelIo',
+    label: 'Log model I/O',
+    kind: 'boolean',
+    reflect: 'raw',
+    sample: true,
+  },
+  {
     id: 'tokenBudget.enabled',
     page: 'developer',
     tab: 'debug',

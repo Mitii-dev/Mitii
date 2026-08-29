@@ -502,7 +502,7 @@ export function findLatestSessionLog(
     const names = readdirSync(dir)
       .filter(
         (name) =>
-          name.endsWith('.jsonl') ||
+          (name.endsWith('.jsonl') && !name.endsWith('-model-io.jsonl')) ||
           (name.startsWith('session-export-') && name.endsWith('.json')),
       )
       .sort();

@@ -180,6 +180,7 @@ const DEFAULT_UI: UiSettingsSnapshot = {
   runBudget: DEFAULT_RUN_BUDGET,
   developerEnabled: false,
   debugLogging: false,
+  modelIoLogging: false,
   tokenBudget: DEFAULT_TOKEN_BUDGET,
   loopPolicy: DEFAULT_LOOP_POLICY,
 };

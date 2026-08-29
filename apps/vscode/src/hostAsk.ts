@@ -38,6 +38,11 @@ import {
   formatUsageLine,
 } from './runReport.js';
 import { openSessionLog } from './sessionLog.js';
+import {
+  isModelIoLoggingEnabled,
+  openModelIoLog,
+  setActiveModelIoSink,
+} from './modelIoLog.js';
 import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
 import { readLoopPolicyThresholdOverrides } from './loopPolicySettings.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
@@ -1227,7 +1232,24 @@ export async function runAskInOutputChannel(options: {
       channel.appendLine(`[log] ${logPath}`);
     }
 
-    for (;;) {
+    const modelIoEnabled = isModelIoLoggingEnabled(
+      cfg.get<boolean>('developer.enabled') ?? false,
+      cfg.get<boolean>('debug.modelIo') ?? false,
+    );
+    const modelIoLog = modelIoEnabled
+      ? openModelIoLog(workspaceRoot, {
+          at: runStartedAt,
+          sessionId: options.sessionId,
+          runId: run.runId,
+        })
+      : undefined;
+    if (modelIoLog) {
+      setActiveModelIoSink(modelIoLog);
+      channel.appendLine(`[model-io] ${modelIoLog.path}`);
+    }
+
+    try {
+      for (;;) {
       const cancelSub = token.onCancellationRequested(() => {
         channel.appendLine('[mitii] cancelling…');
         run.cancel('user_cancelled');
@@ -1356,6 +1378,10 @@ export async function runAskInOutputChannel(options: {
       } finally {
         cancelSub.dispose();
       }
+    }
+    } finally {
+      setActiveModelIoSink(undefined);
+      modelIoLog?.close();
     }
   };
 
